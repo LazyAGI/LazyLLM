@@ -1,6 +1,8 @@
 import re
 import builtins
 
+import lazyllm
+
 
 # Special Dict for lazy programmer. Suppose we have a LazyDict as follows：
 #    >>> ld = LazyDict(name='ld', ALd=int)
@@ -35,8 +37,8 @@ class LazyDict(dict):
         return super(__class__, self).__getattribute__(key)
 
     def __call__(self, *args, **kwargs):
-        assert len(self.keys()) == 1
-        return self[list(self.keys())[0]](*args, **kwargs)
+        assert self._default is not None or len(self.keys()) == 1
+        return self.default if self._default else self[list(self.keys())[0]](*args, **kwargs)
 
     def set_default(self, key):
         assert isinstance(key, str), 'default key must be str'
@@ -45,82 +47,24 @@ class LazyDict(dict):
 
 class LazyLLMRegisterMetaClass(type):
     all_clses = dict()
+    all_groups = dict()
 
     def __new__(metas, name, bases, attrs):
         new_cls = type.__new__(metas, name, bases, attrs)
         if name.startswith('LazyLLM') and name.endswith('Base'):
             group = re.match('(LazyLLM)(.*)(Base)', name.split('.')[-1])[2].lower()
+            assert not hasattr(new_cls, '_lazy_llm_group')
+            new_cls._lazy_llm_group = group
+
             LazyLLMRegisterMetaClass.all_clses.update({group:LazyDict(group)})
+            LazyLLMRegisterMetaClass.all_groups.update({group:new_cls})
+
             assert not hasattr(builtins, group), f'group name \'{group}\' cannot be used'
             setattr(builtins, group, LazyLLMRegisterMetaClass.all_clses[group])
-            new_cls._lazy_llm_group = group
+            setattr(lazyllm, group, LazyLLMRegisterMetaClass.all_clses[group])
         elif hasattr(new_cls, '_lazy_llm_group'):
             group = LazyLLMRegisterMetaClass.all_clses[new_cls._lazy_llm_group]
             assert new_cls.__name__ not in group, (
                 f'duplicate class \'{name}\' in group {new_cls._lazy_llm_group}')
             group[new_cls.__name__] = new_cls
         return new_cls
-
-
-class LazyLLMLauncherBase(object, metaclass=LazyLLMRegisterMetaClass):
-    pass
-
-class EmptyLauncher(LazyLLMLauncherBase):
-    pass
-
-class SlurmLauncher(LazyLLMLauncherBase):
-    pass
-    
-class ScoLauncher(LazyLLMLauncherBase):
-    pass
-    
-class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
-    pass
-
-class LazyLLMDataProcessingBase(LLMBase):
-    pass
-
-class LazyLLMFinetuneBase(LLMBase):
-    pass
-
-class LazyLLMDeployBase(LLMBase):
-    pass
-
-class LazyLLMValidateBase(LLMBase):
-    pass
-
-class GenCFQSData(LazyLLMDataProcessingBase):
-    pass
-
-class Finetune(LazyLLMFinetuneBase):
-    pass
-
-class Deploy(LazyLLMDeployBase):
-    pass
-
-class Validate(LazyLLMValidateBase):
-    pass
-
-print(LazyLLMRegisterMetaClass.all_clses)
-
-'''
-lazyllm.pipeline(
-    gen_data(),
-    parallel(
-        lazyllm.pipeline(
-            finetune(launcher=launcher.slurm()),
-            mergeWeights(launcher=launcher.slurm()),
-            deploy(launcher=slurm()),
-            post_action=lazyllm.pipeline(eval_stage1()),
-        ),
-        lazyllm.pipeline(
-            finetune(),
-            mergeWeights(launcher=launcher.slurm()),
-            deploy(),
-            post_action=lazyllm.pipeline(eval_stage2()),
-        ),
-    ),
-    eval_all_stage()
-)
-'''
-    
