@@ -1,12 +1,17 @@
 from lazyllm import LazyLLMRegisterMetaClass
+from lazyllm import launcher
 import re
 
 class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
+    def __init__(self, *, launcher=launcher.empty):
+        self.launcher = launcher()
+
     def apply():
         raise NotImplementedError('please implement function \'apply\'')
 
     def __call__(self, *args, **kw):
-        return self.apply()
+        return self.launcher.launch(self.apply, *args, **kw)
+
 
 reg_template = '''\
 class {name}{base}(LazyLLMRegisterMetaClass.all_groups[\'{base}\'.lower()]):

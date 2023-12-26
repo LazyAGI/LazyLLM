@@ -1,11 +1,11 @@
 from .core import register 
-from .data import LazyLLMDataProcessingBase
+from .data import LazyLLMDataprocBase
 from .finetune import LazyLLMFinetuneBase
 from .deploy import LazyLLMDeployBase
 from .validate import LazyLLMValidateBase
 
 __all__ = [
-    'LazyLLMDataProcessingBase',
+    'LazyLLMDataprocBase',
     'LazyLLMFinetuneBase',
     'LazyLLMDeployBase',
     'LazyLLMValidateBase',

@@ -1,9 +1,9 @@
 from .core import LLMBase
 
 
-class LazyLLMDataProcessingBase(LLMBase):
+class LazyLLMDataprocBase(LLMBase):
     pass
 
 
-class GenCFQSData(LazyLLMDataProcessingBase):
+class GenCFQSData(LazyLLMDataprocBase):
     pass
