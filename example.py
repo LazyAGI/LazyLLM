@@ -1,8 +1,8 @@
 import lazyllm
 try:
-   from builtins import dataproc, finetune, deploy, launcher, validate
+   from builtins import dataproc, finetune, deploy, launchers, validate
 except ImportError:
-   from lazyllm import dataproc, finetune, deploy, launcher, validate
+   from lazyllm import dataproc, finetune, deploy, launchers, validate
 
 @lazyllm.llmregister('dataproc')
 def gen_data(idx):
@@ -24,7 +24,6 @@ def mydeploy(idx):
     print(f'idx {idx}: deploy done')
     return idx + 1
 
-
 @lazyllm.llmregister('Validate')
 def eval_stage1(idx):
     print(f'idx {idx}: eval_stage1 done')
@@ -36,7 +35,7 @@ def eval_stage2(idx):
     return idx + 1
 
 @lazyllm.llmregister('validate')
-def eval_all(idx):
+def eval_all(launcher, idx):
     print(f'idx {idx}: eval_all done')
     return idx[0] + idx[1]
 
@@ -44,14 +43,14 @@ ppl = lazyllm.pipeline(
     dataproc.gen_data(),
     lazyllm.parallel(
         lazyllm.pipeline(
-            finetune.myfinetune(launcher=launcher.empty),
-            finetune.mergeWeights(),
+            finetune.myfinetune(1, launcher=launchers.empty),
+            finetune.mergeWeights(1),
             deploy(),
             post_action=lazyllm.pipeline(validate.eval_stage1()),
         ),
         lazyllm.pipeline(
-            finetune.myfinetune(),
-            finetune.mergeWeights(),
+            finetune.myfinetune(1),
+            finetune.mergeWeights(1),
             deploy(),
             post_action=lazyllm.pipeline(validate.eval_stage2()),
         ),

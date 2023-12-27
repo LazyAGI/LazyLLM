@@ -3,7 +3,7 @@ from lazyllm import LazyLLMRegisterMetaClass
 
 # TODO(wangzhihong): support workflow launcher.
 # Disable item launchers if launcher is already set in workflow.
-class LazyLLMFlowBase(object, metaclass=LazyLLMRegisterMetaClass):
+class LazyLLMFlowsBase(object, metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, *args, post_action=None):
         if isinstance(args[0], (tuple, list)):
             assert len(args) == 1
@@ -23,7 +23,7 @@ class LazyLLMFlowBase(object, metaclass=LazyLLMRegisterMetaClass):
 
 # input -> module1 -> module2 -> ... -> moduleN -> output
 # TODO(wangzhihong): support mult-input and output
-class Pipeline(LazyLLMFlowBase):
+class Pipeline(LazyLLMFlowsBase):
     def run(self, input):
         output = input
         for it in self.items:
@@ -37,6 +37,6 @@ class Pipeline(LazyLLMFlowBase):
 #        /> module11 -> ... -> module1N -> out1 \
 #  input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #        \> module31 -> ... -> module3N -> out3 /
-class Parallel(LazyLLMFlowBase):
+class Parallel(LazyLLMFlowsBase):
     def run(self, *inputs, **kw):
         return tuple(it(*inputs, **kw) for it in self.items)

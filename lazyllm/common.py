@@ -1,5 +1,6 @@
 import re
 import builtins
+from typing import Any
 
 import lazyllm
 
@@ -26,12 +27,18 @@ class LazyDict(dict):
     def __setitem__(self, key, value):
         assert key != 'default', 'LazyDict do not support key: default'
         return super().__setitem__(key, value)
-    
+
     # default -> self.default
     # key -> Key, keyName, KeyName
+    # if self.name ends with 's' or 'es', ignor it 
     def __getattr__(self, key):
         key = self._default if key == 'default' else key
-        for k in (key, f'{key[0].upper()}{key[1:]}', f'{key}{self.name}', f'{key[0].upper()}{key[1:]}{self.name}'):
+        keys = [key, f'{key[0].upper()}{key[1:]}', f'{key}{self.name}', f'{key[0].upper()}{key[1:]}{self.name}']
+        if self.name.endswith('s'):
+            n = 2 if self.name.endswith('es') else 1
+            keys.extend([f'{key}{self.name[:-n]}', f'{key[0].upper()}{key[1:]}{self.name[:-n]}'])
+
+        for k in keys:
             if k in self.keys():
                 return self[k]
         return super(__class__, self).__getattribute__(key)
