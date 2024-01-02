@@ -75,3 +75,12 @@ class LazyLLMRegisterMetaClass(type):
                 f'duplicate class \'{name}\' in group {new_cls._lazy_llm_group}')
             group[new_cls.__name__] = new_cls
         return new_cls
+
+
+# pack return value of modules used in pipeline / parallel.
+# will unpack 
+class package(tuple):
+    pass
+
+
+setattr(builtins, 'package', package)

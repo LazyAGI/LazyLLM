@@ -1,11 +1,12 @@
-from .common import LazyLLMRegisterMetaClass
+from .common import LazyLLMRegisterMetaClass, package
 from .launcher import LazyLLMLaunchersBase
+from .flow import LazyLLMFlowsBase, FlowBase
 from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                    LazyLLMValidateBase, register as llmregister)
-from .flow import LazyLLMFlowsBase
 from . import flows
 
-pipeline, parallel = flows.pipeline, flows.parallel
+pipeline, namedPipeline = flows.pipeline, flows.namedPipeline
+parallel, namedParallel = flows.parallel, flows.namedParallel
 
 del LazyLLMRegisterMetaClass
 del flows
@@ -19,4 +20,5 @@ __all__ = [
     'LazyLLMValidateBase',        #
     'llmregister',
     'LazyLLMFlowsBase',            # pipeline, parallel
+    'FlowBase',
 ]

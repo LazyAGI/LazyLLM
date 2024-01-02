@@ -1,23 +1,13 @@
 import lazyllm
 try:
-   from builtins import dataproc, finetune, deploy, launchers, validate
+   from builtins import package, dataproc, finetune, deploy, launchers, validate
 except ImportError:
-   from lazyllm import dataproc, finetune, deploy, launchers, validate
+   from lazyllm import package, dataproc, finetune, deploy, launchers, validate
 
 @lazyllm.llmregister('dataproc')
 def gen_data(idx):
     print(f'idx {idx}: gen data done')
-    return idx + 1
-
-@lazyllm.llmregister('finetune')
-def myfinetune(idx):
-    print(f'idx {idx}: finetune done')
-    return idx + 1
-
-@lazyllm.llmregister('finetune')
-def mergeWeights(idx):
-    print(f'idx {idx}: merge weights done')
-    return idx + 1
+    return package([idx + 1, idx + 1])
 
 @lazyllm.llmregister('deploy')
 def mydeploy(idx):
@@ -43,18 +33,13 @@ ppl = lazyllm.pipeline(
     dataproc.gen_data(),
     lazyllm.parallel(
         lazyllm.pipeline(
-            finetune.myfinetune(1, launcher=launchers.empty),
-            finetune.mergeWeights(1),
-            deploy(),
-            post_action=lazyllm.pipeline(validate.eval_stage1()),
+            finetune.alpacalora(base_model='./base-model1', target_path='./finetune-target1', launcher=launchers.slurm()),
+            deploy.lightllm()
         ),
         lazyllm.pipeline(
-            finetune.myfinetune(1),
-            finetune.mergeWeights(1),
-            deploy(),
-            post_action=lazyllm.pipeline(validate.eval_stage2()),
+            finetune.alpacalora(base_model='./base-model2', target_path='./finetune-target2', launcher=launchers.slurm),
+            deploy.lightllm()
         ),
     ),
-    validate.eval_all()
 )
 ppl.run(0)
