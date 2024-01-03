@@ -5,7 +5,7 @@ from lazyllm import LazyLLMRegisterMetaClass, package
 class FlowBase(object):
     def __init__(self, *items) -> None:
         self._flow_name = None
-        self.items = list(items)
+        self.items = list(it() if isinstance(it, type) else it for it in items)
 
     def __getattr__(self, name):
         for it in self.items:
@@ -23,12 +23,12 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             assert len(args) == 1
             args = args[0]
         super(__class__, self).__init__(*args)
-        self.post_action = post_action
+        self.post_action = post_action() if isinstance(post_action, type) else post_action
 
     def __call__(self, args):
         output = self.run(args)
         if self.post_action is not None:
-            self.post_action(output)
+            self.post_action(*output) if isinstance(output, package) else self.post_action(output) 
         return output
     
     def run(self, *args, **kw):
@@ -67,9 +67,14 @@ class NamedPipeline(Pipeline):
 #        \> module31 -> ... -> module3N -> out3 /
 class Parallel(LazyLLMFlowsBase):
     def run(self, input):
-        return tuple(it(*input) if (isinstance(input, package) and not 
-                                    isinstance(it, LazyLLMFlowsBase))
-                else it(input) for it in self.items)
+        def _impl(it):
+            try:
+                return it(*input) if (isinstance(input, package) and not 
+                        isinstance(it, LazyLLMFlowsBase)) else it(input)
+            except Exception as e:
+                print(f'an error occured when calling {it.__class__.__name__}()')
+                raise e
+        return package(_impl(it) for it in self.items)
 
 
 class NamedParallel(Parallel):

@@ -64,6 +64,7 @@ def register(cls, templates=reg_template, cmd=None):
         exec(templates.format(name=func_name, base=cls.capitalize()))
         # 'func' cannot be recognized by exec, so we use 'setattr' instead 
         f = LazyLLMRegisterMetaClass.all_clses[cls.lower()].__getattr__(func_name)
+        f.__name__ = func_name
         setattr(f, 'cmd' if cmd else 'apply', lambda _, *args, **kw : func(*args, **kw))
         return func
     return impl

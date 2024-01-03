@@ -13,4 +13,4 @@ class LazyLLMFinetuneBase(LLMBase):
 
     def __call__(self, *args, **kw):
         super().__call__(*args, **kw)
-        return package([self.base_model, self.target_path])
+        return package(self.base_model, self.target_path)

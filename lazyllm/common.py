@@ -1,6 +1,6 @@
 import re
 import builtins
-from typing import Any
+from typing import Any, Iterable
 
 import lazyllm
 
@@ -78,9 +78,11 @@ class LazyLLMRegisterMetaClass(type):
 
 
 # pack return value of modules used in pipeline / parallel.
-# will unpack 
+# will unpack when passing it to the next item.
 class package(tuple):
-    pass
+    def __new__(cls, *args):
+        return super(__class__, cls).__new__(cls, args[0]
+            if len(args) == 1 and isinstance(args[0], Iterable) else args)
 
 
 setattr(builtins, 'package', package)
