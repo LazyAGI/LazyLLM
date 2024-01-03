@@ -90,3 +90,12 @@ For open source projects, say how it is licensed.
 
 ## Project status
 If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+
+## TODO
+
+- [ ] 把基础的微调和推理的能力加上
+- [ ] 然后打磨再一些细节，比如优化报错体验、用户做全局配置、自动查找空余节点等等；
+- [ ] 把继续预训练也集成进去
+- [ ] 把更多的微调/推理框架也加进去
+- [ ] 然后加一些其他的能力，比如文本解析、知识库
+- [ ] 加带界面的web服务，如对话系统、知识库系统等等
