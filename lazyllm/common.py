@@ -86,3 +86,37 @@ class package(tuple):
 
 
 setattr(builtins, 'package', package)
+
+
+class placeholder(object):
+    def __init__(self, idx):
+        assert isinstance(idx, int)
+        self.idx = idx
+
+for i in range(10):
+    exec(f'_{i} = placeholder({i})')
+
+class bind(object):
+    def __init__(self, f, *args):
+        self.f = f() if isinstance(f, type) else f
+        self.args = args
+
+    def __call__(self, *args):
+        return self.f(*[args[a.idx] if isinstance(a, placeholder) else a
+                        for a in self.args])
+
+setattr(builtins, 'bind', bind)
+
+class LazyLLMCMD(object):
+    def __init__(self, cmd, *, return_value=None, post_function=None) -> None:
+        if isinstance(cmd, (tuple, list)):
+            cmd = ' && '.join(cmd)
+        assert isinstance(cmd, str), 'cmd must be (list of) bash command str.'
+        assert return_value is None or post_function is None, \
+            'Cannot support return_value and post_function at the same time'
+        self.cmd = cmd
+        self.return_value = return_value
+        self.post_function = post_function
+
+    def __hash__(self):
+        return hash(self.cmd)

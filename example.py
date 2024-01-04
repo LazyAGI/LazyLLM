@@ -4,6 +4,8 @@ try:
 except ImportError:
    from lazyllm import package, dataproc, finetune, deploy, launchers, validate
 
+from lazyllm import bind, _0, _1
+
 @lazyllm.llmregister('dataproc')
 def gen_data(idx):
     print(f'idx {idx}: gen data done')
@@ -18,8 +20,8 @@ def eval_stage2(url, port):
     print(f'url {url}:{port} eval_stage2 done')
 
 @lazyllm.llmregister('validate')
-def eval_all(url1, url2):
-    print(f'eval all: {url1} and {url2}  eval_all done')
+def eval_all(evalset, url1, url2):
+    print(f'eval all. evalset: {evalset}, url: {url1} and {url2}  eval_all done')
 
 ppl = lazyllm.pipeline(
     dataproc.gen_data(),
@@ -35,6 +37,6 @@ ppl = lazyllm.pipeline(
             post_action=validate.eval_stage1,
         ),
     ),
-    validate.eval_all,
+    bind(validate.eval_all, 'valset-1', _0, _1),
 )
 ppl.run(0)
