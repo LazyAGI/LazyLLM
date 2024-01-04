@@ -1,4 +1,4 @@
-from lazyllm import LazyLLMRegisterMetaClass
+from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD
 from lazyllm import launchers, LazyLLMLaunchersBase
 import re
 from typing import Union, Optional
@@ -30,7 +30,9 @@ class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
         elif isinstance(self.launcher, launchers.sco) and self._overwrote('_get_sco_job'):
             self._get_sco_job(*args, **kw)
         else:
-            return self.launcher.makejob(cmd=self.cmd(*args, **kw))
+            cmd = self.cmd(*args, **kw)
+            cmd = cmd if isinstance(cmd, LazyLLMCMD) else LazyLLMCMD(cmd)
+            return self.launcher.makejob(cmd=cmd)
 
     def _overwrote(self, f):
         return getattr(self.__class__, f) is not getattr(__class__, f)

@@ -1,6 +1,6 @@
 from typing import Any
 import lazyllm
-from lazyllm import LazyLLMRegisterMetaClass
+from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD
 from enum import Enum
 import os
 import time
@@ -30,8 +30,6 @@ lazyllm.launchers['Status'] = Status
 
 
 def exec_cmd(cmd):
-    if isinstance(cmd, (tuple, list)):
-        cmd = ' && '.join(cmd)
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                          encoding='utf-8', executable='/bin/bash')
     out, err = p.communicate()
@@ -42,7 +40,7 @@ def exec_cmd(cmd):
 
 class EmptyLauncher(LazyLLMLaunchersBase):
     def makejob(self, cmd):
-        return cmd
+        return cmd.cmd
 
     def launch(self, f, *args, **kw):
         if isinstance(f, (str, tuple, list)):
@@ -55,7 +53,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
 
 class SubprocessLauncher(LazyLLMLaunchersBase):
     def makejob(self, cmd):
-        return cmd
+        return cmd.cmd
 
     # TODO(wangzhihong): support return value
     def launch(self, f, *args, **kw) -> None:
@@ -70,15 +68,29 @@ class SubprocessLauncher(LazyLLMLaunchersBase):
             raise RuntimeError('Invalid cmd given, please check the return value of cmd.')
 
 
+# store cmd, return message and command output.
+# LazyLLMCMD's post_function can get message form this class.
+class Job(object):
+    def __init__(self, cmd, *, sync=True):
+        self.cmd = cmd.cmd
+        self.return_value = cmd.return_value
+        self.post_function = cmd.post_function
+        self.sync = sync
+
+    def get_return_value(self):
+        return self.return_value if self.return_value else (
+            self.post_function(self) if self.post_function else self)
+
+
+
 class SlurmLauncher(LazyLLMLaunchersBase):
     # In order to obtain the jobid to monitor and terminate the job more
     # conveniently, only one srun command is allowed in one Job
-    class Job(object):
-        def __init__(self, cmd, launcher, *, sync=True) -> None:
-            if isinstance(cmd, (tuple, list)):
-                cmd = ' && '.join(cmd)
+    class Job(Job):
+        def __init__(self, cmd, launcher, *, sync=True):
+            super(__class__, self).__init__(cmd, sync=sync)
             self.jobname = str(hex(hash(cmd)))[2:]
-            self.cmd = f'srun -p {launcher.partition} -N {launcher.nproc} bash -c \'{cmd}\''
+            self.cmd = f'srun -p {launcher.partition} -N {launcher.nproc} bash -c \'{self.cmd}\''
             self.jobid = None
         
         def start(self):
@@ -117,7 +129,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
             while job.status == Status.Running:
                 time.sleep(10)
             job.stop()
-        return job
+        return job.get_return_value()
             
 
 class ScoLauncher(LazyLLMLaunchersBase):
