@@ -5,6 +5,7 @@ from typing import Union, Optional
 
 class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, *, launcher=launchers.empty()):
+        self._flow_name = None
         if isinstance(launcher, LazyLLMLaunchersBase):
             self.launcher = launcher
         elif isinstance(launcher, type) and issubclass(launcher, LazyLLMLaunchersBase):
@@ -45,6 +46,11 @@ class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
         else:
             job = self._get_job_with_cmd(*args, **kw)
             return self.launcher.launch(job)
+
+    def __repr__(self):
+        represention = 'lazyllm.llm.core.' + self.__class__._lazy_llm_group
+        represention += '.' + self.__class__.__name__
+        return f'<{represention}>'
 
 
 reg_template = '''\

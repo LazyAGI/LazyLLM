@@ -1,6 +1,7 @@
 import re
 import builtins
 from typing import Any, Iterable
+import copy
 
 import lazyllm
 
@@ -41,7 +42,8 @@ class LazyDict(dict):
         for k in keys:
             if k in self.keys():
                 return self[k]
-        return super(__class__, self).__getattribute__(key)
+        # return super(__class__, self).__getattribute__(key)
+        raise AttributeError(f'Attr {key} not found in {self}')
 
     def __call__(self, *args, **kwargs):
         assert self._default is not None or len(self.keys()) == 1
@@ -88,24 +90,57 @@ class package(tuple):
 setattr(builtins, 'package', package)
 
 
-class placeholder(object):
+class AttrTree(object):
+    def __init__(self, name=None, pres=[]):
+        self._path = copy.deepcopy(pres)
+        if name is not None:
+            self._path.append(name)
+
+    def __str__(self):
+        return '.'.join(self._path)
+
+    def __getattr__(self, name):
+        v = __class__(name, pres=self._path)
+        setattr(self, name, v)
+        return v
+
+    def get_from(self, obj):
+        v = obj
+        for name in self._path:
+            v = getattr(v, name)
+        return v
+
+root = AttrTree()
+
+
+class Placeholder(object):
     def __init__(self, idx):
         assert isinstance(idx, int)
         self.idx = idx
 
-for i in range(10):
-    exec(f'_{i} = placeholder({i})')
+    def __repr__(self):
+        return f'_{self.idx}'
 
-class bind(object):
+for i in range(10):
+    exec(f'_{i} = Placeholder({i})')
+
+
+class Bind(object):
     def __init__(self, f, *args):
-        self.f = f() if isinstance(f, type) else f
-        self.args = args
+        self._f = f() if isinstance(f, type) else f
+        self._args = args
 
     def __call__(self, *args):
-        return self.f(*[args[a.idx] if isinstance(a, placeholder) else a
-                        for a in self.args])
+        return self._f(*[args[a.idx] if isinstance(a, Placeholder) else a
+                         for a in self._args])
+    def __repr__(self) -> str:
+        return self._f.__repr__() + '(bind args:{})'.format(
+            ', '.join([repr(a) if a is not self else 'self' for a in self._args]))
 
-setattr(builtins, 'bind', bind)
+    def __getattr__(self, name):
+        return getattr(self._f, name)
+
+setattr(builtins, 'bind', Bind)
 
 class LazyLLMCMD(object):
     def __init__(self, cmd, *, return_value=None, post_function=None) -> None:
