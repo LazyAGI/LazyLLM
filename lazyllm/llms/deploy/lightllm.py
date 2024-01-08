@@ -34,7 +34,7 @@ class Lightllm(LazyLLMDeployBase, flows.NamedPipeline):
         flows.NamedPipeline.__init__(self,
             deploy_stage1 = deploy.lightllm_stage1(launcher=launchers.empty),
             deploy_stage2 = flows.namedParallel(
-	    	    deploy_stage21 = deploy.lightllm_stage2,
+	    	    deploy_stage21 = deploy.lightllm_stage2(),
 	    	    deploy_stage22 = deploy.lightllm_stage2,
 	        ),
             deploy_stage3 = lightllm_stage3,
@@ -42,6 +42,9 @@ class Lightllm(LazyLLMDeployBase, flows.NamedPipeline):
 
     def __call__(self, base_model, lora_weights=None):
         if not isinstance(base_model, package):
-            base_model = package(base_model[0], base_model[1])
+            base_model = package(base_model, lora_weights)
         flows.NamedPipeline.__call__(self, base_model)
         return package(self.base_url, self.port)
+
+    def __repr__(self):
+        return flows.NamedPipeline.__repr__(self)

@@ -1,5 +1,5 @@
 from .common import LazyLLMRegisterMetaClass, package, LazyLLMCMD
-from .common import bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9
+from .common import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9
 from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase
 from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
@@ -26,6 +26,7 @@ __all__ = [
     'LazyLLMCMD',
 
     # bind
+    'root',
     'bind',
     '_0',
     '_1',

@@ -4,7 +4,7 @@ try:
 except ImportError:
    from lazyllm import package, dataproc, finetune, deploy, launchers, validate
 
-from lazyllm import bind, _0, _1
+from lazyllm import root, bind, _0, _1
 
 @lazyllm.llmregister('dataproc')
 def gen_data(idx):
@@ -20,8 +20,8 @@ def eval_stage2(url, port):
     print(f'url {url}:{port} eval_stage2 done')
 
 @lazyllm.llmregister('validate')
-def eval_all(evalset, url1, url2):
-    print(f'eval all. evalset: {evalset}, url: {url1} and {url2}  eval_all done')
+def eval_all(evalset, url1, url2, job=None):
+    print(f'eval all. evalset: {evalset}, url: {url1} and {url2} eval_all done. job: {job}')
 
 ppl = lazyllm.pipeline(
     dataproc.gen_data(),
@@ -39,4 +39,27 @@ ppl = lazyllm.pipeline(
     ),
     bind(validate.eval_all, 'valset-1', _0, _1),
 )
-ppl.run(0)
+
+ppl.start(0)
+
+print('---------------------------')
+print('---------------------------')
+
+named_ppl = lazyllm.pipeline(
+    data=dataproc.gen_data(),
+    finetune=lazyllm.parallel(
+        stage1=lazyllm.pipeline(
+            sft=finetune.alpacalora(base_model='./base-model1', target_path='./finetune-target1', launcher=launchers.slurm()),
+            deploy=deploy.lightllm('http://www.myserver1.com'),
+            post_action=validate.eval_stage1,
+        ),
+        stage2=lazyllm.pipeline(
+            sft=finetune.alpacalora(base_model='./base-model2', target_path='./finetune-target2', launcher=launchers.slurm),
+            deploy=deploy.lightllm('http://www.myserver2.com', 8080),
+            post_action=validate.eval_stage1,
+        ),
+    ),
+    val=bind(validate.eval_all, root.finetune.stage2.post_action, _0, _1, root.val),
+)
+
+named_ppl.start(0)
