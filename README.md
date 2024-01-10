@@ -1,101 +1,206 @@
 # LazyLLM
+[中文](README.md) |  [EN](README.ENG.md)
 
+## 一、定位
 
+LazyLLM作为一款协助开发者构建多模态的大语言模型的一站式落地的工具，它基于商汤大装置AI专家服务团队在与客户沟通场景和交付客户的经验，贯穿了从数据处理、训练、微调、部署、推理、评测、交付等开发过程中的各个环节。本工具集成了在构建大模型项目的[各个环节](#三能力)中我们认为有价值的工具，并定义了在多个[典型业务场景](#四典型业务场景)下的标准作业程序(Standard Operating Procedure, SOP)。本工具建议被作为顶层工具来使用，不建议作为元素被集成到其他工具内被使用。
 
-## Getting started
+## 二、开始使用
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+### 2.1 工作流
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+LazyLLM定义了工作流(flow)，用来串联各个环节，以搭建自己的应用程序。目前框架支持的工作流有Pipeline和Parallel。
 
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
-
+#### Pipeline
+Pipeline中会包含若干个元素，每个元素会被认为一个环节，每个环节顺序执行，上一环节的输出会作为下一环节的输入。Pipeline中可以加入PostAction，Pipeline的输出会给到PostAction执行一些额外的代码，但PostAction的输出不会给到下一级。其工作流可以视作:
 ```
-cd existing_repo
-git remote add origin https://gitlab.bj.sensetime.com/tps-llm/lazyllm.git
-git branch -M main
-git push -uf origin main
+input -> module1 -> module2 -> ... -> moduleN -> output
+                                              \> post-action
 ```
 
-## Integrate with your tools
+#### Parallel
+Parallel中会包含若干个元素，每个元素分别执行，Parallel的输入会给到每一个元素，各个元素的输出会合并后作为Parallel的输出。其工作流可以视作:
+```
+      /> module11 -> ... -> module1N -> out1 \
+input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
+      \> module31 -> ... -> module3N -> out3 /
+```
 
-- [ ] [Set up project integrations](https://gitlab.bj.sensetime.com/tps-llm/lazyllm/-/settings/integrations)
+#### 返回值
+流中的每个元素原则上只能有一个返回值，返回多个会被认为是tuple。当确实需要返回多个值时，可以使用`lazyllm.package`对返回值进行打包，当`lazyllm.package`流转到下一个可执行的功能时，会自动解包并传入到不同的形参中去。
 
-## Collaborate with your team
+### 2.2 基本的例子
+LazyLLM通过pipeline把基本的元素组合起来，构成完整的工作流程。下面展示一个基本的使用例子:
+```python
+import lazyllm
+ppl = lazyllm.pipeline(
+    lazyllm.parallel(
+        lazyllm.pipeline(
+            finetune.alpacalora(base_model='./base-model1', target_path='./finetune-target1'),
+            post_action=deploy.lightllm,
+        ),
+        lazyllm.pipeline(
+            finetune.alpacalora(base_model='./base-model2', target_path='./finetune-target2'),
+            deploy.lightllm,
+        ),
+    ),
+)
+ppl.run('trainset', 'evalset')
+```
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+### 2.3 自定义函数
+LazyLLM支持自定义函数并且注册到对应的功能模块中，供pipeline去使用，其对应的接口为`lazyllm.llmregister`。支持被注册的功能模块有dataproc、finetune、deploy、validate等，但考虑到某些模块的复杂性，这里不建议用户自行注册finetune、deploy。如果想注册一个函数，则可以给函数加上`@lazyllm.llmregister`; 否则如果想注册一个bash执行的命令，则可以写一个返回bash命令的函数，给函数加上`@lazyllm.llmregister.cmd`。下面给出一个具体的例子：
 
-## Test and Deploy
+```python
+import lazyllm
 
-Use the built-in continuous integration in GitLab.
+@lazyllm.llmregister('dataproc')
+def gen_data():
+    return package('trainset', 'evalset')
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+@lazyllm.llmregister.cmd('validate')
+def val1(in1, in2):
+    return 'echo 0'
 
-***
+ppl = lazyllm.pipeline(
+    dataproc.gen_data,
+    finetune.alpacalora(base_model='./base-model1', target_path='./finetune-target1'),
+    deploy.lightllm('url'),
+    validate.val1
+)
+ppl.start()
+```
 
-# Editing this README
+* 注：未注册的函数也可以被pipeline使用，但不支持设置launcher等参数。该参数会在[跨平台](#25-跨平台)一节详细描述。
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
+### 2.4 灵活传参
 
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+流式的搭建模型虽然方便，但它存在着“下一环节的输入只能是上一环节的输出”的问题，这使得开发者在搭建工程的时候不那么灵活。我们引入了“索引”和“参数绑定”的机制来解决这个问题。下面给出一个具体的例子:
+```python
+import lazyllm
+from lazyllm import bind, root, _0
 
-## Name
-Choose a self-explaining name for your project.
+@lazyllm.llmregister('dataproc')
+def gen_data():
+    return package('trainset', 'evalset')
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+@lazyllm.llmregister('validate')
+def val1(in1, in2):
+    print(in1, in2)
+    return in1
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+@lazyllm.llmregister('validate')
+def val2(in1, in2):
+    print(in1, in2)
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+ppl = lazyllm.pipeline(
+    pp1=lazyllm.pipeline(
+        proc=dataproc.gen_data,
+        val1=validate.val1,
+    ), 
+    val2=bind(validate.val2, root.pp1.proc, _0),
+)
+ppl.start()
+```
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+### 2.5 跨平台
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+该工具支持运行在多种集群环境上，包括裸金属、slurm和sensecore。在实际搭建的时候，主要通过给模块提供launcher这个参数来决定该模块运行在哪个平台上，可选的launcher有empty、slurm和sensecore。一般情况下，一个程序内不会同时出现slurm和sensecore，这是因为目前没有一个管理节点可以同时把任务提交到slurm和sco上。
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+```python
+ppl = lazyllm.pipeline(
+    finetune.alpacalora(base_model='./base-model', target_path='./finetune-target', launcher=launchers.slurm),
+    deploy.lightllm('http://www.myserver1.com', launcher=launchers.slurm(ngpus=8)),
+    post_action=validate.eval_stage1(launcher=launchers.empty),
+)
+```
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+如果launcher是slurm和sensecore的话，则调用的模块必须是一个bash命令；但我们支持将一些可执行的函数透传到新的bash进程中，例如在部署时候，可能要对大模型的输入/输出做前后处理，此时我们支持将前后处理函数定义在主进程，然后通过bash启动的推理的脚本能读到该函数并执行。
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+* P1-TODO: 未来可能会同时支持linux和windows，假如有客户需要
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+### 2.6 全局配置
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+## 三、能力
 
-## License
-For open source projects, say how it is licensed.
+本工具覆盖开发过程中的各个环节，从数据处理、训练、微调、部署、推理、评测，直到最终交付，在每个环境都包含了大量的称手的工具，并提供统一且简单的使用方式，让开发者可以轻松的使用这些工具。
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+### 3.1 数据处理
 
-## TODO
+- [ ] 预置各种数据生成的模板。
+- [ ] 支持自定义数据预处理。
 
-- [ ] 把基础的微调和推理的能力加上
+### 3.2 继续预训练
+
+- [ ] 支持多种模型，包括llama、llama2、internLM、chatglm等；支持其常见的尺寸，包括7B、13B、20B、70B等
+- [ ] 支持读取huggingface格式的checkpoint
+
+### 3.3 微调
+
+#### 支持模型
+支持多种模型，包括llama、llama2、internLM、chatglm等；支持其常见的尺寸，包括7B、13B、20B、70B等
+
+#### 支持算法
+支持多种微调算法，考虑LoRA、QLoRA等
+
+#### 支持框架
+支持多种微调框架，包括peft、easyllm、colle等。
+
+#### Auto
+支持用户选定基模型(hf格式)和训练集之后，根据提供的机器情况，结合过往的经验自动选择框架认为最优的算法、超参数和框架。使用方式如下：
+```python
+finetune.auto('chatglm3-6b', launcher=launchers.slurm(ngpus=32))
+```
+#### 国产芯片支持
+
+### 3.4 部署
+
+- [ ] 支持多种模型，包括llama、llama2、internLM、chatglm等；支持其常见的尺寸，包括7B、13B、20B、70B等
+- [ ] 提供API和简单页面两种方式用于推理
+- [ ] 支持部署前后处理服务
+- [ ] 支持负载均衡
+- [ ] 支持在国产芯片上部署推理服务
+- [ ] 只支持一个basemodel在同一个进程中可以和多个不同的lora-model结合进行推理
+
+### 3.5 推理
+
+- [x] 支持单独推理和batch推理
+
+### 3.6 评测
+
+- [ ] 针对典型场景，预置该场景常用的评测方式和报告输出
+- [ ] 集成典型功能下的常见评测算法
+
+### 3.7 交付
+
+- [ ] 支持源码交付、镜像交付等多种交付方式。
+- [ ] 自动打包源码和模型。
+
+## 四、典型业务场景
+
+### 4.1 文档问答（Document QA）
+### 4.2 AI Agent客服对话
+### 4.3 报告生成
+### 4.4 搜索增强
+### 4.5 ...
+
+## 五、场景工具依赖
+
+|场景           |数据处理|训练|微调|部署|推理|评测|交付|
+|--------------|-------|---|---|---|----|---|----|
+|文档问答        |      |   |   |   |    |    |   |
+|AI Agent客服对话|      |   |   |   |    |    |   |
+|报告生成        |      |   |   |   |    |    |   |
+|搜索增强        |      |   |   |   |    |    |   |
+
+## 六、界面
+
+## 七、路线 RoadMap
+
+- [ ] 把基础的微调和推理的能力加上，把继续预训练也集成进去
 - [ ] 然后打磨再一些细节，比如优化报错体验、用户做全局配置、自动查找空余节点等等；
-- [ ] 把继续预训练也集成进去
 - [ ] 把更多的微调/推理框架也加进去
-- [ ] 然后加一些其他的能力，比如文本解析、知识库
+- [ ] 支持用户选择模型和算法，之后我们根据用户的环境情况，自动选择最优的框架和参数；
+- [ ] 针对典型的场景，加入其需要的工具，例如Document QA需要加入文本解析、知识库构建、数据库等
 - [ ] 加带界面的web服务，如对话系统、知识库系统等等

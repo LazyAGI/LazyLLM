@@ -68,9 +68,10 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
 
 
 # input -> module1 -> module2 -> ... -> moduleN -> output
+#                                               \> post-action
 # TODO(wangzhihong): support mult-input and output
 class Pipeline(LazyLLMFlowsBase):
-    def _run(self, input):
+    def _run(self, input=package()):
         output = input
         for it in self.items:
             try:
@@ -93,7 +94,7 @@ class NamedPipeline(Pipeline):
 #  input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #        \> module31 -> ... -> module3N -> out3 /
 class Parallel(LazyLLMFlowsBase):
-    def _run(self, input):
+    def _run(self, input=package()):
         def _impl(it):
             try:
                 return it(*input) if (isinstance(input, package) and not 
