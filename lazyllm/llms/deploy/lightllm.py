@@ -14,7 +14,7 @@ def lightllm_stage1(base_model, lora_weights):
     return package(base_model, lora_weights)
 
 
-@register('deploy', cmd=True)
+@register.cmd('deploy')
 def lightllm_stage2(base_model, lora_weights):
     return LazyLLMCMD(
         f'python deploy.py --base_model={base_model}, --lora_weights={lora_weights}',

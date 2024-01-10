@@ -58,23 +58,32 @@ class {name}{base}(LazyLLMRegisterMetaClass.all_groups[\'{base}\'.lower()]):
     pass
 '''
 
+class Register(object):
+    def __init__(self, template=reg_template):
+        self.template = template
 
-def register(cls, templates=reg_template, cmd=None):
-    cls = cls.__name__ if isinstance(cls, type) else cls
-    cls = re.match('(LazyLLM)(.*)(Base)', cls.split('.')[-1])[2] \
-        if (cls.startswith('LazyLLM') and cls.endswith('Base')) else cls
-    base = LazyLLMRegisterMetaClass.all_groups[cls.lower()]
-    assert issubclass(base, LLMBase)
-    cmd = (base.cmd != LLMBase.cmd) if cmd is None else cmd
+    def __call__(self, cls, *, cmd=None):
+        cls = cls.__name__ if isinstance(cls, type) else cls
+        cls = re.match('(LazyLLM)(.*)(Base)', cls.split('.')[-1])[2] \
+            if (cls.startswith('LazyLLM') and cls.endswith('Base')) else cls
+        base = LazyLLMRegisterMetaClass.all_groups[cls.lower()]
+        assert issubclass(base, LLMBase)
+        cmd = (base.cmd != LLMBase.cmd) if cmd is None else cmd
 
-    def impl(func):
-        func_name = func.__name__
-        exec(templates.format(name=func_name, base=cls.capitalize()))
-        # 'func' cannot be recognized by exec, so we use 'setattr' instead 
-        f = LazyLLMRegisterMetaClass.all_clses[cls.lower()].__getattr__(func_name)
-        f.__name__ = func_name
-        setattr(f, 'cmd' if cmd else 'apply', lambda _, *args, **kw : func(*args, **kw))
-        return func
-    return impl
+        def impl(func):
+            func_name = func.__name__
+            exec(self.template.format(name=func_name, base=cls.capitalize()))
+            # 'func' cannot be recognized by exec, so we use 'setattr' instead 
+            f = LazyLLMRegisterMetaClass.all_clses[cls.lower()].__getattr__(func_name)
+            f.__name__ = func_name
+            setattr(f, 'cmd' if cmd else 'apply', lambda _, *args, **kw : func(*args, **kw))
+            return func
+        return impl
 
+    def cmd(self, cls):
+        return self(cls, cmd=True)
 
+    def exe(self, cls):
+        return self(cls, cmd=False)
+
+register = Register()
