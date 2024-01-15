@@ -1,0 +1,17 @@
+accelerate==0.20.3
+appdirs
+loralib==0.1.1
+bitsandbytes
+black
+black[jupyter]
+datasets
+fire
+peft==0.3.0
+transformers>=4.32.0
+sentencepiece==0.1.99
+gradio
+tokenizers==0.13.3
+scipy
+deepspeed==0.12.3
+sentence_transformers
+faiss-cpu

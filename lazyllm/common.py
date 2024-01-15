@@ -1,7 +1,10 @@
 import re
 import builtins
 from typing import Any, Iterable
+from contextlib import contextmanager
+import signal
 import copy
+
 
 import lazyllm
 
@@ -155,3 +158,17 @@ class LazyLLMCMD(object):
 
     def __hash__(self):
         return hash(self.cmd)
+
+
+@contextmanager
+def timeout(duration, *,  msg=''):
+    def timeout_handler(signum, frame):
+        m = f'{msg}, ' if msg else msg 
+        m += f'block timedout after timeout: {duration} s'
+        raise TimeoutError(m)
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(duration)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
