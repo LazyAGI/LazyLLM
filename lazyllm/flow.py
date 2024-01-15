@@ -3,6 +3,7 @@ from lazyllm import LazyLLMRegisterMetaClass, package, bind, root
 
 
 class FlowBase(object):
+
     def __init__(self, *items) -> None:
         self._flow_name = None
         self.items = list(it() if isinstance(it, type) else it for it in items)
@@ -15,7 +16,7 @@ class FlowBase(object):
                 return it
         # return super(__class__, self).__getattr__(name) ?
         raise AttributeError(f'Attr {name} not found in {self}')
-
+    
     def for_each(self, filter, action):
         for item in self.items:
             if isinstance(item, FlowBase):

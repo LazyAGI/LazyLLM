@@ -1,3 +1,6 @@
+import sys
+sys.path.append('..')
+
 import lazyllm
 try:
    from builtins import package, dataproc, finetune, deploy, launchers, validate

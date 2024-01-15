@@ -1,8 +1,10 @@
 from typing import Any
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD
+from .flow import FlowBase
 from enum import Enum
 import os
+import re
 import time
 import subprocess
 
@@ -10,6 +12,7 @@ class Status(Enum):
     TBSubmitted = 0,
     InQueue = 1
     Running = 2,
+    Pending = 3,
     Done = 100,
     Cancelled = 101, # TODO(wangzhihong): support cancel job
     Failed = 102,
@@ -86,41 +89,177 @@ class Job(object):
 class SlurmLauncher(LazyLLMLaunchersBase):
     # In order to obtain the jobid to monitor and terminate the job more
     # conveniently, only one srun command is allowed in one Job
+    all_processes=dict()
+    count = 0
+
     class Job(Job):
         def __init__(self, cmd, launcher, *, sync=True):
             super(__class__, self).__init__(cmd, sync=sync)
             self.jobname = str(hex(hash(cmd)))[2:]
-            self.cmd = f'srun -p {launcher.partition} -N {launcher.nproc} bash -c \'{self.cmd}\''
+
+            print("Show available nodes: ", launcher.get_idle_nodes())
+            # Assemble the order
+            self.cmd = f'srun -p {launcher.partition} -N {launcher.nnode} --job-name={self.jobname}'
+            if launcher.nproc:
+                self.cmd += f' -n{launcher.nproc}'
+            if launcher.timeout:
+                self.cmd += f' -t {launcher.timeout}'
+            if launcher.ngpus:
+                self.cmd += f' --gres=gpu:{launcher.ngpus}'
+            self.cmd += f' bash -c \'{cmd.cmd}\''
+
+            # self.cmd = f'srun -p {launcher.partition} -N {launcher.nproc} bash -c \'{self.cmd}\''
             self.jobid = None
+            self.ip = None
+            self.ps = None
         
         def start(self):
-            # exec cmd
-            # get jobid
-            print(self.cmd)
-            pass
+            print("Command :", self.cmd)
+            process = subprocess.Popen(self.cmd, shell=True, encoding='utf-8', executable='/bin/bash')
+            self.ps = process
+            self.get_jobid()
+            if self.sync:
+                process.wait()
+            else:
+                SlurmLauncher.all_processes[self.jobid] = self
+
+        def get_jobid(self):
+            time.sleep(0.5) # Wait for cmd to be stably submitted to slurm
+            id_str = subprocess.check_output(['squeue', '--name='+self.jobname, '--noheader'])
+            if id_str:
+                id_list = id_str.decode().strip().split()
+                self.jobid = id_list[0]
+
+        def get_jobip(self):
+            id_str = subprocess.check_output(['squeue', '--name='+self.jobname, '--noheader'])
+            id_list = id_str.decode().strip().split()
+            self.ip = id_list[10]
+            return self.ip
 
         def stop(self):
-            # scancel job
-            pass
+            if self.jobid:
+                # os.system(f"scancel --quiet {self.jobid}")
+                cmd = f"scancel --quiet {self.jobid}"
+                subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    encoding='utf-8', executable='/bin/bash')
+            self.ps.terminate()
 
         @property
         def status(self):
             # lookup job
-            pass
+            if self.jobid:
+                jobinfo = subprocess.check_output(["scontrol", "show", "job", str(self.jobid)])
+                job_state = None
+                job_state = None
+                for line in jobinfo.decode().split("\n"):
+                    if "JobState" in line:
+                        job_state = line.strip().split()[0].split("=")[1].strip().lower()
+                        if job_state=='running':
+                            return Status.Running
+                        elif job_state=='tbsubmitted':
+                            return Status.TBSubmitted
+                        elif job_state=='inqueue':
+                            return Status.InQueue
+                        elif job_state=='pending':
+                            return Status.Pending
+                        elif job_state=='done':
+                            return Status.Done
+                        elif job_state=='cancelled':
+                            return Status.Cancelled
+                        else:
+                            return Status.Failed
+            else:
+                return Status.Failed
 
 
     # TODO(wangzhihong): support configs; None -> lookup config
-    def __init__(self, partition=None, nproc=1, ngpus=8, timeout=0, *, sync=True):
+    def __init__(self, partition=None, nnode=1, nproc=1, ngpus=None, timeout=None, *, sync=True):
         self.partition = partition
-        self.nproc, self.ngpus, self.timeout = nproc, ngpus, timeout
+        self.nnode, self.nproc, self.ngpus, self.timeout =nnode, nproc, ngpus, timeout
         self.sync = sync
+        self.num_can_use_nodes = 5
+        SlurmLauncher.count += 1
         super(__class__, self).__init__()
-    
-    def makejob(self, cmd):
-        return SlurmLauncher.Job(cmd, launcher=self)
 
-    def get_idle_nodes(self):
-        return None
+    def __del__(self):
+        SlurmLauncher.count -= 1
+        if SlurmLauncher.count <= 0:
+            for k, v in SlurmLauncher.all_processes.items():
+                v.stop()
+                print(f"killed job:{k}")
+
+    def makejob(self, cmd):
+        job = SlurmLauncher.Job(cmd, launcher=self)
+        job.sync = self.sync
+        return job
+
+    def _add_dict(self, node_ip, used_gpus, node_dict):
+        if node_ip not in node_dict:
+            node_dict[node_ip] = 8 - used_gpus
+        else:
+            node_dict[node_ip] -= used_gpus
+
+    def _expand_nodelist(self, nodes_str):
+        pattern = r'\[(.*?)\]'
+        matches = re.search(pattern, nodes_str)
+        result = []
+        if matches:
+            nums = matches.group(1).split(',')
+            base = nodes_str.split('[')[0]
+            result = [base+str(x) for x in nums]
+        return result
+
+    def get_idle_nodes(self, partion=None):
+        '''
+        Obtain the current number of available nodes based on the available number of GPUs.
+        Return a dictionary with node IP as the key and the number of available GPUs as the value.
+        '''
+        if not partion:
+            partion = self.partition
+        num_can_use_nodes = self.num_can_use_nodes
+
+        # Query the number of available GPUs for applied nodes
+        nodesinfo = subprocess.check_output(["squeue", "-p", partion, '--noheader'])
+        node_dict = dict()
+
+        for line in nodesinfo.decode().split("\n"):
+            if "gpu:" in line:
+                node_info = line.strip().split()
+                num_nodes = int(node_info[-3])
+                num_gpus = int(node_info[-2].split(":")[-1])
+                node_list = node_info[-1]
+                if num_nodes == 1:
+                    self._add_dict(node_list, num_gpus, node_dict)
+                else:
+                    avg_gpus = int(num_gpus/num_nodes)
+                    result = self._expand_nodelist(node_list)
+                    for x in result:
+                        self._add_dict(x, avg_gpus, node_dict)
+
+        # Obtain all available idle nodes in the specified partition
+        idle_nodes = []
+        nodesinfo = subprocess.check_output(["sinfo", "-p", partion, '--noheader'])
+        for line in nodesinfo.decode().split("\n"):
+            if "idle" in line:
+                node_info = line.strip().split()
+                num_nodes = int(node_info[-3])
+                node_list = node_info[-1]
+                if num_nodes==1:
+                    idle_nodes.append(node_list)
+                else:
+                    idle_nodes += self._expand_nodelist(node_list)
+
+        # Add idle nodes under resource constraints
+        num_allocated_nodes = len(node_dict)
+        num_append_nodes = num_can_use_nodes - num_allocated_nodes
+
+        for i, node_ip in enumerate(idle_nodes):
+            if i+1 <= num_append_nodes:
+                node_dict[node_ip] = 8
+
+        # Remove nodes with depleted GPUs
+        node_dict = {k: v for k, v in node_dict.items() if v != 0}
+        return node_dict
 
     def launch(self, job) -> None:
         assert isinstance(job, SlurmLauncher.Job), 'Slurm launcher only support cmd'
