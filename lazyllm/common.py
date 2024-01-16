@@ -1,12 +1,18 @@
 import re
 import builtins
-from typing import Any, Iterable
+import typing
+from typing import Any, Iterable, Callable
 from contextlib import contextmanager
 import signal
 import copy
 
-
 import lazyllm
+
+try:
+    from typing import final
+except ImportError:
+    _F = typing.TypeVar("_F", bound=Callable[..., Any])
+    def final(f: _F) -> _F: return f
 
 
 # Special Dict for lazy programmer. Suppose we have a LazyDict as follows：
@@ -117,12 +123,18 @@ root = AttrTree()
 
 
 class Placeholder(object):
+    _pool = dict()
+    def __new__(cls, idx):
+        if idx not in Placeholder._pool:
+            Placeholder._pool[idx] = super().__new__(cls)
+        return Placeholder._pool[idx]
+
     def __init__(self, idx):
         assert isinstance(idx, int)
         self.idx = idx
 
     def __repr__(self):
-        return f'_{self.idx}'
+        return f'placeholder._{self.idx}'
 
 for i in range(10):
     exec(f'_{i} = Placeholder({i})')
@@ -172,3 +184,19 @@ def timeout(duration, *,  msg=''):
         yield
     finally:
         signal.alarm(0)
+
+
+class ReadOnlyWrapper(object):
+    def __init__(self, obj=None):
+        self.obj = obj
+
+    def set(self, obj):
+        self.obj = obj
+
+    def __getattr__(self, key):
+        if self.obj is not None:
+            return getattr(self.obj, key)
+        return super(__class__, self).__getattr__(key)
+
+    def __repr__(self):
+        return f'{self.obj.__repr__()[:-1]}(Readonly)>'

@@ -2,6 +2,7 @@ import time
 import json
 import random
 import requests
+import os
 
 import lazyllm
 from lazyllm import launchers, flows, package, LazyLLMCMD, bind, _0, timeout
@@ -31,6 +32,8 @@ def show_io(s21):
 
 
 def get_url_form_job(job, port):
+    if lazyllm.mode == lazyllm.Mode.Display:
+        return f'http://{job.name}:{port}/generate'
     status = launchers.status
     with timeout(3600, msg='Launch failed: No computing resources are available.'):
         while job.status in (status.TBSubmitted, status.InQueue, status.Pending):

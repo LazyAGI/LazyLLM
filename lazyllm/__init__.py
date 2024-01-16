@@ -1,5 +1,6 @@
-from .common import LazyLLMRegisterMetaClass, package, LazyLLMCMD, timeout
+from .common import LazyLLMRegisterMetaClass, package, LazyLLMCMD, timeout, final, ReadOnlyWrapper
 from .common import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9
+from .configs import mode, Mode
 from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase
 from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
@@ -25,6 +26,10 @@ __all__ = [
     'package',
     'LazyLLMCMD',
     'timeout',
+    'final',
+    'Mode',
+    'mode',
+    'ReadOnlyWrapper',
 
     # bind
     'root',
