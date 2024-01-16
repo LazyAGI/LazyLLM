@@ -1,12 +1,13 @@
 from typing import Any
 import lazyllm
-from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD
+from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final
 from .flow import FlowBase
 from enum import Enum
 import os
 import re
 import time
 import subprocess
+import atexit
 
 class Status(Enum):
     TBSubmitted = 0,
@@ -41,6 +42,7 @@ def exec_cmd(cmd):
     return out.strip()
 
 
+@final
 class EmptyLauncher(LazyLLMLaunchersBase):
     def makejob(self, cmd):
         return cmd.cmd
@@ -54,6 +56,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             raise RuntimeError('Invalid cmd given, please check the return value of cmd.')
 
 
+@final
 class SubprocessLauncher(LazyLLMLaunchersBase):
     def makejob(self, cmd):
         return cmd.cmd
@@ -84,22 +87,29 @@ class Job(object):
         return self.return_value if self.return_value else (
             self.post_function(self) if self.post_function else self)
 
+    def start(self):
+        raise NotImplementedError
+
+    @property
+    def status(self):
+        raise NotImplementedError
 
 
+@final
 class SlurmLauncher(LazyLLMLaunchersBase):
     # In order to obtain the jobid to monitor and terminate the job more
     # conveniently, only one srun command is allowed in one Job
     all_processes=dict()
     count = 0
 
+    @final
     class Job(Job):
         def __init__(self, cmd, launcher, *, sync=True):
             super(__class__, self).__init__(cmd, sync=sync)
-            self.jobname = str(hex(hash(cmd)))[2:]
+            self.name = str(hex(hash(cmd)))[2:]
 
-            print("Show available nodes: ", launcher.get_idle_nodes())
             # Assemble the order
-            self.cmd = f'srun -p {launcher.partition} -N {launcher.nnode} --job-name={self.jobname}'
+            self.cmd = f'srun -p {launcher.partition} -N {launcher.nnode} --job-name={self.name}'
             if launcher.nproc:
                 self.cmd += f' -n{launcher.nproc}'
             if launcher.timeout:
@@ -114,7 +124,9 @@ class SlurmLauncher(LazyLLMLaunchersBase):
             self.ps = None
         
         def start(self):
-            print("Command :", self.cmd)
+            print("Command:", self.cmd)
+            if lazyllm.mode == lazyllm.Mode.Display:
+                return
             process = subprocess.Popen(self.cmd, shell=True, encoding='utf-8', executable='/bin/bash')
             self.ps = process
             self.get_jobid()
@@ -125,13 +137,13 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
         def get_jobid(self):
             time.sleep(0.5) # Wait for cmd to be stably submitted to slurm
-            id_str = subprocess.check_output(['squeue', '--name='+self.jobname, '--noheader'])
+            id_str = subprocess.check_output(['squeue', '--name='+self.name, '--noheader'])
             if id_str:
                 id_list = id_str.decode().strip().split()
                 self.jobid = id_list[0]
 
         def get_jobip(self):
-            id_str = subprocess.check_output(['squeue', '--name='+self.jobname, '--noheader'])
+            id_str = subprocess.check_output(['squeue', '--name='+self.name, '--noheader'])
             id_list = id_str.decode().strip().split()
             self.ip = id_list[10]
             return self.ip
@@ -142,7 +154,8 @@ class SlurmLauncher(LazyLLMLaunchersBase):
                 cmd = f"scancel --quiet {self.jobid}"
                 subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     encoding='utf-8', executable='/bin/bash')
-            self.ps.terminate()
+            if self.ps:
+                self.ps.terminate()
 
         @property
         def status(self):
@@ -180,13 +193,6 @@ class SlurmLauncher(LazyLLMLaunchersBase):
         self.num_can_use_nodes = 5
         SlurmLauncher.count += 1
         super(__class__, self).__init__()
-
-    def __del__(self):
-        SlurmLauncher.count -= 1
-        if SlurmLauncher.count <= 0:
-            for k, v in SlurmLauncher.all_processes.items():
-                v.stop()
-                print(f"killed job:{k}")
 
     def makejob(self, cmd):
         job = SlurmLauncher.Job(cmd, launcher=self)
@@ -269,8 +275,9 @@ class SlurmLauncher(LazyLLMLaunchersBase):
                 time.sleep(10)
             job.stop()
         return job.get_return_value()
-            
 
+
+@final
 class ScoLauncher(LazyLLMLaunchersBase):
     def __init__(self, nproc, ngpus, timeout):
         self.nproc, self.ngpus, self.timeout = nproc, ngpus, timeout
@@ -279,3 +286,16 @@ class ScoLauncher(LazyLLMLaunchersBase):
     def launch(self, cmd) -> None:
         assert isinstance(cmd, str), 'Sco launcher only support cmd'
         os.system(f'{cmd}')
+
+
+def cleanup():
+    # empty
+
+    # slurm
+    for k, v in SlurmLauncher.all_processes.items():
+        v.stop()
+        print(f"killed job:{k}")
+
+    # sco
+
+atexit.register(cleanup)

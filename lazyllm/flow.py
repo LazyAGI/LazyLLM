@@ -6,7 +6,18 @@ class FlowBase(object):
 
     def __init__(self, *items) -> None:
         self._flow_name = None
+        self._father = None
         self.items = list(it() if isinstance(it, type) else it for it in items)
+        for it in self.items:
+            if isinstance(it, FlowBase):
+                it._father = self
+
+    def __setattr__(self, name: str, value):
+        if isinstance(value, FlowBase) and name != '_father':
+            self.items.append(value)
+            value._flow_name = name
+            value._father = self
+        return super().__setattr__(name, value)
 
     def __getattr__(self, name):
         assert 'items' in self.__dict__, (
@@ -16,7 +27,11 @@ class FlowBase(object):
                 return it
         # return super(__class__, self).__getattr__(name) ?
         raise AttributeError(f'Attr {name} not found in {self}')
-    
+
+    @property
+    def is_root(self):
+        return self._father is None
+
     def for_each(self, filter, action):
         for item in self.items:
             if isinstance(item, FlowBase):
@@ -52,6 +67,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         raise NotImplementedError
 
     def start(self, *args, **kw):
+        assert self.is_root, 'Only root flow can use start()'
         def _exchange(item):
             item._args = [a.get_from(self) if isinstance(a, type(root)) else a for a in item._args]
         self.for_each(lambda x: isinstance(x, bind), _exchange)

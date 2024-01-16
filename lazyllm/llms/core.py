@@ -1,4 +1,4 @@
-from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD
+from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, ReadOnlyWrapper
 from lazyllm import launchers, LazyLLMLaunchersBase
 import re
 from typing import Union, Optional
@@ -6,6 +6,7 @@ from typing import Union, Optional
 class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, *, launcher=launchers.empty()):
         self._flow_name = None
+        self.job = ReadOnlyWrapper()
         if isinstance(launcher, LazyLLMLaunchersBase):
             self.launcher = launcher
         elif isinstance(launcher, type) and issubclass(launcher, LazyLLMLaunchersBase):
@@ -27,9 +28,9 @@ class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
 
     def _get_job_with_cmd(self, *args, **kw):
         if isinstance(self.launcher, launchers.slurm) and self._overwrote('_get_slurm_job'):
-            self._get_slurm_job(*args, **kw)
+            return self._get_slurm_job(*args, **kw)
         elif isinstance(self.launcher, launchers.sco) and self._overwrote('_get_sco_job'):
-            self._get_sco_job(*args, **kw)
+            return self._get_sco_job(*args, **kw)
         else:
             cmd = self.cmd(*args, **kw)
             cmd = cmd if isinstance(cmd, LazyLLMCMD) else LazyLLMCMD(cmd)
@@ -45,6 +46,7 @@ class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
             return self.launcher.launch(self.apply, *args, **kw)
         else:
             job = self._get_job_with_cmd(*args, **kw)
+            self.job.set(job)
             return self.launcher.launch(job)
 
     def __repr__(self):

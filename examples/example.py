@@ -15,12 +15,12 @@ def gen_data(idx):
     return package(idx + 1, idx + 1)
 
 @lazyllm.llmregister('Validate')
-def eval_stage1(url, port):
-    print(f'url {url}:{port} eval_stage1 done')
+def eval_stage1(url):
+    print(f'url {url} eval_stage1 done')
 
 @lazyllm.llmregister('Validate')
-def eval_stage2(url, port):
-    print(f'url {url}:{port} eval_stage2 done')
+def eval_stage2(url):
+    print(f'url {url} eval_stage2 done')
 
 @lazyllm.llmregister('validate')
 def eval_all(evalset, url1, url2, job=None):
@@ -62,7 +62,7 @@ named_ppl = lazyllm.pipeline(
             post_action=validate.eval_stage1,
         ),
     ),
-    val=bind(validate.eval_all, root.finetune.stage2.post_action, _0, _1, root.val),
+    val=bind(validate.eval_all, root.finetune.stage2.post_action, _0, _1, root.finetune.stage1.deploy.deploy_dd.deploy_stage3.job),
 )
 
 named_ppl.start(0)
