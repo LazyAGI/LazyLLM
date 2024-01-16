@@ -86,17 +86,16 @@ class Lightllm(LazyLLMDeployBase, flows.NamedPipeline):
         self.eos_id = eos_id
 
         flows.NamedPipeline.__init__(self,
-            deploy_dd = flows.NamedPipeline(
-                deploy_stage2 = show_io,
-                deploy_stage3 = bind(deploy.lllmserver(launcher=launcher),
-                                     _0,
-                                     self.tp,
-                                     self.max_total_token_num,
-                                     self.eos_id
-                                     ),
-                deploy_stage4 = show_io,
-            )
-	)
+            deploy_stage1 = show_io,
+            deploy_stage2 = bind(deploy.lllmserver(launcher=launcher),
+                                 _0,
+                                 self.tp,
+                                 self.max_total_token_num,
+                                 self.eos_id
+                                 ),
+            deploy_stage3 = deploy.RelayServer(),
+            deploy_stage4 = show_io,
+	    )
 
     def __call__(self, base_model):
         url = flows.NamedPipeline.__call__(self, base_model)
