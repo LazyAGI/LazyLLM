@@ -62,7 +62,7 @@ named_ppl = lazyllm.pipeline(
             post_action=validate.eval_stage1,
         ),
     ),
-    val=bind(validate.eval_all, root.finetune.stage2.post_action, _0, _1, root.finetune.stage1.deploy.deploy_dd.deploy_stage3.job),
+    val=bind(validate.eval_all, root.finetune.stage2.post_action, _0, _1, root.finetune.stage1.deploy.deploy_stage2.job),
 )
 
 named_ppl.start(0)
