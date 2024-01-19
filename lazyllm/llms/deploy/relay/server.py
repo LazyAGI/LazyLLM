@@ -2,12 +2,21 @@ import cloudpickle
 import httpx
 import uvicorn
 import argparse
-
+import base64
+import os
+import sys
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 
+# TODO(sunxiaoye): delete in the future
+lazyllm_module_dir=os.path.abspath(__file__)
+for _ in range(5):
+    lazyllm_module_dir = os.path.dirname(lazyllm_module_dir)
+sys.path.append(lazyllm_module_dir)
+
 app = FastAPI()
+
 
 @app.post("/generate")
 async def generate(request: Request):
@@ -49,12 +58,12 @@ if __name__ == "__main__":
 
     # TODO(search/implement a new encode & decode method)
     if args.before_function:
-        exec(f'r = {args.before_function[1:]}')
-        b = bytes(r, encoding='raw_unicode_escape')
-        before_func = cloudpickle.loads(b)
+        encoded_function = args.before_function.encode('utf-8')
+        serialized_function = base64.b64decode(encoded_function)
+        before_func = cloudpickle.loads(serialized_function)
     if args.after_function:
-        exec(f'r = {args.after_function[1:]}')
-        b = bytes(r, encoding='raw_unicode_escape')
-        after_func = cloudpickle.loads(b)
+        encoded_function = args.after_function.encode('utf-8')
+        serialized_function = base64.b64decode(encoded_function)
+        after_func = cloudpickle.loads(serialized_function)
 
     uvicorn.run(app, host=args.open_ip, port=args.open_port)

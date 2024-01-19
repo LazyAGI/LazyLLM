@@ -158,7 +158,7 @@ class Bind(object):
 setattr(builtins, 'bind', Bind)
 
 class LazyLLMCMD(object):
-    def __init__(self, cmd, *, return_value=None, post_function=None) -> None:
+    def __init__(self, cmd, *, return_value=None, post_function=None, no_displays=None) -> None:
         if isinstance(cmd, (tuple, list)):
             cmd = ' && '.join(cmd)
         assert isinstance(cmd, str), 'cmd must be (list of) bash command str.'
@@ -167,10 +167,20 @@ class LazyLLMCMD(object):
         self.cmd = cmd
         self.return_value = return_value
         self.post_function = post_function
+        self.no_displays = no_displays
 
     def __hash__(self):
         return hash(self.cmd)
 
+    def __str__(self):
+        if self.no_displays:
+            cmd = self.cmd
+            for item in self.no_displays:
+                pattern = r'(-{1,2}' + re.escape(item) + r')(\s|=|)(\S+|)'
+                cmd = re.sub(pattern, "", cmd)
+            return cmd
+        else:
+            return self.cmd
 
 @contextmanager
 def timeout(duration, *,  msg=''):

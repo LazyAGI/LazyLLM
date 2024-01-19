@@ -1,5 +1,8 @@
+import os
 import sys
-sys.path.append('..')
+import json
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import lazyllm
 try:
@@ -7,11 +10,21 @@ try:
 except ImportError:
    from lazyllm import package, dataproc, finetune, deploy, launchers, validate
 
+
 @lazyllm.llmregister('dataproc')
 def gen_data(idx):
     print(f'idx {idx}: gen data done')
     datapath = '/mnt/lustrenew/share_data/sunxiaoye/Dataset/Finture_TDX/step1_0103_xuzhiguo.json'
     return package(datapath, idx + 1)
+
+def before_func(input_json):
+    print("Before LLM: ", input_json)
+    return input_json
+
+def after_func(input_json, llm_output):
+    print("After LLM: ", llm_output)
+    llm_output = json.loads(llm_output.decode('utf-8'))["generated_text"][0]
+    return json.dumps(llm_output)
 
 ppl = lazyllm.pipeline(
     dataproc.gen_data(),
@@ -44,6 +57,8 @@ ppl = lazyllm.pipeline(
             )
         ),
     deploy.lightllm(
+        pre_func = before_func,
+        post_func = after_func,
         launcher=launchers.slurm(
             partition='pat_rd',
             sync=False
