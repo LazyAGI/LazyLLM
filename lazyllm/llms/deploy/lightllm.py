@@ -70,7 +70,6 @@ def lllmserver(model_dir=None, tp=1, max_total_token_num=64000, eos_id=2,
         if trust_remote_code:
             cmd += '--trust_remote_code '
         return LazyLLMCMD(cmd=cmd, post_function=bind(get_url_form_job, _0, port))
-    
 
 class Lightllm(LazyLLMDeployBase, flows.NamedPipeline):
     def __init__(self,
@@ -78,25 +77,31 @@ class Lightllm(LazyLLMDeployBase, flows.NamedPipeline):
                  tp=1,
                  max_total_token_num=64000,
                  eos_id=2,
+                 pre_func=None,
+                 post_func=None,
                  launcher=launchers.slurm):
         super().__init__(launcher=launcher)
         self.model_dir = model_dir
         self.tp = tp
         self.max_total_token_num = max_total_token_num
         self.eos_id = eos_id
+        self.pre_func = pre_func
+        self.post_func = post_func
 
         flows.NamedPipeline.__init__(self,
-            deploy_dd = flows.NamedPipeline(
-                deploy_stage2 = show_io,
-                deploy_stage3 = bind(deploy.lllmserver(launcher=launcher),
-                                     _0,
-                                     self.tp,
-                                     self.max_total_token_num,
-                                     self.eos_id
-                                     ),
-                deploy_stage4 = show_io,
-            )
-	)
+            deploy_stage1 = show_io,
+            deploy_stage2 = bind(deploy.lllmserver(launcher=launcher),
+                                 _0,
+                                 self.tp,
+                                 self.max_total_token_num,
+                                 self.eos_id
+                                 ),
+            deploy_stage3 = deploy.RelayServer(
+                                pre_func=self.pre_func,
+                                post_func=self.post_func,
+                                launcher=launcher),
+            deploy_stage4 = show_io,
+	    )
 
     def __call__(self, base_model):
         url = flows.NamedPipeline.__call__(self, base_model)

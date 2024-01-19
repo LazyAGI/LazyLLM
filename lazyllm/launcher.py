@@ -109,25 +109,24 @@ class SlurmLauncher(LazyLLMLaunchersBase):
             self.name = str(hex(hash(cmd)))[2:]
 
             # Assemble the order
-            self.cmd = f'srun -p {launcher.partition} -N {launcher.nnode} --job-name={self.name}'
+            self.slurm_cmd = f'srun -p {launcher.partition} -N {launcher.nnode} --job-name={self.name}'
             if launcher.nproc:
-                self.cmd += f' -n{launcher.nproc}'
+                self.slurm_cmd += f' -n{launcher.nproc}'
             if launcher.timeout:
-                self.cmd += f' -t {launcher.timeout}'
+                self.slurm_cmd += f' -t {launcher.timeout}'
             if launcher.ngpus:
-                self.cmd += f' --gres=gpu:{launcher.ngpus}'
-            self.cmd += f' bash -c \'{cmd.cmd}\''
+                self.slurm_cmd += f' --gres=gpu:{launcher.ngpus}'
+            self.cmd = cmd
 
-            # self.cmd = f'srun -p {launcher.partition} -N {launcher.nproc} bash -c \'{self.cmd}\''
             self.jobid = None
             self.ip = None
             self.ps = None
         
         def start(self):
-            print("Command:", self.cmd)
+            print("Command:", self.slurm_cmd + f' bash -c \'{self.cmd}\'')
             if lazyllm.mode == lazyllm.Mode.Display:
                 return
-            process = subprocess.Popen(self.cmd, shell=True, encoding='utf-8', executable='/bin/bash')
+            process = subprocess.Popen(self.slurm_cmd + f' bash -c \'{self.cmd.cmd}\'', shell=True, encoding='utf-8', executable='/bin/bash')
             self.ps = process
             self.get_jobid()
             if self.sync:

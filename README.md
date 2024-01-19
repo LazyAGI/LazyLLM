@@ -71,7 +71,7 @@ ppl = lazyllm.pipeline(
 ppl.start()
 ```
 
-* 注：未注册的函数也可以被pipeline使用，但不支持设置launcher等参数。该参数会在[跨平台](#25-跨平台)一节详细描述。
+* 注：未注册的函数也可以被pipeline使用，但不支持设置launcher等参数。该参数会在[跨平台](#26-跨平台)一节详细描述。
 
 ### 2.4 灵活传参
 
@@ -104,7 +104,59 @@ ppl = lazyllm.pipeline(
 ppl.start()
 ```
 
-### 2.5 跨平台
+### 2.5 查看结构
+
+在[灵活传参](#24-灵活传参)一节中，我们介绍了可以通过`root.xx.yy.zz`对暂未实例化的pipeline的节点进行索引，那么了解整个pipeline的结构成为了关键的一步。这里我们重写了各个对象的`__repr__`函数，使得我们能够展示pipeline的层级结构。
+
+```python
+import lazyllm
+from lazyllm import bind, root, _0
+
+@lazyllm.llmregister('dataproc')
+def gen_data(idx):
+    print(f'idx {idx}: gen data done')
+    return package(idx + 1, idx + 1)
+
+@lazyllm.llmregister('validate')
+def eval(evalset, url, job=None):
+    print(f'eval all. evalset: {evalset}, url: {url}, eval_all done. job: {job}')
+
+named_ppl = lazyllm.pipeline(
+    data=dataproc.gen_data(),
+    finetune=lazyllm.parallel(
+        stage1=lazyllm.pipeline(
+            sft=finetune.alpacalora(base_model='./base-model1', target_path='./finetune-target1', launcher=launchers.slurm()),
+            deploy=deploy.lightllm('http://www.myserver1.com'),
+        ),
+    ),
+    val=bind(validate.eval, 'evalset', _0, root.finetune.stage1.deploy.deploy_stage2.job),
+)
+```
+
+可以使用`named_ppl.__repr__()`函数查看层级结构。 在实际调试的时候，也可以通过bash打开一个python交互程序来输出，假设上述文件命名为test.pu，示例如下：
+```bash
+$ python
+>>> from test import named_ppl
+>>> named_ppl
+<Pipeline> [
+    data <lazyllm.llm.core.dataproc.gen_data>,
+    finetune <Parallel> [
+        stage1 <Pipeline> [
+            sft <lazyllm.llm.core.finetune.AlpacaloraFinetune>,
+            deploy <Lightllm> [
+                deploy_stage4 <function show_io at 0x7fdedb3ed1e0>,
+                deploy_stage2 <lazyllm.llm.core.deploy.lllmserver>(bind args:placeholder._0, 1, 64000, 2),
+                deploy_stage3 <lazyllm.llm.core.deploy.RelayServer>,
+                deploy_stage4 <function show_io at 0x7fdedb3ed1e0>
+            ]
+        ]
+    ],
+    val <lazyllm.llm.core.validate.eval>(bind args:'evalset', placeholder._0, <lazyllm.common.AttrTree object at 0x7fdeda955da0>)
+]
+```
+如上面的示例，每一个元素会给出名称和<类型>，如果是流结构，还会额外用`[]`给出其内部包含的元素。如果是蕴含了参数绑定的元素，则会展示其绑定的真实元素，并且通过`(bind args: xx)`展示其绑定的参数。
+
+### 2.6 跨平台
 
 该工具支持运行在多种集群环境上，包括裸金属、slurm和sensecore。在实际搭建的时候，主要通过给模块提供launcher这个参数来决定该模块运行在哪个平台上，可选的launcher有empty、slurm和sensecore。一般情况下，一个程序内不会同时出现slurm和sensecore，这是因为目前没有一个管理节点可以同时把任务提交到slurm和sco上。
 
@@ -120,7 +172,26 @@ ppl = lazyllm.pipeline(
 
 * P1-TODO: 未来可能会同时支持linux和windows，假如有客户需要
 
-### 2.6 全局配置
+### 2.7 运行模式
+
+LazyLLM提供了三种运行模式，分别是Display、Normal和Debug。
+
+#### Display
+在Display模式下，所有的cmd命令都不会真正的被执行，而是通过命令行打印出来。例如在[2.5 查看结构](#25-查看结构)中所述的案例，在Display模式下执行`named_ppl.start(0)`的结果为：
+```bash
+idx 0: gen data done
+Command: srun -p None -N 1 --job-name=x59b29882ced265a9 -n1 bash -c 'python /mnt/cache/wangzhihong/lazyllm/lazyllm/llms/finetune/alpaca-lora/finetune.py --base_model=./base-model1 --output_dir=./finetune-target1 --data_path=1 --batch_size=64 --micro_batch_size=4 --num_epochs=2 --learning_rate=0.0005 --cutoff_len=1030 --filter_nums=1024 --val_set_size=200 --lora_r=8 --lora_alpha=32 --lora_dropout=0.05 --lora_target_modules="[query_key_value,dense,dense_4h_to_h,dense_h_to_4h]" --modules_to_save="[word_embeddings, output_layer]" --deepspeed="ds.json" --prompt_with_background=True --train_on_inputs=True 2>&1 | tee ./finetune-target1/LLM_$(date +"%Y-%m-%d_%H-%M-%S").log'
+input or output is: ./finetune-target1
+Command: srun -p None -N 1 --job-name=x3b5eca3122db7596 -n1 bash -c 'python -m lightllm.server.api_server --model_dir ./finetune-target1 --tp 1 --nccl_port 20864 --max_total_token_num 64000 --tokenizer_mode "auto" --port 35444 --host "0.0.0.0" --eos_id 2 --trust_remote_code '
+Command: srun -p None -N 1 --job-name=4771159e863eadf0 -n1 bash -c 'python test2.py --target_url=http://x3b5eca3122db7596:35444/generate --before_function="b'\x80\x04N.' --after_function="b'\x80\x04N.'"'
+input or output is: <lazyllm.launcher.SlurmLauncher.Job object at 0x7f0ee631af28>
+eval all. evalset: evalset, url: <lazyllm.launcher.SlurmLauncher.Job object at 0x7f0ee631af28>, eval_all done. job: <lazyllm.launcher.SlurmLauncher.Job object at 0x7f0ee631aef0(Readonly)>
+```
+
+#### Debug
+在Debug模式下，会给出更加细致的错误信息。
+
+### 2.8 全局配置
 
 ## 三、能力
 
@@ -148,7 +219,7 @@ ppl = lazyllm.pipeline(
 支持多种微调框架，包括peft、easyllm、colle等。
 
 #### Auto
-支持用户选定基模型(hf格式)和训练集之后，根据提供的机器情况，结合过往的经验自动选择框架认为最优的算法、超参数和框架。使用方式如下：
+Auto是LazyLLM主推的使用方式，它秉承着“让懒惰进行到底”的思想，支持用户选定基模型(hf格式)和训练集之后，根据提供的机器情况，结合过往的经验自动选择框架认为最优的算法、超参数和框架。使用方式如下：
 ```python
 finetune.auto('chatglm3-6b', launcher=launchers.slurm(ngpus=32))
 ```
@@ -166,6 +237,7 @@ finetune.auto('chatglm3-6b', launcher=launchers.slurm(ngpus=32))
 ### 3.5 推理
 
 - [x] 支持单独推理和batch推理
+- [x] 支持多轮对话式的交互式推理
 
 ### 3.6 评测
 
