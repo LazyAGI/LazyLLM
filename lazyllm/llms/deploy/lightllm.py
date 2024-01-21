@@ -79,18 +79,21 @@ class Lightllm(LazyLLMDeployBase, flows.NamedPipeline):
                  eos_id=2,
                  pre_func=None,
                  post_func=None,
-                 launcher=launchers.slurm):
-        super().__init__(launcher=launcher)
+                 open_port=None,
+                 llm_launcher=launchers.slurm,
+                 relay_launcher=launchers.slurm):
+        super().__init__(launcher=llm_launcher)
         self.model_dir = model_dir
         self.tp = tp
         self.max_total_token_num = max_total_token_num
         self.eos_id = eos_id
         self.pre_func = pre_func
         self.post_func = post_func
+        self.open_port = open_port if open_port else random.randint(30000, 40000)
 
         flows.NamedPipeline.__init__(self,
             deploy_stage1 = show_io,
-            deploy_stage2 = bind(deploy.lllmserver(launcher=launcher),
+            deploy_stage2 = bind(deploy.lllmserver(launcher=llm_launcher),
                                  _0,
                                  self.tp,
                                  self.max_total_token_num,
@@ -99,7 +102,8 @@ class Lightllm(LazyLLMDeployBase, flows.NamedPipeline):
             deploy_stage3 = deploy.RelayServer(
                                 pre_func=self.pre_func,
                                 post_func=self.post_func,
-                                launcher=launcher),
+                                port=self.open_port,
+                                launcher=relay_launcher),
             deploy_stage4 = show_io,
 	    )
 
