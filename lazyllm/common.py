@@ -133,11 +133,18 @@ class Placeholder(object):
         assert isinstance(idx, int)
         self.idx = idx
 
+    def __deepcopy__(self, memo=None):
+        return self
+
     def __repr__(self):
         return f'placeholder._{self.idx}'
 
 for i in range(10):
     exec(f'_{i} = Placeholder({i})')
+
+def _setattr(self, key, v):
+    raise RuntimeError('Cannot set attr for Placeholder')
+setattr(Placeholder, '__setattr__', _setattr)
 
 
 class Bind(object):
@@ -153,9 +160,13 @@ class Bind(object):
             ', '.join([repr(a) if a is not self else 'self' for a in self._args]))
 
     def __getattr__(self, name):
-        return getattr(self._f, name)
+        # name will be '_f' in copy.deepcopy
+        if name != '_f':
+            return getattr(self._f, name)
+        return super(__class__, self).__getattr__(name)
 
 setattr(builtins, 'bind', Bind)
+
 
 class LazyLLMCMD(object):
     def __init__(self, cmd, *, return_value=None, post_function=None, no_displays=None) -> None:
@@ -204,7 +215,8 @@ class ReadOnlyWrapper(object):
         self.obj = obj
 
     def __getattr__(self, key):
-        if self.obj is not None:
+        # key will be 'obj' in copy.deepcopy
+        if key != 'obj' and self.obj is not None:
             return getattr(self.obj, key)
         return super(__class__, self).__getattr__(key)
 
