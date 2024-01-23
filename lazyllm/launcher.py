@@ -94,6 +94,9 @@ class Job(object):
     def status(self):
         raise NotImplementedError
 
+    def __deepcopy__(self, memo=None):
+        raise RuntimeError('Cannot copy Job object')
+
 
 @final
 class SlurmLauncher(LazyLLMLaunchersBase):

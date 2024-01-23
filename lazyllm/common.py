@@ -79,6 +79,7 @@ class LazyLLMRegisterMetaClass(type):
 
             assert not hasattr(builtins, group), f'group name \'{group}\' cannot be used'
             setattr(builtins, group, LazyLLMRegisterMetaClass.all_clses[group])
+            assert not hasattr(lazyllm, group), f'group name \'{group}\' cannot be used'
             setattr(lazyllm, group, LazyLLMRegisterMetaClass.all_clses[group])
         elif hasattr(new_cls, '_lazy_llm_group'):
             group = LazyLLMRegisterMetaClass.all_clses[new_cls._lazy_llm_group]
@@ -221,4 +222,9 @@ class ReadOnlyWrapper(object):
         return super(__class__, self).__getattr__(key)
 
     def __repr__(self):
-        return f'{self.obj.__repr__()[:-1]}(Readonly)>'
+        r = self.obj.__repr__()
+        return (f'{r[:-1]}' if r.endswith('>') else f'<{r}') + '(Readonly)>'
+
+    def __deepcopy__(self, memo):
+        # drop obj
+        return ReadOnlyWrapper()
