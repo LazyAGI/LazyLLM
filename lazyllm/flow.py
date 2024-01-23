@@ -1,9 +1,10 @@
 from typing import Any
 from lazyllm import LazyLLMRegisterMetaClass, package, bind, root
+import copy
+import types
 
 
 class FlowBase(object):
-
     def __init__(self, *items) -> None:
         self._flow_name = None
         self._father = None
@@ -20,13 +21,11 @@ class FlowBase(object):
         return super().__setattr__(name, value)
 
     def __getattr__(self, name):
-        assert 'items' in self.__dict__, (
-            f'please check FlowBase.__init__() is called in {self.__class__.__name__}')
-        for it in self.items:
-            if getattr(it, '_flow_name', None) == name:
-                return it
-        # return super(__class__, self).__getattr__(name) ?
-        raise AttributeError(f'Attr {name} not found in {self}')
+        if 'items' in self.__dict__:
+            for it in self.items:
+                if getattr(it, '_flow_name', None) == name:
+                    return it
+        return super(__class__, self).__getattr__(name)
 
     @property
     def is_root(self):
@@ -43,6 +42,11 @@ class FlowBase(object):
 # TODO(wangzhihong): support workflow launcher.
 # Disable item launchers if launcher is already set in workflow.
 class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
+    class FuncWrap(object):
+        def __init__(self, f): self.f = f
+        def __call__(self, *args, **kw): return self.f(*args, **kw)
+        def __repr__(self): return repr(self.f)
+    
     def __init__(self, *args, post_action=None, **kw):
         assert len(args) == 0 or len(kw) == 0
         if len(args) > 0 and isinstance(args[0], (tuple, list)):
@@ -51,7 +55,13 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         args = list(args)
         for k, v in kw.items():
             # ensure `_flow_name` is set to object instead of class 
-            v = v() if isinstance(v, type) else v
+            if isinstance(v, type):
+                v = v()
+            elif isinstance(v, (types.BuiltinFunctionType, types.FunctionType)):
+                # v is copy.deepcopy(v) when v is func, wrap v to set `_flow_name`
+                v = LazyLLMFlowsBase.FuncWrap(v)
+            else: 
+                v = v if getattr(v, '_flow_name', None) else copy.deepcopy(v)
             v._flow_name = k
             args.append(v)
         super(__class__, self).__init__(*args)

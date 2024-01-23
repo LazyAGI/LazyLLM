@@ -144,7 +144,7 @@ $ python
         stage1 <Pipeline> [
             sft <lazyllm.llm.core.finetune.AlpacaloraFinetune>,
             deploy <Lightllm> [
-                deploy_stage4 <function show_io at 0x7fdedb3ed1e0>,
+                deploy_stage1 <function show_io at 0x7fdedb3ed1e0>,
                 deploy_stage2 <lazyllm.llm.core.deploy.lllmserver>(bind args:placeholder._0, 1, 64000, 2),
                 deploy_stage3 <lazyllm.llm.core.deploy.RelayServer>,
                 deploy_stage4 <function show_io at 0x7fdedb3ed1e0>
