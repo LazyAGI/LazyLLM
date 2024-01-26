@@ -29,26 +29,37 @@ except ImportError:
 # 5. allowed to omit the group name if the group name appears in the name
 #    >>> ld.a
 class LazyDict(dict):
-    def __init__(self, name, *args, **kw):
+    def __init__(self, name='', base=None, *args, **kw):
         super(__class__, self).__init__(*args, **kw)
         self._default = None
         self.name = name.capitalize()
+        self.base = base
 
     def __setitem__(self, key, value):
         assert key != 'default', 'LazyDict do not support key: default'
+        if '.' in key:
+            grp, key = key.rsplit('.', 1)
+            return self[grp].__setitem__(key, value)
         return super().__setitem__(key, value)
+
+    def __getitem__(self, key):
+        if '.' in key:
+            grp, key = key.split('.', 1)
+            return self[grp][key]
+        return super().__getitem__(key)
 
     # default -> self.default
     # key -> Key, keyName, KeyName
     # if self.name ends with 's' or 'es', ignor it 
     def __getattr__(self, key):
         key = self._default if key == 'default' else key
-        keys = [key, f'{key[0].upper()}{key[1:]}', f'{key}{self.name}', f'{key[0].upper()}{key[1:]}{self.name}']
+        keys = [key, f'{key[0].upper()}{key[1:]}', f'{key}{self.name}', f'{key[0].upper()}{key[1:]}{self.name}',
+                f'{key}{self.name.lower()}', f'{key[0].upper()}{key[1:]}{self.name.lower()}']
         if self.name.endswith('s'):
             n = 2 if self.name.endswith('es') else 1
             keys.extend([f'{key}{self.name[:-n]}', f'{key[0].upper()}{key[1:]}{self.name[:-n]}'])
 
-        for k in keys:
+        for k in set(keys):
             if k in self.keys():
                 return self[k]
         # return super(__class__, self).__getattribute__(key)
@@ -63,30 +74,42 @@ class LazyDict(dict):
         self._default = key
         
 
+group_template = '''\
+class LazyLLM{name}Base(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].base):
+    pass
+'''
+
+
 class LazyLLMRegisterMetaClass(type):
-    all_clses = dict()
-    all_groups = dict()
+    all_clses = LazyDict()
 
     def __new__(metas, name, bases, attrs):
         new_cls = type.__new__(metas, name, bases, attrs)
         if name.startswith('LazyLLM') and name.endswith('Base'):
-            group = re.match('(LazyLLM)(.*)(Base)', name.split('.')[-1])[2].lower()
-            assert not hasattr(new_cls, '_lazy_llm_group')
-            new_cls._lazy_llm_group = group
-
-            LazyLLMRegisterMetaClass.all_clses.update({group:LazyDict(group)})
-            LazyLLMRegisterMetaClass.all_groups.update({group:new_cls})
-
-            assert not hasattr(builtins, group), f'group name \'{group}\' cannot be used'
-            setattr(builtins, group, LazyLLMRegisterMetaClass.all_clses[group])
-            assert not hasattr(lazyllm, group), f'group name \'{group}\' cannot be used'
-            setattr(lazyllm, group, LazyLLMRegisterMetaClass.all_clses[group])
+            ori = re.match('(LazyLLM)(.*)(Base)', name.split('.')[-1])[2]
+            group = ori.lower()
+            new_cls._lazy_llm_group = '.'.join([g for g in (getattr(new_cls, '_lazy_llm_group', ''), group) if g])
+            LazyLLMRegisterMetaClass.all_clses[new_cls._lazy_llm_group] = LazyDict(group, new_cls)
+            if new_cls._lazy_llm_group == group:
+                for m in (builtins, lazyllm):
+                    assert not (hasattr(m, group) and hasattr(m, ori)), f'group name \'{ori}\' cannot be used'
+                    setattr(m, group, LazyLLMRegisterMetaClass.all_clses[group])
+                    setattr(m, ori, LazyLLMRegisterMetaClass.all_clses[group])
         elif hasattr(new_cls, '_lazy_llm_group'):
             group = LazyLLMRegisterMetaClass.all_clses[new_cls._lazy_llm_group]
             assert new_cls.__name__ not in group, (
                 f'duplicate class \'{name}\' in group {new_cls._lazy_llm_group}')
             group[new_cls.__name__] = new_cls
         return new_cls
+
+
+def _get_base_cls_from_registry(cls_str, *, registry=LazyLLMRegisterMetaClass.all_clses):
+    if cls_str == '':
+        return registry.base
+    group, cls_str = cls_str.split('.', 1) if '.' in cls_str else (cls_str, '')
+    if not (registry is LazyLLMRegisterMetaClass.all_clses or group in registry):
+        exec(group_template.format(name=group.capitalize(), base=registry.base._lazy_llm_group))
+    return _get_base_cls_from_registry(cls_str, registry=registry[group])
 
 
 # pack return value of modules used in pipeline / parallel.

@@ -1,4 +1,5 @@
-from .common import LazyLLMRegisterMetaClass, package, LazyLLMCMD, timeout, final, ReadOnlyWrapper
+from .common import LazyLLMRegisterMetaClass, _get_base_cls_from_registry
+from .common import package, LazyLLMCMD, timeout, final, ReadOnlyWrapper
 from .common import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9
 from .configs import mode, Mode
 from .launcher import LazyLLMLaunchersBase
@@ -11,6 +12,7 @@ pipeline, namedPipeline = flows.pipeline, flows.namedPipeline
 parallel, namedParallel = flows.parallel, flows.namedParallel
 
 del LazyLLMRegisterMetaClass
+del _get_base_cls_from_registry
 del flows
 
 
