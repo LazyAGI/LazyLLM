@@ -1,4 +1,5 @@
-from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, ReadOnlyWrapper
+from lazyllm import LazyLLMRegisterMetaClass, _get_base_cls_from_registry
+from lazyllm import LazyLLMCMD, ReadOnlyWrapper
 from lazyllm import launchers, LazyLLMLaunchersBase
 import re
 from typing import Union, Optional
@@ -56,7 +57,7 @@ class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
 
 
 reg_template = '''\
-class {name}{base}(LazyLLMRegisterMetaClass.all_groups[\'{base}\'.lower()]):
+class {name}(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].base):
     pass
 '''
 
@@ -68,13 +69,14 @@ class Register(object):
         cls = cls.__name__ if isinstance(cls, type) else cls
         cls = re.match('(LazyLLM)(.*)(Base)', cls.split('.')[-1])[2] \
             if (cls.startswith('LazyLLM') and cls.endswith('Base')) else cls
-        base = LazyLLMRegisterMetaClass.all_groups[cls.lower()]
+        base = _get_base_cls_from_registry(cls.lower())
         assert issubclass(base, LLMBase)
         cmd = (base.cmd != LLMBase.cmd) if cmd is None else cmd
 
         def impl(func):
             func_name = func.__name__
-            exec(self.template.format(name=func_name, base=cls.capitalize()))
+            exec(self.template.format(
+                name=func_name+cls.split('.')[-1].capitalize(), base=cls))
             # 'func' cannot be recognized by exec, so we use 'setattr' instead 
             f = LazyLLMRegisterMetaClass.all_clses[cls.lower()].__getattr__(func_name)
             f.__name__ = func_name
