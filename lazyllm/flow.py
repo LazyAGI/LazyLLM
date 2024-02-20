@@ -60,7 +60,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             elif isinstance(v, (types.BuiltinFunctionType, types.FunctionType)):
                 # v is copy.deepcopy(v) when v is func, wrap v to set `_flow_name`
                 v = LazyLLMFlowsBase.FuncWrap(v)
-            else: 
+            else:
                 v = v if getattr(v, '_flow_name', None) else copy.deepcopy(v)
             v._flow_name = k
             args.append(v)

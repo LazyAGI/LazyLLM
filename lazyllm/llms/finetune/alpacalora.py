@@ -18,12 +18,14 @@ class AlpacaloraFinetune(LazyLLMFinetuneBase):
             target_path,
             launcher=launcher,
         )
+        self.folder_path = os.path.dirname(os.path.abspath(__file__))
         self.updata_defaults_dict(kw)
         self.merge_path = merge_path
         self.cp_files = cp_files
         self.model_name = model_name
 
     def updata_defaults_dict(self, kw):
+        deepspeed_config_path = os.path.join(self.folder_path, 'alpaca-lora/ds.json')
         self.defaults_dict={
             'data_path': None,
             'batch_size': 64,
@@ -38,7 +40,7 @@ class AlpacaloraFinetune(LazyLLMFinetuneBase):
             'lora_dropout': 0.05,
             'lora_target_modules': '[query_key_value,dense,dense_4h_to_h,dense_h_to_4h]',
             'modules_to_save': '[word_embeddings, output_layer]',
-            'deepspeed': 'ds.json',
+            'deepspeed': deepspeed_config_path,
             'prompt_with_background': True,
             'train_on_inputs': True,
         }
@@ -50,8 +52,7 @@ class AlpacaloraFinetune(LazyLLMFinetuneBase):
         if not self.kw['data_path']:
             self.kw['data_path']=trainset
 
-        folder_path = os.path.dirname(os.path.abspath(__file__))
-        run_file_path = os.path.join(folder_path, 'alpaca-lora/finetune.py')
+        run_file_path = os.path.join(self.folder_path, 'alpaca-lora/finetune.py')
         cmd = (
                 f'python {run_file_path} '
                 f'--base_model={self.base_model} '
@@ -61,7 +62,7 @@ class AlpacaloraFinetune(LazyLLMFinetuneBase):
         cmd += f' 2>&1 | tee {self.target_path}/{self.model_name}_$(date +"%Y-%m-%d_%H-%M-%S").log'
 
         if self.merge_path:
-            run_file_path = os.path.join(folder_path, 'alpaca-lora/utils/merge_weights.py')
+            run_file_path = os.path.join(self.folder_path, 'alpaca-lora/utils/merge_weights.py')
 
             cmd = [ cmd,
                     f'python {run_file_path} '

@@ -8,6 +8,9 @@ import re
 import time
 import subprocess
 import atexit
+from queue import Queue
+import threading
+
 
 class Status(Enum):
     TBSubmitted = 0,
@@ -33,45 +36,39 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
 lazyllm.launchers['Status'] = Status
 
 
-def exec_cmd(cmd):
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                         encoding='utf-8', executable='/bin/bash')
-    out, err = p.communicate()
-    return_code = p.returncode
-    assert return_code == 0, f'Exec cmd \'{cmd}\' failed, errmsg: {err}'
-    return out.strip()
-
-
 @final
 class EmptyLauncher(LazyLLMLaunchersBase):
+    def __init__(self, subprocess=False):
+        super().__init__()
+        self.subprocess = subprocess
+
     def makejob(self, cmd):
-        return cmd.cmd
+        job = Job(cmd)
+        return job
 
     def launch(self, f, *args, **kw):
-        if isinstance(f, (str, tuple, list)):
-            return exec_cmd(f)
+        if isinstance(f, Job):
+            self.exec_cmd(f)
+            return f.get_return_value()
         elif callable(f):
-            return f(*args, **kw)
+            if not self.subprocess:
+                return f(*args, **kw)
+            else:
+                import multiprocessing
+                p = multiprocessing.Process(target=f, args=args, kwargs=kw)
+                p.start()
+                p.join()
         else:
             raise RuntimeError('Invalid cmd given, please check the return value of cmd.')
 
-
-@final
-class SubprocessLauncher(LazyLLMLaunchersBase):
-    def makejob(self, cmd):
-        return cmd.cmd
-
-    # TODO(wangzhihong): support return value
-    def launch(self, f, *args, **kw) -> None:
-        if isinstance(f, (str, tuple, list)):
-            return exec_cmd(f)
-        elif callable(f):
-            import multiprocessing
-            p = multiprocessing.Process(target=f, args=args, kwargs=kw)
-            p.start()
-            p.join()
-        else:
-            raise RuntimeError('Invalid cmd given, please check the return value of cmd.')
+    def exec_cmd(self, job):
+        cmd = job.cmd
+        print("Command:", cmd)
+        if lazyllm.mode == lazyllm.Mode.Display:
+            return
+        p = subprocess.Popen(cmd, shell=True, encoding='utf-8', executable='/bin/bash')
+        p.wait()
+        return
 
 
 # store cmd, return message and command output.
@@ -89,6 +86,9 @@ class Job(object):
 
     def start(self):
         raise NotImplementedError
+    
+    def stop(self):
+        raise NotImplementedError
 
     @property
     def status(self):
@@ -97,6 +97,10 @@ class Job(object):
     def __deepcopy__(self, memo=None):
         raise RuntimeError('Cannot copy Job object')
 
+    def restart(self):
+        self.stop()
+        time.sleep(2)
+        self.start()
 
 @final
 class SlurmLauncher(LazyLLMLaunchersBase):
@@ -110,6 +114,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
         def __init__(self, cmd, launcher, *, sync=True):
             super(__class__, self).__init__(cmd, sync=sync)
             self.name = str(hex(hash(cmd)))[2:]
+            self.queue = Queue()
 
             # Assemble the order
             self.slurm_cmd = f'srun -p {launcher.partition} -N {launcher.nnode} --job-name={self.name}'
@@ -129,9 +134,26 @@ class SlurmLauncher(LazyLLMLaunchersBase):
             print("Command:", self.slurm_cmd + f' bash -c \'{self.cmd}\'')
             if lazyllm.mode == lazyllm.Mode.Display:
                 return
-            process = subprocess.Popen(self.slurm_cmd + f' bash -c \'{self.cmd.cmd}\'', shell=True, encoding='utf-8', executable='/bin/bash')
+            process = subprocess.Popen(self.slurm_cmd + f' bash -c \'{self.cmd.cmd}\'', shell=True, executable='/bin/bash', stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             self.ps = process
             self.get_jobid()
+
+            self.output_thread_event = threading.Event()
+            def enqueue_output(out, queue):
+                for line in iter(out.readline, b''):
+                    try:
+                        line = line.decode('utf-8')
+                    except:
+                        pass
+                    queue.put(line)
+                    print(f'{self.jobid}: ', line.rstrip())
+                    if self.output_thread_event.is_set():
+                        break
+                out.close()
+            self.output_thread = threading.Thread(target=enqueue_output, args=(self.ps.stdout, self.queue))
+            self.output_thread.daemon = True
+            self.output_thread.start()
+            
             if self.sync:
                 process.wait()
             else:
@@ -158,6 +180,9 @@ class SlurmLauncher(LazyLLMLaunchersBase):
                     encoding='utf-8', executable='/bin/bash')
             if self.ps:
                 self.ps.terminate()
+                self.queue = Queue()
+                self.output_thread_event.set()
+                self.output_thread.join()
 
         @property
         def status(self):
