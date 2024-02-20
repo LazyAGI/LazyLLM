@@ -143,6 +143,9 @@ class AttrTree(object):
             v = getattr(v, name)
         return v
 
+    def __deepcopy__(self, memo):
+        return self
+
 root = AttrTree()
 
 
