@@ -1,7 +1,8 @@
 from typing import Any
-from lazyllm import LazyLLMRegisterMetaClass, package, bind, root
+from lazyllm import LazyLLMRegisterMetaClass, package, bind, root, Thread
 import copy
 import types
+import threading
 
 
 class FlowBase(object):
@@ -117,6 +118,10 @@ class NamedPipeline(Pipeline):
         super().__init__(post_action=post_action, **kw)
 
 
+_barr = threading.local()
+def barrier(args): _barr.impl.wait(); return args
+def _hook(v): _barr.impl = v
+
 #        /> module11 -> ... -> module1N -> out1 \
 #  input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #        \> module31 -> ... -> module3N -> out3 /
@@ -129,7 +134,12 @@ class Parallel(LazyLLMFlowsBase):
             except Exception as e:
                 print(f'an error occured when calling {it.__class__.__name__}()')
                 raise e
-        return package(_impl(it) for it in self.items)
+        nthreads = len(self.items)
+        impl = threading.Barrier(nthreads)
+        ts = [Thread(target=_impl, args=(it, ), prehook=bind(_hook, impl))
+              for it in self.items]
+        [t.start() for t in ts]
+        return package(t.get_result() for t in ts)
 
 
 class NamedParallel(Parallel):

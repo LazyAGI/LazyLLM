@@ -5,6 +5,8 @@ from typing import Any, Iterable, Callable
 from contextlib import contextmanager
 import signal
 import copy
+import threading
+from queue import Queue
 
 import lazyllm
 
@@ -254,3 +256,26 @@ class ReadOnlyWrapper(object):
     def __deepcopy__(self, memo):
         # drop obj
         return ReadOnlyWrapper()
+
+
+class Thread(threading.Thread):
+    def __init__(self, group=None, target=None, name=None,
+                 args=(), kwargs=None, *, prehook=None, daemon=None):
+        self.q = Queue()
+        super().__init__(group, self.work, name, (prehook, target, args), kwargs, daemon=daemon)
+
+    def work(self, prehook, target, args):
+        if prehook:
+            prehook()
+        try:
+            r = target(*args)
+        except Exception as e:
+            self.q.put(e)
+        else:
+            self.q.put(r)
+
+    def get_result(self):
+        r = self.q.get()
+        if isinstance(r, Exception):
+            raise r
+        return r
