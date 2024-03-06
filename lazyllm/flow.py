@@ -81,7 +81,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         def _exchange(item):
             item._args = [a.get_from(self) if isinstance(a, type(root)) else a for a in item._args]
         self.for_each(lambda x: isinstance(x, bind), _exchange)
-        self._run(*args, **kw)
+        return self(*args, **kw)
 
     def __repr__(self):
         representation = '' if self._flow_name is None else (self._flow_name + ' ')
@@ -135,3 +135,23 @@ class Parallel(LazyLLMFlowsBase):
 class NamedParallel(Parallel):
     def __init__(self, *, post_action=None, **kw):
         super().__init__(post_action=post_action, **kw)
+
+
+#                  /> in1 -> module11 -> ... -> module1N -> out1 \
+#  (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
+#                  \> in3 -> module31 -> ... -> module3N -> out3 /
+class Diverter(LazyLLMFlowsBase):
+    def _run(self, input=package()):
+        assert isinstance(input, package) and len(input) == len(self.items)
+        return package(it(inp) for it, inp in zip(self.items, input))
+
+
+#                  /> in1 \                            /> out1 \
+#  (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
+#                  \> in3 /                            \> out3 /
+# Attention: Cannot be used in async tasks, ie: training and deploy
+# TODO: add check for async tasks
+class Warp(LazyLLMFlowsBase):
+    def _run(self, input=package()):
+        assert isinstance(input, package) and 1 == len(self.items)
+        return package(self.items[0](inp) for inp in input)

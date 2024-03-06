@@ -6,6 +6,7 @@ from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase
 from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                    LazyLLMValidateBase, register as llmregister)
+from .module import Module
 from . import flows
 
 pipeline, namedPipeline = flows.pipeline, flows.namedPipeline
