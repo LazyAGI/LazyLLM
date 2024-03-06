@@ -8,7 +8,7 @@ class CollieFinetune(LazyLLMFinetuneBase):
                  base_model,
                  target_path,
                  merge_path=None,
-                 log_tag='LLM',
+                 model_name='LLM',
                  cp_files='tokeniz*',
                  launcher=launchers.slurm(),
                  **kw
@@ -38,7 +38,7 @@ class CollieFinetune(LazyLLMFinetuneBase):
         self.kw.check(kw)
         self.merge_path = merge_path
         self.cp_files = cp_files
-        self.model_name = log_tag
+        self.model_name = model_name
 
     def cmd(self, trainset, valset=None) -> str:
         if not self.kw['data_path']:

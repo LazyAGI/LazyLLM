@@ -35,7 +35,7 @@ class AlpacaloraFinetune(LazyLLMFinetuneBase):
             'lora_target_modules': '[query_key_value,dense,dense_4h_to_h,dense_h_to_4h]',
             'modules_to_save': '[word_embeddings, output_layer]',
             'deepspeed': deepspeed_config_path,
-            'prompt_with_background': True,
+            'prompt_with_background': False,
             'train_on_inputs': True,
         })
         self.kw.check(kw)
