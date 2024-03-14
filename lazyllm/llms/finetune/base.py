@@ -7,6 +7,7 @@ class LazyLLMFinetuneBase(LLMBase):
         super().__init__(launcher=launcher)
         self.base_model = base_model
         self.target_path = target_path
+        self.merge_path = None
 
     def cmd(*args, **kw) -> str:
         raise NotImplementedError('please implement function \'cmd\'')
@@ -29,3 +30,11 @@ class ArgsDict(dict):
     def parse_kwargs(self):
         string = ' '.join(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"' for k, v in self.items())
         return string
+
+
+class DummyFinetune(LazyLLMFinetuneBase):
+    def __init__(self, base_model='base', target_path='target', *, launcher=launchers.slurm()):
+        super().__init__(base_model, target_path, launcher=launchers.empty)
+
+    def cmd(*args, **kw) -> str:
+        return 'echo dummy finetune!'
