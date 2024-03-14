@@ -1,7 +1,10 @@
-from .flow import FlowBase, Pipeline, Parallel
+from .flow import FlowBase, Pipeline, Parallel, DPES
 import os
 import lazyllm
+from lazyllm import FlatList
 import json
+import httpx
+
 
 class ModuleBase(object):
     def __init__(self):
@@ -12,28 +15,40 @@ class ModuleBase(object):
             self.submodules.append(value)
         return super().__setattr__(name, value)
 
-    def forward(self, *args, **kw):
-        raise NotImplementedError
+    def __call__(self, *args, **kw): return self.forward(*args, **kw)
 
-    def __call__(self, *args, **kw):
-        return self.forward(*args, **kw)
+    # interfaces
+    def forward(self, *args, **kw): raise NotImplementedError
+    def _get_train_tasks(self): return None
+    def _get_deploy_tasks(self): return None
+    def _get_eval_tasks(self): return None
 
-    # return Pipeline(train, barrier, deploy)
-    def _get_update_ppl(self) -> Pipeline:
-        return None
-
-    def update(self, recursive=True):
+    # update module(train or finetune), 
+    def update(self, *, mode='all', recursive=True):
+        assert mode in ('all', 'server')
         # dfs to get all train tasks
-        items, stack = [], [(self, iter(self.submodules if recursive else []))]
+        train_tasks, deploy_tasks, eval_tasks = FlatList(), FlatList(), FlatList()
+        stack = [(self, iter(self.submodules if recursive else []))]
         while len(stack) > 0:
             try:
                 top = next(stack[-1][1])
                 stack.append((top, iter(top.submodules)))
             except StopIteration:
-                item = stack.pop()[0]._get_update_ppl()
-                if item:
-                    items.append(item)
-        Parallel(*items).start()
+                top = stack.pop()[0]
+                train_tasks.absorb(top._get_train_tasks())
+                deploy_tasks.absorb(top._get_deploy_tasks())
+                eval_tasks.absorb(top._get_eval_tasks())
+
+        if mode == 'all' and len(train_tasks) > 0:
+            Parallel(*train_tasks).start()
+        if len(deploy_tasks) > 0:
+            DPES(*deploy_tasks).start()
+        if mode == 'all' and len(eval_tasks) > 0:
+            DPES(*eval_tasks).start()
+
+    def update_server(self, *, recursive=True): return self.update(mode='server', recursive=recursive)
+    def start(self): return self.update(mode='server', recursive=True)
+    def restart(self): return self.start()
 
     # TODO: add lazyllm.eval
     def eval(self, input_or_path):
@@ -45,9 +60,13 @@ class ModuleBase(object):
             output =  self(input_or_path)
         return output
 
+    def _overwrote(self, f):
+        return getattr(self.__class__, f) is not getattr(__class__, f)
+
 
 class SequenceModule(ModuleBase):
     def __init__(self, *args):
+        super().__init__()
         self.submodules = list(args)
 
     def forward(self, *args, **kw):
@@ -57,11 +76,13 @@ class SequenceModule(ModuleBase):
 
 class UrlModule(ModuleBase):
     def __init__(self, url):
+        super().__init__()
         self.url = url
         
     def forward(self, input):
-        output = curl(self.url, input)
-        return output
+        with httpx.Client(timeout=90) as client:
+           response = client.post(self.url, json={'input': input}, headers={'Content-Type': 'application/json'})
+        return response.text
 
 
 class ActionModule(ModuleBase):
@@ -69,33 +90,61 @@ class ActionModule(ModuleBase):
         super().__init__()
         action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: self.submodules.append(x))
         self.action = action
-        
+
     def forward(self, *args, **kw):
         handle = self.action.start(*args, **kw)
         return handle
 
 
+class ServerModule(ModuleBase):
+    def __init__(self, m, pre=None, post=None):
+        super().__init__()
+        self.m = m
+        self._url = None
+        self._pre_func = pre
+        self._post_func = post
+
+    def forward(self, input):
+        assert self._url is not None, f'Please start {__class__} first'
+        with httpx.Client(timeout=90) as client:
+           response = client.post(self._url, json={'input': input}, headers={'Content-Type': 'application/json'})
+        return response.text
+    
+    def url(self, url):
+        print('url:', url)
+        self._url = url
+
+    def _get_deploy_tasks(self):
+        return Pipeline(
+            lazyllm.deploy.RelayServer(func=self.m, pre_func=self._pre_func, post_func=self._post_func),
+            self.url)
+
 class TrainableModule(ModuleBase):
     def __init__(self, base_model, target_path):
+        super().__init__()
         self.base_model = base_model
         self.target_path = target_path
         self._train = lazyllm.train.auto
         self._finetune = lazyllm.finetune.auto
         self._deploy = lazyllm.deploy.auto
     
-    def _get_update_ppl(self):
-        trainset_getf = lambda : lazyllm.package(self._trainset, None) if isinstance(self._trainset, str) else self._trainset
+    def _get_train_tasks(self):
+        trainset_getf = lambda : lazyllm.package(self._trainset, None) \
+                        if isinstance(self._trainset, str) else self._trainset
         if self.mode == 'train':
             train = self._train(self.base_model, os.path.join(self.target_path, 'train'))
         elif self.mode == 'finetune':
             train = self._finetune(self.base_model, os.path.join(self.target_path, 'finetune'))
         else:
             raise RuntimeError('mode must be train or finetune')
-        ppl = [trainset_getf, train, self._deploy(pre_func=self._pre_func, post_func=self._post_func)]
-        return Pipeline(*ppl, post_action=Parallel(self.url, self.eval(self._evalset)))
+        return Pipeline(trainset_getf, train)
+
+    def _get_deploy_tasks(self):
+        return Pipeline(lambda *a: self.target_path,
+            self._deploy(pre_func=self._pre_func, post_func=self._post_func))
 
     def _forward(self, *args, **kw):
-        output = curl(self.url, input)
+        output = curl(self._url, input)
         return output
 
     def __getattr__(self, key):
@@ -108,6 +157,12 @@ class TrainableModule(ModuleBase):
         elif key.startswith('_') and key[1:] in keys:
             raise ValueError(f'Please call `{key[1:]}()` to set `self.{key}` first.')
         raise AttributeError(f'{__class__} object has no attribute {key}')
+
+    # change to urlmodule when pickling to server process
+    def __reduce__(self):
+        assert hasattr(self, '_url')
+        m = UrlModule(self._url)
+        return m.__reduce__()
 
 
 class Module(object):

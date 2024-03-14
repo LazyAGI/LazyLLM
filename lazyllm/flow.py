@@ -26,7 +26,7 @@ class FlowBase(object):
             for it in self.items:
                 if getattr(it, '_flow_name', None) == name:
                     return it
-        return super(__class__, self).__getattr__(name)
+        raise ValueError(f'{self.__class__} object has no attribute {name}')
 
     @property
     def is_root(self):
@@ -68,7 +68,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         super(__class__, self).__init__(*args)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
 
-    def __call__(self, args):
+    def __call__(self, args=package()):
         output = self._run(args)
         if self.post_action is not None:
             self.post_action(*output) if isinstance(output, package) else self.post_action(output) 
@@ -147,6 +147,20 @@ class NamedParallel(Parallel):
         super().__init__(post_action=post_action, **kw)
 
 
+# parallel in dataflow, serial in executing. dataflow is the same as parallel, while
+# it's items will be executed in order. 
+class DPES(LazyLLMFlowsBase):
+    def _run(self, input=package()):
+        def _impl(it):
+            try:
+                return it(*input) if (isinstance(input, package) and not 
+                        isinstance(it, LazyLLMFlowsBase)) else it(input)
+            except Exception as e:
+                print(f'an error occured when calling {it.__class__.__name__}()')
+                raise e
+        return package(_impl(it) for it in self.items)
+
+
 #                  /> in1 -> module11 -> ... -> module1N -> out1 \
 #  (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #                  \> in3 -> module31 -> ... -> module3N -> out3 /
@@ -165,3 +179,25 @@ class Warp(LazyLLMFlowsBase):
     def _run(self, input=package()):
         assert isinstance(input, package) and 1 == len(self.items)
         return package(self.items[0](inp) for inp in input)
+
+
+# switch(exp):
+#     case cond1: input -> module11 -> ... -> module1N -> out; break
+#     case cond2: input -> module21 -> ... -> module2N -> out; break
+#     case cond3: input -> module31 -> ... -> module3N -> out; break
+class Switch(LazyLLMFlowsBase):
+    # Switch({cond1: M1, cond2: M2, ..., condN: MN})
+    # Switch(cond1, M1, cond2, M2, ..., condN, MN)
+    def __init__(self, *args, post_action=None, **kw):
+        if len(args) == 1 and isinstance(args[0], dict):
+            self.keys, items = list(args[0].keys()), list(args[0].values())
+        else:
+            self.keys, items = args[0::2], args[1::2]
+        super().__init__(*items, post_action=post_action, **kw)
+
+    def _run(self, input=package()):
+        assert isinstance(input, package) and len(input) == 2
+        exp, input = input
+        for idx, cond in enumerate(self.conds):
+            if (callable(cond) and cond(exp) is True) or exp == cond:
+                return self.items[idx](input) 

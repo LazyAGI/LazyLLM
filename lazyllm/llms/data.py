@@ -1,9 +1,10 @@
-from .core import LLMBase
+from .core import LLMBase, register
 
 
 class LazyLLMDataprocBase(LLMBase):
     pass
 
 
-class GenCFQSData(LazyLLMDataprocBase):
-    pass
+@register('dataproc')
+def dummy():
+    return 'trainset', 'evalset'

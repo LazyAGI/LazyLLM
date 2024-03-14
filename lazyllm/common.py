@@ -74,6 +74,14 @@ class LazyDict(dict):
     def set_default(self, key):
         assert isinstance(key, str), 'default key must be str'
         self._default = key
+
+
+class FlatList(list):
+    def absorb(self, item):
+        if isinstance(item, list):
+            self.extend(item)
+        elif item is not None:
+            self.append(item)
         
 
 group_template = '''\

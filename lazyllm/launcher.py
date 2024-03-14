@@ -66,7 +66,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
         print("Command:", cmd)
         if lazyllm.mode == lazyllm.Mode.Display:
             return
-        p = subprocess.Popen(cmd, shell=True, encoding='utf-8', executable='/bin/bash')
+        p = subprocess.Popen(cmd.cmd, shell=True, encoding='utf-8', executable='/bin/bash')
         p.wait()
         return
 
@@ -75,7 +75,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
 # LazyLLMCMD's post_function can get message form this class.
 class Job(object):
     def __init__(self, cmd, *, sync=True):
-        self.cmd = cmd.cmd
+        self.cmd = cmd
         self.return_value = cmd.return_value
         self.post_function = cmd.post_function
         self.sync = sync
@@ -214,7 +214,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
     # TODO(wangzhihong): support configs; None -> lookup config
     def __init__(self, partition=None, nnode=1, nproc=1, ngpus=None, timeout=None, *, sync=True):
-        self.partition = partition
+        self.partition = partition if partition else os.getenv('LAZYLLM_SLURM_PART', None)
         self.nnode, self.nproc, self.ngpus, self.timeout =nnode, nproc, ngpus, timeout
         self.sync = sync
         self.num_can_use_nodes = 5
