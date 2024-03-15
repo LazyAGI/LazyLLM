@@ -1,5 +1,5 @@
 from typing import Any
-from lazyllm import LazyLLMRegisterMetaClass, package, bind, root, Thread
+from lazyllm import LazyLLMRegisterMetaClass, package, bind, root, Thread, ReadOnlyWrapper
 import copy
 import types
 import threading
@@ -82,7 +82,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         def _exchange(item):
             item._args = [a.get_from(self) if isinstance(a, type(root)) else a for a in item._args]
         self.for_each(lambda x: isinstance(x, bind), _exchange)
-        return self(*args, **kw)
+        return self, self(*args, **kw)
 
     def __repr__(self):
         representation = '' if self._flow_name is None else (self._flow_name + ' ')
@@ -93,6 +93,12 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         sub_rep = '\n'.join(['    ' + s for s in sub_rep.split('\n')])
         representation += sub_rep + '\n]'
         return representation
+
+    def wait(self):
+        def filter(x):
+            return hasattr(x, 'job') and isinstance(x.job, ReadOnlyWrapper) and not x.job.isNone()
+        self.for_each(filter, lambda x: x.job.wait())
+        return self
 
 
 # input -> module1 -> module2 -> ... -> moduleN -> output

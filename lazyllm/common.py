@@ -265,6 +265,9 @@ class ReadOnlyWrapper(object):
         # drop obj
         return ReadOnlyWrapper()
 
+    def isNone(self):
+        return self.obj is None
+
 
 class Thread(threading.Thread):
     def __init__(self, group=None, target=None, name=None,

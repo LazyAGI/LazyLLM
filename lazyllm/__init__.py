@@ -41,6 +41,7 @@ __all__ = [
     'Thread',
 
     # modules
+    'Module',
     'UrlModule',
     'TrainableModule',
     'SequenceModule',
