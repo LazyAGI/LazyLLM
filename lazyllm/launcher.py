@@ -1,7 +1,6 @@
 from typing import Any
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final
-from .flow import FlowBase
 from enum import Enum
 import os
 import re
@@ -102,6 +101,9 @@ class Job(object):
         time.sleep(2)
         self.start()
 
+    def wait(self):
+        pass
+
 @final
 class SlurmLauncher(LazyLLMLaunchersBase):
     # In order to obtain the jobid to monitor and terminate the job more
@@ -174,7 +176,6 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
         def stop(self):
             if self.jobid:
-                # os.system(f"scancel --quiet {self.jobid}")
                 cmd = f"scancel --quiet {self.jobid}"
                 subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     encoding='utf-8', executable='/bin/bash')
@@ -183,6 +184,10 @@ class SlurmLauncher(LazyLLMLaunchersBase):
                 self.queue = Queue()
                 self.output_thread_event.set()
                 self.output_thread.join()
+        
+        def wait(self):
+            if self.ps:
+                self.ps.wait()
 
         @property
         def status(self):

@@ -9,16 +9,16 @@ from ..lightllm import restart_service
 
 import cloudpickle
 
-def dump_func(f, default=None):
-    if f is None:
-        return default
-    return base64.b64encode(cloudpickle.dumps(f)).decode('utf-8')
+def dump_func(f, old_value=None):
+    f = old_value if f is None else f
+    return None if f is None else base64.b64encode(cloudpickle.dumps(f)).decode('utf-8')
 
 
 class RelayServer(LazyLLMDeployBase):
     def __init__(self, port=None, *, func=None, pre_func=None, post_func=None,
                  launcher=launchers.slurm(sync=False)):
-        self.func = dump_func(func)
+        # func must dump in __call__ to wait for dependancies.
+        self.func = func
         self.pre = dump_func(pre_func)
         self.post = dump_func(post_func)
         self.port = port

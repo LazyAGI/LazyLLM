@@ -27,16 +27,16 @@ async def generate(request: Request):
         origin = input
 
         if args.before_function:
+            assert(callable(before_func)), 'before_func must be callable'
             input = before_func(input)
         output = func(input)
         if args.after_function:
-            # res = await after_func(input_json, response.content)
+            assert(callable(after_func)), 'after_func must be callable'
             output = after_func(origin, output)
         return Response(content=output)
 
     except Exception as e:
-        err_str = str(e)
-        return Response(content=err_str, status_code=500)
+        return Response(content=str(e), status_code=500)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

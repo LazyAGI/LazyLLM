@@ -11,7 +11,7 @@ class LazyLLMDeployBase(LLMBase):
 
 
 class DummyDeploy(LazyLLMDeployBase, flows.NamedPipeline):
-    def __init__(self, launcher=launchers.empty):
+    def __init__(self, launcher=launchers.slurm(sync=False), **kw):
         super().__init__(launcher=launcher)
         def func():
             def impl(x):
