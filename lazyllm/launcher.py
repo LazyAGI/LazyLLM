@@ -1,7 +1,6 @@
 from typing import Any
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final
-from .flow import FlowBase
 from enum import Enum
 import os
 import re
@@ -66,7 +65,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
         print("Command:", cmd)
         if lazyllm.mode == lazyllm.Mode.Display:
             return
-        p = subprocess.Popen(cmd, shell=True, encoding='utf-8', executable='/bin/bash')
+        p = subprocess.Popen(cmd.cmd, shell=True, encoding='utf-8', executable='/bin/bash')
         p.wait()
         return
 
@@ -75,7 +74,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
 # LazyLLMCMD's post_function can get message form this class.
 class Job(object):
     def __init__(self, cmd, *, sync=True):
-        self.cmd = cmd.cmd
+        self.cmd = cmd
         self.return_value = cmd.return_value
         self.post_function = cmd.post_function
         self.sync = sync
@@ -101,6 +100,9 @@ class Job(object):
         self.stop()
         time.sleep(2)
         self.start()
+
+    def wait(self):
+        pass
 
 @final
 class SlurmLauncher(LazyLLMLaunchersBase):
@@ -174,7 +176,6 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
         def stop(self):
             if self.jobid:
-                # os.system(f"scancel --quiet {self.jobid}")
                 cmd = f"scancel --quiet {self.jobid}"
                 subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     encoding='utf-8', executable='/bin/bash')
@@ -183,6 +184,10 @@ class SlurmLauncher(LazyLLMLaunchersBase):
                 self.queue = Queue()
                 self.output_thread_event.set()
                 self.output_thread.join()
+        
+        def wait(self):
+            if self.ps:
+                self.ps.wait()
 
         @property
         def status(self):
@@ -214,7 +219,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
     # TODO(wangzhihong): support configs; None -> lookup config
     def __init__(self, partition=None, nnode=1, nproc=1, ngpus=None, timeout=None, *, sync=True):
-        self.partition = partition
+        self.partition = partition if partition else os.getenv('LAZYLLM_SLURM_PART', None)
         self.nnode, self.nproc, self.ngpus, self.timeout =nnode, nproc, ngpus, timeout
         self.sync = sync
         self.num_can_use_nodes = 5

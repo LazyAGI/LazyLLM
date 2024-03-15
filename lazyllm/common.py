@@ -5,6 +5,8 @@ from typing import Any, Iterable, Callable
 from contextlib import contextmanager
 import signal
 import copy
+import threading
+from queue import Queue
 
 import lazyllm
 
@@ -72,6 +74,14 @@ class LazyDict(dict):
     def set_default(self, key):
         assert isinstance(key, str), 'default key must be str'
         self._default = key
+
+
+class FlatList(list):
+    def absorb(self, item):
+        if isinstance(item, list):
+            self.extend(item)
+        elif item is not None:
+            self.append(item)
         
 
 group_template = '''\
@@ -254,3 +264,29 @@ class ReadOnlyWrapper(object):
     def __deepcopy__(self, memo):
         # drop obj
         return ReadOnlyWrapper()
+
+    def isNone(self):
+        return self.obj is None
+
+
+class Thread(threading.Thread):
+    def __init__(self, group=None, target=None, name=None,
+                 args=(), kwargs=None, *, prehook=None, daemon=None):
+        self.q = Queue()
+        super().__init__(group, self.work, name, (prehook, target, args), kwargs, daemon=daemon)
+
+    def work(self, prehook, target, args):
+        if prehook:
+            prehook()
+        try:
+            r = target(*args)
+        except Exception as e:
+            self.q.put(e)
+        else:
+            self.q.put(r)
+
+    def get_result(self):
+        r = self.q.get()
+        if isinstance(r, Exception):
+            raise r
+        return r

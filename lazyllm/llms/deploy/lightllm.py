@@ -2,6 +2,7 @@ import time
 import json
 import random
 import requests
+import httpx
 
 import lazyllm
 from lazyllm import launchers, flows, package, LazyLLMCMD, bind, _0, timeout
@@ -28,6 +29,13 @@ data = {
 def show_io(s21):
     print(f'input or output is: {s21}')
     return s21
+
+def evaluate(url):
+    def impl(input):
+        with httpx.Client(timeout=90) as client:
+           response = client.post(url, json=input, headers={'Content-Type': 'application/json'})
+        return response
+    return impl
 
 def verify_launch_server(job):
     while True:
@@ -125,12 +133,13 @@ class Lightllm(LazyLLMDeployBase, flows.NamedPipeline):
                                  self.max_total_token_num,
                                  self.eos_id
                                  ),
-            deploy_stage3 = deploy.RelayServer(
+            deploy_stage3 = evaluate,
+            deploy_stage4 = deploy.RelayServer(
                                 pre_func=self.pre_func,
                                 post_func=self.post_func,
                                 port=self.open_port,
                                 launcher=relay_launcher),
-            deploy_stage4 = show_io,
+            deploy_stage5 = show_io,
 	    )
 
     def __call__(self, base_model):

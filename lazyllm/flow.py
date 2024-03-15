@@ -1,7 +1,8 @@
 from typing import Any
-from lazyllm import LazyLLMRegisterMetaClass, package, bind, root
+from lazyllm import LazyLLMRegisterMetaClass, package, bind, root, Thread, ReadOnlyWrapper
 import copy
 import types
+import threading
 
 
 class FlowBase(object):
@@ -25,7 +26,7 @@ class FlowBase(object):
             for it in self.items:
                 if getattr(it, '_flow_name', None) == name:
                     return it
-        return super(__class__, self).__getattr__(name)
+        raise ValueError(f'{self.__class__} object has no attribute {name}')
 
     @property
     def is_root(self):
@@ -67,7 +68,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         super(__class__, self).__init__(*args)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
 
-    def __call__(self, args):
+    def __call__(self, args=package()):
         output = self._run(args)
         if self.post_action is not None:
             self.post_action(*output) if isinstance(output, package) else self.post_action(output) 
@@ -81,7 +82,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         def _exchange(item):
             item._args = [a.get_from(self) if isinstance(a, type(root)) else a for a in item._args]
         self.for_each(lambda x: isinstance(x, bind), _exchange)
-        self._run(*args, **kw)
+        return self, self(*args, **kw)
 
     def __repr__(self):
         representation = '' if self._flow_name is None else (self._flow_name + ' ')
@@ -92,6 +93,12 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         sub_rep = '\n'.join(['    ' + s for s in sub_rep.split('\n')])
         representation += sub_rep + '\n]'
         return representation
+
+    def wait(self):
+        def filter(x):
+            return hasattr(x, 'job') and isinstance(x.job, ReadOnlyWrapper) and not x.job.isNone()
+        self.for_each(filter, lambda x: x.job.wait())
+        return self
 
 
 # input -> module1 -> module2 -> ... -> moduleN -> output
@@ -117,6 +124,10 @@ class NamedPipeline(Pipeline):
         super().__init__(post_action=post_action, **kw)
 
 
+_barr = threading.local()
+def barrier(args): _barr.impl.wait(); return args
+def _hook(v): _barr.impl = v
+
 #        /> module11 -> ... -> module1N -> out1 \
 #  input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #        \> module31 -> ... -> module3N -> out3 /
@@ -129,9 +140,70 @@ class Parallel(LazyLLMFlowsBase):
             except Exception as e:
                 print(f'an error occured when calling {it.__class__.__name__}()')
                 raise e
-        return package(_impl(it) for it in self.items)
+        nthreads = len(self.items)
+        impl = threading.Barrier(nthreads)
+        ts = [Thread(target=_impl, args=(it, ), prehook=bind(_hook, impl))
+              for it in self.items]
+        [t.start() for t in ts]
+        return package(t.get_result() for t in ts)
 
 
 class NamedParallel(Parallel):
     def __init__(self, *, post_action=None, **kw):
         super().__init__(post_action=post_action, **kw)
+
+
+# parallel in dataflow, serial in executing. dataflow is the same as parallel, while
+# it's items will be executed in order. 
+class DPES(LazyLLMFlowsBase):
+    def _run(self, input=package()):
+        def _impl(it):
+            try:
+                return it(*input) if (isinstance(input, package) and not 
+                        isinstance(it, LazyLLMFlowsBase)) else it(input)
+            except Exception as e:
+                print(f'an error occured when calling {it.__class__.__name__}()')
+                raise e
+        return package(_impl(it) for it in self.items)
+
+
+#                  /> in1 -> module11 -> ... -> module1N -> out1 \
+#  (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
+#                  \> in3 -> module31 -> ... -> module3N -> out3 /
+class Diverter(LazyLLMFlowsBase):
+    def _run(self, input=package()):
+        assert isinstance(input, package) and len(input) == len(self.items)
+        return package(it(inp) for it, inp in zip(self.items, input))
+
+
+#                  /> in1 \                            /> out1 \
+#  (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
+#                  \> in3 /                            \> out3 /
+# Attention: Cannot be used in async tasks, ie: training and deploy
+# TODO: add check for async tasks
+class Warp(LazyLLMFlowsBase):
+    def _run(self, input=package()):
+        assert isinstance(input, package) and 1 == len(self.items)
+        return package(self.items[0](inp) for inp in input)
+
+
+# switch(exp):
+#     case cond1: input -> module11 -> ... -> module1N -> out; break
+#     case cond2: input -> module21 -> ... -> module2N -> out; break
+#     case cond3: input -> module31 -> ... -> module3N -> out; break
+class Switch(LazyLLMFlowsBase):
+    # Switch({cond1: M1, cond2: M2, ..., condN: MN})
+    # Switch(cond1, M1, cond2, M2, ..., condN, MN)
+    def __init__(self, *args, post_action=None, **kw):
+        if len(args) == 1 and isinstance(args[0], dict):
+            self.keys, items = list(args[0].keys()), list(args[0].values())
+        else:
+            self.keys, items = args[0::2], args[1::2]
+        super().__init__(*items, post_action=post_action, **kw)
+
+    def _run(self, input=package()):
+        assert isinstance(input, package) and len(input) == 2
+        exp, input = input
+        for idx, cond in enumerate(self.conds):
+            if (callable(cond) and cond(exp) is True) or exp == cond:
+                return self.items[idx](input) 
