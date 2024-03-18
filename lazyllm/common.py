@@ -177,7 +177,7 @@ class Placeholder(object):
         return f'placeholder._{self.idx}'
 
 for i in range(10):
-    exec(f'_{i} = Placeholder({i})')
+    vars()[f'_{i}'] = Placeholder(i)
 
 def _setattr(self, key, v):
     raise RuntimeError('Cannot set attr for Placeholder')

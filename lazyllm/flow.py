@@ -101,6 +101,13 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         return self
 
 
+def invoke(it, input):
+    if isinstance(input, package) and not isinstance(it, LazyLLMFlowsBase):
+        return it(*input)
+    else:
+        return it(input)
+
+
 # input -> module1 -> module2 -> ... -> moduleN -> output
 #                                               \> post-action
 # TODO(wangzhihong): support mult-input and output
@@ -109,10 +116,7 @@ class Pipeline(LazyLLMFlowsBase):
         output = input
         for it in self.items:
             try:
-                if isinstance(output, package) and not isinstance(it, LazyLLMFlowsBase):
-                    output = it(*output)
-                else:
-                    output = it(output)
+                output = invoke(it, output)
             except Exception as e:
                 print(f'an error occured when calling {it.__class__.__name__}()')
                 raise e
@@ -135,8 +139,7 @@ class Parallel(LazyLLMFlowsBase):
     def _run(self, input=package()):
         def _impl(it):
             try:
-                return it(*input) if (isinstance(input, package) and not 
-                        isinstance(it, LazyLLMFlowsBase)) else it(input)
+                return invoke(it, input)
             except Exception as e:
                 print(f'an error occured when calling {it.__class__.__name__}()')
                 raise e
@@ -159,8 +162,7 @@ class DPES(LazyLLMFlowsBase):
     def _run(self, input=package()):
         def _impl(it):
             try:
-                return it(*input) if (isinstance(input, package) and not 
-                        isinstance(it, LazyLLMFlowsBase)) else it(input)
+                return invoke(it, input)
             except Exception as e:
                 print(f'an error occured when calling {it.__class__.__name__}()')
                 raise e
@@ -173,7 +175,7 @@ class DPES(LazyLLMFlowsBase):
 class Diverter(LazyLLMFlowsBase):
     def _run(self, input=package()):
         assert isinstance(input, package) and len(input) == len(self.items)
-        return package(it(inp) for it, inp in zip(self.items, input))
+        return package(invoke(it, inp) for it, inp in zip(self.items, input))
 
 
 #                  /> in1 \                            /> out1 \
@@ -184,7 +186,7 @@ class Diverter(LazyLLMFlowsBase):
 class Warp(LazyLLMFlowsBase):
     def _run(self, input=package()):
         assert isinstance(input, package) and 1 == len(self.items)
-        return package(self.items[0](inp) for inp in input)
+        return package(invoke(self.items[0], inp) for inp in input)
 
 
 # switch(exp):
@@ -205,5 +207,19 @@ class Switch(LazyLLMFlowsBase):
         assert isinstance(input, package) and len(input) == 2
         exp, input = input
         for idx, cond in enumerate(self.conds):
-            if (callable(cond) and cond(exp) is True) or exp == cond:
-                return self.items[idx](input) 
+            if (callable(cond) and cond(exp) is True) or exp == cond or cond == 'default':
+                return invoke(self.items[idx], input)
+
+#  in -> module1 -> ... -> moduleN -> exp, out -> out
+#   ⬆------------------------------------|
+class Loop(LazyLLMFlowsBase):
+    def __init__(self, item, cond, post_action=None):
+        super().__init__(item, post_action=post_action)
+        self.cond = cond
+
+    def _run(self, input=package()):
+        while True:
+            exp, input = invoke(self.items[0], input)
+            if (callable(self.cond) and self.cond(exp) is True) or self.cond == exp:
+                break
+        return input

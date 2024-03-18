@@ -7,7 +7,7 @@ from lazyllm import launchers, LazyLLMCMD, bind, _0
 from ..base import LazyLLMDeployBase
 from ..lightllm import restart_service
 
-import cloudpickle
+from lazyllm.thirdparty import cloudpickle
 
 def dump_func(f, old_value=None):
     f = old_value if f is None else f
