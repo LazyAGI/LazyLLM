@@ -6,6 +6,7 @@ from contextlib import contextmanager
 import signal
 import copy
 import threading
+import types
 from queue import Queue
 
 import lazyllm
@@ -82,7 +83,7 @@ class FlatList(list):
             self.extend(item)
         elif item is not None:
             self.append(item)
-        
+
 
 group_template = '''\
 class LazyLLM{name}Base(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].base):
@@ -127,7 +128,8 @@ def _get_base_cls_from_registry(cls_str, *, registry=LazyLLMRegisterMetaClass.al
 class package(tuple):
     def __new__(cls, *args):
         return super(__class__, cls).__new__(cls, args[0]
-            if len(args) == 1 and isinstance(args[0], Iterable) else args)
+            # Cannot use `Iterable` here because of str
+            if len(args) == 1 and isinstance(args[0], (tuple, list, types.GeneratorType)) else args)
 
 
 setattr(builtins, 'package', package)
@@ -290,3 +292,9 @@ class Thread(threading.Thread):
         if isinstance(r, Exception):
             raise r
         return r
+
+
+def ID(*inputs):
+    if len(inputs) == 1:
+        return inputs[0]
+    return package(*inputs)

@@ -9,9 +9,10 @@ class PackageWrapper(object):
         if __name in ('_Wrapper__key', '_Wrapper__package'):
             return super(__class__, self).__getattribute__(__name)
         try:
-            return getattr(importlib.import_module(self.__key, package=self.__package), __name)
+            return getattr(importlib.import_module(
+                self._Wrapper__key, package=self._Wrapper__package), __name)
         except (ImportError, ModuleNotFoundError):
-            raise ImportError(f'Cannot import module {self.__key}, please install it first')
+            raise ImportError(f'Cannot import module {self._Wrapper__key}, please install it first')
 
 
 modules = ['cloudpickle', 'transformers', 'peft', 'deepspeed']

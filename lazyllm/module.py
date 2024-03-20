@@ -81,6 +81,12 @@ class SequenceModule(ModuleBase):
     def forward(self, *args, **kw):
         ppl = Pipeline(*self.submodules)
         return ppl.start(*args, **kw)
+
+    def __repr__(self):
+        representation = '<SequenceModule> [\n'
+        for m in self.submodules:
+            representation += '\n'.join(['    ' + s for s in repr(m).split('\n')]) + '\n'
+        return representation + ']'
     
 
 class UrlModule(ModuleBase):
@@ -98,16 +104,32 @@ class UrlModule(ModuleBase):
            response = client.post(self._url, json={'input': input}, headers={'Content-Type': 'application/json'})
         return response.text
 
+    def __repr__(self):
+        return f'<UrlModule> [{self._url}]'
+
 
 class ActionModule(ModuleBase):
     def __init__(self, action):
         super().__init__()
-        action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: self.submodules.append(x))
+        if isinstance(action, FlowBase):
+            action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: self.submodules.append(x))
         self.action = action
 
     def forward(self, *args, **kw):
-        handle = self.action.start(*args, **kw)
-        return handle
+        if isinstance(self.action, FlowBase):
+            ppl, r = self.action.start(*args, **kw)
+        else:
+            r = self.action(*args, **kw)
+        return r
+
+    def __repr__(self):
+        representation = '<ActionModule> ['
+        if isinstance(self.action, (FlowBase, ActionModule, ServerModule, SequenceModule)):
+            sub_rep = '\n'.join(['    ' + s for s in repr(self.action).split('\n')])
+            representation += '\n' + sub_rep + '\n'
+        else:
+            representation += repr(self.action)
+        return representation + ']'
 
 
 class ServerModule(UrlModule):
@@ -127,6 +149,15 @@ class ServerModule(UrlModule):
         assert hasattr(self, '_url') and self._url is not None
         m = UrlModule(self._url)
         return m.__reduce__()
+
+    def __repr__(self):
+        representation = '<ServerModule> ['
+        if isinstance(self.action, (FlowBase, ActionModule, ServerModule, SequenceModule)):
+            sub_rep = '\n'.join(['    ' + s for s in repr(self.action).split('\n')])
+            representation += '\n' + sub_rep + '\n'
+        else:
+            representation += repr(self.action)
+        return representation + ']'
 
 
 class TrainableModule(UrlModule):
@@ -170,6 +201,11 @@ class TrainableModule(UrlModule):
         assert hasattr(self, '_url') and self._url is not None
         m = UrlModule(self._url)
         return m.__reduce__()
+
+    def __repr__(self):
+        mode = '-Train' if self._mode == 'train' else (
+               '-Finetune' if self._mode == 'finetune' else '')
+        return f'<TrainableModule{mode}> [{self.base_model}]'
 
 
 class Module(object):
