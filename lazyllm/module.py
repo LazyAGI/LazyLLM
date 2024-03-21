@@ -36,11 +36,11 @@ class ModuleBase(object):
     def _get_eval_tasks(self):
         def set_result(x): self.eval_result = x
         if self._evalset:
-            return Pipeline(lambda: [self(item) for item in self._evalset],
+            return Pipeline(lambda: [self(**item) if isinstance(item, dict) else self(item)
+                                     for item in self._evalset],
                             lambda x: self.eval_result_collet_f(x),
                             set_result)
-        else:
-            return None
+        return None
 
     # update module(train or finetune), 
     def update(self, *, mode='train', recursive=True):
@@ -90,22 +90,42 @@ class SequenceModule(ModuleBase):
     
 
 class UrlModule(ModuleBase):
-    def __init__(self, url):
+    def __init__(self, url, *, remote_prompt=False):
         super().__init__()
-        self._url = url
+        self._url, self._prompt_url = url, None
+        self._remote_prompt = remote_prompt
+        self._prompt, self._response_split = '{input}', None
 
     def url(self, url):
         print('url:', url)
         self._url = url
+        if self._remote_prompt:
+            self._prompt_url = url[::-1].replace('/generate'[::-1], '/prompt'[::-1], 1)[::-1]
         
-    def forward(self, input):
+    def forward(self, __input=None, **kw):
         assert self._url is not None, f'Please start {self.__class__} first'
-        with httpx.Client(timeout=90) as client:
-           response = client.post(self._url, json={'input': input}, headers={'Content-Type': 'application/json'})
-        return response.text
+        assert (__input is None) ^ (len(kw) == 0)
 
-    def __repr__(self):
-        return f'<UrlModule> [{self._url}]'
+        if __input is not None:
+            kw['input'] = __input
+        if not self._remote_prompt:
+            kw = dict(input=self._prompt.format(**kw))
+
+        with httpx.Client(timeout=90) as client:
+            response = client.post(self._url, json=kw,
+                                   headers={'Content-Type': 'application/json'})
+        return response.text if self._remote_prompt or self._response_split is None else \
+               response.text.split(self._response_split)[-1]
+
+    def prompt(self, prompt='{input}', response_split=None, update_remote=True):
+        if self._remote_prompt and self._prompt_url and update_remote and (
+                self._prompt != prompt or self._response_split != response_split):
+            with httpx.Client(timeout=90) as client:
+                r = client.post(self._prompt_url, json=dict(prompt=prompt, response_split=response_split),
+                                headers={'Content-Type': 'application/json'}).text
+                assert r == 'set prompt done!'
+            self._prompt, self._response_split = prompt, response_split
+        return self
 
 
 class ActionModule(ModuleBase):
@@ -134,7 +154,7 @@ class ActionModule(ModuleBase):
 
 class ServerModule(UrlModule):
     def __init__(self, m, pre=None, post=None):
-        super().__init__(url=None)
+        super().__init__(url=None, remote_prompt=True)
         self.m = m
         self._pre_func = pre
         self._post_func = post
@@ -147,7 +167,8 @@ class ServerModule(UrlModule):
     # change to urlmodule when pickling to server process
     def __reduce__(self):
         assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url)
+        m = UrlModule(self._url, remote_prompt=self._response_split).prompt(
+                prompt=self._prompt, response_split=self._response_split, update_remote=False)
         return m.__reduce__()
 
     def __repr__(self):
@@ -162,7 +183,7 @@ class ServerModule(UrlModule):
 
 class TrainableModule(UrlModule):
     def __init__(self, base_model, target_path):
-        super().__init__(None)
+        super().__init__(url=None, remote_prompt=True)
         self.base_model = base_model
         self.target_path = target_path
         self._train = None # lazyllm.train.auto
@@ -199,7 +220,8 @@ class TrainableModule(UrlModule):
     # change to urlmodule when pickling to server process
     def __reduce__(self):
         assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url)
+        m = UrlModule(self._url, remote_prompt=self._response_split).prompt(
+                prompt=self._prompt, response_split=self._response_split, update_remote=False)
         return m.__reduce__()
 
     def __repr__(self):
