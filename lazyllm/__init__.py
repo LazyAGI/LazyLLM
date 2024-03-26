@@ -1,7 +1,7 @@
 from .common import LazyLLMRegisterMetaClass, _get_base_cls_from_registry
-from .common import package, LazyLLMCMD, timeout, final, ReadOnlyWrapper
+from .common import package, kwargs, LazyLLMCMD, timeout, final, ReadOnlyWrapper
 from .common import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9
-from .common import Thread, FlatList, ID
+from .common import Thread, FlatList, ID, ResultCollector
 from .configs import mode, Mode
 from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase, barrier
@@ -32,6 +32,7 @@ __all__ = [
     'FlowBase',
     'barrier',
     'package',
+    'kwargs',
     'FlatList',
     'LazyLLMCMD',
     'timeout',
@@ -40,6 +41,8 @@ __all__ = [
     'mode',
     'ReadOnlyWrapper',
     'Thread',
+    'ID',
+    'ResultCollector',
 
     # modules
     'Module',

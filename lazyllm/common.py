@@ -132,6 +132,10 @@ class package(tuple):
             if len(args) == 1 and isinstance(args[0], (tuple, list, types.GeneratorType)) else args)
 
 
+class kwargs(dict):
+    pass
+
+
 setattr(builtins, 'package', package)
 
 
@@ -298,3 +302,25 @@ def ID(*inputs):
     if len(inputs) == 1:
         return inputs[0]
     return package(*inputs)
+
+
+class ResultCollector(object):
+    class Impl(object):
+        def __init__(self, name, value): self._name, self._value = name, value
+        def __call__(self, *args, **kw):
+            assert (len(args) == 0) ^ (len(kw) == 0), f'args({len(args)}), kwargs({len(kw)})'
+            assert self._name is not None
+            if len(args) > 0:
+                self._value[self._name] = args[0] if len(args) == 1 else package(*args)
+                return self._value[self._name]
+            else:
+                self._value[self._name] = kw
+                return kwargs(kw)
+
+
+    def __init__(self): self._value = dict()
+    def __call__(self, name): return ResultCollector.Impl(name, self._value)
+    def __getitem__(self, name): return self._value[name]
+    def __repr__(self): return repr(self._value) 
+    def keys(self): return self._value.keys()
+    def items(self): return self._value.items()

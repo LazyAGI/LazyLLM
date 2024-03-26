@@ -59,7 +59,7 @@ class ModuleBase(object):
                 eval_tasks.absorb(top._get_eval_tasks())
 
         if mode == 'train' and len(train_tasks) > 0:
-            Parallel(*train_tasks).start()[0].wait()
+            Parallel(*train_tasks).start().wait()
         if len(deploy_tasks) > 0:
             DPES(*deploy_tasks).start()
         if mode == 'train' and len(eval_tasks) > 0:
@@ -137,7 +137,7 @@ class ActionModule(ModuleBase):
 
     def forward(self, *args, **kw):
         if isinstance(self.action, FlowBase):
-            ppl, r = self.action.start(*args, **kw)
+            r = self.action.start(*args, **kw).result
         else:
             r = self.action(*args, **kw)
         return r
@@ -167,7 +167,7 @@ class ServerModule(UrlModule):
     # change to urlmodule when pickling to server process
     def __reduce__(self):
         assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url, remote_prompt=self._response_split).prompt(
+        m = UrlModule(self._url, remote_prompt=self._remote_prompt).prompt(
                 prompt=self._prompt, response_split=self._response_split, update_remote=False)
         return m.__reduce__()
 
@@ -220,7 +220,7 @@ class TrainableModule(UrlModule):
     # change to urlmodule when pickling to server process
     def __reduce__(self):
         assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url, remote_prompt=self._response_split).prompt(
+        m = UrlModule(self._url, remote_prompt=self._remote_prompt).prompt(
                 prompt=self._prompt, response_split=self._response_split, update_remote=False)
         return m.__reduce__()
 
