@@ -1,5 +1,6 @@
 from typing import Any
-from lazyllm import LazyLLMRegisterMetaClass, package, bind, root, Thread, ReadOnlyWrapper
+from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, bind, root
+from lazyllm import ResultCollector, Thread, ReadOnlyWrapper
 import copy
 import types
 import threading
@@ -62,12 +63,13 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 # v is copy.deepcopy(v) when v is func, wrap v to set `_flow_name`
                 v = LazyLLMFlowsBase.FuncWrap(v)
             else:
-                v = v if getattr(v, '_flow_name', None) else copy.deepcopy(v)
+                v = v if getattr(v, '_flow_name', None) is None else LazyLLMFlowsBase.FuncWrap(v)
             v._flow_name = k
             args.append(v)
         super(__class__, self).__init__(*args)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self.return_input = return_input
+        self.result = None
 
     def __call__(self, args=package()):
         output = self._run(args)
@@ -85,7 +87,8 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         def _exchange(item):
             item._args = [a.get_from(self) if isinstance(a, type(root)) else a for a in item._args]
         self.for_each(lambda x: isinstance(x, bind), _exchange)
-        return self, self(package(*args), **kw)
+        self.result = self(package(*args), **kw)
+        return self
 
     def __repr__(self):
         representation = '' if self._flow_name is None else (self._flow_name + ' ')
@@ -105,10 +108,15 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
 
 
 def invoke(it, input):
-    if isinstance(input, package) and not isinstance(it, LazyLLMFlowsBase):
-        return it(*input)
-    else:
-        return it(input)
+    try:
+        if not isinstance(it, LazyLLMFlowsBase) and isinstance(input, (package, kwargs)):
+            return it(*input) if isinstance(input, package) else it(**input)
+        else:
+            return it(input)
+    except TypeError:
+        print(f'{type(it)} got unexpected {type(input)} argument {input}')
+    except Exception:
+        raise
 
 
 # input -> module1 -> module2 -> ... -> moduleN -> output
