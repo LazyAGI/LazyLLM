@@ -61,11 +61,11 @@ def restart_service(job, port, build_cmd=None, count=0):
             time.sleep(2)
     
     assert job.status == lazyllm.launchers.status.Running, 'Job failed'
-    url = f'http://{job.get_jobip()}:{port}/generate'
 
     with timeout(240, msg='Service encountered an unknown exception.'):
         verify_res, verify_str = verify_launch_server(job)
         if verify_res:
+            url = f'http://{job.get_jobip()}:{port}/generate'
             _ = requests.post(url, headers=headers, data=json.dumps(data))
             job.return_value = url
             return url
