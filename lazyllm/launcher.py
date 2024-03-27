@@ -1,15 +1,18 @@
-from typing import Any
-import lazyllm
-from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final
-from enum import Enum
 import os
 import re
 import time
-import subprocess
+import json
+import random
 import atexit
-from queue import Queue
 import threading
+import subprocess
+from enum import Enum
+from queue import Queue
+from datetime import datetime
 
+import lazyllm
+from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final
+from .flow import FlowBase
 
 class Status(Enum):
     TBSubmitted = 0,
@@ -33,6 +36,11 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
 
 
 lazyllm.launchers['Status'] = Status
+
+
+def get_rand_str():
+    now = datetime.now()
+    return now.strftime("%S%M") + str(random.randint(3, 2000))
 
 
 @final
@@ -115,7 +123,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
     class Job(Job):
         def __init__(self, cmd, launcher, *, sync=True):
             super(__class__, self).__init__(cmd, sync=sync)
-            self.name = str(hex(hash(cmd)))[2:]
+            self.name = str(hex(hash(get_rand_str() + cmd.cmd)))[2:10]
             self.queue = Queue()
 
             # Assemble the order
@@ -218,7 +226,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
 
     # TODO(wangzhihong): support configs; None -> lookup config
-    def __init__(self, partition=None, nnode=1, nproc=1, ngpus=None, timeout=None, *, sync=True):
+    def __init__(self, partition=None, nnode=1, nproc=1, ngpus=None, timeout=None, *, sync=True, **kwargs):
         self.partition = partition if partition else os.getenv('LAZYLLM_SLURM_PART', None)
         self.nnode, self.nproc, self.ngpus, self.timeout =nnode, nproc, ngpus, timeout
         self.sync = sync
@@ -311,13 +319,201 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
 @final
 class ScoLauncher(LazyLLMLaunchersBase):
-    def __init__(self, nproc, ngpus, timeout):
-        self.nproc, self.ngpus, self.timeout = nproc, ngpus, timeout
+    all_processes=dict()
+
+    @final
+    class Job(Job):
+        def __init__(self, cmd, launcher, *, sync=True):
+            super(__class__, self).__init__(cmd, sync=sync)
+            # SCO job name must start with a letter
+            self.name = 's' + str(hex(hash(get_rand_str() + cmd.cmd)))[2:10]
+            self.queue = Queue()
+            self.workspace_name = launcher.workspace_name
+            self.torchrun = launcher.torchrun
+
+            # Assemble the cmd
+            self.sco_cmd = (
+                f'srun -p {launcher.partition} '
+                f'--workspace-name {self.workspace_name} '
+                f'--job-name={self.name} '
+                f'-f {launcher.framework} '
+                f'-r N2lS.Ie.I60.{launcher.ngpus} '
+                f'-N {launcher.nnode} '
+                f'--priority highest '
+                )
+            self.torchrun_cmd = (
+                'python -m torch.distributed.run '
+                f'--nproc_per_node {launcher.nproc} '
+                )
+            if launcher.nnode==1:
+                # SCO for mpi：supports multiple cards in a single machine
+                self.sco_cmd += '-m '
+                self.torchrun_cmd += (
+                    f'--nnodes {launcher.nnode} '
+                    '--node_rank 0 '
+                )
+            else:
+                # SCO for All Reduce-DDP: support multiple machines and multiple cards
+                self.sco_cmd += '-d AllReduce '
+                self.torchrun_cmd += (
+                    '--nnodes ${WORLD_SIZE} '
+                    '--node_rank ${RANK} '
+                    '--master_addr ${MASTER_ADDR} '
+                    '--master_port ${MASTER_PORT} '
+                )
+            self.precmd = f'''export PYTHONPATH={os.getcwd()}:$PYTHONPATH && '''
+            # For SCO: bash -c 'ifconfig | grep "inet " | awk "{printf \"LAZYLLMIP %s\\n\", \$2}"'
+            self.precmd += '''ifconfig | grep "inet " | awk "{printf \\"LAZYLLMIP %s\\\\n\\", \$2}" && '''
+
+            self.cmd = cmd
+            if self.torchrun:
+                # Delete 'python' in cmd
+                if self.cmd.cmd.strip().startswith('python'):
+                    self.cmd.cmd = self.cmd.cmd.strip()[6:]
+
+            self.jobid = None
+            self.ip = None
+            self.ps = None
+        
+        def start(self):
+            if self.torchrun:
+                print("Command:", self.sco_cmd + f' bash -c \'{self.torchrun_cmd} {self.cmd}\'')
+                cmd = f' bash -c \'{self.precmd}{self.torchrun_cmd} {self.cmd.cmd}\''
+            else:
+                print("Command:", self.sco_cmd + f' bash -c \'{self.cmd}\'')
+                cmd = f' bash -c \'{self.precmd}{self.cmd.cmd}\''
+            if lazyllm.mode == lazyllm.Mode.Display:
+                return
+            self.ps = subprocess.Popen(
+                self.sco_cmd + cmd,
+                shell=True,
+                executable='/bin/bash',
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT
+                )
+            self.get_jobid()
+
+            self.output_thread_event = threading.Event()
+            def enqueue_output(out, queue):
+                for line in iter(out.readline, b''):
+                    try:
+                        line = line.decode('utf-8')
+                    except:
+                        pass
+                    queue.put(line)
+                    if not self.ip and 'LAZYLLMIP' in line:
+                        self.ip = line.split()[-1]
+                    print(f'{self.jobid}: ', line.rstrip())
+                    if self.output_thread_event.is_set():
+                        break
+                out.close()
+            self.output_thread = threading.Thread(target=enqueue_output, args=(self.ps.stdout, self.queue))
+            self.output_thread.daemon = True
+            self.output_thread.start()
+            
+            if self.sync:
+                self.ps.wait()
+            else:
+                SlurmLauncher.all_processes[self.jobid] = self
+
+        def get_jobid(self):
+            time.sleep(0.5) # Wait for cmd to be stably submitted to sco
+            id_str = subprocess.check_output([
+                'squeue',
+                f'--workspace-name={self.workspace_name}',
+                '-o',
+                'jobname,jobid']).decode("utf-8")
+            pattern = re.compile(rf"{re.escape(self.name)}\s+(\S+)")
+            match = pattern.search(id_str)
+            if match:
+                self.jobid = match.group(1).strip()
+
+        def get_jobip(self):
+            if self.ip:
+                return self.ip
+            else:
+                raise RuntimeError("Cannot get IP.", f"JobID: {self.jobid}")
+
+        def stop(self):
+            if self.jobid:
+                cmd = f"scancel --workspace-name={self.workspace_name} {self.jobid}"
+                subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    encoding='utf-8', executable='/bin/bash')
+            if self.ps:
+                self.ps.terminate()
+                self.queue = Queue()
+                self.output_thread_event.set()
+                self.output_thread.join()
+
+        @property
+        def status(self):
+            if self.jobid:
+                try:
+                    id_str = subprocess.check_output([
+                        'scontrol',
+                        f'--workspace-name={self.workspace_name}',
+                        'show',
+                        'job',
+                        str(self.jobid)
+                        ]).decode("utf-8")
+                    id_json = json.loads(id_str)
+                    job_state = id_json['status_phase'].strip().lower()
+                    if job_state=='running':
+                        return Status.Running
+                    elif job_state=='tbsubmitted':
+                        return Status.TBSubmitted
+                    elif job_state==['suspending', 'suspended']:
+                        return Status.TBSubmitted
+                    elif job_state in['waiting', 'init', 'queueing', 'creating', 'restarting', 'recovering', 'starting']:
+                        return Status.InQueue
+                    elif job_state=='succeeded':
+                            return Status.Done
+                    else:
+                        # status: failed, deleting
+                        return Status.Failed
+                except:
+                    return Status.Failed
+            else:
+                return Status.Failed
+
+    def __init__(self,
+            partition=None,
+            workspace_name='expert-services',
+            framework='pt',
+            nnode=1,
+            nproc=1,
+            ngpus=1,
+            torchrun=False,
+            sync=True,
+            **kwargs):
+        assert nnode >= 1, "Use at least one node."
+        assert nproc >= 1, "Start at least one process."
+        assert ngpus >= 1, "Use at least one GPU."
+        assert type(partition) is str, f"'partition' is {partition}. Please set partition."
+        assert type(workspace_name) is str, f"'workspace_name' is {workspace_name}. Please set workspace_name."
+        self.partition = partition
+        self.workspace_name = workspace_name
+        self.framework = framework
+        self.nnode = nnode
+        self.nproc = nproc
+        self.ngpus = ngpus
+        self.torchrun = torchrun
+        self.sync = sync
         super(__class__, self).__init__()
 
-    def launch(self, cmd) -> None:
-        assert isinstance(cmd, str), 'Sco launcher only support cmd'
-        os.system(f'{cmd}')
+    def makejob(self, cmd):
+        job = ScoLauncher.Job(cmd, launcher=self)
+        job.sync = self.sync
+        return job
+
+    def launch(self, job) -> None:
+        assert isinstance(job, ScoLauncher.Job), 'Sco launcher only support cmd'
+        job.start()
+        if self.sync:
+            while job.status == Status.Running:
+                time.sleep(10)
+            job.stop()
+        return job.get_return_value()
 
 
 def cleanup():
@@ -329,5 +525,8 @@ def cleanup():
         print(f"killed job:{k}")
 
     # sco
+    for k, v in ScoLauncher.all_processes.items():
+        v.stop()
+        print(f"killed job:{k}")
 
 atexit.register(cleanup)

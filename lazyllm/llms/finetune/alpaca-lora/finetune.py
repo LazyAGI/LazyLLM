@@ -53,6 +53,11 @@ else:
     local_rank = int(os.getenv("LOCAL_RANK", "0"))
     world_size = int(os.getenv("WORLD_SIZE", "1"))
     torch.cuda.set_device(local_rank)
+    rank = os.getenv("RANK", None)
+    if rank:
+        rank = int(rank)
+    else:
+        rank = local_rank
 
 deepspeed.init_distributed()
 
