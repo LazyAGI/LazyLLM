@@ -7,7 +7,9 @@ from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase, barrier
 from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                    LazyLLMValidateBase, register as llmregister)
-from .module import Module, UrlModule, TrainableModule, SequenceModule, ActionModule, ServerModule
+from .module import (Module, UrlModule, TrainableModule, SequenceModule, 
+                     ActionModule, ServerModule, WebModule,
+                     ModuleResponse)
 from . import flows
 
 pipeline, namedPipeline = flows.pipeline, flows.namedPipeline
@@ -51,6 +53,8 @@ __all__ = [
     'SequenceModule',
     'ActionModule',
     'ServerModule',
+    'WebModule',
+    'ModuleResponse',
 
     # bind
     'root',
