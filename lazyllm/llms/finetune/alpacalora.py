@@ -1,5 +1,5 @@
-from .base import LazyLLMFinetuneBase, ArgsDict
-from lazyllm import launchers
+from .base import LazyLLMFinetuneBase
+from lazyllm import launchers, ArgsDict
 import os
 
 
@@ -13,6 +13,9 @@ class AlpacaloraFinetune(LazyLLMFinetuneBase):
                  launcher=launchers.slurm(),
                  **kw
                  ):
+        if not merge_path:
+            target_path, merge_path = os.path.join(target_path, "lora"), os.path.join(target_path, "merge")
+            os.system(f'mkdir -p {target_path} {merge_path}')
         super().__init__(
             base_model,
             target_path,
@@ -38,7 +41,7 @@ class AlpacaloraFinetune(LazyLLMFinetuneBase):
             'prompt_with_background': False,
             'train_on_inputs': True,
         })
-        self.kw.check(kw)
+        self.kw.check_and_update(kw)
         self.merge_path = merge_path
         self.cp_files = cp_files
         self.model_name = model_name

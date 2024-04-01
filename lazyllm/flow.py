@@ -27,7 +27,7 @@ class FlowBase(object):
             for it in self.items:
                 if getattr(it, '_flow_name', None) == name:
                     return it
-        raise ValueError(f'{self.__class__} object has no attribute {name}')
+        raise AttributeError(f'{self.__class__} object has no attribute {name}')
 
     @property
     def is_root(self):
@@ -195,8 +195,10 @@ class Diverter(LazyLLMFlowsBase):
 # Attention: Cannot be used in async tasks, ie: training and deploy
 # TODO: add check for async tasks
 class Warp(LazyLLMFlowsBase):
-    def _run(self, input=package()):
-        assert isinstance(input, package) and 1 == len(self.items)
+    def _run(self, input):
+        assert 1 == len(self.items)
+        if not isinstance(input, package):
+            input = package(input)
         return package(invoke(self.items[0], inp) for inp in input)
 
 

@@ -1,8 +1,7 @@
-from .flow import FlowBase, Pipeline, Parallel, DPES
 import os
-import lazyllm
-from lazyllm import FlatList
-from collections import Iterable
+import re
+import copy
+
 import httpx
 from lazyllm.thirdparty import gradio as gr
 from pydantic import BaseModel as struct
@@ -10,11 +9,16 @@ from typing import Tuple
 from types import GeneratorType
 import multiprocessing
 
+import lazyllm
+from lazyllm import FlatList
+from .flow import FlowBase, Pipeline, Parallel, DPES
+
 
 class ModuleBase(object):
     def __init__(self):
         self.submodules = []
         self._evalset = None
+        self.mode_list  = ('train', 'server', 'eval')
 
     def __setattr__(self, name: str, value):
         if isinstance(value, ModuleBase):
@@ -48,8 +52,13 @@ class ModuleBase(object):
         return None
 
     # update module(train or finetune), 
-    def update(self, *, mode='train', recursive=True):
-        assert mode in ('train', 'server')
+    def _update(self, *, mode=None, recursive=True):
+        if not mode:
+            mode = list(self.mode_list)
+        if type(mode) is not list:
+            mode = [mode]
+        for item in mode:
+            assert item in self.mode_list, f"Cannot find {item} in mode list: {self.mode_list}"
         # dfs to get all train tasks
         train_tasks, deploy_tasks, eval_tasks = FlatList(), FlatList(), FlatList()
         stack = [(self, iter(self.submodules if recursive else []))]
@@ -59,19 +68,24 @@ class ModuleBase(object):
                 stack.append((top, iter(top.submodules)))
             except StopIteration:
                 top = stack.pop()[0]
-                train_tasks.absorb(top._get_train_tasks())
-                deploy_tasks.absorb(top._get_deploy_tasks())
-                eval_tasks.absorb(top._get_eval_tasks())
+                if 'train' in mode:
+                    train_tasks.absorb(top._get_train_tasks())
+                if 'server' in mode:
+                    deploy_tasks.absorb(top._get_deploy_tasks())
+                if 'eval' in mode:
+                    eval_tasks.absorb(top._get_eval_tasks())
 
-        if mode == 'train' and len(train_tasks) > 0:
+        if 'train' in mode and len(train_tasks) > 0:
             Parallel(*train_tasks).start().wait()
-        if len(deploy_tasks) > 0:
+        if 'server' in mode and len(deploy_tasks) > 0:
             DPES(*deploy_tasks).start()
-        if mode == 'train' and len(eval_tasks) > 0:
+        if 'eval' in mode and len(eval_tasks) > 0:
             DPES(*eval_tasks).start()
 
-    def update_server(self, *, recursive=True): return self.update(mode='server', recursive=recursive)
-    def start(self): return self.update(mode='server', recursive=True)
+    def update(self, *, recursive=True): return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
+    def update_server(self, *, recursive=True): return self._update(mode=['server'], recursive=recursive)
+    def eval(self, *, recursive=True): return self._update(mode=['eval'], recursive=recursive)
+    def start(self): return self._update(mode=['server'], recursive=True)
     def restart(self): return self.start()
 
     def _overwrote(self, f):
@@ -101,42 +115,81 @@ class SequenceModule(ModuleBase):
     
 
 class UrlModule(ModuleBase):
-    def __init__(self, url, *, remote_prompt=False):
+    def __init__(self, url):
         super().__init__()
-        self._url, self._prompt_url = url, None
-        self._remote_prompt = remote_prompt
+        self._url = url
         self._prompt, self._response_split = '{input}', None
+        self._prompt_keys = ['input']
+        # Set for request by specific deploy:
+        self._set_template()
 
     def url(self, url):
         print('url:', url)
         self._url = url
-        if self._remote_prompt:
-            self._prompt_url = url[::-1].replace('/generate'[::-1], '/prompt'[::-1], 1)[::-1]
-        
+
     def forward(self, __input=None, **kw):
         assert self._url is not None, f'Please start {self.__class__} first'
         assert (__input is None) ^ (len(kw) == 0)
-
-        if __input is not None:
-            kw['input'] = __input
-        if not self._remote_prompt:
-            kw = dict(input=self._prompt.format(**kw))
+        assert self.template_headers is not None and self.input_key_name is not None
+        if self.template_message:
+            data = copy.deepcopy(self.template_message)
+            if __input == None:
+                if self.input_key_name in kw:
+                    if len(self._prompt_keys)==1:
+                        # TODO(sunxiaoye): there is controversy
+                        data[self.input_key_name] = self._prompt.format(**{self._prompt_keys[0]:kw[self.input_key_name]})
+                    else:
+                        data[self.input_key_name] = kw[self.input_key_name]
+                elif all(var in kw for var in self._prompt_keys):
+                    data[self.input_key_name] = self._prompt.format(**kw)
+                else:
+                    raise ValueError(
+                        f"Some variables in the template({self._prompt_keys}) "
+                        "are not present in the provided dictionary.")
+                # TODO(sunxiaoye): Left keys for template_upate
+            elif type(__input) in (int, str):
+                if len(self._prompt_keys)==1:
+                    data[self.input_key_name] = self._prompt.format(**{self._prompt_keys[0]:__input})
+                else:
+                    raise ValueError(f'Prompt template need {len(self._prompt_keys)} variable, but got one.')
+            elif type(__input) is dict:
+                if self.input_key_name in __input:
+                    if len(self._prompt_keys)==1:
+                        # TODO(sunxiaoye): there is controversy
+                        data[self.input_key_name] = self._prompt.format(**{self._prompt_keys[0]:__input[self.input_key_name]})
+                    else:
+                        data[self.input_key_name] = __input[self.input_key_name]
+                elif all(var in __input for var in self._prompt_keys):
+                    data[self.input_key_name] = self._prompt.format(**__input)
+                else:
+                    raise ValueError(
+                        f"Some variables in the template({self._prompt_keys}) "
+                        "are not present in the provided dictionary.")
+                # TODO(sunxiaoye): Left keys for template_upate
+            else:
+                raise RuntimeError(
+                    'The input only support: str, dict or None. '
+                    f'but get type: {type(__input)}. ')
+        else:
+            if __input:
+                data = __input
+            else:
+                data = kw
 
         with httpx.Client(timeout=90) as client:
-            response = client.post(self._url, json=kw,
-                                   headers={'Content-Type': 'application/json'})
-        return response.text if self._remote_prompt or self._response_split is None else \
+            response = client.post(self._url, json=data, headers=self.template_headers)
+        return response.text if self._response_split is None else \
                response.text.split(self._response_split)[-1]
 
-    def prompt(self, prompt='{input}', response_split=None, update_remote=True):
-        if self._remote_prompt and self._prompt_url and update_remote and (
-                self._prompt != prompt or self._response_split != response_split):
-            with httpx.Client(timeout=90) as client:
-                r = client.post(self._prompt_url, json=dict(prompt=prompt, response_split=response_split),
-                                headers={'Content-Type': 'application/json'}).text
-                assert r == 'set prompt done!'
-            self._prompt, self._response_split = prompt, response_split
+    def prompt(self, prompt='{input}', response_split=None):
+        self._prompt, self._response_split = prompt, response_split
+        self._prompt_keys = list(set(re.findall(r'\{(\w+)\}', self._prompt)))
         return self
+    
+    def _set_template(self, template_message=None, input_key_name=None, template_headers=None):
+        self.template_message = template_message
+        self.input_key_name = input_key_name
+        self.template_headers = template_headers
 
 
 class ActionModule(ModuleBase):
@@ -165,12 +218,17 @@ class ActionModule(ModuleBase):
 
 class ServerModule(UrlModule):
     def __init__(self, m, pre=None, post=None):
-        super().__init__(url=None, remote_prompt=True)
+        super().__init__(url=None)
         self.m = m
         self._pre_func = pre
         self._post_func = post
 
     def _get_deploy_tasks(self):
+        self._set_template(
+            copy.deepcopy(lazyllm.deploy.RelayServer.message_formate),
+            lazyllm.deploy.RelayServer.input_key_name,
+            copy.deepcopy(lazyllm.deploy.RelayServer.default_headers),
+        )
         return Pipeline(
             lazyllm.deploy.RelayServer(func=self.m, pre_func=self._pre_func, post_func=self._post_func),
             self.url)
@@ -178,8 +236,13 @@ class ServerModule(UrlModule):
     # change to urlmodule when pickling to server process
     def __reduce__(self):
         assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url, remote_prompt=self._remote_prompt).prompt(
-                prompt=self._prompt, response_split=self._response_split, update_remote=False)
+        m = UrlModule(self._url).prompt(prompt=self._prompt, response_split=self._response_split)
+        m._set_template(
+            self.template_message,
+            self.input_key_name,
+            self.template_headers,
+        )
+
         return m.__reduce__()
 
     def __repr__(self):
@@ -268,8 +331,9 @@ class WebModule(ModuleBase):
 
 
 class TrainableModule(UrlModule):
-    def __init__(self, base_model, target_path):
-        super().__init__(url=None, remote_prompt=True)
+    def __init__(self, base_model='path/to/base_model', target_path='path/to/save/path'):
+        super().__init__(url=None)
+        # Fake base_model and target_path for dummy
         self.base_model = base_model
         self.target_path = target_path
         self._train = None # lazyllm.train.auto
@@ -280,20 +344,49 @@ class TrainableModule(UrlModule):
         trainset_getf = lambda : lazyllm.package(self._trainset, None) \
                         if isinstance(self._trainset, str) else self._trainset
         if self._mode == 'train':
-            train = self._train(self.base_model, os.path.join(self.target_path, 'train'))
+            self._train_args = self._train_args if hasattr(self, '_train_args') else dict()
+            if 'base_model' in self._train_args or 'target_path' in self._train_args:
+                raise ValueError(
+                    'Neither base_model nor target_path can be set '
+                    'in train_args, please pass them in Module.')
+            train = self._train(base_model=self.base_model, target_path=self.target_path, **self._train_args)
         elif self._mode == 'finetune':
-            train = self._finetune(self.base_model, os.path.join(self.target_path, 'finetune'))
+            self._finetune_args = self._finetune_args if hasattr(self, '_finetune_args') else dict()
+            if 'base_model' in self._finetune_args or 'target_path' in self._finetune_args:
+                raise ValueError(
+                    'Neither base_model nor target_path can be set '
+                    'in finetune_args, please pass them in Module.')
+            train = self._finetune(base_model=self.base_model, target_path=self.target_path, **self._finetune_args)
         else:
             raise RuntimeError('mode must be train or finetune')
         return Pipeline(trainset_getf, train)
 
     def _get_deploy_tasks(self):
-        return Pipeline(lambda *a: self.target_path,
-            self._deploy(pre_func=self._pre_func, post_func=self._post_func),
+        self._deploy_args = self._deploy_args if hasattr(self, '_deploy_args') else dict()
+        if 'base_model' in self._deploy_args or 'target_path' in self._deploy_args:
+            raise ValueError(
+                    'Neither base_model nor target_path can be set '
+                    'in deploy_args, please pass them in Module.')
+        if os.path.basename(self.target_path) != 'merge':
+            target_path = os.path.join(self.target_path, 'merge')
+
+        if not os.path.exists(target_path):
+            target_path = self.target_path
+
+        self._set_template(
+            copy.deepcopy(self._deploy.message_formate),
+            self._deploy.input_key_name,
+            copy.deepcopy(self._deploy.default_headers),
+        )
+        return Pipeline(lambda *a: lazyllm.package(target_path, self.base_model),
+            self._deploy(**self._deploy_args) if hasattr(self, '_deploy_args') else self._deploy(pre_func=self._pre_func, post_func=self._post_func),
             self.url)
 
     def __getattr__(self, key):
         def _setattr(v):
+            if isinstance(v, tuple):
+                v, kargs = v
+                setattr(self, f'_{key}_args', kargs)
             setattr(self, f'_{key}', v)
             return self
         keys = ['trainset', 'train', 'finetune', 'deploy', 'pre_func', 'post_func', 'mode']
@@ -306,8 +399,12 @@ class TrainableModule(UrlModule):
     # change to urlmodule when pickling to server process
     def __reduce__(self):
         assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url, remote_prompt=self._remote_prompt).prompt(
-                prompt=self._prompt, response_split=self._response_split, update_remote=False)
+        m = UrlModule(self._url).prompt(prompt=self._prompt, response_split=self._response_split)
+        m._set_template(
+            self.template_message,
+            self.input_key_name,
+            self.template_headers,
+        )
         return m.__reduce__()
 
     def __repr__(self):

@@ -1,5 +1,5 @@
-from .base import LazyLLMFinetuneBase, ArgsDict
-from lazyllm import launchers
+from .base import LazyLLMFinetuneBase
+from lazyllm import launchers, ArgsDict
 import os
 
 
@@ -35,7 +35,7 @@ class CollieFinetune(LazyLLMFinetuneBase):
             'modules_to_save': '[word_embeddings, output_layer]',
             'prompt_with_background': True,
         })
-        self.kw.check(kw)
+        self.kw.check_and_update(kw)
         self.merge_path = merge_path
         self.cp_files = cp_files
         self.model_name = model_name
