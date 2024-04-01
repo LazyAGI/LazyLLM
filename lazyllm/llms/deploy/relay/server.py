@@ -21,26 +21,20 @@ app = FastAPI()
 prompt = '{input}'
 response_split = None
 
-@app.post("/prompt")
-async def set_prompt(request: Request):
-    try:
-        input = await request.json()
-        global prompt, response_split
-        prompt, response_split = input['prompt'], input['response_split']
-        return Response(content='set prompt done!')
-    except Exception as e:
-        return Response(content=str(e), status_code=500)
-
 
 @app.post("/generate")
 async def generate(request: Request):
     try:
         origin = input = (await request.json())
-
         if args.before_function:
             assert(callable(before_func)), 'before_func must be callable'
-            input = before_func(**input)
-        output = func(prompt.format(**input))
+            r = inspect.getfullargspec(before_func)
+            if isinstance(input, dict) and \
+                set(r.args[1:] if r.args[0] == 'self' else r.args) == set(input.keys()):
+                input = before_func(**input)
+            else:
+                input = before_func(input)
+        output = func(input)
         if response_split is not None:
             output = output.split(response_split)[-1]
         if args.after_function:

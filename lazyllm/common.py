@@ -91,6 +91,19 @@ class LazyLLM{name}Base(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].b
 '''
 
 
+class ArgsDict(dict):
+    def __init__(self, *args, **kwargs):
+        super(ArgsDict, self).__init__(*args, **kwargs)
+
+    def check_and_update(self, kw):
+        assert set(kw.keys()).issubset(set(self))
+        self.update(kw)
+
+    def parse_kwargs(self):
+        string = ' '.join(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"' for k, v in self.items())
+        return string
+
+
 class LazyLLMRegisterMetaClass(type):
     all_clses = LazyDict()
 

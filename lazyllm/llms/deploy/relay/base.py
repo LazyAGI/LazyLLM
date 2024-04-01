@@ -4,8 +4,7 @@ import base64
 
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, bind, _0
-from ..base import LazyLLMDeployBase
-from ..lightllm import restart_service
+from ..base import LazyLLMDeployBase, restart_service
 
 from lazyllm.thirdparty import cloudpickle
 
@@ -15,6 +14,10 @@ def dump_func(f, old_value=None):
 
 
 class RelayServer(LazyLLMDeployBase):
+    input_key_name = 'inputs'
+    default_headers = {'Content-Type': 'application/json'}
+    message_formate = None
+
     def __init__(self, port=None, *, func=None, pre_func=None, post_func=None,
                  launcher=launchers.slurm(sync=False)):
         # func must dump in __call__ to wait for dependancies.
@@ -42,7 +45,13 @@ class RelayServer(LazyLLMDeployBase):
         cmd, port = build_cmd()
         func = build_cmd if not self.port else None
         return LazyLLMCMD(cmd=cmd,
-                          post_function=bind(restart_service, _0, port, func),
+                          post_function=bind(
+                              restart_service,
+                              _0,
+                              port,
+                              self.default_headers,
+                              self.message_formate,
+                              func),
                           no_displays=['function', 'before_function', 'after_function']
                          )
     
