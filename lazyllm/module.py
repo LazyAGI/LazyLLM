@@ -2,8 +2,13 @@ from .flow import FlowBase, Pipeline, Parallel, DPES
 import os
 import lazyllm
 from lazyllm import FlatList
-import json
+from collections import Iterable
 import httpx
+from lazyllm.thirdparty import gradio as gr
+from pydantic import BaseModel as struct
+from typing import Tuple
+from types import GeneratorType
+import multiprocessing
 
 
 class ModuleBase(object):
@@ -71,6 +76,12 @@ class ModuleBase(object):
 
     def _overwrote(self, f):
         return getattr(self.__class__, f) is not getattr(__class__, f)
+
+
+class ModuleResponse(struct):
+    messages: str = ''
+    trace: str = ''
+    err: Tuple[int, str] = (0, '')
 
 
 class SequenceModule(ModuleBase):
@@ -179,6 +190,81 @@ class ServerModule(UrlModule):
         else:
             representation += repr(self.action)
         return representation + ']'
+
+
+css = """
+#logging {background-color: #FFCCCB}
+"""
+class WebModule(ModuleBase):
+    def __init__(self, m, *, title='对话演示终端', stream_output=True) -> None:
+        super().__init__()
+        self.m = m
+        self.title = title
+        self.demo = self.init_web()
+
+    def init_web(self):
+        with gr.Blocks(css=css, title=self.title) as demo:
+            with gr.Row():
+                with gr.Column(scale=3):
+                    chat_use_context = gr.Checkbox(interactive=True, value=False, label="使用上下文")
+                    stream_output = gr.Checkbox(interactive=True, value=True, label="流式输出")
+                    dbg_msg = gr.Textbox(show_label=True, label='处理日志', elem_id='logging', interactive=False, max_lines=10)
+                    clear_btn = gr.Button(value="🗑️  Clear history", interactive=True)
+                with gr.Column(scale=6):
+                    chatbot = gr.Chatbot(height=600)
+                    query_box = gr.Textbox(show_label=False, placeholder='输入内容并回车!!!')
+
+            query_box.submit(self._prepare, [query_box, chatbot, stream_output], [query_box, chatbot], queue=False
+                ).then(self._respond_stream, [chat_use_context, chatbot], [chatbot, dbg_msg], queue=chatbot
+                ).then(lambda: gr.update(interactive=True), None, query_box, queue=False)
+            clear_btn.click(self._clear_history, None, outputs=[chatbot, query_box, dbg_msg])
+        return demo
+
+    def _prepare(self, query, chat_history, stream_output):
+        if chat_history is None:
+            chat_history = []
+        self.m.stream_output = stream_output
+        return '', chat_history + [[query, None]]
+        
+    def _respond_stream(self, use_context, chat_history):
+        try:
+            # TODO: move context to trainable module
+            input = ('\<eos\>'.join([f'{h[0]}\<eou\>{h[1]}' for h in chat_history]).rsplit('\<eou\>', 1)[0]
+                     if use_context else chat_history[-1][0])
+            result, log = self.m(input), None
+            def get_log_and_message(s, log=''):
+                return ((s.messages, s.err[1] if s.err[0] != 0 else s.trace) 
+                        if isinstance(s, ModuleResponse) else (s, log))
+            if isinstance(result, (ModuleResponse, str)):
+                chat_history[-1][1], log = get_log_and_message(result)
+            elif isinstance(result, GeneratorType):
+                chat_history[-1][1] = ''
+                for s in result:
+                    if isinstance(s, (ModuleResponse, str)):
+                        s, log = get_log_and_message(s, log)
+                    chat_history[-1][1] += s
+                    yield chat_history, log
+            else:
+                raise TypeError('function result should only be ModuleResponse or str')
+        except Exception as e:
+            chat_history = None
+            log = str(e)
+        yield chat_history, log
+
+    def _clear_history(self):
+        return [], '', ''
+
+    def _work(self):
+        def _impl():
+            self.demo.queue().launch(server_name="0.0.0.0", server_port=20566)
+        self.p = multiprocessing.Process(target=_impl)
+        self.p.start()
+
+    def _get_deploy_tasks(self):
+        return Pipeline(self._work)
+
+    def wait(self):
+        return self.p.join()
 
 
 class TrainableModule(UrlModule):

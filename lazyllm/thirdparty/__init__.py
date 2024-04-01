@@ -15,6 +15,6 @@ class PackageWrapper(object):
             raise ImportError(f'Cannot import module {self._Wrapper__key}, please install it first')
 
 
-modules = ['cloudpickle', 'transformers', 'peft', 'deepspeed']
+modules = ['cloudpickle', 'transformers', 'peft', 'deepspeed', 'gradio']
 for m in modules:
     vars()[m] = PackageWrapper(m)
