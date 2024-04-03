@@ -225,21 +225,20 @@ setattr(builtins, 'bind', Bind)
 
 
 class LazyLLMCMD(object):
-    def __init__(self, cmd, *, return_value=None, post_function=None, no_displays=None) -> None:
+    def __init__(self, cmd, *, return_value=None, checkf=None, no_displays=None) -> None:
         if isinstance(cmd, (tuple, list)):
             cmd = ' && '.join(cmd)
-        assert isinstance(cmd, str), 'cmd must be (list of) bash command str.'
-        assert return_value is None or post_function is None, \
-            'Cannot support return_value and post_function at the same time'
+        assert isinstance(cmd, str) or callable(cmd), 'cmd must be func or (list of) bash command str.'
         self.cmd = cmd
         self.return_value = return_value
-        self.post_function = post_function
+        self.checkf = checkf
         self.no_displays = no_displays
 
     def __hash__(self):
         return hash(self.cmd)
 
     def __str__(self):
+        assert not callable(self.cmd), f'Cannot convert cmd function {self.cmd} to str'
         if self.no_displays:
             cmd = self.cmd
             for item in self.no_displays:
@@ -248,6 +247,17 @@ class LazyLLMCMD(object):
             return cmd
         else:
             return self.cmd
+
+    def with_cmd(self, cmd):
+        # Attention: Cannot use copy.deepcopy because of class method.
+        new_instance = LazyLLMCMD(cmd, return_value=self.return_value,
+                                  checkf=self.checkf, no_displays=self.no_displays)
+        return new_instance
+
+    def get_args(self, key):
+        assert not callable(self.cmd), f'Cannot get args from function {self.cmd}'
+        pattern = r'*(-{1,2}' + re.escape(key) + r')(\s|=|)(\S+|)*'
+        return re.match(pattern, self.cmd)[3]
 
 @contextmanager
 def timeout(duration, *,  msg=''):

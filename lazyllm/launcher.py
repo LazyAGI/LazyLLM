@@ -9,9 +9,10 @@ import subprocess
 from enum import Enum
 from queue import Queue
 from datetime import datetime
+import copy
 
 import lazyllm
-from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final
+from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final, timeout
 from .flow import FlowBase
 
 class Status(Enum):
@@ -38,11 +39,6 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
 lazyllm.launchers['Status'] = Status
 
 
-def get_rand_str():
-    now = datetime.now()
-    return now.strftime("%S%M") + str(random.randint(3, 2000))
-
-
 @final
 class EmptyLauncher(LazyLLMLaunchersBase):
     def __init__(self, subprocess=False):
@@ -50,13 +46,12 @@ class EmptyLauncher(LazyLLMLaunchersBase):
         self.subprocess = subprocess
 
     def makejob(self, cmd):
-        job = Job(cmd)
-        return job
+        return Job(cmd)
 
     def launch(self, f, *args, **kw):
         if isinstance(f, Job):
             self.exec_cmd(f)
-            return f.get_return_value()
+            return f.return_value
         elif callable(f):
             if not self.subprocess:
                 return f(*args, **kw)
@@ -69,48 +64,110 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             raise RuntimeError('Invalid cmd given, please check the return value of cmd.')
 
     def exec_cmd(self, job):
-        cmd = job.cmd
+        cmd = job._origin_cmd
         print("Command:", cmd)
         if lazyllm.mode == lazyllm.Mode.Display:
             return
         p = subprocess.Popen(cmd.cmd, shell=True, encoding='utf-8', executable='/bin/bash')
         p.wait()
-        return
+        job._set_return_value()
 
 
 # store cmd, return message and command output.
 # LazyLLMCMD's post_function can get message form this class.
 class Job(object):
     def __init__(self, cmd, *, sync=True):
-        self.cmd = cmd
-        self.return_value = cmd.return_value
-        self.post_function = cmd.post_function
+        assert isinstance(cmd, LazyLLMCMD)
+        self._origin_cmd = cmd
         self.sync = sync
+        self.ps = None
+        self.output_hooks = []
 
-    def get_return_value(self):
-        return self.return_value if self.return_value else (
-            self.post_function(self) if self.post_function else self)
+    def _set_return_value(self):
+        cmd = getattr(self, '_fixed_cmd', None)
+        if cmd and callable(cmd.return_value):
+            self.return_value = cmd.return_value(self)
+        elif cmd and cmd.return_value:
+            self.return_value = cmd.return_value
+        else:
+            self.return_value = self
 
-    def start(self):
-        raise NotImplementedError
-    
-    def stop(self):
-        raise NotImplementedError
+    def get_executable_cmd(self, *, fixed=False):
+        if fixed and hasattr(self, '_fixed_cmd'):
+            return self._fixed_cmd
+        cmd = self._origin_cmd
+        if callable(cmd.cmd):
+            cmd = cmd.with_cmd(cmd.cmd())
+        self._fixed_cmd = cmd.with_cmd(self._wrap_cmd(cmd.cmd))
+        return self._fixed_cmd
 
+    # interfaces
+    def stop(self): raise NotImplementedError
     @property
-    def status(self):
-        raise NotImplementedError
+    def status(self): raise NotImplementedError
+    def wait(self): pass
+    def _wrap_cmd(self, cmd): return cmd
+
+    def _start(self, *, fixed=True):
+        cmd = self.get_executable_cmd(fixed=fixed)
+        print('Command:', cmd)
+        if lazyllm.mode == lazyllm.Mode.Display: return
+        self.ps = subprocess.Popen(cmd.cmd, shell=True, executable='/bin/bash',
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.get_jobid()
+        self._enqueue_subprocess_output(hooks=self.output_hooks)
+
+        if self.sync:
+            self.ps.wait()
+        else:
+            with timeout(3600, msg='Launch failed: No computing resources are available.'):
+                while self.status in (Status.TBSubmitted, Status.InQueue, Status.Pending):
+                    time.sleep(2)
+            SlurmLauncher.all_processes[self.jobid] = self
+
+    def restart(self, *, fixed=False):
+        self.stop()
+        time.sleep(2)
+        self._start(fixed=fixed)
+
+    def start(self, *, restart=0, fixed=False):
+        self._start(fixed=fixed)
+        if not self._fixed_cmd.checkf(self):
+            if restart > 0:
+                for _ in range(restart):
+                    self.restart(fixed=fixed)
+                    if self._fixed_cmd.checkf(self): break
+                else:
+                    raise RuntimeError(f'Job failed after retrying {restart} times')
+            else:
+                raise RuntimeError(f'Job failed without retries')
+        self._set_return_value()
+
+    def _enqueue_subprocess_output(self, hooks=None):
+        self.output_thread_event = threading.Event()
+        def impl(out, queue):
+            for line in iter(out.readline, b''):
+                try:
+                    line = line.decode('utf-8')
+                except:
+                    pass
+                queue.put(line)
+                if hooks:
+                    hooks(line) if callable(hooks) else [hook(line) for hook in hooks]
+                print(f'{self.jobid}: ', line.rstrip())
+                if self.output_thread_event.is_set():
+                    break
+            out.close()
+        self.output_thread = threading.Thread(target=impl, args=(self.ps.stdout, self.queue))
+        self.output_thread.daemon = True
+        self.output_thread.start()
+
+    def _generate_name(self):
+        now = datetime.now()
+        return str(hex(hash(now.strftime("%S%M") + str(random.randint(3, 2000)))))[2:10]
 
     def __deepcopy__(self, memo=None):
         raise RuntimeError('Cannot copy Job object')
-
-    def restart(self):
-        self.stop()
-        time.sleep(2)
-        self.start()
-
-    def wait(self):
-        pass
 
 @final
 class SlurmLauncher(LazyLLMLaunchersBase):
@@ -123,51 +180,20 @@ class SlurmLauncher(LazyLLMLaunchersBase):
     class Job(Job):
         def __init__(self, cmd, launcher, *, sync=True):
             super(__class__, self).__init__(cmd, sync=sync)
-            self.name = str(hex(hash(get_rand_str() + cmd.cmd)))[2:10]
-            self.queue = Queue()
+            self.name = self._generate_name()
+            self.launcher = launcher
+            self.queue, self.jobid, self.ip, self.ps = Queue(), None, None, None
 
+        def _wrap_cmd(self, cmd):
             # Assemble the order
-            self.slurm_cmd = f'srun -p {launcher.partition} -N {launcher.nnode} --job-name={self.name}'
-            if launcher.nproc:
-                self.slurm_cmd += f' -n{launcher.nproc}'
-            if launcher.timeout:
-                self.slurm_cmd += f' -t {launcher.timeout}'
-            if launcher.ngpus:
-                self.slurm_cmd += f' --gres=gpu:{launcher.ngpus}'
-            self.cmd = cmd
-
-            self.jobid = None
-            self.ip = None
-            self.ps = None
-        
-        def start(self):
-            print("Command:", self.slurm_cmd + f' bash -c \'{self.cmd}\'')
-            if lazyllm.mode == lazyllm.Mode.Display:
-                return
-            process = subprocess.Popen(self.slurm_cmd + f' bash -c \'{self.cmd.cmd}\'', shell=True, executable='/bin/bash', stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            self.ps = process
-            self.get_jobid()
-
-            self.output_thread_event = threading.Event()
-            def enqueue_output(out, queue):
-                for line in iter(out.readline, b''):
-                    try:
-                        line = line.decode('utf-8')
-                    except:
-                        pass
-                    queue.put(line)
-                    print(f'{self.jobid}: ', line.rstrip())
-                    if self.output_thread_event.is_set():
-                        break
-                out.close()
-            self.output_thread = threading.Thread(target=enqueue_output, args=(self.ps.stdout, self.queue))
-            self.output_thread.daemon = True
-            self.output_thread.start()
-            
-            if self.sync:
-                process.wait()
-            else:
-                SlurmLauncher.all_processes[self.jobid] = self
+            slurm_cmd = f'srun -p {self.launcher.partition} -N {self.launcher.nnode} --job-name={self.name}'
+            if self.launcher.nproc:
+                slurm_cmd += f' -n{self.launcher.nproc}'
+            if self.launcher.timeout:
+                slurm_cmd += f' -t {self.launcher.timeout}'
+            if self.launcher.ngpus:
+                slurm_cmd += f' --gres=gpu:{self.launcher.ngpus}'
+            return f'{slurm_cmd} bash -c \'{cmd}\''
 
         def get_jobid(self):
             time.sleep(0.5) # Wait for cmd to be stably submitted to slurm
@@ -227,17 +253,15 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
     # TODO(wangzhihong): support configs; None -> lookup config
     def __init__(self, partition=None, nnode=1, nproc=1, ngpus=None, timeout=None, *, sync=True, **kwargs):
+        super(__class__, self).__init__()
+        # TODO: global config
         self.partition = partition if partition else os.getenv('LAZYLLM_SLURM_PART', None)
         self.nnode, self.nproc, self.ngpus, self.timeout =nnode, nproc, ngpus, timeout
         self.sync = sync
-        self.num_can_use_nodes = 5
-        SlurmLauncher.count += 1
-        super(__class__, self).__init__()
+        self.num_can_use_nodes = kwargs.get('num_can_use_nodes', 5)
 
     def makejob(self, cmd):
-        job = SlurmLauncher.Job(cmd, launcher=self)
-        job.sync = self.sync
-        return job
+        return SlurmLauncher.Job(cmd, launcher=self, sync=self.sync)
 
     def _add_dict(self, node_ip, used_gpus, node_dict):
         if node_ip not in node_dict:
@@ -314,7 +338,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
             while job.status == Status.Running:
                 time.sleep(10)
             job.stop()
-        return job.get_return_value()
+        return job.return_value
 
 
 @final
@@ -326,103 +350,48 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def __init__(self, cmd, launcher, *, sync=True):
             super(__class__, self).__init__(cmd, sync=sync)
             # SCO job name must start with a letter
-            self.name = 's' + str(hex(hash(get_rand_str() + cmd.cmd)))[2:10]
-            self.queue = Queue()
+            self.name = 's' + self._generate_name()
+            self.queue, self.jobid, self.ip, self.ps = Queue(), None, None, None
             self.workspace_name = launcher.workspace_name
             self.torchrun = launcher.torchrun
+            self.launcher = launcher
+            self.output_hooks = [self.output_hook]
+        
+        def output_hook(self, line):
+            if not self.ip and 'LAZYLLMIP' in line:
+                self.ip = line.split()[-1]
 
+        def _wrap_cmd(self, cmd):
+            launcher = self.launcher
             # Assemble the cmd
-            self.sco_cmd = (
-                f'srun -p {launcher.partition} '
-                f'--workspace-name {self.workspace_name} '
-                f'--job-name={self.name} '
-                f'-f {launcher.framework} '
-                f'-r N2lS.Ie.I60.{launcher.ngpus} '
-                f'-N {launcher.nnode} '
-                f'--priority highest '
-                )
-            self.torchrun_cmd = (
-                'python -m torch.distributed.run '
-                f'--nproc_per_node {launcher.nproc} '
-                )
+            sco_cmd = f'srun -p {launcher.partition} --workspace-name {self.workspace_name} ' \
+                      f'--job-name={self.name} -f {launcher.framework} -r N2lS.Ie.I60.{launcher.ngpus} ' \
+                      f'-N {launcher.nnode} --priority highest '
+            torchrun_cmd = 'python -m torch.distributed.run --nproc_per_node {launcher.nproc} '
+
             if launcher.nnode==1:
                 # SCO for mpi：supports multiple cards in a single machine
-                self.sco_cmd += '-m '
-                self.torchrun_cmd += (
-                    f'--nnodes {launcher.nnode} '
-                    '--node_rank 0 '
-                )
+                sco_cmd += '-m '
+                torchrun_cmd += f'--nnodes {launcher.nnode} --node_rank 0 '
             else:
                 # SCO for All Reduce-DDP: support multiple machines and multiple cards
-                self.sco_cmd += '-d AllReduce '
-                self.torchrun_cmd += (
-                    '--nnodes ${WORLD_SIZE} '
-                    '--node_rank ${RANK} '
-                    '--master_addr ${MASTER_ADDR} '
-                    '--master_port ${MASTER_PORT} '
-                )
-            self.precmd = f'''export PYTHONPATH={os.getcwd()}:$PYTHONPATH && '''
+                sco_cmd += '-d AllReduce '
+                torchrun_cmd += '--nnodes ${WORLD_SIZE} --node_rank ${RANK} ' \
+                                '--master_addr ${MASTER_ADDR} --master_port ${MASTER_PORT} '
+            precmd = f'''export PYTHONPATH={os.getcwd()}:$PYTHONPATH &&'''
             # For SCO: bash -c 'ifconfig | grep "inet " | awk "{printf \"LAZYLLMIP %s\\n\", \$2}"'
-            self.precmd += '''ifconfig | grep "inet " | awk "{printf \\"LAZYLLMIP %s\\\\n\\", \$2}" && '''
+            precmd += '''ifconfig | grep "inet " | awk "{printf \\"LAZYLLMIP %s\\\\n\\", \$2}" &&'''
 
-            self.cmd = cmd
-            if self.torchrun:
-                # Delete 'python' in cmd
-                if self.cmd.cmd.strip().startswith('python'):
-                    self.cmd.cmd = self.cmd.cmd.strip()[6:]
-
-            self.jobid = None
-            self.ip = None
-            self.ps = None
-        
-        def start(self):
-            if self.torchrun:
-                print("Command:", self.sco_cmd + f' bash -c \'{self.torchrun_cmd} {self.cmd}\'')
-                cmd = f' bash -c \'{self.precmd}{self.torchrun_cmd} {self.cmd.cmd}\''
-            else:
-                print("Command:", self.sco_cmd + f' bash -c \'{self.cmd}\'')
-                cmd = f' bash -c \'{self.precmd}{self.cmd.cmd}\''
-            if lazyllm.mode == lazyllm.Mode.Display:
-                return
-            self.ps = subprocess.Popen(
-                self.sco_cmd + cmd,
-                shell=True,
-                executable='/bin/bash',
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT
-                )
-            self.get_jobid()
-
-            self.output_thread_event = threading.Event()
-            def enqueue_output(out, queue):
-                for line in iter(out.readline, b''):
-                    try:
-                        line = line.decode('utf-8')
-                    except:
-                        pass
-                    queue.put(line)
-                    if not self.ip and 'LAZYLLMIP' in line:
-                        self.ip = line.split()[-1]
-                    print(f'{self.jobid}: ', line.rstrip())
-                    if self.output_thread_event.is_set():
-                        break
-                out.close()
-            self.output_thread = threading.Thread(target=enqueue_output, args=(self.ps.stdout, self.queue))
-            self.output_thread.daemon = True
-            self.output_thread.start()
-            
-            if self.sync:
-                self.ps.wait()
-            else:
-                SlurmLauncher.all_processes[self.jobid] = self
+            # Delete 'python' in cmd
+            if self.torchrun and cmd.strip().startswith('python'):
+                cmd = cmd.strip()[6:]
+            return f'{sco_cmd} bash -c \'{precmd} {torchrun_cmd if self.torchrun else ""} {cmd}\''
 
         def get_jobid(self):
             time.sleep(0.5) # Wait for cmd to be stably submitted to sco
             id_str = subprocess.check_output([
-                'squeue',
-                f'--workspace-name={self.workspace_name}',
-                '-o',
-                'jobname,jobid']).decode("utf-8")
+                'squeue', f'--workspace-name={self.workspace_name}',
+                '-o', 'jobname,jobid']).decode("utf-8")
             pattern = re.compile(rf"{re.escape(self.name)}\s+(\S+)")
             match = pattern.search(id_str)
             if match:
@@ -449,32 +418,21 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def status(self):
             if self.jobid:
                 try:
-                    id_str = subprocess.check_output([
-                        'scontrol',
-                        f'--workspace-name={self.workspace_name}',
-                        'show',
-                        'job',
-                        str(self.jobid)
-                        ]).decode("utf-8")
+                    id_str = subprocess.check_output([f'scontrol', '--workspace-name={self.workspace_name}',
+                                                      'show', 'job', str(self.jobid)]).decode("utf-8")
                     id_json = json.loads(id_str)
                     job_state = id_json['status_phase'].strip().lower()
-                    if job_state=='running':
+                    if job_state == 'running':
                         return Status.Running
-                    elif job_state=='tbsubmitted':
+                    elif job_state in ['tbsubmitted', 'suspending', 'suspended']:
                         return Status.TBSubmitted
-                    elif job_state==['suspending', 'suspended']:
-                        return Status.TBSubmitted
-                    elif job_state in['waiting', 'init', 'queueing', 'creating', 'restarting', 'recovering', 'starting']:
+                    elif job_state in ['waiting', 'init', 'queueing', 'creating', 'restarting', 'recovering', 'starting']:
                         return Status.InQueue
-                    elif job_state=='succeeded':
-                            return Status.Done
-                    else:
-                        # status: failed, deleting
-                        return Status.Failed
-                except:
-                    return Status.Failed
-            else:
-                return Status.Failed
+                    elif job_state == 'succeeded':
+                        return Status.Done
+                except Exception:
+                    pass
+            return Status.Failed
 
     def __init__(self,
             partition=None,
@@ -502,9 +460,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         super(__class__, self).__init__()
 
     def makejob(self, cmd):
-        job = ScoLauncher.Job(cmd, launcher=self)
-        job.sync = self.sync
-        return job
+        return ScoLauncher.Job(cmd, launcher=self, sync=self.sync)
 
     def launch(self, job) -> None:
         assert isinstance(job, ScoLauncher.Job), 'Sco launcher only support cmd'
@@ -513,7 +469,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
             while job.status == Status.Running:
                 time.sleep(10)
             job.stop()
-        return job.get_return_value()
+        return job.return_value
 
 
 def cleanup():

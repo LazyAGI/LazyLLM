@@ -2,7 +2,7 @@ import os
 import random
 
 from lazyllm import launchers, LazyLLMCMD, bind, _0, ArgsDict
-from .base import LazyLLMDeployBase, restart_service
+from .base import LazyLLMDeployBase, verify_fastapi_func
 
 
 class Lightllm(LazyLLMDeployBase):
@@ -45,28 +45,21 @@ class Lightllm(LazyLLMDeployBase):
                 print(f"Note! That model_dir({model_dir}) is an invalid path, "
                     f"base_model({base_model}) will be used")
             model_dir = base_model
-        def build_cmd():
+
+        def impl():
             if not self.kw['port']:
                 self.kw['port'] = random.randint(30000, 40000)
             if not self.kw['nccl_port']:
                 self.kw['nccl_port'] = random.randint(20000, 30000)
-
-            cmd = (
-                'python -m lightllm.server.api_server '
-                f'--model_dir {model_dir} '
-                )
+            cmd = f'python -m lightllm.server.api_server --model_dir {model_dir} '
             cmd += self.kw.parse_kwargs()
             if self.trust_remote_code:
                 cmd += ' --trust_remote_code '
-            return cmd, self.kw['port']
-        func = build_cmd if not self.kw['port'] else None
-        cmd, port = build_cmd()
-        return LazyLLMCMD(cmd=cmd,
-                          post_function=bind(
-                              restart_service,
-                              _0,
-                              port,
-                              self.default_headers,
-                              self.message_formate,
-                              func)
-                        )
+            return cmd
+
+        return LazyLLMCMD(cmd=impl, return_value=self.geturl, checkf=verify_fastapi_func)
+
+    def geturl(self, job=None):
+        if job is None:
+            job = self.job
+        return f'http://{job.get_jobip()}:{self.kw["port"]}/generate'

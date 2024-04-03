@@ -113,9 +113,8 @@ def invoke(it, input):
             return it(*input) if isinstance(input, package) else it(**input)
         else:
             return it(input)
-    except TypeError:
-        print(f'{type(it)} got unexpected {type(input)} argument {input}')
     except Exception:
+        print(f'An error occored when invoking `{type(it)}` with `{input}`, input type is {type(input)}')
         raise
 
 
