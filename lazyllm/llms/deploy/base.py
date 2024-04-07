@@ -18,13 +18,17 @@ class DummyDeploy(LazyLLMDeployBase, flows.NamedPipeline):
     default_headers = {'Content-Type': 'application/json'}
     message_formate = None
     
-    def __init__(self, launcher=launchers.slurm(sync=False), **kw):
+    def __init__(self, launcher=launchers.slurm(sync=False), *, stream=False, **kw):
         super().__init__(launcher=launcher)
         def func():
             def impl(x):
                 print(f'input is {x}')
                 return f'reply for {x}'
-            return impl
+            def impl_stream(x):
+                for i in range(10):
+                    yield f'reply-{i} for {x}'
+                    time.sleep(0.2)
+            return impl_stream if stream else impl
         flows.Pipeline.__init__(self, func,
             deploy.RelayServer(port=random.randint(30000, 40000), launcher=launcher))
 

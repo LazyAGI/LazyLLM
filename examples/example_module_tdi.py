@@ -32,7 +32,7 @@ stage1_args = {
         'gpu_count':8,
     },
     'deploy': {
-        'llm_launcher': launchers.slurm(
+        'launcher': launchers.slurm(
             partition='pat_rd',
             nnode=1,
             nproc=1,

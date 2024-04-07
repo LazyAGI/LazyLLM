@@ -59,7 +59,7 @@ ppl = lazyllm.pipeline(
     deploy.lightllm(
         pre_func = before_func,
         post_func = after_func,
-        llm_launcher=launchers.slurm(
+        launcher=launchers.slurm(
             partition='pat_rd',
             nnode=1,
             nproc=1,
