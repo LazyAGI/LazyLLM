@@ -6,9 +6,10 @@ import base64
 import os
 import sys
 import inspect
+from types import GeneratorType
 
 from fastapi import FastAPI, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 
 # TODO(sunxiaoye): delete in the future
 lazyllm_module_dir=os.path.abspath(__file__)
@@ -17,9 +18,6 @@ for _ in range(5):
 sys.path.append(lazyllm_module_dir)
 
 app = FastAPI()
-
-prompt = '{input}'
-response_split = None
 
 
 @app.post("/generate")
@@ -35,9 +33,12 @@ async def generate(request: Request):
             else:
                 input = before_func(input)
         output = func(input)
-        if response_split is not None:
-            output = output.split(response_split)[-1]
-        if args.after_function:
+        if isinstance(output, GeneratorType):
+            def generate_stream():
+                for o in output:
+                    yield o
+            return StreamingResponse(generate_stream(), media_type='text_plain')
+        elif args.after_function:
             assert(callable(after_func)), 'after_func must be callable'
             r = inspect.getfullargspec(after_func)
             assert len(r.args) > 0 and r.varargs is None and r.varkw is None

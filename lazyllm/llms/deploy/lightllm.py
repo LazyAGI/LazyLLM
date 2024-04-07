@@ -20,10 +20,11 @@ class Lightllm(LazyLLMDeployBase):
 
     def __init__(self,
                  trust_remote_code=True,
-                 llm_launcher=launchers.slurm,
+                 launcher=launchers.slurm,
+                 stream=False,
                  **kw,
                  ):
-        super().__init__(launcher=llm_launcher)
+        super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'tp': 1,
             'max_total_token_num': 64000,

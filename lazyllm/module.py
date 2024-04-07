@@ -3,6 +3,7 @@ import re
 import copy
 
 import httpx
+import requests
 from lazyllm.thirdparty import gradio as gr
 from pydantic import BaseModel as struct
 from typing import Tuple
@@ -115,11 +116,12 @@ class SequenceModule(ModuleBase):
     
 
 class UrlModule(ModuleBase):
-    def __init__(self, url):
+    def __init__(self, url, *, stream=False):
         super().__init__()
         self._url = url
         self._prompt, self._response_split = '{input}', None
         self._prompt_keys = ['input']
+        self._stream = stream
         # Set for request by specific deploy:
         self._set_template()
 
@@ -130,7 +132,8 @@ class UrlModule(ModuleBase):
     def forward(self, __input=None, **kw):
         assert self._url is not None, f'Please start {self.__class__} first'
         assert (__input is None) ^ (len(kw) == 0)
-        assert self.template_headers is not None and self.input_key_name is not None
+        if self.template_headers is None: self.template_headers = {'Content-Type': 'application/json'}
+        if self.input_key_name is None: self.input_key_name = 'inputs'
         if self.template_message:
             data = copy.deepcopy(self.template_message)
             if __input == None:
@@ -175,11 +178,21 @@ class UrlModule(ModuleBase):
                 data = __input
             else:
                 data = kw
+        
+        def _callback(text):
+            return text if self._response_split is None else text.split(self._response_split)[-1]
 
-        with httpx.Client(timeout=90) as client:
-            response = client.post(self._url, json=data, headers=self.template_headers)
-        return response.text if self._response_split is None else \
-               response.text.split(self._response_split)[-1]
+        if self._stream:
+            # context bug with httpx, so we use requests
+            def _impl():
+                with requests.post(self._url, json=data, stream=True) as r:
+                    for chunk in r.iter_content(None):
+                        yield(_callback(chunk.decode('utf-8')))
+            return _impl()
+        else:
+            with httpx.Client(timeout=300) as client:
+                response = client.post(self._url, json=data, headers=self.template_headers)
+                return _callback(response.text)
 
     def prompt(self, prompt='{input}', response_split=None):
         self._prompt, self._response_split = prompt, response_split
@@ -217,11 +230,12 @@ class ActionModule(ModuleBase):
 
 
 class ServerModule(UrlModule):
-    def __init__(self, m, pre=None, post=None):
-        super().__init__(url=None)
+    def __init__(self, m, pre=None, post=None, stream=False):
+        super().__init__(url=None, stream=stream)
         self.m = m
         self._pre_func = pre
         self._post_func = post
+        assert (post is None) or (stream == False)
 
     def _get_deploy_tasks(self):
         self._set_template(
@@ -236,7 +250,8 @@ class ServerModule(UrlModule):
     # change to urlmodule when pickling to server process
     def __reduce__(self):
         assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url).prompt(prompt=self._prompt, response_split=self._response_split)
+        m = UrlModule(self._url,  stream=self._stream).prompt(
+            prompt=self._prompt, response_split=self._response_split)
         m._set_template(
             self.template_message,
             self.input_key_name,
@@ -259,7 +274,7 @@ css = """
 #logging {background-color: #FFCCCB}
 """
 class WebModule(ModuleBase):
-    def __init__(self, m, *, title='对话演示终端', stream_output=True) -> None:
+    def __init__(self, m, *, title='对话演示终端') -> None:
         super().__init__()
         self.m = m
         self.title = title
@@ -277,19 +292,18 @@ class WebModule(ModuleBase):
                     chatbot = gr.Chatbot(height=600)
                     query_box = gr.Textbox(show_label=False, placeholder='输入内容并回车!!!')
 
-            query_box.submit(self._prepare, [query_box, chatbot, stream_output], [query_box, chatbot], queue=False
-                ).then(self._respond_stream, [chat_use_context, chatbot], [chatbot, dbg_msg], queue=chatbot
+            query_box.submit(self._prepare, [query_box, chatbot], [query_box, chatbot], queue=False
+                ).then(self._respond_stream, [chat_use_context, chatbot, stream_output], [chatbot, dbg_msg], queue=chatbot
                 ).then(lambda: gr.update(interactive=True), None, query_box, queue=False)
             clear_btn.click(self._clear_history, None, outputs=[chatbot, query_box, dbg_msg])
         return demo
 
-    def _prepare(self, query, chat_history, stream_output):
+    def _prepare(self, query, chat_history):
         if chat_history is None:
             chat_history = []
-        self.m.stream_output = stream_output
         return '', chat_history + [[query, None]]
         
-    def _respond_stream(self, use_context, chat_history):
+    def _respond_stream(self, use_context, chat_history, stream_output):
         try:
             # TODO: move context to trainable module
             input = ('\<eos\>'.join([f'{h[0]}\<eou\>{h[1]}' for h in chat_history]).rsplit('\<eou\>', 1)[0]
@@ -306,9 +320,9 @@ class WebModule(ModuleBase):
                     if isinstance(s, (ModuleResponse, str)):
                         s, log = get_log_and_message(s, log)
                     chat_history[-1][1] += s
-                    yield chat_history, log
+                    if stream_output: yield chat_history, log
             else:
-                raise TypeError('function result should only be ModuleResponse or str')
+                raise TypeError(f'function result should only be ModuleResponse or str, but got {type(result)}')
         except Exception as e:
             chat_history = None
             log = str(e)
@@ -319,7 +333,7 @@ class WebModule(ModuleBase):
 
     def _work(self):
         def _impl():
-            self.demo.queue().launch(server_name="0.0.0.0", server_port=20566)
+            self.demo.queue().launch(server_name="0.0.0.0", server_port=20570)
         self.p = multiprocessing.Process(target=_impl)
         self.p.start()
 
@@ -331,8 +345,8 @@ class WebModule(ModuleBase):
 
 
 class TrainableModule(UrlModule):
-    def __init__(self, base_model='path/to/base_model', target_path='path/to/save/path'):
-        super().__init__(url=None)
+    def __init__(self, base_model='', target_path='', *, stream=False):
+        super().__init__(url=None, stream=stream)
         # Fake base_model and target_path for dummy
         self.base_model = base_model
         self.target_path = target_path
@@ -379,8 +393,7 @@ class TrainableModule(UrlModule):
             copy.deepcopy(self._deploy.default_headers),
         )
         return Pipeline(lambda *a: lazyllm.package(target_path, self.base_model),
-            self._deploy(**self._deploy_args) if hasattr(self, '_deploy_args') else self._deploy(pre_func=self._pre_func, post_func=self._post_func),
-            self.url)
+                        self._deploy(stream=self._stream, **self._deploy_args), self.url)
 
     def __getattr__(self, key):
         def _setattr(v):
@@ -389,7 +402,7 @@ class TrainableModule(UrlModule):
                 setattr(self, f'_{key}_args', kargs)
             setattr(self, f'_{key}', v)
             return self
-        keys = ['trainset', 'train', 'finetune', 'deploy', 'pre_func', 'post_func', 'mode']
+        keys = ['trainset', 'train', 'finetune', 'deploy', 'mode']
         if key in keys:
             return _setattr
         elif key.startswith('_') and key[1:] in keys:
@@ -399,7 +412,8 @@ class TrainableModule(UrlModule):
     # change to urlmodule when pickling to server process
     def __reduce__(self):
         assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url).prompt(prompt=self._prompt, response_split=self._response_split)
+        m = UrlModule(self._url, stream=self._stream).prompt(
+            prompt=self._prompt, response_split=self._response_split)
         m._set_template(
             self.template_message,
             self.input_key_name,
