@@ -14,9 +14,9 @@ class LazyLLMDeployBase(LLMBase):
 
 
 class DummyDeploy(LazyLLMDeployBase, flows.NamedPipeline):
-    input_key_name = 'inputs'
+    input_key_name = None
     default_headers = {'Content-Type': 'application/json'}
-    message_formate = None
+    message_format = None
     
     def __init__(self, launcher=launchers.slurm(sync=False), *, stream=False, **kw):
         super().__init__(launcher=launcher)

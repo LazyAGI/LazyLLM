@@ -12,9 +12,9 @@ def dump_func(f, old_value=None):
 
 
 class RelayServer(LazyLLMDeployBase):
-    input_key_name = 'inputs'
+    input_key_name = None
     default_headers = {'Content-Type': 'application/json'}
-    message_formate = None
+    message_format = None
 
     def __init__(self, port=None, *, func=None, pre_func=None, post_func=None,
                  launcher=launchers.slurm(sync=False)):
