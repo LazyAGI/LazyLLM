@@ -225,7 +225,7 @@ setattr(builtins, 'bind', Bind)
 
 
 class LazyLLMCMD(object):
-    def __init__(self, cmd, *, return_value=None, checkf=None, no_displays=None) -> None:
+    def __init__(self, cmd, *, return_value=None, checkf=(lambda *a : True), no_displays=None):
         if isinstance(cmd, (tuple, list)):
             cmd = ' && '.join(cmd)
         assert isinstance(cmd, str) or callable(cmd), 'cmd must be func or (list of) bash command str.'

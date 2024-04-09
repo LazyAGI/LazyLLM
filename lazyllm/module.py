@@ -119,11 +119,10 @@ class UrlModule(ModuleBase):
     def __init__(self, url, *, stream=False):
         super().__init__()
         self._url = url
-        self._prompt, self._response_split = '{input}', None
-        self._prompt_keys = ['input']
         self._stream = stream
+        self.prompt()
         # Set for request by specific deploy:
-        self._set_template()
+        self._set_template(template_headers={'Content-Type': 'application/json'})
 
     def url(self, url):
         print('url:', url)
@@ -131,67 +130,36 @@ class UrlModule(ModuleBase):
 
     def forward(self, __input=None, **kw):
         assert self._url is not None, f'Please start {self.__class__} first'
-        assert (__input is None) ^ (len(kw) == 0)
-        if self.template_headers is None: self.template_headers = {'Content-Type': 'application/json'}
-        if self.input_key_name is None: self.input_key_name = 'inputs'
-        if self.template_message:
+        assert (__input is None) ^ (len(kw) == 0), (
+            f'Error: Providing args and kwargs at the same time is not allowed in {__class__}')
+
+        def _prepare_data(kw):
+            if self.template_message is None: return __input if __input else kw
             data = copy.deepcopy(self.template_message)
-            if __input == None:
-                if self.input_key_name in kw:
-                    if len(self._prompt_keys)==1:
-                        # TODO(sunxiaoye): there is controversy
-                        data[self.input_key_name] = self._prompt.format(**{self._prompt_keys[0]:kw[self.input_key_name]})
-                    else:
-                        data[self.input_key_name] = kw[self.input_key_name]
-                elif all(var in kw for var in self._prompt_keys):
-                    data[self.input_key_name] = self._prompt.format(**kw)
-                else:
-                    raise ValueError(
-                        f"Some variables in the template({self._prompt_keys}) "
-                        "are not present in the provided dictionary.")
-                # TODO(sunxiaoye): Left keys for template_upate
-            elif type(__input) in (int, str):
-                if len(self._prompt_keys)==1:
-                    data[self.input_key_name] = self._prompt.format(**{self._prompt_keys[0]:__input})
-                else:
-                    raise ValueError(f'Prompt template need {len(self._prompt_keys)} variable, but got one.')
-            elif type(__input) is dict:
-                if self.input_key_name in __input:
-                    if len(self._prompt_keys)==1:
-                        # TODO(sunxiaoye): there is controversy
-                        data[self.input_key_name] = self._prompt.format(**{self._prompt_keys[0]:__input[self.input_key_name]})
-                    else:
-                        data[self.input_key_name] = __input[self.input_key_name]
-                elif all(var in __input for var in self._prompt_keys):
-                    data[self.input_key_name] = self._prompt.format(**__input)
-                else:
-                    raise ValueError(
-                        f"Some variables in the template({self._prompt_keys}) "
-                        "are not present in the provided dictionary.")
-                # TODO(sunxiaoye): Left keys for template_upate
-            else:
-                raise RuntimeError(
-                    'The input only support: str, dict or None. '
-                    f'but get type: {type(__input)}. ')
-        else:
-            if __input:
-                data = __input
-            else:
-                data = kw
-        
+            if isinstance(__input, dict): kw = __input
+            elif __input is not None: kw[self._prompt_keys[0]] = __input
+            assert set(self._prompt_keys).issubset(set(kw.keys())), ('Error: Required keys ['
+                f'{",".join(set(self._prompt_keys) - set(kw.keys()))}] are missing from user input')
+            data, kw = self._modify_parameters(data, kw)
+
+            if isinstance(kw.get(self.input_key_name, None), dict):
+                kw = kw[self.input_key_name]
+            data[self.input_key_name] = self._prompt.format(**kw)
+            return data
+
         def _callback(text):
             return text if self._response_split is None else text.split(self._response_split)[-1]
 
         if self._stream:
             # context bug with httpx, so we use requests
             def _impl():
-                with requests.post(self._url, json=data, stream=True) as r:
+                with requests.post(self._url, json=_prepare_data(kw), stream=True) as r:
                     for chunk in r.iter_content(None):
                         yield(_callback(chunk.decode('utf-8')))
             return _impl()
         else:
             with httpx.Client(timeout=300) as client:
-                response = client.post(self._url, json=data, headers=self.template_headers)
+                response = client.post(self._url, json=_prepare_data(kw), headers=self.template_headers)
                 return _callback(response.text)
 
     def prompt(self, prompt='{input}', response_split=None):
@@ -200,9 +168,27 @@ class UrlModule(ModuleBase):
         return self
     
     def _set_template(self, template_message=None, input_key_name=None, template_headers=None):
+        assert input_key_name is None or input_key_name in template_message.keys()
         self.template_message = template_message
         self.input_key_name = input_key_name
         self.template_headers = template_headers
+
+    def _modify_parameters(self, paras, kw):
+        for key, value in paras.items():
+            if key == self.input_key_name:
+                continue
+            elif isinstance(value, dict):
+                if key in kw:
+                    assert set(kw[key].keys()).issubset(set(value.keys()))
+                    value.update(kw.pop(key))
+                    for k in value.keys():
+                        if k in kw: value[k] = kw.pop(k)
+            else:
+                paras[key] = kw.pop(key)
+        return paras, kw
+
+    def set_default_parameters(self, **kw):
+        self._modify_parameters(self.template_message, kw)
 
 
 class ActionModule(ModuleBase):
@@ -233,16 +219,15 @@ class ServerModule(UrlModule):
     def __init__(self, m, pre=None, post=None, stream=False):
         super().__init__(url=None, stream=stream)
         self.m = m
-        self._pre_func = pre
-        self._post_func = post
+        self._pre_func, self._post_func = pre, post
         assert (post is None) or (stream == False)
-
-    def _get_deploy_tasks(self):
         self._set_template(
-            copy.deepcopy(lazyllm.deploy.RelayServer.message_formate),
+            copy.deepcopy(lazyllm.deploy.RelayServer.message_format),
             lazyllm.deploy.RelayServer.input_key_name,
             copy.deepcopy(lazyllm.deploy.RelayServer.default_headers),
         )
+
+    def _get_deploy_tasks(self):
         return Pipeline(
             lazyllm.deploy.RelayServer(func=self.m, pre_func=self._pre_func, post_func=self._post_func),
             self.url)
@@ -353,47 +338,40 @@ class TrainableModule(UrlModule):
         self._train = None # lazyllm.train.auto
         self._finetune = lazyllm.finetune.auto
         self._deploy = None # lazyllm.deploy.auto
-    
+
+    def _get_args(self, arg_cls, disable=[]):
+        args = getattr(self, f'_{arg_cls}_args', dict())
+        if len(set(args.keys()).intersection(set(disable))) > 0:
+            raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
+                             '{arg_cls}_args, please pass them from Module.__init__()')
+        return args
+
     def _get_train_tasks(self):
         trainset_getf = lambda : lazyllm.package(self._trainset, None) \
                         if isinstance(self._trainset, str) else self._trainset
         if self._mode == 'train':
-            self._train_args = self._train_args if hasattr(self, '_train_args') else dict()
-            if 'base_model' in self._train_args or 'target_path' in self._train_args:
-                raise ValueError(
-                    'Neither base_model nor target_path can be set '
-                    'in train_args, please pass them in Module.')
-            train = self._train(base_model=self.base_model, target_path=self.target_path, **self._train_args)
+            args = self._get_args('train', disable=['base_model', 'target_path'])
+            train = self._train(base_model=self.base_model, target_path=self.target_path, **args)
         elif self._mode == 'finetune':
-            self._finetune_args = self._finetune_args if hasattr(self, '_finetune_args') else dict()
-            if 'base_model' in self._finetune_args or 'target_path' in self._finetune_args:
-                raise ValueError(
-                    'Neither base_model nor target_path can be set '
-                    'in finetune_args, please pass them in Module.')
-            train = self._finetune(base_model=self.base_model, target_path=self.target_path, **self._finetune_args)
+            args = self._get_args('finetune', disable=['base_model', 'target_path'])
+            train = self._finetune(base_model=self.base_model, target_path=self.target_path, **args)
         else:
             raise RuntimeError('mode must be train or finetune')
         return Pipeline(trainset_getf, train)
 
     def _get_deploy_tasks(self):
-        self._deploy_args = self._deploy_args if hasattr(self, '_deploy_args') else dict()
-        if 'base_model' in self._deploy_args or 'target_path' in self._deploy_args:
-            raise ValueError(
-                    'Neither base_model nor target_path can be set '
-                    'in deploy_args, please pass them in Module.')
         if os.path.basename(self.target_path) != 'merge':
             target_path = os.path.join(self.target_path, 'merge')
 
         if not os.path.exists(target_path):
             target_path = self.target_path
-
-        self._set_template(
-            copy.deepcopy(self._deploy.message_formate),
-            self._deploy.input_key_name,
-            copy.deepcopy(self._deploy.default_headers),
-        )
         return Pipeline(lambda *a: lazyllm.package(target_path, self.base_model),
                         self._deploy(stream=self._stream, **self._deploy_args), self.url)
+
+    def _deploy_setter_hook(self):
+        self._deploy_args = self._get_args('deploy', disable=['target_path'])
+        self._set_template(copy.deepcopy(self._deploy.message_format),
+            self._deploy.input_key_name, copy.deepcopy(self._deploy.default_headers))
 
     def __getattr__(self, key):
         def _setattr(v):
@@ -401,6 +379,7 @@ class TrainableModule(UrlModule):
                 v, kargs = v
                 setattr(self, f'_{key}_args', kargs)
             setattr(self, f'_{key}', v)
+            if hasattr(self, f'_{key}_setter_hook'): getattr(self, f'_{key}_setter_hook')()
             return self
         keys = ['trainset', 'train', 'finetune', 'deploy', 'mode']
         if key in keys:
