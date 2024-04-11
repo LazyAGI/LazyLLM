@@ -367,7 +367,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
             sco_cmd = f'srun -p {launcher.partition} --workspace-name {self.workspace_name} ' \
                       f'--job-name={self.name} -f {launcher.framework} -r N2lS.Ie.I60.{launcher.ngpus} ' \
                       f'-N {launcher.nnode} --priority highest '
-            torchrun_cmd = 'python -m torch.distributed.run --nproc_per_node {launcher.nproc} '
+            torchrun_cmd = f'python -m torch.distributed.run --nproc_per_node {launcher.nproc} '
 
             if launcher.nnode==1:
                 # SCO for mpi：supports multiple cards in a single machine
@@ -378,7 +378,12 @@ class ScoLauncher(LazyLLMLaunchersBase):
                 sco_cmd += '-d AllReduce '
                 torchrun_cmd += '--nnodes ${WORLD_SIZE} --node_rank ${RANK} ' \
                                 '--master_addr ${MASTER_ADDR} --master_port ${MASTER_PORT} '
-            precmd = f'''export PYTHONPATH={os.getcwd()}:$PYTHONPATH &&'''
+            pythonpath = os.getenv('PYTHONPATH', '')
+            precmd = f'''export PYTHONPATH={os.getcwd()}:{pythonpath}:$PYTHONPATH && '''
+            env_vars = os.environ
+            lazyllm_vars = {k: v for k, v in env_vars.items() if k.startswith("LAZYLLM")}
+            if lazyllm_vars:
+                precmd += " && ".join(f"export {k}={v}" for k, v in lazyllm_vars.items()) + " && "
             # For SCO: bash -c 'ifconfig | grep "inet " | awk "{printf \"LAZYLLMIP %s\\n\", \$2}"'
             precmd += '''ifconfig | grep "inet " | awk "{printf \\"LAZYLLMIP %s\\\\n\\", \$2}" &&'''
 
@@ -418,7 +423,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def status(self):
             if self.jobid:
                 try:
-                    id_str = subprocess.check_output([f'scontrol', '--workspace-name={self.workspace_name}',
+                    id_str = subprocess.check_output(['scontrol', f'--workspace-name={self.workspace_name}',
                                                       'show', 'job', str(self.jobid)]).decode("utf-8")
                     id_json = json.loads(id_str)
                     job_state = id_json['status_phase'].strip().lower()
@@ -447,9 +452,8 @@ class ScoLauncher(LazyLLMLaunchersBase):
         assert nnode >= 1, "Use at least one node."
         assert nproc >= 1, "Start at least one process."
         assert ngpus >= 1, "Use at least one GPU."
-        assert type(partition) is str, f"'partition' is {partition}. Please set partition."
         assert type(workspace_name) is str, f"'workspace_name' is {workspace_name}. Please set workspace_name."
-        self.partition = partition
+        self.partition = partition if partition else os.environ['LAZYLLM_SLURM_PART']
         self.workspace_name = workspace_name
         self.framework = framework
         self.nnode = nnode
@@ -470,6 +474,11 @@ class ScoLauncher(LazyLLMLaunchersBase):
                 time.sleep(10)
             job.stop()
         return job.return_value
+
+
+class RemoteLauncher(LazyLLMLaunchersBase):
+    def __new__(cls, **kwargs):
+        return getattr(lazyllm.launchers, os.environ['LAZYLLM_DEAULT_LAUNCHER'].lower())(**kwargs)
 
 
 def cleanup():

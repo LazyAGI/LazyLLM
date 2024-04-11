@@ -56,10 +56,10 @@ class Assigner(object):
 
     def get_default_info(self):
         # Get Env info
-        if "LAZYLLM_LAUNCHER" in os.environ:
-            self.launcher = os.environ["LAZYLLM_LAUNCHER"].lower()
+        if "LAZYLLM_DEAULT_LAUNCHER" in os.environ:
+            self.launcher = os.environ["LAZYLLM_DEAULT_LAUNCHER"].lower()
         else:
-            warnings.warn("Environment variable 'LAZYLLM_LAUNCHER' "
+            warnings.warn("Environment variable 'LAZYLLM_DEAULT_LAUNCHER' "
                           "not found, setting it to 'slurm'")
             self.launcher = "slurm"
         if "LAZYLLM_GPU_MEMORY" in os.environ:
