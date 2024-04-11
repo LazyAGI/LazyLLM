@@ -106,7 +106,7 @@ class SequenceModule(ModuleBase):
 
     def forward(self, *args, **kw):
         ppl = Pipeline(*self.submodules)
-        return ppl.start(*args, **kw)
+        return ppl.start(*args, **kw).result
 
     def __repr__(self):
         representation = '<SequenceModule> [\n'
