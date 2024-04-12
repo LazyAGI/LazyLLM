@@ -171,7 +171,7 @@ class UrlModule(ModuleBase):
                         for chunk in r.iter_content(None):
                             yield(_callback(chunk.decode('utf-8')))
                     else:
-                        raise RuntimeError('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+                        raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
             return _impl()
         else:
             with httpx.Client(timeout=300) as client:
@@ -179,7 +179,7 @@ class UrlModule(ModuleBase):
                 if response.status_code == 200:
                     return _callback(response.text)
                 else:
-                    raise RuntimeError(response.text)
+                    raise requests.RequestException(response.text)
 
     def prompt(self, prompt='{input}', response_split=None):
         self._prompt, self._response_split = prompt, response_split
