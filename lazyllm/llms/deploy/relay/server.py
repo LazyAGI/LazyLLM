@@ -11,6 +11,7 @@ from types import GeneratorType
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response, StreamingResponse
+import requests
 
 # TODO(sunxiaoye): delete in the future
 lazyllm_module_dir=os.path.abspath(__file__)
@@ -55,7 +56,8 @@ async def generate(request: Request):
             elif len(new_args) == 2:
                 output = after_func(output, origin)
         return Response(content=output)
-
+    except requests.RequestException as e:
+        return Response(content=f'{str(e)}', status_code=500)
     except Exception as e:
         return Response(content=f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
 
