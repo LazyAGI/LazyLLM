@@ -14,19 +14,25 @@ class LazyLLMDeployBase(LLMBase):
 
 
 class DummyDeploy(LazyLLMDeployBase, flows.NamedPipeline):
-    input_key_name = None
+    input_key_name = 'inputs'
     default_headers = {'Content-Type': 'application/json'}
-    message_format = None
+    message_format = {
+        input_key_name: '',
+        'parameters': {
+            'do_sample': False,
+            'temperature': 0.1,
+        }
+    }
     
-    def __init__(self, launcher=launchers.slurm(sync=False), *, stream=False, **kw):
+    def __init__(self, launcher=launchers.remote(sync=False), *, stream=False, **kw):
         super().__init__(launcher=launcher)
         def func():
             def impl(x):
-                print(f'input is {x}')
-                return f'reply for {x}'
+                print(f'input is {x["inputs"]}, parameters is {x["parameters"]}')
+                return f'reply for {x["inputs"]}, and parameters is {x["parameters"]}'
             def impl_stream(x):
                 for i in range(10):
-                    yield f'reply-{i} for {x}'
+                    yield f'reply-{i} for {x["inputs"]}, and parameters is {x["parameters"]}\n'
                     time.sleep(0.2)
             return impl_stream if stream else impl
         flows.Pipeline.__init__(self, func,

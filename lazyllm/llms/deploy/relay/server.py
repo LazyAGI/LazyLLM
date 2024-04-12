@@ -6,6 +6,7 @@ import base64
 import os
 import sys
 import inspect
+import traceback
 from types import GeneratorType
 
 from fastapi import FastAPI, Request
@@ -24,6 +25,10 @@ app = FastAPI()
 async def generate(request: Request):
     try:
         origin = input = (await request.json())
+        kw = dict()
+        if isinstance(input, dict) and input.get('_relay_use_kw', False):
+            kw = input['kwargs']
+            origin = input = input['input']
         if args.before_function:
             assert(callable(before_func)), 'before_func must be callable'
             r = inspect.getfullargspec(before_func)
@@ -32,7 +37,7 @@ async def generate(request: Request):
                 input = before_func(**input)
             else:
                 input = before_func(input)
-        output = func(input)
+        output = func(input, **kw)
         if isinstance(output, GeneratorType):
             def generate_stream():
                 for o in output:
@@ -52,7 +57,7 @@ async def generate(request: Request):
         return Response(content=output)
 
     except Exception as e:
-        return Response(content=str(e), status_code=500)
+        return Response(content=f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

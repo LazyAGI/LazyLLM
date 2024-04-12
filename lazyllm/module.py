@@ -116,10 +116,11 @@ class SequenceModule(ModuleBase):
     
 
 class UrlModule(ModuleBase):
-    def __init__(self, url, *, stream=False):
+    def __init__(self, url, *, stream=False, meta=None):
         super().__init__()
         self._url = url
         self._stream = stream
+        self._meta = meta if meta else UrlModule
         self.prompt()
         # Set for request by specific deploy:
         self._set_template(template_headers={'Content-Type': 'application/json'})
@@ -128,16 +129,29 @@ class UrlModule(ModuleBase):
         print('url:', url)
         self._url = url
 
+    # Cannot modify or add any attrubute of self
     def forward(self, __input=None, **kw):
         assert self._url is not None, f'Please start {self.__class__} first'
-        assert (__input is None) ^ (len(kw) == 0), (
-            f'Error: Providing args and kwargs at the same time is not allowed in {__class__}')
 
-        def _prepare_data(kw):
-            if self.template_message is None: return __input if __input else kw
+        if self.template_message is None: 
+            if __input is not None and len(kw) > 0:
+                assert self._meta == ServerModule, ('Error: Providing args and kwargs at the same time '
+                    f'is not allowed in {self._meta.__name__}')
+                data = dict(_relay_use_kw=True, input=__input, kwargs=kw)
+            else:
+                data = __input if __input else kw
+        else:
             data = copy.deepcopy(self.template_message)
-            if isinstance(__input, dict): kw = __input
-            elif __input is not None: kw[self._prompt_keys[0]] = __input
+            if isinstance(__input, dict):
+                assert len(set(__input.keys()).intersection(set(kw.keys()))) == 0, (
+                    f'Error: Duplicate key in input and kwargs in {self._meta.__name__}')
+                kw.update(__input)
+            elif __input is not None:
+                assert len(self._prompt_keys) == 1, (
+                    f'only one prompt-key is allowed when input is provided in {self._meta.__name__}')
+                assert (self._prompt_keys[0] not in kw) and (self.input_key_name not in kw), (
+                    f'"{self._prompt_keys[0]}" or "{self.input_key_name}" is already provided by kwargs in {self._meta.__name__}')
+                kw[self._prompt_keys[0]] = __input
             assert set(self._prompt_keys).issubset(set(kw.keys())), ('Error: Required keys ['
                 f'{",".join(set(self._prompt_keys) - set(kw.keys()))}] are missing from user input')
             data, kw = self._modify_parameters(data, kw)
@@ -145,7 +159,6 @@ class UrlModule(ModuleBase):
             if isinstance(kw.get(self.input_key_name, None), dict):
                 kw = kw[self.input_key_name]
             data[self.input_key_name] = self._prompt.format(**kw)
-            return data
 
         def _callback(text):
             return text if self._response_split is None else text.split(self._response_split)[-1]
@@ -153,14 +166,20 @@ class UrlModule(ModuleBase):
         if self._stream:
             # context bug with httpx, so we use requests
             def _impl():
-                with requests.post(self._url, json=_prepare_data(kw), stream=True) as r:
-                    for chunk in r.iter_content(None):
-                        yield(_callback(chunk.decode('utf-8')))
+                with requests.post(self._url, json=data, stream=True) as r:
+                    if r.status_code == 200:
+                        for chunk in r.iter_content(None):
+                            yield(_callback(chunk.decode('utf-8')))
+                    else:
+                        raise RuntimeError('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
             return _impl()
         else:
             with httpx.Client(timeout=300) as client:
-                response = client.post(self._url, json=_prepare_data(kw), headers=self.template_headers)
-                return _callback(response.text)
+                response = client.post(self._url, json=data, headers=self.template_headers)
+                if response.status_code == 200:
+                    return _callback(response.text)
+                else:
+                    raise RuntimeError(response.text)
 
     def prompt(self, prompt='{input}', response_split=None):
         self._prompt, self._response_split = prompt, response_split
@@ -181,8 +200,8 @@ class UrlModule(ModuleBase):
                 if key in kw:
                     assert set(kw[key].keys()).issubset(set(value.keys()))
                     value.update(kw.pop(key))
-                    for k in value.keys():
-                        if k in kw: value[k] = kw.pop(k)
+                for k in value.keys():
+                    if k in kw: value[k] = kw.pop(k)
             else:
                 paras[key] = kw.pop(key)
         return paras, kw
@@ -217,7 +236,7 @@ class ActionModule(ModuleBase):
 
 class ServerModule(UrlModule):
     def __init__(self, m, pre=None, post=None, stream=False):
-        super().__init__(url=None, stream=stream)
+        super().__init__(url=None, stream=stream, meta=ServerModule)
         self.m = m
         self._pre_func, self._post_func = pre, post
         assert (post is None) or (stream == False)
@@ -235,7 +254,7 @@ class ServerModule(UrlModule):
     # change to urlmodule when pickling to server process
     def __reduce__(self):
         assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url,  stream=self._stream).prompt(
+        m = UrlModule(self._url, stream=self._stream, meta=self._meta).prompt(
             prompt=self._prompt, response_split=self._response_split)
         m._set_template(
             self.template_message,
@@ -259,18 +278,25 @@ css = """
 #logging {background-color: #FFCCCB}
 """
 class WebModule(ModuleBase):
-    def __init__(self, m, *, title='对话演示终端') -> None:
+    def __init__(self, m, *, components=[], title='对话演示终端') -> None:
         super().__init__()
         self.m = m
         self.title = title
-        self.demo = self.init_web()
+        self.ckeys = [c[0] for c in components]
+        self.demo = self.init_web(components)
 
-    def init_web(self):
+    def init_web(self, component_descs):
         with gr.Blocks(css=css, title=self.title) as demo:
             with gr.Row():
                 with gr.Column(scale=3):
                     chat_use_context = gr.Checkbox(interactive=True, value=False, label="使用上下文")
                     stream_output = gr.Checkbox(interactive=True, value=True, label="流式输出")
+                    components = []
+                    for name, ctype, value in component_descs:
+                        if ctype in ('Checkbox', 'Text'):
+                            components.append(getattr(gr, ctype)(interactive=True, value=value, label=name))
+                        else:
+                            raise KeyError(f'invalid component type: {ctype}')
                     dbg_msg = gr.Textbox(show_label=True, label='处理日志', elem_id='logging', interactive=False, max_lines=10)
                     clear_btn = gr.Button(value="🗑️  Clear history", interactive=True)
                 with gr.Column(scale=6):
@@ -278,7 +304,8 @@ class WebModule(ModuleBase):
                     query_box = gr.Textbox(show_label=False, placeholder='输入内容并回车!!!')
 
             query_box.submit(self._prepare, [query_box, chatbot], [query_box, chatbot], queue=False
-                ).then(self._respond_stream, [chat_use_context, chatbot, stream_output], [chatbot, dbg_msg], queue=chatbot
+                ).then(self._respond_stream, [chat_use_context, chatbot, stream_output] + components,
+                                             [chatbot, dbg_msg], queue=chatbot
                 ).then(lambda: gr.update(interactive=True), None, query_box, queue=False)
             clear_btn.click(self._clear_history, None, outputs=[chatbot, query_box, dbg_msg])
         return demo
@@ -288,12 +315,13 @@ class WebModule(ModuleBase):
             chat_history = []
         return '', chat_history + [[query, None]]
         
-    def _respond_stream(self, use_context, chat_history, stream_output):
+    def _respond_stream(self, use_context, chat_history, stream_output, *args):
         try:
             # TODO: move context to trainable module
             input = ('\<eos\>'.join([f'{h[0]}\<eou\>{h[1]}' for h in chat_history]).rsplit('\<eou\>', 1)[0]
                      if use_context else chat_history[-1][0])
-            result, log = self.m(input), None
+            kwargs = {k:v for k, v in zip(self.ckeys, args)}
+            result, log = self.m(input, **kwargs), None
             def get_log_and_message(s, log=''):
                 return ((s.messages, s.err[1] if s.err[0] != 0 else s.trace) 
                         if isinstance(s, ModuleResponse) else (s, log))
@@ -331,7 +359,7 @@ class WebModule(ModuleBase):
 
 class TrainableModule(UrlModule):
     def __init__(self, base_model='', target_path='', *, stream=False):
-        super().__init__(url=None, stream=stream)
+        super().__init__(url=None, stream=stream, meta=TrainableModule)
         # Fake base_model and target_path for dummy
         self.base_model = base_model
         self.target_path = target_path
@@ -391,7 +419,7 @@ class TrainableModule(UrlModule):
     # change to urlmodule when pickling to server process
     def __reduce__(self):
         assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url, stream=self._stream).prompt(
+        m = UrlModule(self._url, stream=self._stream, meta=self._meta).prompt(
             prompt=self._prompt, response_split=self._response_split)
         m._set_template(
             self.template_message,

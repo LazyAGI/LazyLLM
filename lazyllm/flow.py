@@ -198,7 +198,9 @@ class Warp(LazyLLMFlowsBase):
         assert 1 == len(self.items)
         if not isinstance(input, package):
             input = package(input)
-        return package(invoke(self.items[0], inp) for inp in input)
+        ts = [Thread(target=invoke, args=(self.items[0], inp)) for inp in input]
+        [t.start() for t in ts]
+        return package(t.get_result() for t in ts)
 
 
 # switch(exp):

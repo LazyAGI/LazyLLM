@@ -9,11 +9,9 @@ import subprocess
 from enum import Enum
 from queue import Queue
 from datetime import datetime
-import copy
 
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final, timeout
-from .flow import FlowBase
 
 class Status(Enum):
     TBSubmitted = 0,
@@ -477,8 +475,8 @@ class ScoLauncher(LazyLLMLaunchersBase):
 
 
 class RemoteLauncher(LazyLLMLaunchersBase):
-    def __new__(cls, **kwargs):
-        return getattr(lazyllm.launchers, os.environ['LAZYLLM_DEAULT_LAUNCHER'].lower())(**kwargs)
+    def __new__(cls, *args, **kwargs):
+        return getattr(lazyllm.launchers, os.environ['LAZYLLM_DEAULT_LAUNCHER'].lower())(*args, **kwargs)
 
 
 def cleanup():
