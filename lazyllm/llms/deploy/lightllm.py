@@ -8,7 +8,7 @@ from .base import LazyLLMDeployBase, verify_fastapi_func
 class Lightllm(LazyLLMDeployBase):
     input_key_name = 'inputs'
     default_headers = {'Content-Type': 'application/json'}
-    message_format ={
+    message_format = {
         input_key_name: 'Who are you ?',
         'parameters': {
             'do_sample': False,
