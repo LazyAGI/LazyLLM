@@ -12,9 +12,15 @@ class Lightllm(LazyLLMDeployBase):
         input_key_name: 'Who are you ?',
         'parameters': {
             'do_sample': False,
-            'ignore_eos': False,
+            "presence_penalty":0.0, 
+            "frequency_penalty":0.0, 
+            "repetition_penalty":1.0, 
+            'temperature': 1.0,
+            "top_p":1, 
+            "top_k":-1, # -1 is for all
+            "ignore_eos": False, 
             'max_new_tokens': 512,
-            'temperature': 0.1,
+            "stop_sequences":None
         }
     }
 
