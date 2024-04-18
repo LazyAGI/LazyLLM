@@ -1,15 +1,14 @@
 from .common import LazyLLMRegisterMetaClass, _get_base_cls_from_registry
 from .common import package, kwargs, LazyLLMCMD, timeout, final, ReadOnlyWrapper
 from .common import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9
-from .common import Thread, FlatList, ID, ResultCollector, ArgsDict
+from .common import Thread, FlatList, ID, ResultCollector, ArgsDict, ModuleResponse
 from .configs import mode, Mode
 from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase, barrier
 from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                    LazyLLMValidateBase, register as llmregister)
-from .module import (Module, UrlModule, TrainableModule, SequenceModule, 
-                     ActionModule, ServerModule, WebModule,
-                     ModuleResponse)
+from .module import (Module, UrlModule, TrainableModule, 
+                     ActionModule, ServerModule, WebModule)
 from . import flows
 
 pipeline, namedPipeline = flows.pipeline, flows.namedPipeline
@@ -45,12 +44,12 @@ __all__ = [
     'Thread',
     'ID',
     'ResultCollector',
+    'ArgsDict',
 
     # modules
     'Module',
     'UrlModule',
     'TrainableModule',
-    'SequenceModule',
     'ActionModule',
     'ServerModule',
     'WebModule',

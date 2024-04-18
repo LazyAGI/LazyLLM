@@ -1,6 +1,6 @@
 from typing import Any
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, bind, root
-from lazyllm import ResultCollector, Thread, ReadOnlyWrapper
+from lazyllm import ModuleResponse, Thread, ReadOnlyWrapper
 import copy
 import types
 import threading
@@ -72,11 +72,25 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         self.result = None
 
     def __call__(self, args=package()):
+        history_trace = ''
+        if isinstance(args, ModuleResponse):
+            history_trace = args.trace
         output = self._run(args)
+
+        if isinstance(output, ModuleResponse):
+            history_trace = history_trace + output.trace
+            output = output.messages
+        elif isinstance(output, package):
+            history_trace += '\n'.join([o.trace for o in output if isinstance(o, ModuleResponse)])
+            output = package(o.messages if isinstance(o, ModuleResponse) else o for o in output)
+
         if self.post_action is not None:
             self.post_action(*output) if isinstance(output, package) else self.post_action(output) 
         if self.return_input:
             output = package(args, output)
+
+        if history_trace:
+            output = ModuleResponse(messages=output, trace=history_trace)
         return output
     
     def _run(self, *args, **kw):
@@ -124,12 +138,18 @@ def invoke(it, input):
 class Pipeline(LazyLLMFlowsBase):
     def _run(self, input=package()):
         output = input
+        traces = []
         for it in self.items:
             try:
                 output = invoke(it, output)
+                if isinstance(output, ModuleResponse):
+                    traces.append(output.trace)
+                    output = output.messages
             except Exception as e:
                 print(f'an error occured when calling {it.__class__.__name__}()')
                 raise e
+        if len(traces) > 0:
+            output = ModuleResponse(messages=output, trace='\n'.join(traces))
         return output
 
 

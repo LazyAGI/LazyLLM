@@ -5,20 +5,22 @@ import copy
 import httpx
 import requests
 from lazyllm.thirdparty import gradio as gr
-from pydantic import BaseModel as struct
-from typing import Tuple
 from types import GeneratorType
+import pickle
+import codecs
 import multiprocessing
 
 import lazyllm
-from lazyllm import FlatList
+from lazyllm import FlatList, ModuleResponse
 from .flow import FlowBase, Pipeline, Parallel, DPES
+import traceback
 
 
 class ModuleBase(object):
-    def __init__(self):
+    def __init__(self, *, return_trace=False):
         self.submodules = []
         self._evalset = None
+        self._return_trace = return_trace
         self.mode_list  = ('train', 'server', 'eval')
 
     def __setattr__(self, name: str, value):
@@ -26,7 +28,11 @@ class ModuleBase(object):
             self.submodules.append(value)
         return super().__setattr__(name, value)
 
-    def __call__(self, *args, **kw): return self.forward(*args, **kw)
+    def __call__(self, *args, **kw): 
+        r = self.forward(*args, **kw)
+        if self._return_trace:
+            r = ModuleResponse(messages=r, trace=str(r))
+        return r
 
     # interfaces
     def forward(self, *args, **kw): raise NotImplementedError
@@ -93,31 +99,9 @@ class ModuleBase(object):
         return getattr(self.__class__, f) is not getattr(__class__, f)
 
 
-class ModuleResponse(struct):
-    messages: str = ''
-    trace: str = ''
-    err: Tuple[int, str] = (0, '')
-
-
-class SequenceModule(ModuleBase):
-    def __init__(self, *args):
-        super().__init__()
-        self.submodules = list(args)
-
-    def forward(self, *args, **kw):
-        ppl = Pipeline(*self.submodules)
-        return ppl.start(*args, **kw).result
-
-    def __repr__(self):
-        representation = '<SequenceModule> [\n'
-        for m in self.submodules:
-            representation += '\n'.join(['    ' + s for s in repr(m).split('\n')]) + '\n'
-        return representation + ']'
-    
-
 class UrlModule(ModuleBase):
-    def __init__(self, url, *, stream=False, meta=None):
-        super().__init__()
+    def __init__(self, url, *, stream=False, meta=None, return_trace=False):
+        super().__init__(return_trace=return_trace)
         self._url = url
         self._stream = stream
         self._meta = meta if meta else UrlModule
@@ -161,7 +145,12 @@ class UrlModule(ModuleBase):
             data[self.input_key_name] = self._prompt.format(**kw)
 
         def _callback(text):
-            return text if self._response_split is None else text.split(self._response_split)[-1]
+            if isinstance(text, ModuleResponse):
+                text.messages = text.messages if self._response_split is None else \
+                                text.messages.split(self._response_split)[-1]
+            else:
+                text = text if self._response_split is None else text.split(self._response_split)[-1]
+            return text
 
         if self._stream:
             # context bug with httpx, so we use requests
@@ -169,7 +158,12 @@ class UrlModule(ModuleBase):
                 with requests.post(self._url, json=data, stream=True) as r:
                     if r.status_code == 200:
                         for chunk in r.iter_content(None):
-                            yield(_callback(chunk.decode('utf-8')))
+                            try:
+                                chunk = pickle.loads(codecs.decode(chunk, "base64"))
+                                assert isinstance(chunk, ModuleResponse)
+                            except Exception:
+                                chunk = chunk.decode('utf-8')
+                            yield(_callback(chunk))
                     else:
                         raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
             return _impl()
@@ -211,10 +205,15 @@ class UrlModule(ModuleBase):
 
 
 class ActionModule(ModuleBase):
-    def __init__(self, action):
-        super().__init__()
-        if isinstance(action, FlowBase):
+    def __init__(self, action, *, return_trace=False):
+        super().__init__(return_trace=return_trace)
+        if isinstance(action, (tuple, list)):
+            self.submodules = [a for a in action if isinstance(a, ModuleBase)]
+            action = Pipeline(*action)
+        elif isinstance(action, FlowBase):
             action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: self.submodules.append(x))
+        else:
+            assert callable(action)
         self.action = action
 
     def forward(self, *args, **kw):
@@ -226,7 +225,7 @@ class ActionModule(ModuleBase):
 
     def __repr__(self):
         representation = '<ActionModule> ['
-        if isinstance(self.action, (FlowBase, ActionModule, ServerModule, SequenceModule)):
+        if isinstance(self.action, (FlowBase, ActionModule, ServerModule)):
             sub_rep = '\n'.join(['    ' + s for s in repr(self.action).split('\n')])
             representation += '\n' + sub_rep + '\n'
         else:
@@ -235,8 +234,9 @@ class ActionModule(ModuleBase):
 
 
 class ServerModule(UrlModule):
-    def __init__(self, m, pre=None, post=None, stream=False):
-        super().__init__(url=None, stream=stream, meta=ServerModule)
+    def __init__(self, m, pre=None, post=None, stream=False, return_trace=False):
+        assert stream is False or return_trace is False, 'Module with stream output has no trace'
+        super().__init__(url=None, stream=stream, meta=ServerModule, return_trace=return_trace)
         self.m = m
         self._pre_func, self._post_func = pre, post
         assert (post is None) or (stream == False)
@@ -266,11 +266,11 @@ class ServerModule(UrlModule):
 
     def __repr__(self):
         representation = '<ServerModule> ['
-        if isinstance(self.action, (FlowBase, ActionModule, ServerModule, SequenceModule)):
-            sub_rep = '\n'.join(['    ' + s for s in repr(self.action).split('\n')])
+        if isinstance(self.m, (FlowBase, ActionModule, ServerModule)):
+            sub_rep = '\n'.join(['    ' + s for s in repr(self.m).split('\n')])
             representation += '\n' + sub_rep + '\n'
         else:
-            representation += repr(self.action)
+            representation += repr(self.m)
         return representation + ']'
 
 
@@ -278,12 +278,17 @@ css = """
 #logging {background-color: #FFCCCB}
 """
 class WebModule(ModuleBase):
-    def __init__(self, m, *, components=[], title='对话演示终端') -> None:
+    class TraceMode:
+        Refresh = 1
+        Appendix = 2
+
+    def __init__(self, m, *, components=[], title='对话演示终端', trace_mode=None) -> None:
         super().__init__()
         self.m = m
         self.title = title
         self.ckeys = [c[0] for c in components]
         self.demo = self.init_web(components)
+        self.trace_mode = trace_mode if trace_mode else WebModule.TraceMode.Refresh
 
     def init_web(self, component_descs):
         with gr.Blocks(css=css, title=self.title) as demo:
@@ -321,24 +326,41 @@ class WebModule(ModuleBase):
             input = ('\<eos\>'.join([f'{h[0]}\<eou\>{h[1]}' for h in chat_history]).rsplit('\<eou\>', 1)[0]
                      if use_context else chat_history[-1][0])
             kwargs = {k:v for k, v in zip(self.ckeys, args)}
-            result, log = self.m(input, **kwargs), None
-            def get_log_and_message(s, log=''):
-                return ((s.messages, s.err[1] if s.err[0] != 0 else s.trace) 
-                        if isinstance(s, ModuleResponse) else (s, log))
+            result = self.m(input, **kwargs)
+            log_history = []
+
+            def get_log_and_message(s, use_history=False):
+                if isinstance(s, ModuleResponse):
+                    if s.err[0] != 0: log = s.err[1]
+                    elif use_history and self.trace_mode == WebModule.TraceMode.Appendix:
+                        if s.trace: log_history.append(s.trace)
+                        log = '\n'.join(log_history)
+                    else: log = s.trace
+                    return s.messages, log
+                if use_history and self.trace_mode == WebModule.TraceMode.Appendix:
+                    return s, '\n'.join(log_history)
+                return s, ''
+
             if isinstance(result, (ModuleResponse, str)):
-                chat_history[-1][1], log = get_log_and_message(result)
+                result, log = get_log_and_message(result)
+
+            if isinstance(result, str):
+                chat_history[-1][1] = result
             elif isinstance(result, GeneratorType):
                 chat_history[-1][1] = ''
                 for s in result:
                     if isinstance(s, (ModuleResponse, str)):
-                        s, log = get_log_and_message(s, log)
+                        s, log = get_log_and_message(s, True)
                     chat_history[-1][1] += s
                     if stream_output: yield chat_history, log
             else:
                 raise TypeError(f'function result should only be ModuleResponse or str, but got {type(result)}')
-        except Exception as e:
+        except requests.RequestException as e:
             chat_history = None
             log = str(e)
+        except Exception as e:
+            chat_history = None
+            log = f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}'
         yield chat_history, log
 
     def _clear_history(self):
@@ -358,8 +380,8 @@ class WebModule(ModuleBase):
 
 
 class TrainableModule(UrlModule):
-    def __init__(self, base_model='', target_path='', *, stream=False):
-        super().__init__(url=None, stream=stream, meta=TrainableModule)
+    def __init__(self, base_model='', target_path='', *, stream=False, return_trace=False):
+        super().__init__(url=None, stream=stream, meta=TrainableModule, return_trace=return_trace)
         # Fake base_model and target_path for dummy
         self.base_model = base_model
         self.target_path = target_path
@@ -435,17 +457,17 @@ class TrainableModule(UrlModule):
 
 
 class Module(object):
-    # modules(list of modules) -> SequenceModule
+    # modules(list of modules) -> ActionModule
     # action(lazyllm.flow) -> ActionModule
     # url(str) -> UrlModule
     # base_model(str) & target_path(str)-> TrainableModule
     def __new__(self, *args, **kw):
         if len(args) >= 1 and isinstance(args[0], Module):
-            return SequenceModule(*args)
+            return ActionModule(*args)
         elif len(args) == 1 and isinstance(args[0], list) and isinstance(args[0][0], Module):
-            return SequenceModule(*args[0])
+            return ActionModule(*args[0])
         elif len(args) == 0 and 'modules' in kw:
-            return SequenceModule(kw['modules'])
+            return ActionModule(kw['modules'])
         elif len(args) == 1 and isinstance(args[0], FlowBase):
             return ActionModule(args[0])
         elif len(args) == 0 and 'action' in kw:
@@ -458,32 +480,8 @@ class Module(object):
             return TrainableModule()
 
     @classmethod
-    def sequence(cls, *args, **kw): return SequenceModule(*args, **kw)
-    @classmethod
     def action(cls, *args, **kw): return ActionModule(*args, **kw)
     @classmethod
     def url(cls, *args, **kw): return UrlModule(*args, **kw)
     @classmethod
     def trainable(cls, *args, **kw): return TrainableModule(*args, **kw)
-
-
-# TODO(wangzhihong): remove these examples
-# Examples:
-
-m1 = Module.url('1')
-m2 = Module.url('2')
-
-seq_m = Module.sequence(m1, m2)
-act_m = Module.action(Pipeline(seq_m, m2))
-
-class MyModule(ModuleBase):
-    def __init__(self):
-        super().__init__()
-        self.m1 = act_m
-        self.m2 = seq_m 
-
-    def forward(self, *args, **kw):
-        ppl = Pipeline(self.m1, self.m2)
-        ppl.start()
-
-my_m = MyModule()

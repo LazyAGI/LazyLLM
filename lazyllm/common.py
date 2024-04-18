@@ -8,6 +8,8 @@ import copy
 import threading
 import types
 from queue import Queue
+from pydantic import BaseModel as struct
+from typing import Tuple
 
 import lazyllm
 
@@ -347,3 +349,9 @@ class ResultCollector(object):
     def __repr__(self): return repr(self._value) 
     def keys(self): return self._value.keys()
     def items(self): return self._value.items()
+
+
+class ModuleResponse(struct):
+    messages: Any = None
+    trace: str = ''
+    err: Tuple[int, str] = (0, '')
