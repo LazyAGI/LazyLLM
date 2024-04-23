@@ -205,6 +205,9 @@ class UrlModule(ModuleBase):
     def set_default_parameters(self, **kw):
         self._modify_parameters(self.template_message, kw)
 
+    def __repr__(self):
+        return f'<UrlModule [url: \'{self._url}\']>'
+
 
 class ActionModule(ModuleBase):
     def __init__(self, action, *, return_trace=False):
@@ -225,12 +228,9 @@ class ActionModule(ModuleBase):
         return self.action.start(*args, **kw).result
 
     def __repr__(self):
-        representation = '<ActionModule> ['
-        if isinstance(self.action, (FlowBase, ActionModule, ServerModule)):
-            sub_rep = '\n'.join(['    ' + s for s in repr(self.action).split('\n')])
-            representation += '\n' + sub_rep + '\n'
-        else:
-            representation += repr(self.action)
+        representation = f'<ActionModule - {type(self.action).__name__.capitalize()}> ['
+        sub_rep = '\n'.join([s for s in repr(self.action).split('\n')][1:-1])
+        representation += '\n' + sub_rep + '\n'
         return representation + ']'
 
 
@@ -281,40 +281,49 @@ css = """
 #logging {background-color: #FFCCCB}
 """
 class WebModule(ModuleBase):
-    class TraceMode:
+    class Mode:
+        Dynamic = 0
         Refresh = 1
         Appendix = 2
 
-    def __init__(self, m, *, components=dict(), title='对话演示终端', trace_mode=None) -> None:
+    def __init__(self, m, *, components=dict(), title='对话演示终端', text_mode=None, trace_mode=None) -> None:
         super().__init__()
         self.m = m
         self.title = title
         components = sum([[([k._module_id, k._module_name] + list(v)) for v in vs]
                            for k, vs in components.items()], [])
         self.ckeys = [[c[0], c[2]] for c in components]
+        self.trace_mode = trace_mode if trace_mode else WebModule.Mode.Refresh
+        self.text_mode = text_mode if text_mode else WebModule.Mode.Dynamic
         self.demo = self.init_web(components)
-        self.trace_mode = trace_mode if trace_mode else WebModule.TraceMode.Refresh
 
     def init_web(self, component_descs):
         with gr.Blocks(css=css, title=self.title) as demo:
             with gr.Row():
                 with gr.Column(scale=3):
-                    chat_use_context = gr.Checkbox(interactive=True, value=False, label="使用上下文")
-                    stream_output = gr.Checkbox(interactive=True, value=True, label="流式输出")
+                    with gr.Row():
+                        gr.Textbox(interactive=False, show_label=True, label="模型结构", value=repr(self.m))
+                    with gr.Row():
+                        chat_use_context = gr.Checkbox(interactive=True, value=False, label="使用上下文")
+                    with gr.Row():
+                        stream_output = gr.Checkbox(interactive=True, value=True, label="流式输出")
+                        text_mode = gr.Checkbox(interactive=(self.text_mode==WebModule.Mode.Dynamic),
+                                                value=(self.text_mode!=WebModule.Mode.Refresh), label="追加输出")
                     components = []
                     for _, gname, name, ctype, value in component_descs:
                         if ctype in ('Checkbox', 'Text'):
                             components.append(getattr(gr, ctype)(interactive=True, value=value, label=f'{gname}.{name}'))
                         else:
                             raise KeyError(f'invalid component type: {ctype}')
-                    dbg_msg = gr.Textbox(show_label=True, label='处理日志', elem_id='logging', interactive=False, max_lines=10)
+                    with gr.Row():
+                        dbg_msg = gr.Textbox(show_label=True, label='处理日志', elem_id='logging', interactive=False, max_lines=10)
                     clear_btn = gr.Button(value="🗑️  Clear history", interactive=True)
                 with gr.Column(scale=6):
-                    chatbot = gr.Chatbot(height=600)
+                    chatbot = gr.Chatbot(height=900)
                     query_box = gr.Textbox(show_label=False, placeholder='输入内容并回车!!!')
 
             query_box.submit(self._prepare, [query_box, chatbot], [query_box, chatbot], queue=False
-                ).then(self._respond_stream, [chat_use_context, chatbot, stream_output] + components,
+                ).then(self._respond_stream, [chat_use_context, chatbot, stream_output, text_mode] + components,
                                              [chatbot, dbg_msg], queue=chatbot
                 ).then(lambda: gr.update(interactive=True), None, query_box, queue=False)
             clear_btn.click(self._clear_history, None, outputs=[chatbot, query_box, dbg_msg])
@@ -325,7 +334,7 @@ class WebModule(ModuleBase):
             chat_history = []
         return '', chat_history + [[query, None]]
         
-    def _respond_stream(self, use_context, chat_history, stream_output, *args):
+    def _respond_stream(self, use_context, chat_history, stream_output, append_text, *args):
         try:
             # TODO: move context to trainable module
             input = ('\<eos\>'.join([f'{h[0]}\<eou\>{h[1]}' for h in chat_history]).rsplit('\<eou\>', 1)[0]
@@ -344,7 +353,7 @@ class WebModule(ModuleBase):
 
             def get_log_and_message(s):
                 if isinstance(s, LazyLlmResponse):
-                    if not self.trace_mode == WebModule.TraceMode.Appendix:
+                    if not self.trace_mode == WebModule.Mode.Appendix:
                         log_history.clear()
                     if s.err[0] != 0: log_history.append(s.err[1])
                     if s.trace: log_history.append(s.trace)
@@ -358,7 +367,7 @@ class WebModule(ModuleBase):
                 for s in result:
                     if isinstance(s, (LazyLlmResponse, str)):
                         s, log = get_log_and_message(s)
-                    chat_history[-1][1] += s
+                    chat_history[-1][1] = (chat_history[-1][1] + s) if append_text else s
                     if stream_output: yield chat_history, log
             else:
                 raise TypeError(f'function result should only be LazyLlmResponse or str, but got {type(result)}')
@@ -384,6 +393,9 @@ class WebModule(ModuleBase):
 
     def wait(self):
         return self.p.join()
+
+    def __repr__(self):
+        return f'<WebModule: {self.m.__repr__()[1:]}'
 
 
 class TrainableModule(UrlModule):
@@ -462,7 +474,7 @@ class TrainableModule(UrlModule):
     def __repr__(self):
         mode = '-Train' if self._mode == 'train' else (
                '-Finetune' if self._mode == 'finetune' else '')
-        return f'<TrainableModule{mode}> [{self.base_model}]'
+        return f'<TrainableModule{mode}> [base-model: "{self.base_model}"]'
 
 
 class Module(object):
