@@ -11,9 +11,10 @@ import codecs
 import multiprocessing
 
 import lazyllm
-from lazyllm import FlatList, ModuleResponse
+from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, ReqResHelper
 from .flow import FlowBase, Pipeline, Parallel, DPES
 import traceback
+import uuid
 
 
 class ModuleBase(object):
@@ -22,6 +23,8 @@ class ModuleBase(object):
         self._evalset = None
         self._return_trace = return_trace
         self.mode_list  = ('train', 'server', 'eval')
+        self._module_id = str(uuid.uuid4().hex)
+        self._module_name = None
 
     def __setattr__(self, name: str, value):
         if isinstance(value, ModuleBase):
@@ -29,15 +32,24 @@ class ModuleBase(object):
         return super().__setattr__(name, value)
 
     def __call__(self, *args, **kw): 
+        if len(args) == 1 and isinstance(args[0], LazyLlmRequest):
+            assert len(kw) == 0, 'Cannot use LazyLlmRequest and kwargs at the same time'
+            args[0].kwargs.update(args[0].global_parameters.get(self._module_id, dict()))
         r = self.forward(*args, **kw)
         if self._return_trace:
-            r = ModuleResponse(messages=r, trace=str(r))
+            if isinstance(r, LazyLlmResponse): r.trace += f'{str(r)}\n'
+            else: r = LazyLlmResponse(messages=r, trace=f'{str(r)}\n')
         return r
 
     # interfaces
     def forward(self, *args, **kw): raise NotImplementedError
     def _get_train_tasks(self): return None
     def _get_deploy_tasks(self): return None
+
+    @property
+    def name(self): return self._module_name
+    @name.setter
+    def name(self, name): self._module_name = name
 
     def evalset(self, evalset, load_f=None, collect_f=lambda x:x):
         if isinstance(evalset, str) and os.path.exists(evalset):
@@ -114,70 +126,60 @@ class UrlModule(ModuleBase):
         self._url = url
 
     # Cannot modify or add any attrubute of self
+    # prompt keys are in __input (ATTENTION: dict, not kwargs)
+    # deploy parameters keys are in **kw
     def forward(self, __input=None, **kw):
         assert self._url is not None, f'Please start {self.__class__} first'
+        assert len(kw) == 0 or self.template_message is not None, 'kwargs are used in deploy parameters'
 
-        if self.template_message is None: 
-            if __input is not None and len(kw) > 0:
-                assert self._meta == ServerModule, ('Error: Providing args and kwargs at the same time '
-                    f'is not allowed in {self._meta.__name__}')
-                data = dict(_relay_use_kw=True, input=__input, kwargs=kw)
-            else:
-                data = __input if __input else kw
+        input = __input.input if isinstance(__input, LazyLlmRequest) else __input
+        kw = __input.kwargs if isinstance(__input, LazyLlmRequest) else kw
+        if self._prompt is not None: # dict input will pass to sub-module if prompt is None
+            if not isinstance(input, dict):
+                assert len(self._prompt_keys) == 1, f'invalid prompt `{self._prompt}` for input `{input}`'
+                input = {self._prompt_keys[0]: input}
+            input = self._prompt.format(**input)
+        
+        if self._meta == ServerModule and isinstance(__input, LazyLlmRequest):
+            __input.input = input
+            data = codecs.encode(pickle.dumps(__input), 'base64').decode('utf-8')
+        elif self.template_message is not None: 
+            data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
+            data[self.input_key_name] = input
         else:
-            data = copy.deepcopy(self.template_message)
-            if isinstance(__input, dict):
-                assert len(set(__input.keys()).intersection(set(kw.keys()))) == 0, (
-                    f'Error: Duplicate key in input and kwargs in {self._meta.__name__}')
-                kw.update(__input)
-            elif __input is not None:
-                assert len(self._prompt_keys) == 1, (
-                    f'only one prompt-key is allowed when input is provided in {self._meta.__name__}')
-                assert (self._prompt_keys[0] not in kw) and (self.input_key_name not in kw), (
-                    f'"{self._prompt_keys[0]}" or "{self.input_key_name}" is already provided by kwargs in {self._meta.__name__}')
-                kw[self._prompt_keys[0]] = __input
-            assert set(self._prompt_keys).issubset(set(kw.keys())), ('Error: Required keys ['
-                f'{",".join(set(self._prompt_keys) - set(kw.keys()))}] are missing from user input')
-            data, kw = self._modify_parameters(data, kw)
-
-            if isinstance(kw.get(self.input_key_name, None), dict):
-                kw = kw[self.input_key_name]
-            data[self.input_key_name] = self._prompt.format(**kw)
+            data = input
 
         def _callback(text):
-            if isinstance(text, ModuleResponse):
+            if isinstance(text, LazyLlmResponse):
                 text.messages = text.messages if self._response_split is None else \
                                 text.messages.split(self._response_split)[-1]
             else:
                 text = text if self._response_split is None else text.split(self._response_split)[-1]
             return text
 
+        # context bug with httpx, so we use requests
+        def _impl():
+            with requests.post(self._url, json=data, stream=True) as r:
+                if r.status_code == 200:
+                    for chunk in r.iter_content(None):
+                        try:
+                            chunk = pickle.loads(codecs.decode(chunk, "base64"))
+                            assert isinstance(chunk, LazyLlmResponse)
+                        except Exception:
+                            chunk = chunk.decode('utf-8')
+                        yield(_callback(chunk))
+                else:
+                    raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         if self._stream:
-            # context bug with httpx, so we use requests
-            def _impl():
-                with requests.post(self._url, json=data, stream=True) as r:
-                    if r.status_code == 200:
-                        for chunk in r.iter_content(None):
-                            try:
-                                chunk = pickle.loads(codecs.decode(chunk, "base64"))
-                                assert isinstance(chunk, ModuleResponse)
-                            except Exception:
-                                chunk = chunk.decode('utf-8')
-                            yield(_callback(chunk))
-                    else:
-                        raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
             return _impl()
         else:
-            with httpx.Client(timeout=300) as client:
-                response = client.post(self._url, json=data, headers=self.template_headers)
-                if response.status_code == 200:
-                    return _callback(response.text)
-                else:
-                    raise requests.RequestException(response.text)
+            for r in _impl(): pass
+            return r
+                
 
-    def prompt(self, prompt='{input}', response_split=None):
+    def prompt(self, prompt=None, response_split=None):
         self._prompt, self._response_split = prompt, response_split
-        self._prompt_keys = list(set(re.findall(r'\{(\w+)\}', self._prompt)))
+        self._prompt_keys = list(set(re.findall(r'\{(\w+)\}', self._prompt))) if prompt else []
         return self
     
     def _set_template(self, template_message=None, input_key_name=None, template_headers=None):
@@ -198,7 +200,7 @@ class UrlModule(ModuleBase):
                     if k in kw: value[k] = kw.pop(k)
             else:
                 paras[key] = kw.pop(key)
-        return paras, kw
+        return paras
 
     def set_default_parameters(self, **kw):
         self._modify_parameters(self.template_message, kw)
@@ -207,21 +209,20 @@ class UrlModule(ModuleBase):
 class ActionModule(ModuleBase):
     def __init__(self, action, *, return_trace=False):
         super().__init__(return_trace=return_trace)
+        if not isinstance(action, (tuple, list, FlowBase)):
+            # Use flow to assist with input processing
+            action = [action]
         if isinstance(action, (tuple, list)):
             self.submodules = [a for a in action if isinstance(a, ModuleBase)]
-            action = Pipeline(*action)
+            self.action = Pipeline(*action)
         elif isinstance(action, FlowBase):
             action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: self.submodules.append(x))
+            self.action = action
         else:
-            assert callable(action)
-        self.action = action
+            raise TypeError(f'Invalid action type {type(action)}')
 
     def forward(self, *args, **kw):
-        if isinstance(self.action, FlowBase):
-            r = self.action.start(*args, **kw).result
-        else:
-            r = self.action(*args, **kw)
-        return r
+        return self.action.start(*args, **kw).result
 
     def __repr__(self):
         representation = '<ActionModule> ['
@@ -237,7 +238,7 @@ class ServerModule(UrlModule):
     def __init__(self, m, pre=None, post=None, stream=False, return_trace=False):
         assert stream is False or return_trace is False, 'Module with stream output has no trace'
         super().__init__(url=None, stream=stream, meta=ServerModule, return_trace=return_trace)
-        self.m = m
+        self.m = ActionModule(m) if isinstance(m, FlowBase) else m
         self._pre_func, self._post_func = pre, post
         assert (post is None) or (stream == False)
         self._set_template(
@@ -254,8 +255,10 @@ class ServerModule(UrlModule):
     # change to urlmodule when pickling to server process
     def __reduce__(self):
         assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url, stream=self._stream, meta=self._meta).prompt(
+        m = UrlModule(self._url, stream=self._stream, meta=self._meta, return_trace=self._return_trace).prompt(
             prompt=self._prompt, response_split=self._response_split)
+        m._module_id = self._module_id
+        m.name = self.name
         m._set_template(
             self.template_message,
             self.input_key_name,
@@ -282,11 +285,13 @@ class WebModule(ModuleBase):
         Refresh = 1
         Appendix = 2
 
-    def __init__(self, m, *, components=[], title='对话演示终端', trace_mode=None) -> None:
+    def __init__(self, m, *, components=dict(), title='对话演示终端', trace_mode=None) -> None:
         super().__init__()
         self.m = m
         self.title = title
-        self.ckeys = [c[0] for c in components]
+        components = sum([[([k._module_id, k._module_name] + list(v)) for v in vs]
+                           for k, vs in components.items()], [])
+        self.ckeys = [[c[0], c[2]] for c in components]
         self.demo = self.init_web(components)
         self.trace_mode = trace_mode if trace_mode else WebModule.TraceMode.Refresh
 
@@ -297,9 +302,9 @@ class WebModule(ModuleBase):
                     chat_use_context = gr.Checkbox(interactive=True, value=False, label="使用上下文")
                     stream_output = gr.Checkbox(interactive=True, value=True, label="流式输出")
                     components = []
-                    for name, ctype, value in component_descs:
+                    for _, gname, name, ctype, value in component_descs:
                         if ctype in ('Checkbox', 'Text'):
-                            components.append(getattr(gr, ctype)(interactive=True, value=value, label=name))
+                            components.append(getattr(gr, ctype)(interactive=True, value=value, label=f'{gname}.{name}'))
                         else:
                             raise KeyError(f'invalid component type: {ctype}')
                     dbg_msg = gr.Textbox(show_label=True, label='处理日志', elem_id='logging', interactive=False, max_lines=10)
@@ -325,36 +330,38 @@ class WebModule(ModuleBase):
             # TODO: move context to trainable module
             input = ('\<eos\>'.join([f'{h[0]}\<eou\>{h[1]}' for h in chat_history]).rsplit('\<eou\>', 1)[0]
                      if use_context else chat_history[-1][0])
-            kwargs = {k:v for k, v in zip(self.ckeys, args)}
-            result = self.m(input, **kwargs)
+
+            kwargs = dict()
+            for k, v in zip(self.ckeys, args):
+                if k[0] not in kwargs:
+                    kwargs[k[0]] = dict()
+                kwargs[k[0]][k[1]] = v
+            result = self.m(LazyLlmRequest(input=input, global_parameters=kwargs))
+
             log_history = []
-
-            def get_log_and_message(s, use_history=False):
-                if isinstance(s, ModuleResponse):
-                    if s.err[0] != 0: log = s.err[1]
-                    elif use_history and self.trace_mode == WebModule.TraceMode.Appendix:
-                        if s.trace: log_history.append(s.trace)
-                        log = '\n'.join(log_history)
-                    else: log = s.trace
-                    return s.messages, log
-                if use_history and self.trace_mode == WebModule.TraceMode.Appendix:
-                    return s, '\n'.join(log_history)
-                return s, ''
-
-            if isinstance(result, (ModuleResponse, str)):
+            if isinstance(result, (LazyLlmResponse, str)):
                 result, log = get_log_and_message(result)
+
+            def get_log_and_message(s):
+                if isinstance(s, LazyLlmResponse):
+                    if not self.trace_mode == WebModule.TraceMode.Appendix:
+                        log_history.clear()
+                    if s.err[0] != 0: log_history.append(s.err[1])
+                    if s.trace: log_history.append(s.trace)
+                    s = s.messages
+                return s, ''.join(log_history)
 
             if isinstance(result, str):
                 chat_history[-1][1] = result
             elif isinstance(result, GeneratorType):
                 chat_history[-1][1] = ''
                 for s in result:
-                    if isinstance(s, (ModuleResponse, str)):
-                        s, log = get_log_and_message(s, True)
+                    if isinstance(s, (LazyLlmResponse, str)):
+                        s, log = get_log_and_message(s)
                     chat_history[-1][1] += s
                     if stream_output: yield chat_history, log
             else:
-                raise TypeError(f'function result should only be ModuleResponse or str, but got {type(result)}')
+                raise TypeError(f'function result should only be LazyLlmResponse or str, but got {type(result)}')
         except requests.RequestException as e:
             chat_history = None
             log = str(e)
@@ -441,13 +448,15 @@ class TrainableModule(UrlModule):
     # change to urlmodule when pickling to server process
     def __reduce__(self):
         assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url, stream=self._stream, meta=self._meta).prompt(
+        m = UrlModule(self._url, stream=self._stream, meta=self._meta, return_trace=self._return_trace).prompt(
             prompt=self._prompt, response_split=self._response_split)
         m._set_template(
             self.template_message,
             self.input_key_name,
             self.template_headers,
         )
+        m._module_id = self._module_id
+        m.name = self.name
         return m.__reduce__()
 
     def __repr__(self):

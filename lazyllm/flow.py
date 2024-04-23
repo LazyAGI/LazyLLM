@@ -1,6 +1,7 @@
 from typing import Any
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, bind, root
-from lazyllm import ModuleResponse, Thread, ReadOnlyWrapper
+from lazyllm import Thread, ReadOnlyWrapper
+from lazyllm import LazyLlmRequest, ReqResHelper
 import copy
 import types
 import threading
@@ -71,29 +72,16 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         self.return_input = return_input
         self.result = None
 
-    def __call__(self, args=package()):
-        history_trace = ''
-        if isinstance(args, ModuleResponse):
-            history_trace = args.trace
-        output = self._run(args)
+    def __call__(self, *args, **kw):
+        helper = ReqResHelper()
+        req = helper.make_request(*args, **kw)
+        output = helper.make_request(self._run(req))
 
-        if isinstance(output, ModuleResponse):
-            history_trace = history_trace + output.trace
-            output = output.messages
-        elif isinstance(output, package):
-            history_trace += '\n'.join([o.trace for o in output if isinstance(o, ModuleResponse)])
-            output = package(o.messages if isinstance(o, ModuleResponse) else o for o in output)
-
-        if self.post_action is not None:
-            self.post_action(*output) if isinstance(output, package) else self.post_action(output) 
-        if self.return_input:
-            output = package(args, output)
-
-        if history_trace:
-            output = ModuleResponse(messages=output, trace=history_trace)
-        return output
+        if self.post_action is not None: invoke(self.post_action, output)
+        if self.return_input: output = package(req.input, output.input)
+        return helper.make_response(output)
     
-    def _run(self, *args, **kw):
+    def _run(self, input):
         raise NotImplementedError
 
     def start(self, *args, **kw):
@@ -101,7 +89,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         def _exchange(item):
             item._args = [a.get_from(self) if isinstance(a, type(root)) else a for a in item._args]
         self.for_each(lambda x: isinstance(x, bind), _exchange)
-        self.result = self(package(*args), **kw)
+        self.result = self(*args, **kw)
         return self
 
     def __repr__(self):
@@ -121,14 +109,18 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         return self
 
 
-def invoke(it, input):
+def invoke(it, input, **kw):
     try:
+        if isinstance(input, LazyLlmRequest):
+            if isinstance(it, LazyLLMFlowsBase) or getattr(it, '_module_id', None):
+                return it(input)
+            input = input.input
         if not isinstance(it, LazyLLMFlowsBase) and isinstance(input, (package, kwargs)):
-            return it(*input) if isinstance(input, package) else it(**input)
+            return it(*input, **kw) if isinstance(input, package) else it(**input, **kw)
         else:
-            return it(input)
+            return it(input, **kw)
     except Exception:
-        print(f'An error occored when invoking `{type(it)}` with `{input}`, input type is {type(input)}')
+        print(f'An error occored when invoking `{type(it)}` with `{input}`')
         raise
 
 
@@ -136,21 +128,12 @@ def invoke(it, input):
 #                                               \> post-action
 # TODO(wangzhihong): support mult-input and output
 class Pipeline(LazyLLMFlowsBase):
-    def _run(self, input=package()):
-        output = input
-        traces = []
+    def _run(self, input):
+        helper = ReqResHelper()
+        input = helper.make_request(input)
         for it in self.items:
-            try:
-                output = invoke(it, output)
-                if isinstance(output, ModuleResponse):
-                    traces.append(output.trace)
-                    output = output.messages
-            except Exception as e:
-                print(f'an error occured when calling {it.__class__.__name__}()')
-                raise e
-        if len(traces) > 0:
-            output = ModuleResponse(messages=output, trace='\n'.join(traces))
-        return output
+            input = helper.make_request(invoke(it, input))
+        return helper.make_response(input)
 
 
 class NamedPipeline(Pipeline):
@@ -168,11 +151,7 @@ def _hook(v): _barr.impl = v
 class Parallel(LazyLLMFlowsBase):
     def _run(self, input=package()):
         def _impl(it):
-            try:
-                return invoke(it, input)
-            except Exception as e:
-                print(f'an error occured when calling {it.__class__.__name__}()')
-                raise e
+            return invoke(it, input)
         nthreads = len(self.items)
         impl = threading.Barrier(nthreads)
         ts = [Thread(target=_impl, args=(it, ), prehook=bind(_hook, impl))
@@ -191,11 +170,7 @@ class NamedParallel(Parallel):
 class DPES(LazyLLMFlowsBase):
     def _run(self, input=package()):
         def _impl(it):
-            try:
-                return invoke(it, input)
-            except Exception as e:
-                print(f'an error occured when calling {it.__class__.__name__}()')
-                raise e
+            return invoke(it, input)
         return package(_impl(it) for it in self.items)
 
 

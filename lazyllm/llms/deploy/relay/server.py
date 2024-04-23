@@ -8,7 +8,7 @@ import sys
 import inspect
 import traceback
 from types import GeneratorType
-from lazyllm import ModuleResponse
+from lazyllm import LazyLlmResponse, ReqResHelper, LazyLlmRequest, FlowBase, ModuleBase
 import pickle
 import codecs
 
@@ -29,10 +29,14 @@ app = FastAPI()
 async def generate(request: Request):
     try:
         origin = input = (await request.json())
-        kw = dict()
-        if isinstance(input, dict) and input.get('_relay_use_kw', False):
-            kw = input['kwargs']
-            origin = input = input['input']
+        try:
+            input = pickle.loads(codecs.decode(input.encode('utf-8') , "base64"))
+            assert isinstance(input, LazyLlmRequest)
+        except Exception: input = origin
+        finally: origin = input
+
+        h = ReqResHelper()
+        origin = input = h.make_request(input).input
         if args.before_function:
             assert(callable(before_func)), 'before_func must be callable'
             r = inspect.getfullargspec(before_func)
@@ -41,21 +45,12 @@ async def generate(request: Request):
                 input = before_func(**input)
             else:
                 input = before_func(input)
-        output = func(input, **kw)
-
-        history_trace = []
-        if isinstance(output, ModuleResponse):
-            history_trace = [output.trace]
-            output = output.messages
+        output = func(h.make_request(input) if isinstance(func, (FlowBase, ModuleBase)) else input)
+        output = h.make_request(output).input
 
         def impl(o):
-            if len(history_trace) > 0:
-                if isinstance(o, ModuleResponse):
-                    history_trace.append(o.trace)
-                    o.trace = '\n'.join(history_trace)
-                else:
-                    o = ModuleResponse(messages=o, trace='\n'.join(history_trace))
-            return codecs.encode(pickle.dumps(o), 'base64') if isinstance(o, ModuleResponse) else o
+            o = h.make_response(o)
+            return codecs.encode(pickle.dumps(o), 'base64') if isinstance(o, LazyLlmResponse) else o
 
         if isinstance(output, GeneratorType):
             def generate_stream():
@@ -90,7 +85,6 @@ if __name__ == "__main__":
     parser.add_argument("--after_function")
     args = parser.parse_args()
 
-    # TODO(search/implement a new encode & decode method)
     def load_func(f):
         return cloudpickle.loads(base64.b64decode(f.encode('utf-8')))
 

@@ -351,7 +351,49 @@ class ResultCollector(object):
     def items(self): return self._value.items()
 
 
-class ModuleResponse(struct):
+class LazyLlmRequest(struct):
+    input: Any = package()
+    kwargs: Any = kwargs()
+    global_parameters = dict()
+
+
+class LazyLlmResponse(struct):
     messages: Any = None
     trace: str = ''
     err: Tuple[int, str] = (0, '')
+
+
+class ReqResHelper(object):
+    def __init__(self):
+        self.trace = ''
+        self.parameters = dict()
+
+    def make_request(self, *args, **kw):
+        if len(args) == 1:
+            input = args[0]
+            if isinstance(input, LazyLlmRequest):
+                assert len(kw) == 0
+                if len(input.global_parameters) != 0:
+                    assert len(self.parameters) == 0, 'Cannot set global_parameters twice!'
+                    self.parameters = input.global_parameters
+                input, kw = input.input, input.kwargs
+            elif isinstance(input, LazyLlmResponse):
+                assert len(kw) == 0
+                if input.trace: self.trace += input.trace
+                input = input.messages
+            elif isinstance(input, (tuple, list)):
+                for i in input:
+                    if isinstance(i, LazyLlmResponse): self.trace += i.trace
+                    else: assert not isinstance(i, LazyLlmRequest), 'Cannot process list of Requests'
+                input = type(input)(i.messages if isinstance(i, LazyLlmResponse) else i for i in input)
+        else:
+            input = package(args)
+        return LazyLlmRequest(input=input, kwargs=kw, global_parameters=self.parameters)
+
+    def make_response(self, res):
+        if isinstance(res, LazyLlmResponse):
+            res.trace = self.trace + res.trace
+            return res
+        else:
+            res = res.input if isinstance(res, LazyLlmRequest) else res
+            return LazyLlmResponse(messages=res, trace=self.trace) if self.trace else res
