@@ -1,7 +1,8 @@
 import lazyllm
 
-m = lazyllm.TrainableModule('b', 't').finetune(finetune.dummy).deploy(deploy.dummy).mode(
-    'finetune')
+m = lazyllm.TrainableModule(lazyllm.Option(['b1', 'b2', 'b3']), 't'
+        ).finetune(finetune.dummy, **dict(a=lazyllm.Option(['f1', 'f2']))
+        ).deploy(deploy.dummy).mode('finetune')
 m2 = lazyllm.ServerModule(m, post=lambda x, *, ori: f'post2({x})')
 m3 = lazyllm.ServerModule(m2, post=lambda x, ori: f'post3({x})')
 m4 = lazyllm.ServerModule(m3,
@@ -26,4 +27,9 @@ ppl = lazyllm.pipeline(
     getr=lambda *args, **kw: c, 
 )
 print(ppl.module.__class__.__name__)
-print(ppl.start('inp').result)
+print(ppl.start('inp'))
+
+print('-----------------------------')
+
+m5 = lazyllm.TrialModule(m4)
+m5.update()

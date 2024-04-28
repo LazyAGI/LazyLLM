@@ -4,11 +4,19 @@ import base64
 from lazyllm import launchers, LazyLLMCMD
 from ..base import LazyLLMDeployBase, verify_fastapi_func
 from lazyllm.thirdparty import cloudpickle
+from contextlib import contextmanager
 
 
 def dump_func(f, old_value=None):
+    @contextmanager
+    def env_helper():
+        os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'ON'
+        yield
+        os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'OFF'
+
     f = old_value if f is None else f
-    return None if f is None else base64.b64encode(cloudpickle.dumps(f)).decode('utf-8')
+    with env_helper():
+        return None if f is None else base64.b64encode(cloudpickle.dumps(f)).decode('utf-8')
 
 
 class RelayServer(LazyLLMDeployBase):
@@ -22,7 +30,7 @@ class RelayServer(LazyLLMDeployBase):
         self.func = func
         self.pre = dump_func(pre_func)
         self.post = dump_func(post_func)
-        self.port = port
+        self.port, self.real_port = port, None
         super().__init__(launcher=launcher)
 
     def cmd(self, func=None):
@@ -31,8 +39,8 @@ class RelayServer(LazyLLMDeployBase):
         run_file_path = os.path.join(folder_path, 'server.py')
 
         def impl():
-            self.port = self.port if self.port else random.randint(30000, 40000)
-            cmd = f'python {run_file_path} --open_port={self.port} --function="{self.func}" '
+            self.real_port = self.port if self.port else random.randint(30000, 40000)
+            cmd = f'python {run_file_path} --open_port={self.real_port} --function="{self.func}" '
             if self.pre:
                 cmd += f'--before_function="{self.pre}" '
             if self.post:
@@ -45,4 +53,4 @@ class RelayServer(LazyLLMDeployBase):
     def geturl(self, job=None):
         if job is None:
             job = self.job
-        return f'http://{job.get_jobip()}:{self.port}/generate'
+        return f'http://{job.get_jobip()}:{self.real_port}/generate'

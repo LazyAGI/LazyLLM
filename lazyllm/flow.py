@@ -89,8 +89,12 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         def _exchange(item):
             item._args = [a.get_from(self) if isinstance(a, type(root)) else a for a in item._args]
         self.for_each(lambda x: isinstance(x, bind), _exchange)
-        self.result = self(*args, **kw)
-        return self
+        return self(*args, **kw)
+
+    def sync_start(self, *args, **kw):
+        r = self.start(*args, **kw)
+        self.wait()
+        return r
 
     def __repr__(self):
         representation = '' if self._flow_name is None else (self._flow_name + ' ')

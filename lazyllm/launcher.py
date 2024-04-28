@@ -106,7 +106,7 @@ class Job(object):
     def wait(self): pass
     def _wrap_cmd(self, cmd): return cmd
 
-    def _start(self, *, fixed=True):
+    def _start(self, *, fixed):
         cmd = self.get_executable_cmd(fixed=fixed)
         print('Command:', cmd)
         if lazyllm.mode == lazyllm.Mode.Display: return
@@ -128,7 +128,7 @@ class Job(object):
         time.sleep(2)
         self._start(fixed=fixed)
 
-    def start(self, *, restart=0, fixed=False):
+    def start(self, *, restart=2, fixed=False):
         self._start(fixed=fixed)
         if not self._fixed_cmd.checkf(self):
             if restart > 0:
