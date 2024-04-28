@@ -21,8 +21,9 @@ class LazyLLMFinetuneBase(LLMBase):
 
 
 class DummyFinetune(LazyLLMFinetuneBase):
-    def __init__(self, base_model='base', target_path='target', *, launcher=launchers.slurm()):
+    def __init__(self, base_model='base', target_path='target', *, launcher=launchers.slurm(), **kw):
         super().__init__(base_model, target_path, launcher=launchers.empty)
+        self.kw = kw
 
-    def cmd(*args, **kw) -> str:
-        return 'echo dummy finetune!'
+    def cmd(self, *args, **kw) -> str:
+        return f'echo \'dummy finetune!, and init-args is {self.kw}\''

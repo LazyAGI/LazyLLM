@@ -2,22 +2,36 @@ import os
 import re
 import copy
 
-import httpx
 import requests
-from lazyllm.thirdparty import gradio as gr
-from types import GeneratorType
 import pickle
 import codecs
-import multiprocessing
+import inspect
 
 import lazyllm
-from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, ReqResHelper
-from .flow import FlowBase, Pipeline, Parallel, DPES
-import traceback
+from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option
+from ..flow import FlowBase, Pipeline, Parallel, DPES
 import uuid
 
 
 class ModuleBase(object):
+    builder_keys = []  # keys in builder support Option by default
+
+    def __new__(cls, *args, **kw):
+        sig = inspect.signature(cls.__init__)
+        paras = sig.parameters
+        values = list(paras.values())[1:]  # paras.value()[0] is self
+        for i, p in enumerate(args):
+            if isinstance(p, Option):
+                ann = values[i].annotation
+                assert ann == Option or (isinstance(ann, (tuple, list)) and Option in ann), \
+                    f'{values[i].name} cannot accept Option'
+        for k, v in kw.items():
+            if isinstance(v, Option):
+                ann = paras[k].annotation
+                assert ann == Option or (isinstance(ann, (tuple, list)) and Option in ann), \
+                    f'{values[i].name} cannot accept Option'
+        return object.__new__(cls)
+
     def __init__(self, *, return_trace=False):
         self.submodules = []
         self._evalset = None
@@ -25,11 +39,37 @@ class ModuleBase(object):
         self.mode_list  = ('train', 'server', 'eval')
         self._module_id = str(uuid.uuid4().hex)
         self._module_name = None
+        self._options = []
+        self.eval_result = None
 
     def __setattr__(self, name: str, value):
         if isinstance(value, ModuleBase):
             self.submodules.append(value)
+        elif isinstance(value, Option):
+            self._options.append(value)
+        elif name.endswith('_args') and isinstance(value, dict):
+            for v in value.values():
+                if isinstance(v, Option):
+                    self._options.append(v)
         return super().__setattr__(name, value)
+
+    def __getattr__(self, key):
+        def _setattr(v, **kw):
+            if isinstance(v, tuple) and len(v) == 2 and isinstance(v[1], dict):
+                kw.update(v[1])
+                v = v[0]
+            if len(kw) > 0:
+                setattr(self, f'_{key}_args', kw)
+            setattr(self, f'_{key}', v)
+            if hasattr(self, f'_{key}_setter_hook'): getattr(self, f'_{key}_setter_hook')()
+            return self
+        keys =  self.__class__.builder_keys
+        if key in keys:
+            return _setattr
+        elif key.startswith('_') and key[1:] in keys:
+            return None
+        raise AttributeError(f'{__class__} object has no attribute {key}')
+
 
     def __call__(self, *args, **kw): 
         if len(args) == 1 and isinstance(args[0], LazyLlmRequest):
@@ -95,7 +135,7 @@ class ModuleBase(object):
                     eval_tasks.absorb(top._get_eval_tasks())
 
         if 'train' in mode and len(train_tasks) > 0:
-            Parallel(*train_tasks).start().wait()
+            Parallel(*train_tasks).sync_start()
         if 'server' in mode and len(deploy_tasks) > 0:
             DPES(*deploy_tasks).start()
         if 'eval' in mode and len(eval_tasks) > 0:
@@ -106,6 +146,13 @@ class ModuleBase(object):
     def eval(self, *, recursive=True): return self._update(mode=['eval'], recursive=recursive)
     def start(self): return self._update(mode=['server'], recursive=True)
     def restart(self): return self.start()
+
+    @property
+    def options(self):
+        options = self._options.copy()
+        for m in self.submodules:
+            options += m.options
+        return options
 
     def _overwrote(self, f):
         return getattr(self.__class__, f) is not getattr(__class__, f)
@@ -205,8 +252,29 @@ class UrlModule(ModuleBase):
     def set_default_parameters(self, **kw):
         self._modify_parameters(self.template_message, kw)
 
+    def clone(self):
+        assert hasattr(self, '_url') and self._url is not None
+        m = UrlModule(self._url, stream=self._stream, meta=self._meta, return_trace=self._return_trace).prompt(
+            prompt=self._prompt, response_split=self._response_split)
+        m._module_id = self._module_id
+        m.name = self.name
+        m._set_template(
+            self.template_message,
+            self.input_key_name,
+            self.template_headers,
+        )
+        return m
+
     def __repr__(self):
         return f'<UrlModule [url: \'{self._url}\']>'
+
+    # change to urlmodule when pickling to server process
+    def __reduce__(self):
+        if self.__class__ != UrlModule and os.getenv('LAZYLLM_ON_CLOUDPICKLE', False) == 'ON':
+            m = self.clone()
+            return m.__reduce__()
+        else:
+            return super(__class__, self).__reduce__()
 
 
 class ActionModule(ModuleBase):
@@ -225,7 +293,7 @@ class ActionModule(ModuleBase):
             raise TypeError(f'Invalid action type {type(action)}')
 
     def forward(self, *args, **kw):
-        return self.action.start(*args, **kw).result
+        return self.action.start(*args, **kw)
 
     def __repr__(self):
         representation = f'<ActionModule - {type(self.action).__name__.capitalize()}> ['
@@ -252,21 +320,6 @@ class ServerModule(UrlModule):
             lazyllm.deploy.RelayServer(func=self.m, pre_func=self._pre_func, post_func=self._post_func),
             self.url)
     
-    # change to urlmodule when pickling to server process
-    def __reduce__(self):
-        assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url, stream=self._stream, meta=self._meta, return_trace=self._return_trace).prompt(
-            prompt=self._prompt, response_split=self._response_split)
-        m._module_id = self._module_id
-        m.name = self.name
-        m._set_template(
-            self.template_message,
-            self.input_key_name,
-            self.template_headers,
-        )
-
-        return m.__reduce__()
-
     def __repr__(self):
         representation = '<ServerModule> ['
         if isinstance(self.m, (FlowBase, ActionModule, ServerModule)):
@@ -277,129 +330,10 @@ class ServerModule(UrlModule):
         return representation + ']'
 
 
-css = """
-#logging {background-color: #FFCCCB}
-"""
-class WebModule(ModuleBase):
-    class Mode:
-        Dynamic = 0
-        Refresh = 1
-        Appendix = 2
-
-    def __init__(self, m, *, components=dict(), title='对话演示终端', text_mode=None, trace_mode=None) -> None:
-        super().__init__()
-        self.m = m
-        self.title = title
-        components = sum([[([k._module_id, k._module_name] + list(v)) for v in vs]
-                           for k, vs in components.items()], [])
-        self.ckeys = [[c[0], c[2]] for c in components]
-        self.trace_mode = trace_mode if trace_mode else WebModule.Mode.Refresh
-        self.text_mode = text_mode if text_mode else WebModule.Mode.Dynamic
-        self.demo = self.init_web(components)
-
-    def init_web(self, component_descs):
-        with gr.Blocks(css=css, title=self.title) as demo:
-            with gr.Row():
-                with gr.Column(scale=3):
-                    with gr.Row():
-                        gr.Textbox(interactive=False, show_label=True, label="模型结构", value=repr(self.m))
-                    with gr.Row():
-                        chat_use_context = gr.Checkbox(interactive=True, value=False, label="使用上下文")
-                    with gr.Row():
-                        stream_output = gr.Checkbox(interactive=True, value=True, label="流式输出")
-                        text_mode = gr.Checkbox(interactive=(self.text_mode==WebModule.Mode.Dynamic),
-                                                value=(self.text_mode!=WebModule.Mode.Refresh), label="追加输出")
-                    components = []
-                    for _, gname, name, ctype, value in component_descs:
-                        if ctype in ('Checkbox', 'Text'):
-                            components.append(getattr(gr, ctype)(interactive=True, value=value, label=f'{gname}.{name}'))
-                        else:
-                            raise KeyError(f'invalid component type: {ctype}')
-                    with gr.Row():
-                        dbg_msg = gr.Textbox(show_label=True, label='处理日志', elem_id='logging', interactive=False, max_lines=10)
-                    clear_btn = gr.Button(value="🗑️  Clear history", interactive=True)
-                with gr.Column(scale=6):
-                    chatbot = gr.Chatbot(height=900)
-                    query_box = gr.Textbox(show_label=False, placeholder='输入内容并回车!!!')
-
-            query_box.submit(self._prepare, [query_box, chatbot], [query_box, chatbot], queue=False
-                ).then(self._respond_stream, [chat_use_context, chatbot, stream_output, text_mode] + components,
-                                             [chatbot, dbg_msg], queue=chatbot
-                ).then(lambda: gr.update(interactive=True), None, query_box, queue=False)
-            clear_btn.click(self._clear_history, None, outputs=[chatbot, query_box, dbg_msg])
-        return demo
-
-    def _prepare(self, query, chat_history):
-        if chat_history is None:
-            chat_history = []
-        return '', chat_history + [[query, None]]
-        
-    def _respond_stream(self, use_context, chat_history, stream_output, append_text, *args):
-        try:
-            # TODO: move context to trainable module
-            input = ('\<eos\>'.join([f'{h[0]}\<eou\>{h[1]}' for h in chat_history]).rsplit('\<eou\>', 1)[0]
-                     if use_context else chat_history[-1][0])
-
-            kwargs = dict()
-            for k, v in zip(self.ckeys, args):
-                if k[0] not in kwargs:
-                    kwargs[k[0]] = dict()
-                kwargs[k[0]][k[1]] = v
-            result = self.m(LazyLlmRequest(input=input, global_parameters=kwargs))
-
-            log_history = []
-            if isinstance(result, (LazyLlmResponse, str)):
-                result, log = get_log_and_message(result)
-
-            def get_log_and_message(s):
-                if isinstance(s, LazyLlmResponse):
-                    if not self.trace_mode == WebModule.Mode.Appendix:
-                        log_history.clear()
-                    if s.err[0] != 0: log_history.append(s.err[1])
-                    if s.trace: log_history.append(s.trace)
-                    s = s.messages
-                return s, ''.join(log_history)
-
-            if isinstance(result, str):
-                chat_history[-1][1] = result
-            elif isinstance(result, GeneratorType):
-                chat_history[-1][1] = ''
-                for s in result:
-                    if isinstance(s, (LazyLlmResponse, str)):
-                        s, log = get_log_and_message(s)
-                    chat_history[-1][1] = (chat_history[-1][1] + s) if append_text else s
-                    if stream_output: yield chat_history, log
-            else:
-                raise TypeError(f'function result should only be LazyLlmResponse or str, but got {type(result)}')
-        except requests.RequestException as e:
-            chat_history = None
-            log = str(e)
-        except Exception as e:
-            chat_history = None
-            log = f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}'
-        yield chat_history, log
-
-    def _clear_history(self):
-        return [], '', ''
-
-    def _work(self):
-        def _impl():
-            self.demo.queue().launch(server_name="0.0.0.0", server_port=20570)
-        self.p = multiprocessing.Process(target=_impl)
-        self.p.start()
-
-    def _get_deploy_tasks(self):
-        return Pipeline(self._work)
-
-    def wait(self):
-        return self.p.join()
-
-    def __repr__(self):
-        return f'<WebModule: {self.m.__repr__()[1:]}'
-
-
 class TrainableModule(UrlModule):
-    def __init__(self, base_model='', target_path='', *, stream=False, return_trace=False):
+    builder_keys = ['trainset', 'train', 'finetune', 'deploy', 'mode']
+
+    def __init__(self, base_model:Option='', target_path='', *, stream=False, return_trace=False):
         super().__init__(url=None, stream=stream, meta=TrainableModule, return_trace=return_trace)
         # Fake base_model and target_path for dummy
         self.base_model = base_model
@@ -441,35 +375,6 @@ class TrainableModule(UrlModule):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
         self._set_template(copy.deepcopy(self._deploy.message_format),
             self._deploy.input_key_name, copy.deepcopy(self._deploy.default_headers))
-
-    def __getattr__(self, key):
-        def _setattr(v):
-            if isinstance(v, tuple):
-                v, kargs = v
-                setattr(self, f'_{key}_args', kargs)
-            setattr(self, f'_{key}', v)
-            if hasattr(self, f'_{key}_setter_hook'): getattr(self, f'_{key}_setter_hook')()
-            return self
-        keys = ['trainset', 'train', 'finetune', 'deploy', 'mode']
-        if key in keys:
-            return _setattr
-        elif key.startswith('_') and key[1:] in keys:
-            return None
-        raise AttributeError(f'{__class__} object has no attribute {key}')
-
-    # change to urlmodule when pickling to server process
-    def __reduce__(self):
-        assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url, stream=self._stream, meta=self._meta, return_trace=self._return_trace).prompt(
-            prompt=self._prompt, response_split=self._response_split)
-        m._set_template(
-            self.template_message,
-            self.input_key_name,
-            self.template_headers,
-        )
-        m._module_id = self._module_id
-        m.name = self.name
-        return m.__reduce__()
 
     def __repr__(self):
         mode = '-Train' if self._mode == 'train' else (
