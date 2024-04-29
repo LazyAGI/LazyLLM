@@ -1,5 +1,6 @@
 from typing import Any
 import copy
+import multiprocessing
 
 
 class _OptionIterator(object):
@@ -47,6 +48,11 @@ class Option(object):
 
     def __repr__(self):
         return f'<Option: {self._objs}, and curr is `{self._obj}`>'
+
+
+def rebuild(x): return x
+def reduce(x): return rebuild, (x._obj,)
+multiprocessing.reducer.ForkingPickler.register(Option, reduce)
 
 
 def OptionIter(list_of_options, suboption_func=lambda x:[]):

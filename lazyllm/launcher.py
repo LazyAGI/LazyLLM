@@ -9,6 +9,7 @@ import subprocess
 from enum import Enum
 from queue import Queue
 from datetime import datetime
+from multiprocessing.util import register_after_fork
 
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final, timeout
@@ -493,3 +494,10 @@ def cleanup():
         print(f"killed job:{k}")
 
 atexit.register(cleanup)
+
+def _exitf(*args, **kw): 
+    atexit._clear()
+    atexit.register(cleanup)
+
+register_after_fork(_exitf, _exitf)
+
