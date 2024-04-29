@@ -2,7 +2,6 @@ from .module import ModuleBase
 from lazyllm import OptionIter, ForkProcess
 import time
 import copy
-import atexit
 import multiprocessing
 
 def get_options(x):
@@ -18,7 +17,8 @@ class TrialModule(object):
     @staticmethod
     def work(m, q):
         # update option at module.update()
-        copy.deepcopy(m).update()
+        m = copy.deepcopy(m)
+        m.update()
         q.put(m.eval_result)
 
     def update(self):
