@@ -3,7 +3,6 @@ import multiprocessing
 from contextlib import contextmanager
 from typing import Any
 import time
-import sys
 import atexit
 
 @contextmanager
@@ -20,6 +19,7 @@ class SpawnProcess(multiprocessing.Process):
     def start(self):
         with _ctx('spawn'):
             return super().start()
+
 
 class ForkProcess(multiprocessing.Process):
     def __init__(self, group=None, target=None, name=None, args=(),
