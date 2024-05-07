@@ -38,9 +38,14 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
 lazyllm.launchers['Status'] = Status
 
 
+lazyllm.config.add('launcher', str, 'slurm', 'DEAULT_LAUNCHER')
+lazyllm.config.add('partition', str, 'pat_rd', 'SLURM_PART')
+lazyllm.config.add('sco.workspace', str, 'expert-services', 'SCO_WORKSPACE')
+
+
 @final
 class EmptyLauncher(LazyLLMLaunchersBase):
-    def __init__(self, subprocess=False):
+    def __init__(self, subprocess=False, sync=True):
         super().__init__()
         self.subprocess = subprocess
 
@@ -254,7 +259,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
     def __init__(self, partition=None, nnode=1, nproc=1, ngpus=None, timeout=None, *, sync=True, **kwargs):
         super(__class__, self).__init__()
         # TODO: global config
-        self.partition = partition if partition else os.getenv('LAZYLLM_SLURM_PART', None)
+        self.partition = partition if partition else lazyllm.config['partition']
         self.nnode, self.nproc, self.ngpus, self.timeout =nnode, nproc, ngpus, timeout
         self.sync = sync
         self.num_can_use_nodes = kwargs.get('num_can_use_nodes', 5)
@@ -440,7 +445,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
 
     def __init__(self,
             partition=None,
-            workspace_name='expert-services',
+            workspace_name=lazyllm.config['sco.workspace'],
             framework='pt',
             nnode=1,
             nproc=1,
@@ -452,7 +457,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         assert nproc >= 1, "Start at least one process."
         assert ngpus >= 1, "Use at least one GPU."
         assert type(workspace_name) is str, f"'workspace_name' is {workspace_name}. Please set workspace_name."
-        self.partition = partition if partition else os.environ['LAZYLLM_SLURM_PART']
+        self.partition = partition if partition else lazyllm.config['partition']
         self.workspace_name = workspace_name
         self.framework = framework
         self.nnode = nnode
@@ -477,7 +482,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
 
 class RemoteLauncher(LazyLLMLaunchersBase):
     def __new__(cls, *args, **kwargs):
-        return getattr(lazyllm.launchers, os.getenv('LAZYLLM_DEAULT_LAUNCHER', 'slurm').lower())(*args, **kwargs)
+        return getattr(lazyllm.launchers, lazyllm.config['launcher'])(*args, **kwargs)
 
 
 def cleanup():
@@ -500,4 +505,3 @@ def _exitf(*args, **kw):
     atexit.register(cleanup)
 
 register_after_fork(_exitf, _exitf)
-

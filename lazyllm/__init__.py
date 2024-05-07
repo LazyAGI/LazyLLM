@@ -1,5 +1,5 @@
 from .common import *
-from .configs import mode, Mode
+from .configs import config, Mode
 from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase, barrier
 from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
@@ -12,6 +12,8 @@ pipeline, namedPipeline = flows.pipeline, flows.namedPipeline
 parallel, namedParallel = flows.parallel, flows.namedParallel
 dpes, diverter, loop = flows.DPES, flows.Diverter, flows.Loop
 switch, ifs, warp = flows.Switch, flows.IFS, flows.Warp
+
+config.done()
 
 
 del LazyLLMRegisterMetaClass
