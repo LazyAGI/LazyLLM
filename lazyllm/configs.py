@@ -56,4 +56,3 @@ class Config(object):
 config = Config(
     ).add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug)
     )
-

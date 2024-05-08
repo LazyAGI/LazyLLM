@@ -70,7 +70,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
     def exec_cmd(self, job):
         cmd = job._origin_cmd
         print("Command:", cmd)
-        if lazyllm.mode == lazyllm.Mode.Display:
+        if lazyllm.config['mode'] == lazyllm.Mode.Display:
             return
         p = subprocess.Popen(cmd.cmd, shell=True, encoding='utf-8', executable='/bin/bash')
         p.wait()
@@ -115,7 +115,7 @@ class Job(object):
     def _start(self, *, fixed):
         cmd = self.get_executable_cmd(fixed=fixed)
         print('Command:', cmd)
-        if lazyllm.mode == lazyllm.Mode.Display: return
+        if lazyllm.config['mode'] == lazyllm.Mode.Display: return
         self.ps = subprocess.Popen(cmd.cmd, shell=True, executable='/bin/bash',
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.get_jobid()
