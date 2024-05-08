@@ -47,7 +47,7 @@ class Option(object):
         return _OptionIterator(self)
 
     def __repr__(self):
-        return f'<Option: {self._objs}, and curr is `{self._obj}`>'
+        return f'<Option options="{self._objs}" curr="{self._obj}">'
 
 
 def rebuild(x): return x

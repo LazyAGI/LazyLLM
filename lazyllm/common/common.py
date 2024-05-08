@@ -213,6 +213,8 @@ class Bind(object):
     def __call__(self, *args):
         return self._f(*[args[a.idx] if isinstance(a, Placeholder) else a
                          for a in self._args])
+
+    # TODO: modify it
     def __repr__(self) -> str:
         return self._f.__repr__() + '(bind args:{})'.format(
             ', '.join([repr(a) if a is not self else 'self' for a in self._args]))
@@ -288,6 +290,7 @@ class ReadOnlyWrapper(object):
             return getattr(self.obj, key)
         return super(__class__, self).__getattr__(key)
 
+    # TODO: modify it
     def __repr__(self):
         r = self.obj.__repr__()
         return (f'{r[:-1]}' if r.endswith('>') else f'<{r}') + '(Readonly)>'
@@ -354,7 +357,7 @@ class ResultCollector(object):
 class LazyLlmRequest(struct):
     input: Any = package()
     kwargs: Any = kwargs()
-    global_parameters = dict()
+    global_parameters: dict = dict()
 
 
 class LazyLlmResponse(struct):
@@ -397,3 +400,64 @@ class ReqResHelper(object):
         else:
             res = res.input if isinstance(res, LazyLlmRequest) else res
             return LazyLlmResponse(messages=res, trace=self.trace) if self.trace else res
+
+
+class ReprRule(object):
+    rules = {}
+
+    @classmethod
+    def add_rule(cls, cate, type, subcate, subtype=None):
+        if subtype:
+            cls.rules[f'{cate}:{type}'] = f'<{subcate} type={subtype}'
+        else:
+            cls.rules[f'{cate}:{type}'] = f'<{subcate}'
+
+    @classmethod
+    def check_combine(cls, cate, type, subs):
+        return f'{cate}:{type}' in cls.rules and subs.startswith(cls.rules[f'{cate}:{type}'])
+
+
+def rreplace(s, old, new, count):
+    return (s[::-1].replace(old[::-1], new[::-1], count))[::-1]
+        
+
+def make_repr(category, type, *, name=None, subs=[], attrs=dict(), **kw):
+    if len(kw) > 0:
+        assert len(attrs) == 0, 'Cannot provide attrs and kwargs at the same time'
+        attrs = kw
+
+    if isinstance(type, builtins.type): type = type.__name__
+    name = f' name={name}' if name else '' 
+    attrs = ' ' + ' '.join([f'{k}={v}' for k, v in attrs.items()]) if attrs else '' 
+    repr = f'<{category} type={type}{name}{attrs}>'
+    
+    if len(subs) == 1 and ReprRule.check_combine(category, type, subs[0]):
+        if lazyllm.config['repr_ml']:
+            sub_cate = re.split('>| ', subs[0][1:])[0]
+            subs = rreplace(subs[0], f'</{sub_cate}>', f'</{category}>', 1)
+        else:
+            subs = subs[0]
+        return repr[:-1] + f' sub-category={subs[1:]}'
+
+    # ident
+    sub_repr = []
+    for idx, value in enumerate(subs):
+        for i, v in enumerate(value.strip().split('\n')):
+            if not lazyllm.config['repr_ml']:
+                if idx != len(subs) - 1:
+                    sub_repr.append(f' |- {v}' if i == 0 else f' |  {v}')
+                else:
+                    sub_repr.append(f' └- {v}' if i == 0 else f'    {v}')
+            else:
+                sub_repr.append(f'    {v}') 
+    if len(sub_repr) > 0: repr += ('\n' + '\n'.join(sub_repr) + '\n')
+    if lazyllm.config['repr_ml']: repr += f'</{category}>'
+    return repr
+
+
+# if key is already in repr, then modify its value.
+# if ket is not in repr, add key to repr with value.
+# if value is None, remove key from repr.
+def modify_repr(repr, key, value):
+    # TODO: impl this function
+    return repr

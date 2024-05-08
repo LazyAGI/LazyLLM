@@ -1,3 +1,4 @@
+import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, _get_base_cls_from_registry
 from lazyllm import LazyLLMCMD, ReadOnlyWrapper
 from lazyllm import launchers, LazyLLMLaunchersBase
@@ -51,9 +52,8 @@ class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
             return self.launcher.launch(job)
 
     def __repr__(self):
-        represention = 'lazyllm.llm.core.' + self.__class__._lazy_llm_group
-        represention += '.' + self.__class__.__name__
-        return f'<{represention}>'
+        return lazyllm.make_repr('lazyllm.llm.' + self.__class__._lazy_llm_group,
+                                 self.__class__.__name__, name=self._flow_name)
 
 
 reg_template = '''\
