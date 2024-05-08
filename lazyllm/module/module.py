@@ -266,7 +266,8 @@ class UrlModule(ModuleBase):
         return m
 
     def __repr__(self):
-        return f'<UrlModule [url: \'{self._url}\']>'
+        return lazyllm.make_repr('Module', 'Url', name=self._module_name, url=self._url,
+                                 stream=self._stream, return_trace=self._return_trace)
 
     # change to urlmodule when pickling to server process
     def __reduce__(self):
@@ -296,10 +297,11 @@ class ActionModule(ModuleBase):
         return self.action.start(*args, **kw)
 
     def __repr__(self):
-        representation = f'<ActionModule - {type(self.action).__name__.capitalize()}> ['
-        sub_rep = '\n'.join([s for s in repr(self.action).split('\n')][1:-1])
-        representation += '\n' + sub_rep + '\n'
-        return representation + ']'
+        return lazyllm.make_repr('Module', 'Action', subs=[repr(self.action)],
+                                 name=self._module_name, return_trace=self._return_trace)
+
+
+lazyllm.ReprRule.add_rule('Module', 'Action', 'Flow')
 
 
 class ServerModule(UrlModule):
@@ -321,13 +323,8 @@ class ServerModule(UrlModule):
             self.url)
     
     def __repr__(self):
-        representation = '<ServerModule> ['
-        if isinstance(self.m, (FlowBase, ActionModule, ServerModule)):
-            sub_rep = '\n'.join(['    ' + s for s in repr(self.m).split('\n')])
-            representation += '\n' + sub_rep + '\n'
-        else:
-            representation += repr(self.m)
-        return representation + ']'
+        return lazyllm.make_repr('Module', 'Server', subs=[repr(self.m)], name=self._module_name,
+                                 stream=self._stream, return_trace=self._return_trace)
 
 
 class TrainableModule(UrlModule):
@@ -377,9 +374,9 @@ class TrainableModule(UrlModule):
             self._deploy.input_key_name, copy.deepcopy(self._deploy.default_headers))
 
     def __repr__(self):
-        mode = '-Train' if self._mode == 'train' else (
-               '-Finetune' if self._mode == 'finetune' else '')
-        return f'<TrainableModule{mode}> [base-model: "{self.base_model}"]'
+        return lazyllm.make_repr('Module', 'Trainable', mode=self._mode,
+            basemodel=self.base_model, target=self.target_path, name=self._module_name,
+            stream=self._stream, return_trace=self._return_trace)
 
 
 class Module(object):

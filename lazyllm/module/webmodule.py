@@ -6,12 +6,20 @@ from .module import ModuleBase
 from lazyllm.thirdparty import gradio as gr
 from lazyllm import LazyLlmResponse, LazyLlmRequest
 from lazyllm.flow import Pipeline
+import lazyllm
 from types import GeneratorType
 
 
 css = """
 #logging {background-color: #FFCCCB}
+
+#module {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 16px;
+  white-space: pre !important;
+}
 """
+
 class WebModule(ModuleBase):
     class Mode:
         Dynamic = 0
@@ -36,7 +44,7 @@ class WebModule(ModuleBase):
             with gr.Row():
                 with gr.Column(scale=3):
                     with gr.Row():
-                        gr.Textbox(interactive=False, show_label=True, label="模型结构", value=repr(self.m))
+                        gr.Textbox(elem_id='module', interactive=False, show_label=True, label="模型结构", value=repr(self.m))
                     with gr.Row():
                         chat_use_context = gr.Checkbox(interactive=True, value=False, label="使用上下文")
                     with gr.Row():
@@ -135,7 +143,7 @@ class WebModule(ModuleBase):
         return self.p.join()
 
     def __repr__(self):
-        return f'<WebModule: {self.m.__repr__()[1:]}'
+        return lazyllm.make_repr('Module', 'Web', name=self._module_name, subs=[repr(self.m)])
 
     def _find_can_use_network_port(self):
         for port in self.port:

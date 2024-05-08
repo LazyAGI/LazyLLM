@@ -1,4 +1,5 @@
 from typing import Any
+import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, bind, root
 from lazyllm import Thread, ReadOnlyWrapper
 from lazyllm import LazyLlmRequest, ReqResHelper
@@ -42,14 +43,29 @@ class FlowBase(object):
                 action(item)
 
 
+def is_function(f):
+    return isinstance(f, (types.BuiltinFunctionType, types.FunctionType,
+                          types.BuiltinMethodType, types.MethodType, types.LambdaType))
+
+
 # TODO(wangzhihong): support workflow launcher.
 # Disable item launchers if launcher is already set in workflow.
 class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
     class FuncWrap(object):
-        def __init__(self, f): self.f = f
+        def __init__(self, f):
+            self.f = f.f if isinstance(f, LazyLLMFlowsBase.FuncWrap) else f
+            self._flow_name = None
+
         def __call__(self, *args, **kw): return self.f(*args, **kw)
-        def __repr__(self): return repr(self.f)
     
+        def __repr__(self):
+            if is_function(self.f):
+                # TODO: specify lambda/staticmethod/classmethod/instancemethod
+                # TODO: add registry message
+                return lazyllm.make_repr('Function', self.f.__name__.strip('<>'), name=self._flow_name)
+            else:
+                return lazyllm.modify_repr(self.f.__repr__(), 'name', self._flow_name)
+
     def __init__(self, *args, post_action=None, return_input=False, **kw):
         assert len(args) == 0 or len(kw) == 0
         if len(args) > 0 and isinstance(args[0], (tuple, list)):
@@ -60,7 +76,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             # ensure `_flow_name` is set to object instead of class 
             if isinstance(v, type):
                 v = v()
-            elif isinstance(v, (types.BuiltinFunctionType, types.FunctionType)):
+            elif is_function(v):
                 # v is copy.deepcopy(v) when v is func, wrap v to set `_flow_name`
                 v = LazyLLMFlowsBase.FuncWrap(v)
             else:
@@ -97,14 +113,10 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         return r
 
     def __repr__(self):
-        representation = '' if self._flow_name is None else (self._flow_name + ' ')
-        representation += f'<{self.__class__.__name__}> [\n'
-        sub_rep = ',\n'.join([f'{it._flow_name} {it.__repr__()}'
-                if (getattr(it, '_flow_name', None) and not isinstance(it, LazyLLMFlowsBase))
-                else it.__repr__() for it in self.items])
-        sub_rep = '\n'.join(['    ' + s for s in sub_rep.split('\n')])
-        representation += sub_rep + '\n]'
-        return representation
+        subs = [repr(LazyLLMFlowsBase.FuncWrap(it) if is_function(it) else it) for it in self.items]
+        if self.post_action is not None:
+            subs.append(lazyllm.make_repr('Flow', 'PostAction', subs=[self.post_action.__repr__()]))
+        return lazyllm.make_repr('Flow', self.__class__.__name__, name=self._flow_name, subs=subs)
 
     def wait(self):
         def filter(x):
