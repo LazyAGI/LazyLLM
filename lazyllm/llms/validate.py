@@ -1,5 +1,5 @@
-from .core import LLMBase, register
+from .core import ComponentBase, register
 
 
-class LazyLLMValidateBase(LLMBase):
+class LazyLLMValidateBase(ComponentBase):
     pass

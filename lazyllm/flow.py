@@ -9,6 +9,7 @@ import threading
 
 
 class FlowBase(object):
+    __enable_request__ = True
     def __init__(self, *items) -> None:
         self._flow_name = None
         self._father = None
@@ -27,13 +28,18 @@ class FlowBase(object):
     def __getattr__(self, name):
         if 'items' in self.__dict__:
             for it in self.items:
-                if getattr(it, '_flow_name', None) == name:
+                if getattr(it, 'name', None) == name:
                     return it
         raise AttributeError(f'{self.__class__} object has no attribute {name}')
 
     @property
     def is_root(self):
         return self._father is None
+
+    @property
+    def name(self): return self._flow_name
+    @name.setter
+    def name(self, name): self._flow_name = name
 
     def for_each(self, filter, action):
         for item in self.items:
@@ -52,9 +58,14 @@ def is_function(f):
 # Disable item launchers if launcher is already set in workflow.
 class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
     class FuncWrap(object):
-        def __init__(self, f):
+        def __init__(self, f, name=None):
             self.f = f.f if isinstance(f, LazyLLMFlowsBase.FuncWrap) else f
-            self._flow_name = None
+            self._func_name = name
+
+        @property
+        def name(self): return self._func_name
+        @name.setter
+        def name(self, name): self._func_name = name
 
         def __call__(self, *args, **kw): return self.f(*args, **kw)
     
@@ -62,9 +73,9 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             if is_function(self.f):
                 # TODO: specify lambda/staticmethod/classmethod/instancemethod
                 # TODO: add registry message
-                return lazyllm.make_repr('Function', self.f.__name__.strip('<>'), name=self._flow_name)
+                return lazyllm.make_repr('Function', self.f.__name__.strip('<>'), name=self.name)
             else:
-                return lazyllm.modify_repr(self.f.__repr__(), 'name', self._flow_name)
+                return lazyllm.modify_repr(self.f.__repr__(), 'name', self.name)
 
     def __init__(self, *args, post_action=None, return_input=False, **kw):
         assert len(args) == 0 or len(kw) == 0
@@ -73,15 +84,15 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             args = args[0]
         args = list(args)
         for k, v in kw.items():
-            # ensure `_flow_name` is set to object instead of class 
+            # ensure `name` is set to object instead of class 
             if isinstance(v, type):
                 v = v()
             elif is_function(v):
-                # v is copy.deepcopy(v) when v is func, wrap v to set `_flow_name`
                 v = LazyLLMFlowsBase.FuncWrap(v)
             else:
-                v = v if getattr(v, '_flow_name', None) is None else LazyLLMFlowsBase.FuncWrap(v)
-            v._flow_name = k
+                assert hasattr(v, 'name'), f'Module {type(v)} has no property "name"' 
+                assert v.name is None or k == v.name, f'name of {v} is already set, and old name is "{v.name}"'
+            v.name = k
             args.append(v)
         super(__class__, self).__init__(*args)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
@@ -116,7 +127,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         subs = [repr(LazyLLMFlowsBase.FuncWrap(it) if is_function(it) else it) for it in self.items]
         if self.post_action is not None:
             subs.append(lazyllm.make_repr('Flow', 'PostAction', subs=[self.post_action.__repr__()]))
-        return lazyllm.make_repr('Flow', self.__class__.__name__, name=self._flow_name, subs=subs)
+        return lazyllm.make_repr('Flow', self.__class__.__name__, name=self.name, subs=subs)
 
     def wait(self):
         def filter(x):
@@ -128,7 +139,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
 def invoke(it, input, **kw):
     try:
         if isinstance(input, LazyLlmRequest):
-            if isinstance(it, LazyLLMFlowsBase) or getattr(it, '_module_id', None):
+            if getattr(it, '__enable_request__', None):
                 return it(input)
             input = input.input
         if not isinstance(it, LazyLLMFlowsBase) and isinstance(input, (package, kwargs)):

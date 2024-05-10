@@ -4,8 +4,8 @@ from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase, barrier
 from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                    LazyLLMValidateBase, register as llmregister)
-from .module import (ModuleBase, UrlModule, TrainableModule, 
-                     ActionModule, ServerModule, WebModule, TrialModule)
+from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
+                     ServerModule, WebModule, TrialModule, register as moduleregister)
 from . import flows
 
 pipeline, namedPipeline = flows.pipeline, flows.namedPipeline
@@ -40,6 +40,9 @@ __all__ = [
     # configs
     'Mode',
     'mode',
+
+    # module
+    'moduleregister'
 ]
 
 __all__ += common.__all__

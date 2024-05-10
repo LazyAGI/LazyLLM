@@ -2,12 +2,11 @@ import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, _get_base_cls_from_registry
 from lazyllm import LazyLLMCMD, ReadOnlyWrapper
 from lazyllm import launchers, LazyLLMLaunchersBase
-import re
-from typing import Union, Optional
+from typing import Any, Union, Optional
 
-class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
+class ComponentBase(object, metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, *, launcher=launchers.empty()):
-        self._flow_name = None
+        self._llm_name = None
         self.job = ReadOnlyWrapper()
         if isinstance(launcher, LazyLLMLaunchersBase):
             self.launcher = launcher
@@ -21,6 +20,11 @@ class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
 
     def cmd(self, *args, **kw) -> Union[str, tuple, list]:
         raise NotImplementedError('please implement function \'cmd\'')
+
+    @property
+    def name(self): return self._llm_name
+    @name.setter
+    def name(self, name): self._llm_name = name
 
     def _get_slurm_job(self, *args, **kw):
         raise NotImplementedError('please implement function \'_get_slurm_job\'')
@@ -39,7 +43,8 @@ class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
             return self.launcher.makejob(cmd=cmd)
 
     def _overwrote(self, f):
-        return getattr(self.__class__, f) is not getattr(__class__, f)
+        return getattr(self.__class__, f) is not getattr(__class__, f) or \
+            getattr(self.__class__, '__reg_overwrite__', None) == f
 
     def __call__(self, *args, **kw):
         if self._overwrote('apply'):
@@ -53,41 +58,7 @@ class LLMBase(object, metaclass=LazyLLMRegisterMetaClass):
 
     def __repr__(self):
         return lazyllm.make_repr('lazyllm.llm.' + self.__class__._lazy_llm_group,
-                                 self.__class__.__name__, name=self._flow_name)
+                                 self.__class__.__name__, name=self.name)
 
 
-reg_template = '''\
-class {name}(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].base):
-    pass
-'''
-
-class Register(object):
-    def __init__(self, template=reg_template):
-        self.template = template
-
-    def __call__(self, cls, *, cmd=None):
-        cls = cls.__name__ if isinstance(cls, type) else cls
-        cls = re.match('(LazyLLM)(.*)(Base)', cls.split('.')[-1])[2] \
-            if (cls.startswith('LazyLLM') and cls.endswith('Base')) else cls
-        base = _get_base_cls_from_registry(cls.lower())
-        assert issubclass(base, LLMBase)
-        cmd = (base.cmd != LLMBase.cmd) if cmd is None else cmd
-
-        def impl(func):
-            func_name = func.__name__
-            exec(self.template.format(
-                name=func_name+cls.split('.')[-1].capitalize(), base=cls))
-            # 'func' cannot be recognized by exec, so we use 'setattr' instead 
-            f = LazyLLMRegisterMetaClass.all_clses[cls.lower()].__getattr__(func_name)
-            f.__name__ = func_name
-            setattr(f, 'cmd' if cmd else 'apply', lambda _, *args, **kw : func(*args, **kw))
-            return func
-        return impl
-
-    def cmd(self, cls):
-        return self(cls, cmd=True)
-
-    def exe(self, cls):
-        return self(cls, cmd=False)
-
-register = Register()
+register = lazyllm.Register(ComponentBase, ['apply', 'cmd'])
