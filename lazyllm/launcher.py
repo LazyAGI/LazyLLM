@@ -136,7 +136,7 @@ class Job(object):
 
     def start(self, *, restart=2, fixed=False):
         self._start(fixed=fixed)
-        if not self._fixed_cmd.checkf(self):
+        if not (lazyllm.config['mode'] == lazyllm.Mode.Display or self._fixed_cmd.checkf(self)):
             if restart > 0:
                 for _ in range(restart):
                     self.restart(fixed=fixed)

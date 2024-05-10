@@ -2,6 +2,7 @@ from typing import Literal
 import os
 import random
 
+import lazyllm
 from lazyllm import launchers, LazyLLMCMD, bind, _0, ArgsDict
 from .base import LazyLLMDeployBase, verify_fastapi_func
 
@@ -66,4 +67,7 @@ class Vllm(LazyLLMDeployBase):
     def geturl(self, job=None):
         if job is None:
             job = self.job
-        return f'http://{job.get_jobip()}:{self.kw["port"]}/generate'
+        if lazyllm.config['mode'] == lazyllm.Mode.Display:
+            return 'http://{ip}:{port}/generate'
+        else:
+            return f'http://{job.get_jobip()}:{self.kw["port"]}/generate'

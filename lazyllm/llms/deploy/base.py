@@ -1,13 +1,13 @@
 import json
 import time
 import requests
-from ..core import LLMBase
+from ..core import ComponentBase
 import lazyllm
 from lazyllm import launchers, flows
 import random
 
 
-class LazyLLMDeployBase(LLMBase):
+class LazyLLMDeployBase(ComponentBase):
 
     def __init__(self, *, launcher=launchers.slurm()):
         super().__init__(launcher=launcher)

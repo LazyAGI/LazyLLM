@@ -1,7 +1,7 @@
-from .core import LLMBase, register
+from .core import ComponentBase, register
 
 
-class LazyLLMDataprocBase(LLMBase):
+class LazyLLMDataprocBase(ComponentBase):
     pass
 
 

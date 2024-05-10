@@ -1,4 +1,4 @@
-from .common import LazyLLMRegisterMetaClass, _get_base_cls_from_registry
+from .registry import LazyLLMRegisterMetaClass, _get_base_cls_from_registry, Register
 from .common import package, kwargs, LazyLLMCMD, timeout, final, ReadOnlyWrapper
 from .common import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9
 from .common import (Thread, FlatList, ID, ResultCollector, ArgsDict,
@@ -11,6 +11,7 @@ __all__ = [
     # registry
     'LazyLLMRegisterMetaClass',
     '_get_base_cls_from_registry',
+    'Register',
 
     # utils
     'FlatList',

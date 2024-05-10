@@ -1,16 +1,15 @@
 from lazyllm import launchers, package
-from ..core import LLMBase
+from ..core import ComponentBase
 
 
-class LazyLLMFinetuneBase(LLMBase):
+class LazyLLMFinetuneBase(ComponentBase):
+    __reg_overwrite__ = 'cmd'
+
     def __init__(self, base_model, target_path, *, launcher=launchers.slurm()):
         super().__init__(launcher=launcher)
         self.base_model = base_model
         self.target_path = target_path
         self.merge_path = None
-
-    def cmd(*args, **kw) -> str:
-        raise NotImplementedError('please implement function \'cmd\'')
 
     def __call__(self, *args, **kw):
         super().__call__(*args, **kw)

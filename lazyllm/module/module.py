@@ -15,6 +15,7 @@ import uuid
 
 class ModuleBase(object):
     builder_keys = []  # keys in builder support Option by default
+    __enable_request__ = True
 
     def __new__(cls, *args, **kw):
         sig = inspect.signature(cls.__init__)
@@ -408,3 +409,11 @@ class Module(object):
     def url(cls, *args, **kw): return UrlModule(*args, **kw)
     @classmethod
     def trainable(cls, *args, **kw): return TrainableModule(*args, **kw)
+
+
+class ModuleRegistryBase(ModuleBase, metaclass=lazyllm.LazyLLMRegisterMetaClass):
+    __reg_overwrite__ = 'forward'
+    __enable_request__ = False
+
+
+register = lazyllm.Register(ModuleRegistryBase, ['forward'])
