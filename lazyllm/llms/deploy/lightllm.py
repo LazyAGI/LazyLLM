@@ -1,4 +1,5 @@
 import os
+import json
 import random
 
 import lazyllm
@@ -74,3 +75,7 @@ class Lightllm(LazyLLMDeployBase):
             return 'http://{ip}:{port}/generate'
         else:
             return f'http://{job.get_jobip()}:{self.kw["port"]}/generate'
+
+    @staticmethod
+    def extract_result(x):
+        return json.loads(x)['generated_text'][0]

@@ -1,5 +1,6 @@
 from typing import Literal
 import os
+import json
 import random
 
 import lazyllm
@@ -10,7 +11,7 @@ from .base import LazyLLMDeployBase, verify_fastapi_func
 class Vllm(LazyLLMDeployBase):
     input_key_name = 'prompt'
     default_headers = {'Content-Type': 'application/json'}
-    message_formate = {
+    message_format = {
         input_key_name: 'Who are you ?',
         'stream': False,
         'stop': ['<|im_end|>', '<|im_start|>', '</s>', '<|assistant|>', '<|user|>', '<|system|>', '<eos>'],
@@ -71,3 +72,7 @@ class Vllm(LazyLLMDeployBase):
             return 'http://{ip}:{port}/generate'
         else:
             return f'http://{job.get_jobip()}:{self.kw["port"]}/generate'
+
+    @staticmethod
+    def extract_result(x):
+        return json.loads(x)['text'][0]

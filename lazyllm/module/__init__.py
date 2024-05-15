@@ -2,6 +2,7 @@ from .module import (ModuleBase, TrainableModule, ActionModule,
                      ServerModule, UrlModule, register)
 from .webmodule import WebModule
 from .trialmodule import TrialModule
+from .ragmodule import Document, Retriever
 
 __all__ = [
     'register',
@@ -12,4 +13,6 @@ __all__ = [
     'ServerModule',
     'WebModule',
     'TrialModule',
+    'Document',
+    'Retriever',
 ]
