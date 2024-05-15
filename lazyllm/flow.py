@@ -1,9 +1,7 @@
-from typing import Any
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, bind, root
 from lazyllm import Thread, ReadOnlyWrapper
 from lazyllm import LazyLlmRequest, ReqResHelper
-import copy
 import types
 import threading
 
@@ -89,9 +87,10 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 v = v()
             elif is_function(v):
                 v = LazyLLMFlowsBase.FuncWrap(v)
-            else:
-                assert hasattr(v, 'name'), f'Module {type(v)} has no property "name"' 
+            elif hasattr(v, 'name'):
                 assert v.name is None or k == v.name, f'name of {v} is already set, and old name is "{v.name}"'
+            else:
+                v = LazyLLMFlowsBase.FuncWrap(v)
             v.name = k
             args.append(v)
         super(__class__, self).__init__(*args)
@@ -136,12 +135,13 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         return self
 
 
-def invoke(it, input, **kw):
+def invoke(it, input):
     try:
+        kw = dict()
         if isinstance(input, LazyLlmRequest):
             if getattr(it, '__enable_request__', None):
                 return it(input)
-            input = input.input
+            input, kw = input.input, input.kwargs
         if not isinstance(it, LazyLLMFlowsBase) and isinstance(input, (package, kwargs)):
             return it(*input, **kw) if isinstance(input, package) else it(**input, **kw)
         else:

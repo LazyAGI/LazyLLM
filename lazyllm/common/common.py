@@ -9,7 +9,7 @@ import threading
 import types
 from queue import Queue
 from pydantic import BaseModel as struct
-from typing import Tuple
+from typing import Tuple, Union, List
 
 import lazyllm
 
@@ -278,7 +278,7 @@ class ReqResHelper(object):
         if len(args) == 1:
             input = args[0]
             if isinstance(input, LazyLlmRequest):
-                assert len(kw) == 0
+                assert len(kw) == 0, 'kwargs is already in LazyLlmRequest, Cannot provide it twice.'
                 if len(input.global_parameters) != 0:
                     assert len(self.parameters) == 0, 'Cannot set global_parameters twice!'
                     self.parameters = input.global_parameters
@@ -294,6 +294,11 @@ class ReqResHelper(object):
                 input = type(input)(i.messages if isinstance(i, LazyLlmResponse) else i for i in input)
         else:
             input = package(args)
+
+        if isinstance(input, kwargs):
+            assert len(kw) == 0, 'kwargs are provided twice.'
+            kw = dict(input)
+            input = tuple()
         return LazyLlmRequest(input=input, kwargs=kw, global_parameters=self.parameters)
 
     def make_response(self, res):
