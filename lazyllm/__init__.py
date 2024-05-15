@@ -6,6 +6,7 @@ from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                    LazyLLMValidateBase, register as llmregister, Prompter)
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, WebModule, TrialModule, register as moduleregister)
+from .module import  Document, Retriever
 from . import flows
 
 pipeline, namedPipeline = flows.pipeline, flows.namedPipeline
@@ -28,6 +29,7 @@ __all__ = [
     'LazyLLMDeployBase',          # deploy
     'LazyLLMValidateBase',        #
     'llmregister',
+    'Prompter',
 
     # flow
     'LazyLLMFlowsBase',            # pipeline, parallel

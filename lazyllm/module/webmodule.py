@@ -94,10 +94,6 @@ class WebModule(ModuleBase):
                     kwargs[h]['llm_chat_history'] = history
             result = self.m(LazyLlmRequest(input=input, global_parameters=kwargs))
 
-            log_history = []
-            if isinstance(result, (LazyLlmResponse, str)):
-                result, log = get_log_and_message(result)
-
             def get_log_and_message(s):
                 if isinstance(s, LazyLlmResponse):
                     if not self.trace_mode == WebModule.Mode.Appendix:
@@ -106,6 +102,10 @@ class WebModule(ModuleBase):
                     if s.trace: log_history.append(s.trace)
                     s = s.messages
                 return s, ''.join(log_history)
+
+            log_history = []
+            if isinstance(result, (LazyLlmResponse, str)):
+                result, log = get_log_and_message(result)
 
             if isinstance(result, str):
                 chat_history[-1][1] = result

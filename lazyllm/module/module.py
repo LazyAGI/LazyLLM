@@ -7,7 +7,7 @@ import codecs
 import inspect
 
 import lazyllm
-from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, Prompter
+from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, Prompter, launchers
 from ..flow import FlowBase, Pipeline, Parallel, DPES
 import uuid
 
@@ -140,6 +140,7 @@ class ModuleBase(object):
             DPES(*deploy_tasks).start()
         if 'eval' in mode and len(eval_tasks) > 0:
             DPES(*eval_tasks).start()
+        return self
 
     def update(self, *, recursive=True): return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
     def update_server(self, *, recursive=True): return self._update(mode=['server'], recursive=recursive)
@@ -167,6 +168,7 @@ class UrlModule(ModuleBase):
         self.prompt()
         # Set for request by specific deploy:
         self._set_template(template_headers={'Content-Type': 'application/json'})
+        self._extract_result_func = lambda x: x
 
     def url(self, url):
         print('url:', url)
@@ -193,9 +195,9 @@ class UrlModule(ModuleBase):
 
         def _callback(text):
             if isinstance(text, LazyLlmResponse):
-                text.messages = self._prompt.get_response(text.messages)
+                text.messages = self._prompt.get_response(self._extract_result_func(text.messages))
             else:
-                text = self._prompt.get_response(text)
+                text = self._prompt.get_response(self._extract_result_func(text))
             return text
 
         # context bug with httpx, so we use requests
@@ -239,7 +241,7 @@ class UrlModule(ModuleBase):
                 for k in value.keys():
                     if k in kw: value[k] = kw.pop(k)
             else:
-                paras[key] = kw.pop(key)
+                if key in kw: paras[key] = kw.pop(key)
         return paras
 
     def set_default_parameters(self, **kw):
@@ -298,7 +300,7 @@ lazyllm.ReprRule.add_rule('Module', 'Action', 'Flow')
 
 
 class ServerModule(UrlModule):
-    def __init__(self, m, pre=None, post=None, stream=False, return_trace=False):
+    def __init__(self, m, pre=None, post=None, stream=False, return_trace=False, launcher=None):
         assert stream is False or return_trace is False, 'Module with stream output has no trace'
         super().__init__(url=None, stream=stream, meta=ServerModule, return_trace=return_trace)
         self.m = ActionModule(m) if isinstance(m, FlowBase) else m
@@ -309,10 +311,12 @@ class ServerModule(UrlModule):
             lazyllm.deploy.RelayServer.input_key_name,
             copy.deepcopy(lazyllm.deploy.RelayServer.default_headers),
         )
+        self._launcher = launcher if launcher else launchers.remote(sync=False)
 
     def _get_deploy_tasks(self):
         return Pipeline(
-            lazyllm.deploy.RelayServer(func=self.m, pre_func=self._pre_func, post_func=self._post_func),
+            lazyllm.deploy.RelayServer(func=self.m, pre_func=self._pre_func,
+                post_func=self._post_func, launcher=self._launcher),
             self.url)
     
     def __repr__(self):
@@ -365,6 +369,7 @@ class TrainableModule(UrlModule):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
         self._set_template(copy.deepcopy(self._deploy.message_format),
             self._deploy.input_key_name, copy.deepcopy(self._deploy.default_headers))
+        if hasattr(self._deploy, 'extract_result'): self._extract_result_func=self._deploy.extract_result
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Trainable', mode=self._mode,
