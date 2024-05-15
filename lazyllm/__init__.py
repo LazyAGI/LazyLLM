@@ -3,7 +3,7 @@ from .configs import config, Mode
 from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase, barrier
 from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
-                   LazyLLMValidateBase, register as llmregister)
+                   LazyLLMValidateBase, register as llmregister, Prompter)
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, WebModule, TrialModule, register as moduleregister)
 from . import flows

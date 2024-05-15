@@ -27,7 +27,7 @@ class WebModule(ModuleBase):
         Appendix = 2
 
     def __init__(self, m, *, components=dict(), title='对话演示终端', port=range(20500,20799),
-                 text_mode=None, trace_mode=None) -> None:
+                 history=[], text_mode=None, trace_mode=None) -> None:
         super().__init__()
         self.m = m
         self.title = title
@@ -35,6 +35,7 @@ class WebModule(ModuleBase):
         components = sum([[([k._module_id, k._module_name] + list(v)) for v in vs]
                            for k, vs in components.items()], [])
         self.ckeys = [[c[0], c[2]] for c in components]
+        self.history = [h._module_id for h in history]
         self.trace_mode = trace_mode if trace_mode else WebModule.Mode.Refresh
         self.text_mode = text_mode if text_mode else WebModule.Mode.Dynamic
         self.demo = self.init_web(components)
@@ -79,14 +80,18 @@ class WebModule(ModuleBase):
     def _respond_stream(self, use_context, chat_history, stream_output, append_text, *args):
         try:
             # TODO: move context to trainable module
-            input = ('\<eos\>'.join([f'{h[0]}\<eou\>{h[1]}' for h in chat_history]).rsplit('\<eou\>', 1)[0]
-                     if use_context else chat_history[-1][0])
+            input = chat_history[-1][0]
+            history = chat_history[:-1] if use_context and len(chat_history) > 1 else None
 
             kwargs = dict()
             for k, v in zip(self.ckeys, args):
-                if k[0] not in kwargs:
-                    kwargs[k[0]] = dict()
+                if k[0] not in kwargs: kwargs[k[0]] = dict()
                 kwargs[k[0]][k[1]] = v
+
+            if use_context:
+                for h in self.history:
+                    if h not in kwargs: kwargs[h] = dict()
+                    kwargs[h]['llm_chat_history'] = history
             result = self.m(LazyLlmRequest(input=input, global_parameters=kwargs))
 
             log_history = []

@@ -1,5 +1,4 @@
 import os
-import re
 import copy
 
 import requests
@@ -8,7 +7,7 @@ import codecs
 import inspect
 
 import lazyllm
-from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option
+from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, Prompter
 from ..flow import FlowBase, Pipeline, Parallel, DPES
 import uuid
 
@@ -174,19 +173,14 @@ class UrlModule(ModuleBase):
         self._url = url
 
     # Cannot modify or add any attrubute of self
-    # prompt keys are in __input (ATTENTION: dict, not kwargs)
+    # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
     # deploy parameters keys are in **kw
     def forward(self, __input=None, **kw):
         assert self._url is not None, f'Please start {self.__class__} first'
         assert len(kw) == 0 or self.template_message is not None, 'kwargs are used in deploy parameters'
 
-        input = __input.input if isinstance(__input, LazyLlmRequest) else __input
-        kw = __input.kwargs if isinstance(__input, LazyLlmRequest) else kw
-        if self._prompt is not None: # dict input will pass to sub-module if prompt is None
-            if not isinstance(input, dict):
-                assert len(self._prompt_keys) == 1, f'invalid prompt `{self._prompt}` for input `{input}`'
-                input = {self._prompt_keys[0]: input}
-            input = self._prompt.format(**input)
+        input, kw = (__input.input, __input.kwargs) if isinstance(__input, LazyLlmRequest) else (__input, kw)
+        input = self._prompt.generate_prompt(input, kw.pop('llm_chat_history', None))
         
         if self._meta == ServerModule and isinstance(__input, LazyLlmRequest):
             __input.input = input
@@ -199,10 +193,9 @@ class UrlModule(ModuleBase):
 
         def _callback(text):
             if isinstance(text, LazyLlmResponse):
-                text.messages = text.messages if self._response_split is None else \
-                                text.messages.split(self._response_split)[-1]
+                text.messages = self._prompt.get_response(text.messages)
             else:
-                text = text if self._response_split is None else text.split(self._response_split)[-1]
+                text = self._prompt.get_response(text)
             return text
 
         # context bug with httpx, so we use requests
@@ -225,9 +218,8 @@ class UrlModule(ModuleBase):
             return r
                 
 
-    def prompt(self, prompt=None, response_split=None):
-        self._prompt, self._response_split = prompt, response_split
-        self._prompt_keys = list(set(re.findall(r'\{(\w+)\}', self._prompt))) if prompt else []
+    def prompt(self, prompt=None, response_split=None, ):
+        self._prompt = prompt if isinstance(prompt, Prompter) else Prompter(prompt, response_split)
         return self
     
     def _set_template(self, template_message=None, input_key_name=None, template_headers=None):
@@ -255,8 +247,8 @@ class UrlModule(ModuleBase):
 
     def clone(self):
         assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url, stream=self._stream, meta=self._meta, return_trace=self._return_trace).prompt(
-            prompt=self._prompt, response_split=self._response_split)
+        m = UrlModule(self._url, stream=self._stream, meta=self._meta, return_trace=self._return_trace)
+        m.prompt(prompt=self._prompt)
         m._module_id = self._module_id
         m.name = self.name
         m._set_template(
