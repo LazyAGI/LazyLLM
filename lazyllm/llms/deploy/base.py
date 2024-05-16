@@ -9,7 +9,7 @@ import random
 
 class LazyLLMDeployBase(ComponentBase):
 
-    def __init__(self, *, launcher=launchers.slurm()):
+    def __init__(self, *, launcher=launchers.remote()):
         super().__init__(launcher=launcher)
 
 
@@ -25,6 +25,7 @@ class DummyDeploy(LazyLLMDeployBase, flows.NamedPipeline):
     }
     
     def __init__(self, launcher=launchers.remote(sync=False), *, stream=False, **kw):
+    # def __init__(self, launcher=launchers.empty(sync=False), *, stream=False, **kw):
         super().__init__(launcher=launcher)
         def func():
             def impl(x):

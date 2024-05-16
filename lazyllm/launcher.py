@@ -37,54 +37,20 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
 
 lazyllm.launchers['Status'] = Status
 
-
-lazyllm.config.add('launcher', str, 'slurm', 'DEAULT_LAUNCHER')
+lazyllm.config.add('launcher', str, 'slurm', 'DEFAULT_LAUNCHER')
 lazyllm.config.add('partition', str, 'pat_rd', 'SLURM_PART')
 lazyllm.config.add('sco.workspace', str, 'expert-services', 'SCO_WORKSPACE')
-
-
-@final
-class EmptyLauncher(LazyLLMLaunchersBase):
-    def __init__(self, subprocess=False, sync=True):
-        super().__init__()
-        self.subprocess = subprocess
-
-    def makejob(self, cmd):
-        return Job(cmd)
-
-    def launch(self, f, *args, **kw):
-        if isinstance(f, Job):
-            self.exec_cmd(f)
-            return f.return_value
-        elif callable(f):
-            if not self.subprocess:
-                return f(*args, **kw)
-            else:
-                import multiprocessing
-                p = multiprocessing.Process(target=f, args=args, kwargs=kw)
-                p.start()
-                p.join()
-        else:
-            raise RuntimeError('Invalid cmd given, please check the return value of cmd.')
-
-    def exec_cmd(self, job):
-        cmd = job._origin_cmd
-        print("Command:", cmd)
-        if lazyllm.config['mode'] == lazyllm.Mode.Display:
-            return
-        p = subprocess.Popen(cmd.cmd, shell=True, encoding='utf-8', executable='/bin/bash')
-        p.wait()
-        job._set_return_value()
 
 
 # store cmd, return message and command output.
 # LazyLLMCMD's post_function can get message form this class.
 class Job(object):
-    def __init__(self, cmd, *, sync=True):
+    def __init__(self, cmd, launcher, *, sync=True):
         assert isinstance(cmd, LazyLLMCMD)
         self._origin_cmd = cmd
         self.sync = sync
-        self.ps = None
+        self.launcher = launcher
+        self.queue, self.jobid, self.ip, self.ps = Queue(), None, None, None
         self.output_hooks = []
 
     def _set_return_value(self):
@@ -118,7 +84,7 @@ class Job(object):
         if lazyllm.config['mode'] == lazyllm.Mode.Display: return
         self.ps = subprocess.Popen(cmd.cmd, shell=True, executable='/bin/bash',
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        self.get_jobid()
+        self._get_jobid()
         self._enqueue_subprocess_output(hooks=self.output_hooks)
 
         if self.sync:
@@ -127,14 +93,14 @@ class Job(object):
             with timeout(3600, msg='Launch failed: No computing resources are available.'):
                 while self.status in (Status.TBSubmitted, Status.InQueue, Status.Pending):
                     time.sleep(2)
-            SlurmLauncher.all_processes[self.jobid] = self
+            self.launcher.all_processes[self.jobid] = self
 
     def restart(self, *, fixed=False):
         self.stop()
         time.sleep(2)
         self._start(fixed=fixed)
 
-    def start(self, *, restart=2, fixed=False):
+    def start(self, *, restart=3, fixed=False):
         self._start(fixed=fixed)
         if not (lazyllm.config['mode'] == lazyllm.Mode.Display or self._fixed_cmd.checkf(self)):
             if restart > 0:
@@ -174,6 +140,58 @@ class Job(object):
         raise RuntimeError('Cannot copy Job object')
 
 @final
+class EmptyLauncher(LazyLLMLaunchersBase):
+    all_processes = dict()
+
+    @final
+    class Job(Job):
+        def __init__(self, cmd, launcher, *, sync=True):
+            super(__class__, self).__init__(cmd, launcher, sync=sync)
+            
+        def stop(self):
+            if self.ps and self.status == Status.Running:
+                self.ps.kill()
+
+        @property
+        def status(self):
+            return_code = self.ps.poll()
+            if return_code is None: job_status = Status.Running
+            elif return_code == 0: job_status = Status.Done
+            else: job_status = Status.Failed
+            return job_status     
+
+        def _get_jobid(self):
+            self.jobid = self.ps.pid if self.ps else None
+        
+        def get_jobip(self):
+            return '0.0.0.0'
+        
+    def __init__(self, subprocess=False, sync=True):
+        super().__init__()
+        self.subprocess = subprocess
+        self.sync = sync
+
+    def makejob(self, cmd):
+        return EmptyLauncher.Job(cmd, launcher=self, sync=self.sync)
+
+    def launch(self, f, *args, **kw):
+        if isinstance(f, EmptyLauncher.Job):
+            f.start()
+            return f.return_value
+        elif callable(f):
+            if not self.subprocess:
+                return f(*args, **kw)
+            else:
+                print("[INFO] Async execution of callable object is not supported currently.")
+                import multiprocessing
+                p = multiprocessing.Process(target=f, args=args, kwargs=kw)
+                p.start()
+                p.join()
+        else:
+            raise RuntimeError('Invalid cmd given, please check the return value of cmd.')
+
+
+@final
 class SlurmLauncher(LazyLLMLaunchersBase):
     # In order to obtain the jobid to monitor and terminate the job more
     # conveniently, only one srun command is allowed in one Job
@@ -183,10 +201,8 @@ class SlurmLauncher(LazyLLMLaunchersBase):
     @final
     class Job(Job):
         def __init__(self, cmd, launcher, *, sync=True):
-            super(__class__, self).__init__(cmd, sync=sync)
+            super(__class__, self).__init__(cmd, launcher, sync=sync)
             self.name = self._generate_name()
-            self.launcher = launcher
-            self.queue, self.jobid, self.ip, self.ps = Queue(), None, None, None
 
         def _wrap_cmd(self, cmd):
             # Assemble the order
@@ -199,7 +215,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
                 slurm_cmd += f' --gres=gpu:{self.launcher.ngpus}'
             return f'{slurm_cmd} bash -c \'{cmd}\''
 
-        def get_jobid(self):
+        def _get_jobid(self):
             time.sleep(0.5) # Wait for cmd to be stably submitted to slurm
             id_str = subprocess.check_output(['squeue', '--name='+self.name, '--noheader'])
             if id_str:
@@ -352,13 +368,11 @@ class ScoLauncher(LazyLLMLaunchersBase):
     @final
     class Job(Job):
         def __init__(self, cmd, launcher, *, sync=True):
-            super(__class__, self).__init__(cmd, sync=sync)
+            super(__class__, self).__init__(cmd, launcher, sync=sync)
             # SCO job name must start with a letter
             self.name = 's' + self._generate_name()
-            self.queue, self.jobid, self.ip, self.ps = Queue(), None, None, None
             self.workspace_name = launcher.workspace_name
             self.torchrun = launcher.torchrun
-            self.launcher = launcher
             self.output_hooks = [self.output_hook]
         
         def output_hook(self, line):
@@ -396,7 +410,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
                 cmd = cmd.strip()[6:]
             return f'{sco_cmd} bash -c \'{precmd} {torchrun_cmd if self.torchrun else ""} {cmd}\''
 
-        def get_jobid(self):
+        def _get_jobid(self):
             time.sleep(0.5) # Wait for cmd to be stably submitted to sco
             id_str = subprocess.check_output([
                 'squeue', f'--workspace-name={self.workspace_name}',
@@ -487,6 +501,9 @@ class RemoteLauncher(LazyLLMLaunchersBase):
 
 def cleanup():
     # empty
+    for k, v in EmptyLauncher.all_processes.items():
+        v.stop()
+        print(f"killed job:{k}")
 
     # slurm
     for k, v in SlurmLauncher.all_processes.items():

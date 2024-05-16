@@ -5,7 +5,7 @@ from ..core import ComponentBase
 class LazyLLMFinetuneBase(ComponentBase):
     __reg_overwrite__ = 'cmd'
 
-    def __init__(self, base_model, target_path, *, launcher=launchers.slurm()):
+    def __init__(self, base_model, target_path, *, launcher=launchers.remote()):
         super().__init__(launcher=launcher)
         self.base_model = base_model
         self.target_path = target_path
@@ -20,7 +20,7 @@ class LazyLLMFinetuneBase(ComponentBase):
 
 
 class DummyFinetune(LazyLLMFinetuneBase):
-    def __init__(self, base_model='base', target_path='target', *, launcher=launchers.slurm(), **kw):
+    def __init__(self, base_model='base', target_path='target', *, launcher=launchers.remote(), **kw):
         super().__init__(base_model, target_path, launcher=launchers.empty)
         self.kw = kw
 

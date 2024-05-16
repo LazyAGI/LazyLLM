@@ -10,7 +10,7 @@ class CollieFinetune(LazyLLMFinetuneBase):
                  merge_path=None,
                  model_name='LLM',
                  cp_files='tokeniz*',
-                 launcher=launchers.slurm(),
+                 launcher=launchers.remote(),
                  **kw
                  ):
         super().__init__(
