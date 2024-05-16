@@ -47,8 +47,9 @@ ppl = lazyllm.pipeline(
         lora_target_modules='[query_key_value,dense,dense_4h_to_h,dense_h_to_4h]',
         modules_to_save='[word_embeddings, output_layer]',
         deepspeed='../lazyllm/llms/finetune/alpaca-lora/ds.json',
-        prompt_with_background=False,
+        prompt_template_name='alpaca',
         train_on_inputs=True,
+        show_prompt=False,
         launcher=launchers.slurm(
             partition='pat_rd',
             nnode=2,
@@ -57,8 +58,6 @@ ppl = lazyllm.pipeline(
             )
         ),
     deploy.lightllm(
-        pre_func = before_func,
-        post_func = after_func,
         launcher=launchers.slurm(
             partition='pat_rd',
             nnode=1,
@@ -66,10 +65,6 @@ ppl = lazyllm.pipeline(
             ngpus=1,
             sync=False
             ),
-        relay_launcher=launchers.slurm(
-            partition='pat_rd',
-            sync=False
-            )   
     ),
 )
 ppl.start(0)

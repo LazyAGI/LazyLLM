@@ -38,8 +38,9 @@ class AlpacaloraFinetune(LazyLLMFinetuneBase):
             'lora_target_modules': '[query_key_value,dense,dense_4h_to_h,dense_h_to_4h]',
             'modules_to_save': '[word_embeddings, output_layer]',
             'deepspeed': deepspeed_config_path,
-            'prompt_with_background': False,
+            'prompt_template_name': 'alpaca',
             'train_on_inputs': True,
+            'show_prompt': False
         })
         self.kw.check_and_update(kw)
         self.merge_path = merge_path

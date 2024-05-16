@@ -14,14 +14,9 @@ import transformers
 from datasets import load_dataset, concatenate_datasets
 import numpy as np
 import torch.distributed as dist
-from peft import (
-    LoraConfig,
-    get_peft_model,
-    get_peft_model_state_dict,
-    prepare_model_for_int8_training,
-    set_peft_model_state_dict,
-)
-from transformers import AutoModelForCausalLM, LlamaForCausalLM, AutoTokenizer, LlamaTokenizer, AutoModel
+from peft import LoraConfig, get_peft_model, set_peft_model_state_dict
+
+from transformers import  AutoTokenizer, AutoModel
 import deepspeed
 
 from utils.prompter import Prompter
@@ -95,7 +90,7 @@ def train(
     resume_from_checkpoint: str = None,  # either training checkpoint or final adapter
     prompt_template_name: str = "alpaca",  # The prompt template to use, will default to alpaca.
     deepspeed: str = None, # deepspeed config file path.
-    prompt_with_background: bool = False,
+    show_prompt: bool = False,
 ):
     if int(os.environ.get("RANK", 0)) == 0:
         print(
@@ -124,22 +119,18 @@ def train(
             f"wandb_log_model: {wandb_log_model}\n"
             f"resume_from_checkpoint: {resume_from_checkpoint or False}\n"
             f"prompt template: {prompt_template_name}\n"
-            f"prompt_with_background: {prompt_with_background}\n"
+            f"show prompt: {show_prompt}\n"
         )
     assert (
         base_model
     ), "Please specify a --base_model, e.g. --base_model='huggyllama/llama-7b'"
 
     gradient_accumulation_steps = batch_size // micro_batch_size
-    
+    prompter = Prompter.from_template(prompt_template_name, show=show_prompt)
 
-    prompter = Prompter(prompt_template_name)
-
-    device_map = "auto"
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     ddp = world_size != 1
     if ddp:
-        device_map = {"": int(os.environ.get("RANK") or 0)}
         gradient_accumulation_steps = gradient_accumulation_steps // world_size
     if rank == 0:
         print("gradient_accumulation_steps: ", gradient_accumulation_steps)
@@ -157,13 +148,11 @@ def train(
         os.environ["WANDB_LOG_MODEL"] = wandb_log_model
     os.environ['WANDB_DISABLED'] = 'true'
 
-    # model = AutoModelForCausalLM.from_pretrained(
     model = AutoModel.from_pretrained(
         base_model,
         load_in_8bit=False,
         torch_dtype=torch.float16,
         trust_remote_code=True,
-        # device_map=device_map,
     )
 
     tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
@@ -193,20 +182,14 @@ def train(
         return result
 
     def generate_and_tokenize_prompt(data_point):
-        full_prompt = prompter.generate_prompt(
-            data_point["instruction"],
-            data_point["input"],
-            data_point["output"],
-            data_point["background"] if prompt_with_background else None,
-        )
+        output = data_point.pop("output", None)
+        full_prompt = prompter.generate_prompt(data_point, label=output)
         tokenized_full_prompt = tokenize(full_prompt)
         if not tokenized_full_prompt:
             return None
         train_on_inputs = True
         if not train_on_inputs:
-            user_prompt = prompter.generate_prompt(
-                data_point["instruction"], data_point["input"]
-            )
+            user_prompt = prompter.generate_prompt(data_point)
             tokenized_user_prompt = tokenize(
                 user_prompt, add_eos_token=add_eos_token
             )
