@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer
 from peft import LoraConfig, TaskType
+from .prompter import Prompter
 
 from collie import Trainer, EvaluatorForPerplexity, CollieConfig, PPLMetric, CollieDatasetForTraining, \
     LossMonitor, TGSMonitor, MemoryMonitor, EvalMonitor, StepTimeMonitor, InternLMForCausalLM, Callback, \
@@ -32,38 +33,16 @@ else:
     rank = int(os.getenv("RANK", "0"))
     
 
-def proccess(data_path, template):
-    template_variables = re.findall(r"{(.*?)}", template)
+def proccess(data_path, prompter):
     processed_data = []
     with open(data_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
         for item in data:
-            processed_item = {
-                "text": template.format(
-                    **{x:item.get(x,"") for x in template_variables}
-                )
-            }
+            output = item.pop('output', '')
+            processed_item = {"text": prompter.generate_prompt(item, label=output)}
             processed_data.append(processed_item)
     return processed_data
 
-template_origin = (
-    "Below is an instruction that describes a task, paired with an input that provides further context. "
-    "Write a response that appropriately completes the request.\n\n"
-    "### Instruction:\n{instruction}\n\n"
-    "### Input:\n{input}\n\n"
-    "### Response:\n{output}"
-)
-
-template_backgroud = (
-    "Below is an instruction that describes a task, "
-    "paired with a background that provides background information for "
-    "the task and an input that provides further context. "
-    "Write a response that appropriately completes the request.\n\n"
-    "### Instruction:\n{instruction}\n\n"
-    "### BackGround:\n{background}\n\n"
-    "### Input:\n{input}\n\n"
-    "### Response:\n{output}"
-)
 
 class LogCallback(Callback):
     def __init__(self, rank):
@@ -228,11 +207,8 @@ def main():
                                   lr=args.learning_rate)
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=1000)
 
-    if args.prompt_with_background:
-        template = template_origin
-    else:
-        template = template_backgroud
-    train_data = proccess(args.data_path, template)
+    prompter = Prompter.from_template(args.prompt_template_name, show=args.show_prompt)
+    train_data = proccess(args.data_path, prompter)
     tokenizer = AutoTokenizer.from_pretrained(args.base_model, trust_remote_code=True)
     tokenizer.padding_side = "left"
     train_dataset = CollieDatasetForTraining(train_data, tokenizer)
@@ -326,8 +302,10 @@ if __name__ == "__main__":
                         help="Deepspeed config for fp16 enabled, default=True.")
     parser.add_argument("--learning_rate", type=float, default=1e-4,
                         help="Learning rate for SFT.")
-    parser.add_argument("--prompt_with_background", type=bool, default=False,
-                        help="Prompt with background enabled, default=False.")
+    parser.add_argument("--prompt_template_name", type=str, default='alpaca',
+                        help="Prompt template name, default=alpaca.")
+    parser.add_argument("--show_prompt", type=bool, default=False,
+                        help="show prompt or not, default=False.")
     parser.add_argument("--lora_target_modules", type=str, default=None)
     parser.add_argument("--modules_to_save", type=str, default=None)
     parser.add_argument("--lora_dropout", type=float, default=0.05)

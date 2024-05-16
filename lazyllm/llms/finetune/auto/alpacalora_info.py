@@ -36,7 +36,7 @@ alpaca_lora_info ={
         'lora_dropout': 0.05,
         'lora_target_modules': '[query_key_value,dense,dense_4h_to_h,dense_h_to_4h]',
         'modules_to_save': '[word_embeddings, output_layer]',
-        'prompt_with_background': False,
+        'prompt_template_name': 'alpaca',
         'train_on_inputs': True,
     },
     'requrements': requirements
