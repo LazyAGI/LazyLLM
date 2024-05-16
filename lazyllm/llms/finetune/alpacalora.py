@@ -10,7 +10,7 @@ class AlpacaloraFinetune(LazyLLMFinetuneBase):
                  merge_path=None,
                  model_name='LLM',
                  cp_files='tokeniz*',
-                 launcher=launchers.slurm(),
+                 launcher=launchers.remote(),
                  **kw
                  ):
         if not merge_path:

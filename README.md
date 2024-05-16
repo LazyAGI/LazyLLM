@@ -30,7 +30,7 @@ LazyLLM中的模块是一个可调用的基本功能单元，**可调用性**提
 在使用lazyLLM前，请将lazyLLM的仓库路径添加到`PYTHONPATH`中，并根据实际运行环境情况设置如下环境变量：
 ```bash
 # 设置默认提交任务的引擎：slurm、sco等
-export LAZYLLM_DEAULT_LAUNCHER=slurm
+export LAZYLLM_DEFAULT_LAUNCHER=slurm
 # 设置对应引擎可用的分区：
 export LAZYLLM_SLURM_PART=pat_rd
 ```

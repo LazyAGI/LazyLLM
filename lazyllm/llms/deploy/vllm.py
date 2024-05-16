@@ -23,7 +23,7 @@ class Vllm(LazyLLMDeployBase):
 
     def __init__(self,
                  trust_remote_code=True,
-                 launcher=launchers.slurm,
+                 launcher=launchers.remote,
                  stream=False, 
                  **kw,
                  ):
