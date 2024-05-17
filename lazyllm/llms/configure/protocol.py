@@ -1,10 +1,9 @@
-from rule import Rule, SearchMode
+from .rule import Rule, SearchMode
 
 # KEYS
 GPU_TYPE = Rule.from_indexed("GPU_TYPE", ["A100", "A800"])
 GPU_NUM = Rule.from_indexed("GPU_NUM", [1, 2, 4, 8, 16, 24, 32, 64, 128, 256], matches=SearchMode.BINARY_FLOOR)
-MODEL_NAME = Rule.from_indexed(
-    "MODEL_NAME",
+MODEL_NAME = Rule.from_indexed("MODEL_NAME",
     [
         "LLAMA_7B",
         "LLAMA_13B",

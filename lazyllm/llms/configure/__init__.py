@@ -1,6 +1,5 @@
-from .autoconfig import AutoConfigurer,AutoFinetuneConfigurer,AutoDeployConfigurer
-from .hardware_config import HardwareConfiguration
-from .training_config import TrainingConfiguration,DeployConfiguration
+from .autoconfigurer import AutoConfigurer, AutoFinetuneConfigurer, AutoDeployConfigurer
+from .configuration import HardwareConfiguration, TrainingConfiguration, DeployConfiguration
 
 __all__ = [ 'AutoConfigurer', 
             'AutoFinetuneConfigurer', 

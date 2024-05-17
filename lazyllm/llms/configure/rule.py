@@ -1,7 +1,7 @@
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, TypeVar, Generic
+from typing import Any, TypeVar, Generic, List, Dict, Union
 
 T = TypeVar('T')
 
@@ -12,22 +12,22 @@ def convert_to_string(source: str) -> str:
     return source
 
 def convert_to_bool(source: str) -> bool:
-    if source in ['TRUE', 'True', 'true', '1']:
+    if source in ['TRUE', 'True', 'true', '1', 'ON', 'on']:
         return True
-    if source in ['FALSE', 'False', 'false', '0']:
+    if source in ['FALSE', 'False', 'false', '0', 'OFF', 'off']:
         return False
     raise ValueError(f"'{source}' is not a valid bool")
 
-def linear_search_exactly(values: list[Any], value: Any) -> int | None:
+def linear_search_exactly(values: List[Any], value: Any) -> Union[int, None]:
     return values.index(value) if value in values else None
 
-def binary_search_exactly(values: list[Any], value: Any) -> int | None:
+def binary_search_exactly(values: List[Any], value: Any) -> Union[int, None]:
     index = binary_search_equal_or_greater(values, value)
     if index is not None and value < values[index]:
         index = None
     return index
 
-def binary_search_equal_or_less(values: list[Any], value: Any) -> int | None:
+def binary_search_equal_or_less(values: List[Any], value: Any) -> Union[int, None]:
     count = len(values)
     index = 0
     while count > 0:
@@ -41,7 +41,7 @@ def binary_search_equal_or_less(values: list[Any], value: Any) -> int | None:
             break
     return None if index == 0 and value < values[0] else index
 
-def binary_search_equal_or_greater(values: list[Any], value: Any) -> int | None:
+def binary_search_equal_or_greater(values: List[Any], value: Any) -> Union[int, None]:
     count = len(values)
     index = 0
     while count > 0:
@@ -53,13 +53,14 @@ def binary_search_equal_or_greater(values: list[Any], value: Any) -> int | None:
             count = step
     return index if index < len(values) else None
 
+
 class SearchMode(Enum):
     LINEAR_EXACTLY = 0
     BINARY_EXACTLY = auto()
     BINARY_FLOOR = auto()
     BINARY_CEIL = auto()
 
-    def __call__(self, values: list[Any], value: Any) -> int | None:
+    def __call__(self, values: List[Any], value: Any) -> Union[int, None]:
         mapping = [
             linear_search_exactly,
             binary_search_exactly,
@@ -70,64 +71,47 @@ class SearchMode(Enum):
 
 @dataclass
 class Options(Generic[T]):
-    options: list[T]
+    options: List[T]
     mapping: bool = False
     indexed: bool = False
-    matches: Callable[[list[Any], Any], int | None] = SearchMode.LINEAR_EXACTLY
+    matches: Callable[[List[Any], Any], Union[int, None]] = SearchMode.LINEAR_EXACTLY
+
 
 class Rule(Generic[T]):
     @classmethod
-    def from_indexed(cls, name: str, options: list[T], matches: SearchMode = SearchMode.LINEAR_EXACTLY):
+    def from_indexed(cls, name: str, options: List[T], matches: SearchMode = SearchMode.LINEAR_EXACTLY):
         return cls(name, options=Options(options=options, mapping=True, indexed=True, matches=matches))
 
     @classmethod
-    def from_options(cls, name: str, options: list[T], mapping: bool | None = None, matches: SearchMode = SearchMode.LINEAR_EXACTLY):
+    def from_options(cls, name: str, options: List[T], mapping: Union[bool, None] = None,
+                     matches: SearchMode = SearchMode.LINEAR_EXACTLY):
         mapping = all(isinstance(o, str) for o in options) if mapping is None else mapping
         return cls(name, options=Options(options=options, mapping=mapping, matches=matches))
 
     @classmethod
-    def from_type(cls, name: str, value_type: type[bool] | type[int] | type[str]):
-        return cls(name, convert=Rule.__infer_converter_from_value(value_type()))
+    def from_type(cls, name: str, value_type: Union[type[bool], type[int], type[str]]):
+        return cls(name, convert=Rule.__infer_converter_from_type(value_type))
 
-    def __init__(self, name: str, *args,
-                 options: Options[T] | None = None,
-                 convert: Callable[[str], T] | None = None):
-
+    def __init__(self, name: str, *, options: Union[Options[T], None] = None,
+                 convert: Union[Callable[[str], T], None] = None):
         if len(name) == 0:
             raise ValueError("empty name is invalid")
         if options is None and convert is None:
             raise ValueError("either 'options' or 'convert' should be provided")
         if options is not None and len(options.options) == 0:
             raise ValueError("empty options is invalid")
-        if (options is not None and
-            options.matches in [SearchMode.BINARY_EXACTLY, SearchMode.BINARY_FLOOR, SearchMode.BINARY_CEIL] and
-            not Rule.__is_ordered(options.options)):
+        if (options is not None and options.matches in [SearchMode.BINARY_EXACTLY, SearchMode.BINARY_FLOOR,
+                                                        SearchMode.BINARY_CEIL]
+                                and not Rule.__is_ordered(options.options)):
             raise ValueError("cannot perform binary-search on unordered options")
 
         self._name = name
         self._convert = convert if convert is not None else Rule.__infer_converter_from_options(options)
-        if options is None:
-            self._options = None
-            self._mapping = False
-            self._indexed = False
-            self._matches = None
-        else:
-            self._options = options.options
-            self._mapping = options.mapping
-            self._indexed = options.indexed
-            self._matches = options.matches
+        self._options = options
 
     @property
     def name(self) -> str:
         return self._name
-
-    @property
-    def mapping(self) -> bool:
-        return self._mapping
-
-    @property
-    def indexed(self) -> bool:
-        return self._indexed
 
     @property
     def value_type(self) -> type[T]:
@@ -137,8 +121,20 @@ class Rule(Generic[T]):
             raise ValueError(f"missing return-type annotation in {self.name} convert function") from e
 
     @property
-    def options(self) -> list[T] | None:
-        return self._options
+    def options(self) -> Union[List[T], None]:
+        return None if self._options is None else self._options.options
+
+    @property
+    def mapping(self) -> bool:
+        return False if self._options is None else self._options.mapping
+
+    @property
+    def indexed(self) -> bool:
+        return False if self._options is None else self._options.indexed
+
+    @property
+    def matches(self) -> Union[Callable[[List[Any], Any], Union[int, None]], None]:
+        return None if self._options is None else self._options.matches
 
     def convert_string_to_value(self, source: str) -> T:
         try:
@@ -146,60 +142,52 @@ class Rule(Generic[T]):
         except ValueError as e:
             raise ValueError(f"while parse value as {self._name}") from e
 
-        if self._options is not None and value not in self._options:
-            raise ValueError(f"value '{value}' is not in {self._name} options {self._options}")
+        if self.options is not None and value not in self.options:
+            raise ValueError(f"value '{value}' is not in {self._name} options {self.options}")
         return value
 
-    def convert_value_to_index(self, value: T) -> tuple[int, int]:
-        assert self._options is not None, f"index is unavailable if rule {self.name} has no options"
+    def convert_value_to_index(self, value: T) -> List[int, int]:
+        assert self.options is not None, f"index is unavailable if rule {self.name} has no options"
         index = None
-        if self._matches is not None:
-            index = self._matches(self._options, value)
-        if index is None and value in self._options:
-            index = self._options.index(value)
+        if self.matches is not None:
+            index = self.matches(self.options, value)
+        if index is None and value in self.options:
+            index = self.options.index(value)
         if index is None:
-            raise ValueError(f"value {value} is out of {self._name} options {self._options}")
-        return index, len(self._options)
+            raise ValueError(f"value {value} is out of {self._name} options {self.options}")
+        return index, len(self.options)
 
     def convert_index_to_value(self, index: int) -> T:
-        assert self._options is not None, f"index is unavailable if rule {self.name} has no options"
-        if not 0 <= index < len(self._options):
-            raise ValueError(f"index {index} out of range [0, {len(self._options)})")
-        return self._options[index]
+        assert self.options is not None, f"index is unavailable if rule {self.name} has no options"
+        if not 0 <= index < len(self.options):
+            raise ValueError(f"index {index} out of range [0, {len(self.options)})")
+        return self.options[index]
 
     @staticmethod
-    def __infer_converter_from_options(options: Options[T] | None) -> Callable[[str], T]:
+    def __infer_converter_from_options(options: Options[T]) -> Callable[[str], T]:
         assert options is not None and len(options.options) != 0
-        return Rule.__infer_converter_from_value(options.options[0])
+        return Rule.__infer_converter_from_type(type(options.options[0]))
 
     @staticmethod
-    def __infer_converter_from_value(value: T) -> Callable[[str], T]:
-        match value:
-            case bool():
-                return convert_to_bool # type: ignore
-            case int():
-                return convert_to_integer # type: ignore
-            case str():
-                return convert_to_string # type: ignore
-            case _:
-                raise ValueError(f"unknown type {type(value)} of options")
+    def __infer_converter_from_type(tp: type) -> Callable[[str], T]:
+        if issubclass(tp, bool): return convert_to_bool # type: ignore
+        elif issubclass(tp, int): return convert_to_integer # type: ignore
+        elif issubclass(tp, str): return convert_to_string # type: ignore
+        else: raise ValueError(f"unknown type {tp} of options")
 
     @staticmethod
-    def __is_ordered(options: list[Any]) -> bool:
-        return (len(options) > 0
-            and all(isinstance(o, int) for o in options)
-            and Rule.__is_list_monotonic_increasing(options))
-
-    @staticmethod
-    def __is_list_monotonic_increasing(options: list[Any]) -> bool:
-        for i in range(len(options) - 1):
-            if not (hasattr(options[i], '__lt__') and options[i] < options[i + 1]):
-                return False
-        return True
+    def __is_ordered(options: List[Any]) -> bool:
+        def is_list_monotonic_increasing(ops) -> bool:
+            for i in range(len(ops) - 1):
+                if not (hasattr(ops[i], '__lt__') and ops[i] < ops[i + 1]):
+                    return False
+            return True 
+        return (len(options) > 0 and all(isinstance(o, int) for o in options)
+                                 and is_list_monotonic_increasing(options))
 
 
 class Configurations:
-    def __init__(self, rules: list[Rule]):
+    def __init__(self, rules: List[Rule]):
         self._rules: dict[str, Rule] = { rule.name : rule for rule in rules }
         self._key_rules: list[Rule] = []
         self._ordered_rules: list[Rule] = []
@@ -207,7 +195,7 @@ class Configurations:
         if len(self._rules) != len(rules):
             raise ValueError(f"rule name should be unique")
 
-    def parse_header(self, names: list[str]):
+    def parse_header(self, names: List[str]):
         if len(names) == 0:
             raise ValueError("header should not be empty")
 
@@ -221,9 +209,9 @@ class Configurations:
         self._key_rules = [ rule for rule in output if rule.indexed ]
         self._ordered_rules = output
 
-    def parse_values(self, values: Iterator[list[str]]):
+    def parse_values(self, values: Iterator[List[str]]):
         assert len(self._ordered_rules) != 0, "must call parse_header before parse_values"
-        output: dict[int, list[list[Any]]] = {}
+        output: dict[int, List[List[Any]]] = {}
         for row in values:
             item_key = 0
             item_values = []
@@ -241,7 +229,7 @@ class Configurations:
 
         self._ordered_values = output
 
-    def lookup(self, keys: dict[str, Any]) -> list[dict[str, Any]]:
+    def lookup(self, keys: List[str, Any]) -> List[Dict[str, Any]]:
         assert len(self._ordered_rules) != 0, "must invoke parse_header before lookup"
         assert len(self._ordered_values) != 0, "must invoke parse_values before lookup"
 
@@ -258,7 +246,7 @@ class Configurations:
 
         def to_value(value_or_index: Any, rule: Rule):
             return value_or_index if not rule.mapping else rule.convert_index_to_value(value_or_index)
-        def to_dict(values: list[Any], rules: list[Rule]):
+        def to_dict(values: List[Any], rules: List[Rule]):
             return { rule.name: to_value(value, rule) for (value, rule) in zip(values, rules) }
         return [ to_dict(values, self._ordered_rules) for values in self._ordered_values.get(key, []) ]
 

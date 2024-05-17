@@ -4,25 +4,26 @@ import itertools
 import protocol as proto
 import typing
 import unittest
+from typing import List, Dict, Union
 
 T = typing.TypeVar("T")
 
-def values(rule: proto.Rule[T], default: T | None = None) -> list[T]:
+def values(rule: proto.Rule[T], default: Union[T, None] = None) -> List[T]:
     if rule.options is None:
         return [ default or rule.value_type() ]
     return rule.options
 
-def overwrite(input: dict[str, list[typing.Any]], **kwargs: list[typing.Any]) -> dict[str, list[typing.Any]]:
+def overwrite(input: Dict[str, List[typing.Any]], **kwargs: List[typing.Any]) -> Dict[str, List[typing.Any]]:
     for key, value in kwargs.items():
         assert key in input
         assert set(value) <= set(input[key])
     input.update(**kwargs)
     return input
 
-def combine(options: dict[str, list[typing.Any]], **constraints: Callable[[dict[str, typing.Any]], bool]) -> Generator[Iterator[typing.Any], typing.Any, None]:
+def combine(options: Dict[str, List[typing.Any]], **constraints: Callable[[Dict[str, typing.Any]], bool]) -> Generator[Iterator[typing.Any], typing.Any, None]:
     limit = len(options)
     input = [ (key, value) for key, value in options.items() ]
-    output: dict[str, typing.Any] = {}
+    output: Dict[str, typing.Any] = {}
 
     def f(index: int) -> Generator[Iterator[typing.Any], typing.Any, None]:
         if index == limit:
@@ -38,7 +39,7 @@ def combine(options: dict[str, list[typing.Any]], **constraints: Callable[[dict[
     yield from f(0)
 
 
-def generate(filename: str, head: list[typing.Any], body: Iterator[Iterator[typing.Any]]):
+def generate(filename: str, head: List[typing.Any], body: Iterator[Iterator[typing.Any]]):
     with open(filename, 'w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(head)
@@ -80,7 +81,7 @@ class TestGenerateEmptyCSV(unittest.TestCase):
         def is_inference_framework(x: str) -> bool:
             return x in ["LIGHTLLM", "VLLM"]
 
-        def model_name_constraint(_: dict[str, typing.Any]) -> bool:
+        def model_name_constraint(_: Dict[str, typing.Any]) -> bool:
             mapping = {
                 "LLAMA_7B": 80,
                 "LLAMA_13B": 80 * 2,
@@ -98,21 +99,21 @@ class TestGenerateEmptyCSV(unittest.TestCase):
             r = options.index(_["GPU_NUM"])
             return l <= r <= l + 2
 
-        def tp_constraint(_: dict[str, typing.Any]) -> bool:
+        def tp_constraint(_: Dict[str, typing.Any]) -> bool:
             if _["TP"] > _["GPU_NUM"] or to_parameter_size(_["MODEL_NAME"]) > 30 * _["TP"]:
                 return False
             if _["FRAMEWORK"] in ["ALPACA"]:
                 return _["TP"] == min(_["GPU_NUM"], 8)
             return True
 
-        def pp_constraint(_: dict[str, typing.Any]) -> bool:
+        def pp_constraint(_: Dict[str, typing.Any]) -> bool:
             if _["TP"] * _["PP"] > _["GPU_NUM"]:
                 return False
             if _["FRAMEWORK"] in ["ALPACA"]:
                 return _["PP"] == 1
             return True
 
-        def gradient_step_constraint(_: dict[str, typing.Any]) -> bool:
+        def gradient_step_constraint(_: Dict[str, typing.Any]) -> bool:
             options = proto.GRADIENT_STEP.options
             gradient_size = {
                 "LLAMA_7B": 4,
@@ -142,7 +143,7 @@ class TestGenerateEmptyCSV(unittest.TestCase):
                     return _["GRADIENT_STEP"] in options[i: min(i + 1, len(options))]
             return False
 
-        def lora_r_constraint(_: dict[str, typing.Any]) -> bool:
+        def lora_r_constraint(_: Dict[str, typing.Any]) -> bool:
             if is_inference_framework(_["FRAMEWORK"]):
                 return _["LORA_R"] == 0
             return _["LORA_R"] > 0

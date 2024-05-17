@@ -1,10 +1,8 @@
 import csv
-import dataclasses
 import os
-import protocol
-import rule
-from dataclasses import dataclass
-from typing import Any, TypeVar
+from .rule import Configurations, Rule
+from typing import Dict, List, Union, Any, TypeVar
+from dataclasses import dataclass, asdict, fields
 
 
 @dataclass(frozen=True)
@@ -17,7 +15,7 @@ class HardwareConfiguration:
     trainable_params: int
 
     def to_dict(self):
-        return { key.upper() : value for key, value in dataclasses.asdict(self).items() }
+        return { key.upper() : value for key, value in asdict(self).items() }
 
 
 @dataclass(frozen=True)
@@ -36,7 +34,7 @@ class TrainingConfiguration:
     additional_arguments: str
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]):
+    def from_dict(cls, data: Dict[str, Any]):
         tp = data["TP"]
         pp = data["PP"]
         gpu_num = data["GPU_NUM"]
@@ -50,9 +48,10 @@ class TrainingConfiguration:
 
         data.update(SP=1, MICRO_BATCH_SIZE=micro_batch_size, DDP=ddp)
 
-        keys = set(x.name.upper() for x in dataclasses.fields(cls))
+        keys = set(x.name.upper() for x in fields(cls))
         data = { key.lower(): value for key, value in data.items() if key in keys }
         return cls(**data)
+
 
 @dataclass(frozen=True)
 class DeployConfiguration:
@@ -63,22 +62,22 @@ class DeployConfiguration:
     additional_arguments: str
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]):
-        keys = set(x.name.upper() for x in dataclasses.fields(cls))
+    def from_dict(cls, data: Dict[str, Any]):
+        keys = set(x.name.upper() for x in fields(cls))
         data = { key.lower(): value for key, value in data.items() if key in keys }
         return cls(**data)
 
-OutputConfiguration = TypeVar('OutputConfiguration', bound=TrainingConfiguration | DeployConfiguration)
+
+OutputConfiguration = TypeVar('OutputConfiguration', bound=Union[TrainingConfiguration, DeployConfiguration])
+
 
 class ConfigurationDatabase(object):
-    def __init__(self, url: str | os.PathLike[str], rules: list[protocol.Rule]):
-        co = rule.Configurations(rules)
+    def __init__(self, url: Union[str, os.PathLike[str]], rules: List[Rule]):
+        self.configurations = Configurations(rules)
         with open(url) as file:
             reader = csv.reader(file)
-            co.parse_header(next(reader))
-            co.parse_values(reader)
+            self.configurations.parse_header(next(reader))
+            self.configurations.parse_values(reader)
 
-        self.configurations = co
-
-    def query(self, hc: HardwareConfiguration, clazz: type[OutputConfiguration]) -> list[OutputConfiguration]:
+    def query(self, hc: HardwareConfiguration, clazz: type[OutputConfiguration]) -> List[OutputConfiguration]:
         return [ clazz.from_dict(arguments) for arguments in self.configurations.lookup(hc.to_dict()) ]
