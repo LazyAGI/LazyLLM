@@ -41,20 +41,40 @@ class TestFn_Common(object):
                 time.sleep(2)
                 
     def test_common_tread(self):
-        # TODO: 
-        pass
-    
-    def test_common_llmrequest(self):
-        # TODO: 
-        pass
-    
-    def test_common_llmresponse(self):
-        # TODO: 
-        pass
+        
+        def is_equal2(x):
+            if x==2:
+                return x
+            else:
+                raise Exception
+
+        ts = [lazyllm.Thread(target=is_equal2, args=(inp, )) for inp in [2,3]]
+        [t.start() for t in ts]
+        
+        assert ts[0].get_result()==2
+        with pytest.raises(Exception) as e:
+            ts[1].get_result()
+        
+        
     
     def test_common_llmreqreshelper(self):
-        # TODO: 
-        pass
+        
+        h = lazyllm.ReqResHelper()
+        assert h.make_request(1,a=3,b=2)        
+        assert h.make_request(1,2,a=3)
+        
+        r1 = lazyllm.LazyLlmResponse(messages=1, trace='t1')
+        r2 = lazyllm.LazyLlmResponse(messages=2, trace='t2')
+        assert h.make_request(r1)
+        assert h.make_request(r2)
+        assert h.trace == 't1t2'
+        
+        assert h.make_response('abc')
+        assert h.trace == 't1t2'
+        
+        r3 = lazyllm.LazyLlmResponse(messages=3, trace='t3')
+        assert h.make_response(r3)
+        assert h.trace == 't1t2'
     
     def test_common_makerepr(self):
         
