@@ -1,5 +1,5 @@
 import lazyllm
-from lazyllm import pipeline, dpes, ID, launchers, Document, Retriever, deploy
+from lazyllm import pipeline, parallel, Identity, launchers, Document, Retriever, deploy
 from llama_index.core.node_parser import HierarchicalNodeParser, get_deeper_nodes
 from lazyllm.llms.embedding.embed import LazyHuggingFaceEmbedding
 
@@ -25,17 +25,11 @@ documents.add_parse(name='base', parser=HierarchicalNodeParser, chunk_sizes=[204
 rma1 = Retriever(documents, algo='vector', parser='line', similarity_top_k=3)
 rma2 = Retriever(documents, algo='bm25', parser='line', similarity_top_k=6)
 rmf = lazyllm.ServerModule(pipeline(
-        dpes(rma1, rma2),
-        lambda x,y: x+y,
+        parallel.sequential(x=rma1, y=rma2),
+        lambda x, y : x + y,
         lambda nodes: '《'+nodes[0].metadata["file_name"].split('.')[0] + '》 ' + nodes[0].get_content()))
 
-m = lazyllm.ActionModule(lazyllm.pipeline(
-        lazyllm.parallel(
-            rmf,
-            ID),
-        lambda x,y: {'context_str':x, 'query_str':y},
-        llm)
-    )
+m = lazyllm.ActionModule(parallel(context_str=rmf, query_str=Identity).asdict, llm)
 m.evalset(['介绍五行。','什么是色？','什么是中庸？','非常道是什么？','应该怎么学习？'])
 
 mweb = lazyllm.WebModule(m)

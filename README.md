@@ -196,8 +196,8 @@ input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
       \> module31 -> ... -> module3N -> out3 /
 ```
 
-##### DPES
-DPES(parallel in dataflow, serial in executing)数据流转和Parallel一致，但执行顺序是依次执行，不同于Parallel是并行执行的。其工作流如下：
+##### Parallel.sequential
+Parallel.sequential(parallel in dataflow, serial in executing)数据流转和Parallel一致，但执行顺序是依次执行，不同于Parallel是并行执行的。其工作流如下：
 ```
       /> module11 -> ... -> module1N -> out1 \
 input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)

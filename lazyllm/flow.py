@@ -8,10 +8,11 @@ import threading
 
 class FlowBase(object):
     __enable_request__ = True
-    def __init__(self, *items) -> None:
+    def __init__(self, *items, item_names=None) -> None:
         self._flow_name = None
         self._father = None
         self.items = list(it() if isinstance(it, type) else it for it in items)
+        self._item_names = item_names
         for it in self.items:
             if isinstance(it, FlowBase):
                 it._father = self
@@ -19,25 +20,17 @@ class FlowBase(object):
     def __setattr__(self, name: str, value):
         if isinstance(value, FlowBase) and name != '_father':
             self.items.append(value)
-            value._flow_name = name
             value._father = self
         return super().__setattr__(name, value)
 
     def __getattr__(self, name):
-        if 'items' in self.__dict__:
-            for it in self.items:
-                if getattr(it, 'name', None) == name:
-                    return it
+        if '_item_names' in self.__dict__ and name in self._item_names:
+            return self.items[self._item_names.index(name)]
         raise AttributeError(f'{self.__class__} object has no attribute {name}')
 
     @property
     def is_root(self):
         return self._father is None
-
-    @property
-    def name(self): return self._flow_name
-    @name.setter
-    def name(self, name): self._flow_name = name
 
     def for_each(self, filter, action):
         for item in self.items:
@@ -60,43 +53,25 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             self.f = f.f if isinstance(f, LazyLLMFlowsBase.FuncWrap) else f
             self._func_name = name
 
-        @property
-        def name(self): return self._func_name
-        @name.setter
-        def name(self, name): self._func_name = name
-
         def __call__(self, *args, **kw): return self.f(*args, **kw)
     
         def __repr__(self):
-            if is_function(self.f):
-                # TODO: specify lambda/staticmethod/classmethod/instancemethod
-                # TODO: add registry message
-                return lazyllm.make_repr('Function', self.f.__name__.strip('<>'), name=self.name)
-            else:
-                return lazyllm.modify_repr(self.f.__repr__(), 'name', self.name)
+            # TODO: specify lambda/staticmethod/classmethod/instancemethod
+            # TODO: add registry message
+            return lazyllm.make_repr('Function', self.f.__name__.strip('<>'))
 
     def __init__(self, *args, post_action=None, return_input=False, **kw):
-        assert len(args) == 0 or len(kw) == 0
+        assert len(args) == 0 or len(kw) == 0,  f'Cannot provide args `{args}` and kwargs `{kw}` at the same time'
         if len(args) > 0 and isinstance(args[0], (tuple, list)):
-            assert len(args) == 1, f'{self.__class__} init failed'
+            assert len(args) == 1, f'args should be list of callable functions'
             args = args[0]
-        args = list(args)
-        for k, v in kw.items():
-            # ensure `name` is set to object instead of class 
-            if isinstance(v, type):
-                v = v()
-            elif is_function(v):
-                v = LazyLLMFlowsBase.FuncWrap(v)
-            elif hasattr(v, 'name'):
-                assert v.name is None or k == v.name, f'name of {v} is already set, and old name is "{v.name}"'
-            else:
-                v = LazyLLMFlowsBase.FuncWrap(v)
-            v.name = k
-            args.append(v)
-        super(__class__, self).__init__(*args)
+        args = list(args) + [v() if isinstance(v, type) else LazyLLMFlowsBase.FuncWrap(v)
+                                 if is_function(v)      else v for v in kw.values()]
+        super(__class__, self).__init__(*args, item_names=list(kw.keys()))
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self.return_input = return_input
         self.result = None
+        self._sync = False
 
     def __call__(self, *args, **kw):
         helper = ReqResHelper()
@@ -115,18 +90,19 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         def _exchange(item):
             item._args = [a.get_from(self) if isinstance(a, type(root)) else a for a in item._args]
         self.for_each(lambda x: isinstance(x, bind), _exchange)
-        return self(*args, **kw)
-
-    def sync_start(self, *args, **kw):
-        r = self.start(*args, **kw)
-        self.wait()
+        r = self(*args, **kw)
+        if self._sync: self.wait()
         return r
+
+    def set_sync(self, sync=True):
+        self._sync = sync
+        return self
 
     def __repr__(self):
         subs = [repr(LazyLLMFlowsBase.FuncWrap(it) if is_function(it) else it) for it in self.items]
         if self.post_action is not None:
             subs.append(lazyllm.make_repr('Flow', 'PostAction', subs=[self.post_action.__repr__()]))
-        return lazyllm.make_repr('Flow', self.__class__.__name__, name=self.name, subs=subs)
+        return lazyllm.make_repr('Flow', self.__class__.__name__, subs=subs, items=self._item_names)
 
     def wait(self):
         def filter(x):
@@ -163,11 +139,6 @@ class Pipeline(LazyLLMFlowsBase):
         return helper.make_response(input)
 
 
-class NamedPipeline(Pipeline):
-    def __init__(self, *, post_action=None, return_input=False, **kw):
-        super().__init__(post_action=post_action, return_input=return_input, **kw)
-
-
 _barr = threading.local()
 def barrier(args): _barr.impl.wait(); return args
 def _hook(v): _barr.impl = v
@@ -176,38 +147,55 @@ def _hook(v): _barr.impl = v
 #  input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #        \> module31 -> ... -> module3N -> out3 /
 class Parallel(LazyLLMFlowsBase):
-    def _run(self, input=package()):
-        def _impl(it):
-            return invoke(it, input)
-        nthreads = len(self.items)
-        impl = threading.Barrier(nthreads)
-        ts = [Thread(target=_impl, args=(it, ), prehook=bind(_hook, impl))
-              for it in self.items]
-        [t.start() for t in ts]
-        return package(t.get_result() for t in ts)
+    def __init__(self, *args, _scatter=False, _concurrent=True, **kw):
+        super().__init__(*args, **kw)
+        self._return_dict = False
+        self._concurrent = _concurrent
+        self._scatter = _scatter
 
+    @property
+    def asdict(self):
+         self._return_dict=True
+         return self
 
-class NamedParallel(Parallel):
-    def __init__(self, *, post_action=None, return_input=False, **kw):
-        super().__init__(post_action=post_action, return_input=return_input, **kw)
+    @classmethod
+    def sequential(cls, *args, **kw):
+        print(cls)
+        return cls(*args, _concurrent=False, **kw)
 
+    def _run(self, input, items=None):
+        if items is None:
+            items = self.items
+            size = len(items)
+            if self._scatter:
+                inputs = input.split(self._item_names if self._item_names else size)
+            else:
+                inputs = [input] * size
+        else:
+            inputs = input
 
-# parallel in dataflow, serial in executing. dataflow is the same as parallel, while
-# it's items will be executed in order. 
-class DPES(LazyLLMFlowsBase):
-    def _run(self, input=package()):
-        def _impl(it):
-            return invoke(it, input)
-        return package(_impl(it) for it in self.items)
+        if self._concurrent:
+            nthreads = len(items)
+            impl = threading.Barrier(nthreads)
+            ts = [Thread(target=invoke, args=(it, inp), prehook=bind(_hook, impl))
+                for it, inp in zip(items, inputs)]
+            [t.start() for t in ts]
+            r = package(t.get_result() for t in ts)
+        else:
+            r = package(invoke(it, inp) for it, inp in zip(items, inputs))
+
+        if self._return_dict:
+            assert self._item_names, 'Item name should be set when you want to return dict.'
+            return {k: v for k, v in zip(self._item_names, r)}
+        return r
 
 
 #                  /> in1 -> module11 -> ... -> module1N -> out1 \
 #  (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #                  \> in3 -> module31 -> ... -> module3N -> out3 /
-class Diverter(LazyLLMFlowsBase):
-    def _run(self, input=package()):
-        assert isinstance(input, package) and len(input) == len(self.items)
-        return package(invoke(it, inp) for it, inp in zip(self.items, input))
+class Diverter(Parallel):
+    def __init__(self, *args, _concurrent=True, **kw):
+        super().__init__(*args, _scatter=True, _concurrent=_concurrent, **kw)
 
 
 #                  /> in1 \                            /> out1 \
@@ -215,15 +203,15 @@ class Diverter(LazyLLMFlowsBase):
 #                  \> in3 /                            \> out3 /
 # Attention: Cannot be used in async tasks, ie: training and deploy
 # TODO: add check for async tasks
-class Warp(LazyLLMFlowsBase):
+class Warp(Parallel):
     def _run(self, input):
-        assert 1 == len(self.items)
-        if not isinstance(input, package):
-            input = package(input)
-        ts = [Thread(target=invoke, args=(self.items[0], inp)) for inp in input]
-        [t.start() for t in ts]
-        return package(t.get_result() for t in ts)
+        assert 1 == len(self.items), 'Only one function is enabled in warp'
+        inputs = input.split()
+        items = items * len(inputs)
+        return super(__class__, self)._run(inputs, items)
 
+    @property
+    def asdict(self): raise NotImplementedError
 
 # switch(exp):
 #     case cond1: input -> module11 -> ... -> module1N -> out; break
@@ -237,13 +225,14 @@ class Switch(LazyLLMFlowsBase):
             self.conds, items = list(args[0].keys()), list(args[0].values())
         else:
             self.conds, items = args[0::2], args[1::2]
-        items = {repr(k)+':': v for k, v in zip(self.conds, items)}
+        items = {repr(k): v for k, v in zip(self.conds, items)}
         super().__init__(**items, post_action=post_action, return_input=return_input, **kw)
 
-    def _run(self, input=package()):
+    def _run(self, input):
         exp = input
-        if isinstance(input, package) and len(input) == 2 and not callable(self.conds[0]):
-            exp, input = input
+        if isinstance(input.input, package) and len(input.input) == 2 and not callable(self.conds[0]):
+            exp = input.input[0]
+            input.input = input.input[1]
         for idx, cond in enumerate(self.conds):
             if (callable(cond) and invoke(cond, exp) is True) or (exp == cond) or cond == 'default':
                 return invoke(self.items[idx], input)
@@ -254,7 +243,7 @@ class IFS(LazyLLMFlowsBase):
     def __init__(self, cond, tpath, fpath, post_action=None, return_input=False):
         super().__init__(cond, tpath, fpath, post_action=post_action, return_input=return_input)
 
-    def _run(self, input=package()):
+    def _run(self, input):
         cond, tpath, fpath = self.items
         return invoke(tpath, input) if invoke(cond, input) else invoke(fpath, input) 
 
@@ -269,12 +258,13 @@ class Loop(LazyLLMFlowsBase):
         self.cond = stop_condition
         self.count = count
 
-    def _run(self, input=package()):
+    def _run(self, input):
         cnt = 0
+        helper = ReqResHelper()
         while True:
             for item in self.items:
-                input = invoke(item, input)
+                input = helper.make_request(invoke(item, input))
             cnt += 1
             if (callable(self.cond) and self.cond(input)) or (self.count is not None and cnt >= self.count):
                 break
-        return input
+        return helper.make_response(input)

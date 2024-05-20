@@ -13,7 +13,7 @@ class LazyLLMDeployBase(ComponentBase):
         super().__init__(launcher=launcher)
 
 
-class DummyDeploy(LazyLLMDeployBase, flows.NamedPipeline):
+class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
     input_key_name = 'inputs'
     default_headers = {'Content-Type': 'application/json'}
     message_format = {
@@ -40,12 +40,12 @@ class DummyDeploy(LazyLLMDeployBase, flows.NamedPipeline):
             deploy.RelayServer(port=random.randint(30000, 40000), launcher=launcher))
 
     def __call__(self, *args):
-        url = flows.NamedPipeline.__call__(self)
+        url = flows.Pipeline.__call__(self)
         print(f'dummy deploy url is : {url}')
         return url
 
     def __repr__(self):
-        return flows.NamedPipeline.__repr__(self)
+        return flows.Pipeline.__repr__(self)
 
 
 def verify_fastapi_func(job):

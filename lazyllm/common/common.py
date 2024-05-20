@@ -229,10 +229,17 @@ class Thread(threading.Thread):
         return r
 
 
-def ID(*inputs):
-    if len(inputs) == 1:
-        return inputs[0]
-    return package(*inputs)
+class Identity():
+    def __init__(self, *args, **kw):
+        pass
+
+    def __call__(self, *inputs):
+        if len(inputs) == 1:
+            return inputs[0]
+        return package(*inputs)
+
+    def __repr__(self):
+        return lazyllm.make_repr('Module', 'Identity')
 
 
 class ResultCollector(object):
@@ -261,6 +268,26 @@ class LazyLlmRequest(struct):
     input: Any = package()
     kwargs: Any = kwargs()
     global_parameters: dict = dict()
+
+    def split(self, flag=None):
+        if flag is None:
+            assert len(self.kwargs) == 0 and isinstance(self.input, package), (
+                f'Only package input can be split automatically, your input is {self.input} <{type(self.input)}>')
+            return [LazyLlmRequest(input=inp, global_parameters=self.global_parameters) for inp in self.input]
+        elif isinstance(flag, int):
+            assert len(self.kwargs) == 0 and isinstance(self.input, package), (
+                f'Only package input can be split automatically, your input is {self.input} <{type(self.input)}>')
+            assert flag == len(self.input), 'input size mismatch with split number'
+            return [LazyLlmRequest(input=inp, global_parameters=self.global_parameters) for inp in self.input]
+        elif isinstance(flag, list):
+            if isinstance(self.input, dict): 
+                assert len(self.kwargs) == 0, 'Cannot provived input and kwargs at the same time for split'
+                d = input
+            else:
+                assert not input, 'Cannot provived input and kwargs at the same time for split'
+                d = kwargs
+            return [LazyLlmRequest(input=d[key], global_parameters=self.global_parameters) for key in flag]
+        else: raise TypeError(f'invalid flag type {type(flag)} given')
 
 
 class LazyLlmResponse(struct):
