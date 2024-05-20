@@ -1,5 +1,5 @@
 import lazyllm
-from lazyllm import pipeline, parallel, diverter, switch, loop, ifs, ID
+from lazyllm import pipeline, parallel, diverter, switch, loop, ifs, Identity
 
 def is_text(input):
     return 'text' in input 
@@ -41,9 +41,9 @@ def chat(input):
     return input
 
 duomotai = diverter(
-    ID,
+    Identity,
     switch({
-        is_text: ID,
+        is_text: Identity,
         is_photo: ptt,
         is_voice: vtt,
         'default': lambda x: 'invalid input'
@@ -51,17 +51,17 @@ duomotai = diverter(
 )
  
 # (ctx, input)
-m = lazyllm.ActionModule(pipeline(
+m = lazyllm.ActionModule(
     duomotai,
     combine,
-    ifs(minganci, ID, loop(
+    ifs(minganci, Identity, loop(
             planner,
             lazyllm.ActionModule(executor),
             count=1
         )
     ),
     chat
-))
+)
 
 print(m('ctx', 'text-act1'))
 print(m('ctx', 'photo-act2'))

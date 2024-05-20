@@ -1,6 +1,6 @@
 
 import lazyllm
-from lazyllm import pipeline, warp, launchers
+from lazyllm import pipeline, launchers
 
 '''
 This demo shows the entire process of a module:
