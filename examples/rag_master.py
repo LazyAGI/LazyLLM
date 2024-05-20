@@ -14,7 +14,7 @@ base_embed = '/mnt/lustrenew/share_data/sunxiaoye/Models/BAAI--bge-large-zh-v1.5
 launcher = launchers.slurm(partition='pat_rd', ngpus=1, sync=False)
 
 llm = lazyllm.TrainableModule(None, base_model
-        ).deploy((deploy.vllm, {'launcher': launcher, 'max-model-len': 12000})
+        ).deploy_method((deploy.vllm, {'launcher': launcher, 'max-model-len': 12000})
         ).prompt(template, response_split='<|im_start|>assistant\n')
 
 documents = Document('/mnt/lustre/share_data/sunxiaoye.vendor/MyWorks/LazyLLM/RAG/docs2', 

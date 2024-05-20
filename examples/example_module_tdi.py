@@ -44,8 +44,10 @@ stage1_args = {
 
 # ====================================== Build Moudule:
 
-m1 = lazyllm.TrainableModule(base_model, target_path).finetune((finetune.AutoFinetune, stage1_args['finetune'])).deploy((deploy.lightllm, stage1_args['deploy'])).mode(
-    'finetune').trainset(stage1_data_path).prompt(template_stage1)
+m1 = lazyllm.TrainableModule(base_model, target_path
+        ).finetune_method(finetune.AutoFinetune, **stage1_args['finetune']
+        ).deploy_method(deploy.lightllm, **stage1_args['deploy']
+        ).mode('finetune').trainset(stage1_data_path).prompt(template_stage1)
 
 def combine_json(*args):
     print("=== All-Out: ", args)

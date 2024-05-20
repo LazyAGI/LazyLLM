@@ -29,7 +29,7 @@ class ModuleBase(object):
             if isinstance(v, Option):
                 ann = paras[k].annotation
                 assert ann == Option or (isinstance(ann, (tuple, list)) and Option in ann), \
-                    f'{values[i].name} cannot accept Option'
+                    f'{k} cannot accept Option'
         return object.__new__(cls)
 
     def __init__(self, *, return_trace=False):
@@ -55,13 +55,14 @@ class ModuleBase(object):
 
     def __getattr__(self, key):
         def _setattr(v, **kw):
+            k = key[:-7] if key.endswith('_method') else key
             if isinstance(v, tuple) and len(v) == 2 and isinstance(v[1], dict):
                 kw.update(v[1])
                 v = v[0]
             if len(kw) > 0:
-                setattr(self, f'_{key}_args', kw)
-            setattr(self, f'_{key}', v)
-            if hasattr(self, f'_{key}_setter_hook'): getattr(self, f'_{key}_setter_hook')()
+                setattr(self, f'_{k}_args', kw)
+            setattr(self, f'_{k}', v)
+            if hasattr(self, f'_{k}_setter_hook'): getattr(self, f'_{k}_setter_hook')()
             return self
         keys =  self.__class__.builder_keys
         if key in keys:
@@ -69,7 +70,6 @@ class ModuleBase(object):
         elif key.startswith('_') and key[1:] in keys:
             return None
         raise AttributeError(f'{__class__} object has no attribute {key}')
-
 
     def __call__(self, *args, **kw): 
         if len(args) == 1 and isinstance(args[0], LazyLlmRequest):
@@ -320,7 +320,7 @@ class ServerModule(UrlModule):
 
 
 class TrainableModule(UrlModule):
-    builder_keys = ['trainset', 'train', 'finetune', 'deploy', 'mode']
+    builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
 
     def __init__(self, base_model:Option='', target_path='', *, stream=False, return_trace=False):
         super().__init__(url=None, stream=stream, meta=TrainableModule, return_trace=return_trace)
