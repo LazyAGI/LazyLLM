@@ -19,34 +19,34 @@ ppl = lazyllm.pipeline(
     lazyllm.parallel(
         lazyllm.pipeline(
             dataproc.gen_data(),
-	    lazyllm.barrier,
+            lazyllm.barrier,
             dataproc.gen_data(),
-	    lazyllm.barrier,
+            lazyllm.barrier,
             dataproc.gen_data(),
-	    lazyllm.parallel(
-            	lazyllm.pipeline(
-            		dataproc.gen_data(),
-	    		lazyllm.barrier,
-            		dataproc.gen_data(),
-	    	),
-            	lazyllm.pipeline(
-            		dataproc.gen_data(),
-	    		lazyllm.barrier,
-            		dataproc.gen_data(),
-	    	),
-	    ),
+            lazyllm.parallel(
+                lazyllm.pipeline(
+                    dataproc.gen_data(),
+                    lazyllm.barrier,
+                    dataproc.gen_data(),
+                ),
+                lazyllm.pipeline(
+                    dataproc.gen_data(),
+                    lazyllm.barrier,
+                    dataproc.gen_data(),
+                ),
+            ),
             dataproc.gen_data2(),
             dataproc.gen_data(),
             dataproc.gen_data(),
         ),
         lazyllm.pipeline(
             dataproc.gen_data(),
-	    lazyllm.barrier,
+            lazyllm.barrier,
             dataproc.gen_data(),
             dataproc.gen_data(),
             dataproc.gen_data(),
             dataproc.gen_data(),
-	    lazyllm.barrier,
+            lazyllm.barrier,
             dataproc.gen_data(),
         ),
     ),
