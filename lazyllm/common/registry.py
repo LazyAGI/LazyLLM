@@ -139,8 +139,8 @@ class Register(object):
         if name not in self.fnames:
             raise AttributeError(f'class {self.__class__} has no attribute {name}')
 
-        def impl(self, cls):
-            return self(cls, rtype=name)
+        def impl(cls):
+            return self(cls, rewrite_func=name)
         return impl
 
     def make_group(self, group_name):

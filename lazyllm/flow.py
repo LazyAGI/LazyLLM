@@ -207,7 +207,7 @@ class Warp(Parallel):
     def _run(self, input):
         assert 1 == len(self.items), 'Only one function is enabled in warp'
         inputs = input.split()
-        items = items * len(inputs)
+        items = self.items * len(inputs)
         return super(__class__, self)._run(inputs, items)
 
     @property
