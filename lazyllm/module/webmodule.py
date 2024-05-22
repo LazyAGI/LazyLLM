@@ -42,6 +42,13 @@ class WebModule(ModuleBase):
 
     def init_web(self, component_descs):
         with gr.Blocks(css=css, title=self.title) as demo:
+            sess_data = gr.State(value={
+                'sess_titles': [''],
+                'sess_logs': {},
+                'sess_history': {},
+                'sess_num': 1,
+                'curr_sess': ''
+            })
             with gr.Row():
                 with gr.Column(scale=3):
                     with gr.Row():
@@ -59,19 +66,104 @@ class WebModule(ModuleBase):
                         else:
                             raise KeyError(f'invalid component type: {ctype}')
                     with gr.Row():
-                        dbg_msg = gr.Textbox(show_label=True, label='处理日志', elem_id='logging', interactive=False, max_lines=10)
+                        dbg_msg = gr.Textbox(show_label=True, label='处理日志',
+                                             elem_id='logging', interactive=False, max_lines=10)
                     clear_btn = gr.Button(value="🗑️  Clear history", interactive=True)
                 with gr.Column(scale=6):
+                    with gr.Row():
+                        add_sess_btn = gr.Button("添加新会话")
+                        sess_drpdn = gr.Dropdown(choices=sess_data.value['sess_titles'], label="选择会话：", value='')
+                        del_sess_btn = gr.Button("删除当前会话")
                     chatbot = gr.Chatbot(height=900)
                     query_box = gr.Textbox(show_label=False, placeholder='输入内容并回车!!!')
 
-            query_box.submit(self._prepare, [query_box, chatbot], [query_box, chatbot], queue=False
+            query_box.submit(self._init_session, [query_box, sess_data], 
+                                                 [sess_drpdn, chatbot, dbg_msg, sess_data], queue=True
+                ).then(lambda: gr.update(interactive=False), None, query_box, queue=False
+                ).then(lambda: gr.update(interactive=False), None, add_sess_btn, queue=False
+                ).then(lambda: gr.update(interactive=False), None, sess_drpdn, queue=False
+                ).then(lambda: gr.update(interactive=False), None, del_sess_btn, queue=False
+                ).then(self._prepare, [query_box, chatbot], [query_box, chatbot], queue=True
                 ).then(self._respond_stream, [chat_use_context, chatbot, stream_output, text_mode] + components,
                                              [chatbot, dbg_msg], queue=chatbot
-                ).then(lambda: gr.update(interactive=True), None, query_box, queue=False)
-            clear_btn.click(self._clear_history, None, outputs=[chatbot, query_box, dbg_msg])
-        return demo
+                ).then(lambda: gr.update(interactive=True), None, query_box, queue=False
+                ).then(lambda: gr.update(interactive=True), None, add_sess_btn, queue=False
+                ).then(lambda: gr.update(interactive=True), None, sess_drpdn, queue=False
+                ).then(lambda: gr.update(interactive=True), None, del_sess_btn, queue=False)
+            clear_btn.click(self._clear_history, [sess_data], outputs=[chatbot, query_box, dbg_msg, sess_data])
+            
+            sess_drpdn.change(self._change_session, [sess_drpdn, chatbot, dbg_msg, sess_data],
+                                                    [sess_drpdn, chatbot, query_box, dbg_msg, sess_data])
+            add_sess_btn.click(self._add_session, [chatbot, dbg_msg, sess_data],
+                                                  [sess_drpdn, chatbot, query_box, dbg_msg, sess_data])
+            del_sess_btn.click(self._delete_session, [sess_drpdn, sess_data],
+                                                     [sess_drpdn, chatbot, query_box, dbg_msg, sess_data])
+            return demo
 
+    def _init_session(self, query, session):
+        if session['curr_sess'] != '': #remain unchanged.
+            return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), session
+        
+        session['curr_sess'] = f"({session['sess_num']})  {query}"
+        session['sess_num'] += 1
+        session['sess_titles'][0] = session['curr_sess']
+        
+        session['sess_logs'][session['curr_sess']] = []
+        session['sess_history'][session['curr_sess']] = []
+        return gr.update(choices=session['sess_titles'], value=session['curr_sess']), [], '', session
+    
+    def _add_session(self, chat_history, log_history, session):
+        if session['curr_sess'] == '':
+            print('[WARNING] cannot create new session while current session is empty.')
+            return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), gr.Textbox(), session
+        
+        self._save_history(chat_history, log_history, session)
+            
+        session['curr_sess'] = ''
+        session['sess_titles'].insert(0, session['curr_sess'])
+        return gr.update(choices=session['sess_titles'], value=session['curr_sess']), [], '', '', session
+
+    def _save_history(self, chat_history, log_history, session):
+        if session['curr_sess'] in session['sess_titles']:
+            session['sess_history'][session['curr_sess']] = chat_history
+            session['sess_logs'][session['curr_sess']] = log_history
+    
+    def _change_session(self, session_title, chat_history, log_history, session):
+        if session['curr_sess'] == '': #new session
+            return gr.Dropdown(), [], '', '', session
+        
+        if not session_title in session['sess_titles']:
+            print(f'[WARNING] {session_title} is not an existing session title.')
+            return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), gr.Textbox(), session
+        
+        self._save_history(chat_history, log_history, session)
+            
+        session['curr_sess'] = session_title
+        return gr.update(choices=session['sess_titles'], value=session['curr_sess']),\
+                session['sess_history'][session['curr_sess']], '',\
+                session['sess_logs'][session['curr_sess']], session
+    
+    def _delete_session(self, session_title, session):
+        if not session_title in session['sess_titles']:
+            print(f'[WARNING] session {session_title} does not exist.')
+            return gr.Dropdown(), session
+        session['sess_titles'].remove(session_title)
+        
+        if session_title != '':
+            del session['sess_history'][session_title]
+            del session['sess_logs'][session_title]
+            session['curr_sess'] = session_title
+        else:
+            session['curr_sess'] = 'dummy session' 
+            # add_session and change_session cannot accept an uninitialized session.
+            # Here we need to imitate removal of a real session so that 
+            # add_session and change_session could skip saving chat history.
+        
+        if len(session['sess_titles']) == 0:
+            return self._add_session(None, None, session)
+        else:
+            return self._change_session(session['sess_titles'][0], None, None, session)
+        
     def _prepare(self, query, chat_history):
         if chat_history is None:
             chat_history = []
@@ -126,8 +218,10 @@ class WebModule(ModuleBase):
             log = f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}'
         yield chat_history, log
 
-    def _clear_history(self):
-        return [], '', ''
+    def _clear_history(self, session):
+        session['sess_history'][session['curr_sess']].clear()
+        session['sess_logs'][session['curr_sess']].clear()
+        return [], '', '', session
 
     def _work(self):
         if isinstance(self.port, (range, tuple, list)):
