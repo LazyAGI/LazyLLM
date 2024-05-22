@@ -26,21 +26,10 @@ class ComponentBase(object, metaclass=LazyLLMRegisterMetaClass):
     @name.setter
     def name(self, name): self._llm_name = name
 
-    def _get_slurm_job(self, *args, **kw):
-        raise NotImplementedError('please implement function \'_get_slurm_job\'')
-
-    def _get_sco_job(self, *args, **kw):
-        raise NotImplementedError('please implement function \'_get_sco_job\'')
-
     def _get_job_with_cmd(self, *args, **kw):
-        if isinstance(self.launcher, launchers.slurm) and self._overwrote('_get_slurm_job'):
-            return self._get_slurm_job(*args, **kw)
-        elif isinstance(self.launcher, launchers.sco) and self._overwrote('_get_sco_job'):
-            return self._get_sco_job(*args, **kw)
-        else:
-            cmd = self.cmd(*args, **kw)
-            cmd = cmd if isinstance(cmd, LazyLLMCMD) else LazyLLMCMD(cmd)
-            return self.launcher.makejob(cmd=cmd)
+        cmd = self.cmd(*args, **kw)
+        cmd = cmd if isinstance(cmd, LazyLLMCMD) else LazyLLMCMD(cmd)
+        return self.launcher.makejob(cmd=cmd)
 
     def _overwrote(self, f):
         return getattr(self.__class__, f) is not getattr(__class__, f) or \

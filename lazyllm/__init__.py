@@ -9,9 +9,8 @@ from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
 from .module import  Document, Retriever
 from . import flows
 
-pipeline, namedPipeline = flows.pipeline, flows.namedPipeline
-parallel, namedParallel = flows.parallel, flows.namedParallel
-dpes, diverter, loop = flows.DPES, flows.Diverter, flows.Loop
+pipeline, parallel = flows.pipeline, flows.parallel
+diverter, loop = flows.Diverter, flows.Loop
 switch, ifs, warp = flows.Switch, flows.IFS, flows.Warp
 
 config.done()

@@ -8,7 +8,7 @@ import inspect
 
 import lazyllm
 from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, Prompter, launchers
-from ..flow import FlowBase, Pipeline, Parallel, DPES
+from ..flow import FlowBase, Pipeline, Parallel
 import uuid
 
 
@@ -29,7 +29,7 @@ class ModuleBase(object):
             if isinstance(v, Option):
                 ann = paras[k].annotation
                 assert ann == Option or (isinstance(ann, (tuple, list)) and Option in ann), \
-                    f'{values[i].name} cannot accept Option'
+                    f'{k} cannot accept Option'
         return object.__new__(cls)
 
     def __init__(self, *, return_trace=False):
@@ -55,13 +55,14 @@ class ModuleBase(object):
 
     def __getattr__(self, key):
         def _setattr(v, **kw):
+            k = key[:-7] if key.endswith('_method') else key
             if isinstance(v, tuple) and len(v) == 2 and isinstance(v[1], dict):
                 kw.update(v[1])
                 v = v[0]
             if len(kw) > 0:
-                setattr(self, f'_{key}_args', kw)
-            setattr(self, f'_{key}', v)
-            if hasattr(self, f'_{key}_setter_hook'): getattr(self, f'_{key}_setter_hook')()
+                setattr(self, f'_{k}_args', kw)
+            setattr(self, f'_{k}', v)
+            if hasattr(self, f'_{k}_setter_hook'): getattr(self, f'_{k}_setter_hook')()
             return self
         keys =  self.__class__.builder_keys
         if key in keys:
@@ -69,7 +70,6 @@ class ModuleBase(object):
         elif key.startswith('_') and key[1:] in keys:
             return None
         raise AttributeError(f'{__class__} object has no attribute {key}')
-
 
     def __call__(self, *args, **kw): 
         if len(args) == 1 and isinstance(args[0], LazyLlmRequest):
@@ -135,11 +135,11 @@ class ModuleBase(object):
                     eval_tasks.absorb(top._get_eval_tasks())
 
         if 'train' in mode and len(train_tasks) > 0:
-            Parallel(*train_tasks).sync_start()
+            Parallel(*train_tasks).set_sync(True).start()
         if 'server' in mode and len(deploy_tasks) > 0:
-            DPES(*deploy_tasks).start()
+            Parallel.sequential(*deploy_tasks).start()
         if 'eval' in mode and len(eval_tasks) > 0:
-            DPES(*eval_tasks).start()
+            Parallel.sequential(*eval_tasks).start()
         return self
 
     def update(self, *, recursive=True): return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
@@ -274,19 +274,14 @@ class UrlModule(ModuleBase):
 
 
 class ActionModule(ModuleBase):
-    def __init__(self, action, *, return_trace=False):
+    def __init__(self, *action, return_trace=False):
         super().__init__(return_trace=return_trace)
-        if not isinstance(action, (tuple, list, FlowBase)):
-            # Use flow to assist with input processing
-            action = [action]
+        if len(action) == 1 and isinstance(action, FlowBase): action = action[0]
         if isinstance(action, (tuple, list)):
-            self.submodules = [a for a in action if isinstance(a, ModuleBase)]
-            self.action = Pipeline(*action)
-        elif isinstance(action, FlowBase):
-            action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: self.submodules.append(x))
-            self.action = action
-        else:
-            raise TypeError(f'Invalid action type {type(action)}')
+            action = Pipeline(*action)
+        assert isinstance(action, FlowBase), f'Invalid action type {type(action)}'
+        action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: self.submodules.append(x))
+        self.action = action
 
     def forward(self, *args, **kw):
         return self.action.start(*args, **kw)
@@ -325,7 +320,7 @@ class ServerModule(UrlModule):
 
 
 class TrainableModule(UrlModule):
-    builder_keys = ['trainset', 'train', 'finetune', 'deploy', 'mode']
+    builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
 
     def __init__(self, base_model:Option='', target_path='', *, stream=False, return_trace=False):
         super().__init__(url=None, stream=stream, meta=TrainableModule, return_trace=return_trace)

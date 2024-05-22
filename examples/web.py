@@ -1,12 +1,12 @@
 import lazyllm
 import time
 
-t1 = lazyllm.TrainableModule(stream=False).finetune(finetune.dummy).deploy(deploy.dummy).mode(
-    'finetune').prompt('hello world1 <{input}>')
+t1 = lazyllm.TrainableModule(stream=False).finetune_method(finetune.dummy).deploy_method(
+    deploy.dummy).mode('finetune').prompt('hello world1 <{input}>')
 prompter = lazyllm.Prompter(prompt='hello world2 <{input}>, hisory is <{history}>',
                             history_symbol='history', eoh='[EOH]', eoa='[EOA]')
-t2 = lazyllm.TrainableModule(stream=True).finetune(finetune.dummy).deploy(deploy.dummy).mode(
-    'finetune').prompt(prompter)
+t2 = lazyllm.TrainableModule(stream=True).finetune_method(finetune.dummy).deploy_method(
+    deploy.dummy).mode('finetune').prompt(prompter)
 t1.name = 'M1'
 t2.name = 'M2'
 

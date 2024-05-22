@@ -38,7 +38,7 @@ export LAZYLLM_SLURM_PART=pat_rd
 ##### TrainableModule 微调部署推理一键启
 TrainableModule是一个集合了训练（继续预训练和微调训练）、部署、推理于一体的Module。
 ```python
-m = lazyllm.TrainableModule('path/to/base/model', 'path/to/target/file').finetune(finetune.dummy).deploy(deploy.dummy).mode(
+m = lazyllm.TrainableModule('path/to/base/model', 'path/to/target/file').finetune_method(finetune.dummy).deploy_method(deploy.dummy).mode(
     'finetune')
 m.evalset([1, 2, 3, 4, 5, 6])
 m.update()
@@ -105,7 +105,7 @@ m.update()
 
 例如包装一个LazyLLM的Module:
 ```python
-mm = lazyllm.TrainableModule(stream=True).finetune(finetune.dummy).deploy(deploy.dummy).mode('finetune')
+mm = lazyllm.TrainableModule(stream=True).finetune_method(finetune.dummy).deploy_method(deploy.dummy).mode('finetune')
 m = lazyllm.WebModule(mm)
 m.update()
 ```
@@ -124,7 +124,7 @@ ActionModule 可将LazyLLM中的底层flow包装为一个Module实现更精细�
 from lazyllm import pipeline
 def func1(x):
     return str(x) + ' func1 '
-mm = lazyllm.TrainableModule('path1/to/base/model', 'path1/to/target/file').finetune(finetune.dummy).deploy(deploy.dummy).mode('finetune')
+mm = lazyllm.TrainableModule('path1/to/base/model', 'path1/to/target/file').finetune_method(finetune.dummy).deploy_method(deploy.dummy).mode('finetune')
 m = lazyllm.Module.action(pipeline(func1, mm)) # lazyllm.ActionModule == lazyllm.Module.action
 m.evalset([1, 2, 3, 4, 5, 6])
 m.update()
@@ -139,8 +139,8 @@ print(m.eval_result)
 SequenceModule 可以将LazyLLM中的多个Module串联起来构成一个Module:
 ```python
 m = lazyllm.SequenceModule(
-    lazyllm.TrainableModule('path1/to/base/model', 'path1/to/target/file').finetune(finetune.dummy).deploy(deploy.dummy).mode('finetune'),
-    lazyllm.TrainableModule('path2/to/base/model', 'path2/to/target/file').finetune(finetune.dummy).deploy(deploy.dummy).mode('finetune'),
+    lazyllm.TrainableModule('path1/to/base/model', 'path1/to/target/file').finetune_method(finetune.dummy).deploy_method(deploy.dummy).mode('finetune'),
+    lazyllm.TrainableModule('path2/to/base/model', 'path2/to/target/file').finetune_method(finetune.dummy).deploy_method(deploy.dummy).mode('finetune'),
 )
 m.evalset([1, 2, 3, 4, 5, 6])
 m.update()
@@ -158,7 +158,7 @@ print(m.eval_result)
 
 ```python
 # 包装一个大模型：
-LLM = lazyllm.TrainableModule('path1/to/base/model', 'path1/to/target/file').finetune(finetune.dummy).deploy(deploy.dummy).mode('finetune')
+LLM = lazyllm.TrainableModule('path1/to/base/model', 'path1/to/target/file').finetune_method(finetune.dummy).deploy_method(deploy.dummy).mode('finetune')
 
 # 将LLM套入到一个带前后处理的服务中：
 def pre_func(x):
@@ -196,8 +196,8 @@ input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
       \> module31 -> ... -> module3N -> out3 /
 ```
 
-##### DPES
-DPES(parallel in dataflow, serial in executing)数据流转和Parallel一致，但执行顺序是依次执行，不同于Parallel是并行执行的。其工作流如下：
+##### Parallel.sequential
+Parallel.sequential(parallel in dataflow, serial in executing)数据流转和Parallel一致，但执行顺序是依次执行，不同于Parallel是并行执行的。其工作流如下：
 ```
       /> module11 -> ... -> module1N -> out1 \
 input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)

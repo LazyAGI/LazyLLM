@@ -1,7 +1,7 @@
 import json
 
 import lazyllm
-from lazyllm import pipeline, warp, launchers, deploy
+from lazyllm import launchers, deploy
 
 '''
 Set the environment variable with: 
@@ -24,7 +24,7 @@ deploy_config = {
 
 # ====================================== Build Moudule:
 
-m1 = lazyllm.TrainableModule(base_model, '').deploy((deploy.vllm, deploy_config))
+m1 = lazyllm.TrainableModule(base_model, '').deploy_method(deploy.vllm, **deploy_config)
 
 def pre_func(kx:str):
     print("=== Before pre_func: ", kx)
