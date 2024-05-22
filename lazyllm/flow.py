@@ -160,7 +160,6 @@ class Parallel(LazyLLMFlowsBase):
 
     @classmethod
     def sequential(cls, *args, **kw):
-        print(cls)
         return cls(*args, _concurrent=False, **kw)
 
     def _run(self, input, items=None):
