@@ -1,5 +1,5 @@
 import lazyllm
-from lazyllm import finetune
+from lazyllm import finetune, depoly
 
 
 class TestFn_Component(object):
@@ -51,10 +51,28 @@ class TestFn_Component(object):
         assert f.target_path == './finetune-target2', f"Expected target_path to be './finetune-target2', but got '{f.target_path}'"
 
     def test_deploy_lightllm(self):
-        pass
+        d = depoly.lightllm(
+            launcher=lazyllm.launchers.slurm(
+                partition='pat_rd',
+                nnode=1,
+                nproc=1,
+                ngpus=1,
+                sync=False
+            ),
+        )
+        assert d.geturl() == 'http://{ip}:{port}/generate', f"Expected 'http://{ip}:{port}/generate', but got '{d.geturl()}'"
 
     def test_deploy_vllm(self):
-        pass
+        d = depoly.vllm(
+            launcher=lazyllm.launchers.slurm(
+                partition='pat_rd',
+                nnode=1,
+                nproc=1,
+                ngpus=1,
+                sync=False
+            ),
+        )
+        assert d.geturl() == 'http://{ip}:{port}/generate', f"Expected 'http://{ip}:{port}/generate', but got '{d.geturl()}'"
 
     def test_auto_finetune(self):
         # Not implemented
