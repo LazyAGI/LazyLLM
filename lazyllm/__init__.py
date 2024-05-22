@@ -3,7 +3,8 @@ from .configs import config, Mode
 from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase, barrier
 from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
-                   LazyLLMValidateBase, register as llmregister, Prompter)
+                   LazyLLMValidateBase, register as llmregister, Prompter,
+                   FastapiApp)
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, WebModule, TrialModule, register as moduleregister)
 from .module import  Document, Retriever
@@ -29,6 +30,7 @@ __all__ = [
     'LazyLLMValidateBase',        #
     'llmregister',
     'Prompter',
+    'FastapiApp',
 
     # flow
     'LazyLLMFlowsBase',            # pipeline, parallel

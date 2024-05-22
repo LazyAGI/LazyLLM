@@ -22,8 +22,26 @@ for _ in range(5):
     lazyllm_module_dir = os.path.dirname(lazyllm_module_dir)
 sys.path.append(lazyllm_module_dir)
 
-app = FastAPI()
+parser = argparse.ArgumentParser()
+parser.add_argument("--open_ip", type=str, default="0.0.0.0", 
+                    help="IP: Receive for Client")
+parser.add_argument("--open_port", type=int, default=17782,
+                    help="Port: Receive for Client")
+parser.add_argument("--function", required=True)
+parser.add_argument("--before_function")
+parser.add_argument("--after_function")
+args = parser.parse_args()
 
+def load_func(f):
+    return cloudpickle.loads(base64.b64decode(f.encode('utf-8')))
+
+func = load_func(args.function)
+if args.before_function:
+    before_func = load_func(args.before_function)
+if args.after_function:
+    after_func = load_func(args.after_function)
+
+app = FastAPI()
 
 @app.post("/generate")
 async def generate(request: Request):
@@ -74,24 +92,9 @@ async def generate(request: Request):
     except Exception as e:
         return Response(content=f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
 
+if '__relay_services__' in dir(func.__class__):
+    for name, method, path, kw in func.__class__.__relay_services__:
+        getattr(app, method)(path, **kw)(getattr(func, name))
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--open_ip", type=str, default="0.0.0.0", 
-                        help="IP: Receive for Client")
-    parser.add_argument("--open_port", type=int, default=17782,
-                        help="Port: Receive for Client")
-    parser.add_argument("--function", required=True)
-    parser.add_argument("--before_function")
-    parser.add_argument("--after_function")
-    args = parser.parse_args()
-
-    def load_func(f):
-        return cloudpickle.loads(base64.b64decode(f.encode('utf-8')))
-
-    func = load_func(args.function)
-    if args.before_function:
-        before_func = load_func(args.before_function)
-    if args.after_function:
-        after_func = load_func(args.after_function)
-
     uvicorn.run(app, host=args.open_ip, port=args.open_port)

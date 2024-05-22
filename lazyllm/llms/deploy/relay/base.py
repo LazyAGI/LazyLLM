@@ -1,6 +1,7 @@
 import os
 import random
 import base64
+import inspect
 from lazyllm import launchers, LazyLLMCMD
 from ..base import LazyLLMDeployBase, verify_fastapi_func
 from lazyllm.thirdparty import cloudpickle
@@ -34,6 +35,7 @@ class RelayServer(LazyLLMDeployBase):
         super().__init__(launcher=launcher)
 
     def cmd(self, func=None):
+        FastapiApp.update()
         self.func = dump_func(func, self.func)
         folder_path = os.path.dirname(os.path.abspath(__file__))
         run_file_path = os.path.join(folder_path, 'server.py')
@@ -54,3 +56,39 @@ class RelayServer(LazyLLMDeployBase):
         if job is None:
             job = self.job
         return f'http://{job.get_jobip()}:{self.real_port}/generate'
+
+
+class FastapiApp(object):
+    __relay_services__ = []
+
+    @staticmethod
+    def _server(method, path, **kw):
+        def impl(f):
+            FastapiApp.__relay_services__.append([f, method, path, kw])
+            return f
+        return impl
+
+    @staticmethod
+    def get(path, **kw):
+        return FastapiApp._server('get', path, **kw)
+
+    @staticmethod
+    def post(path, **kw):
+        return FastapiApp._server('post', path, **kw)
+
+    @staticmethod
+    def list(path, **kw):
+        return FastapiApp._server('list', path, **kw)
+
+    @staticmethod
+    def delete(path, **kw):
+        return FastapiApp._server('delete', path, **kw)
+
+    @staticmethod
+    def update():
+        for f, method, path, kw in FastapiApp.__relay_services__:
+            cls = inspect._findclass(f)
+            if '__relay_services__' not in dir(cls):
+                cls.__relay_services__ = []
+            cls.__relay_services__.append([f.__name__, method, path, kw])
+        FastapiApp.__relay_services__.clear()
