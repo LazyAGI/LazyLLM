@@ -89,6 +89,6 @@ class FastapiApp(object):
         for f, method, path, kw in FastapiApp.__relay_services__:
             cls = inspect._findclass(f)
             if '__relay_services__' not in dir(cls):
-                cls.__relay_services__ = []
-            cls.__relay_services__.append([f.__name__, method, path, kw])
+                cls.__relay_services__ = dict()
+            cls.__relay_services__[method, path] = ([f.__name__, kw])
         FastapiApp.__relay_services__.clear()

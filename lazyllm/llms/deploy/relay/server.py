@@ -9,6 +9,7 @@ import inspect
 import traceback
 from types import GeneratorType
 from lazyllm import LazyLlmResponse, ReqResHelper, LazyLlmRequest, FlowBase, ModuleBase
+from lazyllm import FastapiApp
 import pickle
 import codecs
 
@@ -42,6 +43,7 @@ if args.after_function:
     after_func = load_func(args.after_function)
 
 app = FastAPI()
+FastapiApp.update()
 
 @app.post("/generate")
 async def generate(request: Request):
@@ -93,7 +95,7 @@ async def generate(request: Request):
         return Response(content=f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
 
 if '__relay_services__' in dir(func.__class__):
-    for name, method, path, kw in func.__class__.__relay_services__:
+    for (method, path), (name,  kw) in func.__class__.__relay_services__.items():
         getattr(app, method)(path, **kw)(getattr(func, name))
 
 if __name__ == "__main__":
