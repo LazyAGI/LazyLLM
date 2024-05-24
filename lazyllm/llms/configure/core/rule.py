@@ -146,7 +146,7 @@ class Rule(Generic[T]):
             raise ValueError(f"value '{value}' is not in {self._name} options {self.options}")
         return value
 
-    def convert_value_to_index(self, value: T) -> List[int, int]:
+    def convert_value_to_index(self, value: T) -> List[int]:
         assert self.options is not None, f"index is unavailable if rule {self.name} has no options"
         index = None
         if self.matches is not None:
@@ -208,6 +208,7 @@ class Configurations:
 
         self._key_rules = [ rule for rule in output if rule.indexed ]
         self._ordered_rules = output
+        return self
 
     def parse_values(self, values: Iterator[List[str]]):
         assert len(self._ordered_rules) != 0, "must call parse_header before parse_values"
@@ -228,8 +229,9 @@ class Configurations:
             output[item_key].append(item_values)
 
         self._ordered_values = output
+        return self
 
-    def lookup(self, keys: List[str, Any]) -> List[Dict[str, Any]]:
+    def lookup(self, keys: List[Union[str, Any]]) -> List[Dict[str, Any]]:
         assert len(self._ordered_rules) != 0, "must invoke parse_header before lookup"
         assert len(self._ordered_values) != 0, "must invoke parse_values before lookup"
 
