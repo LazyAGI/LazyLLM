@@ -1,7 +1,7 @@
 from collections.abc import Callable, Generator, Iterator
 import csv
 import itertools
-import protocol as proto
+from core import protocol as proto
 import typing
 import unittest
 from typing import List, Dict, Union
