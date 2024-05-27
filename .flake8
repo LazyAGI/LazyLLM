@@ -1,0 +1,9 @@
+[flake8]
+max-line-length = 121
+# E701: multiple statements on one line (colon)
+# E704 multiple statements on one line (def)
+# E302: expected 2 blank lines, found 1
+# E305 expected 2 blank lines after class or function definition, found 1
+# E124: closing bracket does not match visual indentation
+ignore = E701, E704, E302, E305, E124
+max-complexity = 12

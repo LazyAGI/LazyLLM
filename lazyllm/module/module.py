@@ -14,7 +14,7 @@ import uuid
 
 class ModuleBase(object):
     builder_keys = []  # keys in builder support Option by default
-    __enable_request__ = True
+    __enable_request__ = False
 
     def __new__(cls, *args, **kw):
         sig = inspect.signature(cls.__init__)
@@ -75,6 +75,9 @@ class ModuleBase(object):
         if len(args) == 1 and isinstance(args[0], LazyLlmRequest):
             assert len(kw) == 0, 'Cannot use LazyLlmRequest and kwargs at the same time'
             args[0].kwargs.update(args[0].global_parameters.get(self._module_id, dict()))
+            if not getattr(getattr(self, '_meta', self.__class__), '__enable_request__', False):
+                kw = args[0].kwargs
+                args = args[0].input if isinstance(args[0].input, lazyllm.package) else (args[0].input,)
         r = self.forward(*args, **kw)
         if self._return_trace:
             if isinstance(r, LazyLlmResponse): r.trace += f'{str(r)}\n'
@@ -160,6 +163,8 @@ class ModuleBase(object):
 
 
 class UrlModule(ModuleBase):
+    __enable_request__ = True
+
     def __init__(self, url, *, stream=False, meta=None, return_trace=False):
         super().__init__(return_trace=return_trace)
         self._url = url
@@ -177,12 +182,12 @@ class UrlModule(ModuleBase):
     # Cannot modify or add any attrubute of self
     # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
     # deploy parameters keys are in **kw
-    def forward(self, __input=None, **kw):
+    def forward(self, __input=None, *, llm_chat_history=None, **kw):
         assert self._url is not None, f'Please start {self.__class__} first'
         assert len(kw) == 0 or self.template_message is not None, 'kwargs are used in deploy parameters'
 
         input, kw = (__input.input, __input.kwargs) if isinstance(__input, LazyLlmRequest) else (__input, kw)
-        input = self._prompt.generate_prompt(input, kw.pop('llm_chat_history', None))
+        input = self._prompt.generate_prompt(input, llm_chat_history)
         
         if self._meta == ServerModule and isinstance(__input, LazyLlmRequest):
             __input.input = input
@@ -274,6 +279,8 @@ class UrlModule(ModuleBase):
 
 
 class ActionModule(ModuleBase):
+    __enable_request__ = True
+
     def __init__(self, *action, return_trace=False):
         super().__init__(return_trace=return_trace)
         if len(action) == 1 and isinstance(action, FlowBase): action = action[0]
@@ -321,6 +328,7 @@ class ServerModule(UrlModule):
 
 class TrainableModule(UrlModule):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
+    __enable_request__ = False
 
     def __init__(self, base_model:Option='', target_path='', *, stream=False, return_trace=False):
         super().__init__(url=None, stream=stream, meta=TrainableModule, return_trace=return_trace)
@@ -405,7 +413,6 @@ class Module(object):
 
 class ModuleRegistryBase(ModuleBase, metaclass=lazyllm.LazyLLMRegisterMetaClass):
     __reg_overwrite__ = 'forward'
-    __enable_request__ = False
 
 
 register = lazyllm.Register(ModuleRegistryBase, ['forward'])
