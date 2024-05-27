@@ -27,7 +27,7 @@ ppl = lazyllm.pipeline(
     getr=lambda *args, **kw: c, 
 )
 print(ppl.module.__class__.__name__)
-print(ppl.start('inp'))
+print(ppl('inp'))
 
 print('-----------------------------')
 

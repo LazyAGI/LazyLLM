@@ -109,13 +109,17 @@ setattr(Placeholder, '__setattr__', _setattr)
 
 
 class Bind(object):
-    def __init__(self, f, *args):
+    def __init__(self, f, *args, **kw):
         self._f = f() if isinstance(f, type) else f
         self._args = args
+        self._kw = kw
+        self._has_root = any([isinstance(a, AttrTree) for a in args])
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kw):
+        keys = set(kw.keys()).intersection(set(self._kw.keys()))
+        assert len(keys) == 0, f'Keys `{keys}` are already bind!'
         return self._f(*[args[a.idx] if isinstance(a, Placeholder) else a
-                         for a in self._args])
+                         for a in self._args], **self._kw, **kw)
 
     # TODO: modify it
     def __repr__(self) -> str:
