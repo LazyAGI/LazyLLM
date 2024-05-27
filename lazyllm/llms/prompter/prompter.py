@@ -73,7 +73,7 @@ class Prompter(object):
             except Exception:
                 raise RuntimeError(f'Generate prompt failed, and prompt is {self._prompt}; chat-prompt'
                                    f' is {self._chat_prompt}; input is {input}; history is {history}')
-        if label: input += label
+            if label: input += label
         if self._show or show: print(input)
         return input
 

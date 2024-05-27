@@ -1,5 +1,5 @@
 import csv
-from .rule import Rule, SearchMode, Configurations
+from core import Rule, SearchMode, Configurations
 import unittest
 from io import StringIO
 
