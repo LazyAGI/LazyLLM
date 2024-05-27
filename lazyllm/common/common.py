@@ -259,7 +259,7 @@ class ResultCollector(object):
     def __init__(self): self._value = dict()
     def __call__(self, name): return ResultCollector.Impl(name, self._value)
     def __getitem__(self, name): return self._value[name]
-    def __repr__(self): return repr(self._value) 
+    def __repr__(self): return repr(self._value)
     def keys(self): return self._value.keys()
     def items(self): return self._value.items()
 
@@ -328,13 +328,13 @@ class ReqResHelper(object):
             input = tuple()
         return LazyLlmRequest(input=input, kwargs=kw, global_parameters=self.parameters)
 
-    def make_response(self, res):
+    def make_response(self, res, *, force=False):
         if isinstance(res, LazyLlmResponse):
             res.trace = self.trace + res.trace
             return res
         else:
             res = res.input if isinstance(res, LazyLlmRequest) else res
-            return LazyLlmResponse(messages=res, trace=self.trace) if self.trace else res
+            return LazyLlmResponse(messages=res, trace=self.trace) if self.trace and force else res
 
 
 class ReprRule(object):
