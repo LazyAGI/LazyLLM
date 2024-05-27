@@ -138,11 +138,11 @@ class ModuleBase(object):
                     eval_tasks.absorb(top._get_eval_tasks())
 
         if 'train' in mode and len(train_tasks) > 0:
-            Parallel(*train_tasks).set_sync(True).start()
+            Parallel(*train_tasks).set_sync(True)()
         if 'server' in mode and len(deploy_tasks) > 0:
-            Parallel.sequential(*deploy_tasks).start()
+            Parallel.sequential(*deploy_tasks)()
         if 'eval' in mode and len(eval_tasks) > 0:
-            Parallel.sequential(*eval_tasks).start()
+            Parallel.sequential(*eval_tasks)()
         return self
 
     def update(self, *, recursive=True): return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
@@ -291,7 +291,7 @@ class ActionModule(ModuleBase):
         self.action = action
 
     def forward(self, *args, **kw):
-        return self.action.start(*args, **kw)
+        return self.action(*args, **kw)
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Action', subs=[repr(self.action)],

@@ -20,4 +20,4 @@ ppl = lazyllm.pipeline(
     finetuner,
 )
 
-ppl.start(0)
+ppl(0)

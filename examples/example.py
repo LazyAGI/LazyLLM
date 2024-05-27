@@ -43,7 +43,7 @@ ppl = lazyllm.pipeline(
     bind(validate.eval_all, 'valset-1', _0, _1),
 )
 
-ppl.start(0)
+ppl(0)
 
 print('---------------------------')
 print('---------------------------')
@@ -65,4 +65,4 @@ named_ppl = lazyllm.pipeline(
     val=bind(validate.eval_all, root.finetune.stage2.post_action, _0, _1, root.finetune.stage1.deploy.job),
 )
 
-named_ppl.start(0)
+named_ppl(0)
