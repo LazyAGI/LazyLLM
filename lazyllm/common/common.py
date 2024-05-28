@@ -170,18 +170,22 @@ class LazyLLMCMD(object):
         pattern = r'*(-{1,2}' + re.escape(key) + r')(\s|=|)(\S+|)*'
         return re.match(pattern, self.cmd)[3]
 
+class TimeoutException(Exception):
+    pass
+
 @contextmanager
-def timeout(duration, *,  msg=''):
-    def timeout_handler(signum, frame):
-        m = f'{msg}, ' if msg else msg 
-        m += f'block timedout after timeout: {duration} s'
-        raise TimeoutError(m)
-    signal.signal(signal.SIGALRM, timeout_handler)
-    signal.alarm(duration)
+def timeout(duration, *, msg=''):
+    def raise_timeout_exception():
+        raise TimeoutException(f'{msg}, block timed out after {duration} s')
+
+    timer = threading.Timer(duration, raise_timeout_exception)
+    timer.start()
+
     try:
         yield
     finally:
-        signal.alarm(0)
+        if timer.is_alive():
+            timer.cancel()
 
 
 class ReadOnlyWrapper(object):

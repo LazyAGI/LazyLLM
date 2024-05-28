@@ -27,7 +27,7 @@ class Config(object):
         r = os.getenv(f'{self.prefix}_{name.upper()}', default)
         if type == bool:
             return r in (True, 'TRUE', 'True', 1, 'ON', '1')
-        return r
+        return type(r)
 
     @staticmethod
     def get_config(cfg):
