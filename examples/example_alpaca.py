@@ -67,4 +67,4 @@ ppl = lazyllm.pipeline(
             ),
     ),
 )
-ppl.start(0)
+ppl(0)

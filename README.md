@@ -283,7 +283,7 @@ ppl = lazyllm.pipeline(
     deploy.lightllm('url'),
     validate.val1
 )
-ppl.start()
+ppl()
 ```
 
 * 注：未注册的函数也可以被pipeline使用，但不支持设置launcher等参数。该参数会在[跨平台](#23-跨平台)一节详细描述。
@@ -316,7 +316,7 @@ ppl = lazyllm.pipeline(
     ), 
     val2=bind(validate.val2, root.pp1.proc, _0),
 )
-ppl.start()
+ppl()
 ```
 
 #### 2.2.5 查看结构

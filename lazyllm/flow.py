@@ -4,6 +4,7 @@ from lazyllm import Thread, ReadOnlyWrapper
 from lazyllm import LazyLlmRequest, ReqResHelper
 import types
 import threading
+import warnings
 
 
 class FlowBase(object):
@@ -31,6 +32,11 @@ class FlowBase(object):
     @property
     def is_root(self):
         return self._father is None
+
+    @property
+    def ancestor(self):
+        if self.is_root: return self
+        return self._father.ancestor
 
     def for_each(self, filter, action):
         for item in self.items:
@@ -78,21 +84,17 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         req = helper.make_request(*args, **kw)
         output = helper.make_request(self._run(req))
 
-        if self.post_action is not None: invoke(self.post_action, output)
+        if self.post_action is not None: self.invoke(self.post_action, output)
         if self.return_input: output = package(req.input, output.input)
+        if self._sync: self.wait()
         return helper.make_response(output)
     
     def _run(self, input):
         raise NotImplementedError
 
     def start(self, *args, **kw):
-        assert self.is_root, 'Only root flow can use start()'
-        def _exchange(item):
-            item._args = [a.get_from(self) if isinstance(a, type(root)) else a for a in item._args]
-        self.for_each(lambda x: isinstance(x, bind), _exchange)
-        r = self(*args, **kw)
-        if self._sync: self.wait()
-        return r
+        warnings.warn('start is depreciated, please use flow as a function instead')
+        return self(*args, **kw)
 
     def set_sync(self, sync=True):
         self._sync = sync
@@ -110,22 +112,23 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         self.for_each(filter, lambda x: x.job.wait())
         return self
 
-
-def invoke(it, input):
-    try:
-        kw = dict()
-        if isinstance(input, LazyLlmRequest):
-            if getattr(it, '__enable_request__', None):
-                return it(input)
-            input, kw = input.input, input.kwargs
-        if not isinstance(it, LazyLLMFlowsBase) and isinstance(input, (package, kwargs)):
-            return it(*input, **kw) if isinstance(input, package) else it(**input, **kw)
-        else:
-            return it(input, **kw)
-    except Exception:
-        print(f'An error occored when invoking `{type(it)}` with `{input}`')
-        raise
-
+    def invoke(self, it, input):
+        if isinstance(it, bind) and it._has_root:
+            it._args = [a.get_from(self.ancestor) if isinstance(a, type(root)) else a for a in it._args]
+            it._has_root = False
+        try:
+            kw = dict()
+            if isinstance(input, LazyLlmRequest):
+                if getattr(it, '__enable_request__', None):
+                    return it(input)
+                input, kw = input.input, input.kwargs
+            if not isinstance(it, LazyLLMFlowsBase) and isinstance(input, (package, kwargs)):
+                return it(*input, **kw) if isinstance(input, package) else it(**input, **kw)
+            else:
+                return it(input, **kw)
+        except Exception:
+            print(f'An error occored when invoking `{type(it)}` with `{input}`')
+            raise
 
 # input -> module1 -> module2 -> ... -> moduleN -> output
 #                                               \> post-action
@@ -135,7 +138,7 @@ class Pipeline(LazyLLMFlowsBase):
         helper = ReqResHelper()
         input = helper.make_request(input)
         for it in self.items:
-            input = helper.make_request(invoke(it, input))
+            input = helper.make_request(self.invoke(it, input))
         return helper.make_response(input)
 
 
@@ -176,12 +179,12 @@ class Parallel(LazyLLMFlowsBase):
         if self._concurrent:
             nthreads = len(items)
             impl = threading.Barrier(nthreads)
-            ts = [Thread(target=invoke, args=(it, inp), prehook=bind(_hook, impl))
+            ts = [Thread(target=self.invoke, args=(it, inp), prehook=bind(_hook, impl))
                 for it, inp in zip(items, inputs)]
             [t.start() for t in ts]
             r = package(t.get_result() for t in ts)
         else:
-            r = package(invoke(it, inp) for it, inp in zip(items, inputs))
+            r = package(self.invoke(it, inp) for it, inp in zip(items, inputs))
 
         if self._return_dict:
             assert self._item_names, 'Item name should be set when you want to return dict.'
@@ -233,8 +236,8 @@ class Switch(LazyLLMFlowsBase):
             exp = input.input[0]
             input.input = input.input[1]
         for idx, cond in enumerate(self.conds):
-            if (callable(cond) and invoke(cond, exp) is True) or (exp == cond) or cond == 'default':
-                return invoke(self.items[idx], input)
+            if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or cond == 'default':
+                return self.invoke(self.items[idx], input)
 
 
 # result = cond(input) ? tpath(input) : fpath(input)
@@ -244,7 +247,7 @@ class IFS(LazyLLMFlowsBase):
 
     def _run(self, input):
         cond, tpath, fpath = self.items
-        return invoke(tpath, input) if invoke(cond, input) else invoke(fpath, input) 
+        return self.invoke(tpath, input) if self.invoke(cond, input) else self.invoke(fpath, input) 
 
 
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
@@ -262,7 +265,7 @@ class Loop(LazyLLMFlowsBase):
         helper = ReqResHelper()
         while True:
             for item in self.items:
-                input = helper.make_request(invoke(item, input))
+                input = helper.make_request(self.invoke(item, input))
             cnt += 1
             if (callable(self.cond) and self.cond(input)) or (self.count is not None and cnt >= self.count):
                 break

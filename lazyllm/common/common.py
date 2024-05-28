@@ -109,13 +109,17 @@ setattr(Placeholder, '__setattr__', _setattr)
 
 
 class Bind(object):
-    def __init__(self, f, *args):
+    def __init__(self, f, *args, **kw):
         self._f = f() if isinstance(f, type) else f
         self._args = args
+        self._kw = kw
+        self._has_root = any([isinstance(a, AttrTree) for a in args])
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kw):
+        keys = set(kw.keys()).intersection(set(self._kw.keys()))
+        assert len(keys) == 0, f'Keys `{keys}` are already bind!'
         return self._f(*[args[a.idx] if isinstance(a, Placeholder) else a
-                         for a in self._args])
+                         for a in self._args], **self._kw, **kw)
 
     # TODO: modify it
     def __repr__(self) -> str:
@@ -166,18 +170,22 @@ class LazyLLMCMD(object):
         pattern = r'*(-{1,2}' + re.escape(key) + r')(\s|=|)(\S+|)*'
         return re.match(pattern, self.cmd)[3]
 
+class TimeoutException(Exception):
+    pass
+
 @contextmanager
-def timeout(duration, *,  msg=''):
-    def timeout_handler(signum, frame):
-        m = f'{msg}, ' if msg else msg 
-        m += f'block timedout after timeout: {duration} s'
-        raise TimeoutError(m)
-    signal.signal(signal.SIGALRM, timeout_handler)
-    signal.alarm(duration)
+def timeout(duration, *, msg=''):
+    def raise_timeout_exception():
+        raise TimeoutException(f'{msg}, block timed out after {duration} s')
+
+    timer = threading.Timer(duration, raise_timeout_exception)
+    timer.start()
+
     try:
         yield
     finally:
-        signal.alarm(0)
+        if timer.is_alive():
+            timer.cancel()
 
 
 class ReadOnlyWrapper(object):
@@ -259,7 +267,7 @@ class ResultCollector(object):
     def __init__(self): self._value = dict()
     def __call__(self, name): return ResultCollector.Impl(name, self._value)
     def __getitem__(self, name): return self._value[name]
-    def __repr__(self): return repr(self._value) 
+    def __repr__(self): return repr(self._value)
     def keys(self): return self._value.keys()
     def items(self): return self._value.items()
 
@@ -328,13 +336,13 @@ class ReqResHelper(object):
             input = tuple()
         return LazyLlmRequest(input=input, kwargs=kw, global_parameters=self.parameters)
 
-    def make_response(self, res):
+    def make_response(self, res, *, force=False):
         if isinstance(res, LazyLlmResponse):
             res.trace = self.trace + res.trace
             return res
         else:
             res = res.input if isinstance(res, LazyLlmRequest) else res
-            return LazyLlmResponse(messages=res, trace=self.trace) if self.trace else res
+            return LazyLlmResponse(messages=res, trace=self.trace) if self.trace and force else res
 
 
 class ReprRule(object):

@@ -65,11 +65,13 @@ async def generate(request: Request):
                 input = before_func(**input)
             else:
                 input = before_func(input)
-        output = func(h.make_request(input) if isinstance(func, (FlowBase, ModuleBase)) else input)
+
+        output = func(h.make_request(input) if getattr(
+            getattr(func, '_meta', func.__class__), '__enable_request__', False) else input)
         output = h.make_request(output).input
 
         def impl(o):
-            o = h.make_response(o)
+            o = h.make_response(o, force=True)
             return codecs.encode(pickle.dumps(o), 'base64') if isinstance(o, LazyLlmResponse) else o
 
         if isinstance(output, GeneratorType):

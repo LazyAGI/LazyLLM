@@ -39,6 +39,7 @@ class WebModule(ModuleBase):
         self.trace_mode = trace_mode if trace_mode else WebModule.Mode.Refresh
         self.text_mode = text_mode if text_mode else WebModule.Mode.Dynamic
         self.demo = self.init_web(components)
+        self.url = None
 
     def init_web(self, component_descs):
         with gr.Blocks(css=css, title=self.title) as demo:
@@ -238,6 +239,9 @@ class WebModule(ModuleBase):
     def _get_deploy_tasks(self):
         return Pipeline(self._work)
 
+    def _get_post_process_tasks(self):
+        return Pipeline(self._print_url)
+
     def wait(self):
         return self.p.join()
 
@@ -257,3 +261,6 @@ class WebModule(ModuleBase):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             result = s.connect_ex(('localhost', port))
             return result != 0
+        
+    def _print_url(self):
+        print(f'LazyLLM webmodule launched successfully: Running on local URL: {self.url}', flush=True)

@@ -54,4 +54,4 @@ ppl = lazyllm.pipeline(
     dataproc.gen_data(),
 )
 
-ppl.start(0)
+ppl(0)
