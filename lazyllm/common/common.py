@@ -404,3 +404,35 @@ def make_repr(category, type, *, name=None, subs=[], attrs=dict(), **kw):
 def modify_repr(repr, key, value):
     # TODO: impl this function
     return repr
+
+
+class once_flag(object):
+    def __init__(self):
+        self._flag = False
+        self._lock = threading.Lock()
+
+    def _set(self, flag=True):
+        self._flag = flag
+
+    def reset(self):
+        with self._lock:
+            self._set(False)
+
+    def __bool__(self):
+        return self._flag
+
+    @classmethod
+    def rebuild(cls, flag):
+        r = cls()
+        r._flag = flag
+        return r
+
+    def __reduce__(self):
+        return once_flag.rebuild, (self._flag,)
+
+def call_once(flag, func, *args, **kw):
+    with flag._lock:
+        if not flag:
+            flag._set()
+            return func(*args, **kw)
+    return None

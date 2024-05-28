@@ -135,7 +135,8 @@ class ModuleBase(object):
                 if 'train' in mode:
                     train_tasks.absorb(top._get_train_tasks())
                 if 'server' in mode:
-                    deploy_tasks.absorb(top._get_deploy_tasks())
+                    deploy_tasks.absorb(lazyllm.call_once(top._deploy_flag, top._get_deploy_tasks)
+                                        if hasattr(top, '_deploy_flag') else top._get_deploy_tasks())
                 if 'eval' in mode:
                     eval_tasks.absorb(top._get_eval_tasks())
                 post_process_tasks.absorb(top._get_post_process_tasks())
@@ -338,6 +339,7 @@ class ServerModule(UrlModule):
             lazyllm.deploy.RelayServer.input_key_name,
             copy.deepcopy(lazyllm.deploy.RelayServer.default_headers),
         )
+        self._deploy_flag = lazyllm.once_flag()
         self._launcher = launcher if launcher else launchers.remote(sync=False)
 
     def _get_deploy_tasks(self):
@@ -363,6 +365,7 @@ class TrainableModule(UrlModule):
         self._train = None # lazyllm.train.auto
         self._finetune = lazyllm.finetune.auto
         self._deploy = None # lazyllm.deploy.auto
+        self._deploy_flag = lazyllm.once_flag()
 
     def _get_args(self, arg_cls, disable=[]):
         args = getattr(self, f'_{arg_cls}_args', dict())
