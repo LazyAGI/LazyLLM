@@ -9,6 +9,7 @@ import inspect
 import lazyllm
 from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, Prompter, launchers
 from ..flow import FlowBase, Pipeline, Parallel
+from ..downloader.model_downloader import ModelDownloader
 import uuid
 from ..client import get_redis, redis_client
 
@@ -351,20 +352,21 @@ class ServerModule(UrlModule):
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self.m)], name=self._module_name,
                                  stream=self._stream, return_trace=self._return_trace)
-
-
+        
 class TrainableModule(UrlModule):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
     __enable_request__ = False
 
-    def __init__(self, base_model:Option='', target_path='', *, stream=False, return_trace=False):
+    def __init__(self, base_model:Option='', target_path='', *, source=lazyllm.config['model_source'], 
+                 stream=False, return_trace=False):
         super().__init__(url=None, stream=stream, meta=TrainableModule, return_trace=return_trace)
         # Fake base_model and target_path for dummy
-        self.base_model = base_model
         self.target_path = target_path
         self._train = None # lazyllm.train.auto
         self._finetune = lazyllm.finetune.auto
         self._deploy = None # lazyllm.deploy.auto
+        
+        self.base_model = ModelDownloader(source).download(base_model)
         self._deploy_flag = lazyllm.once_flag()
 
     def _get_args(self, arg_cls, disable=[]):
