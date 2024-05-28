@@ -4,32 +4,22 @@ import os
 import pytest
 import contextlib
 import binding
-import sys
 import inspect
-import subprocess
-import shlex
 
 
 isolate_env = "PARROTS_ISOLATE_STATUS"
-coverage_env = "PARROTS_COVERAGE_TEST"
 
 
 def isolated(func):
-    def run_subprocess(self, testdir):
-        python_path = os.path.dirname(inspect.getfile(sys.modules[__name__]))
+    def run_subprocess(self, pytester):
+        # python_path = os.path.dirname(inspect.getfile(sys.modules[__name__]))
         file_path = inspect.getfile(self.__class__)
         class_name = self.__class__.__name__
         method_name = func.__name__
         test_func = file_path + '::' + class_name + '::' + method_name
-
-        coverage_flag = os.getenv(coverage_env) == "ON"
-        cov_str = "--cov=parrots --cov=torch" if coverage_flag else ""
         with clear_env():
             with set_env(isolate_env, "IN_SUBPROCESS"):
-                result = testdir.runpytest_subprocess(cov_str, test_func)
-        if coverage_flag:
-            subprocess.call(shlex.split("cp .coverage " + python_path +
-                            "/.coverage." + method_name))
+                result = pytester.runpytest_subprocess(test_func)
         assert result.ret == 0
 
     if not inspect.isfunction(func):
@@ -57,17 +47,14 @@ class TestFn_Config(object):
 
     @isolated
     def test_config_disp(self):
-        os.environ['LAZYLLM_DISPLAY'] = '1'
         print(os.environ.get('LAZYLLM_DISPLAY'))
-        ret = lazyllm.config['mode']
-        print(ret)  #Mode.Normal
-        assert ret == Mode.Display
+        assert lazyllm.config['mode'] == Mode.Display
 
 
 
 @contextlib.contextmanager
 def clear_env():
-    LAZYLLM_DISPLAY = "None"
+    LAZYLLM_DISPLAY = "LAZYLLM_DISPLAY"
 
     env_list = [
         LAZYLLM_DISPLAY,
@@ -76,9 +63,7 @@ def clear_env():
     print(env_flags)
     for env, flag in zip(env_list, env_flags):
         if flag is not None:
-            binding.set_env(env, None)
-            # TODO(wangzhihong): python's environment manager is not
-            #     updated in time, so we have to del it manually
+            os.environ[env] = ""
             if os.getenv(env) is not None:
                 del os.environ[env]
 
@@ -93,6 +78,7 @@ def clear_env():
 def set_env(environ, value):
     assert isinstance(value, str)
     original_value = os.getenv(environ)
+    os.environ['LAZYLLM_DISPLAY'] = '1'
 
     os.environ[environ] = value
     yield
