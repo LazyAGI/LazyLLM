@@ -9,6 +9,7 @@ from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, WebModule, TrialModule, register as moduleregister)
 from .module import  Document, Retriever
 from . import flows
+from .client import redis_client
 
 pipeline, parallel = flows.pipeline, flows.parallel
 diverter, loop = flows.Diverter, flows.Loop
@@ -45,7 +46,10 @@ __all__ = [
     'mode',
 
     # module
-    'moduleregister'
+    'moduleregister',
+    
+    # client
+    'redis_client'
 ]
 
 __all__ += common.__all__

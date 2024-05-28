@@ -1,6 +1,6 @@
 import os
 import copy
-
+import time
 import requests
 import pickle
 import codecs
@@ -10,6 +10,7 @@ import lazyllm
 from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, Prompter, launchers
 from ..flow import FlowBase, Pipeline, Parallel
 import uuid
+from ..client import get_redis, redis_client
 
 
 class ModuleBase(object):
@@ -88,6 +89,7 @@ class ModuleBase(object):
     def forward(self, *args, **kw): raise NotImplementedError
     def _get_train_tasks(self): return None
     def _get_deploy_tasks(self): return None
+    def _get_post_process_tasks(self): return None
 
     @property
     def name(self): return self._module_name
@@ -122,7 +124,7 @@ class ModuleBase(object):
         for item in mode:
             assert item in self.mode_list, f"Cannot find {item} in mode list: {self.mode_list}"
         # dfs to get all train tasks
-        train_tasks, deploy_tasks, eval_tasks = FlatList(), FlatList(), FlatList()
+        train_tasks, deploy_tasks, eval_tasks, post_process_tasks = FlatList(), FlatList(), FlatList(), FlatList()
         stack = [(self, iter(self.submodules if recursive else []))]
         while len(stack) > 0:
             try:
@@ -136,13 +138,18 @@ class ModuleBase(object):
                     deploy_tasks.absorb(top._get_deploy_tasks())
                 if 'eval' in mode:
                     eval_tasks.absorb(top._get_eval_tasks())
+                post_process_tasks.absorb(top._get_post_process_tasks())
 
         if 'train' in mode and len(train_tasks) > 0:
             Parallel(*train_tasks).set_sync(True)()
         if 'server' in mode and len(deploy_tasks) > 0:
-            Parallel.sequential(*deploy_tasks)()
+            if redis_client:
+                Parallel(*deploy_tasks).set_sync(False)()
+            else:
+                Parallel.sequential(*deploy_tasks)()
         if 'eval' in mode and len(eval_tasks) > 0:
             Parallel.sequential(*eval_tasks)()
+        Parallel.sequential(*post_process_tasks)()
         return self
 
     def update(self, *, recursive=True): return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
@@ -165,7 +172,7 @@ class ModuleBase(object):
 class UrlModule(ModuleBase):
     __enable_request__ = True
 
-    def __init__(self, url, *, stream=False, meta=None, return_trace=False):
+    def __init__(self, *, url = '', stream=False, meta=None, return_trace=False):
         super().__init__(return_trace=return_trace)
         self._url = url
         self._stream = stream
@@ -176,8 +183,26 @@ class UrlModule(ModuleBase):
         self._extract_result_func = lambda x: x
 
     def url(self, url):
-        print('url:', url)
+        if redis_client:
+            redis_client.set(self._module_id, url)
         self._url = url
+    
+    def maybe_wait_for_url(self):
+        if not redis_client:
+            return
+        try:
+            while not self._url:
+                self._url = get_redis(self._module_id)
+                if self._url:
+                    break
+                time.sleep(lazyllm.config["redis_recheck_delay"])
+        except Exception as e:
+            print(f"Error accessing Redis: {e}")
+            raise
+        
+    def __call__(self, *args, **kw):
+        self.maybe_wait_for_url()
+        return super().__call__(*args, **kw)
 
     # Cannot modify or add any attrubute of self
     # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
@@ -253,8 +278,8 @@ class UrlModule(ModuleBase):
         self._modify_parameters(self.template_message, kw)
 
     def clone(self):
-        assert hasattr(self, '_url') and self._url is not None
-        m = UrlModule(self._url, stream=self._stream, meta=self._meta, return_trace=self._return_trace)
+        assert (hasattr(self, '_url') and self._url is not None) or redis_client
+        m = UrlModule(url=self._url, stream=self._stream, meta=self._meta, return_trace=self._return_trace)
         m.prompt(prompt=self._prompt)
         m._module_id = self._module_id
         m.name = self.name
@@ -397,9 +422,9 @@ class Module(object):
         elif len(args) == 0 and 'action' in kw:
             return ActionModule(kw['modules'])
         elif len(args) == 1 and isinstance(args[0], str):
-            return UrlModule(args[0])
+            return UrlModule(url=args[0])
         elif len(args) == 0 and 'url' in kw:
-            return UrlModule(kw['url'])
+            return UrlModule(url=kw['url'])
         elif ...:
             return TrainableModule()
 
