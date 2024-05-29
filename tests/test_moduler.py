@@ -17,7 +17,7 @@ class TestFn_Moduler:
 
     def test_UrlModule(self):
         # 测试 UrlModule
-        url_module = lazyllm.UrlModule('http://example.com')
+        url_module = lazyllm.UrlModule()
         assert url_module('input') == 'result from http://example.com with input'
         url_module.evalset(['input1', 'input2'])
         assert url_module.eval_result == ['result1', 'result2']
