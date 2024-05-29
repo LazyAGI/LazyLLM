@@ -4,7 +4,7 @@ import json
 import random
 
 import lazyllm
-from lazyllm import launchers, LazyLLMCMD, bind, _0, ArgsDict
+from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
 
 
@@ -49,7 +49,7 @@ class Vllm(LazyLLMDeployBase):
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(model_dir)):
             if not model_dir:
-                print(f"Note! That model_dir({model_dir}) is an invalid path, "
+                LOG.warning(f"Note! That model_dir({model_dir}) is an invalid path, "
                     f"base_model({base_model}) will be used")
             model_dir = base_model
 

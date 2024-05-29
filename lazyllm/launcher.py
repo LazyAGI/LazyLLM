@@ -12,7 +12,7 @@ from datetime import datetime
 from multiprocessing.util import register_after_fork
 
 import lazyllm
-from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final, timeout
+from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final, timeout, LOG
 
 class Status(Enum):
     TBSubmitted = 0,
@@ -80,7 +80,7 @@ class Job(object):
 
     def _start(self, *, fixed):
         cmd = self.get_executable_cmd(fixed=fixed)
-        print('Command:', cmd)
+        LOG.info(f'Command: {cmd}')
         if lazyllm.config['mode'] == lazyllm.Mode.Display: return
         self.ps = subprocess.Popen(cmd.cmd, shell=True, executable='/bin/bash',
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -124,7 +124,7 @@ class Job(object):
                 queue.put(line)
                 if hooks:
                     hooks(line) if callable(hooks) else [hook(line) for hook in hooks]
-                print(f'{self.jobid}: ', line.rstrip())
+                LOG.info(f'{self.jobid}: {line.rstrip()}', )
                 if self.output_thread_event.is_set():
                     break
             out.close()
@@ -182,7 +182,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             if not self.subprocess:
                 return f(*args, **kw)
             else:
-                print("[INFO] Async execution of callable object is not supported currently.")
+                LOG.info("Async execution of callable object is not supported currently.")
                 import multiprocessing
                 p = multiprocessing.Process(target=f, args=args, kwargs=kw)
                 p.start()
@@ -503,17 +503,17 @@ def cleanup():
     # empty
     for k, v in EmptyLauncher.all_processes.items():
         v.stop()
-        print(f"killed job:{k}")
+        LOG.info(f"killed job:{k}")
 
     # slurm
     for k, v in SlurmLauncher.all_processes.items():
         v.stop()
-        print(f"killed job:{k}")
+        LOG.info(f"killed job:{k}")
 
     # sco
     for k, v in ScoLauncher.all_processes.items():
         v.stop()
-        print(f"killed job:{k}")
+        LOG.info(f"killed job:{k}")
 
 atexit.register(cleanup)
 

@@ -7,6 +7,7 @@ from .common import ReprRule, make_repr, modify_repr
 from .common import once_flag, call_once
 from .option import Option, OptionIter
 from .multiprocessing import SpawnProcess, ForkProcess
+from .logger import LOG
 
 __all__ = [
     # registry
@@ -56,4 +57,7 @@ __all__ = [
     'ReprRule',
     'make_repr',
     'modify_repr',
+    
+    # log
+    'LOG',
 ]

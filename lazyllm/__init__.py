@@ -1,5 +1,5 @@
-from .common import *
 from .configs import config, Mode
+from .common import *
 from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase, barrier
 from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
@@ -7,7 +7,7 @@ from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                    FastapiApp)
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, WebModule, TrialModule, register as moduleregister)
-from .module import  Document, Retriever
+from .module import  Document, Retriever, Rerank
 from . import flows
 from .client import redis_client
 
