@@ -4,6 +4,7 @@ from .common import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9
 from .common import (Thread, FlatList, Identity, ResultCollector, ArgsDict,
                      LazyLlmResponse, LazyLlmRequest, ReqResHelper)
 from .common import ReprRule, make_repr, modify_repr
+from .common import once_flag, call_once
 from .option import Option, OptionIter
 from .multiprocessing import SpawnProcess, ForkProcess
 
@@ -43,6 +44,10 @@ __all__ = [
     'bind', 'root',
     '_0', '_1', '_2', '_3', '_4',
     '_5', '_6', '_7', '_8', '_9',
+
+    # call_once
+    'once_flag',
+    'call_once',
 
     # subprocess
     'SpawnProcess', 'ForkProcess',
