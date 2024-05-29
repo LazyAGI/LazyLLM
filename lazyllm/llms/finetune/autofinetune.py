@@ -1,10 +1,9 @@
 import os
 import bisect
-import warnings
 import pkg_resources
 from pprint import pprint
 
-from lazyllm import launchers, finetune
+from lazyllm import launchers, finetune, LOG
 from .auto.modelspool import models_pool
 from .auto.alpacalora_info import alpaca_lora_info
 from .auto.collie_info import collie_info
@@ -59,19 +58,19 @@ class Assigner(object):
         if "LAZYLLM_DEAULT_LAUNCHER" in os.environ:
             self.launcher = os.environ["LAZYLLM_DEAULT_LAUNCHER"].lower()
         else:
-            warnings.warn("Environment variable 'LAZYLLM_DEAULT_LAUNCHER' "
-                          "not found, setting it to 'slurm'")
+            LOG.warning("Environment variable 'LAZYLLM_DEAULT_LAUNCHER' "
+                        "not found, setting it to 'slurm'")
             self.launcher = "slurm"
         if "LAZYLLM_GPU_MEMORY" in os.environ:
             try:
                 self.gpu_memory = int(os.environ["LAZYLLM_GPU_MEMORY"])
             except ValueError:
-                warnings.warn("Value of environment variable 'LAZYLLM_GPU_MEMORY'"
-                              " is not an integer, setting it to '81'")
+                LOG.warning("Value of environment variable 'LAZYLLM_GPU_MEMORY'"
+                            " is not an integer, setting it to '81'")
                 self.gpu_memory = 81
         else:
-            warnings.warn("Environment variable 'LAZYLLM_GPU_MEMORY' "
-                          "not found, setting it to '81'")
+            LOG.warning("Environment variable 'LAZYLLM_GPU_MEMORY' "
+                        "not found, setting it to '81'")
             self.gpu_memory = 81
 
         # Build models name set
@@ -115,8 +114,7 @@ class Assigner(object):
             f"One GPU memory usage maybe {res} G, "
             f"which less than a gpu memory {self.gpu_memory} G."
             )
-        #TODO(sunxiaoye): Log sys
-        print(f"One GPU memory usage maybe {res} G.")
+        LOG.info(f"One GPU memory usage maybe {res} G.")
 
         # Get frame list
         numbers = [1, 2, 4, 8, 16]
@@ -143,8 +141,7 @@ class Assigner(object):
             assert frame in self.frame_infor, f"Framework {frame} not in {self.frame_infor.keys()}"
             not_installed = self.check_requirements(self.frame_infor[frame]['requrements'])
             if not_installed:
-                #TODO(sunxiaoye): Log sys
-                print(f"Not support {frame}, lack folllowing dependencies:\n\t- "
+                LOG.info(f"Not support {frame}, lack folllowing dependencies:\n\t- "
                         +'\n\t- '.join(not_installed))
             else:
                 self.frame_config.update(self.frame_infor[frame]['train_params'])
@@ -217,16 +214,15 @@ class Assigner(object):
         )
 
     def show_training_config(self):
-        #TODO(sunxiaoye): Log sys
-        print('\n'+'=='*20)
-        print("AutoFinetune Config:\n"
-              f"\t Base Model Path: {self.base_model_path}\n"
-              f"\t Lora Path: {self.lora_path}\n"
-              f"\t Merge Path: {self.merge_path}\n"
-              )
+        LOG.info('\n'+'=='*20)
+        LOG.info("AutoFinetune Config:\n"
+                f"\t Base Model Path: {self.base_model_path}\n"
+                f"\t Lora Path: {self.lora_path}\n"
+                f"\t Merge Path: {self.merge_path}\n"
+                )
         pprint(self.traing_config)
         pprint(self.launch_config)
-        print('=='*20+'\n')
+        LOG.info('=='*20+'\n')
 
     @classmethod
     def create_directories(self, target_path, model_name):
