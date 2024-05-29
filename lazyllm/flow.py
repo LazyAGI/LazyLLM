@@ -1,10 +1,11 @@
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, bind, root
-from lazyllm import Thread, ReadOnlyWrapper
+from lazyllm import Thread, ReadOnlyWrapper, LOG
 from lazyllm import LazyLlmRequest, ReqResHelper
 import types
 import threading
-import warnings
+import traceback
+import sys
 
 
 class FlowBase(object):
@@ -126,9 +127,14 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 return it(*input, **kw) if isinstance(input, package) else it(**input, **kw)
             else:
                 return it(input, **kw)
-        except Exception:
-            print(f'An error occored when invoking `{type(it)}` with `{input}`')
+        except Exception as e:
+            LOG.error(f'An error occored when invoking `{type(it)}` with `{input}`')
+            error_type, error_message = type(e).__name__, str(e)
+            tb_str = ''.join(traceback.format_exception(*sys.exc_info()))
+            LOG.debug(f'Error type: {error_type}, Error message: {error_message}\n'
+                    f'Traceback: {tb_str}')
             raise
+
 
 # input -> module1 -> module2 -> ... -> moduleN -> output
 #                                               \> post-action

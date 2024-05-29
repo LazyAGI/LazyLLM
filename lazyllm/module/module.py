@@ -7,7 +7,7 @@ import codecs
 import inspect
 
 import lazyllm
-from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, Prompter, launchers
+from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, Prompter, launchers, LOG
 from ..flow import FlowBase, Pipeline, Parallel
 from ..downloader.model_downloader import ModelDownloader
 import uuid
@@ -187,6 +187,7 @@ class UrlModule(ModuleBase):
     def url(self, url):
         if redis_client:
             redis_client.set(self._module_id, url)
+        LOG.debug(f'url: {url}')
         self._url = url
     
     def maybe_wait_for_url(self):
@@ -199,7 +200,7 @@ class UrlModule(ModuleBase):
                     break
                 time.sleep(lazyllm.config["redis_recheck_delay"])
         except Exception as e:
-            print(f"Error accessing Redis: {e}")
+            LOG.error(f"Error accessing Redis: {e}")
             raise
         
     def __call__(self, *args, **kw):

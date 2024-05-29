@@ -1,5 +1,5 @@
 from .module import ModuleBase
-from lazyllm import OptionIter, ForkProcess
+from lazyllm import OptionIter, ForkProcess, LOG
 import time
 import copy
 import multiprocessing
@@ -32,4 +32,4 @@ class TrialModule(object):
             time.sleep(1)
         [p.join() for p in ps]
         result = [q.get() for p in ps]
-        print(result)
+        LOG.info(f'{result}')

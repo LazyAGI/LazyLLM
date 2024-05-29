@@ -1,7 +1,7 @@
 import time
 from ..core import ComponentBase
 import lazyllm
-from lazyllm import launchers, flows
+from lazyllm import launchers, flows, LOG
 import random
 
 
@@ -23,7 +23,6 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
     }
     
     def __init__(self, launcher=launchers.remote(sync=False), *, stream=False, **kw):
-    # def __init__(self, launcher=launchers.empty(sync=False), *, stream=False, **kw):
         super().__init__(launcher=launcher)
         def func():
             def impl(x):
@@ -64,12 +63,12 @@ def verify_fastapi_func(job):
     while True:
         line = job.queue.get()
         if line.startswith('ERROR:'):
-            print("Capture error message: ", line, "\n\n")
+            LOG.error(f"Capture error message: {line} \n\n")
             return False
         elif 'Uvicorn running on' in line:
-            print("Capture startup message:   ",line)
+            LOG.info(f"Capture startup message: {line}")
             break
         if job.status == lazyllm.launchers.status.Failed:
-            print("Service Startup Failed.")
+            LOG.error(f"Service Startup Failed.")
             return False
     return True

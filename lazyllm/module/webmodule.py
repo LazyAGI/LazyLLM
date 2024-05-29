@@ -4,7 +4,7 @@ import traceback
 import multiprocessing
 from .module import ModuleBase
 from lazyllm.thirdparty import gradio as gr
-from lazyllm import LazyLlmResponse, LazyLlmRequest
+from lazyllm import LazyLlmResponse, LazyLlmRequest, LOG
 from lazyllm.flow import Pipeline
 import lazyllm
 from types import GeneratorType
@@ -115,7 +115,7 @@ class WebModule(ModuleBase):
     
     def _add_session(self, chat_history, log_history, session):
         if session['curr_sess'] == '':
-            print('[WARNING] cannot create new session while current session is empty.')
+            LOG.warning('Cannot create new session while current session is empty.')
             return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), gr.Textbox(), session
         
         self._save_history(chat_history, log_history, session)
@@ -134,7 +134,7 @@ class WebModule(ModuleBase):
             return gr.Dropdown(), [], '', '', session
         
         if not session_title in session['sess_titles']:
-            print(f'[WARNING] {session_title} is not an existing session title.')
+            LOG.warning(f'{session_title} is not an existing session title.')
             return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), gr.Textbox(), session
         
         self._save_history(chat_history, log_history, session)
@@ -146,7 +146,7 @@ class WebModule(ModuleBase):
     
     def _delete_session(self, session_title, session):
         if not session_title in session['sess_titles']:
-            print(f'[WARNING] session {session_title} does not exist.')
+            LOG.warning(f'session {session_title} does not exist.')
             return gr.Dropdown(), session
         session['sess_titles'].remove(session_title)
         
@@ -263,4 +263,4 @@ class WebModule(ModuleBase):
             return result != 0
         
     def _print_url(self):
-        print(f'LazyLLM webmodule launched successfully: Running on local URL: {self.url}', flush=True)
+        LOG.success(f'LazyLLM webmodule launched successfully: Running on local URL: {self.url}', flush=True)
