@@ -407,8 +407,9 @@ def modify_repr(repr, key, value):
 
 
 class once_flag(object):
-    def __init__(self):
+    def __init__(self, reset_on_pickle=False):
         self._flag = False
+        self._reset_on_pickle = reset_on_pickle
         self._lock = threading.Lock()
 
     def _set(self, flag=True):
@@ -422,13 +423,13 @@ class once_flag(object):
         return self._flag
 
     @classmethod
-    def rebuild(cls, flag):
-        r = cls()
-        r._flag = flag
+    def rebuild(cls, flag, reset_on_pickle):
+        r = cls(reset_on_pickle)
+        if not reset_on_pickle: r._flag = flag
         return r
 
     def __reduce__(self):
-        return once_flag.rebuild, (self._flag,)
+        return once_flag.rebuild, (self._flag, self._reset_on_pickle)
 
 def call_once(flag, func, *args, **kw):
     with flag._lock:

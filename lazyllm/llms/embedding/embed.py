@@ -1,10 +1,10 @@
 import json
 import lazyllm
-
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core.indices.postprocessor import SentenceTransformerRerank
 from llama_index.core.schema import QueryBundle
 from lazyllm import LazyLlmResponse
+
 
 
 class LazyHuggingFaceEmbedding(object):
