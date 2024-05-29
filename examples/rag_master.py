@@ -1,7 +1,9 @@
+import os
 import lazyllm
-from lazyllm import pipeline, parallel, Identity, launchers, Document, Retriever, deploy
-from llama_index.core.node_parser import HierarchicalNodeParser, get_deeper_nodes
+from lazyllm import pipeline, parallel, Identity, launchers, Document, Retriever, Rerank, deploy
 from lazyllm.llms.embedding.embed import LazyHuggingFaceEmbedding
+
+# If use redis, please set 'export LAZYLLM_RAG_STORE=Redis', and export LAZYLLM_REDIS_URL=redis://{IP}:{PORT}
 
 template = (
     '<|im_start|>user\n作为国学大师，你将扮演一个人工智能国学问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的已知国学篇章以及问题，给出你的结论。请注意，你的回答应基于给定的国学篇章，而非你的先验知识，且注意你回答的前后逻辑不要出现'
@@ -11,25 +13,26 @@ template = (
 
 base_model = '/mnt/lustrenew/share_data/sunxiaoye/Models/internlm2-chat-7b'
 base_embed = '/mnt/lustrenew/share_data/sunxiaoye/Models/BAAI--bge-large-zh-v1.5'
+base_rerank = '/mnt/lustrenew/share_data/sunxiaoye/Models/BAAI--bge-reranker-large'
 launcher = launchers.slurm(partition='pat_rd', ngpus=1, sync=False)
 
-llm = lazyllm.TrainableModule(None, base_model
+llm = lazyllm.TrainableModule('', base_model
         ).deploy_method((deploy.vllm, {'launcher': launcher, 'max-model-len': 12000})
         ).prompt(template, response_split='<|im_start|>assistant\n')
 
-documents = Document('/mnt/lustre/share_data/sunxiaoye.vendor/MyWorks/LazyLLM/RAG/docs2', 
-                    lazyllm.ServerModule(LazyHuggingFaceEmbedding(base_embed), launcher=launcher))
-documents.add_parse(name='base', parser=HierarchicalNodeParser, chunk_sizes=[2048, 512, 128]
-        ).add_parse(name='line', parser=get_deeper_nodes, depth=1, parent='base')
+documents = Document(doc_path='/mnt/lustre/share_data/sunxiaoye.vendor/MyWorks/LazyLLM/RAG/docs2', 
+                    embed=lazyllm.ServerModule(LazyHuggingFaceEmbedding(base_embed), launcher=launcher))
 
-rma1 = Retriever(documents, algo='vector', parser='line', similarity_top_k=3)
-rma2 = Retriever(documents, algo='bm25', parser='line', similarity_top_k=6)
+rma1 = Retriever(documents, parser='FineChunk', similarity_top_k=3)
+rma2 = Retriever(documents, algo='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
+rerank1 = Rerank(types='Reranker', model=base_rerank)
+rerank2 = Rerank(types='SimilarityFilter', threshold=0.003)
+
 rmf = lazyllm.ServerModule(pipeline(
-        parallel.sequential(x=rma1, y=rma2),
-        lambda x, y : x + y,
-        lambda nodes: '《'+nodes[0].metadata["file_name"].split('.')[0] + '》 ' + nodes[0].get_content()))
-
+        parallel.sequential(Identity, pipeline(parallel.sequential(x=rma1, y=rma2), lambda x, y : x + y)),
+        rerank1, rerank2, lambda nodes: '《'+nodes[0].metadata["file_name"].split('.')[0] + '》 ' + nodes[0].get_content() if len(nodes)>0 else '未找到'))
 m = lazyllm.ActionModule(parallel(context_str=rmf, query_str=Identity).asdict, llm)
+
 m.evalset(['介绍五行。','什么是色？','什么是中庸？','非常道是什么？','应该怎么学习？'])
 
 mweb = lazyllm.WebModule(m)

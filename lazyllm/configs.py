@@ -56,4 +56,6 @@ class Config(object):
 config = Config(
     ).add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug)
     ).add('repr_ml', bool, False, 'REPR_USE_ML'
+    ).add('rag_store', str, 'none', 'RAG_STORE'
+    ).add('redis_url', str, 'none', 'REDIS_URL'
     )
