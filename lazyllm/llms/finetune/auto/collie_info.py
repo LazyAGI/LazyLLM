@@ -17,13 +17,13 @@ sentence_transformers
 faiss-cpu
 '''
 
-collie_info ={
-    'ability':{
+collie_info = {
+    'ability': {
         'tp': True,
         'pp': True,
         'zero': True,
     },
-    'train_params':{
+    'train_params': {
         'data_path': None,
         'batch_size': 64,
         'micro_batch_size': 4,

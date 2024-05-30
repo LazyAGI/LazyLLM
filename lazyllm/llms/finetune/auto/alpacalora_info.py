@@ -16,13 +16,13 @@ sentence_transformers
 faiss-cpu
 '''
 
-alpaca_lora_info ={
-    'ability':{
+alpaca_lora_info = {
+    'ability': {
         'tp': False,
         'pp': False,
         'zero': True,
     },
-    'train_params':{
+    'train_params': {
         'data_path': None,
         'batch_size': 64,
         'micro_batch_size': 4,

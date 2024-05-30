@@ -14,15 +14,15 @@ class Lightllm(LazyLLMDeployBase):
         input_key_name: 'Who are you ?',
         'parameters': {
             'do_sample': False,
-            "presence_penalty":0.0, 
-            "frequency_penalty":0.0, 
-            "repetition_penalty":1.0, 
+            "presence_penalty": 0.0,
+            "frequency_penalty": 0.0,
+            "repetition_penalty": 1.0,
             'temperature': 1.0,
-            "top_p":1, 
-            "top_k":-1, # -1 is for all
-            "ignore_eos": False, 
+            "top_p": 1,
+            "top_k": -1,  # -1 is for all
+            "ignore_eos": False,
             'max_new_tokens': 512,
-            "stop_sequences":None
+            "stop_sequences": None
         }
     }
 
@@ -38,13 +38,12 @@ class Lightllm(LazyLLMDeployBase):
             'max_total_token_num': 64000,
             'eos_id': 2,
             'port': None,
-            'host':'0.0.0.0',
+            'host': '0.0.0.0',
             'nccl_port': None,
             'tokenizer_mode': 'auto',
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
-        
 
     def cmd(self, model_dir=None, base_model=None):
         if not os.path.exists(model_dir) or \
@@ -52,7 +51,7 @@ class Lightllm(LazyLLMDeployBase):
                     for filename in os.listdir(model_dir)):
             if not model_dir:
                 LOG.warning(f"Note! That model_dir({model_dir}) is an invalid path, "
-                    f"base_model({base_model}) will be used")
+                            f"base_model({base_model}) will be used")
             model_dir = base_model
 
         def impl():

@@ -1,5 +1,4 @@
 from lazyllm.thirdparty import cloudpickle
-import httpx
 import uvicorn
 import argparse
 import base64
@@ -8,7 +7,7 @@ import sys
 import inspect
 import traceback
 from types import GeneratorType
-from lazyllm import LazyLlmResponse, ReqResHelper, LazyLlmRequest, FlowBase, ModuleBase
+from lazyllm import LazyLlmResponse, ReqResHelper, LazyLlmRequest
 from lazyllm import FastapiApp
 import pickle
 import codecs
@@ -18,13 +17,13 @@ from fastapi.responses import Response, StreamingResponse
 import requests
 
 # TODO(sunxiaoye): delete in the future
-lazyllm_module_dir=os.path.abspath(__file__)
+lazyllm_module_dir = os.path.abspath(__file__)
 for _ in range(5):
     lazyllm_module_dir = os.path.dirname(lazyllm_module_dir)
 sys.path.append(lazyllm_module_dir)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--open_ip", type=str, default="0.0.0.0", 
+parser.add_argument("--open_ip", type=str, default="0.0.0.0",
                     help="IP: Receive for Client")
 parser.add_argument("--open_port", type=int, default=17782,
                     help="Port: Receive for Client")
@@ -46,11 +45,11 @@ app = FastAPI()
 FastapiApp.update()
 
 @app.post("/generate")
-async def generate(request: Request):
+async def generate(request: Request): # noqa C901
     try:
         origin = input = (await request.json())
         try:
-            input = pickle.loads(codecs.decode(input.encode('utf-8') , "base64"))
+            input = pickle.loads(codecs.decode(input.encode('utf-8'), "base64"))
             assert isinstance(input, LazyLlmRequest)
         except Exception: input = origin
         finally: origin = input
@@ -58,10 +57,9 @@ async def generate(request: Request):
         h = ReqResHelper()
         origin = input = h.make_request(input).input
         if args.before_function:
-            assert(callable(before_func)), 'before_func must be callable'
+            assert (callable(before_func)), 'before_func must be callable'
             r = inspect.getfullargspec(before_func)
-            if isinstance(input, dict) and \
-                set(r.args[1:] if r.args[0] == 'self' else r.args) == set(input.keys()):
+            if isinstance(input, dict) and set(r.args[1:] if r.args[0] == 'self' else r.args) == set(input.keys()):
                 input = before_func(**input)
             else:
                 input = before_func(input)
@@ -80,14 +78,14 @@ async def generate(request: Request):
                     yield impl(o)
             return StreamingResponse(generate_stream(), media_type='text_plain')
         elif args.after_function:
-            assert(callable(after_func)), 'after_func must be callable'
+            assert (callable(after_func)), 'after_func must be callable'
             r = inspect.getfullargspec(after_func)
             assert len(r.args) > 0 and r.varargs is None and r.varkw is None
             # TODO(wangzhihong): specify functor and real function
             new_args = r.args[1:] if r.args[0] == 'self' else r.args
             if len(new_args) == 1:
                 output = after_func(output) if len(r.kwonlyargs) == 0 else \
-                         after_func(output, **{r.kwonlyargs[0]: origin}) 
+                    after_func(output, **{r.kwonlyargs[0]: origin})
             elif len(new_args) == 2:
                 output = after_func(output, origin)
         return Response(content=impl(output))
@@ -97,7 +95,7 @@ async def generate(request: Request):
         return Response(content=f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
 
 if '__relay_services__' in dir(func.__class__):
-    for (method, path), (name,  kw) in func.__class__.__relay_services__.items():
+    for (method, path), (name, kw) in func.__class__.__relay_services__.items():
         getattr(app, method)(path, **kw)(getattr(func, name))
 
 if __name__ == "__main__":

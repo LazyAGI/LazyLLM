@@ -1,5 +1,4 @@
 import os
-import re
 import time
 import json
 import argparse
@@ -26,12 +25,10 @@ if "SLURM_JOB_ID" in os.environ:
     os.environ['LOCAL_RANK'] = str(local_rank)
 
     print("comm: ", world_size, rank, local_rank)
-    
 else:
     world_size = int(os.getenv("WORLD_SIZE", "1"))
     local_rank = int(os.getenv("LOCAL_RANK", "0"))
     rank = int(os.getenv("RANK", "0"))
-    
 
 def proccess(data_path, prompter):
     processed_data = []
@@ -47,25 +44,23 @@ def proccess(data_path, prompter):
 class LogCallback(Callback):
     def __init__(self, rank):
         self.iter_time_s = 0
-        self.total_time  = 0
+        self.total_time = 0
         self.rank = rank
 
     def on_train_epoch_begin(self, trainer):
-        if self.rank==0:
+        if self.rank == 0:
             print(f"Epoch: {trainer.epoch_idx:04d}", flush=True)
 
     def on_train_batch_begin(self, trainer, batch):
         self.iter_time_s = time.time()
 
     def on_train_batch_end(self, trainer, loss):
-        if self.rank==0:
+        if self.rank == 0:
             v = time.time() - self.iter_time_s
             self.total_time += v
-            avg_time_per_iter = self.total_time / (trainer.batch_idx+1 + \
-                                trainer.epoch_idx * trainer.steps_per_epoch)
-            remaining_iters = trainer.steps_per_epoch - (trainer.batch_idx+1) + \
-                                (trainer.config.train_epochs - trainer.epoch_idx -1) * \
-                                trainer.steps_per_epoch
+            avg_time_per_iter = self.total_time / (trainer.batch_idx + 1 + trainer.epoch_idx * trainer.steps_per_epoch)
+            remaining_iters = trainer.steps_per_epoch - (trainer.batch_idx + 1) + \
+                (trainer.config.train_epochs - trainer.epoch_idx - 1) * trainer.steps_per_epoch
             remaining_time = remaining_iters * avg_time_per_iter
 
             remaining_time_str = str(datetime.timedelta(seconds=round(remaining_time)))
@@ -78,9 +73,9 @@ class LogCallback(Callback):
             memories = output.decode('utf-8').strip().split('\n')
             for i, mem in enumerate(memories):
                 memory_usage[i] = round(float(mem) / 1024, 1)
-            
+
             total_batch = trainer.engine.train_batch_size()
-            item_per_second = total_batch/v
+            item_per_second = total_batch / v
 
             print((f"Epoch:{trainer.epoch_idx+1:02d} "
                    f"Iter/Total:{trainer.batch_idx+1:04d}/{trainer.steps_per_epoch} "
@@ -92,7 +87,7 @@ class LogCallback(Callback):
                    ),
                   flush=True)
 
-def main():
+def main(): # noqa C901
     if rank == 0:
         print(
             f"Training SFT model with params:\n"
@@ -119,8 +114,8 @@ def main():
             f"learning_rate: {args.learning_rate}\n"
             f"model_type: {args.model_type}\n"
         )
-    
-    if (world_size != args.dp_size *  args.pp_size * args.tp_size):
+
+    if (world_size != args.dp_size * args.pp_size * args.tp_size):
         dp_size = world_size // (args.pp_size * args.tp_size)
         if rank == 0:
             print(
@@ -130,7 +125,6 @@ def main():
             )
         args.dp_size = dp_size
     gradient_accumulation_steps = args.batch_size // (args.dp_size * args.micro_batch_size)
-
 
     config = CollieConfig.from_pretrained(args.base_model, trust_remote_code=True)
     config.dp_size = args.dp_size
@@ -160,15 +154,15 @@ def main():
     def str2list(string):
         items = string.strip().strip("[]").split(",")
         return [x.strip() for x in items]
-    
+
     if args.lora_target_modules:
-       lora_target_modules = str2list(args.lora_target_modules)
+        lora_target_modules = str2list(args.lora_target_modules)
     else:
-       lora_target_modules = args.lora_target_modules
+        lora_target_modules = args.lora_target_modules
     if args.modules_to_save:
-       modules_to_save = str2list(args.modules_to_save)
+        modules_to_save = str2list(args.modules_to_save)
     else:
-       modules_to_save =  args.modules_to_save
+        modules_to_save = args.modules_to_save
 
     config.peft_config = LoraConfig(
         r=args.lora_r,
@@ -192,14 +186,14 @@ def main():
     elif model_type == 'chatglm' or model_type == 'chatglm2':
         model_cls = ChatGLM2ForCausalLM
     else:
-        model_cls = LlamaForCausalLM 
+        model_cls = LlamaForCausalLM
 
     model = model_cls.from_pretrained(
         args.base_model,
         config=config,
         torch_dtype=torch.float16,
         trust_remote_code=True,
-        )
+    )
     model.set_cache(False)
     model.enable_input_require_grads()
 
@@ -215,7 +209,7 @@ def main():
     eval_dataset = train_dataset[-32:]
 
     if rank == 0:
-        print("Show case 0:\n", train_data[0], '\n',train_dataset[0])
+        print("Show case 0:\n", train_data[0], '\n', train_dataset[0])
 
     def get_token_length(x):
         return len(x['input_ids'])
@@ -254,7 +248,7 @@ def main():
         },
     )
 
-    callbacks=[LogCallback(rank)]
+    callbacks = [LogCallback(rank)]
 
     trainer = Trainer(
         model=model,

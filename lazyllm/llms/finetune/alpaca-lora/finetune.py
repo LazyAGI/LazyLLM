@@ -16,13 +16,13 @@ import numpy as np
 import torch.distributed as dist
 from peft import LoraConfig, get_peft_model, set_peft_model_state_dict
 
-from transformers import  AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel
 import deepspeed
 
 from utils.prompter import Prompter
 
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false" 
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 if "SLURM_JOB_ID" in os.environ:
     node_list = os.environ['SLURM_NODELIST']
     addr = subprocess.getoutput(f'scontrol show hostname {node_list} | head -n1')
@@ -34,7 +34,7 @@ if "SLURM_JOB_ID" in os.environ:
     ntasks = int(os.environ['SLURM_NTASKS'])
     rank = proc_id
     world_size = ntasks
-    
+
     os.environ['WORLD_SIZE'] = str(ntasks)
     os.environ['RANK'] = str(proc_id)
 
@@ -56,7 +56,7 @@ else:
 
 deepspeed.init_distributed()
 
-def train(
+def train( # noqa C901
     # model/data params
     base_model: str = "",  # the only required argument
     data_path: str = "",
@@ -89,7 +89,7 @@ def train(
     wandb_log_model: str = "",  # options: false | true
     resume_from_checkpoint: str = None,  # either training checkpoint or final adapter
     prompt_template_name: str = "alpaca",  # The prompt template to use, will default to alpaca.
-    deepspeed: str = None, # deepspeed config file path.
+    deepspeed: str = None,  # deepspeed config file path.
     show_prompt: bool = False,
 ):
     if int(os.environ.get("RANK", 0)) == 0:
@@ -135,10 +135,6 @@ def train(
     if rank == 0:
         print("gradient_accumulation_steps: ", gradient_accumulation_steps)
 
-    # Check if parameter passed or if set within environ
-    use_wandb = len(wandb_project) > 0 or (
-        "WANDB_PROJECT" in os.environ and len(os.environ["WANDB_PROJECT"]) > 0
-    )
     # Only overwrite environ if wandb param passed
     if len(wandb_project) > 0:
         os.environ["WANDB_PROJECT"] = wandb_project
@@ -167,12 +163,9 @@ def train(
             padding=False,
             return_tensors=None,
         )
-        if len(result["input_ids"])>cutoff_len:
+        if len(result["input_ids"]) > cutoff_len:
             return None
-        if (
-            result["input_ids"][-1] != tokenizer.eos_token_id
-            and len(result["input_ids"]) < cutoff_len
-            and add_eos_token
+        if (result["input_ids"][-1] != tokenizer.eos_token_id and len(result["input_ids"]) < cutoff_len and add_eos_token
         ):
             result["input_ids"].append(tokenizer.eos_token_id)
             result["attention_mask"].append(1)
@@ -236,10 +229,10 @@ def train(
                             aa = aa.remove_columns(key)
                     datas.append(aa)
                     data_names += file + '\n'
-    assert len(datas)>0, "Invalid file"
+    assert len(datas) > 0, "Invalid file"
     if data_names:
         print("Merge Dataset: \n", data_names)
-    
+
     data = concatenate_datasets(datas)
 
     if resume_from_checkpoint:
@@ -270,13 +263,16 @@ def train(
             test_size=val_set_size, shuffle=True, seed=42
         )
         train_data = (
-            train_val["train"].shuffle().map(generate_and_tokenize_prompt,num_proc=16).filter(lambda x: len(x["input_ids"]) < filter_nums)
+            train_val["train"].shuffle().map(generate_and_tokenize_prompt, num_proc=16)
+            .filter(lambda x: len(x["input_ids"]) < filter_nums)
         )
         val_data = (
-            train_val["test"].shuffle().map(generate_and_tokenize_prompt,num_proc=16).filter(lambda x: len(x["input_ids"]) < filter_nums)
+            train_val["test"].shuffle().map(generate_and_tokenize_prompt, num_proc=16)
+            .filter(lambda x: len(x["input_ids"]) < filter_nums)
         )
     else:
-        train_data = data.shuffle().map(generate_and_tokenize_prompt,num_proc=16).filter(lambda x: len(x["input_ids"]) < filter_nums)
+        train_data = data.shuffle().map(generate_and_tokenize_prompt, num_proc=16)\
+            .filter(lambda x: len(x["input_ids"]) < filter_nums)
         val_data = None
 
     tlist = np.array([len(x) for x in train_data['input_ids']])
@@ -320,9 +316,9 @@ def train(
             group_by_length=group_by_length,
             report_to="tensorboard",
             run_name="testhahha",
-            lr_scheduler_type = 'cosine',
-            deepspeed = deepspeed,
-            local_rank = rank,
+            lr_scheduler_type='cosine',
+            deepspeed=deepspeed,
+            local_rank=rank,
         ),
         data_collator=transformers.DataCollatorForSeq2Seq(
             tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
@@ -334,12 +330,10 @@ def train(
 
     model.save_pretrained(output_dir)
 
-    if rank ==0:
+    if rank == 0:
         print(
             "\n If there's a warning about missing keys above, please disregard :)"
         )
-
-
 
 if __name__ == "__main__":
     fire.Fire(train)
