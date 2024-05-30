@@ -31,9 +31,9 @@ class Document(ModuleBase):
         lazyllm.call_once(register_flag, Document.register)
         return super().__new__(cls, *args, **kw)
 
-    def __init__(self, doc_path, embed, doc_name='LazyDocument'):
+    def __init__(self, embed, doc_path=None, doc_files=None, doc_name='LazyDocument'):
         super().__init__()
-        self.doc_path, self._embed = doc_path, embed
+        self.doc_path, self.doc_files, self._embed = doc_path, doc_files, embed
         from ..rag.component.sent_embed import LLamaIndexEmbeddingWrapper
         self.embed = LLamaIndexEmbeddingWrapper(embed)
 
@@ -41,8 +41,8 @@ class Document(ModuleBase):
         self.nodes_dict = copy.deepcopy(Document.parser_rule_dict)
         self.store = LazyStore(doc_name)
 
-    def load_files(self, doc_path):
-        return llama_index.core.SimpleDirectoryReader(doc_path).load_data()
+    def load_files(self, doc_path=None, doc_files=None):
+        return llama_index.core.SimpleDirectoryReader(input_dir=doc_path, input_files=doc_files).load_data()
 
     @classmethod
     def register_retriever(cls, func):
@@ -109,7 +109,7 @@ class Document(ModuleBase):
                 node['nodes'] = node['parser'](parent_node['nodes'], **node['parser_kw'])
             else:
                 if self.docs is None:
-                    self.docs = self.load_files(self.doc_path)
+                    self.docs = self.load_files(doc_path=self.doc_path, doc_files=self.doc_files)
                 parser = node['parser'].from_defaults(**node['parser_kw'])
                 node['nodes'] = parser.get_nodes_from_documents(self.docs)
             self.store.add_nodes(name, node['nodes'])
@@ -130,7 +130,7 @@ class Document(ModuleBase):
             return retriever
         else:
             raise ValueError(f"Func '{signature}' donse not exist.")
- 
+
     def _query_with_sig(self, string, signature, parser):
         if type(string) == LazyLlmRequest:
             string = string.input
@@ -139,18 +139,80 @@ class Document(ModuleBase):
             string = llama_index.core.schema.QueryBundle(string)
         res = retriever.retrieve(string)
         return res
-    
+
     def query(self, string, algo, parser, **kw):
         sig = self.generate_signature(algo, kw, parser)
         return self._query_with_sig(string, sig, parser)
 
+    def _get_nodes_sort_list(self):
+        nodes_sort_list = []
+        for parser_name, node in self.nodes_dict.items():
+            if not node["nodes"] or len(node["nodes"]) == 0:
+                continue
+
+            if node['parent_name'] is None:
+                nodes_sort_list.append(parser_name)
+            else:
+                new_list = [parser_name]
+                parent_name = node['parent_name']
+                while parent_name is not None:
+                    new_list.append(parent_name)
+                    parent_name = self.nodes_dict[parent_name]['parent_name']
+
+                for parser_name in reversed(new_list):
+                    if parser_name not in nodes_sort_list:
+                        nodes_sort_list.append(parser_name)
+        return nodes_sort_list
+
+    def add_files(self, input_files):
+        if len(input_files) == 0: return
+
+        for parser_name in self._get_nodes_sort_list():
+            node = self.nodes_dict[parser_name]
+
+            if node['parent_name']:
+                parent_node = self.nodes_dict[node['parent_name']]
+                add_nodes = node['parser'](parent_node['nodes'], **node['parser_kw'])
+            else:
+                parser = node['parser'].from_defaults(**node['parser_kw'])
+                docs = self.load_files(doc_files=input_files)
+                add_nodes = parser.get_nodes_from_documents(docs)
+
+            self.store.add_nodes(parser_name, add_nodes)
+            self.store.add_index_nodes(nodes_name=parser_name, nodes=add_nodes, embed_model=self.embed)
+
+            node["nodes"] = node["nodes"] + add_nodes
+            node["retrievers"] = {}
+            for signature in node["retrievers_algo"].keys():
+                self.get_retriever(parser_name, signature)
+
+    def delete_files(self, input_files):
+        if len(input_files) == 0: return
+
+        for parser_name in self._get_nodes_sort_list():
+            node = self.nodes_dict[parser_name]
+
+            delete_nodes = [
+                it_node for it_node in node['nodes']
+                if "file_name" in it_node.metadata and it_node.metadata["file_name"] in input_files
+            ]
+
+            if len(delete_nodes) == 0: continue
+
+            self.store.del_nodes(parser_name, delete_nodes)
+            self.store.del_index_nodes(parser_name, delete_nodes)
+            del_node_ids = set([node.node_id for node in delete_nodes])
+            node["nodes"] = [it_node for it_node in node["nodes"] if it_node.node_id not in del_node_ids]
+            node["retrievers"] = {}
+            for signature in node["retrievers_algo"].keys():
+                self.get_retriever(parser_name, signature)
 
 @Document.register_retriever
 def defatult(name, nodes, embed, func_kw, store):
     index = store.get_index(
-        nodes_name = name,
-        nodes = nodes['nodes'],
-        embed_model = embed,
+        nodes_name=name,
+        nodes=nodes['nodes'],
+        embed_model=embed,
     )
     return index.as_retriever(**func_kw)
 
@@ -260,8 +322,20 @@ class LazyStore(object):
         self.index_dict = dict()
 
     def add_nodes(self, nodes_name, nodes): pass
+
+    def add_index_nodes(self, nodes_name, nodes, embed_model):
+        self.get_index(nodes_name, nodes, embed_model).insert_nodes(nodes)
+
+    def del_nodes(self, nodes_name, nodes): pass
+
+    def del_index_nodes(self, nodes_name, nodes):
+        if nodes_name in self.index_dict:
+            del self.index_dict[nodes_name]
+
     def get_nodes(self, nodes_name): pass
+
     def has_nodes(self, nodes_name): return False
+
     def lazy_init(self): pass
 
     def get_index(self, nodes_name, nodes, embed_model, rebuild=False):
@@ -271,6 +345,7 @@ class LazyStore(object):
         index = VectorStoreIndex(
             nodes=nodes,
             embed_model=embed_model,
+            show_progress=True
         )
         self.index_dict[nodes_name] = index
         return index
@@ -310,7 +385,7 @@ class RedisStore(LazyStore):
 
     def add_nodes(self, nodes_name, nodes):
         lazyllm.call_once(self.init_flag, self.lazy_init)
-        save_dict = {nodes_name:[x.id_ for x in nodes]}
+        save_dict = {nodes_name: [x.id_ for x in nodes]}
         self.node_record.update(save_dict)
         self.doc_store.add_documents(nodes)
         if not self.redis_client.sismember(self.redis_handle_name, self.docs_name):
@@ -319,10 +394,34 @@ class RedisStore(LazyStore):
         for key, value in save_dict.items():
             self.redis_client.hset(self.docs_name, key, value)
 
+    def del_nodes(self, nodes_name, nodes):
+        lazyllm.call_once(self.init_flag, self.lazy_init)
+        del_node_ids = [node.id_ for node in nodes]
+        self.node_record[nodes_name] = [x for x in self.node_record[nodes_name] if x not in del_node_ids]
+
+        for _id in del_node_ids:
+            self.doc_store.delete_document(_id)
+            self.redis_client.hdel(self.docs_name, _id)
+
+        with self.redis_client.pipeline(transaction=False) as pipe:
+            for _id in del_node_ids:
+                pipe.delete(_id)
+            pipe.execute()
+
+    def del_index_nodes(self, nodes_name, nodes):
+        if nodes_name not in self.index_dict:
+            return
+
+        vector_store = self.build_vector_store_context(nodes_name)
+        with vector_store._index.client.pipeline(transaction=False) as pipe:
+            for doc in nodes:
+                pipe.delete(f"{self.docs_name}:{doc.node_id}")
+            pipe.execute()
+
     def has_nodes(self, nodes_name):
         lazyllm.call_once(self.init_flag, self.lazy_init)
         return nodes_name in self.node_record
- 
+
     def get_nodes(self, nodes_name):
         assert self.has_nodes(nodes_name)
         return [self.get_doc(node_id) for node_id in self.node_record[nodes_name]]
@@ -349,24 +448,25 @@ class RedisStore(LazyStore):
 
     def index_exists(self, nodes_name):
         return self.docs_name + '_' + nodes_name in self.index_record
-    
+
     def build_vector_store_context(self, nodes_name):
         assert self.init_flag, "RedisStore not initialized."
         schema = self.default_schema.copy()
         schema.index.name = self.docs_name + '_' + nodes_name
         schema.index.prefix = self.docs_name
-        from llama_index.core import StorageContext
+
         from llama_index.vector_stores.redis import RedisVectorStore
         vector_store = RedisVectorStore(
             schema=schema,
             redis_client=self.redis_client,
             overwrite=False
-            )
-        return StorageContext.from_defaults(vector_store=vector_store)
-        
+        )
+        return vector_store
+
     def get_index(self, nodes_name, nodes, embed_model, rebuild=False):
         assert self.init_flag, "RedisStore not initialized."
         from llama_index.core import VectorStoreIndex
+        from llama_index.core import StorageContext
         if not rebuild and nodes_name in self.index_dict:
             return self.index_dict[nodes_name]
         if self.index_exists(nodes_name):
@@ -374,7 +474,7 @@ class RedisStore(LazyStore):
         index = VectorStoreIndex(
             nodes=nodes,
             embed_model=embed_model,
-            storage_context=self.build_vector_store_context(nodes_name)
+            storage_context=StorageContext.from_defaults(vector_store=self.build_vector_store_context(nodes_name))
         )
         self.index_dict[nodes_name] = index
         return index

@@ -70,7 +70,8 @@ async def generate(request: Request): # noqa C901
 
         def impl(o):
             o = h.make_response(o, force=True)
-            return codecs.encode(pickle.dumps(o), 'base64') if isinstance(o, LazyLlmResponse) else o
+            assert isinstance(o, LazyLlmResponse), 'output of func must be LazyLlmResponse'
+            return codecs.encode(pickle.dumps(o), 'base64')
 
         if isinstance(output, GeneratorType):
             def generate_stream():
