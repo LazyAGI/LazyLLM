@@ -21,20 +21,23 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
             'temperature': 0.1,
         }
     }
-    
+
     def __init__(self, launcher=launchers.remote(sync=False), *, stream=False, **kw):
         super().__init__(launcher=launcher)
+
         def func():
+
             def impl(x):
                 print(f'input is {x["inputs"]}, parameters is {x["parameters"]}')
                 return f'reply for {x["inputs"]}, and parameters is {x["parameters"]}'
+
             def impl_stream(x):
                 for i in range(10):
                     yield f'reply-{i} for {x["inputs"]}, and parameters is {x["parameters"]}\n'
                     time.sleep(0.2)
             return impl_stream if stream else impl
         flows.Pipeline.__init__(self, func,
-            deploy.RelayServer(port=random.randint(30000, 40000), launcher=launcher))
+                                lazyllm.deploy.RelayServer(port=random.randint(30000, 40000), launcher=launcher))
 
     def __call__(self, *args):
         url = flows.Pipeline.__call__(self)
@@ -42,14 +45,14 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
         return url
 
     def __repr__(self):
-        return flows.Pipeline.__repr__(self) 
+        return flows.Pipeline.__repr__(self)
 
 
 class DummyLongDeploy(DummyDeploy):
-    
+
     def __init__(self, launcher=launchers.remote(sync=False), *, stream=False, **kw):
         super().__init__(launcher=launcher, stream=stream, **kw)
-        
+
     def __call__(self, *args):
         t = random.randint(5, 20)
         time.sleep(t)
@@ -69,6 +72,6 @@ def verify_fastapi_func(job):
             LOG.info(f"Capture startup message: {line}")
             break
         if job.status == lazyllm.launchers.status.Failed:
-            LOG.error(f"Service Startup Failed.")
+            LOG.error("Service Startup Failed.")
             return False
     return True

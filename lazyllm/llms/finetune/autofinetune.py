@@ -19,15 +19,14 @@ class AutoFinetune(LazyLLMFinetuneBase):
         base_model=None,
         **kwargs,
     ):
-       assigner = Assigner()
-       return assigner.assign_finetuner(
-            model_name,
-            gpu_count,
-            target_path,
-            base_model,
-            **kwargs,
-       )
-    
+        assigner = Assigner()
+        return assigner.assign_finetuner(model_name,
+                                         gpu_count,
+                                         target_path,
+                                         base_model,
+                                         **kwargs,
+                                         )
+
 class Assigner(object):
     def __init__(self,):
         self.gpu_memory = None
@@ -88,10 +87,9 @@ class Assigner(object):
     def get_frame_list(self, model_name, gpu_count):
         # Check model in models_set
         model_res = model_name.strip().lower()
-        assert model_res in self.models_name_set, (
-                f"Not support model: {model_name}\n"
-                f"Support models are: {self.models_name_set}" 
-                )
+        assert model_res in self.models_name_set, (f"Not support model: {model_name}\n"
+                                                   f"Support models are: {self.models_name_set}"
+                                                   )
         self.model_name = model_res
 
         # Get info from modelpool
@@ -103,17 +101,16 @@ class Assigner(object):
         frame_propose = model_group[suffix]['frame_propose']
 
         # Check the GPU memory consumption under Zero2 during training
-        #TODO(sunxiaoye): Carefully calculate by model and strategy.
-        activation = self.model_size*0.2
-        lora_model_size = self.model_size*0.45
-        gradients = lora_model_size/gpu_count
-        optimizers = lora_model_size*6/gpu_count
+        # TODO(sunxiaoye): Carefully calculate by model and strategy.
+        activation = self.model_size * 0.2
+        lora_model_size = self.model_size * 0.45
+        gradients = lora_model_size / gpu_count
+        optimizers = lora_model_size * 6 / gpu_count
 
         res = self.model_size + gradients + optimizers + activation
-        assert res <= self.gpu_memory, (
-            f"One GPU memory usage maybe {res} G, "
-            f"which less than a gpu memory {self.gpu_memory} G."
-            )
+        assert res <= self.gpu_memory, (f"One GPU memory usage maybe {res} G, "
+                                        f"which less than a gpu memory {self.gpu_memory} G."
+                                        )
         LOG.info(f"One GPU memory usage maybe {res} G.")
 
         # Get frame list
@@ -135,14 +132,13 @@ class Assigner(object):
             except pkg_resources.DistributionNotFound:
                 not_installed.append(f"Required: {package}")
         return not_installed
-    
+
     def get_training_frame(self, frame_list):
         for frame in frame_list:
             assert frame in self.frame_infor, f"Framework {frame} not in {self.frame_infor.keys()}"
             not_installed = self.check_requirements(self.frame_infor[frame]['requrements'])
             if not_installed:
-                LOG.info(f"Not support {frame}, lack folllowing dependencies:\n\t- "
-                        +'\n\t- '.join(not_installed))
+                LOG.info(f"Not support {frame}, lack folllowing dependencies:\n\t- " + '\n\t- '.join(not_installed))
             else:
                 self.frame_config.update(self.frame_infor[frame]['train_params'])
                 self.frame_ability.update(self.frame_infor[frame]['ability'])
@@ -162,7 +158,7 @@ class Assigner(object):
         if gradient_accumulation_steps < 1:
             self.traing_config["batch_size"] = \
                 self.traing_config["micro_batch_size"] * gpu_count
-            
+
         # Set launch config
         launch_config = dict()
         if self.launcher == "slurm":
@@ -214,15 +210,15 @@ class Assigner(object):
         )
 
     def show_training_config(self):
-        LOG.info('\n'+'=='*20)
+        LOG.info('\n' + '==' * 20)
         LOG.info("AutoFinetune Config:\n"
-                f"\t Base Model Path: {self.base_model_path}\n"
-                f"\t Lora Path: {self.lora_path}\n"
-                f"\t Merge Path: {self.merge_path}\n"
+                 f"\t Base Model Path: {self.base_model_path}\n"
+                 f"\t Lora Path: {self.lora_path}\n"
+                 f"\t Merge Path: {self.merge_path}\n"
                 )
         pprint(self.traing_config)
         pprint(self.launch_config)
-        LOG.info('=='*20+'\n')
+        LOG.info('==' * 20 + '\n')
 
     @classmethod
     def create_directories(self, target_path, model_name):

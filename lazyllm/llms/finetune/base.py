@@ -1,4 +1,4 @@
-from lazyllm import launchers, package
+from lazyllm import launchers
 from ..core import ComponentBase
 
 

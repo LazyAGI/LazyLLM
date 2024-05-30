@@ -11,7 +11,7 @@ def main(args):
     if "SLURM_JOB_ID" in os.environ:
         proc_id = int(os.environ['SLURM_PROCID'])
         os.environ['RANK'] = str(proc_id)
-    
+
     if int(os.environ.get("RANK", 0)) == 0:
         merged_model = PeftModel.from_pretrained(
             AutoModelForCausalLM.from_pretrained(

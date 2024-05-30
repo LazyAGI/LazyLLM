@@ -1,10 +1,6 @@
 import json
 import lazyllm
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.core.indices.postprocessor import SentenceTransformerRerank
-from llama_index.core.schema import QueryBundle
-from lazyllm import LazyLlmResponse
-
 
 
 class LazyHuggingFaceEmbedding(object):
@@ -15,10 +11,11 @@ class LazyHuggingFaceEmbedding(object):
         self.embed = None
         self.init_flag = lazyllm.once_flag()
 
-    def load_embed(self):  
+    def load_embed(self):
         self.embed = HuggingFaceEmbedding(model_name=self.base_embed,
-            embed_batch_size=self.embed_batch_size, trust_remote_code=self.trust_remote_code)
-    
+                                          embed_batch_size=self.embed_batch_size,
+                                          trust_remote_code=self.trust_remote_code)
+
     def __call__(self, string):
         lazyllm.call_once(self.init_flag, self.load_embed)
         if type(string) is str:
