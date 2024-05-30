@@ -41,7 +41,7 @@ __all__ = [
     'ForkProcess',
     'SpawnProcess',
 
-     # bind
+    # bind
     'bind', 'root',
     '_0', '_1', '_2', '_3', '_4',
     '_5', '_6', '_7', '_8', '_9',
@@ -57,7 +57,7 @@ __all__ = [
     'ReprRule',
     'make_repr',
     'modify_repr',
-    
+
     # log
     'LOG',
 ]

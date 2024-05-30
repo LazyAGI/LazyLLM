@@ -1,4 +1,3 @@
-import os
 import copy
 import json
 import hashlib
@@ -64,7 +63,7 @@ class Document(ModuleBase):
         assert name not in cls, f'Duplicate rule: {name}'
         cls[name] = dict(parser=transform if callable(transform) else Document.get_llamaindex_transform(transform),
                          parser_kw=kwargs, parent_name=parent, nodes=None, retrievers_algo={}, retrievers={})
-    
+
     @classmethod
     def register_parser(cls, name, transform, parent=None, **kw):
         Document._register_parser(cls.parser_rule_dict, name, transform, parent, **kw)
@@ -87,7 +86,7 @@ class Document(ModuleBase):
         hashed_signature = hashlib.sha256(signature.encode()).hexdigest()
         self.add_algo(hashed_signature, algo, algo_kw, parser)
         return hashed_signature
-    
+
     def forward(self, query):
         if not self.default_signature:
             self.default_signature = self.generate_signature(
@@ -115,21 +114,6 @@ class Document(ModuleBase):
                 node['nodes'] = parser.get_nodes_from_documents(self.docs)
             self.store.add_nodes(name, node['nodes'])
         return node
-
-
-    @classmethod
-    def register_parser(cls, name, transform, parent=None, **kwargs):
-        assert name not in cls.nodes_dict
-        cls.nodes_dict[name] = {
-            'parser': cls.get_parser(transform),
-            'parser_kw': kwargs,
-            'parent_name': parent,
-            'nodes': None,
-            'retrievers_algo':{},
-            'retrievers':{},
-        }
-        return cls
-
 
     def get_retriever(self, name, signature):
         node = self._get_node(name)

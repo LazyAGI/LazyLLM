@@ -26,14 +26,14 @@ class WebModule(ModuleBase):
         Refresh = 1
         Appendix = 2
 
-    def __init__(self, m, *, components=dict(), title='对话演示终端', port=range(20500,20799),
+    def __init__(self, m, *, components=dict(), title='对话演示终端', port=range(20500, 20799),
                  history=[], text_mode=None, trace_mode=None) -> None:
         super().__init__()
         self.m = m
         self.title = title
-        self.port = port 
+        self.port = port
         components = sum([[([k._module_id, k._module_name] + list(v)) for v in vs]
-                           for k, vs in components.items()], [])
+                         for k, vs in components.items()], [])
         self.ckeys = [[c[0], c[2]] for c in components]
         self.history = [h._module_id for h in history]
         self.trace_mode = trace_mode if trace_mode else WebModule.Mode.Refresh
@@ -53,13 +53,14 @@ class WebModule(ModuleBase):
             with gr.Row():
                 with gr.Column(scale=3):
                     with gr.Row():
-                        gr.Textbox(elem_id='module', interactive=False, show_label=True, label="模型结构", value=repr(self.m))
+                        gr.Textbox(elem_id='module', interactive=False, show_label=True,
+                                   label="模型结构", value=repr(self.m))
                     with gr.Row():
                         chat_use_context = gr.Checkbox(interactive=True, value=False, label="使用上下文")
                     with gr.Row():
                         stream_output = gr.Checkbox(interactive=True, value=True, label="流式输出")
-                        text_mode = gr.Checkbox(interactive=(self.text_mode==WebModule.Mode.Dynamic),
-                                                value=(self.text_mode!=WebModule.Mode.Refresh), label="追加输出")
+                        text_mode = gr.Checkbox(interactive=(self.text_mode == WebModule.Mode.Dynamic),
+                                                value=(self.text_mode != WebModule.Mode.Refresh), label="追加输出")
                     components = []
                     for _, gname, name, ctype, value in component_descs:
                         if ctype in ('Checkbox', 'Text'):
@@ -78,7 +79,7 @@ class WebModule(ModuleBase):
                     chatbot = gr.Chatbot(height=900)
                     query_box = gr.Textbox(show_label=False, placeholder='输入内容并回车!!!')
 
-            query_box.submit(self._init_session, [query_box, sess_data], 
+            query_box.submit(self._init_session, [query_box, sess_data],
                                                  [sess_drpdn, chatbot, dbg_msg, sess_data], queue=True
                 ).then(lambda: gr.update(interactive=False), None, query_box, queue=False
                 ).then(lambda: gr.update(interactive=False), None, add_sess_btn, queue=False
@@ -92,7 +93,7 @@ class WebModule(ModuleBase):
                 ).then(lambda: gr.update(interactive=True), None, sess_drpdn, queue=False
                 ).then(lambda: gr.update(interactive=True), None, del_sess_btn, queue=False)
             clear_btn.click(self._clear_history, [sess_data], outputs=[chatbot, query_box, dbg_msg, sess_data])
-            
+
             sess_drpdn.change(self._change_session, [sess_drpdn, chatbot, dbg_msg, sess_data],
                                                     [sess_drpdn, chatbot, query_box, dbg_msg, sess_data])
             add_sess_btn.click(self._add_session, [chatbot, dbg_msg, sess_data],
@@ -102,24 +103,24 @@ class WebModule(ModuleBase):
             return demo
 
     def _init_session(self, query, session):
-        if session['curr_sess'] != '': #remain unchanged.
+        if session['curr_sess'] != '':  # remain unchanged.
             return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), session
-        
+
         session['curr_sess'] = f"({session['sess_num']})  {query}"
         session['sess_num'] += 1
         session['sess_titles'][0] = session['curr_sess']
-        
+
         session['sess_logs'][session['curr_sess']] = []
         session['sess_history'][session['curr_sess']] = []
         return gr.update(choices=session['sess_titles'], value=session['curr_sess']), [], '', session
-    
+
     def _add_session(self, chat_history, log_history, session):
         if session['curr_sess'] == '':
             LOG.warning('Cannot create new session while current session is empty.')
             return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), gr.Textbox(), session
-        
+
         self._save_history(chat_history, log_history, session)
-            
+
         session['curr_sess'] = ''
         session['sess_titles'].insert(0, session['curr_sess'])
         return gr.update(choices=session['sess_titles'], value=session['curr_sess']), [], '', '', session
@@ -128,49 +129,49 @@ class WebModule(ModuleBase):
         if session['curr_sess'] in session['sess_titles']:
             session['sess_history'][session['curr_sess']] = chat_history
             session['sess_logs'][session['curr_sess']] = log_history
-    
+
     def _change_session(self, session_title, chat_history, log_history, session):
-        if session['curr_sess'] == '': #new session
+        if session['curr_sess'] == '':  # new session
             return gr.Dropdown(), [], '', '', session
-        
-        if not session_title in session['sess_titles']:
+
+        if session_title not in session['sess_titles']:
             LOG.warning(f'{session_title} is not an existing session title.')
             return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), gr.Textbox(), session
-        
+
         self._save_history(chat_history, log_history, session)
-            
+
         session['curr_sess'] = session_title
-        return gr.update(choices=session['sess_titles'], value=session['curr_sess']),\
-                session['sess_history'][session['curr_sess']], '',\
-                session['sess_logs'][session['curr_sess']], session
-    
+        return (gr.update(choices=session['sess_titles'], value=session['curr_sess']),
+                session['sess_history'][session['curr_sess']], '',
+                session['sess_logs'][session['curr_sess']], session)
+
     def _delete_session(self, session_title, session):
-        if not session_title in session['sess_titles']:
+        if session_title not in session['sess_titles']:
             LOG.warning(f'session {session_title} does not exist.')
             return gr.Dropdown(), session
         session['sess_titles'].remove(session_title)
-        
+
         if session_title != '':
             del session['sess_history'][session_title]
             del session['sess_logs'][session_title]
             session['curr_sess'] = session_title
         else:
-            session['curr_sess'] = 'dummy session' 
+            session['curr_sess'] = 'dummy session'
             # add_session and change_session cannot accept an uninitialized session.
-            # Here we need to imitate removal of a real session so that 
+            # Here we need to imitate removal of a real session so that
             # add_session and change_session could skip saving chat history.
-        
+
         if len(session['sess_titles']) == 0:
             return self._add_session(None, None, session)
         else:
             return self._change_session(session['sess_titles'][0], None, None, session)
-        
+
     def _prepare(self, query, chat_history):
         if chat_history is None:
             chat_history = []
         return '', chat_history + [[query, None]]
-        
-    def _respond_stream(self, use_context, chat_history, stream_output, append_text, *args):
+
+    def _respond_stream(self, use_context, chat_history, stream_output, append_text, *args):  # noqa C901
         try:
             # TODO: move context to trainable module
             input = chat_history[-1][0]
@@ -230,7 +231,8 @@ class WebModule(ModuleBase):
         else:
             port = self.port
             assert self._verify_port_access(port), f'port {port} is occupied'
-        def _impl():    
+
+        def _impl():
             self.demo.queue().launch(server_name='localhost', server_port=port)
         self.p = multiprocessing.Process(target=_impl)
         self.p.start()
@@ -255,12 +257,12 @@ class WebModule(ModuleBase):
         raise RuntimeError(
             f'The ports in the range {self.port} are all occupied. '
             'Please change the port range or release the relevant ports.'
-            )
-    
+        )
+
     def _verify_port_access(self, port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             result = s.connect_ex(('localhost', port))
             return result != 0
-        
+
     def _print_url(self):
         LOG.success(f'LazyLLM webmodule launched successfully: Running on local URL: {self.url}', flush=True)

@@ -6,7 +6,7 @@ GPU_NUM = Rule.from_indexed("GPU_NUM", [1, 2, 4, 8], matches=SearchMode.BINARY_F
 MODEL_NAME = Rule.from_indexed("MODEL_NAME", ["LLAMA_7B", "LLAMA_20B", "LLAMA2_70B"])
 CTX_LEN = Rule.from_indexed("CTX_LEN", [128, 512, 2048], matches=SearchMode.BINARY_CEIL)
 BATCH_SIZE = Rule.from_indexed("BATCH_SIZE", [1, 8, 32, 128, 512], matches=SearchMode.BINARY_CEIL)
-MAX_TOKEN_NUM = Rule.from_indexed("MAX_TOKEN_NUM", [ 64 * 1024, 256 * 1024, 1024 * 1024], matches=SearchMode.BINARY_CEIL)
+MAX_TOKEN_NUM = Rule.from_indexed("MAX_TOKEN_NUM", [64 * 1024, 256 * 1024, 1024 * 1024], matches=SearchMode.BINARY_CEIL)
 LORA_R = Rule.from_indexed("LORA_R", [8, 16, 32], matches=SearchMode.BINARY_CEIL)
 
 # VALUES

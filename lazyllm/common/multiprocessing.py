@@ -1,7 +1,5 @@
-from collections.abc import Callable, Iterable, Mapping
 import multiprocessing
 from contextlib import contextmanager
-from typing import Any
 import time
 import atexit
 
@@ -23,9 +21,9 @@ class SpawnProcess(multiprocessing.Process):
 
 class ForkProcess(multiprocessing.Process):
     def __init__(self, group=None, target=None, name=None, args=(),
-                 kwargs={}, *, daemon = None, sync=True):
+                 kwargs={}, *, daemon=None, sync=True):
         super().__init__(group, ForkProcess.work(target, sync), name, args, kwargs, daemon=daemon)
-    
+
     @staticmethod
     def work(f, sync):
         def impl(*args, **kw):

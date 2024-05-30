@@ -1,6 +1,7 @@
 from typing import Any
 import copy
 import multiprocessing
+from .logger import LOG
 
 
 class _OptionIterator(object):
@@ -55,8 +56,9 @@ def reduce(x): return rebuild, (x._obj,)
 multiprocessing.reducer.ForkingPickler.register(Option, reduce)
 
 
-def OptionIter(list_of_options, suboption_func=lambda x:[]):
-    print('Options:', list_of_options)
+def OptionIter(list_of_options, suboption_func=lambda x: []):
+    LOG.info('Options:', list_of_options)
+
     def impl(cur, remain):
         for r in cur:
             new_remain = remain + suboption_func(r)

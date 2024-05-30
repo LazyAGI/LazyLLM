@@ -102,7 +102,7 @@ class Rule(Generic[T]):
             raise ValueError("empty options is invalid")
         if (options is not None and options.matches in [SearchMode.BINARY_EXACTLY, SearchMode.BINARY_FLOOR,
                                                         SearchMode.BINARY_CEIL]
-                                and not Rule.__is_ordered(options.options)):
+                and not Rule.__is_ordered(options.options)):
             raise ValueError("cannot perform binary-search on unordered options")
 
         self._name = name
@@ -170,9 +170,9 @@ class Rule(Generic[T]):
 
     @staticmethod
     def __infer_converter_from_type(tp: type) -> Callable[[str], T]:
-        if issubclass(tp, bool): return convert_to_bool # type: ignore
-        elif issubclass(tp, int): return convert_to_integer # type: ignore
-        elif issubclass(tp, str): return convert_to_string # type: ignore
+        if issubclass(tp, bool): return convert_to_bool  # type: ignore
+        elif issubclass(tp, int): return convert_to_integer  # type: ignore
+        elif issubclass(tp, str): return convert_to_string  # type: ignore
         else: raise ValueError(f"unknown type {tp} of options")
 
     @staticmethod
@@ -181,19 +181,19 @@ class Rule(Generic[T]):
             for i in range(len(ops) - 1):
                 if not (hasattr(ops[i], '__lt__') and ops[i] < ops[i + 1]):
                     return False
-            return True 
+            return True
         return (len(options) > 0 and all(isinstance(o, int) for o in options)
-                                 and is_list_monotonic_increasing(options))
+                and is_list_monotonic_increasing(options))
 
 
 class Configurations:
     def __init__(self, rules: List[Rule]):
-        self._rules: dict[str, Rule] = { rule.name : rule for rule in rules }
+        self._rules: dict[str, Rule] = {rule.name: rule for rule in rules}
         self._key_rules: list[Rule] = []
         self._ordered_rules: list[Rule] = []
         self._ordered_values: dict[int, list[list[Any]]] = {}
         if len(self._rules) != len(rules):
-            raise ValueError(f"rule name should be unique")
+            raise ValueError("rule name should be unique")
 
     def parse_header(self, names: List[str]):
         if len(names) == 0:
@@ -206,7 +206,7 @@ class Configurations:
                 raise ValueError(f"name {name} does not match any rules")
             output.append(rule)
 
-        self._key_rules = [ rule for rule in output if rule.indexed ]
+        self._key_rules = [rule for rule in output if rule.indexed]
         self._ordered_rules = output
         return self
 
@@ -236,7 +236,7 @@ class Configurations:
         assert len(self._ordered_values) != 0, "must invoke parse_values before lookup"
 
         get = sorted(keys.keys())
-        expect = sorted([ rule.name for rule in self._key_rules ])
+        expect = sorted([rule.name for rule in self._key_rules])
         if expect != get:
             raise ValueError(f"expect keys ({expect}) but get ({get})")
 
@@ -248,9 +248,10 @@ class Configurations:
 
         def to_value(value_or_index: Any, rule: Rule):
             return value_or_index if not rule.mapping else rule.convert_index_to_value(value_or_index)
+
         def to_dict(values: List[Any], rules: List[Rule]):
-            return { rule.name: to_value(value, rule) for (value, rule) in zip(values, rules) }
-        return [ to_dict(values, self._ordered_rules) for values in self._ordered_values.get(key, []) ]
+            return {rule.name: to_value(value, rule) for (value, rule) in zip(values, rules)}
+        return [to_dict(values, self._ordered_rules) for values in self._ordered_values.get(key, [])]
 
     @staticmethod
     def __update_key(key: int, index: int, limit: int) -> int:
