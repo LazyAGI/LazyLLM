@@ -48,9 +48,11 @@ FastapiApp.update()
 async def generate(request: Request): # noqa C901
     try:
         origin = input = (await request.json())
+        kw = dict()
         try:
             input = pickle.loads(codecs.decode(input.encode('utf-8'), "base64"))
             assert isinstance(input, LazyLlmRequest)
+            kw = input.kwargs
         except Exception: input = origin
         finally: origin = input
 
@@ -60,12 +62,15 @@ async def generate(request: Request): # noqa C901
             assert (callable(before_func)), 'before_func must be callable'
             r = inspect.getfullargspec(before_func)
             if isinstance(input, dict) and set(r.args[1:] if r.args[0] == 'self' else r.args) == set(input.keys()):
+                assert len(kw) == 0, f'Duplicate kwargs provide, keys are {kw.keys()}'
                 input = before_func(**input)
             else:
-                input = before_func(input)
-
-        output = func(h.make_request(input) if getattr(
-            getattr(func, '_meta', func.__class__), '__enable_request__', False) else input)
+                input = before_func(input, **kw)
+                kw = dict()
+        if getattr(getattr(func, '_meta', func.__class__), '__enable_request__', False):
+            output = func(h.make_request(input, **kw))
+        else:
+            output = func(input, **kw)
         output = h.make_request(output).input
 
         def impl(o):
