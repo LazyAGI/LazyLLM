@@ -10,6 +10,7 @@ import sys
 
 class FlowBase(object):
     __enable_request__ = True
+
     def __init__(self, *items, item_names=None) -> None:
         self._flow_name = None
         self._father = None
@@ -61,19 +62,19 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             self._func_name = name
 
         def __call__(self, *args, **kw): return self.f(*args, **kw)
-    
+
         def __repr__(self):
             # TODO: specify lambda/staticmethod/classmethod/instancemethod
             # TODO: add registry message
             return lazyllm.make_repr('Function', self.f.__name__.strip('<>'))
 
     def __init__(self, *args, post_action=None, return_input=False, **kw):
-        assert len(args) == 0 or len(kw) == 0,  f'Cannot provide args `{args}` and kwargs `{kw}` at the same time'
+        assert len(args) == 0 or len(kw) == 0, f'Cannot provide args `{args}` and kwargs `{kw}` at the same time'
         if len(args) > 0 and isinstance(args[0], (tuple, list)):
-            assert len(args) == 1, f'args should be list of callable functions'
+            assert len(args) == 1, 'args should be list of callable functions'
             args = args[0]
         args = list(args) + [v() if isinstance(v, type) else LazyLLMFlowsBase.FuncWrap(v)
-                                 if is_function(v)      else v for v in kw.values()]
+                             if is_function(v) else v for v in kw.values()]
         super(__class__, self).__init__(*args, item_names=list(kw.keys()))
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self.return_input = return_input
@@ -89,12 +90,12 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         if self.return_input: output = package(req.input, output.input)
         if self._sync: self.wait()
         return helper.make_response(output)
-    
+
     def _run(self, input):
         raise NotImplementedError
 
     def start(self, *args, **kw):
-        warnings.warn('start is depreciated, please use flow as a function instead')
+        lazyllm.LOG.warn('start is depreciated, please use flow as a function instead')
         return self(*args, **kw)
 
     def set_sync(self, sync=True):
@@ -132,7 +133,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             error_type, error_message = type(e).__name__, str(e)
             tb_str = ''.join(traceback.format_exception(*sys.exc_info()))
             LOG.debug(f'Error type: {error_type}, Error message: {error_message}\n'
-                    f'Traceback: {tb_str}')
+                      f'Traceback: {tb_str}')
             raise
 
 
@@ -164,8 +165,8 @@ class Parallel(LazyLLMFlowsBase):
 
     @property
     def asdict(self):
-         self._return_dict=True
-         return self
+        self._return_dict = True
+        return self
 
     @classmethod
     def sequential(cls, *args, **kw):
@@ -186,7 +187,7 @@ class Parallel(LazyLLMFlowsBase):
             nthreads = len(items)
             impl = threading.Barrier(nthreads)
             ts = [Thread(target=self.invoke, args=(it, inp), prehook=bind(_hook, impl))
-                for it, inp in zip(items, inputs)]
+                  for it, inp in zip(items, inputs)]
             [t.start() for t in ts]
             r = package(t.get_result() for t in ts)
         else:
@@ -253,7 +254,7 @@ class IFS(LazyLLMFlowsBase):
 
     def _run(self, input):
         cond, tpath, fpath = self.items
-        return self.invoke(tpath, input) if self.invoke(cond, input) else self.invoke(fpath, input) 
+        return self.invoke(tpath, input) if self.invoke(cond, input) else self.invoke(fpath, input)
 
 
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out

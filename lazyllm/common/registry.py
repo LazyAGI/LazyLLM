@@ -37,7 +37,7 @@ class LazyDict(dict):
 
     # default -> self.default
     # key -> Key, keyName, KeyName
-    # if self.name ends with 's' or 'es', ignor it 
+    # if self.name ends with 's' or 'es', ignor it
     def __getattr__(self, key):
         key = self._default if key == 'default' else key
         keys = [key, f'{key[0].upper()}{key[1:]}', f'{key}{self.name}', f'{key[0].upper()}{key[1:]}{self.name}',
@@ -127,11 +127,11 @@ class Register(object):
         def impl(func):
             func_name = func.__name__
             exec(self.template.format(
-                name=func_name+cls.split('.')[-1].capitalize(), base=cls))
-            # 'func' cannot be recognized by exec, so we use 'setattr' instead 
+                name=func_name + cls.split('.')[-1].capitalize(), base=cls))
+            # 'func' cannot be recognized by exec, so we use 'setattr' instead
             f = LazyLLMRegisterMetaClass.all_clses[cls.lower()].__getattr__(func_name)
             f.__name__ = func_name
-            setattr(f, rewrite_func, lambda _, *args, **kw : func(*args, **kw))
+            setattr(f, rewrite_func, lambda _, *args, **kw: func(*args, **kw))
             return func
         return impl
 

@@ -20,7 +20,7 @@ class Status(Enum):
     Running = 2,
     Pending = 3,
     Done = 100,
-    Cancelled = 101, # TODO(wangzhihong): support cancel job
+    Cancelled = 101,  # TODO(wangzhihong): support cancel job
     Failed = 102,
 
 
@@ -110,16 +110,17 @@ class Job(object):
                 else:
                     raise RuntimeError(f'Job failed after retrying {restart} times')
             else:
-                raise RuntimeError(f'Job failed without retries')
+                raise RuntimeError('Job failed without retries')
         self._set_return_value()
 
     def _enqueue_subprocess_output(self, hooks=None):
         self.output_thread_event = threading.Event()
+
         def impl(out, queue):
             for line in iter(out.readline, b''):
                 try:
                     line = line.decode('utf-8')
-                except:
+                except Exception:
                     pass
                 queue.put(line)
                 if hooks:
@@ -147,7 +148,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
     class Job(Job):
         def __init__(self, cmd, launcher, *, sync=True):
             super(__class__, self).__init__(cmd, launcher, sync=sync)
-            
+
         def stop(self):
             if self.ps and self.status == Status.Running:
                 self.ps.kill()
@@ -158,14 +159,14 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             if return_code is None: job_status = Status.Running
             elif return_code == 0: job_status = Status.Done
             else: job_status = Status.Failed
-            return job_status     
+            return job_status
 
         def _get_jobid(self):
             self.jobid = self.ps.pid if self.ps else None
-        
+
         def get_jobip(self):
             return '0.0.0.0'
-        
+
     def __init__(self, subprocess=False, sync=True):
         super().__init__()
         self.subprocess = subprocess
@@ -195,7 +196,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
 class SlurmLauncher(LazyLLMLaunchersBase):
     # In order to obtain the jobid to monitor and terminate the job more
     # conveniently, only one srun command is allowed in one Job
-    all_processes=dict()
+    all_processes = dict()
     count = 0
 
     @final
@@ -216,14 +217,14 @@ class SlurmLauncher(LazyLLMLaunchersBase):
             return f'{slurm_cmd} bash -c \'{cmd}\''
 
         def _get_jobid(self):
-            time.sleep(0.5) # Wait for cmd to be stably submitted to slurm
-            id_str = subprocess.check_output(['squeue', '--name='+self.name, '--noheader'])
+            time.sleep(0.5)  # Wait for cmd to be stably submitted to slurm
+            id_str = subprocess.check_output(['squeue', '--name=' + self.name, '--noheader'])
             if id_str:
                 id_list = id_str.decode().strip().split()
                 self.jobid = id_list[0]
 
         def get_jobip(self):
-            id_str = subprocess.check_output(['squeue', '--name='+self.name, '--noheader'])
+            id_str = subprocess.check_output(['squeue', '--name=' + self.name, '--noheader'])
             id_list = id_str.decode().strip().split()
             self.ip = id_list[10]
             return self.ip
@@ -232,13 +233,13 @@ class SlurmLauncher(LazyLLMLaunchersBase):
             if self.jobid:
                 cmd = f"scancel --quiet {self.jobid}"
                 subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    encoding='utf-8', executable='/bin/bash')
+                                 encoding='utf-8', executable='/bin/bash')
             if self.ps:
                 self.ps.terminate()
                 self.queue = Queue()
                 self.output_thread_event.set()
                 self.output_thread.join()
-        
+
         def wait(self):
             if self.ps:
                 self.ps.wait()
@@ -253,30 +254,29 @@ class SlurmLauncher(LazyLLMLaunchersBase):
                 for line in jobinfo.decode().split("\n"):
                     if "JobState" in line:
                         job_state = line.strip().split()[0].split("=")[1].strip().lower()
-                        if job_state=='running':
+                        if job_state == 'running':
                             return Status.Running
-                        elif job_state=='tbsubmitted':
+                        elif job_state == 'tbsubmitted':
                             return Status.TBSubmitted
-                        elif job_state=='inqueue':
+                        elif job_state == 'inqueue':
                             return Status.InQueue
-                        elif job_state=='pending':
+                        elif job_state == 'pending':
                             return Status.Pending
-                        elif job_state=='done':
+                        elif job_state == 'done':
                             return Status.Done
-                        elif job_state=='cancelled':
+                        elif job_state == 'cancelled':
                             return Status.Cancelled
                         else:
                             return Status.Failed
             else:
                 return Status.Failed
 
-
     # TODO(wangzhihong): support configs; None -> lookup config
     def __init__(self, partition=None, nnode=1, nproc=1, ngpus=None, timeout=None, *, sync=True, **kwargs):
         super(__class__, self).__init__()
         # TODO: global config
         self.partition = partition if partition else lazyllm.config['partition']
-        self.nnode, self.nproc, self.ngpus, self.timeout =nnode, nproc, ngpus, timeout
+        self.nnode, self.nproc, self.ngpus, self.timeout = nnode, nproc, ngpus, timeout
         self.sync = sync
         self.num_can_use_nodes = kwargs.get('num_can_use_nodes', 5)
 
@@ -296,7 +296,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
         if matches:
             nums = matches.group(1).split(',')
             base = nodes_str.split('[')[0]
-            result = [base+str(x) for x in nums]
+            result = [base + str(x) for x in nums]
         return result
 
     def get_idle_nodes(self, partion=None):
@@ -321,7 +321,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
                 if num_nodes == 1:
                     self._add_dict(node_list, num_gpus, node_dict)
                 else:
-                    avg_gpus = int(num_gpus/num_nodes)
+                    avg_gpus = int(num_gpus / num_nodes)
                     result = self._expand_nodelist(node_list)
                     for x in result:
                         self._add_dict(x, avg_gpus, node_dict)
@@ -334,7 +334,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
                 node_info = line.strip().split()
                 num_nodes = int(node_info[-3])
                 node_list = node_info[-1]
-                if num_nodes==1:
+                if num_nodes == 1:
                     idle_nodes.append(node_list)
                 else:
                     idle_nodes += self._expand_nodelist(node_list)
@@ -344,7 +344,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
         num_append_nodes = num_can_use_nodes - num_allocated_nodes
 
         for i, node_ip in enumerate(idle_nodes):
-            if i+1 <= num_append_nodes:
+            if i + 1 <= num_append_nodes:
                 node_dict[node_ip] = 8
 
         # Remove nodes with depleted GPUs
@@ -363,7 +363,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
 @final
 class ScoLauncher(LazyLLMLaunchersBase):
-    all_processes=dict()
+    all_processes = dict()
 
     @final
     class Job(Job):
@@ -374,7 +374,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
             self.workspace_name = launcher.workspace_name
             self.torchrun = launcher.torchrun
             self.output_hooks = [self.output_hook]
-        
+
         def output_hook(self, line):
             if not self.ip and 'LAZYLLMIP' in line:
                 self.ip = line.split()[-1]
@@ -387,7 +387,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
                       f'-N {launcher.nnode} --priority highest '
             torchrun_cmd = f'python -m torch.distributed.run --nproc_per_node {launcher.nproc} '
 
-            if launcher.nnode==1:
+            if launcher.nnode == 1:
                 # SCO for mpi：supports multiple cards in a single machine
                 sco_cmd += '-m '
                 torchrun_cmd += f'--nnodes {launcher.nnode} --node_rank 0 '
@@ -403,7 +403,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
             if lazyllm_vars:
                 precmd += " && ".join(f"export {k}={v}" for k, v in lazyllm_vars.items()) + " && "
             # For SCO: bash -c 'ifconfig | grep "inet " | awk "{printf \"LAZYLLMIP %s\\n\", \$2}"'
-            precmd += '''ifconfig | grep "inet " | awk "{printf \\"LAZYLLMIP %s\\\\n\\", \$2}" &&'''
+            precmd += '''ifconfig | grep "inet " | awk "{printf \\"LAZYLLMIP %s\\\\n\\", \$2}" &&'''  # noqa W605
 
             # Delete 'python' in cmd
             if self.torchrun and cmd.strip().startswith('python'):
@@ -411,7 +411,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
             return f'{sco_cmd} bash -c \'{precmd} {torchrun_cmd if self.torchrun else ""} {cmd}\''
 
         def _get_jobid(self):
-            time.sleep(0.5) # Wait for cmd to be stably submitted to sco
+            time.sleep(0.5)  # Wait for cmd to be stably submitted to sco
             id_str = subprocess.check_output([
                 'squeue', f'--workspace-name={self.workspace_name}',
                 '-o', 'jobname,jobid']).decode("utf-8")
@@ -430,7 +430,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
             if self.jobid:
                 cmd = f"scancel --workspace-name={self.workspace_name} {self.jobid}"
                 subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    encoding='utf-8', executable='/bin/bash')
+                                 encoding='utf-8', executable='/bin/bash')
             if self.ps:
                 self.ps.terminate()
                 self.queue = Queue()
@@ -449,7 +449,8 @@ class ScoLauncher(LazyLLMLaunchersBase):
                         return Status.Running
                     elif job_state in ['tbsubmitted', 'suspending', 'suspended']:
                         return Status.TBSubmitted
-                    elif job_state in ['waiting', 'init', 'queueing', 'creating', 'restarting', 'recovering', 'starting']:
+                    elif job_state in ['waiting', 'init', 'queueing', 'creating',
+                                       'restarting', 'recovering', 'starting']:
                         return Status.InQueue
                     elif job_state == 'succeeded':
                         return Status.Done
@@ -457,16 +458,8 @@ class ScoLauncher(LazyLLMLaunchersBase):
                     pass
             return Status.Failed
 
-    def __init__(self,
-            partition=None,
-            workspace_name=lazyllm.config['sco.workspace'],
-            framework='pt',
-            nnode=1,
-            nproc=1,
-            ngpus=1,
-            torchrun=False,
-            sync=True,
-            **kwargs):
+    def __init__(self, partition=None, workspace_name=lazyllm.config['sco.workspace'],
+                 framework='pt', nnode=1, nproc=1, ngpus=1, torchrun=False, sync=True, **kwargs):
         assert nnode >= 1, "Use at least one node."
         assert nproc >= 1, "Start at least one process."
         assert ngpus >= 1, "Use at least one GPU."
@@ -517,7 +510,7 @@ def cleanup():
 
 atexit.register(cleanup)
 
-def _exitf(*args, **kw): 
+def _exitf(*args, **kw):
     atexit._clear()
     atexit.register(cleanup)
 

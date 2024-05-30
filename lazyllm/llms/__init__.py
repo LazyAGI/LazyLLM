@@ -1,5 +1,5 @@
 from .core import register
-from .prompter import Prompter 
+from .prompter import Prompter
 from .data import LazyLLMDataprocBase
 from .finetune import LazyLLMFinetuneBase
 from .deploy import LazyLLMDeployBase, FastapiApp

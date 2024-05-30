@@ -30,7 +30,7 @@ class TestTrainingMethods(unittest.TestCase):
 
 
 class TestDeployMethods(unittest.TestCase):
-     def test_load_and_query(self):
+    def test_load_and_query(self):
         input = dict(
             gpu_type="A100",
             gpu_num=4,
@@ -42,7 +42,7 @@ class TestDeployMethods(unittest.TestCase):
                 framework='VLLM',
                 tp=4,
                 tgs=100,
-           )
+            )
         ]
         r = AutoConfig(finetune_file="sample_finetune.csv", deploy_file="sample_deploy.csv").query_deploy(**input)
         self.assertEqual(r, output)

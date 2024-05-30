@@ -1,4 +1,4 @@
-from .core import ComponentBase, register
+from .core import ComponentBase
 
 
 class LazyLLMValidateBase(ComponentBase):

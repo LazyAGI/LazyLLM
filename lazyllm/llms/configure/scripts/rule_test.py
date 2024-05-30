@@ -24,10 +24,10 @@ class TestRule(unittest.TestCase):
 2,8,4,2,TRUE,A,3,"Well done!"
 4,8,4,2,FALSE,C,4,"Excellent!"
 """
-        query = { "A": 0, "B": 0, "C": 1, "D": "0", "E": False }
+        query = {"A": 0, "B": 0, "C": 1, "D": "0", "E": False}
         expect = [
-            { "A": 0, "B": 0, "C": 0, "D": "0", "E": False, "F": "A", "G": 0, "H": 'Hello, world!' },
-            { "A": 0, "B": 0, "C": 0, "D": "0", "E": False, "F": "A", "G": 1, "H": 'Hi' },
+            {"A": 0, "B": 0, "C": 0, "D": "0", "E": False, "F": "A", "G": 0, "H": 'Hello, world!'},
+            {"A": 0, "B": 0, "C": 0, "D": "0", "E": False, "F": "A", "G": 1, "H": 'Hi'},
         ]
 
         c = Configurations(rules)

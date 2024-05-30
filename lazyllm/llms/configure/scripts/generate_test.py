@@ -1,3 +1,4 @@
+# flake8: noqa
 from collections.abc import Callable, Generator, Iterator
 import csv
 import itertools

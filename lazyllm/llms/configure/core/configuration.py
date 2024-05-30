@@ -1,8 +1,8 @@
 import csv
 import os
-from .rule import Configurations, Rule
+from .rule import Configurations
 from typing import Dict, List, Union, Any, TypeVar
-from dataclasses import dataclass, asdict, fields
+from dataclasses import dataclass, fields
 from .protocol import FINETUNE_RULE_SET, DEPLOY_RULE_SET
 
 
@@ -12,7 +12,7 @@ class TrainingConfiguration:
     tp: int
     zero: bool
     gradient_step: int
-    sp: int 
+    sp: int
     ddp: int
     micro_batch_size: int
     tgs: int
@@ -27,12 +27,13 @@ class TrainingConfiguration:
         ddp = gpu_num // tp
         micro_batch_size = batch_size * tp // gpu_num // gradient_step
         assert ddp > 0, f"(gpu num {gpu_num} / tp {tp}  must be greater than 0"
-        assert micro_batch_size > 0, f"(batch size {batch_size} * tp {tp} / gpu number {gpu_num} / gradient step {gradient_step}) must be greater than 0"
+        assert micro_batch_size > 0, (f"(batch size {batch_size} * tp {tp} / gpu number {gpu_num} "
+                                      f"/ gradient step {gradient_step}) must be greater than 0")
 
         data.update(SP=1, MICRO_BATCH_SIZE=micro_batch_size, DDP=ddp)
 
         keys = set(x.name.upper() for x in fields(cls))
-        data = { key.lower(): value for key, value in data.items() if key in keys }
+        data = {key.lower(): value for key, value in data.items() if key in keys}
         return cls(**data)
 
 
@@ -45,7 +46,7 @@ class DeployConfiguration:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
         keys = set(x.name.upper() for x in fields(cls))
-        data = { key.lower(): value for key, value in data.items() if key in keys }
+        data = {key.lower(): value for key, value in data.items() if key in keys}
         return cls(**data)
 
 
@@ -63,13 +64,13 @@ class AutoConfig(object):
 
     def _query(self, *, clazz: type[OutputConfiguration], **kw) -> List[OutputConfiguration]:
         cf = self._finetune if clazz == TrainingConfiguration else self._deploy
-        return [clazz.from_dict(arguments) for arguments in cf.lookup({k.upper():v for k, v in kw.items()})]
-    
+        return [clazz.from_dict(arguments) for arguments in cf.lookup({k.upper(): v for k, v in kw.items()})]
+
     def query_finetune(self, gpu_type: str, gpu_num: int, model_name: str,
                        ctx_len: int, batch_size: int, lora_r: int):
         return self._query(clazz=TrainingConfiguration, gpu_type=gpu_type, gpu_num=gpu_num, model_name=model_name,
                            ctx_len=ctx_len, batch_size=batch_size, lora_r=lora_r)
-    
+
     def query_deploy(self, gpu_type: str, gpu_num: int, model_name: str, max_token_num):
         return self._query(clazz=DeployConfiguration, gpu_type=gpu_type, gpu_num=gpu_num,
                            model_name=model_name, max_token_num=max_token_num)

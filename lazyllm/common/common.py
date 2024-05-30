@@ -1,15 +1,14 @@
 import re
 import builtins
 import typing
-from typing import Any, Iterable, Callable
+from typing import Any, Callable
 from contextlib import contextmanager
-import signal
 import copy
 import threading
 import types
 from queue import Queue
 from pydantic import BaseModel as struct
-from typing import Tuple, Union, List
+from typing import Tuple
 
 import lazyllm
 
@@ -45,9 +44,10 @@ class ArgsDict(dict):
 # will unpack when passing it to the next item.
 class package(tuple):
     def __new__(cls, *args):
-        return super(__class__, cls).__new__(cls, args[0]
-            # Cannot use `Iterable` here because of str
-            if len(args) == 1 and isinstance(args[0], (tuple, list, types.GeneratorType)) else args)
+        if len(args) == 1 and isinstance(args[0], (tuple, list, types.GeneratorType)):
+            return super(__class__, cls).__new__(cls, args[0])
+        else:
+            return super(__class__, cls).__new__(cls, args)
 
 
 class kwargs(dict):
@@ -85,6 +85,7 @@ root = AttrTree()
 
 class Placeholder(object):
     _pool = dict()
+
     def __new__(cls, idx):
         if idx not in Placeholder._pool:
             Placeholder._pool[idx] = super().__new__(cls)
@@ -136,7 +137,7 @@ setattr(builtins, 'bind', Bind)
 
 
 class LazyLLMCMD(object):
-    def __init__(self, cmd, *, return_value=None, checkf=(lambda *a : True), no_displays=None):
+    def __init__(self, cmd, *, return_value=None, checkf=(lambda *a: True), no_displays=None):
         if isinstance(cmd, (tuple, list)):
             cmd = ' && '.join(cmd)
         assert isinstance(cmd, str) or callable(cmd), 'cmd must be func or (list of) bash command str.'
@@ -253,6 +254,7 @@ class Identity():
 class ResultCollector(object):
     class Impl(object):
         def __init__(self, name, value): self._name, self._value = name, value
+
         def __call__(self, *args, **kw):
             assert (len(args) == 0) ^ (len(kw) == 0), f'args({len(args)}), kwargs({len(kw)})'
             assert self._name is not None
@@ -262,7 +264,6 @@ class ResultCollector(object):
             else:
                 self._value[self._name] = kw
                 return kwargs(kw)
-
 
     def __init__(self): self._value = dict()
     def __call__(self, name): return ResultCollector.Impl(name, self._value)
@@ -288,7 +289,7 @@ class LazyLlmRequest(struct):
             assert flag == len(self.input), 'input size mismatch with split number'
             return [LazyLlmRequest(input=inp, global_parameters=self.global_parameters) for inp in self.input]
         elif isinstance(flag, list):
-            if isinstance(self.input, dict): 
+            if isinstance(self.input, dict):
                 assert len(self.kwargs) == 0, 'Cannot provived input and kwargs at the same time for split'
                 d = self.input
             else:
@@ -362,7 +363,6 @@ class ReprRule(object):
 
 def rreplace(s, old, new, count):
     return (s[::-1].replace(old[::-1], new[::-1], count))[::-1]
-        
 
 def make_repr(category, type, *, name=None, subs=[], attrs=dict(), **kw):
     if len(kw) > 0:
@@ -370,10 +370,10 @@ def make_repr(category, type, *, name=None, subs=[], attrs=dict(), **kw):
         attrs = kw
 
     if isinstance(type, builtins.type): type = type.__name__
-    name = f' name={name}' if name else '' 
-    attrs = ' ' + ' '.join([f'{k}={v}' for k, v in attrs.items()]) if attrs else '' 
+    name = f' name={name}' if name else ''
+    attrs = ' ' + ' '.join([f'{k}={v}' for k, v in attrs.items()]) if attrs else ''
     repr = f'<{category} type={type}{name}{attrs}>'
-    
+
     if len(subs) == 1 and ReprRule.check_combine(category, type, subs[0]):
         if lazyllm.config['repr_ml']:
             sub_cate = re.split('>| ', subs[0][1:])[0]
@@ -392,7 +392,7 @@ def make_repr(category, type, *, name=None, subs=[], attrs=dict(), **kw):
                 else:
                     sub_repr.append(f' └- {v}' if i == 0 else f'    {v}')
             else:
-                sub_repr.append(f'    {v}') 
+                sub_repr.append(f'    {v}')
     if len(sub_repr) > 0: repr += ('\n' + '\n'.join(sub_repr) + '\n')
     if lazyllm.config['repr_ml']: repr += f'</{category}>'
     return repr
