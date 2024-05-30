@@ -210,20 +210,23 @@ class UrlModule(ModuleBase):
     # Cannot modify or add any attrubute of self
     # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
     # deploy parameters keys are in **kw
-    def forward(self, __input=None, *, llm_chat_history=None, **kw):
+    def forward(self, __input=None, *, llm_chat_history=None, **kw):  # noqa C901
         assert self._url is not None, f'Please start {self.__class__} first'
-        assert len(kw) == 0 or self.template_message is not None, 'kwargs are used in deploy parameters'
+        assert len(kw) == 0 or not isinstance(__input, LazyLlmRequest), \
+            'Cannot provide LazyLlmRequest and kw args at the same time.'
 
         input, kw = (__input.input, __input.kwargs) if isinstance(__input, LazyLlmRequest) else (__input, kw)
         input = self._prompt.generate_prompt(input, llm_chat_history)
 
-        if self._meta == ServerModule and isinstance(__input, LazyLlmRequest):
-            __input.input = input
+        if self._meta == ServerModule:
+            if isinstance(__input, LazyLlmRequest): __input.input = input
+            else: __input = LazyLlmRequest(input=input, kwargs=kw)
             data = codecs.encode(pickle.dumps(__input), 'base64').decode('utf-8')
         elif self.template_message is not None:
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
             data[self.input_key_name] = input
         else:
+            if len(kw) == 0: raise NotImplementedError('kwargs are not allowed in UrlModule')
             data = input
 
         def _callback(text):
