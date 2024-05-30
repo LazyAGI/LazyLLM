@@ -343,7 +343,7 @@ class ReqResHelper(object):
             return res
         else:
             res = res.input if isinstance(res, LazyLlmRequest) else res
-            return LazyLlmResponse(messages=res, trace=self.trace) if self.trace and force else res
+            return LazyLlmResponse(messages=res, trace=self.trace) if self.trace or force else res
 
 
 class ReprRule(object):

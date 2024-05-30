@@ -14,6 +14,12 @@ from .module import (OpenAIEmbedding, GLMEmbedding, SenseNovaEmbedding, QwenEmbe
 from .module import  Document, Retriever, Rerank
 from . import flows
 from .client import redis_client
+from .rag.tools import (
+    Document,
+    DocumentImpl,
+    DocumentManager,
+    DocWebModule
+)
 
 pipeline, parallel = flows.pipeline, flows.parallel
 diverter, loop = flows.Diverter, flows.Loop
@@ -64,6 +70,11 @@ __all__ = [
 
     # client
     'redis_client',
+
+    'Document',
+    'DocumentImpl',
+    'DocumentManager',
+    'DocWebModule'
 ]
 
 __all__ += common.__all__  # noqa F405
