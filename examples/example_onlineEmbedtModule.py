@@ -8,6 +8,10 @@ class TestOnlineEmbedModule(unittest.TestCase):
         emb = m("hello world")
         print(f"emb: {emb}")
 
+    def test_openai_isinstance(self):
+        m = lazyllm.OnlineEmbeddingModule(source="openai")
+        self.assertTrue(isinstance(m, lazyllm.OnlineEmbeddingModule))
+
     def test_glm_embedding(self):
         m = lazyllm.OnlineEmbeddingModule(source="glm")
         emb = m("hello world")

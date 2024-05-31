@@ -3,8 +3,17 @@ from .openaiEmbed import OpenAIEmbedding
 from .glmEmbed import GLMEmbedding
 from .sensenovaEmbed import SenseNovaEmbedding
 from .qwenEmbed import QwenEmbedding
+from .onlineEmbeddingModuleBase import OnlineEmbeddingModuleBase
 
-class OnlineEmbeddingModule:
+class __EmbedModuleMeta(type):
+
+    def __instancecheck__(self, __instance: Any) -> bool:
+        if isinstance(__instance, OnlineEmbeddingModuleBase):
+            return True
+        return super().__instancecheck__(__instance)
+
+
+class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
 
     @staticmethod
     def _encapsulate_parameters(embed_url: str,
