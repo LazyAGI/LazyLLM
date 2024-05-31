@@ -7,11 +7,8 @@ from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                    FastapiApp)
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, WebModule, TrialModule, register as moduleregister,
-                     OpenAIModule, MoonshotAIModule, GLMModule, SenseNovaModule,
-                     QwenModule, DoubaoModule, OnlineChatModule)
-from .module import (OpenAIEmbedding, GLMEmbedding, SenseNovaEmbedding, QwenEmbedding, 
-                     OnlineEmbeddingModule)
-from .module import  Document, Retriever, Rerank
+                     OnlineChatModule, OnlineEmbeddingModule)
+from .module import Document, Retriever, Rerank
 from . import flows
 from .client import redis_client
 from .rag.tools import (
@@ -63,6 +60,8 @@ __all__ = [
     'WebModule',
     'TrialModule',
     'moduleregister',
+    'OnlineChatModule',
+    'OnlineEmbeddingModule',
 
     'Document',
     'Retriever',

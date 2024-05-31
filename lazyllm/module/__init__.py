@@ -3,18 +3,8 @@ from .module import (ModuleBase, TrainableModule, ActionModule,
 from .webmodule import WebModule
 from .trialmodule import TrialModule
 from .ragmodule import Document, Retriever, Rerank
-from .onlineChatModule import (OpenAIModule, 
-                               MoonshotAIModule, 
-                               GLMModule, 
-                               SenseNovaModule, 
-                               QwenModule, 
-                               DoubaoModule,
-                               OnlineChatModule)
-from .onlineEmbedding import (OpenAIEmbedding, 
-                              GLMEmbedding, 
-                              SenseNovaEmbedding, 
-                              QwenEmbedding, 
-                              OnlineEmbeddingModule)
+from .onlineChatModule import OnlineChatModule
+from .onlineEmbedding import OnlineEmbeddingModule
 
 import lazyllm
 # openai api key
@@ -43,16 +33,6 @@ __all__ = [
     'Document',
     'Retriever',
     'Rerank',
-    "OpenAIModule",
-    "MoonshotAIModule",
-    "GLMModule",
-    "SenseNovaModule",
-    "QwenModule",
-    "DoubaoModule",
     "OnlineChatModule",
-    "OpenAIEmbedding",
-    "GLMEmbedding",
-    "SenseNovaEmbedding",
-    "QwenEmbedding",
     "OnlineEmbeddingModule"
 ]

@@ -33,6 +33,10 @@ class TestOnlineChatModule(unittest.TestCase):
         m._get_train_tasks()
         m._get_deploy_tasks()
 
+    def test_openai_isinstance(self):
+        m = lazyllm.OnlineChatModule(source="openai", base_url="https://gf.nekoapi.com/v1", stream=True)
+        self.assertTrue(isinstance(m, lazyllm.OnlineChatModule))
+
     def test_kimi_stream_inference(self):
         m = lazyllm.OnlineChatModule(source="kimi", stream=True)
         querys = ['Hello!', '你是谁', '你会做什么', '讲个笑话吧', '你懂摄影吗']
