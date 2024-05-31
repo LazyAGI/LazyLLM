@@ -1,4 +1,5 @@
 [flake8]
+exclude = examples/
 max-line-length = 121
 # E701: multiple statements on one line (colon)
 # E702: multiple statements on one line (semicolon)
