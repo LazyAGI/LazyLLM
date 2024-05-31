@@ -72,7 +72,7 @@ class OnlineChatModuleBase(ModuleBase):
         cur_msg = json.loads(response)["choices"][0]["message"]
         return cur_msg
 
-    def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, **kw):
+    def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, **kw):  # noqa C901
         """LLM inference interface"""
         input = __input["query"] if isinstance(__input, dict) else __input
 

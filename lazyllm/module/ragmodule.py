@@ -22,7 +22,8 @@ class Document(ModuleBase):
         Document.register_parser(name='MediumChunk', transform='get_deeper_nodes', depth=1, parent='Hierarchy')
         Document.register_parser(name='FineChunk', transform='get_deeper_nodes', depth=2, parent='Hierarchy')
         Document.register_parser(name='SentenceDivider', transform='SentenceSplitter', chunk_size=1024, chunk_overlap=20)
-        Document.register_parser(name='TokenDivider', transform='TokenTextSplitter', chunk_size=1024, chunk_overlap=20, separator=" ")
+        Document.register_parser(name='TokenDivider', transform='TokenTextSplitter', chunk_size=1024,
+                                 chunk_overlap=20, separator=" ")
         Document.register_parser(name='HtmlExtractor', transform='HTMLNodeParser', tags=["p", "h1"])
         Document.register_parser(name='JsonExtractor', transform='JSONNodeParser')
         Document.register_parser(name='MarkDownExtractor', transform='MarkdownNodeParser')
@@ -121,9 +122,9 @@ class Document(ModuleBase):
             return node['retrievers'][signature]
         if signature in node['retrievers_algo']:
             func_info = node['retrievers_algo'][signature]
-            assert func_info['algo'] in self.registered_retriever,\
-                (f"Unable to find retriever algorithm {func_info['algo']}, "
-                 "please check the algorithm name or register a new one.")
+            assert func_info['algo'] in self.registered_retriever, (
+                f"Unable to find retriever algorithm {func_info['algo']}, "
+                "please check the algorithm name or register a new one.")
             retriever = self.registered_retriever[func_info['algo']](
                 name, self.nodes_dict[name], self.embed, func_info['algo_kw'], self.store)
             node['retrievers'][signature] = retriever
@@ -132,7 +133,7 @@ class Document(ModuleBase):
             raise ValueError(f"Func '{signature}' donse not exist.")
 
     def _query_with_sig(self, string, signature, parser):
-        if type(string) == LazyLlmRequest:
+        if type(string) is LazyLlmRequest:
             string = string.input
         retriever = self.get_retriever(parser, signature)
         if not isinstance(string, llama_index.core.schema.QueryBundle):
@@ -219,18 +220,12 @@ def defatult(name, nodes, embed, func_kw, store):
 @Document.register_retriever
 def chinese_bm25(name, nodes, embed, func_kw, store):
     from ..rag.component.bm25_retriever import ChineseBM25Retriever
-    return ChineseBM25Retriever.from_defaults(
-            nodes=nodes['nodes'],
-            **func_kw
-        )
+    return ChineseBM25Retriever.from_defaults(nodes=nodes['nodes'], **func_kw)
 
 @Document.register_retriever
 def bm25(name, nodes, embed, func_kw, store):
     from llama_index.retrievers.bm25 import BM25Retriever
-    return BM25Retriever.from_defaults(
-            nodes=nodes['nodes'],
-            **func_kw
-        )
+    return BM25Retriever.from_defaults(nodes=nodes['nodes'], **func_kw)
 
 class Retriever(ModuleBase):
     __enable_request__ = False

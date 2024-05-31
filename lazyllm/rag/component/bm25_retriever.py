@@ -5,7 +5,6 @@ from typing import Callable, List, Optional, cast, Set
 from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.callbacks import CallbackManager
 from llama_index.core.constants import DEFAULT_SIMILARITY_TOP_K
-from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.indices.vector_store.base import VectorStoreIndex
 from llama_index.core.schema import BaseNode, IndexNode, NodeWithScore, QueryBundle, MetadataMode
 from llama_index.core.storage.docstore.types import BaseDocumentStore
@@ -49,7 +48,7 @@ class ChineseBM25Retriever(BaseRetriever):
         self._tokenizer = tokenizer or tokenize_remove_stopwords
         self._similarity_top_k = similarity_top_k
         self._corpus = [self._tokenizer(node.get_content(MetadataMode.NONE)) for node in self._nodes]
-        
+
         self.bm25 = BM25Okapi(self._corpus)
         super().__init__(
             callback_manager=callback_manager,
@@ -60,14 +59,13 @@ class ChineseBM25Retriever(BaseRetriever):
 
     @classmethod
     def from_defaults(
-        cls,
-        index: Optional[VectorStoreIndex] = None,
-        nodes: Optional[List[BaseNode]] = None,
-        docstore: Optional[BaseDocumentStore] = None,
-        tokenizer: Optional[Callable[[str], List[str]]] = None,
-        similarity_top_k: int = DEFAULT_SIMILARITY_TOP_K,
-        verbose: bool = False,
-    ) -> "BM25Retriever":
+            cls,
+            index: Optional[VectorStoreIndex] = None,
+            nodes: Optional[List[BaseNode]] = None,
+            docstore: Optional[BaseDocumentStore] = None,
+            tokenizer: Optional[Callable[[str], List[str]]] = None,
+            similarity_top_k: int = DEFAULT_SIMILARITY_TOP_K,
+            verbose: bool = False):
         # ensure only one of index, nodes, or docstore is passed
         if sum(bool(val) for val in [index, nodes, docstore]) != 1:
             raise ValueError("Please pass exactly one of index, nodes, or docstore.")

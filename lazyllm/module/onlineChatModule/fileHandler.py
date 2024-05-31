@@ -10,7 +10,7 @@ class FileHandlerBase:
     def __init__(self):
         self._roles = ["system", "knowledge", "user", "assistant"]
 
-    def _validate_json(self, data_path: str) -> None:
+    def _validate_json(self, data_path: str) -> None:  # noqa C901
         """
         Check if the file exists and Verify whether the data format meets the requirements.
         """
