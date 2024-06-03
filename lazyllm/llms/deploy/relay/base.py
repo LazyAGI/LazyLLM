@@ -2,6 +2,8 @@ import os
 import random
 import base64
 import inspect
+import sys
+
 from lazyllm import launchers, LazyLLMCMD
 from ..base import LazyLLMDeployBase, verify_fastapi_func
 from lazyllm.thirdparty import cloudpickle
@@ -42,7 +44,7 @@ class RelayServer(LazyLLMDeployBase):
 
         def impl():
             self.real_port = self.port if self.port else random.randint(30000, 40000)
-            cmd = f'python {run_file_path} --open_port={self.real_port} --function="{self.func}" '
+            cmd = f'{sys.executable} {run_file_path} --open_port={self.real_port} --function="{self.func}" '
             if self.pre:
                 cmd += f'--before_function="{self.pre}" '
             if self.post:

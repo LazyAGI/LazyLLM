@@ -8,15 +8,10 @@ from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, WebModule, TrialModule, register as moduleregister,
                      OnlineChatModule, OnlineEmbeddingModule)
-from .module import Document, Retriever, Rerank
-from . import flows
+from .module import Retriever, Rerank
 from .client import redis_client
-from .rag.tools import (
-    Document,
-    DocumentImpl,
-    DocumentManager,
-    DocWebModule
-)
+from .rag.tools import Document
+from . import flows
 
 pipeline, parallel = flows.pipeline, flows.parallel
 diverter, loop = flows.Diverter, flows.Loop
@@ -63,17 +58,13 @@ __all__ = [
     'OnlineChatModule',
     'OnlineEmbeddingModule',
 
-    'Document',
-    'Retriever',
-    'Rerank',
-
     # client
     'redis_client',
 
+    # tools
     'Document',
-    'DocumentImpl',
-    'DocumentManager',
-    'DocWebModule'
+    'Retriever',
+    'Rerank',
 ]
 
 __all__ += common.__all__  # noqa F405

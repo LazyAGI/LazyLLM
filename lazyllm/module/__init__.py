@@ -2,7 +2,7 @@ from .module import (ModuleBase, TrainableModule, ActionModule,
                      ServerModule, UrlModule, register)
 from .webmodule import WebModule
 from .trialmodule import TrialModule
-from .ragmodule import Document, Retriever, Rerank
+from .ragmodule import DocImpl, Retriever, Rerank
 from .onlineChatModule import OnlineChatModule
 from .onlineEmbedding import OnlineEmbeddingModule
 
@@ -30,9 +30,10 @@ __all__ = [
     'ServerModule',
     'WebModule',
     'TrialModule',
-    'Document',
+    'DocImpl',
     'Retriever',
     'Rerank',
     "OnlineChatModule",
-    "OnlineEmbeddingModule"
+    "OnlineEmbeddingModule",
+    "DocImpl",
 ]

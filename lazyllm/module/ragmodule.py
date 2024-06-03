@@ -11,25 +11,25 @@ import lazyllm
 
 register_flag = lazyllm.once_flag()
 
-class Document(ModuleBase):
+class DocImpl(ModuleBase):
     registered_retriever = dict()
     parser_rule_dict = dict()
 
-    @staticmethod
-    def register():
-        Document.register_parser(name='Hierarchy', transform='HierarchicalNodeParser', chunk_sizes=[1024, 512, 128])
-        Document.register_parser(name='CoarseChunk', transform='get_deeper_nodes', depth=0, parent='Hierarchy')
-        Document.register_parser(name='MediumChunk', transform='get_deeper_nodes', depth=1, parent='Hierarchy')
-        Document.register_parser(name='FineChunk', transform='get_deeper_nodes', depth=2, parent='Hierarchy')
-        Document.register_parser(name='SentenceDivider', transform='SentenceSplitter', chunk_size=1024, chunk_overlap=20)
-        Document.register_parser(name='TokenDivider', transform='TokenTextSplitter', chunk_size=1024,
-                                 chunk_overlap=20, separator=" ")
-        Document.register_parser(name='HtmlExtractor', transform='HTMLNodeParser', tags=["p", "h1"])
-        Document.register_parser(name='JsonExtractor', transform='JSONNodeParser')
-        Document.register_parser(name='MarkDownExtractor', transform='MarkdownNodeParser')
+    @classmethod
+    def register(cls):
+        cls.register_parser(name='Hierarchy', transform='HierarchicalNodeParser', chunk_sizes=[1024, 512, 128])
+        cls.register_parser(name='CoarseChunk', transform='get_deeper_nodes', depth=0, parent='Hierarchy')
+        cls.register_parser(name='MediumChunk', transform='get_deeper_nodes', depth=1, parent='Hierarchy')
+        cls.register_parser(name='FineChunk', transform='get_deeper_nodes', depth=2, parent='Hierarchy')
+        cls.register_parser(name='SentenceDivider', transform='SentenceSplitter', chunk_size=1024, chunk_overlap=20)
+        cls.register_parser(name='TokenDivider', transform='TokenTextSplitter',
+                            chunk_size=1024, chunk_overlap=20, separator=" ")
+        cls.register_parser(name='HtmlExtractor', transform='HTMLNodeParser', tags=["p", "h1"])
+        cls.register_parser(name='JsonExtractor', transform='JSONNodeParser')
+        cls.register_parser(name='MarkDownExtractor', transform='MarkdownNodeParser')
 
     def __new__(cls, *args, **kw):
-        lazyllm.call_once(register_flag, Document.register)
+        lazyllm.call_once(register_flag, cls.register)
         return super().__new__(cls, *args, **kw)
 
     def __init__(self, embed, doc_path=None, doc_files=None, doc_name='LazyDocument'):
@@ -39,7 +39,7 @@ class Document(ModuleBase):
         self.embed = LLamaIndexEmbeddingWrapper(embed)
 
         self.docs = None
-        self.nodes_dict = copy.deepcopy(Document.parser_rule_dict)
+        self.nodes_dict = copy.deepcopy(DocImpl.parser_rule_dict)
         self.store = LazyStore(doc_name)
 
     def load_files(self, doc_path=None, doc_files=None):
@@ -62,15 +62,15 @@ class Document(ModuleBase):
     @staticmethod
     def _register_parser(cls, name, transform, parent=None, **kwargs):
         assert name not in cls, f'Duplicate rule: {name}'
-        cls[name] = dict(parser=transform if callable(transform) else Document.get_llamaindex_transform(transform),
+        cls[name] = dict(parser=transform if callable(transform) else DocImpl.get_llamaindex_transform(transform),
                          parser_kw=kwargs, parent_name=parent, nodes=None, retrievers_algo={}, retrievers={})
 
     @classmethod
     def register_parser(cls, name, transform, parent=None, **kw):
-        Document._register_parser(cls.parser_rule_dict, name, transform, parent, **kw)
+        DocImpl._register_parser(cls.parser_rule_dict, name, transform, parent, **kw)
 
     def add_parse(self, name, transform, parent=None, **kw):
-        Document._register_parser(self.nodes_dict, name, transform, parent, **kw)
+        DocImpl._register_parser(self.nodes_dict, name, transform, parent, **kw)
         return self
 
     def add_algo(self, signature, algo, algo_kw, parser):
@@ -87,12 +87,6 @@ class Document(ModuleBase):
         hashed_signature = hashlib.sha256(signature.encode()).hexdigest()
         self.add_algo(hashed_signature, algo, algo_kw, parser)
         return hashed_signature
-
-    def forward(self, query):
-        if not self.default_signature:
-            self.default_signature = self.generate_signature(
-                'default', dict(similarity_top_k=3), 'SentenceDivider')
-        return self._query_with_sig(query, self.default_signature, parser='SentenceDivider')
 
     def _get_node(self, name):
         self.store.lazy_init()
@@ -208,7 +202,7 @@ class Document(ModuleBase):
             for signature in node["retrievers_algo"].keys():
                 self.get_retriever(parser_name, signature)
 
-@Document.register_retriever
+@DocImpl.register_retriever
 def defatult(name, nodes, embed, func_kw, store):
     index = store.get_index(
         nodes_name=name,
@@ -217,12 +211,12 @@ def defatult(name, nodes, embed, func_kw, store):
     )
     return index.as_retriever(**func_kw)
 
-@Document.register_retriever
+@DocImpl.register_retriever
 def chinese_bm25(name, nodes, embed, func_kw, store):
     from ..rag.component.bm25_retriever import ChineseBM25Retriever
     return ChineseBM25Retriever.from_defaults(nodes=nodes['nodes'], **func_kw)
 
-@Document.register_retriever
+@DocImpl.register_retriever
 def bm25(name, nodes, embed, func_kw, store):
     from llama_index.retrievers.bm25 import BM25Retriever
     return BM25Retriever.from_defaults(nodes=nodes['nodes'], **func_kw)

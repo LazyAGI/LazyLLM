@@ -4,28 +4,21 @@ import shutil
 from typing import List
 
 import lazyllm
-from lazyllm import Document as SubDocument
+from lazyllm.module import DocImpl
 
 DATA_DIR = "__data"
 
-class DocumentImpl(lazyllm.ModuleBase):
+class DocGroupImpl(lazyllm.ModuleBase):
     def __init__(self, dataset_path, embed) -> None:
         super().__init__()
         self._dataset_path = dataset_path
         self._embed = embed
         file_paths = self._list_all_files(self.dataset_path, lambda x: DATA_DIR in x)
-        self._sub_doc: SubDocument = SubDocument(doc_files=file_paths, embed=self._embed, doc_name="lazyllm_doc")
+        self._impl: DocImpl = DocImpl(doc_files=file_paths, embed=self._embed, doc_name="lazyllm_doc")
 
     @property
     def dataset_path(self):
         return self._dataset_path
-
-    @property
-    def sub_doc(self):
-        return self._sub_doc
-
-    def __call__(self):
-        pass
 
     def new_group(self, group_name: str):
         if os.path.exists(self.get_group_path(group_name=group_name)):
@@ -42,7 +35,7 @@ class DocumentImpl(lazyllm.ModuleBase):
         try:
             shutil.rmtree(self.get_group_path(group_name))
             list_files = self.list_files(group_name)
-            self._sub_doc.delete_files(list_files)
+            self._impl.delete_files(list_files)
         except Exception as e:
             raise Exception(f"{self.get_group_path(group_name)} delete error, exception:{e}")
 
@@ -55,13 +48,16 @@ class DocumentImpl(lazyllm.ModuleBase):
     def add_files(self, group_name: str, files: List[str]):
         source_path = self.get_group_source_path(group_name)
         files = [os.path.join(source_path, file_path) for file_path in files]
-        self._sub_doc.add_files(files)
+        self._impl.add_files(files)
 
-    def delete_files(self, group_name: str, files: List[str]):
+    def delete_files(self, group_name: str, files: List[str], is_del_source: bool = True):
+        self._impl.delete_files(files)
+
+        if not is_del_source: return
+
         source_path = self.get_group_source_path(group_name)
         for file_path in [os.path.join(source_path, file_path) for file_path in files]:
             os.remove(file_path)
-        self._sub_doc.delete_files(files)
 
     def list_files(self, group_name: str) -> List[str]:
         file_paths = self._list_all_files(self.get_group_source_path(group_name=group_name), lambda x: DATA_DIR in x)
@@ -108,3 +104,12 @@ class DocumentImpl(lazyllm.ModuleBase):
         except Exception as e:
             lazyllm.LOG.error(f"Error while listing files in {directory}: {e}")
             return []
+
+    def generate_signature(self, algo, algo_kw, parser):
+        return self._impl.generate_signature(algo, algo_kw, parser)
+
+    def query_with_sig(self, string, signature, parser):
+        return self._impl._query_with_sig(string, signature, parser)
+
+    def __repr__(self):
+        return lazyllm.make_repr('Module', 'DocGroupImpl')
