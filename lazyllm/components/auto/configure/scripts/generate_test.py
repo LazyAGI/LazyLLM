@@ -11,7 +11,7 @@ T = typing.TypeVar("T")
 
 def values(rule: proto.Rule[T], default: Union[T, None] = None) -> List[T]:
     if rule.options is None:
-        return [ default or rule.value_type() ]
+        return [default or rule.value_type()]
     return rule.options
 
 def overwrite(input: Dict[str, List[typing.Any]], **kwargs: List[typing.Any]) -> Dict[str, List[typing.Any]]:
@@ -21,9 +21,10 @@ def overwrite(input: Dict[str, List[typing.Any]], **kwargs: List[typing.Any]) ->
     input.update(**kwargs)
     return input
 
-def combine(options: Dict[str, List[typing.Any]], **constraints: Callable[[Dict[str, typing.Any]], bool]) -> Generator[Iterator[typing.Any], typing.Any, None]:
+def combine(options: Dict[str, List[typing.Any]], **constraints: Callable[[Dict[str, typing.Any]], bool])\
+        -> Generator[Iterator[typing.Any], typing.Any, None]:
     limit = len(options)
-    input = [ (key, value) for key, value in options.items() ]
+    input = [(key, value) for key, value in options.items()]
     output: Dict[str, typing.Any] = {}
 
     def f(index: int) -> Generator[Iterator[typing.Any], typing.Any, None]:
@@ -52,9 +53,9 @@ def generate(filename: str, head: List[typing.Any], body: Iterator[Iterator[typi
 
 
 class TestGenerateEmptyCSV(unittest.TestCase):
-    def test_generate_csv(self):
+    def test_generate_csv(self): # noqa C901
         rules = proto.TRAINING_RULE_SET
-        items = { rule.name : values(rule) for rule in rules }
+        items = {rule.name: values(rule) for rule in rules}
         items = overwrite(
             items,
             GPU_NUM=[1, 2, 4, 8, 16, 24, 32],
@@ -96,9 +97,9 @@ class TestGenerateEmptyCSV(unittest.TestCase):
             m = to_gpu_memory(_["GPU_TYPE"])
             options = proto.GPU_NUM.options
             assert options is not None and proto.GPU_NUM.indexed
-            l = min(i for i, x in enumerate(options) if r <= x * m)
+            le = min(i for i, x in enumerate(options) if r <= x * m)
             r = options.index(_["GPU_NUM"])
-            return l <= r <= l + 2
+            return le <= r <= le + 2
 
         def tp_constraint(_: Dict[str, typing.Any]) -> bool:
             if _["TP"] > _["GPU_NUM"] or to_parameter_size(_["MODEL_NAME"]) > 30 * _["TP"]:
@@ -139,7 +140,8 @@ class TestGenerateEmptyCSV(unittest.TestCase):
             for i, gradient_step in enumerate(options):
                 require = to_parameter_size(_["MODEL_NAME"]) * 2 / _["TP"] + \
                     gradient_size[_["MODEL_NAME"]] * _["GRADIENT_STEP"] + \
-                    minimium_activation_size[_["MODEL_NAME"]] * _["CTX_LEN"] * _["BATCH_SIZE"] * _["TP"] * _["PP"] / gradient_step / 128.0
+                    minimium_activation_size[_["MODEL_NAME"]] * _["CTX_LEN"] * \
+                    _["BATCH_SIZE"] * _["TP"] * _["PP"] / gradient_step / 128.0
                 if require < to_gpu_memory(_["GPU_TYPE"]) * _["GPU_NUM"]:
                     return _["GRADIENT_STEP"] in options[i: min(i + 1, len(options))]
             return False
@@ -150,13 +152,13 @@ class TestGenerateEmptyCSV(unittest.TestCase):
             return _["LORA_R"] > 0
 
         body = combine(items,
-            MODEL_NAME = model_name_constraint,
-            TP = tp_constraint,
-            PP = pp_constraint,
-            GRADIENT_STEP = gradient_step_constraint, 
-            LORA_R = lora_r_constraint)
+                       MODEL_NAME=model_name_constraint,
+                       TP=tp_constraint,
+                       PP=pp_constraint,
+                       GRADIENT_STEP=gradient_step_constraint,
+                       LORA_R=lora_r_constraint)
 
-        head = [ rule.name for rule in rules ]
+        head = [rule.name for rule in rules]
         size = generate('sample_finetune_empty.csv', head, itertools.islice(body, 1000000))
         print(f"GENERATE {size} cases")
 

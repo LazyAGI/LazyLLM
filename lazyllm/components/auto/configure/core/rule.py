@@ -100,9 +100,9 @@ class Rule(Generic[T]):
             raise ValueError("either 'options' or 'convert' should be provided")
         if options is not None and len(options.options) == 0:
             raise ValueError("empty options is invalid")
-        if (options is not None and options.matches in [SearchMode.BINARY_EXACTLY, SearchMode.BINARY_FLOOR,
-                                                        SearchMode.BINARY_CEIL]
-                and not Rule.__is_ordered(options.options)):
+        if (options is not None and options.matches
+           in [SearchMode.BINARY_EXACTLY, SearchMode.BINARY_FLOOR, SearchMode.BINARY_CEIL] and not
+           Rule.__is_ordered(options.options)):
             raise ValueError("cannot perform binary-search on unordered options")
 
         self._name = name
@@ -182,8 +182,7 @@ class Rule(Generic[T]):
                 if not (hasattr(ops[i], '__lt__') and ops[i] < ops[i + 1]):
                     return False
             return True
-        return (len(options) > 0 and all(isinstance(o, int) for o in options)
-                and is_list_monotonic_increasing(options))
+        return len(options) > 0 and all(isinstance(o, int) for o in options) and is_list_monotonic_increasing(options)
 
 
 class Configurations:

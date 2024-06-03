@@ -1,9 +1,33 @@
 from .base import LazyLLMFinetuneBase
 from lazyllm import launchers, ArgsDict
 import os
+import copy
+import random
 
 
 class AlpacaloraFinetune(LazyLLMFinetuneBase):
+    defatult_kw = ArgsDict({
+        'data_path': None,
+        'batch_size': 64,
+        'micro_batch_size': 4,
+        'num_epochs': 2,
+        'learning_rate': 5.e-4,
+        'cutoff_len': 1030,
+        'filter_nums': 1024,
+        'val_set_size': 200,
+        'lora_r': 8,
+        'lora_alpha': 32,
+        'lora_dropout': 0.05,
+        'lora_target_modules': '[query_key_value,dense,dense_4h_to_h,dense_h_to_4h]',
+        'modules_to_save': '[word_embeddings, output_layer]',
+        'deepspeed': '',
+        'prompt_template_name': 'alpaca',
+        'train_on_inputs': True,
+        'show_prompt': False,
+        'nccl_port': 19081,
+    })
+    auto_map = {'micro_batch_size': 'micro_batch_size'}
+
     def __init__(self,
                  base_model,
                  target_path,
@@ -23,25 +47,9 @@ class AlpacaloraFinetune(LazyLLMFinetuneBase):
         )
         self.folder_path = os.path.dirname(os.path.abspath(__file__))
         deepspeed_config_path = os.path.join(self.folder_path, 'alpaca-lora/ds.json')
-        self.kw = ArgsDict({
-            'data_path': None,
-            'batch_size': 64,
-            'micro_batch_size': 4,
-            'num_epochs': 2,
-            'learning_rate': 5.e-4,
-            'cutoff_len': 1030,
-            'filter_nums': 1024,
-            'val_set_size': 200,
-            'lora_r': 8,
-            'lora_alpha': 32,
-            'lora_dropout': 0.05,
-            'lora_target_modules': '[query_key_value,dense,dense_4h_to_h,dense_h_to_4h]',
-            'modules_to_save': '[word_embeddings, output_layer]',
-            'deepspeed': deepspeed_config_path,
-            'prompt_template_name': 'alpaca',
-            'train_on_inputs': True,
-            'show_prompt': False
-        })
+        self.kw = copy.deepcopy(self.defatult_kw)
+        self.kw['deepspeed'] = deepspeed_config_path
+        self.kw['nccl_port'] = random.randint(19000, 20500)
         self.kw.check_and_update(kw)
         self.merge_path = merge_path
         self.cp_files = cp_files

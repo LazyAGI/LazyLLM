@@ -22,9 +22,10 @@ class Lightllm(LazyLLMDeployBase):
             "top_k": -1,  # -1 is for all
             "ignore_eos": False,
             'max_new_tokens': 512,
-            "stop_sequences": None
+            "stop_sequences": None,
         }
     }
+    auto_map = {'tp': 'tp'}
 
     def __init__(self,
                  trust_remote_code=True,
@@ -41,6 +42,7 @@ class Lightllm(LazyLLMDeployBase):
             'host': '0.0.0.0',
             'nccl_port': None,
             'tokenizer_mode': 'auto',
+            "running_max_req_size": 256,
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)

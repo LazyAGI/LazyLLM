@@ -1,5 +1,5 @@
 import lazyllm
-from builtins import package, dataproc, finetune
+from builtins import package, dataproc, finetune, launchers
 
 
 @lazyllm.component_register('dataproc')
@@ -9,10 +9,13 @@ def gen_data(idx):
     return package(datapath, None)
 
 finetuner = finetune.AutoFinetune(
-        model_name='chatglm3-6b',
-        gpu_count=4,
-        target_path='/mnt/lustrenew/share_data/sunxiaoye/Models/ChatGLM3-6B/easy_tdx0304',
-        base_model='/mnt/lustrenew/share_data/sunxiaoye/lazyllm_models_home/chatglm3-6b',
+        target_path='/mnt/lustrenew/share_data/sunxiaoye/Models/Internlm2-chat-20b/lazy_demo/lora',
+        base_model='/mnt/lustrenew/share_data/sunxiaoye/Models/internlm2-chat-20b',
+        batch_size=4,
+        launcher=launchers.slurm(partition='pat_rd',
+                                 ngpus=2,
+                                 nproc=2,
+                                 )
     )
 
 ppl = lazyllm.pipeline(

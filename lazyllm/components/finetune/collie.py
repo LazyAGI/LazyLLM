@@ -1,9 +1,32 @@
 from .base import LazyLLMFinetuneBase
 from lazyllm import launchers, ArgsDict
 import os
+import copy
 
 
 class CollieFinetune(LazyLLMFinetuneBase):
+    defatult_kw = ArgsDict({
+        'data_path': None,
+        'batch_size': 64,
+        'micro_batch_size': 4,
+        'num_epochs': 3,
+        'learning_rate': 5.e-4,
+        'dp_size': 8,
+        'pp_size': 1,
+        'tp_size': 1,
+        'lora_r': 8,
+        'lora_alpha': 16,
+        'lora_dropout': 0.05,
+        'lora_target_modules': '[query_key_value, dense,dense_4h_to_h, dense_h_to_4h]',
+        'modules_to_save': '[word_embeddings, output_layer]',
+        'prompt_template_name': 'alpaca',
+    })
+    auto_map = {
+        'ddp': 'dp_size',
+        'micro_batch_size': 'micro_batch_size',
+        'tp': 'tp_size',
+    }
+
     def __init__(self,
                  base_model,
                  target_path,
@@ -19,22 +42,7 @@ class CollieFinetune(LazyLLMFinetuneBase):
             launcher=launcher,
         )
         self.folder_path = os.path.dirname(os.path.abspath(__file__))
-        self.kw = ArgsDict({
-            'data_path': None,
-            'batch_size': 64,
-            'micro_batch_size': 4,
-            'num_epochs': 3,
-            'learning_rate': 5.e-4,
-            'dp_size': 8,
-            'pp_size': 1,
-            'tp_size': 1,
-            'lora_r': 8,
-            'lora_alpha': 16,
-            'lora_dropout': 0.05,
-            'lora_target_modules': '[query_key_value, dense,dense_4h_to_h, dense_h_to_4h]',
-            'modules_to_save': '[word_embeddings, output_layer]',
-            'prompt_template_name': 'aplaca',
-        })
+        self.kw = copy.deepcopy(self.defatult_kw)
         self.kw.check_and_update(kw)
         self.merge_path = merge_path
         self.cp_files = cp_files

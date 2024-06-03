@@ -27,8 +27,9 @@ class TrainingConfiguration:
         ddp = gpu_num // tp
         micro_batch_size = batch_size * tp // gpu_num // gradient_step
         assert ddp > 0, f"(gpu num {gpu_num} / tp {tp}  must be greater than 0"
-        assert micro_batch_size > 0, (f"(batch size {batch_size} * tp {tp} / gpu number {gpu_num} "
-                                      f"/ gradient step {gradient_step}) must be greater than 0")
+        assert micro_batch_size > 0, (
+            f"(batch size {batch_size} * tp {tp} / gpu number {gpu_num} / "
+            f"gradient step {gradient_step}) must be greater than 0")
 
         data.update(SP=1, MICRO_BATCH_SIZE=micro_batch_size, DDP=ddp)
 
@@ -64,7 +65,9 @@ class AutoConfig(object):
 
     def _query(self, *, clazz: type[OutputConfiguration], **kw) -> List[OutputConfiguration]:
         cf = self._finetune if clazz == TrainingConfiguration else self._deploy
-        return [clazz.from_dict(arguments) for arguments in cf.lookup({k.upper(): v for k, v in kw.items()})]
+        configurations = [clazz.from_dict(arguments) for arguments in cf.lookup({k.upper(): v for k, v in kw.items()})]
+        configurations.sort(key=lambda x: x.tgs, reverse=True)
+        return configurations
 
     def query_finetune(self, gpu_type: str, gpu_num: int, model_name: str,
                        ctx_len: int, batch_size: int, lora_r: int):
@@ -76,6 +79,11 @@ class AutoConfig(object):
                            model_name=model_name, max_token_num=max_token_num)
 
 
+configer = None
+
 def get_configer():
-    return AutoConfig(os.path.join(os.path.abspath(__file__), 'configs/finetune.csv'),
-                      os.path.join(os.path.abspath(__file__), 'configs/deploy.csv'))
+    global configer
+    if configer is None:
+        configer = AutoConfig(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs/finetune.csv'),
+                              os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs/deploy.csv'))
+    return configer

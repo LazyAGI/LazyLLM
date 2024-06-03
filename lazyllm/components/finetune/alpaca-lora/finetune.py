@@ -21,40 +21,40 @@ import deepspeed
 
 from utils.prompter import Prompter
 
+def init_dist(port):
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    if "SLURM_JOB_ID" in os.environ:
+        node_list = os.environ['SLURM_NODELIST']
+        addr = subprocess.getoutput(f'scontrol show hostname {node_list} | head -n1')
+        os.environ['MASTER_ADDR'] = addr
+        os.environ['MASTER_PORT'] = str(port)
+        print(addr, port)
+        proc_id = int(os.environ['SLURM_PROCID'])
+        ntasks = int(os.environ['SLURM_NTASKS'])
+        rank = proc_id
+        world_size = ntasks
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-if "SLURM_JOB_ID" in os.environ:
-    node_list = os.environ['SLURM_NODELIST']
-    addr = subprocess.getoutput(f'scontrol show hostname {node_list} | head -n1')
-    port = 25012
-    os.environ['MASTER_ADDR'] = addr
-    os.environ['MASTER_PORT'] = str(port)
-    print(addr, port)
-    proc_id = int(os.environ['SLURM_PROCID'])
-    ntasks = int(os.environ['SLURM_NTASKS'])
-    rank = proc_id
-    world_size = ntasks
+        os.environ['WORLD_SIZE'] = str(ntasks)
+        os.environ['RANK'] = str(proc_id)
 
-    os.environ['WORLD_SIZE'] = str(ntasks)
-    os.environ['RANK'] = str(proc_id)
+        dist.init_process_group(backend='nccl')
+        local_rank = int(os.environ['SLURM_LOCALID'])
 
-    dist.init_process_group(backend='nccl')
-    local_rank = int(os.environ['SLURM_LOCALID'])
-
-    print("comm: ", world_size, rank, local_rank)
-    os.environ['LOCAL_RANK'] = str(local_rank)
-    torch.cuda.set_device(local_rank)
-else:
-    local_rank = int(os.getenv("LOCAL_RANK", "0"))
-    world_size = int(os.getenv("WORLD_SIZE", "1"))
-    torch.cuda.set_device(local_rank)
-    rank = os.getenv("RANK", None)
-    if rank:
-        rank = int(rank)
+        print("comm: ", world_size, rank, local_rank)
+        os.environ['LOCAL_RANK'] = str(local_rank)
+        torch.cuda.set_device(local_rank)
     else:
-        rank = local_rank
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+        world_size = int(os.getenv("WORLD_SIZE", "1"))
+        torch.cuda.set_device(local_rank)
+        rank = os.getenv("RANK", None)
+        if rank:
+            rank = int(rank)
+        else:
+            rank = local_rank
 
-deepspeed.init_distributed()
+    deepspeed.init_distributed()
+    return rank
 
 def train( # noqa C901
     # model/data params
@@ -91,7 +91,9 @@ def train( # noqa C901
     prompt_template_name: str = "alpaca",  # The prompt template to use, will default to alpaca.
     deepspeed: str = None,  # deepspeed config file path.
     show_prompt: bool = False,
+    nccl_port: int = 19080,
 ):
+    rank = init_dist(nccl_port)
     if int(os.environ.get("RANK", 0)) == 0:
         print(
             f"Training Alpaca-LoRA model with params:\n"
@@ -305,7 +307,7 @@ def train( # noqa C901
             fp16=True,
             logging_steps=10,
             optim="adamw_torch",
-            evaluation_strategy="steps" if val_set_size > 0 else "no",
+            eval_strategy="steps" if val_set_size > 0 else "no",
             save_strategy="steps",
             eval_steps=1000 if val_set_size > 0 else None,
             save_steps=20000000,

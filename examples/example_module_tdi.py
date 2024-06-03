@@ -24,12 +24,16 @@ template_stage1 = (
 stage1_data_path = '/mnt/lustrenew/share_data/sunxiaoye/Dataset/Finture_TDX/step1_0103_xuzhiguo.json'
 
 # 3. finetune and deploy parameters:
-base_model = '/mnt/lustrenew/share_data/sunxiaoye/Models/ChatGLM3-6B/ChatGLM3-6B_base'
-target_path = '/mnt/lustrenew/share_data/sunxiaoye/Models/ChatGLM3-6B/lazy_tdx0329_2'
+base_model = '/mnt/lustrenew/share_data/sunxiaoye/Models/internlm2-chat-20b'
+target_path = '/mnt/lustrenew/share_data/sunxiaoye/Models/Internlm2-chat-20b/lazy_demo/merge'
 stage1_args = {
     'finetune': {
-        'model_name':'chatglm3-6b',
-        'gpu_count':8,
+        'batch_size':4,
+        'launcher': launchers.slurm(
+            partition='pat_rd',
+            ngpus=2,
+            nproc=2,
+            ),
     },
     'deploy': {
         'launcher': launchers.slurm(

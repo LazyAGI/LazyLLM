@@ -9,11 +9,11 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer
 from peft import LoraConfig, TaskType
-from .prompter import Prompter
+from prompter import Prompter
 
 from collie import Trainer, EvaluatorForPerplexity, CollieConfig, PPLMetric, CollieDatasetForTraining, \
     LossMonitor, TGSMonitor, MemoryMonitor, EvalMonitor, StepTimeMonitor, InternLMForCausalLM, Callback, \
-    ChatGLM2ForCausalLM, ChatGLMForCausalLM, LlamaForCausalLM
+    ChatGLM2ForCausalLM, ChatGLMForCausalLM, LlamaForCausalLM, InternLM2ForCausalLM
 
 if "SLURM_JOB_ID" in os.environ:
     world_size = int(os.environ['SLURM_NTASKS'])
@@ -181,6 +181,8 @@ def main(): # noqa C901
         model_type = config.model_type.lower()
     if model_type == 'internlm':
         model_cls = InternLMForCausalLM
+    if model_type == 'internlm2':
+        model_cls = InternLM2ForCausalLM
     elif model_type == 'chatglm1':
         model_cls = ChatGLMForCausalLM
     elif model_type == 'chatglm' or model_type == 'chatglm2':
@@ -194,7 +196,6 @@ def main(): # noqa C901
         torch_dtype=torch.float16,
         trust_remote_code=True,
     )
-    model.set_cache(False)
     model.enable_input_require_grads()
 
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),
@@ -290,7 +291,7 @@ if __name__ == "__main__":
                         help="Eval per n steps")
     parser.add_argument("--log_tag", type=str, default="tb_log",
                         help="Log file name.")
-    parser.add_argument("--zero_stage", type=int, default=2,
+    parser.add_argument("--zero_stage", type=int, default=1,
                         help="Stage for ZeRO.")
     parser.add_argument("--ds_fp16", type=bool, default=True,
                         help="Deepspeed config for fp16 enabled, default=True.")
