@@ -20,7 +20,7 @@ llm = lazyllm.TrainableModule(base_model
         ).deploy_method((deploy.vllm, {'launcher': launcher, 'max-model-len': 12000})
         ).prompt(template, response_split='<|im_start|>assistant\n')
 
-documents = Document(doc_path='/mnt/lustre/share_data/sunxiaoye.vendor/MyWorks/LazyLLM/RAG/docs2', 
+documents = Document(dataset_path='/mnt/lustre/share_data/sunxiaoye.vendor/MyWorks/LazyLLM/RAG/docs2', 
                      embed=lazyllm.ServerModule(LazyHuggingFaceEmbedding(base_embed), launcher=launcher))
 
 rma1 = Retriever(documents, parser='FineChunk', similarity_top_k=3)
@@ -28,7 +28,7 @@ rma2 = Retriever(documents, algo='chinese_bm25', parser='SentenceDivider', simil
 rerank1 = Rerank(types='Reranker', model=base_rerank)
 rerank2 = Rerank(types='SimilarityFilter', threshold=0.003)
 
-rmf = lazyllm.ServerModule(pipeline(
+rmf = lazyllm.ActionModule(pipeline(
         parallel.sequential(Identity, pipeline(parallel.sequential(x=rma1, y=rma2), lambda x, y : x + y)),
         rerank1, rerank2, lambda nodes: '《'+nodes[0].metadata["file_name"].split('.')[0] + '》 ' + nodes[0].get_content() if len(nodes)>0 else '未找到'))
 m = lazyllm.ActionModule(parallel(context_str=rmf, query_str=Identity).asdict, llm)

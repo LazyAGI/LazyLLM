@@ -9,7 +9,7 @@ import inspect
 import lazyllm
 from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, Prompter, launchers, LOG
 from ..flow import FlowBase, Pipeline, Parallel
-from ..downloader.model_downloader import ModelDownloader
+from .utils import ModelDownloader
 import uuid
 from ..client import get_redis, redis_client
 

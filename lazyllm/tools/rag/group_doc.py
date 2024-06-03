@@ -4,7 +4,7 @@ import shutil
 from typing import List
 
 import lazyllm
-from lazyllm.module import DocImpl
+from .base import DocImpl
 
 DATA_DIR = "__data"
 

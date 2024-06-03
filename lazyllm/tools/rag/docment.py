@@ -2,11 +2,11 @@ import lazyllm
 from lazyllm import ModuleBase, ServerModule
 from lazyllm.launcher import EmptyLauncher
 
-from .doc_web_module import DocWebModule
+from .web import DocWebModule
 from .doc_manager import DocManager
-from .doc_group_impl import DocGroupImpl
+from .group_doc import DocGroupImpl
 
-# ModuleBase
+
 class Document(ModuleBase):
     def __init__(self, dataset_path: str, embed, create_ui: bool = True, launcher=EmptyLauncher(sync=False)):
         super().__init__()
