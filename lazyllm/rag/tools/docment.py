@@ -1,9 +1,10 @@
-from lazyllm import ModuleBase, ServerModule, LazyLlmRequest
+import lazyllm
+from lazyllm import ModuleBase, ServerModule
 from lazyllm.launcher import EmptyLauncher
 
 from .doc_web_module import DocWebModule
-from .doc_manager import DocumentManager
-from .doc_impl import DocumentImpl
+from .doc_manager import DocManager
+from .doc_group_impl import DocGroupImpl
 
 # ModuleBase
 class Document(ModuleBase):
@@ -12,23 +13,22 @@ class Document(ModuleBase):
         self._create_ui = create_ui
 
         if create_ui:
-            self.doc_impl = DocumentImpl(dataset_path=dataset_path, embed=embed)
-            doc_manager = DocumentManager(self.doc_impl)
+            self._impl = DocGroupImpl(dataset_path=dataset_path, embed=embed)
+            doc_manager = DocManager(self._impl)
             self.doc_server = ServerModule(doc_manager, launcher=launcher)
 
             self.web = DocWebModule(doc_server=self.doc_server)
         else:
-            self.doc_impl = DocumentImpl(dataset_path=dataset_path, embed=embed)
+            self._impl = DocGroupImpl(dataset_path=dataset_path, embed=embed)
 
     def generate_signature(self, algo, algo_kw, parser):
-        return self.doc_impl.sub_doc.generate_signature(algo, algo_kw, parser)
+        return self._impl.generate_signature(algo, algo_kw, parser)
 
     def _query_with_sig(self, string, signature, parser):
         if self._create_ui:
-            return self.doc_server(LazyLlmRequest(input={
-                "string": string,
-                "parser": parser,
-                "signature": signature
-            }))
+            return self.doc_server(string, parser=parser, signature=signature)
         else:
-            self.doc_impl.sub_doc._query_with_sig(string=string, signature=signature, parser=parser)
+            return self._impl.query_with_sig(string=string, signature=signature, parser=parser)
+
+    def __repr__(self):
+        return lazyllm.make_repr('Module', 'Document', create_ui=self._create_ui)

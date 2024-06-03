@@ -384,7 +384,8 @@ class ScoLauncher(LazyLLMLaunchersBase):
             # Assemble the cmd
             sco_cmd = f'srun -p {launcher.partition} --workspace-name {self.workspace_name} ' \
                       f'--job-name={self.name} -f {launcher.framework} -r N2lS.Ie.I60.{launcher.ngpus} ' \
-                      f'-N {launcher.nnode} --priority highest '
+                      f'-N {launcher.nnode} --priority normal '
+
             torchrun_cmd = f'python -m torch.distributed.run --nproc_per_node {launcher.nproc} '
 
             if launcher.nnode == 1:

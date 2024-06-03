@@ -206,6 +206,8 @@ class DocWebModule(ModuleBase):
         self.text_mode = text_mode if text_mode else DocWebModule.Mode.Dynamic
         self.doc_server = doc_server
         self._deploy_flag = lazyllm.once_flag()
+        self.api_url = ""
+        self.url = ""
 
     def _prepare(self, query, chat_history):
         if chat_history is None:
@@ -238,9 +240,6 @@ class DocWebModule(ModuleBase):
     def wait(self):
         return self.p.join()
 
-    def __repr__(self):
-        return lazyllm.make_repr('Module', 'DocWeb')
-
     def _find_can_use_network_port(self):
         for port in self.port:
             if self._verify_port_access(port):
@@ -254,3 +253,6 @@ class DocWebModule(ModuleBase):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             result = s.connect_ex(('localhost', port))
             return result != 0
+
+    def __repr__(self):
+        return lazyllm.make_repr('Module', 'DocWebModule')

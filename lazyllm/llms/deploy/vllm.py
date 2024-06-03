@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import sys
 
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
@@ -55,7 +56,7 @@ class Vllm(LazyLLMDeployBase):
             if not self.kw['port'] or self.kw['port'] == 'auto':
                 self.kw['port'] = random.randint(30000, 40000)
 
-            cmd = f'python -m vllm.entrypoints.api_server --model {model_dir} '
+            cmd = f'{sys.executable} -m vllm.entrypoints.api_server --model {model_dir} '
             cmd += self.kw.parse_kwargs()
             if self.trust_remote_code:
                 cmd += ' --trust-remote-code '
