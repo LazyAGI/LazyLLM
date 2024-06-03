@@ -20,6 +20,7 @@ class Vllm(LazyLLMDeployBase):
         'top_p': 0.8,
         'max_tokens': 1024
     }
+    auto_map = {'tp': 'tensor-parallel-size'}
 
     def __init__(self,
                  trust_remote_code=True,
@@ -29,7 +30,6 @@ class Vllm(LazyLLMDeployBase):
                  ):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
-            'max-model-len': 32968,
             'dtype': 'auto',
             'kv-cache-dtype': 'auto',
             'tokenizer-mode': 'auto',
@@ -39,6 +39,7 @@ class Vllm(LazyLLMDeployBase):
             'seed': 0,
             'port': 'auto',
             'host': '0.0.0.0',
+            'max-num-seqs': 256,
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)

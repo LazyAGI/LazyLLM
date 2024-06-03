@@ -4,6 +4,7 @@ from .data import LazyLLMDataprocBase
 from .finetune import LazyLLMFinetuneBase
 from .deploy import LazyLLMDeployBase, FastapiApp
 from .validate import LazyLLMValidateBase
+from .auto import AutoDeploy, AutoFinetune
 
 __all__ = [
     'register',
@@ -13,4 +14,6 @@ __all__ = [
     'LazyLLMDeployBase',
     'LazyLLMValidateBase',
     'FastapiApp',
+    'AutoDeploy',
+    'AutoFinetune',
 ]

@@ -5,6 +5,7 @@ import requests
 import pickle
 import codecs
 import inspect
+from concurrent.futures import ThreadPoolExecutor
 
 import lazyllm
 from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, Prompter, launchers, LOG
@@ -109,9 +110,14 @@ class ModuleBase(object):
     # TODO: add lazyllm.eval
     def _get_eval_tasks(self):
         def set_result(x): self.eval_result = x
+
+        def parallel_infer():
+            with ThreadPoolExecutor(max_workers=100) as executor:
+                results = list(executor.map(lambda item: self(**item)
+                                            if isinstance(item, dict) else self(item), self._evalset))
+            return results
         if self._evalset:
-            return Pipeline(lambda: [self(**item) if isinstance(item, dict) else self(item)
-                                     for item in self._evalset],
+            return Pipeline(parallel_infer,
                             lambda x: self.eval_result_collet_f(x),
                             set_result)
         return None
@@ -393,18 +399,28 @@ class TrainableModule(UrlModule):
         return Pipeline(trainset_getf, train)
 
     def _get_deploy_tasks(self):
+        target_path = self.target_path
         if os.path.basename(self.target_path) != 'merge':
             target_path = os.path.join(self.target_path, 'merge')
 
         if not os.path.exists(target_path):
             target_path = self.target_path
+
+        def build_deployer(base_model):
+            if self._deploy is lazyllm.deploy.AutoDeploy:
+                deployer = self._deploy(base_model=base_model, stream=self._stream, **self._deploy_args)
+            else:
+                deployer = self._deploy(stream=self._stream, **self._deploy_args)
+            # For AutoDeploy: class attributes can only be obtained after instantiation
+            self._deploy = deployer.__class__
+            self._set_template(copy.deepcopy(deployer.message_format), deployer.input_key_name,
+                               copy.deepcopy(deployer.default_headers))
+            return deployer
         return Pipeline(lambda *a: lazyllm.package(target_path, self.base_model),
-                        self._deploy(stream=self._stream, **self._deploy_args), self.url)
+                        build_deployer(self.base_model), self.url)
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
-        self._set_template(copy.deepcopy(self._deploy.message_format),
-                           self._deploy.input_key_name, copy.deepcopy(self._deploy.default_headers))
         if hasattr(self._deploy, 'extract_result'): self._extract_result_func = self._deploy.extract_result
 
     def __repr__(self):

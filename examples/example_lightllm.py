@@ -18,13 +18,11 @@ deploy_config = {
         ngpus=1,
         sync=False
         ),
-    'port': 22332,
-    'max-model-len': 32768
 }
 
 # ====================================== Build Moudule:
 
-m1 = lazyllm.TrainableModule(base_model, '').deploy_method(deploy.vllm, **deploy_config)
+m1 = lazyllm.TrainableModule(base_model, '').deploy_method(deploy.lightllm, **deploy_config)
 
 def pre_func(kx:str):
     print("=== Before pre_func: ", kx)
@@ -34,7 +32,7 @@ def pre_func(kx:str):
 
 def post_func(x:str):
     print("=== Before post_func: ", x)
-    x_splited = json.loads(x)['text'][0].rsplit('<|im_start|>assistant\n', maxsplit=1)
+    x_splited = json.loads(x)['generated_text'][0].rsplit('<|im_start|>assistant\n', maxsplit=1)
     if len(x_splited) == 2:
         x = x_splited[1].strip()
     print("=== After post_func: ", x)
