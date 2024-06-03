@@ -264,16 +264,16 @@ ppl.run('trainset', 'evalset')
 ```
 
 #### 2.2.3 自定义函数
-LazyLLM支持自定义函数并且注册到对应的功能模块中，供pipeline去使用，其对应的接口为`lazyllm.llmregister`。支持被注册的功能模块有dataproc、finetune、deploy、validate等，但考虑到某些模块的复杂性，这里不建议用户自行注册finetune、deploy。如果想注册一个函数，则可以给函数加上`@lazyllm.llmregister`; 否则如果想注册一个bash执行的命令，则可以写一个返回bash命令的函数，给函数加上`@lazyllm.llmregister.cmd`。下面给出一个具体的例子：
+LazyLLM支持自定义函数并且注册到对应的功能模块中，供pipeline去使用，其对应的接口为`lazyllm.component_register`。支持被注册的功能模块有dataproc、finetune、deploy、validate等，但考虑到某些模块的复杂性，这里不建议用户自行注册finetune、deploy。如果想注册一个函数，则可以给函数加上`@lazyllm.component_register`; 否则如果想注册一个bash执行的命令，则可以写一个返回bash命令的函数，给函数加上`@lazyllm.component_register.cmd`。下面给出一个具体的例子：
 
 ```python
 import lazyllm
 
-@lazyllm.llmregister('dataproc')
+@lazyllm.component_register('dataproc')
 def gen_data():
     return package('trainset', 'evalset')
 
-@lazyllm.llmregister.cmd('validate')
+@lazyllm.component_register.cmd('validate')
 def val1(in1, in2):
     return 'echo 0'
 
@@ -295,17 +295,17 @@ ppl()
 import lazyllm
 from lazyllm import bind, root, _0
 
-@lazyllm.llmregister('dataproc')
+@lazyllm.component_register('dataproc')
 def gen_data():
     return package('trainset', 'evalset')
 
-@lazyllm.llmregister('validate')
+@lazyllm.component_register('validate')
 def val1(in1, in2):
     print(in1, in2)
     return in1
 
 
-@lazyllm.llmregister('validate')
+@lazyllm.component_register('validate')
 def val2(in1, in2):
     print(in1, in2)
 
@@ -327,12 +327,12 @@ ppl()
 import lazyllm
 from lazyllm import bind, root, _0
 
-@lazyllm.llmregister('dataproc')
+@lazyllm.component_register('dataproc')
 def gen_data(idx):
     print(f'idx {idx}: gen data done')
     return package(idx + 1, idx + 1)
 
-@lazyllm.llmregister('validate')
+@lazyllm.component_register('validate')
 def eval(evalset, url, job=None):
     print(f'eval all. evalset: {evalset}, url: {url}, eval_all done. job: {job}')
 
@@ -395,7 +395,7 @@ LazyLLM提供了三种运行模式，分别是Display、Normal和Debug。
 在Display模式下，所有的cmd命令都不会真正的被执行，而是通过命令行打印出来。例如在[2.2.5 查看结构](#225-查看结构)中所述的案例，在Display模式下执行`named_ppl.start(0)`的结果为：
 ```bash
 idx 0: gen data done
-Command: srun -p None -N 1 --job-name=x59b29882ced265a9 -n1 bash -c 'python /mnt/cache/wangzhihong/lazyllm/lazyllm/llms/finetune/alpaca-lora/finetune.py --base_model=./base-model1 --output_dir=./finetune-target1 --data_path=1 --batch_size=64 --micro_batch_size=4 --num_epochs=2 --learning_rate=0.0005 --cutoff_len=1030 --filter_nums=1024 --val_set_size=200 --lora_r=8 --lora_alpha=32 --lora_dropout=0.05 --lora_target_modules="[query_key_value,dense,dense_4h_to_h,dense_h_to_4h]" --modules_to_save="[word_embeddings, output_layer]" --deepspeed="ds.json" --prompt_template_name=alpaca --train_on_inputs=True 2>&1 | tee ./finetune-target1/LLM_$(date +"%Y-%m-%d_%H-%M-%S").log'
+Command: srun -p None -N 1 --job-name=x59b29882ced265a9 -n1 bash -c 'python /mnt/cache/wangzhihong/lazyllm/lazyllm/components/finetune/alpaca-lora/finetune.py --base_model=./base-model1 --output_dir=./finetune-target1 --data_path=1 --batch_size=64 --micro_batch_size=4 --num_epochs=2 --learning_rate=0.0005 --cutoff_len=1030 --filter_nums=1024 --val_set_size=200 --lora_r=8 --lora_alpha=32 --lora_dropout=0.05 --lora_target_modules="[query_key_value,dense,dense_4h_to_h,dense_h_to_4h]" --modules_to_save="[word_embeddings, output_layer]" --deepspeed="ds.json" --prompt_template_name=alpaca --train_on_inputs=True 2>&1 | tee ./finetune-target1/LLM_$(date +"%Y-%m-%d_%H-%M-%S").log'
 input or output is: ./finetune-target1
 Command: srun -p None -N 1 --job-name=x3b5eca3122db7596 -n1 bash -c 'python -m lightllm.server.api_server --model_dir ./finetune-target1 --tp 1 --nccl_port 20864 --max_total_token_num 64000 --tokenizer_mode "auto" --port 35444 --host "0.0.0.0" --eos_id 2 --trust_remote_code '
 Command: srun -p None -N 1 --job-name=4771159e863eadf0 -n1 bash -c 'python test2.py --target_url=http://x3b5eca3122db7596:35444/generate --before_function="b'\x80\x04N.' --after_function="b'\x80\x04N.'"'

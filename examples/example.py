@@ -9,20 +9,20 @@ except ImportError:
 
 from lazyllm import root, bind, _0, _1
 
-@lazyllm.llmregister('dataproc')
+@lazyllm.component_register('dataproc')
 def gen_data(idx):
     print(f'idx {idx}: gen data done')
     return package(idx + 1, idx + 1)
 
-@lazyllm.llmregister('Validate')
+@lazyllm.component_register('Validate')
 def eval_stage1(url):
     print(f'url {url} eval_stage1 done')
 
-@lazyllm.llmregister('Validate')
+@lazyllm.component_register('Validate')
 def eval_stage2(url):
     print(f'url {url} eval_stage2 done')
 
-@lazyllm.llmregister('validate')
+@lazyllm.component_register('validate')
 def eval_all(evalset, url1, url2, job=None):
     print(f'eval all. evalset: {evalset}, url: {url1} and {url2} eval_all done. job: {job}')
 

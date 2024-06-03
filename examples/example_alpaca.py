@@ -11,7 +11,7 @@ except ImportError:
    from lazyllm import package, dataproc, finetune, deploy, launchers, validate
 
 
-@lazyllm.llmregister('dataproc')
+@lazyllm.component_register('dataproc')
 def gen_data(idx):
     print(f'idx {idx}: gen data done')
     datapath = '/mnt/lustrenew/share_data/sunxiaoye/Dataset/Finture_TDX/step1_0103_xuzhiguo.json'
@@ -46,7 +46,7 @@ ppl = lazyllm.pipeline(
         lora_dropout=0.05,
         lora_target_modules='[query_key_value,dense,dense_4h_to_h,dense_h_to_4h]',
         modules_to_save='[word_embeddings, output_layer]',
-        deepspeed='../lazyllm/llms/finetune/alpaca-lora/ds.json',
+        deepspeed='../lazyllm/components/finetune/alpaca-lora/ds.json',
         prompt_template_name='alpaca',
         train_on_inputs=True,
         show_prompt=False,

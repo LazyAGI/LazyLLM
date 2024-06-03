@@ -2,11 +2,11 @@ from .configs import config, Mode
 from .common import *  # noqa F403
 from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase, barrier
-from .llms import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
-                   LazyLLMValidateBase, register as llmregister, Prompter,
-                   FastapiApp)
+from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
+                         LazyLLMValidateBase, register as component_register, Prompter,
+                         FastapiApp)
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
-                     ServerModule, WebModule, TrialModule, register as moduleregister,
+                     ServerModule, WebModule, TrialModule, register as module_register,
                      OnlineChatModule, OnlineEmbeddingModule)
 from .module import Retriever, Rerank
 from .client import redis_client
@@ -26,12 +26,12 @@ del flows
 
 
 __all__ = [
-    # llms
+    # components
     'LazyLLMDataprocBase',  #
     'LazyLLMFinetuneBase',        # finetune
     'LazyLLMDeployBase',          # deploy
     'LazyLLMValidateBase',        #
-    'llmregister',
+    'component_register',
     'Prompter',
     'FastapiApp',
 
@@ -54,7 +54,7 @@ __all__ = [
     'ServerModule',
     'WebModule',
     'TrialModule',
-    'moduleregister',
+    'module_register',
     'OnlineChatModule',
     'OnlineEmbeddingModule',
 
