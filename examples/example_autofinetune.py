@@ -2,7 +2,7 @@ import lazyllm
 from builtins import package, dataproc, finetune
 
 
-@lazyllm.llmregister('dataproc')
+@lazyllm.component_register('dataproc')
 def gen_data(idx):
     print(f'idx {idx}: gen data done')
     datapath = '/mnt/lustrenew/share_data/sunxiaoye/Dataset/Finture_TDX/step1_0103_xuzhiguo.json'

@@ -8,7 +8,7 @@ os.environ['LAZYLLM_DEBUG'] = '1'
 
 import lazyllm
 from lazyllm import pipeline, parallel, Identity, Retriever
-from lazyllm.llms.embedding.embed import LazyHuggingFaceEmbedding
+from lazyllm.components.embedding.embed import LazyHuggingFaceEmbedding
 from lazyllm import Document
 from lazyllm.launcher import EmptyLauncher
 

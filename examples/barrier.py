@@ -4,12 +4,12 @@ sys.path.append('..')
 import lazyllm
 from lazyllm import dataproc
 
-@lazyllm.llmregister('dataproc')
+@lazyllm.component_register('dataproc')
 def gen_data(idx):
     print(f'idx {idx}: gen data done')
     return idx + 1
 
-@lazyllm.llmregister('dataproc')
+@lazyllm.component_register('dataproc')
 def gen_data2(idx1, idx2):
     print(f'idx {idx1}, {idx2}: gen data done')
     return idx1 + idx2

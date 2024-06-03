@@ -1,7 +1,7 @@
 import os
 import lazyllm
 from lazyllm import pipeline, parallel, Identity, launchers, Document, Retriever, Rerank, deploy
-from lazyllm.llms.embedding.embed import LazyHuggingFaceEmbedding
+from lazyllm.components.embedding.embed import LazyHuggingFaceEmbedding
 
 # If use redis, please set 'export LAZYLLM_RAG_STORE=Redis', and export LAZYLLM_REDIS_URL=redis://{IP}:{PORT}
 
