@@ -1,493 +1,131 @@
-# LazyLLM
+# LazyLLM: 构建和优化多Agent应用的一站式开发工具。
 [中文](README.md) |  [EN](README.ENG.md)
 
-## 一、定位
+## 一、简介
 
-LazyLLM作为一款协助开发者构建多模态的大语言模型的一站式落地的工具，它基于商汤大装置AI专家服务团队在与客户沟通场景和交付客户的经验，贯穿了从数据处理、训练、微调、部署、推理、评测、交付等开发过程中的各个环节。本工具集成了在构建大模型项目的[各个环节](#三能力)中我们认为有价值的工具，并定义了在多个[典型业务场景](#四典型业务场景)下的标准作业程序(Standard Operating Procedure, SOP)。本工具建议被作为顶层工具来使用，不建议作为元素被集成到其他工具内被使用。
+LazyLLM为应用开发过程中的全部环节（包括应用搭建、数据准备、模型部署、模型微调、评测等）提供了大量的工具，协助开发者用极低的成本构建AI应用，并可以持续的迭代优化效果。
 
-## 二、开始使用
+## 二、特性
 
-### 2.1 模块
+**高效的多Agent AI应用构建**：轻松组建包含多个Agent的AI应用，并提供一键部署所有子服务的能力。LazyLLM通过一套轻量的网关机制，简化了多Agent应用的部署流程，解决了传统方法中需依次启动各个子模块（如LLM、Embedding等）服务并配置URL的问题，使整个过程更加顺畅高效。<br>
 
-模块(Module)是LazyLLM中的顶层核心功能组件。LazyLLM提供了TrainableModule、UrlModule、ServerModule、WebModule等几类通用的基础模块。用户以搭积木的方式可轻松将不同模块组合起来搭建出自己的应用，值得注意的是每个LazyLLM模块往往对应了用户实际的业务功能模块，而且用户不用操心训练、部署等各种底层工程实现，应用搭建好后一键即可实现应用的微调、部署、推理和发布。这使得用户只用关心业务逻辑，而不用关心实现细节。
+**跨平台兼容**：无需修改代码，即可一键切换IaaS平台，兼容裸金属服务器、开发机、Slurm集群、公有云等。这使得开发好的应用可以无缝迁移到其他IaaS平台，大大减少了代码修改的工作量。<br>
 
-#### 2.1.1 基本模块
+**支持网格搜索参数优化**：根据用户配置，自动尝试不同的基模型、召回策略和微调参数，对应用进行评测和优化。这使得超参数调优过程无需对应用代码进行大量侵入式修改，提高了调优效率，帮助用户快速找到最佳配置。<br>
 
-LazyLLM中的模块是一个可调用的基本功能单元，**可调用性**提供了数据流转的通路，**基本功能单元**提供了该模块所具有对数据处理的特定能力。
+**高效的模型微调**：支持对应用中的模型进行微调，持续提升应用效果。根据微调场景，自动选择最佳的微调框架和模型切分策略。这不仅简化了模型迭代的维护工作，还让算法研究员能够将更多精力集中在算法和数据迭代上，而无需处理繁琐的工程化任务。<br>
 
-|基本模块|功能简介|
-|:---:|:---|
-|SequenceModule|可将其它模块按顺序依次调用执行|
-|UrlModule|可将某个可访问的**URL**包装为一个模块|
-|ActionModule|可包装lazyLLM更底层的各类**flow**到模块中，实现更精细的数据流转控制|
-|ServerModule|可将任意可调用的对象(典型如：函数、LazyLLM的任意Module)包装为一个可通过URL访问的服务，并提供前后处理的接口|
-|WebModule|可将任意可调用的对象包装为一个用户界面|
-|TrainableModule|可包装一个LLM模型，并提供训练（包括继续预训练与微调）、部署、推理及评测的能力，其训练和推理框架都可以指定|
+## 三、使用指南
 
-#### 2.1.2 基本例子
+LazyLLM可用来构建常用的人工智能应用，下面给出一些例子。
 
-##### 使用说明
-在使用lazyLLM前，请将lazyLLM的仓库路径添加到`PYTHONPATH`中，并根据实际运行环境情况设置如下环境变量：
+### 3.1 对话机器人
+
+```python
+t = lazyllm.OnlineChatModule('llama2-7b', stream=True)
+w = lazyllm.WebModule(t)
+w.start()
+```
+
+### 3.2 检索增强生成
+
+### 3.3 故事创作
+
+### 3.4 智能体
+
+## 四、功能点
+
+1. **应用搭建**：定义了pipeline、parallel、diverter、if、switch、loop等工作流(Flow)，开发者可以基于任意的函数和模块来快速搭建多Agent的AI应用。支持对组装好的多Agent应用进行一键部署，也支持对应用进行部分或者全部的更新。
+2. **跨平台**： 支持用户在不同的算力平台上获得一致的使用体验。目前兼容裸金属、Slurm、SenseCore等多种算力平台。
+3. **支持大模型的微调和推理**
+    * 离线(本地)模型服务：
+        + 支持微调框架：collie、peft
+        + 支持推理框架：lightllm、vllm
+        + 支持根据用户场景自动选择最合适的框架和模型参数(如micro-bs、tp、zero等)。
+    * 在线服务：
+        + 支持微调服务：GPT、SenseNova、通义千问
+        + 支持推理服务：GPT、SenseNova、Kimi、智谱、通义千问
+        + 支持Embedding推理服务：Openai、SenseNova、GLM、通义千问
+4. **支持RAG常用组件**：Document、Parser、Retriever、Reranker等。
+5. **基础的界面支持**：如聊天界面、文档管理界面等。
+
+## 五、安装
+
+仅安装lazyllm及必要的依赖，可以使用
 ```bash
-# 设置默认提交任务的引擎：slurm、sco等
-export LAZYLLM_DEFAULT_LAUNCHER=slurm
-# 设置对应引擎可用的分区：
-export LAZYLLM_SLURM_PART=pat_rd
+pip install lazyllm
 ```
 
-##### TrainableModule 微调部署推理一键启
-TrainableModule是一个集合了训练（继续预训练和微调训练）、部署、推理于一体的Module。
-```python
-m = lazyllm.TrainableModule('path/to/base/model', 'path/to/target/file').finetune_method(finetune.dummy).deploy_method(deploy.dummy).mode(
-    'finetune')
-m.evalset([1, 2, 3, 4, 5, 6])
-m.update()
-print(m.eval_result)
-```
-注意：
-- `TrainableModule`需传入两个参数路径：基模型的路径和存储的路径；
-- 指定假的微调引擎: `finetune.dummy`
-- 指定假的推理引擎：`deploy.dummy`
-- 设置训练的模式为微调: `finetune`
-
-输出：
+安装lazyllm及所有的依赖，可以使用
 ```bash
-['reply for 1', 'reply for 2', 'reply for 3', 'reply for 4', 'reply for 5', 'reply for 6']
+pip install lazyllm-full
 ```
 
-##### ServerModule 包装任意可调用对象为服务
-ServerModule 可将任意可调用对象包装为服务，这个可调用对象可以是函数、LazyLLM的各类Module等。被包装后的可调用对象可以通过ServerModule对象直接调用来传入数据（见下面例子），或者向其暴露的URL发起请求来传入数据（见UrlModule的例子第一个服务）。
+## 六、设计理念
 
-这里将一个函数包含为一个服务：
+    LazyLLM的设计理念源自对我们对大模型在生产环境表现出的局限性的深刻洞察，我们深知现阶段的大模型尚无法完全端到端地解决所有实际问题。因此，基于LazyLLM的AI应用构建流程强调“快速原型搭建，结合场景任务数据进行bad-case分析，针对关键环节进行算法尝试和模型微调，从而提升整个应用的效果”。LazyLLM处理了这个过程中繁琐的工程化工作，提供便捷的操作接口，让用户能够集中精力提升算法效果，打造出色的AI应用。<br>
 
-```python
-def func(x):
-    return str(x)+' after'
-m = lazyllm.ServerModule(func)
-m.evalset([1, 2, 3, 4, 5, 6])
-m.update()
-print(m.eval_result)
-```
-输出：
-```bash
-['1 after', '2 after', '3 after', '4 after', '5 after', '6 after']
-```
+    LazyLLM的设计目标是让算法研究员和开发者能够能够从繁杂的工程实现中解脱出来，从而专注于他们最擅长的领域：算法和数据，解决他们在实际场景中的问题。无论你是初学者还是资深专家，我希望LazyLLM都能为你提供一些帮助。对于初级开发者，LazyLLM彻底简化了AI应用的构建过程。他们无需再考虑如何将任务调度到不同的IaaS平台上，不必了解API服务的构建细节，也无需在微调模型时选择框架或切分模型，更不需要掌握任何Web开发知识。通过预置的组件和简单的拼接操作，初级开发者便能轻松构建出具备生产价值的工具。而对于资深的专家，LazyLLM提供了极高的灵活性，每个模块都支持定制和扩展，使用户能够轻松集成自己的算法以及业界先进的生产工具，打造更为强大的应用。<br>
 
-##### UrlModule 包装任意URL为Module
-往往用户可能只有一个可发送请求的URL，这时就可以将这个URL包装为一个Module来集成到应用中。
-```python
-# 启动一个服务，以提供一个可访问的URL
-def func(x):
-    return str(x)+' after'
-m1 = lazyllm.ServerModule(func)
-m1.update()
+    与市面上多数框架不同，LazyLLM在每个环节都精挑细选了2-3个我们认为最具优势的工具进行集成。这不仅简化了用户选择的过程，还确保了用户能够以最低的成本，搭建出最具生产力的应用。我们不追求工具或模型的数量，而是专注于质量和实际效果，致力于提供最优的解决方案。<br>
 
-# 使用UrlModule 将刚生成的URL包装为一个Module。
-m2 = lazyllm.Module.url(m1._url)
-m2.update()
-res  = m2('hi')
-print('Got Response: ',res)
-```
-输出：
-```bash
-Got Response:  hi after
-```
+    总之，LazyLLM旨在为AI应用构建提供一条快速、高效、低门槛的路径，解放开发者的创造力，推动AI技术在实际生产中的落地和普及。<br>
 
-##### WebModule 包装任意可调用对象为客户端
-WebModule 可将任意可调用的对象包装为一个客户端。
-例如包装一个函数：
-```python
-def func(x):
-    return 'reply ' + x
-m = lazyllm.WebModule(func)
-m.update()
-```
+## 七、架构说明
 
-例如包装一个LazyLLM的Module:
-```python
-mm = lazyllm.TrainableModule(stream=True).finetune_method(finetune.dummy).deploy_method(deploy.dummy).mode('finetune')
-m = lazyllm.WebModule(mm)
-m.update()
-```
+![架构说明](docs/Architecture.png)
 
-输出：
-```bash
-Running on local URL:  http://0.0.0.0:20566
-```
-点击URL可在本地访问给出的客户端。
+## 八、基本概念
 
-##### ActionModule 包装一个flow为Module
-ActionModule 可将LazyLLM中的底层flow包装为一个Module实现更精细的数据控制流程。LazyLLM中常见的flow见第二部分工作流。
+### Component
 
-这里包装LazyLLM中的一个flow类：pipeline
-```python
-from lazyllm import pipeline
-def func1(x):
-    return str(x) + ' func1 '
-mm = lazyllm.TrainableModule('path1/to/base/model', 'path1/to/target/file').finetune_method(finetune.dummy).deploy_method(deploy.dummy).mode('finetune')
-m = lazyllm.Module.action(pipeline(func1, mm)) # lazyllm.ActionModule == lazyllm.Module.action
-m.evalset([1, 2, 3, 4, 5, 6])
-m.update()
-print(m.eval_result)
-```
-输出：
-```bash
-['reply for 1 func1 ', 'reply for 2 func1 ', 'reply for 3 func1 ', 'reply for 4 func1 ', 'reply for 5 func1 ', 'reply for 6 func1 ']
-```
-
-##### SequenceModule 将多个Module串联起来
-SequenceModule 可以将LazyLLM中的多个Module串联起来构成一个Module:
-```python
-m = lazyllm.SequenceModule(
-    lazyllm.TrainableModule('path1/to/base/model', 'path1/to/target/file').finetune_method(finetune.dummy).deploy_method(deploy.dummy).mode('finetune'),
-    lazyllm.TrainableModule('path2/to/base/model', 'path2/to/target/file').finetune_method(finetune.dummy).deploy_method(deploy.dummy).mode('finetune'),
-)
-m.evalset([1, 2, 3, 4, 5, 6])
-m.update()
-print(m.eval_result)
-```
-输出：
-```python
-['reply for reply for 1', 'reply for reply for 2', 'reply for reply for 3', 'reply for reply for 4', 'reply for reply for 5', 'reply for reply for 6']
-```
-
-##### 三分钟搞定业务应用
-
-现在让我们搭建一个应用：这个应用基于一个大模型，对外实现一个对话窗口。用户在窗口中输入信息，经过前处理后送给大模型，大模型生成相关内容，然后再进行后处理，最后将后处理的结果返回给客户端进行展示。
-其中大模型的微调和部署引擎这里都用dummy的以方便演示。
-
-```python
-# 包装一个大模型：
-LLM = lazyllm.TrainableModule('path1/to/base/model', 'path1/to/target/file').finetune_method(finetune.dummy).deploy_method(deploy.dummy).mode('finetune')
-
-# 将LLM套入到一个带前后处理的服务中：
-def pre_func(x):
-    return str(x)+' Add Backgrounds'
-def post_func(x):
-    return 'After proccess ' + x
-PrePost = lazyllm.ServerModule(LLM, pre=pre_func, post=post_func)
-
-# 把该服务包装成一个带客户端的应用：
-Chat = lazyllm.WebModule(PrePost)
-
-# 一键启动模型的微调、推理和部署，等待最后给出访问的网址：
-Chat.update()
-```
-
-
-### 2.2 工作流
-
-LazyLLM定义了工作流(flow)，用来串联各个环节，以搭建自己的应用程序。目前框架支持的工作流有Pipeline和Parallel。
-
-#### 2.2.1 基本工作流
-
-##### Pipeline
-Pipeline中会包含若干个元素，每个元素会被认为一个环节，每个环节顺序执行，上一环节的输出会作为下一环节的输入。Pipeline中可以加入PostAction，Pipeline的输出会给到PostAction执行一些额外的代码，但PostAction的输出不会给到下一级。其工作流可以视作:
-```
-input -> module1 -> module2 -> ... -> moduleN -> output
-                                              \> post-action
-```
-
-##### Parallel
-Parallel中会包含若干个元素，每个元素分别执行，Parallel的输入会给到每一个元素，各个元素的输出会合并后作为Parallel的输出。其工作流可以视作:
-```
-      /> module11 -> ... -> module1N -> out1 \
-input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
-      \> module31 -> ... -> module3N -> out3 /
-```
-
-##### Parallel.sequential
-Parallel.sequential(parallel in dataflow, serial in executing)数据流转和Parallel一致，但执行顺序是依次执行，不同于Parallel是并行执行的。其工作流如下：
-```
-      /> module11 -> ... -> module1N -> out1 \
-input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
-      \> module31 -> ... -> module3N -> out3 /
-```
-
-##### Diverter
-Diverter要求输入是LazyLLM中的package类型，且package的大小要与分支数量一致，不同分支是不同的元素序列。这样package中每个元素被传递给不同的分支，最后将所有分支的输出合并为一个package。其工作流如下：
-```
-                  /> in1 -> module11 -> ... -> module1N -> out1 \
-  (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
-                  \> in3 -> module31 -> ... -> module3N -> out3 /
-```
-
-
-##### Warp
-Warp要求输入是LazyLLM中的package类型，它们会被同时送入同一个分支的元素序列，最后将每个输入对应的结果合并为一个package。其工作流如下：
-```
-                  /> in1 \                            /> out1 \
-  (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
-                  \> in3 /                            \> out3 /
-```
-
-##### switch
-switch要求输入是个package, 如果只含有一输入，那么该输入会作为条件判断和元素的输入；如果包含两个输入，那么第一个输入会作为条件判断的输入，第二个输入会作为元素的输入。其工作流如下：
-```
-     case cond1: input -> module11 -> ... -> module1N -> out; break
-     case cond2: input -> module21 -> ... -> module2N -> out; break
-     case cond3: input -> module31 -> ... -> module3N -> out; break
-```
-
-##### IFS
-IFS会先将输入送入到可调用逻辑判断函数，根据返回True和False来选择将输入送入到对应的分支中进行处理。其工作流如下：
-```
-result = cond(input) ? tpath(input) : fpath(input)
-```
-
-##### Loop
-Loop会把前一个元素的输出送往下一个元素的输入，最后一个元素的输出又作为第一个元素的输入，以此循环往复。跳出循环的条件是用户可以配置Loop循环的个数，或者配置一个可调用的条件对象来对每次元素的输出数据进行判断。
-```
-in(out) -> module1 -> ... -> moduleN -> exp, out -> out
-```
-
-##### 返回值
-流中的每个元素原则上只能有一个返回值，返回多个会被认为是tuple。当确实需要返回多个值时，可以使用`lazyllm.package`对返回值进行打包，当`lazyllm.package`流转到下一个可执行的功能时，会自动解包并传入到不同的形参中去。
-
-#### 2.2.2 基本的例子
-LazyLLM通过pipeline把基本的元素组合起来，构成完整的工作流程。下面展示一个基本的使用例子:
+Component是LazyLLM中最小的执行单元，它既可以是一个函数，也可以是一个bash命令。Component具备三个典型的能力：
+1. 能借助launcher，实现用户无感的跨平台。
+  - EmptyLauncher：本地运行，支持开发机、裸金属等；
+  - RemoteLauncher：调度到计算节点运行，支持Slurm、SenseCore等。
+2. 利用注册机制，实现方法的分组索引和快速查找。支持对函数和bash命令进行注册。下面是一个例子：
 ```python
 import lazyllm
-ppl = lazyllm.pipeline(
-    lazyllm.parallel(
-        lazyllm.pipeline(
-            finetune.alpacalora(base_model='./base-model1', target_path='./finetune-target1'),
-            post_action=deploy.lightllm,
-        ),
-        lazyllm.pipeline(
-            finetune.alpacalora(base_model='./base-model2', target_path='./finetune-target2'),
-            deploy.lightllm,
-        ),
-    ),
-)
-ppl.run('trainset', 'evalset')
+lazyllm.llmregister.make_group('demo')
+
+@lazyllm.llmregister('demo')
+def test(input):
+    return f'input is {input}'
+
+@lazyllm.llmregister.cmd('demo')
+def test_cmd(input):
+    return f'echo input is {input}'
+
+# >>> demo.test()(1)
+# 'input is 1'
+# >>> demo.test_cmd(launcher=launchers.slurm)(2)
+# Command: srun -p pat_rd -N 1 --job-name=xf488db3 -n1 bash -c 'echo input is 2'
 ```
 
-#### 2.2.3 自定义函数
-LazyLLM支持自定义函数并且注册到对应的功能模块中，供pipeline去使用，其对应的接口为`lazyllm.component_register`。支持被注册的功能模块有dataproc、finetune、deploy、validate等，但考虑到某些模块的复杂性，这里不建议用户自行注册finetune、deploy。如果想注册一个函数，则可以给函数加上`@lazyllm.component_register`; 否则如果想注册一个bash执行的命令，则可以写一个返回bash命令的函数，给函数加上`@lazyllm.component_register.cmd`。下面给出一个具体的例子：
-
-```python
-import lazyllm
-
-@lazyllm.component_register('dataproc')
-def gen_data():
-    return package('trainset', 'evalset')
-
-@lazyllm.component_register.cmd('validate')
-def val1(in1, in2):
-    return 'echo 0'
-
-ppl = lazyllm.pipeline(
-    dataproc.gen_data,
-    finetune.alpacalora(base_model='./base-model1', target_path='./finetune-target1'),
-    deploy.lightllm('url'),
-    validate.val1
-)
-ppl()
-```
-
-* 注：未注册的函数也可以被pipeline使用，但不支持设置launcher等参数。该参数会在[跨平台](#23-跨平台)一节详细描述。
-
-#### 2.2.4 灵活传参
-
-流式的搭建模型虽然方便，但它存在着“下一环节的输入只能是上一环节的输出”的问题，这使得开发者在搭建工程的时候不那么灵活。我们引入了“索引”和“参数绑定”的机制来解决这个问题。下面给出一个具体的例子:
-```python
-import lazyllm
-from lazyllm import bind, root, _0
-
-@lazyllm.component_register('dataproc')
-def gen_data():
-    return package('trainset', 'evalset')
-
-@lazyllm.component_register('validate')
-def val1(in1, in2):
-    print(in1, in2)
-    return in1
+### Module
+Module是LazyLLM中的顶层组件，具备训练、部署、推理和评测四项关键能力，每个模块可以选择实现其中的部分或者全部的能力，每项能力都可以由1到多个Component组成。如下表所示，我们内置了一些基础的Module供大家使用。
 
 
-@lazyllm.component_register('validate')
-def val2(in1, in2):
-    print(in1, in2)
+|                  | 作用 | 训练/微调 | 部署 | 推理 | 评测 |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| ActionModule     | 可以将函数、模块、flow等包装成一个Module | 支持通过ActionModule对其Submodule进行训练/微调| 支持通过ActionModule对其Submodule进行部署 | ✅ | ✅ |
+| UrlModule        | 将任意Url包装成Module，用于访问外部服务 | ❌ | ❌ | ✅ | ✅ |
+| ServerModule     | 将任意的函数、flow或Module包装成API服务 | ❌ | ✅ | ✅ | ✅ |
+| TrainableModule  | 可训练的Module，所有支持的模型均为TrainableModule | ✅ | ✅ | ✅ | ✅ |
+| WebModule        | 启动一个多伦对话的界面服务 | ❌ | ✅ | ❌ | ✅ |
+| OnlineChatModule | 接入在线模型的微调和推理服务 | ✅ | ✅ | ✅ | ✅ |
+| OnlineEmbeddingModule | 接入在线Embedding模型的推理服务 | ❌ | ✅ | ✅ | ✅ |
 
-ppl = lazyllm.pipeline(
-    pp1=lazyllm.pipeline(
-        proc=dataproc.gen_data,
-        val1=validate.val1,
-    ), 
-    val2=bind(validate.val2, root.pp1.proc, _0),
-)
-ppl()
-```
+### Flow
 
-#### 2.2.5 查看结构
+Flow 是LazyLLM中定义的数据流，描述了数据如何从一个可调用对象传递到另一个可调用的对象，您可以利用Flow直观而高效地组织和管理数据流动。基于预定义好的各种Flow，我们可以借助Module、Component、Flow甚至任一可调用的对象，轻松地构建和管理复杂的应用程序。目前LazyLLm中实现的Flow有Pipeline、Parallel、Diverter、Warp、IFS、Loop等，几乎可以覆盖全部的应用场景。利用Flow构建应用具备以下优势：
+1. 您可以方便地组合、添加和替换各个模块和组件；Flow 的设计使得添加新功能变得简单，不同模块甚至项目之间的协作也变得更加容易。
+2. 通过一套标准化的接口和数据流机制，Flow 减少了开发人员在处理数据传递和转换时的重复工作。开发人员可以将更多精力集中在核心业务逻辑上，从而提高整体开发效率。
+3. 部分Flow 支持异步处理模式和并行执行，在处理大规模数据或复杂任务时，可以显著提高响应速度和系统性能。
 
-在[灵活传参](#224-灵活传参)一节中，我们介绍了可以通过`root.xx.yy.zz`对暂未实例化的pipeline的节点进行索引，那么了解整个pipeline的结构成为了关键的一步。这里我们重写了各个对象的`__repr__`函数，使得我们能够展示pipeline的层级结构。
+## 九、文档
 
-```python
-import lazyllm
-from lazyllm import bind, root, _0
+## 十、贡献代码
 
-@lazyllm.component_register('dataproc')
-def gen_data(idx):
-    print(f'idx {idx}: gen data done')
-    return package(idx + 1, idx + 1)
+## 贡献者们
 
-@lazyllm.component_register('validate')
-def eval(evalset, url, job=None):
-    print(f'eval all. evalset: {evalset}, url: {url}, eval_all done. job: {job}')
-
-named_ppl = lazyllm.pipeline(
-    data=dataproc.gen_data(),
-    finetune=lazyllm.parallel(
-        stage1=lazyllm.pipeline(
-            sft=finetune.alpacalora(base_model='./base-model1', target_path='./finetune-target1', launcher=launchers.slurm()),
-            deploy=deploy.lightllm('http://www.myserver1.com'),
-        ),
-    ),
-    val=bind(validate.eval, 'evalset', _0, root.finetune.stage1.deploy.deploy_stage2.job),
-)
-```
-
-可以使用`named_ppl.__repr__()`函数查看层级结构。 在实际调试的时候，也可以通过bash打开一个python交互程序来输出，假设上述文件命名为test.pu，示例如下：
-```bash
-$ python
->>> from test import named_ppl
->>> named_ppl
-<Pipeline> [
-    data <lazyllm.llm.core.dataproc.gen_data>,
-    finetune <Parallel> [
-        stage1 <Pipeline> [
-            sft <lazyllm.llm.core.finetune.AlpacaloraFinetune>,
-            deploy <Lightllm> [
-                deploy_stage1 <function show_io at 0x7fdedb3ed1e0>,
-                deploy_stage2 <lazyllm.llm.core.deploy.lllmserver>(bind args:placeholder._0, 1, 64000, 2),
-                deploy_stage3 <lazyllm.llm.core.deploy.RelayServer>,
-                deploy_stage4 <function show_io at 0x7fdedb3ed1e0>
-            ]
-        ]
-    ],
-    val <lazyllm.llm.core.validate.eval>(bind args:'evalset', placeholder._0, <lazyllm.common.AttrTree object at 0x7fdeda955da0>)
-]
-```
-如上面的示例，每一个元素会给出名称和<类型>，如果是流结构，还会额外用`[]`给出其内部包含的元素。如果是蕴含了参数绑定的元素，则会展示其绑定的真实元素，并且通过`(bind args: xx)`展示其绑定的参数。
-
-### 2.3 跨平台
-
-该工具支持运行在多种集群环境上，包括裸金属、slurm和sensecore。在实际搭建的时候，主要通过给模块提供launcher这个参数来决定该模块运行在哪个平台上，可选的launcher有empty、slurm和sensecore。一般情况下，一个程序内不会同时出现slurm和sensecore，这是因为目前没有一个管理节点可以同时把任务提交到slurm和sco上。
-
-```python
-ppl = lazyllm.pipeline(
-    finetune.alpacalora(base_model='./base-model', target_path='./finetune-target', launcher=launchers.slurm),
-    deploy.lightllm('http://www.myserver1.com', launcher=launchers.slurm(ngpus=8)),
-    post_action=validate.eval_stage1(launcher=launchers.empty),
-)
-```
-
-如果launcher是slurm和sensecore的话，则调用的模块必须是一个bash命令；但我们支持将一些可执行的函数透传到新的bash进程中，例如在部署时候，可能要对大模型的输入/输出做前后处理，此时我们支持将前后处理函数定义在主进程，然后通过bash启动的推理的脚本能读到该函数并执行。
-
-* P1-TODO: 未来可能会同时支持linux和windows，假如有客户需要
-
-### 2.4 运行模式
-
-LazyLLM提供了三种运行模式，分别是Display、Normal和Debug。
-
-#### Display
-在Display模式下，所有的cmd命令都不会真正的被执行，而是通过命令行打印出来。例如在[2.2.5 查看结构](#225-查看结构)中所述的案例，在Display模式下执行`named_ppl.start(0)`的结果为：
-```bash
-idx 0: gen data done
-Command: srun -p None -N 1 --job-name=x59b29882ced265a9 -n1 bash -c 'python /mnt/cache/wangzhihong/lazyllm/lazyllm/components/finetune/alpaca-lora/finetune.py --base_model=./base-model1 --output_dir=./finetune-target1 --data_path=1 --batch_size=64 --micro_batch_size=4 --num_epochs=2 --learning_rate=0.0005 --cutoff_len=1030 --filter_nums=1024 --val_set_size=200 --lora_r=8 --lora_alpha=32 --lora_dropout=0.05 --lora_target_modules="[query_key_value,dense,dense_4h_to_h,dense_h_to_4h]" --modules_to_save="[word_embeddings, output_layer]" --deepspeed="ds.json" --prompt_template_name=alpaca --train_on_inputs=True 2>&1 | tee ./finetune-target1/LLM_$(date +"%Y-%m-%d_%H-%M-%S").log'
-input or output is: ./finetune-target1
-Command: srun -p None -N 1 --job-name=x3b5eca3122db7596 -n1 bash -c 'python -m lightllm.server.api_server --model_dir ./finetune-target1 --tp 1 --nccl_port 20864 --max_total_token_num 64000 --tokenizer_mode "auto" --port 35444 --host "0.0.0.0" --eos_id 2 --trust_remote_code '
-Command: srun -p None -N 1 --job-name=4771159e863eadf0 -n1 bash -c 'python test2.py --target_url=http://x3b5eca3122db7596:35444/generate --before_function="b'\x80\x04N.' --after_function="b'\x80\x04N.'"'
-input or output is: <lazyllm.launcher.SlurmLauncher.Job object at 0x7f0ee631af28>
-eval all. evalset: evalset, url: <lazyllm.launcher.SlurmLauncher.Job object at 0x7f0ee631af28>, eval_all done. job: <lazyllm.launcher.SlurmLauncher.Job object at 0x7f0ee631aef0(Readonly)>
-```
-
-#### Debug
-在Debug模式下，会给出更加细致的错误信息。
-
-### 2.5 全局配置
-
-## 三、能力
-
-本工具覆盖开发过程中的各个环节，从数据处理、训练、微调、部署、推理、评测，直到最终交付，在每个环境都包含了大量的称手的工具，并提供统一且简单的使用方式，让开发者可以轻松的使用这些工具。
-
-### 3.1 数据处理
-
-- [ ] 预置各种数据生成的模板。
-- [ ] 支持自定义数据预处理。
-
-### 3.2 继续预训练
-
-- [ ] 支持多种模型，包括llama、llama2、internLM、chatglm等；支持其常见的尺寸，包括7B、13B、20B、70B等
-- [ ] 支持读取huggingface格式的checkpoint
-
-### 3.3 微调
-
-#### 支持模型
-支持多种模型，包括llama、llama2、internLM、chatglm等；支持其常见的尺寸，包括7B、13B、20B、70B等
-
-#### 支持算法
-支持多种微调算法，考虑LoRA、QLoRA等
-
-#### 支持框架
-支持多种微调框架，包括peft、easyllm、colle等。
-
-#### Auto
-Auto是LazyLLM主推的使用方式，它秉承着“让懒惰进行到底”的思想，支持用户选定基模型(hf格式)和训练集之后，根据提供的机器情况，结合过往的经验自动选择框架认为最优的算法、超参数和框架。使用方式如下：
-```python
-finetune.auto('chatglm3-6b', launcher=launchers.slurm(ngpus=32))
-```
-#### 国产芯片支持
-
-### 3.4 部署
-
-- [ ] 支持多种模型，包括llama、llama2、internLM、chatglm等；支持其常见的尺寸，包括7B、13B、20B、70B等
-- [ ] 提供API和简单页面两种方式用于推理
-- [ ] 支持部署前后处理服务
-- [ ] 支持负载均衡
-- [ ] 支持在国产芯片上部署推理服务
-- [ ] 只支持一个basemodel在同一个进程中可以和多个不同的lora-model结合进行推理
-
-### 3.5 推理
-
-- [x] 支持单独推理和batch推理
-- [x] 支持多轮对话式的交互式推理
-
-### 3.6 评测
-
-- [ ] 针对典型场景，预置该场景常用的评测方式和报告输出
-- [ ] 集成典型功能下的常见评测算法
-
-### 3.7 交付
-
-- [ ] 支持源码交付、镜像交付等多种交付方式。
-- [ ] 自动打包源码和模型。
-
-## 四、典型业务场景
-
-### 4.1 文档问答（Document QA）
-### 4.2 AI Agent客服对话
-### 4.3 报告生成
-### 4.4 搜索增强
-### 4.5 ...
-
-## 五、场景工具依赖
-
-|场景           |数据处理|训练|微调|部署|推理|评测|交付|
-|--------------|-------|---|---|---|----|---|----|
-|文档问答        |      |   |   |   |    |    |   |
-|AI Agent客服对话|      |   |   |   |    |    |   |
-|报告生成        |      |   |   |   |    |    |   |
-|搜索增强        |      |   |   |   |    |    |   |
-
-## 六、界面
-
-## 七、路线 RoadMap
-
-- [ ] 把基础的微调和推理的能力加上，把继续预训练也集成进去
-- [ ] 然后打磨再一些细节，比如优化报错体验、用户做全局配置、自动查找空余节点等等；
-- [ ] 把更多的微调/推理框架也加进去
-- [ ] 支持用户选择模型和算法，之后我们根据用户的环境情况，自动选择最优的框架和参数；
-- [ ] 针对典型的场景，加入其需要的工具，例如Document QA需要加入文本解析、知识库构建、数据库等
-- [ ] 加带界面的web服务，如对话系统、知识库系统等等
