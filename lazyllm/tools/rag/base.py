@@ -3,8 +3,8 @@ import json
 import hashlib
 import importlib
 
-from .module import ModuleBase
-from ..common.common import LazyLlmRequest
+from lazyllm import ModuleBase
+from lazyllm.common import LazyLlmRequest
 from lazyllm.thirdparty import llama_index
 import lazyllm
 

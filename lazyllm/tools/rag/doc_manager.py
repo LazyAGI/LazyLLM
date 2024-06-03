@@ -6,7 +6,7 @@ from fastapi import UploadFile
 import lazyllm
 from lazyllm import FastapiApp as app
 
-from .doc_group_impl import DocGroupImpl
+from .group_doc import DocGroupImpl
 from .utils import BaseResponse, save_files_in_threads
 
 class DocManager(lazyllm.ModuleBase):

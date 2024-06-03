@@ -8,9 +8,8 @@ from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeploy
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, WebModule, TrialModule, register as module_register,
                      OnlineChatModule, OnlineEmbeddingModule)
-from .module import Retriever, Rerank
 from .client import redis_client
-from .rag.tools import Document
+from .tools import Document, Rerank, Retriever
 from . import flows
 
 pipeline, parallel = flows.pipeline, flows.parallel
