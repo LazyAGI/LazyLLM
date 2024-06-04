@@ -10,6 +10,7 @@ from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      OnlineChatModule, OnlineEmbeddingModule)
 from .client import redis_client
 from .tools import Document, Rerank, Retriever
+from .docs import add_doc
 from . import flows
 
 pipeline, parallel = flows.pipeline, flows.parallel
@@ -64,6 +65,9 @@ __all__ = [
     'Document',
     'Retriever',
     'Rerank',
+
+    # docs
+    'add_doc',
 ]
 
 __all__ += common.__all__  # noqa F405
