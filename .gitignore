@@ -3,3 +3,4 @@ __pycache__
 test/
 tmp/
 .vscode
+build
