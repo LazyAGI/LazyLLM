@@ -65,22 +65,6 @@ class WebUi():
         with gr.Blocks() as demo:
             with gr.Tabs():
                 select_group_list = []
-                with gr.TabItem("聊天"):
-                    def chat(message, history):
-                        history = history or []
-                        history.append((message, f"Echo: {message}"))
-                        return history
-
-                    chat_box = gr.Chatbot(label="聊天记录")
-                    user_input = gr.Textbox(label="输入消息")
-                    send_button = gr.Button("发送")
-
-                    def submit_message(msg, hist):
-                        return chat(msg, hist)
-
-                    send_button.click(submit_message, [user_input, chat_box], [chat_box])
-                    user_input.submit(submit_message, [user_input, chat_box], [chat_box])
-
                 with gr.TabItem("创建分组"):
                     create_group_text = gr.Textbox(label="分组名称：")
                     create_group_btn = gr.Button("创建")
@@ -237,6 +221,9 @@ class DocWebModule(ModuleBase):
     def _get_deploy_tasks(self):
         return Pipeline(self._work)
 
+    def _get_post_process_tasks(self):
+        return Pipeline(self._print_url)
+
     def wait(self):
         return self.p.join()
 
@@ -248,6 +235,9 @@ class DocWebModule(ModuleBase):
             f'The ports in the range {self.port} are all occupied. '
             'Please change the port range or release the relevant ports.'
         )
+
+    def _print_url(self):
+        lazyllm.LOG.success(f'LazyLLM DocWebModule launched successfully: Running on local URL: {self.url}', flush=True)
 
     def _verify_port_access(self, port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
