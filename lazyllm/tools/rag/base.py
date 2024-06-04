@@ -43,6 +43,11 @@ class DocImpl(ModuleBase):
         self.store = LazyStore(doc_name)
 
     def load_files(self, doc_path=None, doc_files=None):
+        if not doc_files and not doc_path:
+            from llama_index.core.schema import TextNode
+            # empty will make error when create bm25. add "empty doc" to avoid this.
+            return [TextNode(text="empty doc", metadata={"file_name": "empty_doc"})]
+
         return llama_index.core.SimpleDirectoryReader(input_dir=doc_path, input_files=doc_files).load_data()
 
     @classmethod

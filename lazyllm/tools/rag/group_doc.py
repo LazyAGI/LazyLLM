@@ -7,18 +7,38 @@ import lazyllm
 from .base import DocImpl
 
 DATA_DIR = "__data"
+DEFAULT_DIR = "default"
 
 class DocGroupImpl(lazyllm.ModuleBase):
     def __init__(self, dataset_path, embed) -> None:
         super().__init__()
+
         self._dataset_path = dataset_path
         self._embed = embed
+
+        if DEFAULT_DIR not in self.list_groups():
+            self.new_group(DEFAULT_DIR)
+        self._move_file_to_default()
+
         file_paths = self._list_all_files(self.dataset_path, lambda x: DATA_DIR in x)
         self._impl: DocImpl = DocImpl(doc_files=file_paths, embed=self._embed, doc_name="lazyllm_doc")
 
     @property
     def dataset_path(self):
         return self._dataset_path
+
+    def _move_file_to_default(self):
+        try:
+            items = os.listdir(self.dataset_path)
+            items = [os.path.join(self.dataset_path, item) for item in items]
+            files = [item for item in items if os.path.isfile(item)]
+
+            group_path = self.get_group_source_path(group_name=DEFAULT_DIR)
+            for file in files:
+                shutil.move(file, os.path.join(group_path, os.path.basename(file)))
+
+        except Exception as e:
+            return str(e)
 
     def new_group(self, group_name: str):
         if os.path.exists(self.get_group_path(group_name=group_name)):
