@@ -22,11 +22,33 @@ void addDocStr(py::object obj, std::string docs) {
 }
 '''
 
-def add_doc(obj_name, docstr, module=lazyllm):
+lazyllm.config.add('language', str, 'English', 'LANGUAGE')
+
+
+def add_doc(obj_name, docstr, module, append=''):
     obj = module
     for n in obj_name.split('.'):
         obj = getattr(obj, n)
     try:
-        obj.__doc__ = docstr
+        if append:
+            obj.__doc__ += append + docstr
+        else:
+            obj.__doc__ = docstr
     except Exception:
         raise NotImplementedError('Cannot add doc for builtin class or method now, will be supported in the feature')
+
+
+def add_chinese_doc(obj_name, docstr, module=lazyllm):
+    if lazyllm.config['language'].upper() == 'CHINESE':
+        add_doc(obj_name, docstr, module)
+
+def add_english_doc(obj_name, docstr, module=lazyllm):
+    if lazyllm.config['language'].upper() == 'ENGLISH':
+        add_doc(obj_name, docstr, module)
+
+def add_example(obj_name, docstr, module=lazyllm):
+    docstr = '\n'.join([f'    {d}' for d in docstr.split('\n')])
+    if lazyllm.config['language'].upper() == 'CHINESE':
+        add_doc(obj_name, docstr, module, '\n示例::\n')
+    if lazyllm.config['language'].upper() == 'ENGLISH':
+        add_doc(obj_name, docstr, module, '\nExample::\n')
