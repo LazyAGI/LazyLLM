@@ -1,69 +1,28 @@
-import sys
-import time
-import os
-
-# os.environ['PYTHONPATH'] = f"{os.environ.get('PYTHONPATH')}:{os.path.dirname(os.path.dirname(os.path.realpath(__file__)))}"
-# sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-os.environ['LAZYLLM_DEBUG'] = '1'
-
 import lazyllm
-from lazyllm import pipeline, parallel, Identity, Retriever
+from lazyllm import pipeline, parallel, Identity, Document, Retriever, Rerank, deploy, launchers
 from lazyllm.components.embedding.embed import LazyHuggingFaceEmbedding
-from lazyllm import Document
-from lazyllm.launcher import EmptyLauncher
 
-# os.environ['LAZYLLM_REDIS_URL']='redis://103.177.28.196:9997'
-
-os.environ['LAZYLLM_REDIS_URL']='redis://:PEDGFVkfWo235rd@103.177.28.196:6379'
-
-# embed = lazyllm.EmbeddingModule(source="openai", embed_url="https://gf.nekoapi.com/v1/embeddings")
-
-
-class EmiEmbedding(lazyllm.ModuleBase):
-    def __init__(self, *, return_trace=False):
-        super().__init__(return_trace=return_trace)
-        host = "101.230.144.233"
-        port = "8330"
-        from llama_index.embeddings.text_embeddings_inference import TextEmbeddingsInference
-        tei_url = f"http://{host}:{port}"
-        self._text_embedding_inference_model = TextEmbeddingsInference(
-            base_url=tei_url,
-            model_name="BAAI/bge-large-zh-v1.5",
-            embed_batch_size= 128
-        )
-    
-    def __call__(self, string):
-        if type(string) is str:
-            res = self._text_embedding_inference_model.get_text_embedding(string)
-        else:
-            res = self._text_embedding_inference_model.get_text_embedding_batch(string)
-        return res
-
-
-launcher = EmptyLauncher(sync=False)
-# launcher = lazyllm.launchers.sco(partition='a100', ngpus=1, sync=False)
-# embed=lazyllm.ServerModule(LazyHuggingFaceEmbedding(base_embed="/home/mnt/qitianlong/models/BAAI--bge-large-zh-v1.5"), launcher=launcher)
-embed=EmiEmbedding()
-
-documents = Document(
-    dataset_path='/home/mnt2/sunshangbin/lazyllm/examples/dataset', 
-    embed=embed
+template = (
+    '<|im_start|>user\n你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
+    '上下文：{context_str}\n问题: {query_str}\n回答：\n<|im_end|>\n<|im_start|>assistant\n'
 )
 
-rma1 = Retriever(documents, parser='Hierarchy', similarity_top_k=3)
-rma2 = Retriever(documents, algo='chinese_bm25', parser='Hierarchy', similarity_top_k=6)
+llm = lazyllm.TrainableModule('internlm2-chat-7b', ''
+        ).deploy_method(deploy.vllm, launcher=launchers.remote(ngpus=1)
+        ).prompt(template, response_split='<|im_start|>assistant\n')
 
+documents = Document(dataset_path='/home/mnt2/sunshangbin/lazyllm/examples/dataset',
+                     embed=lazyllm.ServerModule(LazyHuggingFaceEmbedding('BAAI/bge-large-zh-v1.5')))
+
+rm = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
+rerank = Rerank(types='Reranker', model='BAAI/bge-reranker-large')
 m = lazyllm.ActionModule(
-    pipeline(parallel.sequential(x=rma1,y=rma2), lambda x, y:x + y),
-    lambda nodes: '《'+nodes[0].metadata["file_name"].split('.')[0] + '》 ' + nodes[0].get_content() if len(nodes)>0 else '未找到'
+    parallel.sequential(
+        context_str=pipeline(parallel.sequential(Identity, rm), rerank),
+        query_str=Identity
+    ).asdict,
+    llm
 )
 
-# m.evalset(['介绍五行。','什么是色？','什么是中庸？','非常道是什么？','应该怎么学习？'])
-# m.update_server().eval()
-
-mweb = lazyllm.WebModule(m)
+mweb = lazyllm.WebModule(m, port=12345)
 mweb.start()
-print(m("hi"))
-
-import time
-time.sleep(123439)

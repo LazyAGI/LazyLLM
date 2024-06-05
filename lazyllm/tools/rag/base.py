@@ -12,7 +12,7 @@ import lazyllm
 register_flag = lazyllm.once_flag()
 
 class DocImpl(ModuleBase):
-    registered_retriever = dict()
+    registered_similarity = dict()
     parser_rule_dict = dict()
 
     @classmethod
@@ -51,8 +51,8 @@ class DocImpl(ModuleBase):
         return llama_index.core.SimpleDirectoryReader(input_dir=doc_path, input_files=doc_files).load_data()
 
     @classmethod
-    def register_retriever(cls, func):
-        cls.registered_retriever[func.__name__] = func
+    def register_similarity(cls, func):
+        cls.registered_similarity[func.__name__] = func
         return func
 
     @staticmethod
@@ -68,7 +68,7 @@ class DocImpl(ModuleBase):
     def _register_parser(cls, name, transform, parent=None, **kwargs):
         assert name not in cls, f'Duplicate rule: {name}'
         cls[name] = dict(parser=transform if callable(transform) else DocImpl.get_llamaindex_transform(transform),
-                         parser_kw=kwargs, parent_name=parent, nodes=None, retrievers_algo={}, retrievers={})
+                         parser_kw=kwargs, parent_name=parent, nodes=None, retrievers_similarity={}, retrievers={})
 
     @classmethod
     def register_parser(cls, name, transform, parent=None, **kw):
@@ -78,19 +78,19 @@ class DocImpl(ModuleBase):
         DocImpl._register_parser(self.nodes_dict, name, transform, parent, **kw)
         return self
 
-    def add_algo(self, signature, algo, algo_kw, parser):
+    def add_similarity(self, signature, similarity, similarity_kw, parser):
         assert parser in self.nodes_dict
-        self.nodes_dict[parser]['retrievers_algo'][signature] = {
-            'algo': algo,
-            'algo_kw': algo_kw,
+        self.nodes_dict[parser]['retrievers_similarity'][signature] = {
+            'similarity': similarity,
+            'similarity_kw': similarity_kw,
         }
 
-    def generate_signature(self, algo, algo_kw, parser):
-        sorted_kw = sorted(algo_kw.items())
+    def generate_signature(self, similarity, similarity_kw, parser):
+        sorted_kw = sorted(similarity_kw.items())
         kw_str = ', '.join(f'{k}={v}' for k, v in sorted_kw)
-        signature = f'{algo}({kw_str})'
+        signature = f'{similarity}({kw_str})'
         hashed_signature = hashlib.sha256(signature.encode()).hexdigest()
-        self.add_algo(hashed_signature, algo, algo_kw, parser)
+        self.add_similarity(hashed_signature, similarity, similarity_kw, parser)
         return hashed_signature
 
     def _get_node(self, name):
@@ -119,13 +119,13 @@ class DocImpl(ModuleBase):
         node = self._get_node(name)
         if signature in node['retrievers']:
             return node['retrievers'][signature]
-        if signature in node['retrievers_algo']:
-            func_info = node['retrievers_algo'][signature]
-            assert func_info['algo'] in self.registered_retriever, (
-                f"Unable to find retriever algorithm {func_info['algo']}, "
-                "please check the algorithm name or register a new one.")
-            retriever = self.registered_retriever[func_info['algo']](
-                name, self.nodes_dict[name], self.embed, func_info['algo_kw'], self.store)
+        if signature in node['retrievers_similarity']:
+            func_info = node['retrievers_similarity'][signature]
+            assert func_info['similarity'] in self.registered_similarity, (
+                f"Unable to find retriever similarity {func_info['similarity']}, "
+                "please check the similarity name or register a new one.")
+            retriever = self.registered_similarity[func_info['similarity']](
+                name, self.nodes_dict[name], self.embed, func_info['similarity_kw'], self.store)
             node['retrievers'][signature] = retriever
             return retriever
         else:
@@ -140,8 +140,8 @@ class DocImpl(ModuleBase):
         res = retriever.retrieve(string)
         return res
 
-    def query(self, string, algo, parser, **kw):
-        sig = self.generate_signature(algo, kw, parser)
+    def query(self, string, similarity, parser, **kw):
+        sig = self.generate_signature(similarity, kw, parser)
         return self._query_with_sig(string, sig, parser)
 
     def _get_nodes_sort_list(self):
@@ -183,7 +183,7 @@ class DocImpl(ModuleBase):
 
             node["nodes"] = node["nodes"] + add_nodes
             node["retrievers"] = {}
-            for signature in node["retrievers_algo"].keys():
+            for signature in node["retrievers_similarity"].keys():
                 self.get_retriever(parser_name, signature)
 
     def delete_files(self, input_files):
@@ -204,10 +204,10 @@ class DocImpl(ModuleBase):
             del_node_ids = set([node.node_id for node in delete_nodes])
             node["nodes"] = [it_node for it_node in node["nodes"] if it_node.node_id not in del_node_ids]
             node["retrievers"] = {}
-            for signature in node["retrievers_algo"].keys():
+            for signature in node["retrievers_similarity"].keys():
                 self.get_retriever(parser_name, signature)
 
-@DocImpl.register_retriever
+@DocImpl.register_similarity
 def defatult(name, nodes, embed, func_kw, store):
     index = store.get_index(
         nodes_name=name,
@@ -216,12 +216,12 @@ def defatult(name, nodes, embed, func_kw, store):
     )
     return index.as_retriever(**func_kw)
 
-@DocImpl.register_retriever
+@DocImpl.register_similarity
 def chinese_bm25(name, nodes, embed, func_kw, store):
     from ..rag.component.bm25_retriever import ChineseBM25Retriever
     return ChineseBM25Retriever.from_defaults(nodes=nodes['nodes'], **func_kw)
 
-@DocImpl.register_retriever
+@DocImpl.register_similarity
 def bm25(name, nodes, embed, func_kw, store):
     from llama_index.retrievers.bm25 import BM25Retriever
     return BM25Retriever.from_defaults(nodes=nodes['nodes'], **func_kw)
@@ -229,14 +229,14 @@ def bm25(name, nodes, embed, func_kw, store):
 class Retriever(ModuleBase):
     __enable_request__ = False
 
-    def __init__(self, doc, parser, algo='defatult', index='vector', **kw):
+    def __init__(self, doc, parser, similarity='defatult', index='vector', **kw):
         super().__init__()
         self.doc = doc
-        self.algo = algo
-        self.algo_kw = kw
+        self.similarity = similarity
+        self.similarity_kw = kw
         self.parser = parser
         self.index = index
-        self.signature = self.doc.generate_signature(self.algo, self.algo_kw, self.parser)
+        self.signature = self.doc.generate_signature(self.similarity, self.similarity_kw, self.parser)
 
     def forward(self, str):
         return self.doc._query_with_sig(str, self.signature, self.parser)

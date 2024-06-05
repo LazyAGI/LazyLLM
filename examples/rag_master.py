@@ -16,15 +16,15 @@ base_embed = '/mnt/lustrenew/share_data/sunxiaoye/Models/BAAI--bge-large-zh-v1.5
 base_rerank = '/mnt/lustrenew/share_data/sunxiaoye/Models/BAAI--bge-reranker-large'
 launcher = launchers.slurm(partition='pat_rd', ngpus=1, sync=False)
 
-llm = lazyllm.TrainableModule(base_model
-        ).deploy_method((deploy.vllm, {'launcher': launcher, 'max-model-len': 12000})
+llm = lazyllm.TrainableModule(base_model, ''
+        ).deploy_method(deploy.vllm, launcher=launchers.remote(ngpus=1)
         ).prompt(template, response_split='<|im_start|>assistant\n')
 
 documents = Document(dataset_path='/mnt/lustre/share_data/sunxiaoye.vendor/MyWorks/LazyLLM/RAG/docs2', 
                      embed=lazyllm.ServerModule(LazyHuggingFaceEmbedding(base_embed), launcher=launcher))
 
 rma1 = Retriever(documents, parser='FineChunk', similarity_top_k=3)
-rma2 = Retriever(documents, algo='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
+rma2 = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
 rerank1 = Rerank(types='Reranker', model=base_rerank)
 rerank2 = Rerank(types='SimilarityFilter', threshold=0.003)
 
