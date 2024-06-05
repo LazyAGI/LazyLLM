@@ -1,15 +1,16 @@
 import json
 import lazyllm
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from lazyllm.module.utils.downloader import ModelDownloader
 
 
 class LazyHuggingFaceEmbedding(object):
-    def __init__(self, base_embed, embed_batch_size=30, trust_remote_code=True):
-        self.base_embed = base_embed
+    def __init__(self, base_embed, source=lazyllm.config['model_source'], embed_batch_size=30, trust_remote_code=True):
         self.embed_batch_size = embed_batch_size
         self.trust_remote_code = trust_remote_code
         self.embed = None
         self.init_flag = lazyllm.once_flag()
+        self.base_embed = ModelDownloader(source).download(base_embed)
 
     def load_embed(self):
         self.embed = HuggingFaceEmbedding(model_name=self.base_embed,
