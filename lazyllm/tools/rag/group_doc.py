@@ -12,9 +12,9 @@ DEFAULT_DIR = "default"
 class DocGroupImpl(lazyllm.ModuleBase):
     def __init__(self, dataset_path, embed) -> None:
         super().__init__()
-
         self._dataset_path = dataset_path
         self._embed = embed
+        assert os.path.exists(self.dataset_path), f"{self.dataset_path} does not exist"
 
         if DEFAULT_DIR not in self.list_groups():
             self.new_group(DEFAULT_DIR)
@@ -125,8 +125,8 @@ class DocGroupImpl(lazyllm.ModuleBase):
             lazyllm.LOG.error(f"Error while listing files in {directory}: {e}")
             return []
 
-    def generate_signature(self, algo, algo_kw, parser):
-        return self._impl.generate_signature(algo, algo_kw, parser)
+    def generate_signature(self, similarity, similarity_kw, parser):
+        return self._impl.generate_signature(similarity, similarity_kw, parser)
 
     def query_with_sig(self, string, signature, parser):
         return self._impl._query_with_sig(string, signature, parser)
