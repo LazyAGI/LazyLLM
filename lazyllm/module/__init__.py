@@ -1,6 +1,5 @@
 from .module import (ModuleBase, TrainableModule, ActionModule,
                      ServerModule, UrlModule, register)
-from .webmodule import WebModule
 from .trialmodule import TrialModule
 from .onlineChatModule import OnlineChatModule
 from .onlineEmbedding import OnlineEmbeddingModule
@@ -27,7 +26,6 @@ __all__ = [
     'TrainableModule',
     'ActionModule',
     'ServerModule',
-    'WebModule',
     'TrialModule',
     "OnlineChatModule",
     "OnlineEmbeddingModule",

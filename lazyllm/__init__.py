@@ -6,11 +6,10 @@ from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeploy
                          LazyLLMValidateBase, register as component_register, Prompter,
                          FastapiApp)
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
-                     ServerModule, WebModule, TrialModule, register as module_register,
+                     ServerModule, TrialModule, register as module_register,
                      OnlineChatModule, OnlineEmbeddingModule)
 from .client import redis_client
-from .tools import Document, Rerank, Retriever
-from .docs import add_doc
+from .tools import Document, Rerank, Retriever, WebModule
 from . import flows
 
 pipeline, parallel = flows.pipeline, flows.parallel
