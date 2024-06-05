@@ -24,7 +24,7 @@ class Vllm(LazyLLMDeployBase):
 
     def __init__(self,
                  trust_remote_code=True,
-                 launcher=launchers.remote,
+                 launcher=launchers.remote(ngpus=1),
                  stream=False,
                  **kw,
                  ):
@@ -44,20 +44,20 @@ class Vllm(LazyLLMDeployBase):
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
 
-    def cmd(self, model_dir=None, base_model=None):
-        if not os.path.exists(model_dir) or \
+    def cmd(self, finetuned_model=None, base_model=None):
+        if not os.path.exists(finetuned_model) or \
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
-                    for filename in os.listdir(model_dir)):
-            if not model_dir:
-                LOG.warning(f"Note! That model_dir({model_dir}) is an invalid path, "
+                    for filename in os.listdir(finetuned_model)):
+            if not finetuned_model:
+                LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                             f"base_model({base_model}) will be used")
-            model_dir = base_model
+            finetuned_model = base_model
 
         def impl():
             if not self.kw['port'] or self.kw['port'] == 'auto':
                 self.kw['port'] = random.randint(30000, 40000)
 
-            cmd = f'{sys.executable} -m vllm.entrypoints.api_server --model {model_dir} '
+            cmd = f'{sys.executable} -m vllm.entrypoints.api_server --model {finetuned_model} '
             cmd += self.kw.parse_kwargs()
             if self.trust_remote_code:
                 cmd += ' --trust-remote-code '

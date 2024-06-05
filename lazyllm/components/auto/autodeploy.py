@@ -3,7 +3,7 @@ from lazyllm import launchers, deploy
 from ..deploy.base import LazyLLMDeployBase
 from .configure import get_configer
 from .auto_helper import model_map, get_model_name, check_requirements
-
+from lazyllm.components.embedding.embed import EmbeddingDeploy
 
 class AutoDeploy(LazyLLMDeployBase):
     message_format = {}
@@ -11,8 +11,10 @@ class AutoDeploy(LazyLLMDeployBase):
     default_headers = {'Content-Type': 'application/json'}
 
     def __new__(cls, base_model, trust_remote_code=True, max_token_num=1024,
-                launcher=launchers.remote, stream=False, **kw):
+                launcher=launchers.remote(ngpus=1), stream=False, type=None, **kw):
         model_name = get_model_name(base_model)
+        if type == 'embed' or cls.get_model_type(model_name) == 'embed':
+            return EmbeddingDeploy(trust_remote_code, launcher)
         map_name = model_map(model_name)
         candidates = get_configer().query_deploy(lazyllm.config['gpu_type'], launcher.ngpus,
                                                  map_name, max_token_num)
@@ -25,3 +27,11 @@ class AutoDeploy(LazyLLMDeployBase):
                     kw[value] = getattr(c, key)
             return deploy_cls(trust_remote_code=trust_remote_code, launcher=launcher, stream=stream, **kw)
         raise RuntimeError(f'No valid framework found, candidates are {[c.framework.lower() for c in candidates]}')
+
+    @classmethod
+    def get_model_type(cls, model_name):
+        from lazyllm.module.utils.downloader.model_mapping import model_name_mapping
+        if model_name in model_name_mapping:
+            return model_name_mapping[model_name].get('type', 'llm')
+        else:
+            return 'llm'
