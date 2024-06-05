@@ -9,6 +9,8 @@ class AutoFinetune(LazyLLMFinetuneBase):
     def __new__(cls, base_model, target_path, merge_path=None, ctx_len=1024,
                 batch_size=32, lora_r=8, launcher=launchers.remote(), **kw):
         model_name = get_model_name(base_model)
+        if cls.get_model_type(model_name) == 'embed':
+            raise RuntimeError('Fine-tuning of the embed model is not currently supported.')
         map_name = model_map(model_name)
         base_name = model_name.split('-')[0].split('_')[0].lower()
         candidates = get_configer().query_finetune(lazyllm.config['gpu_type'], launcher.ngpus,
@@ -27,3 +29,11 @@ class AutoFinetune(LazyLLMFinetuneBase):
                 return finetune_cls(base_model, target_path, merge_path, cp_files='tokeniz*',
                                     batch_size=batch_size, lora_r=lora_r, launcher=launcher, **kw)
         raise RuntimeError(f'No valid framework found, candidates are {[c.framework.lower() for c in candidates]}')
+
+    @classmethod
+    def get_model_type(cls, model_name):
+        from lazyllm.module.utils.downloader.model_mapping import model_name_mapping
+        if model_name in model_name_mapping:
+            return model_name_mapping[model_name].get('type', 'llm')
+        else:
+            return 'llm'

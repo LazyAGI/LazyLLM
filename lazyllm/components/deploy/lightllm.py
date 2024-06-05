@@ -29,7 +29,7 @@ class Lightllm(LazyLLMDeployBase):
 
     def __init__(self,
                  trust_remote_code=True,
-                 launcher=launchers.remote,
+                 launcher=launchers.remote(ngpus=1),
                  stream=False,
                  **kw,
                  ):
@@ -47,21 +47,21 @@ class Lightllm(LazyLLMDeployBase):
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
 
-    def cmd(self, model_dir=None, base_model=None):
-        if not os.path.exists(model_dir) or \
+    def cmd(self, finetuned_model=None, base_model=None):
+        if not os.path.exists(finetuned_model) or \
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
-                    for filename in os.listdir(model_dir)):
-            if not model_dir:
-                LOG.warning(f"Note! That model_dir({model_dir}) is an invalid path, "
+                    for filename in os.listdir(finetuned_model)):
+            if not finetuned_model:
+                LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                             f"base_model({base_model}) will be used")
-            model_dir = base_model
+            finetuned_model = base_model
 
         def impl():
             if not self.kw['port']:
                 self.kw['port'] = random.randint(30000, 40000)
             if not self.kw['nccl_port']:
                 self.kw['nccl_port'] = random.randint(20000, 30000)
-            cmd = f'python -m lightllm.server.api_server --model_dir {model_dir} '
+            cmd = f'python -m lightllm.server.api_server --model_dir {finetuned_model} '
             cmd += self.kw.parse_kwargs()
             if self.trust_remote_code:
                 cmd += ' --trust_remote_code '

@@ -59,5 +59,7 @@ model_name_mapping = {
     "Baichuan2-7B-Chat": {"huggingface": "baichuan-inc/Baichuan2-7B-Chat", "modelscope": "baichuan-inc/Baichuan2-7B-Chat"},
     "Baichuan2-7B-Chat-4bits": {"huggingface": "baichuan-inc/Baichuan2-7B-Chat-4bits", "modelscope": "baichuan-inc/Baichuan2-7B-Chat-4bits"},
     "Baichuan2-7B-Intermediate-Checkpoints": {"huggingface": "baichuan-inc/Baichuan2-7B-Intermediate-Checkpoints", "modelscope": "baichuan-inc/Baichuan2-7B-Intermediate-Checkpoints"},
-    "baichuan-7B": {"huggingface": "baichuan-inc/Baichuan-7B", "modelscope": "baichuan-inc/baichuan-7B"}
+    "baichuan-7B": {"huggingface": "baichuan-inc/Baichuan-7B", "modelscope": "baichuan-inc/baichuan-7B"},
+
+    "bge-large-zh-v1.5": {"huggingface": "BAAI/bge-large-zh-v1.5", "modelscope":"AI-ModelScope/bge-large-zh-v1.5", "type":"embed"},
 }

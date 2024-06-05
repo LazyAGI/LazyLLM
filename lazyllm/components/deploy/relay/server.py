@@ -41,6 +41,7 @@ if args.before_function:
 if args.after_function:
     after_func = load_func(args.after_function)
 
+
 app = FastAPI()
 FastapiApp.update()
 
