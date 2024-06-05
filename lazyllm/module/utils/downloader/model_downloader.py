@@ -11,9 +11,10 @@ lazyllm.config.add('model_source_token', str, '', 'MODEL_SOURCE_TOKEN')
 
 
 class ModelDownloader():
-    def __init__(self, model_source='', token=lazyllm.config['model_source_token'],
+    def __init__(self, model_source=lazyllm.config['model_source'],
+                 token=lazyllm.config['model_source_token'],
                  cache_dir=lazyllm.config['model_cache_dir'],
-                 model_path=lazyllm.config['model_path'], conf_file=''):
+                 model_path=lazyllm.config['model_path']):
         self.model_source = model_source
         self.token = token
         self.cache_dir = cache_dir
