@@ -72,6 +72,8 @@ class ModuleBase(object):
             return _setattr
         elif key.startswith('_') and key[1:] in keys:
             return None
+        elif key.startswith('_') and key.endswith('_args') and (key[1:-5] in keys or f'{key[1:-4]}method' in keys):
+            return dict()
         raise AttributeError(f'{__class__} object has no attribute {key}')
 
     def __call__(self, *args, **kw):
@@ -232,7 +234,7 @@ class UrlModule(ModuleBase):
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
             data[self.input_key_name] = input
         else:
-            if len(kw) == 0: raise NotImplementedError('kwargs are not allowed in UrlModule')
+            if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
             data = input
 
         def _callback(text):
@@ -399,6 +401,7 @@ class TrainableModule(UrlModule):
         return Pipeline(trainset_getf, train)
 
     def _get_deploy_tasks(self):
+        if self._deploy is None: return None
         target_path = self.target_path
         if os.path.basename(self.target_path) != 'merge':
             target_path = os.path.join(self.target_path, 'merge')
