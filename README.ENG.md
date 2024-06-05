@@ -88,13 +88,13 @@ A Component is the smallest execution unit in LazyLLM; it can be either a functi
 
 ```python
 import lazyllm
-lazyllm.llmregister.make_group('demo')
+lazyllm.component_register.new_group('demo')
 
-@lazyllm.llmregister('demo')
+@lazyllm.component_register('demo')
 def test(input):
     return f'input is {input}'
 
-@lazyllm.llmregister.cmd('demo')
+@lazyllm.component_register.cmd('demo')
 def test_cmd(input):
     return f'echo input is {input}'
 

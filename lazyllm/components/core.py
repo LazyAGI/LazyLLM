@@ -39,6 +39,7 @@ class ComponentBase(object, metaclass=LazyLLMRegisterMetaClass):
         if self._overwrote('apply'):
             assert not self._overwrote('cmd'), (
                 'Cannot overwrite \'cmd\' and \'apply\' in the same class')
+            assert isinstance(self.launcher, launchers.Empty), 'Please use EmptyLauncher instead.'
             return self.launcher.launch(self.apply, *args, **kw)
         else:
             job = self._get_job_with_cmd(*args, **kw)

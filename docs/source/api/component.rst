@@ -13,3 +13,7 @@ lazyllm.component
 .. automodule:: lazyllm.components.embedding
     :members: 
     :exclude-members:
+
+
+.. autofunction:: lazyllm.components.register
+

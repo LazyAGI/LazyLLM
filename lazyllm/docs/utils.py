@@ -31,7 +31,14 @@ def add_doc(obj_name, docstr, module, append=''):
         obj = getattr(obj, n)
     try:
         if append:
-            obj.__doc__ += append + docstr
+            if isinstance(docstr, str):
+                obj.__doc__ += append + docstr
+            else:
+                cnt = obj.__doc__.count('.. function::')
+                assert cnt == len(docstr), f'{cnt}, {len(docstr)}'
+                docs = obj.__doc__.rsplit('.. function::', cnt - 1)
+                obj.__doc__ = '\n.. function::'.join(
+                    [(o + append + a) if a.strip() else o for o, a in zip(docs, docstr)])
         else:
             obj.__doc__ = docstr
     except Exception:
@@ -47,7 +54,10 @@ def add_english_doc(obj_name, docstr, module=lazyllm):
         add_doc(obj_name, docstr, module)
 
 def add_example(obj_name, docstr, module=lazyllm):
-    docstr = '\n'.join([f'    {d}' for d in docstr.split('\n')])
+    if isinstance(docstr, str):
+        docstr = '\n'.join([f'    {d}' for d in docstr.split('\n')])
+    else:
+        docstr = ['\n'.join([f'    {d}' for d in doc.split('\n')]) for doc in docstr]
     if lazyllm.config['language'].upper() == 'CHINESE':
         add_doc(obj_name, docstr, module, '\n示例::\n')
     if lazyllm.config['language'].upper() == 'ENGLISH':

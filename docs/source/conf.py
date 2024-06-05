@@ -28,7 +28,7 @@ author = u'SenseTime Research'
 version = u'0.1.0'
 release = u'0.1.0 rc0'
 
-language = None
+language = 'cn'
 exclude_patterns = []
 pygments_style = 'sphinx'
 todo_include_todos = True

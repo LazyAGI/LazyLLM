@@ -86,13 +86,13 @@ Component是LazyLLM中最小的执行单元，它既可以是一个函数，也�
 2. 利用注册机制，实现方法的分组索引和快速查找。支持对函数和bash命令进行注册。下面是一个例子：
 ```python
 import lazyllm
-lazyllm.llmregister.make_group('demo')
+lazyllm.component_register.new_group('demo')
 
-@lazyllm.llmregister('demo')
+@lazyllm.component_register('demo')
 def test(input):
     return f'input is {input}'
 
-@lazyllm.llmregister.cmd('demo')
+@lazyllm.component_register.cmd('demo')
 def test_cmd(input):
     return f'echo input is {input}'
 

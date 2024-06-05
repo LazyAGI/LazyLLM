@@ -143,5 +143,5 @@ class Register(object):
             return self(cls, rewrite_func=name)
         return impl
 
-    def make_group(self, group_name):
+    def new_group(self, group_name):
         exec('class LazyLLM{name}Base(self.basecls):\n    pass\n'.format(name=group_name))
