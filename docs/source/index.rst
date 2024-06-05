@@ -8,13 +8,14 @@ LazyLLM
    user_guide/getting_start
    user_guide/environment
    user_guide/best_practice
-    user_guide/FAQ
+   user_guide/FAQ
 
 .. toctree::
    :caption: LazyLLM API
    :maxdepth: 1
  
    api/component
+   api/module
 
 .. toctree::
    :caption: Contribution Guide
