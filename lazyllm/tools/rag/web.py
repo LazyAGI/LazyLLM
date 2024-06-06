@@ -6,7 +6,7 @@ import json
 
 import lazyllm
 from lazyllm import ModuleBase, ServerModule
-from lazyllm.thirdparty import gradio as gr
+import gradio as gr
 from lazyllm.flow import Pipeline
 
 class WebUi():

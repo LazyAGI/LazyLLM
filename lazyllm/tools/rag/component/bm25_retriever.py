@@ -1,5 +1,6 @@
-import jieba
-import pandas as pd
+from lazyllm.thirdparty import jieba
+from lazyllm.thirdparty import pandas as pd
+
 from typing import Callable, List, Optional, cast, Set
 
 from llama_index.core.retrievers import BaseRetriever

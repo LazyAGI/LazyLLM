@@ -1,5 +1,5 @@
 import lazyllm
-import redis
+from lazyllm.thirdparty import redis
 
 lazyllm.config.add("redis_url", str, "", "REDIS_URL")
 lazyllm.config.add("redis_recheck_delay", int, 5, "REDIS_RECHECK_DELAY")

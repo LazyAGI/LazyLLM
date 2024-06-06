@@ -95,7 +95,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         raise NotImplementedError
 
     def start(self, *args, **kw):
-        lazyllm.LOG.warn('start is depreciated, please use flow as a function instead')
+        lazyllm.LOG.warning('start is depreciated, please use flow as a function instead')
         return self(*args, **kw)
 
     def set_sync(self, sync=True):

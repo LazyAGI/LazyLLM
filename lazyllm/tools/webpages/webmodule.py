@@ -3,7 +3,7 @@ import requests
 import traceback
 import multiprocessing
 from ...module.module import ModuleBase
-from lazyllm.thirdparty import gradio as gr
+import gradio as gr
 from lazyllm import LazyLlmResponse, LazyLlmRequest, LOG
 from lazyllm.flow import Pipeline
 import lazyllm
