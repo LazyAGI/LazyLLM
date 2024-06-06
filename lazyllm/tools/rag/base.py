@@ -354,7 +354,7 @@ class RedisStore(LazyStore):
         self.redis_handle_name = 'lazyllmrag'
 
     def lazy_init(self):
-        import redis
+        from lazyllm.thirdparty import redis
         from redisvl.schema import IndexSchema
         self.redis_client = redis.from_url(lazyllm.config['redis_url'])
         self.doc_store = self.create_document_store()

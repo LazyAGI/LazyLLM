@@ -33,6 +33,9 @@ class Config(object):
     def get_config(cfg):
         return cfg
 
+    def get_all_configs(self):
+        return self.impl
+
     def add(self, name, type, default=None, env=None):
         self.impl[name] = self.cfgs.pop(name) if name in self.cfgs else default
         if isinstance(env, dict):

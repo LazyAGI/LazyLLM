@@ -1,4 +1,4 @@
-from lazyllm.thirdparty import cloudpickle
+import cloudpickle
 import uvicorn
 import argparse
 import base64

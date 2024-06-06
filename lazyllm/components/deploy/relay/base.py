@@ -6,7 +6,7 @@ import sys
 
 from lazyllm import launchers, LazyLLMCMD
 from ..base import LazyLLMDeployBase, verify_fastapi_func
-from lazyllm.thirdparty import cloudpickle
+import cloudpickle
 from contextlib import contextmanager
 
 
