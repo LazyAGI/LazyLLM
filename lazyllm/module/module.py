@@ -10,7 +10,6 @@ from concurrent.futures import ThreadPoolExecutor
 import lazyllm
 from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, Prompter, launchers, LOG
 from ..flow import FlowBase, Pipeline, Parallel
-from .utils import ModelDownloader
 import uuid
 from ..client import get_redis, redis_client
 
@@ -377,7 +376,7 @@ class TrainableModule(UrlModule):
         self._finetune = lazyllm.finetune.auto
         self._deploy = None  # lazyllm.deploy.auto
 
-        self.base_model = ModelDownloader(source).download(base_model)
+        self.base_model = base_model
         self._deploy_flag = lazyllm.once_flag()
 
     def _get_args(self, arg_cls, disable=[]):
