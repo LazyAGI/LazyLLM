@@ -280,12 +280,12 @@ class LazyLlmRequest(struct):
 
     def split(self, flag=None):
         if flag is None:
-            assert len(self.kwargs) == 0 and isinstance(self.input, package), (
-                f'Only package input can be split automatically, your input is {self.input} <{type(self.input)}>')
+            assert len(self.kwargs) == 0 and isinstance(self.input, tuple), (
+                f'Only tuple input can be split automatically, your input is {self.input} <{type(self.input)}>')
             return [LazyLlmRequest(input=inp, global_parameters=self.global_parameters) for inp in self.input]
         elif isinstance(flag, int):
-            assert len(self.kwargs) == 0 and isinstance(self.input, package), (
-                f'Only package input can be split automatically, your input is {self.input} <{type(self.input)}>')
+            assert len(self.kwargs) == 0 and isinstance(self.input, tuple), (
+                f'Only tuple input can be split automatically, your input is {self.input} <{type(self.input)}>')
             assert flag == len(self.input), 'input size mismatch with split number'
             return [LazyLlmRequest(input=inp, global_parameters=self.global_parameters) for inp in self.input]
         elif isinstance(flag, list):
