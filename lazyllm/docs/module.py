@@ -481,17 +481,213 @@ add_example('TrialModule', '''\
 ''')
 
 add_chinese_doc('OnlineChatModule', '''\
-这是 OnlineChatModule
+用来管理创建目前市面上公开的大模型平台访问模块，目前支持openai、sensenova、glm、kimi、qwen、doubao(由于该平台暂时不对个人用户开发，暂时不支持访问)
+
+Args:
+    source (str): 指定要创建的模块类型，可选为`openai` / `sensenova` / `glm` / `kimi` / `qwen` / `doubao(暂未支持访问)`
+    base_url (str): 指定要访问的平台的基础链接，默认是官方链接
+    model (str): 指定要访问的模型，默认为`gpt-3.5-turbo(openai)` / `SenseChat-5(sensenova)` / `glm-4(glm)` / `moonshot-v1-8k(kimi)` / `qwen-plus(qwen)`
+    system_prompt (str): 指定请求的system prompt，默认是官方给的system prompt
+    stream (bool): 是否流式请求和输出，默认为流式
+    return_trace (bool): 是否将结果记录在trace中，默认为False
 ''')
 
 add_english_doc('OnlineChatModule', '''\
-This is OnlineChatModule Doc
+Used to manage and create access modules for large model platforms currently available on the market. Currently, it supports openai, sensenova, glm, kimi, qwen and doubao (since the platform is not currently being developed for individual users, access is not currently supported).
+
+Args:
+    source (str): Specify the type of module to create. Options include `openai` / `sensenova` / `glm` / `kimi` / `qwen` / `doubao (not yet supported)`.
+    base_url (str): Specify the base link of the platform to be accessed. The default is the official link.
+    model (str): Specify the model to access, default is `gpt-3.5-turbo(openai)` / `SenseChat-5(sensenova)` / `glm-4(glm)` / `moonshot-v1-8k(kimi)` / `qwen-plus(qwen) `.
+    system_prompt (str): Specify the requested system prompt. The default is the official system prompt.
+    stream (bool): Whether to request and output in streaming mode, default is streaming.
+    return_trace (bool): Whether to record the results in trace, default is False.      
+''')
+
+add_example('OnlineChatModule', '''\
+>>> m = lazyllm.OnlineChatModule(source="sensenova", stream=True)
+>>> query = "Hello!"
+>>> resp = m(query)
+>>> for r in resp:
+...     print(r)
+...
+{'content': '你好'}
+{'content': '！'}
+{'content': '有什么'}
+{'content': '我可以'}
+{'content': '帮助'}
+{'content': '你的'}
+{'content': '吗'}
+{'content': '？'}
+{'content': ''}
+>>> m = lazyllm.OnlineChatModule(source="sensenova", model="nova-ptc-s-v2", stream=False)
+>>> train_file = "toy_chat_fine_tuning.jsonl"
+>>> m.set_train_tasks(train_file=train_file, upload_url="https://file.sensenova.cn/v1/files")
+>>> m._get_train_tasks()
+Num examples:
+First example:
+{'role': 'system', 'content': 'Marv is a factual chatbot that is also sarcastic.'}
+{'role': 'user', 'content': "What's the capital of France?"}
+{'role': 'assistant', 'content': "Paris, as if everyone doesn't know that already."}
+No errors found
+train file id: 7193d9a3-8b6e-4332-99cc-724dec75d9dd
+toy_chat_fine_tuning.jsonl upload success! file id is d632e591-f668-43a1-b5bf-49418e9c0fec
+fine tuning job ft-85f7bc96034441f2b64f9a5fff5d5b9c created, status: SUBMITTED
+fine tuning job ft-85f7bc96034441f2b64f9a5fff5d5b9c status: RUNNING
+...
+fine tuning job ft-85f7bc96034441f2b64f9a5fff5d5b9c status: SUCCEEDED
+fine tuned model: nova-ptc-s-v2:ft-fee492082cbe4a6d880d396f34f1bc50 finished  
+>>> m._get_deploy_tasks()
+deployment c5aaf3bf-ef9b-4797-8c15-12ff04ed5372 created, status: SUBMITTED
+...
+deployment c5aaf3bf-ef9b-4797-8c15-12ff04ed5372 status: PENDING
+...
+deployment c5aaf3bf-ef9b-4797-8c15-12ff04ed5372 status: RUNNING
+deployment c5aaf3bf-ef9b-4797-8c15-12ff04ed5372 finished
 ''')
 
 add_chinese_doc('OnlineEmbeddingModule', '''\
-这是 OnlineEmbeddingModule
+用来管理创建目前市面上的在线Embedding服务模块，目前支持openai、sensenova、glm、qwen
+
+Args:
+    source (str): 指定要创建的模块类型，可选为`openai` / `sensenova` / `glm` / `qwen`
+    embed_url (str): 指定要访问的平台的基础链接，默认是官方链接
+    embed_mode_name (str): 指定要访问的模型，默认为`text-embedding-ada-002(openai)` / `nova-embedding-stable(sensenova)` / `embedding-2(glm)` / `text-embedding-v1(qwen)`
 ''')
 
 add_english_doc('OnlineEmbeddingModule', '''\
-This is OnlineEmbeddingModule Doc
+Used to manage and create online Embedding service modules currently on the market, currently supporting openai, sensenova, glm, qwen.
+
+Args:
+    source (str): Specify the type of module to create. Options are `openai` / `sensenova` / `glm` / `qwen`.
+    embed_url (str): Specify the base link of the platform to be accessed. The default is the official link.
+    embed_mode_name (str): Specify the model to access, default is `text-embedding-ada-002(openai)` / `nova-embedding-stable(sensenova)` / `embedding-2(glm)` / `text-embedding-v1(qwen)`
+''')
+
+add_example('OnlineEmbeddingModule', '''\
+>>> m = lazyllm.OnlineEmbeddingModule(source="sensenova")
+>>> emb = m("hello world")
+>>> print(f"emb: {emb}")
+emb: [0.0010528564, 0.0063285828, 0.0049476624, -0.012008667, ..., -0.009124756, 0.0032043457, -0.051696777]
+''')
+
+add_chinese_doc('OnlineChatModuleBase', '''\
+OnlineChatModuleBase是管理开放平台的LLM接口的公共组件，具备训练、部署、推理等关键能力。OnlineChatModuleBase本身不支持直接实例化，
+                需要子类继承该类，并实现微调相关的上传文件、创建微调任务、查询微调任务以及和部署相关的创建部署服务、查询部署任务等接口。
+
+如果你需要支持新的开放平台的LLM的能力，请让你自定义的类继承自OnlineChatModuleBase：
+    1、根据新平台的模型返回参数情况考虑对返回结果进行后处理，如果模型返回的格式和openai一致，可以不用做任何处理
+    2、如果新平台支持模型的微调，也需要继承FileHandlerBase类，该类主要是验证文件格式，并在自定义类中把.jsonl格式数据转换为模型支持的数据才能用于后面的模型训练
+    3、如果新平台支持模型的微调，则需要实现文件上传、创建微调服务、查询微调服务的接口。即使新平台不用对微调后的模型进行部署，也请实现一个假的创建部署服务和查询部署服务的接口即可
+    4、如果新平台支持模型的微调，可以提供一个支持微调的模型列表，有助于在微调服务时进行判断
+    5、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
+''')
+
+add_english_doc('OnlineChatModuleBase', '''\
+OnlineChatModuleBase is a public component that manages the LLM interface for open platforms, and has key capabilities such as training, deployment, and inference. OnlineChatModuleBase itself does not support direct instantiation; it requires subclasses to inherit from this class and implement interfaces related to fine-tuning, such as uploading files, creating fine-tuning tasks, querying fine-tuning tasks, and deployment-related interfaces, such as creating deployment services and querying deployment tasks.
+If you need to support the capabilities of a new open platform's LLM, please extend your custom class from OnlineChatModuleBase:
+    1. Consider post-processing the returned results based on the parameters returned by the new platform's model. If the model's return format is consistent with OpenAI, no processing is necessary.
+    2. If the new platform supports model fine-tuning, you must also inherit from the FileHandlerBase class. This class primarily validates file formats and converts .jsonl formatted data into a format supported by the model for subsequent training. 
+    3. If the new platform supports model fine-tuning, you must implement interfaces for file upload, creating fine-tuning services, and querying fine-tuning services. Even if the new platform does not require deployment of the fine-tuned model, please implement dummy interfaces for creating and querying deployment services.
+    4. If the new platform supports model fine-tuning, provide a list of models that support fine-tuning to facilitate judgment during the fine-tuning service process.
+    5. Configure the api_key supported by the new platform as a global variable by using `lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`.
+''')
+
+add_example('OnlineChatModuleBase', '''\
+>>> class NewPlatformChatModule(OnlineChatModuleBase):
+...     def __init___(self,\
+                      base_url: str = "<new platform base url>",\
+                      model: str = "<new platform model name>",\
+                      system_prompt: str = "<new platform system prompt>",\
+                      stream: bool = True,\
+                      return_trace: bool = False):
+...         super().__init__(model_type="new_class_name",\
+                             api_key=lazyllm.config['new_platform_api_key'])\
+                             base_url=base_url,\
+                             system_prompt=system_prompt,\
+                             stream=stream,\
+                             return_trace=return_trace)
+...
+>>> class NewPlatformChatModule1(OnlineChatModuleBase, FileHandlerBase):
+...     TRAINABLE_MODELS_LIST = ['model_t1', 'model_t2', 'model_t3']
+...     def __init___(self,\
+                      base_url: str = "<new platform base url>",\
+                      model: str = "<new platform model name>",\
+                      system_prompt: str = "<new platform system prompt>",\
+                      stream: bool = True,\
+                      return_trace: bool = False):
+...         OnlineChatModuleBase.__init__(self,\
+                                          model_type="new_class_name",\
+                                          api_key=lazyllm.config['new_platform_api_key'])\
+                                          base_url=base_url,\
+                                          system_prompt=system_prompt,\
+                                          stream=stream,\
+                                          trainable_models=NewPlatformChatModule1.TRAINABLE_MODELS_LIST,\
+                                          return_trace=return_trace)
+...         FileHandlerBase.__init__(self)
+...     
+...     def _convert_file_format(self, filepath:str) -> str:
+...         pass
+...         return data_str
+...
+...     def _upload_train_file(self, train_file):
+...         pass
+...         return train_file_id
+...
+...     def _create_finetuning_job(self, train_model, train_file_id, **kw):
+...         pass
+...         return fine_tuning_job_id, status
+...
+...     def _query_finetuning_job(self, fine_tuning_job_id):
+...         pass
+...         return fine_tuned_model, status
+...
+...     def _create_deployment(self):
+...         pass
+...         return self._model_name, "RUNNING"
+... 
+...     def _query_deployment(self, deployment_id):
+...         pass
+...         return "RUNNING"
+...
+
+''')
+
+add_chinese_doc('OnlineEmbeddingModuleBase', '''\
+OnlineEmbeddingModuleBase是管理开放平台的嵌入模型接口的基类，用于请求文本获取嵌入向量。不建议直接对该类进行直接实例化。需要特定平台类继承该类进行实例化。
+
+如果你需要支持新的开放平台的嵌入模型的能力，请让你自定义的类继承自OnlineEmbeddingModuleBase：
+    1、如果新平台的嵌入模型的请求和返回数据格式都和openai一样，可以不用做任何处理，只传url和模型即可
+    2、如果新平台的嵌入模型的请求或者返回的数据格式和openai不一样，需要重写_encapsulated_data或_parse_response方法。
+    3、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
+''')
+
+add_english_doc('OnlineEmbeddingModuleBase', '''
+OnlineEmbeddingModuleBase is the base class for managing embedding model interfaces on open platforms, used for requesting text to obtain embedding vectors. It is not recommended to directly instantiate this class. Specific platform classes should inherit from this class for instantiation.
+If you need to support the capabilities of embedding models on a new open platform, please extend your custom class from OnlineEmbeddingModuleBase:
+    1. If the request and response data formats of the new platform's embedding model are the same as OpenAI's, no additional processing is needed; simply pass the URL and model.
+    2. If the request or response data formats of the new platform's embedding model differ from OpenAI's, you need to override the _encapsulated_data or _parse_response methods.
+    3. Configure the api_key supported by the new platform as a global variable by using `lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`.
+''')
+
+add_example('OnlineEmbeddingModuleBase', '''
+>>> class NewPlatformEmbeddingModule(OnlineEmbeddingModuleBase):
+...     def __init__(self,\
+                    embed_url: str = '<new platform embedding url>',\
+                    embed_model_name: str = '<new platform embedding model name>'):
+...         super().__init__(embed_url, lazyllm.config['new_platform_api_key'], embed_model_name)
+...
+>>> class NewPlatformEmbeddingModule1(OnlineEmbeddingModuleBase):
+...     def __init__(self,\
+                    embed_url: str = '<new platform embedding url>',\
+                    embed_model_name: str = '<new platform embedding model name>')
+...         super().__init__(embed_url, lazyllm.config['new_platform_api_key'], embed_model_name)
+...
+...     def _encapsulated_data(self, text:str, **kwargs):
+...         pass
+...         return json_data
+...
+...     def _parse_response(self, response: Dict[str, Any]):
+...         pass
+...         return embedding
 ''')

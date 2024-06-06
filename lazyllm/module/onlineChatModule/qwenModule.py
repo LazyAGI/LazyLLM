@@ -8,8 +8,6 @@ from .fileHandler import FileHandlerBase
 
 class QwenModule(OnlineChatModuleBase, FileHandlerBase):
     """
-    Inference qwen model interfaces using URLs
-
     #TODO: The Qianwen model has been finetuned and deployed successfully,
            but it is not compatible with the OpenAI interface and can only
            be accessed through the Dashscope SDK.
@@ -35,11 +33,9 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         self._deploy_paramters = None
 
     def _set_chat_url(self):
-        """Set the chat url of the interface"""
         self._url = os.path.join(self._base_url, 'compatible-mode/v1/chat/completions')
 
     def _convert_file_format(self, filepath: str) -> None:
-        """convert file format"""
         with open(filepath, 'r', encoding='utf-8') as fr:
             dataset = [json.loads(line) for line in fr]
 
@@ -57,18 +53,6 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         return "\n".join(json_strs)
 
     def _upload_train_file(self, train_file):
-        """
-        Upload train file to server. Individual files can be up to 512 MB
-
-        {"messages": [{"role": "system", "content": "You are a helpful assistant"},
-                      {"role": "user", "content": "谁在文艺复兴时期绘制人体?"},
-                      {"role": "assistant", "content": "文艺复兴时期是一个关于艺术、文化和学术的复兴运动，\
-                                                        在这个时期，许多艺术家都绘制了人体。"}]}
-        {"messages": [{"role": "system", "content": "You are a helpful assistant"},
-                      {"role": "user", "content": "I need a picture of someone crying."},
-                      {"role": "assistant", "content": "I'm sorry, but as an AI language model, \
-                                                        I do not have the ability to display images."}]}
-        """
         headers = {
             "Authorization": "Bearer " + self._api_key
         }
@@ -98,9 +82,6 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             return r.json()['data']['uploaded_files'][0]["file_id"]
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
-        """
-        create fine-tuning job
-        """
         url = os.path.join(self._base_url, "api/v1/fine-tunes")
         headers = {
             "Content-Type": "application/json",
@@ -122,9 +103,6 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             return (fine_tuning_job_id, status)
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
-        """
-        query fine-tuning job
-        """
         fine_tune_url = os.path.join(self._base_url, f"api/v1/fine-tunes/{fine_tuning_job_id}")
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -141,13 +119,9 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             return (fine_tuned_model, status)
 
     def set_deploy_parameters(self, **kw):
-        """
-        set deploy parameters
-        """
         self._deploy_paramters = kw
 
     def _create_deployment(self) -> Tuple[str, str]:
-        """create deployment"""
         url = os.path.join(self._base_url, "api/v1/deployments")
         headers = {
             "Content-Type": "application/json",
@@ -169,7 +143,6 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             return (deployment_id, status)
 
     def _query_deployment(self, deployment_id) -> str:
-        """query deployment"""
         fine_tune_url = os.path.join(self._base_url, f"api/v1/deployments/{deployment_id}")
         headers = {
             "Content-Type": "application/json",

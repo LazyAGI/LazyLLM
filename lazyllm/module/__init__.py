@@ -1,8 +1,8 @@
 from .module import (ModuleBase, TrainableModule, ActionModule,
                      ServerModule, UrlModule, register)
 from .trialmodule import TrialModule
-from .onlineChatModule import OnlineChatModule
-from .onlineEmbedding import OnlineEmbeddingModule
+from .onlineChatModule import OnlineChatModule, OnlineChatModuleBase
+from .onlineEmbedding import OnlineEmbeddingModule, OnlineEmbeddingModuleBase
 
 import lazyllm
 # openai api key
@@ -28,5 +28,7 @@ __all__ = [
     'ServerModule',
     'TrialModule',
     "OnlineChatModule",
+    "OnlineChatModuleBase",
     "OnlineEmbeddingModule",
+    "OnlineEmbeddingModuleBase"
 ]

@@ -7,7 +7,6 @@ import lazyllm
 from ..module import ModuleBase, Pipeline
 
 class OnlineChatModuleBase(ModuleBase):
-    """Reasoning interfaces using URLs"""
 
     def __init__(self,
                  model_type: str,
@@ -32,27 +31,21 @@ class OnlineChatModuleBase(ModuleBase):
         self._set_chat_url()
 
     def system_prompt(self, prompt: str = ""):
-        """
-        Set the system prompt of the openai interface
-        """
         if len(prompt) > 0:
             self._system_prompt = {"role": "system", "content": prompt}
         else:
             self._system_prompt = {"role": "system", "content": "You are a helpful assistant."}
 
     def _set_headers(self):
-        """Set the headers ans the chat url of the interface"""
         self._headers = {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + self._api_key
         }
 
     def _set_chat_url(self):
-        """Set the chat url of the interface"""
         self._url = os.path.join(self._base_url, 'chat/completions')
 
     def _get_models_list(self):
-        """Get the list of models"""
         url = os.path.join(self._base_url, 'models')
         headers = {'Authorization': 'Bearer ' + self._api_key}
         with requests.get(url, headers=headers) as r:
@@ -63,17 +56,14 @@ class OnlineChatModuleBase(ModuleBase):
             return res_json
 
     def _parse_response_stream(self, response: str) -> str:
-        """Parse the response from the interface"""
         chunk = response.decode('utf-8')[6:]
         return chunk
 
     def _parse_response_non_stream(self, response: str) -> Dict[str, Any]:
-        """Parse the response from the interface"""
         cur_msg = json.loads(response)["choices"][0]["message"]
         return cur_msg
 
     def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, **kw):  # noqa C901
-        """LLM inference interface"""
         input = __input["query"] if isinstance(__input, dict) else __input
 
         content = [self._system_prompt]
@@ -142,34 +132,19 @@ class OnlineChatModuleBase(ModuleBase):
         self.template_headers = template_headers
 
     def _upload_train_file(self, train_file) -> str:
-        """
-        Upload train file to server.
-        """
         raise NotImplementedError(f"{self._model_type} not implemented _upload_train_file method in subclass")
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
-        """
-        Create fine-tuning job.
-        """
         raise NotImplementedError(f"{self._model_type} not implemented _create_finetuning_job method in subclass")
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
-        """
-        Query fine-tuning job.
-        """
         raise NotImplementedError(f"{self._model_type} not implemented _query_finetuning_job method in subclass")
 
     def set_train_tasks(self, train_file, **kw):
-        """
-        set train tasks
-        """
         self._train_file = train_file
         self._train_parameters = kw
 
     def _get_train_tasks(self):
-        """
-        process train tasks
-        """
         if not self._model_name or not self._train_file:
             raise ValueError("train_model and train_file is required")
         if self._model_name not in self.trainable_mobels:
@@ -180,11 +155,11 @@ class OnlineChatModuleBase(ModuleBase):
             create for finetuning job to finish
             """
             file_id = self._upload_train_file(train_file=self._train_file)
-            lazyllm.Log.info(f"{os.path.basename(self._train_file)} upload success! file id is {file_id}")
+            lazyllm.LOG.info(f"{os.path.basename(self._train_file)} upload success! file id is {file_id}")
             (fine_tuning_job_id, status) = self._create_finetuning_job(self._model_name,
                                                                        file_id,
                                                                        **self._train_parameters)
-            lazyllm.Log.info(f"fine tuning job {fine_tuning_job_id} created, status: {status}")
+            lazyllm.LOG.info(f"fine tuning job {fine_tuning_job_id} created, status: {status}")
 
             if status.lower() == "failed":
                 raise ValueError(f"Fine tuning job {fine_tuning_job_id} failed")
@@ -194,37 +169,27 @@ class OnlineChatModuleBase(ModuleBase):
                     # wait 10 seconds before querying again
                     time.sleep(random.randint(60, 120))
                     (fine_tuned_model, status) = self._query_finetuning_job(fine_tuning_job_id)
-                    lazyllm.Log.info(f"fine tuning job {fine_tuning_job_id} status: {status}")
+                    lazyllm.LOG.info(f"fine tuning job {fine_tuning_job_id} status: {status}")
                     if status.lower() == "failed":
                         raise ValueError(f"Finetuning job {fine_tuning_job_id} failed")
                 except ValueError:
                     raise ValueError(f"Finetuning job {fine_tuning_job_id} failed")
 
-            lazyllm.Log.info(f"fine tuned model: {fine_tuned_model} finished")
+            lazyllm.LOG.info(f"fine tuned model: {fine_tuned_model} finished")
             self._model_name = fine_tuned_model
 
         return Pipeline(_create_for_finetuning_job())
 
     def _create_deployment(self) -> Tuple[str, str]:
-        """
-        Create deployment.
-        """
         raise NotImplementedError(f"{self._model_type} not implemented _create_deployment method in subclass")
 
     def _query_deployment(self, deployment_id) -> str:
-        """
-        Query deployment.
-        """
         raise NotImplementedError(f"{self._model_type} not implemented _query_deployment method in subclass")
 
     def _get_deploy_tasks(self):
-        """process deploy tasks"""
         def _start_for_deployment():
-            """
-            wait for deployment to finish
-            """
             (deployment_id, status) = self._create_deployment()
-            lazyllm.Log.info(f"deployment {deployment_id} created, status: {status}")
+            lazyllm.LOG.info(f"deployment {deployment_id} created, status: {status}")
 
             if status.lower() == "failed":
                 raise ValueError(f"Deployment task {deployment_id} failed")
@@ -233,10 +198,10 @@ class OnlineChatModuleBase(ModuleBase):
                 # wait 10 seconds before querying again
                 time.sleep(10)
                 status = self._query_deployment(deployment_id)
-                lazyllm.Log.info(f"deployment {deployment_id} status: {status}")
+                lazyllm.LOG.info(f"deployment {deployment_id} status: {status}")
                 if status.lower() == "failed":
                     raise ValueError(f"Deployment task {deployment_id} failed")
-            lazyllm.Log.info(f"deployment {deployment_id} finished")
+            lazyllm.LOG.info(f"deployment {deployment_id} finished")
         return Pipeline(_start_for_deployment())
 
     def __repr__(self):

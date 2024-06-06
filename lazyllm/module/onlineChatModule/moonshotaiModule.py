@@ -3,7 +3,6 @@ import lazyllm
 from .onlineChatModuleBase import OnlineChatModuleBase
 
 class MoonshotAIModule(OnlineChatModuleBase):
-    """Inference moonshot ai interfaces using URLs"""
 
     def __init__(self,
                  base_url="https://api.moonshot.cn",
@@ -24,7 +23,4 @@ class MoonshotAIModule(OnlineChatModuleBase):
                          return_trace=return_trace)
 
     def _set_chat_url(self):
-        """
-        Set the URL and header of the interface
-        """
         self._url = os.path.join(self._base_url, 'v1/chat/completions')

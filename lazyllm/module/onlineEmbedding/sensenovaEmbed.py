@@ -14,7 +14,6 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase):
 
     @staticmethod
     def encode_jwt_token(ak: str, sk: str) -> str:
-        """create jwt token"""
         headers = {
             "alg": "HS256",
             "typ": "JWT"
@@ -32,7 +31,6 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase):
         return token
 
     def _encapsulated_data(self, text: str, **kwargs) -> Dict[str, str]:
-        """encapsulated the request data"""
         json_data = {
             "input": [text],
             "model": self._embed_model_name
@@ -43,5 +41,4 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase):
         return json_data
 
     def _parse_response(self, response: Dict[str, Any]) -> List[float]:
-        """parse the response"""
         return response['embeddings'][0]['embedding']

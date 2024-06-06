@@ -4,7 +4,6 @@ from typing import Union, Dict, List
 from .onlineChatModuleBase import OnlineChatModuleBase
 
 class DoubaoModule(OnlineChatModuleBase):
-    """Inference doubao interfaces using URLs"""
 
     def __init__(self,
                  model: str,
@@ -22,11 +21,7 @@ class DoubaoModule(OnlineChatModuleBase):
                          return_trace=return_trace)
 
     def _set_chat_url(self):
-        """
-        Set the URL and header of the interface
-        """
         self._url = os.path.join(self._base_url, 'chat/completions')
 
     def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, **kw):
-        """LLM inference interface"""
         raise NotImplementedError("Individual user support is not friendly and is not supported yet")

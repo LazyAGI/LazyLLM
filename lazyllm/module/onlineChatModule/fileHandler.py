@@ -6,14 +6,11 @@ from typing import Dict
 import lazyllm
 
 class FileHandlerBase:
-    """Process finetune model training data"""
+
     def __init__(self):
         self._roles = ["system", "knowledge", "user", "assistant"]
 
     def _validate_json(self, data_path: str) -> None:  # noqa C901
-        """
-        Check if the file exists and Verify whether the data format meets the requirements.
-        """
         # Check if file name format
         if os.path.splitext(data_path)[-1] != ".jsonl":
             raise ValueError("The file name must end with .jsonl")
@@ -26,10 +23,10 @@ class FileHandlerBase:
             dataset = [json.loads(line) for line in f]
 
         # Initial dataset stats
-        lazyllm.Log.info("Num examples:", len(dataset))
-        lazyllm.Log.info("First example:")
+        lazyllm.LOG.info("Num examples:", len(dataset))
+        lazyllm.LOG.info("First example:")
         for message in dataset[0]["messages"]:
-            lazyllm.Log.info(message)
+            lazyllm.LOG.info(message)
 
         # Format error checks
         format_error: Dict[str, list[int]] = defaultdict(list)
@@ -63,12 +60,12 @@ class FileHandlerBase:
                 format_error["example_missing_assistant_message"].append(index)
 
         if format_error:
-            lazyllm.Log.error("Found errors: ")
+            lazyllm.LOG.error("Found errors: ")
             for k, v in format_error.items():
-                lazyllm.Log.error(f"Error Type: {k}, Error number: {len(v)}")
-                lazyllm.Log.error(f"Error Type: {k}, Error line number: {v}")
+                lazyllm.LOG.error(f"Error Type: {k}, Error number: {len(v)}")
+                lazyllm.LOG.error(f"Error Type: {k}, Error line number: {v}")
         else:
-            lazyllm.Log.info("No errors found")
+            lazyllm.LOG.info("No errors found")
 
     def get_finetune_data(self, filepath: str) -> str:
         self._validate_json(filepath)
@@ -80,5 +77,4 @@ class FileHandlerBase:
         self._dataHandler.seek(0)
 
     def _convert_file_format(self, filepath: str) -> str:
-        """Convert file format"""
         raise NotImplementedError

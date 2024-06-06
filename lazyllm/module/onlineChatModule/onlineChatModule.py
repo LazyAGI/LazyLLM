@@ -40,7 +40,6 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
                 system_prompt: str = None,
                 stream: bool = True,
                 return_trace: bool = False):
-        """create the chat module instance"""
         params = OnlineChatModule._encapsulate_parameters(base_url, model, system_prompt, stream, return_trace)
 
         if source.lower() == "openai":

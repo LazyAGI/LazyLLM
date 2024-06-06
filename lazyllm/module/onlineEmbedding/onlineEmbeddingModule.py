@@ -18,7 +18,6 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
     @staticmethod
     def _encapsulate_parameters(embed_url: str,
                                 embed_model_name: str) -> Dict[str, Any]:
-        """encapsulate parameters"""
         params = {}
         if embed_url is not None:
             params["embed_url"] = embed_url
@@ -30,7 +29,6 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                 source: str,
                 embed_url: str = None,
                 embed_model_name: str = None):
-        """create embedding instance"""
         params = OnlineEmbeddingModule._encapsulate_parameters(embed_url, embed_model_name)
         if source.lower() == "openai":
             return OpenAIEmbedding(**params)
