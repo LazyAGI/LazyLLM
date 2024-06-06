@@ -15,6 +15,7 @@ LazyLLM
    :maxdepth: 1
  
    api/component
+   api/flow
    api/module
 
 .. toctree::
@@ -28,5 +29,3 @@ LazyLLM
    :maxdepth: 1
 
    releasenote/latest
-
-
