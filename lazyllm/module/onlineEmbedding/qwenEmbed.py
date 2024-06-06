@@ -11,7 +11,6 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
         super().__init__(embed_url, lazyllm.config['qwen_api_key'], embed_model_name)
 
     def _encapsulated_data(self, text: str, **kwargs) -> Dict[str, str]:
-        """encapsulated the request data"""
         json_data = {
             "input": {
                 "texts": [text]
@@ -24,5 +23,4 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
         return json_data
 
     def _parse_response(self, response: Dict[str, Any]) -> List[float]:
-        """parse the response"""
         return response['output']['embeddings'][0]['embedding']

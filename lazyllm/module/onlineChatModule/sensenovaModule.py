@@ -8,9 +8,6 @@ from .onlineChatModuleBase import OnlineChatModuleBase
 from .fileHandler import FileHandlerBase
 
 class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
-    """
-    Reasoning and fine-tuning openai interfaces using URLs
-    """
     TRAINABLE_MODEL_LIST = ["nova-ptc-s-v2"]
 
     def __init__(self,
@@ -34,7 +31,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
 
     @staticmethod
     def encode_jwt_token(ak: str, sk: str) -> str:
-        """create jwt token"""
         headers = {
             "alg": "HS256",
             "typ": "JWT"
@@ -52,13 +48,9 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
         return token
 
     def _set_chat_url(self):
-        """
-        Set the URL and header of the interface
-        """
         self._url = os.path.join(self._base_url, 'chat-completions')
 
     def _parse_response_stream(self, response: str) -> str:
-        """Parse the response from the server"""
         chunk = response.decode('utf-8')[5:]
         try:
             chunk = json.loads(chunk)["data"]
@@ -69,7 +61,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             return chunk
 
     def _parse_response_non_stream(self, response: str) -> str:
-        """Parse the response from the interface"""
         cur_msg = json.loads(response)['data']["choices"][0]
         content = {}
         content['role'] = cur_msg['role']
@@ -77,7 +68,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
         return content
 
     def _convert_file_format(self, filepath: str) -> None:
-        """convert file format"""
         with open(filepath, 'r', encoding='utf-8') as fr:
             dataset = [json.loads(line) for line in fr]
 
@@ -95,23 +85,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
         return "\n".join(json_strs)
 
     def _upload_train_file(self, train_file):
-        """
-        Upload train file to server. Individual files can be up to 200 MB
-        Format one:
-        {"instruction":"将以下短文中的所有“is”动词改为“was”。",
-         "input":"The cake is delicious and the pie is too. The ice cream is melting in the sun and \
-                  the lemonade is refreshing.",
-         "output":"The cake was delicious and the pie was too. The ice cream was melting in the sun \
-                  and the lemonade was refreshing."}
-        {"instruction":"分类以下三个国家的首都是哪个城市：",
-         "input":"- 美国\n- 法国\n- 中国",
-         "output":"- 美国：华盛顿特区\n- 法国：巴黎\n- 中国：北京"}
-        Format two:
-        [{"role": "system", "content": "你是一个聊天机器人"},
-         {"role": "user", "content": "怎样设置Chrome浏览器的主页？"},
-         {"role": "assistant", "content": "在Chrome浏览器中，点击右上角的三个点，选择“设置”，在“外观”选项卡下，\
-                                            找到“显示主页”选项，选择“打开特定页面或一组页面”，并输入您想要设置为主页的网址。"}]
-        """
         headers = {
             "Authorization": "Bearer " + self._api_key
         }
@@ -135,7 +108,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             train_file_id = r.json()["id"]
             # delete temporary training file
             self._dataHandler.close()
-            lazyllm.Log.info(f"train file id: {train_file_id}")
+            lazyllm.LOG.info(f"train file id: {train_file_id}")
 
         def _create_finetuning_dataset(description, files):
             url = os.path.join(self._base_url, "fine-tune/datasets")
@@ -165,16 +138,13 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
                             dataset_id = r.json()["dataset"]["id"]
                             status = r.json()["dataset"]["status"]
                     except Exception as e:
-                        lazyllm.Log.error(f"error: {e}")
+                        lazyllm.LOG.error(f"error: {e}")
                         raise ValueError(f"created datasets {dataset_id} failed")
                 return dataset_id
 
         return _create_finetuning_dataset("fine-tuning dataset", [train_file_id])
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
-        """
-        create fine-tuning job
-        """
         url = os.path.join(self._base_url, "fine-tunes")
         headers = {
             "Content-Type": "application/json",
@@ -197,9 +167,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             return (fine_tuning_job_id, status)
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
-        """
-        query fine-tuning job
-        """
         fine_tune_url = os.path.join(self._base_url, f"fine-tunes/{fine_tuning_job_id}")
         headers = {
             "Content-Type": "application/json",
@@ -216,13 +183,9 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             return (fine_tuned_model, status)
 
     def set_deploy_parameters(self, **kw):
-        """
-        set deploy parameters
-        """
         self._deploy_paramters = kw
 
     def _create_deployment(self) -> Tuple[str, str]:
-        """create deployment"""
         url = os.path.join(self._base_url, "fine-tune/servings")
         headers = {
             "Content-Type": "application/json",
@@ -246,7 +209,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             return (fine_tuning_job_id, status)
 
     def _query_deployment(self, deployment_id) -> str:
-        """query deployment"""
         fine_tune_url = os.path.join(self._base_url, f"fine-tune/servings/{deployment_id}")
         headers = {
             "Content-Type": "application/json",

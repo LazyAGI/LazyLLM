@@ -16,7 +16,6 @@ class OnlineEmbeddingModuleBase(ModuleBase):
         self._set_headers()
 
     def _set_headers(self) -> Dict[str, str]:
-        """set headers"""
         self._headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}"
@@ -31,7 +30,6 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
     def _encapsulated_data(self, text: str, **kwargs) -> Dict[str, str]:
-        """encapsulated request data"""
         json_data = {
             "input": text,
             "model": self._embed_model_name
@@ -42,5 +40,4 @@ class OnlineEmbeddingModuleBase(ModuleBase):
         return json_data
 
     def _parse_response(self, response: Dict[str, Any]) -> List[float]:
-        """parse response"""
         return response['data'][0]['embedding']

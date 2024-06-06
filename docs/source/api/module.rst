@@ -28,3 +28,11 @@ lazyllm.Module
 .. autoclass:: lazyllm.module.OnlineEmbeddingModule
     :members:
     :exclude-members:
+
+.. autoclass:: lazyllm.module.OnlineChatModuleBase
+    :members:
+    :exclude-members: forward
+
+.. autoclass:: lazyllm.module.OnlineEmbeddingModuleBase
+    :members:
+    :exclude-members: forward

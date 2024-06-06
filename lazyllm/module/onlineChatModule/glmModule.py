@@ -7,7 +7,6 @@ from .onlineChatModuleBase import OnlineChatModuleBase
 from .fileHandler import FileHandlerBase
 
 class GLMModule(OnlineChatModuleBase, FileHandlerBase):
-    """Reasoning and fine-tuning openai interfaces using URLs"""
     TRAINABLE_MODEL_LIST = ["chatglm3-6b", "chatglm_12b", "chatglm_32b", "chatglm_66b", "chatglm_130b"]
 
     def __init__(self,
@@ -31,7 +30,6 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
         return ["glm-4", "glm-4v", "glm-3-turbo", "chatglm-turbo", "cogview-3", "embedding-2", "text-embedding"]
 
     def _convert_file_format(self, filepath: str) -> str:
-        """convert file format"""
         with open(filepath, 'r', encoding='utf-8') as fr:
             dataset = [json.loads(line) for line in fr]
 
@@ -49,25 +47,6 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
         return "\n".join(json_strs)
 
     def _upload_train_file(self, train_file):
-        """
-        Upload train file to server. Individual files can be up to 512 MB
-
-        {"messages": [{"role": "system", "content": "你是一位乐于助人，知识渊博的全能AI助手。"},
-                      {"role": "user", "content": "请介绍一下AlphaGo的基本原理。"},
-                      {"role": "assistant", "content": "AlphaGo利用深度神经网络与树搜索算法相结合,
-                                                        通过对弈数据进行训练,逐步提升游戏水平,
-                                                        能够对围棋局面进行判断并选择最佳落子位置。"}]}
-        {"messages": [{"role": "system", "content": "你是一位乐于助人，知识渊博的全能AI助手。"},
-                      {"role": "user", "content": "请列举一些健康饮食的重要原则。"},
-                      {"role": "assistant", "content": "健康饮食的重要原则包括:膳食应营养均衡,合理
-                                                        摄入各种营养素;多吃新鲜蔬果,适量饮水;少吃糖、
-                                                        油、盐,忌吃过量快餐;养成规律生活作息习惯,适量运动。"}]}
-        {"messages": [{"role": "system", "content": "你是一位乐于助人，知识渊博的全能AI助手。"},
-                      {"role": "user", "content": "请给出一些改善睡眠质量的建议。"},
-                      {"role": "assistant", "content": "改善睡眠质量的建议包括:保证睡眠时间,避免睡眠不足;
-                                                        睡前放松身心,远离刺激;养成规律作息时间,不要频繁熬夜;
-                                                        适量运动,但不要运动过度;睡前可以喝一杯热牛奶等温和饮料。"}]}
-        """
         headers = {
             "Authorization": "Bearer " + self._api_key
         }
@@ -90,9 +69,6 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
             return r.json()["id"]
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
-        """
-        create fine-tuning job
-        """
         url = os.path.join(self._base_url, "fine_tuning/jobs")
         headers = {
             "Content-Type": "application/json",
@@ -114,9 +90,6 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
             return (fine_tuning_job_id, status)
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
-        """
-        query fine-tuning job
-        """
         fine_tune_url = os.path.join(self._base_url, f"fine_tuning/jobs/{fine_tuning_job_id}")
         headers = {
             "Authorization": f"Bearer {self._api_key}"
@@ -132,13 +105,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
             return (fine_tuned_model, status)
 
     def _create_deployment(self) -> Tuple[str]:
-        """
-        Create deployment.
-        """
         return (self._model_name, "RUNNING")
 
     def _query_deployment(self, deployment_id) -> str:
-        """
-        Query deployment.
-        """
         return "RUNNING"
