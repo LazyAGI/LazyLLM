@@ -1,4 +1,5 @@
 import sys
+from lazyllm.thirdparty import llama_index
 import pytest
 
 class TestFn_Thirdparty(object):
@@ -21,6 +22,5 @@ class TestFn_Thirdparty(object):
             except ImportError:
                 return False
         monkeypatch.delitem(sys.modules, "llama_index", raising=False)
-        from lazyllm.thirdparty import llama_index
         assert llama_index is not None
         assert check_lazy_import(llama_index) == False
