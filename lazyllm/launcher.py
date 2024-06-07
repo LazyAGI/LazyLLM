@@ -201,7 +201,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
     @final
     class Job(Job):
-        def __init__(self, cmd, launcher, *, sync=True):
+        def __init__(self, cmd, launcher, *, sync=True, **kw):
             super(__class__, self).__init__(cmd, launcher, sync=sync)
             self.name = self._generate_name()
 

@@ -1,5 +1,5 @@
 import lazyllm
-from lazyllm import launchers, deploy
+from lazyllm import launchers, deploy, LOG
 from ..deploy.base import LazyLLMDeployBase
 from .configure import get_configer
 from .auto_helper import model_map, get_model_name, check_requirements
@@ -24,6 +24,7 @@ class AutoDeploy(LazyLLMDeployBase):
         for c in candidates:
             if check_requirements(c.framework.lower()):
                 deploy_cls = getattr(deploy, c.framework.lower())
+            if c.tgs <= 0: LOG.warning(f"Model {model_name} may out of memory under Framework {c.framework}")
             for key, value in deploy_cls.auto_map.items():
                 if value:
                     kw[value] = getattr(c, key)
@@ -32,7 +33,7 @@ class AutoDeploy(LazyLLMDeployBase):
 
     @classmethod
     def get_model_type(cls, model_name):
-        from lazyllm.module.utils.downloader.model_mapping import model_name_mapping
+        from lazyllm.components.utils.downloader.model_mapping import model_name_mapping
         if model_name in model_name_mapping:
             return model_name_mapping[model_name].get('type', 'llm')
         else:

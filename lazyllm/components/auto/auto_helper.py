@@ -3,6 +3,7 @@ import pkg_resources
 
 from .dependencies.modelsconfig import models_config
 from .dependencies.requirements import requirements
+from lazyllm import LOG
 
 def model_map(name):
     match = re.search(r'(\d+)[bB]', name)
@@ -29,4 +30,6 @@ def check_requirements(frame):
                     not_installed.append(f"{package} (Installed: {installed.version}, Required: {parts[1]})")
         except pkg_resources.DistributionNotFound:
             not_installed.append(f"Required: {package}")
+    if len(not_installed) != 0:
+        LOG.warning(f"Because of missing packages, the model may not run. The required packages are: {not_installed}")
     return len(not_installed) == 0
