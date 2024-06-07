@@ -34,7 +34,7 @@ class AutoFinetune(LazyLLMFinetuneBase):
 
     @classmethod
     def get_model_type(cls, model_name):
-        from lazyllm.module.utils.downloader.model_mapping import model_name_mapping
+        from lazyllm.components.utils.downloader.model_mapping import model_name_mapping
         if model_name in model_name_mapping:
             return model_name_mapping[model_name].get('type', 'llm')
         else:
