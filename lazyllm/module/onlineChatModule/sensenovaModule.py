@@ -15,7 +15,8 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
                  model="SenseChat-5",
                  system_prompt="You are an AI assistant whose name is InternLM (书生·浦语).",
                  stream=True,
-                 return_trace=False):
+                 return_trace=False,
+                 **kwargs):
         OnlineChatModuleBase.__init__(self,
                                       model_type=__class__.__name__,
                                       api_key=SenseNovaModule.encode_jwt_token(lazyllm.config['sensenova_ak'],
@@ -25,7 +26,8 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
                                       stream=stream,
                                       system_prompt=system_prompt,
                                       trainable_models=SenseNovaModule.TRAINABLE_MODEL_LIST,
-                                      return_trace=return_trace)
+                                      return_trace=return_trace,
+                                      **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
 
@@ -62,10 +64,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _parse_response_non_stream(self, response: str) -> str:
         cur_msg = json.loads(response)['data']["choices"][0]
-        content = {}
-        content['role'] = cur_msg['role']
-        content['content'] = cur_msg['message']
-        return content
+        return cur_msg
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:

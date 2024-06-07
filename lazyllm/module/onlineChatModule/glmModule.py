@@ -14,7 +14,8 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
                  model: str = "glm-4",
                  system_prompt: str = "你是一个乐于解答各种问题的助手，你的任务是为用户提供专业、准确、有见地的建议。",
                  stream: str = True,
-                 return_trace: bool = False):
+                 return_trace: bool = False,
+                 **kwargs):
         OnlineChatModuleBase.__init__(self,
                                       model_type=__class__.__name__,
                                       api_key=lazyllm.config['glm_api_key'],
@@ -23,7 +24,8 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
                                       stream=stream,
                                       system_prompt=system_prompt,
                                       trainable_models=GLMModule.TRAINABLE_MODEL_LIST,
-                                      return_trace=return_trace)
+                                      return_trace=return_trace,
+                                      **kwargs)
         FileHandlerBase.__init__(self)
 
     def _get_models_list(self):
