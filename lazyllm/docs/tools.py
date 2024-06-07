@@ -136,3 +136,52 @@ add_example('Retriever', r"""
     >>> rm.start()
     >>> print(rm("query"))
 """)
+
+add_chinese_doc('WebModule', r'''\
+WebModule是LazyLLM为开发者提供的基于Web的交互界面。在初始化并启动一个WebModule之后，开发者可以从页面上看到WebModule背后的模块结构，并将Chatbot组件的输入传输给自己开发的模块进行处理。
+模块返回的结果和日志会直接显示在网页的“处理日志”和Chatbot组件上。除此之外，WebModule支持在网页上动态加入Checkbox或Text组件用于向模块发送额外的参数。
+WebModule页面还提供“使用上下文”，“流式输出”和“追加输出”的Checkbox，可以用来改变页面和后台模块的交互方式。
+
+.. function:: WebModule.init_web(component_descs) -> gradio.Blocks
+使用gradio库生成演示web页面，初始化session相关数据以便在不同的页面保存各自的对话和日志，然后使用传入的component_descs参数为页面动态添加Checkbox和Text组件，最后设置页面上的按钮和文本框的相应函数
+之后返回整个页面。WebModule的__init__函数调用此方法生成页面。
+
+参数：
+    component_descs (list): 用于动态向页面添加组件的列表。列表中的每个元素也是一个列表，其中包含5个元素，分别是组件对应的模块ID，模块名，组件名，组件类型（目前仅支持Checkbox和Text），组件默认值。
+''')
+
+add_english_doc('WebModule', r'''\
+WebModule is a web-based interactive interface provided by LazyLLM for developers. After initializing and starting
+a WebModule, developers can see structure of the module they provides behind the WebModule, and transmit the input
+of the Chatbot component to their modules. The results and logs returned by the module will be displayed on the 
+“Processing Logs” and Chatbot component on the web page. In addition, Checkbox or Text components can be added
+programmatically to the web page for additional parameters to the background module. Meanwhile, The WebModule page
+provides Checkboxes of “Use Context,” “Stream Output,” and “Append Output,” which can be used to adjust the
+interaction between the page and the module behind.
+
+.. function:: WebModule.init_web(component_descs) -> gradio.Blocks
+
+Generate a demonstration web page based on gradio. The function initializes session-related data to save chat history
+and logs for different pages, then dynamically add Checkbox and Text components to the page according to component_descs
+parameter, and set the corresponding functions for the buttons and text boxes on the page at last.
+WebModule’s __init__ function calls this method to generate the page.
+
+Arguments:
+    component_descs (list): A list used to add components to the page. Each element in the list is also a list containing 
+    5 elements, which are the module ID, the module name, the component name, the component type (currently only
+    supports Checkbox and Text), and the default value of the component.
+''')
+
+add_example('WebModule', r'''\
+    >>> import lazyllm
+    >>> def func2(in_str, do_sample=True, temperature=0.0, *args, **kwargs):
+    ...     return f"func2:{in_str}|do_sample:{str(do_sample)}|temp:{temperature}"
+    ...
+    >>> m1=lazyllm.ActionModule(func2)
+    >>> m1.name="Module1"
+    >>> w = lazyllm.WebModule(m1, port=[20570, 20571, 20572], components={
+    ...         m1:[('do_sample', 'Checkbox', True), ('temperature', 'Text', 0.1)]},
+    ...                       text_mode=lazyllm.tools.WebModule.Mode.Refresh)
+    >>> w.start()
+    193703: 2024-06-07 10:26:00 lazyllm SUCCESS: ...
+''')

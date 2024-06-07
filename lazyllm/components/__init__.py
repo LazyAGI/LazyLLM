@@ -5,6 +5,7 @@ from .finetune import LazyLLMFinetuneBase
 from .deploy import LazyLLMDeployBase, FastapiApp
 from .validate import LazyLLMValidateBase
 from .auto import AutoDeploy, AutoFinetune
+from .utils import ModelDownloader
 
 __all__ = [
     'register',
@@ -18,4 +19,5 @@ __all__ = [
     'FastapiApp',
     'AutoDeploy',
     'AutoFinetune',
+    'ModelDownloader'
 ]

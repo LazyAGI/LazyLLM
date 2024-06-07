@@ -1,4 +1,5 @@
-from .configs import config, Mode
+from .configs import config
+from .configs import * # noqa F401 of Config
 from .common import *  # noqa F403
 from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase, barrier

@@ -221,8 +221,8 @@ class WebModule(ModuleBase):
         yield chat_history, log
 
     def _clear_history(self, session):
-        session['sess_history'][session['curr_sess']].clear()
-        session['sess_logs'][session['curr_sess']].clear()
+        session['sess_history'][session['curr_sess']] = []
+        session['sess_logs'][session['curr_sess']] = []
         return [], '', '', session
 
     def _work(self):
@@ -245,7 +245,8 @@ class WebModule(ModuleBase):
         return Pipeline(self._print_url)
 
     def wait(self):
-        return self.p.join()
+        if hasattr(self, 'p'):
+            return self.p.join()
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Web', name=self._module_name, subs=[repr(self.m)])

@@ -35,3 +35,9 @@ Register
 
 .. autofunction:: lazyllm.components.register
 
+ModelDownloader
+================
+
+.. autoclass:: lazyllm.components.ModelDownloader
+    :members: 
+    :exclude-members:
