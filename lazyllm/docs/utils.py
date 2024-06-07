@@ -22,8 +22,7 @@ void addDocStr(py::object obj, std::string docs) {
 }
 '''
 
-lazyllm.config.add('language', str, 'English', 'LANGUAGE')
-
+lazyllm.config.add('language', str, 'CHINESE', 'LANGUAGE')
 
 def add_doc(obj_name, docstr, module, append=''):
     obj = module

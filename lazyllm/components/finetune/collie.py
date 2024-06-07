@@ -17,8 +17,8 @@ class CollieFinetune(LazyLLMFinetuneBase):
         'lora_r': 8,
         'lora_alpha': 16,
         'lora_dropout': 0.05,
-        'lora_target_modules': '[query_key_value, dense,dense_4h_to_h, dense_h_to_4h]',
-        'modules_to_save': '[word_embeddings, output_layer]',
+        'lora_target_modules': '[wo,wqkv]',
+        'modules_to_save': '[tok_embeddings,output]',
         'prompt_template_name': 'alpaca',
     })
     auto_map = {
@@ -33,9 +33,12 @@ class CollieFinetune(LazyLLMFinetuneBase):
                  merge_path=None,
                  model_name='LLM',
                  cp_files='tokeniz*',
-                 launcher=launchers.remote(),
+                 launcher=launchers.remote(ngpus=1),
                  **kw
                  ):
+        if not merge_path:
+            target_path, merge_path = os.path.join(target_path, "lora"), os.path.join(target_path, "merge")
+            os.system(f'mkdir -p {target_path} {merge_path}')
         super().__init__(
             base_model,
             target_path,
