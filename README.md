@@ -22,14 +22,119 @@ LazyLLM可用来构建常用的人工智能应用，下面给出一些例子。
 ### 3.1 对话机器人
 
 ```python
-t = lazyllm.OnlineChatModule('llama2-7b', stream=True)
+# set environment variable: LAZYLLM_OPENAI_API_KEY=xx 
+# or you can make a config file(~/.lazyllm/config.json) and add openai_api_key=xx
+import lazyllm
+t = lazyllm.OnlineChatModule(source="openai", stream=True)
 w = lazyllm.WebModule(t)
-w.start()
+w.start().wait()
+```
+
+如果你想使用一个本地部署的模型，请确保自己安装了至少一个推理框架(lightllm或vllm)，然后代码如下：
+
+```python
+import lazyllm
+# Model will be download automatically if you have an internet connection
+t = lazyllm.TrainableModule('internlm2-chat-7b')
+w = lazyllm.WebModule(t)
+w.start().wait()
 ```
 
 ### 3.2 检索增强生成
 
+<details>
+<summary>点击获取import和prompt</summary>
+
+```python
+
+import os
+import lazyllm
+from lazyllm import pipeline, parallel, Identity, launchers, Document, Retriever, Rerank, deploy
+
+prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
+```
+</details>
+
+```python
+# If use redis, please set 'export LAZYLLM_RAG_STORE=Redis', and export LAZYLLM_REDIS_URL=redis://{IP}:{PORT}
+prompter = lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])
+llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(prompter)
+documents = Document(dataset_path='/file/to/yourpath', lazyllm.TrainableModule('bge-large-zh-v1.5'))
+retriever = Retriever(documents, algo='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
+rerank = Rerank(types='Reranker', model='bge-reranker-large')
+
+#  input ---> retriver -->  reranker---> llm
+#        |--------------↑            ↑
+#        |---------------------------↑
+m = lazyllm.ActionModule(
+    parallel.sequential(
+        context_str=pipeline(parallel.sequential(Identity, retriever), rerank), 
+        query_str=Identity).asdict, 
+    llm
+)
+mweb = lazyllm.WebModule(m, port=23456).start().wait()
+```
+
 ### 3.3 故事创作
+
+<details>
+<summary>点击查看import和prompt</summary>
+
+```python
+import lazyllm
+from lazyllm import pipeline, parallel, Identity, warp, package
+import time
+import re, json
+
+toc_prompt=""" 你现在是一个智能助手。你的任务是理解用户的输入，将大纲以列表嵌套字典的列表。每个字典包含一个 `title` 和 `describe`，其中 `title` 中需要用Markdown格式标清层级，`describe` `describe` 是对该段的描述和写作指导。
+
+请根据以下用户输入生成相应的列表嵌套字典：
+
+输出示例:
+[
+    {
+        "title": "# 一级标题",
+        "describe": "请详细描述此标题的内容，提供背景信息和核心观点。"
+    },
+    {
+        "title": "## 二级标题",
+        "describe": "请详细描述标题的内容，提供具体的细节和例子来支持一级标题的观点。"
+    },
+    {
+        "title": "### 三级标题",
+        "describe": "请详细描述标题的内容，深入分析并提供更多的细节和数据支持。"
+    }
+]
+用户输入如下：
+"""
+
+completion_prompt="""
+你现在是一个智能助手。你的任务是接收一个包含 `title` 和 `describe` 的字典，并根据 `describe` 中的指导展开写作
+输入示例:
+{
+    "title": "# 一级标题",
+    "describe": "这是写作的描述。"
+}
+
+输出:
+这是展开写作写的内容
+接收如下：
+
+"""
+```
+</details>
+
+```python
+t1 = lazyllm.OnlineChatModule(source="openai", stream=False, system_prompt=toc_prompt)
+t2 = lazyllm.OnlineChatModule(source="openai", stream=False, system_prompt=completion_prompt)
+
+spliter = lambda s: tuple(eval(re.search(r'\[\s*\{.*\}\s*\]', s['content'], re.DOTALL).group()))
+writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2, lambda d : d['content'])
+collector = lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])
+m = pipeline(t1, spliter, parallel(Identity, warp(writter)), collector)
+
+print(m({'query':'请帮我写一篇关于人工智能在医疗领域应用的文章。'}))
+```
 
 ### 3.4 智能体
 
@@ -123,9 +228,25 @@ Flow 是LazyLLM中定义的数据流，描述了数据如何从一个可调用�
 2. 通过一套标准化的接口和数据流机制，Flow 减少了开发人员在处理数据传递和转换时的重复工作。开发人员可以将更多精力集中在核心业务逻辑上，从而提高整体开发效率。
 3. 部分Flow 支持异步处理模式和并行执行，在处理大规模数据或复杂任务时，可以显著提高响应速度和系统性能。
 
-## 九、文档
+## 九、研发路线
 
-## 十、贡献代码
+我们计划于7月底支持如下功能：
+RAG
+- [ ]  重构RAG模块，去除对llamaindex的依赖
+- [ ]  支持在线的parser
 
-## 贡献者们
+应用一键部署
+- [ ]  支持一键生成docker，一键启动应用，支持高并发和容错
 
+模型服务
+- [ ]  增强根据用户场景自动选择微调/推理框架和参数的能力
+- [ ]  支持70B模型微调
+- [ ]  支持模型推理时起多个推理服务，并实现负载均衡
+
+工具
+- [ ]  接入常用的搜索引擎
+- [ ]  支持常用的formatter
+- [ ]  内置Prompter模板
+
+用户体验优化
+- [ ] 优化flow的数据流动方式，支持灵活的数据流动，减少Indetity的使用次数

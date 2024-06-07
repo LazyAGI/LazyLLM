@@ -23,14 +23,121 @@ LazyLLM can be used to build common artificial intelligence applications. Here a
 ### ChatBots
 
 ```python
-t = lazyllm.OnlineChatModule('llama2-7b', stream=True)
+# set environment variable: LAZYLLM_OPENAI_API_KEY=xx 
+# or you can make a config file(~/.lazyllm/config.json) and add openai_api_key=xx
+import lazyllm
+t = lazyllm.OnlineChatModule(source="openai", stream=True)
 w = lazyllm.WebModule(t)
-w.start()
+w.start().wait()
+```
+
+If you want to use a locally deployed model, please ensure you have installed at least one inference framework (lightllm or vllm), and then use the following code
+
+```python
+import lazyllm
+# Model will be download automatically if you have an internet connection
+t = lazyllm.TrainableModule('internlm2-chat-7b')
+w = lazyllm.WebModule(t)
+w.start().wait()
 ```
 
 ### RAG
 
+<details>
+<summary>click to look up prompts and imports</summary>
+
+```python
+
+import os
+import lazyllm
+from lazyllm import pipeline, parallel, Identity, launchers, Document, Retriever, Rerank, deploy
+
+prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task. In this task, you need to provide your answer based on the given context and question.'
+```
+</details>
+
+```python
+# If use redis, please set 'export LAZYLLM_RAG_STORE=Redis', and export LAZYLLM_REDIS_URL=redis://{IP}:{PORT}
+prompter = lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])
+llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(prompter)
+documents = Document(dataset_path='/file/to/yourpath', lazyllm.TrainableModule('bge-large-zh-v1.5'))
+retriever = Retriever(documents, algo='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
+rerank = Rerank(types='Reranker', model='bge-reranker-large')
+
+#  input ---> retriver -->  reranker--> llm
+#        |--------------↑            ↑
+#        |---------------------------↑
+m = lazyllm.ActionModule(
+    parallel.sequential(
+        context_str=pipeline(parallel.sequential(Identity, retriever), rerank), 
+        query_str=Identity).asdict, 
+    llm
+)
+mweb = lazyllm.WebModule(m, port=23456).start().wait()
+```
+
 ### Stories Creator
+
+<details>
+<summary>click to look up prompts and imports</summary>
+
+```python
+import lazyllm
+from lazyllm import pipeline, parallel, Identity, warp, package
+import time
+import re, json
+
+toc_prompt="""
+You are now an intelligent assistant. Your task is to understand the user's input and convert the outline into a list of nested dictionaries. Each dictionary contains a `title` and a `describe`, where the `title` should clearly indicate the level using Markdown format, and the `describe` is a description and writing guide for that section.
+
+Please generate the corresponding list of nested dictionaries based on the following user input:
+
+Example output:
+[
+    {
+        "title": "# Level 1 Title",
+        "describe": "Please provide a detailed description of the content under this title, offering background information and core viewpoints."
+    },
+    {
+        "title": "## Level 2 Title",
+        "describe": "Please provide a detailed description of the content under this title, giving specific details and examples to support the viewpoints of the Level 1 title."
+    },
+    {
+        "title": "### Level 3 Title",
+        "describe": "Please provide a detailed description of the content under this title, deeply analyzing and providing more details and data support."
+    }
+]
+User input is as follows:
+"""
+
+completion_prompt="""
+You are now an intelligent assistant. Your task is to receive a dictionary containing `title` and `describe`, and expand the writing according to the guidance in `describe`.
+
+Input example:
+{
+    "title": "# Level 1 Title",
+    "describe": "This is the description for writing."
+}
+
+Output:
+This is the expanded content for writing.
+Receive as follows:
+
+"""
+```
+</details>
+
+```python
+t1 = lazyllm.OnlineChatModule(source="openai", stream=False, system_prompt=toc_prompt)
+t2 = lazyllm.OnlineChatModule(source="openai", stream=False, system_prompt=completion_prompt)
+
+spliter = lambda s: tuple(eval(re.search(r'\[\s*\{.*\}\s*\]', s['content'], re.DOTALL).group()))
+writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2, lambda d : d['content'])
+collector = lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])
+m = pipeline(t1, spliter, parallel(Identity, warp(writter)), collector)
+
+print(m({'query': 'Please help me write an article about the application of artificial intelligence in the medical field.'}))
+```
 
 ### AI Agent
 
@@ -74,7 +181,7 @@ In summary, LazyLLM aims to provide a quick, efficient, and low-threshold path f
 
 ## Architecture
 
-![Architecture](docs/Architecture.png)
+![Architecture](docs/Architecture.en.png)
 
 ## Basic concept
 
@@ -126,8 +233,26 @@ Flow in LazyLLM defines the data stream, describing how data is passed from one 
 2. Through a standardized interface and data flow mechanism, Flow reduces the repetitive work developers face when handling data transfer and transformation. Developers can focus more on core business logic, thus improving overall development efficiency.
 3. Some Flows support asynchronous processing and parallel execution, significantly enhancing response speed and system performance when dealing with large-scale data or complex tasks.
 
-## Documentation
+## RoadMap
 
-## Contributing
+We plan to support the following features by the end of July:
 
-## Contributors
+RAG
+- [ ]  Refactor the RAG module to remove the dependency on llamaindex
+- [ ]  Support online parser
+
+One-Click Deployment of Applications
+- [ ]  Support one-click generation of Docker, one-click application startup, supporting high concurrency and fault tolerance
+
+Model Service
+- [ ]  Enhance the ability to automatically select fine-tuning/inference frameworks and parameters based on user scenarios
+- [ ]  Support fine-tuning of 70B models
+- [ ]  Support multiple inference services during model inference and achieve load balancing
+
+Tools
+- [ ]  Integrate common search engines
+- [ ]  Support common formatters
+- [ ]  Built-in Prompter templates
+
+User Experience Optimization
+- [ ] Optimize the flow of data in flow, support flexible data flow, and reduce the number of times Identity is used
