@@ -12,3 +12,7 @@ lazyllm.TOOLS
 .. autoclass:: lazyllm.tools.Retriever
     :members: 
     :exclude-members: forward
+
+.. autoclass:: lazyllm.tools.WebModule
+    :members: 
+    :exclude-members: forward

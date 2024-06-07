@@ -569,3 +569,55 @@ Notes:
 add_example('RemoteLauncher', '''\
 >>> launcher = lazyllm.launchers.remote(ngpus=1)
 ''')
+
+add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.components)
+add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.components)
+add_example = functools.partial(utils.add_example, module=lazyllm.components)
+
+add_chinese_doc('ModelDownloader', r'''\
+ModelDownloader是LazyLLM为开发者提供的自动下载模型的工具类。目前支持从一个本地目录列表查找指定模型，以及从huggingface或者modelscope自动下载模型数据至指定目录。
+在使用ModelDownloader之前，需要设置下列环境变量：
+
+    LAZYLLM_MODEL_SOURCE: 模型下载源，可以设置为*huggingface*或*modelscope*
+    LAZYLLM_MODEL_SOURCE_TOKEN: huggingface或modelscope提供的token，用于下载私有模型。
+    LAZYLLM_MODEL_PATH: 冒号(:)分隔的本地绝对路径列表用于搜索模型。
+    LAZYLLM_MODEL_CACHE_DIR: 下载后的模型在本地的存储目录
+
+.. function:: ModelDownloader.download(model) -> str
+
+用于从model_source下载模型。download函数首先在ModelDownloader类初始化参数model_path列出的目录中搜索目标模型。如果未找到，会在cache_dir下搜索目标模型。如果仍未找到，
+则从model_source上下载模型并存放于cache_dir下。
+
+参数：
+    model (str): 目标模型名称。download函数使用此名称从model_source上下载模型。为了方便开发者使用，LazyLLM为常用模型建立了简略模型名称到下载源实际模型名称的映射，
+    例如Llama-3-8B，GLM3-6B或Qwen1.5-7B。具体可参考文件lazyllm/module/utils/downloader/model_mapping.py。model可以接受简略模型名或下载源中的模型全名。
+''')
+
+add_english_doc('ModelDownloader', r'''\
+ModelDownloader is a utility class provided by LazyLLM for developers to automatically download models.
+Currently, it supports search for models from local directories, as well as automatically downloading model from
+huggingface or modelscope. Before using ModelDownloader, the following environment variables need to be set:
+
+    LAZYLLM_MODEL_SOURCE: The source for model downloads, which can be set to *huggingface* or *modelscope*.
+    LAZYLLM_MODEL_SOURCE_TOKEN: The token provided by huggingface or modelscope for private model download.
+    LAZYLLM_MODEL_PATH: A colon-separated list of local absolute paths for model search.
+    LAZYLLM_MODEL_CACHE_DIR: Directory for downloaded models.
+        
+.. function:: ModelDownloader.download(model) -> str
+
+Download models from model_source. The function first searches for the target model in directories listed in the
+model_path parameter of ModelDownloader class. If not found, it searches under cache_dir. If still not found,
+it downloads the model from model_source and stores it under cache_dir.
+
+Arguments:
+    model (str): The name of the target model. The function uses this name to download the model from model_source.
+    To further simplify use of the function, LazyLLM provides a mapping dict from abbreviated model names to original
+    names on the download source for popular models, such as Llama-3-8B, GLM3-6B, and Qwen1.5-7B. For more details,
+    please refer to the file lazyllm/module/utils/downloader/model_mapping.py. The model argument can be either
+    an abbreviated name or one from the download source.
+''')
+
+add_example('ModelDownloader', r'''\
+    >>> downloader = ModelDownloader(model_source='huggingface')
+    >>> downloader.download('GLM3-6B')
+''')

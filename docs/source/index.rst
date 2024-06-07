@@ -18,6 +18,7 @@ LazyLLM
    api/flow
    api/module
    api/tools
+   api/configs
 
 .. toctree::
    :caption: Contribution Guide
