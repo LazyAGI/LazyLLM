@@ -16,7 +16,8 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
                  model: str = "gpt-3.5-turbo",
                  system_prompt: str = "You are a helpful assistant.",
                  stream: bool = True,
-                 return_trace: bool = False):
+                 return_trace: bool = False,
+                 **kwargs):
         OnlineChatModuleBase.__init__(self,
                                       model_type=__class__.__name__,
                                       api_key=lazyllm.config['openai_api_key'],
@@ -25,7 +26,8 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
                                       system_prompt=system_prompt,
                                       stream=stream,
                                       trainable_models=OpenAIModule.TRAINABLE_MODEL_LIST,
-                                      return_trace=return_trace)
+                                      return_trace=return_trace,
+                                      **kwargs)
         FileHandlerBase.__init__(self)
 
     def _convert_file_format(self, filepath: str) -> str:

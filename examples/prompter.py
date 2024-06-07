@@ -1,0 +1,22 @@
+import lazyllm
+r = prompter.alpaca('<i> {instru} <i>', ['a', 'b'])
+print(r.generate_prompt(dict(a='123', b='456', instru='data')))
+print('----------------------')
+print(r.generate_prompt(dict(a='123', b='456', instru='data'), tools=dict(t1='t1')))
+print('----------------------')
+print(r.generate_prompt(dict(a='123', b='456', instru='data'), return_dict=True))
+print('----------------------')
+print(r.generate_prompt(dict(a='123', b='456', instru='data'), tools=dict(t1='t1'), return_dict=True))
+print('======================')
+
+r = prompter.chat('<ins> {instruction} <ins>', ['a', 'b'])
+print(r.generate_prompt(dict(a='123', b='456', instruction='data')))
+print('----------------------')
+print(r.generate_prompt(dict(a='123', b='456', instruction='data', input='input'), tools=dict(t1='t1')))
+print('----------------------')
+print(r.generate_prompt(dict(a='123', b='456', instruction='data', input='input'), return_dict=True))
+print('----------------------')
+print(r.generate_prompt(dict(a='123', b='456', instruction='data'), tools=dict(t1='t1'), return_dict=True))
+print('----------------------')
+
+OnlineChatModule(prompter=p)

@@ -4,6 +4,7 @@ import requests
 from typing import Tuple, List, Dict, Union, Any
 import time
 import lazyllm
+from lazyllm.components.prompter import PrompterBase, ChatPrompter
 from ..module import ModuleBase, Pipeline
 
 class OnlineChatModuleBase(ModuleBase):
@@ -16,7 +17,9 @@ class OnlineChatModuleBase(ModuleBase):
                  system_prompt: str,
                  stream: bool,
                  trainable_models: List[str],
-                 return_trace: bool = False):
+                 return_trace: bool = False,
+                 prompter: PrompterBase = None,
+                 **kwargs):
         super().__init__(return_trace=return_trace)
         self._model_type = model_type
         if not api_key:
@@ -29,6 +32,7 @@ class OnlineChatModuleBase(ModuleBase):
         self.trainable_mobels = trainable_models
         self._set_headers()
         self._set_chat_url()
+        self._prompt = prompter if prompter else ChatPrompter()
 
     def system_prompt(self, prompt: str = ""):
         if len(prompt) > 0:
@@ -41,6 +45,9 @@ class OnlineChatModuleBase(ModuleBase):
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + self._api_key
         }
+
+    def get_model_type(self):
+        return self._model_type
 
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'chat/completions')
@@ -60,28 +67,18 @@ class OnlineChatModuleBase(ModuleBase):
         return chunk
 
     def _parse_response_non_stream(self, response: str) -> Dict[str, Any]:
-        cur_msg = json.loads(response)["choices"][0]["message"]
+        """Parse the response from the interface"""
+        cur_msg = json.loads(response)["choices"][0]
         return cur_msg
 
-    def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, **kw):  # noqa C901
-        input = __input["query"] if isinstance(__input, dict) else __input
+    def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, **kw):  # noqa C901
+        """LLM inference interface"""
+        params = {"input": __input, "history": llm_chat_history}
+        if tools:
+            params["tools"] = tools
+        params["return_dict"] = True
+        data = self._prompt.generate_prompt(**params)
 
-        content = [self._system_prompt]
-        if llm_chat_history is not None:
-            for item in llm_chat_history:
-                if len(item) == 2:
-                    content.append({"role": "user", "content": item[0]})
-                    content.append({"role": "assistant", "content": item[1]})
-                elif len(item) == 1:
-                    content.append({"role": "user", "content": item[0]})
-                    content.append({"role": "assistant", "content": ""})
-                elif len(item) == 0:
-                    continue
-                else:
-                    raise ValueError("llm_chat_history item length cannot be greater than 2")
-
-        content.append({"role": "user", "content": input})
-        data = {"messages": content}
         data["model"] = self._model_name
         data["stream"] = self._stream
         if len(kw) > 0:
@@ -96,21 +93,7 @@ class OnlineChatModuleBase(ModuleBase):
                 for line in r.iter_lines():
                     if len(line) == 0:
                         continue
-                    chunk = self._parse_response_stream(line)
-                    if chunk.startswith("{"):
-                        msg = json.loads(chunk)["choices"][0]["delta"]
-                        if len(msg) > 0:
-                            yield msg
-                        elif json.loads(chunk)["choices"][0]["finish_reason"] == "stop":
-                            return ""
-                        else:
-                            # Not the expected data, throw an exception
-                            raise ValueError(f"Unexpected msg: {msg}")
-                    elif chunk == "[DONE]":
-                        return ""
-                    else:
-                        # Not the expected chunk, throw an exception
-                        raise ValueError(f"Unexpected chunk: {chunk}")
+                    yield self._parse_response_stream(line)
 
         def _impl_non_stream():
             """process http non-stream request"""

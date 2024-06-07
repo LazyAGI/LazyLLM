@@ -8,7 +8,8 @@ import inspect
 from concurrent.futures import ThreadPoolExecutor
 
 import lazyllm
-from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, Prompter, launchers, LOG
+from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, launchers, LOG
+from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..flow import FlowBase, Pipeline, Parallel
 import uuid
 from ..client import get_redis, redis_client
@@ -217,13 +218,13 @@ class UrlModule(ModuleBase):
     # Cannot modify or add any attrubute of self
     # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
     # deploy parameters keys are in **kw
-    def forward(self, __input=None, *, llm_chat_history=None, **kw):  # noqa C901
+    def forward(self, __input=None, *, llm_chat_history=None, tools=None, **kw):  # noqa C901
         assert self._url is not None, f'Please start {self.__class__} first'
         assert len(kw) == 0 or not isinstance(__input, LazyLlmRequest), \
             'Cannot provide LazyLlmRequest and kw args at the same time.'
 
         input, kw = (__input.input, __input.kwargs) if isinstance(__input, LazyLlmRequest) else (__input, kw)
-        input = self._prompt.generate_prompt(input, llm_chat_history)
+        input = self._prompt.generate_prompt(input, llm_chat_history, tools)
 
         if self._meta == ServerModule:
             if isinstance(__input, LazyLlmRequest): __input.input = input
@@ -262,8 +263,13 @@ class UrlModule(ModuleBase):
             for r in _impl(): pass
             return r
 
-    def prompt(self, prompt=None, response_split=None):
-        self._prompt = prompt if isinstance(prompt, Prompter) else Prompter(prompt, response_split)
+    def prompt(self, prompt=None):
+        if prompt is None:
+            self._prompt = EmptyPrompter()
+        elif isinstance(prompt, PrompterBase):
+            self._prompt = prompt
+        elif isinstance(prompt, str):
+            self._prompt = ChatPrompter(prompt)
         return self
 
     def _set_template(self, template_message=None, input_key_name=None, template_headers=None):
@@ -378,6 +384,10 @@ class TrainableModule(UrlModule):
 
         self.base_model = base_model
         self._deploy_flag = lazyllm.once_flag()
+
+    # modify default value to ''
+    def prompt(self, prompt=''):
+        return super(__class__, self).prompt(prompt)
 
     def _get_args(self, arg_cls, disable=[]):
         args = getattr(self, f'_{arg_cls}_args', dict())

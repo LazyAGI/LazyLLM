@@ -22,7 +22,8 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
                                 model: str,
                                 system_prompt: str,
                                 stream: bool,
-                                return_trace: bool) -> Dict[str, Any]:
+                                return_trace: bool,
+                                **kwargs) -> Dict[str, Any]:
         params = {"stream": stream, "return_trace": return_trace}
         if base_url is not None:
             params['base_url'] = base_url
@@ -30,6 +31,7 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
             params['model'] = model
         if system_prompt is not None:
             params['system_prompt'] = system_prompt
+        params.update(kwargs)
 
         return params
 
@@ -39,8 +41,9 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
                 model: str = None,
                 system_prompt: str = None,
                 stream: bool = True,
-                return_trace: bool = False):
-        params = OnlineChatModule._encapsulate_parameters(base_url, model, system_prompt, stream, return_trace)
+                return_trace: bool = False,
+                **kwargs):
+        params = OnlineChatModule._encapsulate_parameters(base_url, model, system_prompt, stream, return_trace, **kwargs)
 
         if source.lower() == "openai":
             return OpenAIModule(**params)

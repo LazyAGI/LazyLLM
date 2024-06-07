@@ -1,5 +1,5 @@
 from .core import register
-from .prompter import Prompter
+from .prompter import Prompter, AlpacaPrompter, ChatPrompter
 from .data import LazyLLMDataprocBase
 from .finetune import LazyLLMFinetuneBase
 from .deploy import LazyLLMDeployBase, FastapiApp
@@ -9,6 +9,8 @@ from .auto import AutoDeploy, AutoFinetune
 __all__ = [
     'register',
     'Prompter',
+    'AlpacaPrompter',
+    'ChatPrompter',
     'LazyLLMDataprocBase',
     'LazyLLMFinetuneBase',
     'LazyLLMDeployBase',

@@ -4,7 +4,7 @@ from .launcher import LazyLLMLaunchersBase
 from .flow import LazyLLMFlowsBase, FlowBase, barrier
 from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                          LazyLLMValidateBase, register as component_register, Prompter,
-                         FastapiApp)
+                         AlpacaPrompter, ChatPrompter, FastapiApp)
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
                      OnlineChatModule, OnlineEmbeddingModule)
@@ -33,6 +33,8 @@ __all__ = [
     'LazyLLMValidateBase',        #
     'component_register',
     'Prompter',
+    'AlpacaPrompter',
+    'ChatPrompter',
     'FastapiApp',
 
     # flow

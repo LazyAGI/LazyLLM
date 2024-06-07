@@ -19,7 +19,8 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                  model: str = "qwen-plus",
                  system_prompt: str = "You are a helpful assistant.",
                  stream: bool = True,
-                 return_trace: bool = False):
+                 return_trace: bool = False,
+                 **kwargs):
         OnlineChatModuleBase.__init__(self,
                                       model_type=__class__.__name__,
                                       api_key=lazyllm.config['qwen_api_key'],
@@ -28,7 +29,8 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                                       system_prompt=system_prompt,
                                       stream=stream,
                                       trainable_models=QwenModule.TRAINABLE_MODEL_LIST,
-                                      return_trace=return_trace)
+                                      return_trace=return_trace,
+                                      **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
 
