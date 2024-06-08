@@ -10,17 +10,12 @@ template = (
     '道德修养和社会实践达到最高的善治状态。\n注意以上仅为示例，禁止在下面任务中提取或使用上述示例已知国学篇章。\n现在，请对比以下给定的国学篇章和给出的问题。如果已知国学篇章中有该问题相关的原文，请提取相关原文出来。\n'
     '已知国学篇章：{context_str}\n问题: {query_str}\n回答：\n<|im_end|>\n<|im_start|>assistant\n')
 
-base_model = '/mnt/lustrenew/share_data/lazyllm/models/internlm2-chat-7b'
-base_embed = '/mnt/lustrenew/share_data/lazyllm/models/bge-large-zh-v1.5'
-base_rerank = '/mnt/lustrenew/share_data/lazyllm/models/bge-reranker-large'
-dataset_path = '/mnt/lustrenew/share_data/lazyllm/data/rag_master'
+llm = lazyllm.TrainableModule('internlm2-chat-7b').deploy_method(deploy.AutoDeploy).prompt(template, response_split='<|im_start|>assistant\n')
 
-llm = lazyllm.TrainableModule(base_model).deploy_method(deploy.AutoDeploy).prompt(template, response_split='<|im_start|>assistant\n')
-
-documents = Document(dataset_path=dataset_path, embed=lazyllm.TrainableModule(base_embed).deploy_method(deploy.AutoDeploy))
+documents = Document(dataset_path='/file/to/yourpath', embed=lazyllm.TrainableModule('bge-large-zh-v1.5').deploy_method(deploy.AutoDeploy))
 rma1 = Retriever(documents, parser='FineChunk', similarity_top_k=3)
 rma2 = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
-rerank1 = Rerank(types='Reranker', model=base_rerank)
+rerank1 = Rerank(types='Reranker', model='bge-reranker-large')
 rerank2 = Rerank(types='SimilarityFilter', threshold=0.003)
 
 rmf = lazyllm.ActionModule(pipeline(

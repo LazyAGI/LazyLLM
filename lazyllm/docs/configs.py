@@ -89,12 +89,10 @@ Arguments:
 ''')
 
 add_example('Config', '''\
-    >>> from lazyllm.configs import config
-    >>> config.done()
-    >>> config.getenv('default_launcher', str)
-    'slurm'
-    >>> config.add('launcher', str, 'slurm', 'DEFAULT_LAUNCHER')
-    <lazyllm.configs.Config object at 0x7f167dc95c30>
-    >>> config.get_all_configs()
-    {'home': '~/.lazyllm/', 'mode': <Mode.Normal: (1,)>,...
+>>> import lazyllm
+>>> from lazyllm.configs import config
+>>> config['launcher']
+'empty'
+>>> config.get_all_configs()
+{'home': '~/.lazyllm/', 'mode': <Mode.Normal: (1,)>, 'repr_ml': False, 'rag_store': 'None', 'redis_url': 'None', 'gpu_type': 'A100', 'debug': False, 'log_name': 'lazyllm', 'log_level': 'INFO', 'log_format': '{process}: <green>{time:YYYY-MM-DD HH:mm:ss}</green> {extra[name]} <level>{level}</level>: ({name}) <cyan>{message}</cyan>', 'log_dir': '~/.lazyllm', 'log_file_level': 'ERROR', 'log_file_size': '4 MB', 'log_file_retention': '7 days', 'log_file_mode': 'merge', 'launcher': 'empty', 'partition': 'your_part', 'sco.workspace': 'your_workspace', 'model_source': 'modelscope', 'model_cache_dir': '/mnt/cache/wangzhihong/.lazyllm/model', 'model_path': '', 'model_source_token': '', 'redis_recheck_delay': 5, 'openai_api_key': '', 'moonshotai_api_key': '', 'glm_api_key': '', 'qwen_api_key': '', 'sensenova_ak': '', 'sensenova_sk': '', 'doubao_api_key': '', 'language': 'CHINESE'}
 ''')

@@ -68,7 +68,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         assert isinstance(input, dict)
         kwargs = {k: input.pop(k) for k in prompt_keys}
         assert len(input) <= 1, f'Unexpected keys found in input: {list(input.keys())}'
-        return self._instruction_template.format(**kwargs) if len(kwargs) > 0 else self._instruction_template, list(input.values())[0] if input else ''
+        return (self._instruction_template.format(**kwargs) if len(kwargs) > 0 else self._instruction_template,
+                list(input.values())[0] if input else '')
 
     def _check_values(self, instruction, input, history, tools): pass
 

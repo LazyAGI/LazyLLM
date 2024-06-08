@@ -14,7 +14,7 @@ except ImportError:
 @lazyllm.component_register('dataproc')
 def gen_data(idx):
     print(f'idx {idx}: gen data done')
-    datapath = '/mnt/lustrenew/share_data/sunxiaoye/Dataset/Finture_TDX/step1_0103_xuzhiguo.json'
+    datapath = '/file/to/yourfile.json'
     return package(datapath, idx + 1)
 
 def before_func(input_json):
@@ -29,9 +29,9 @@ def after_func(input_json, llm_output):
 ppl = lazyllm.pipeline(
     dataproc.gen_data(),
     finetune.alpacalora(
-        base_model='/mnt/lustrenew/share_data/sunxiaoye/Models/internlm2-chat-20b',
-        target_path='/mnt/lustrenew/share_data/sunxiaoye/Models/Internlm2-chat-20b/lazy_demo/lora',
-        merge_path='/mnt/lustrenew/share_data/sunxiaoye/Models/Internlm2-chat-20b/lazy_demo/merge',
+        base_model='internlm2-chat-20b',
+        target_path='Internlm2-chat-20b/lazy_demo/lora',
+        merge_path='Internlm2-chat-20b/lazy_demo/merge',
         cp_files='tokeniz*',
         model_name='internlm20b',
         batch_size=8,

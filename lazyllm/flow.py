@@ -274,6 +274,6 @@ class Loop(LazyLLMFlowsBase):
             for item in self.items:
                 input = helper.make_request(self.invoke(item, input))
             cnt += 1
-            if (callable(self.cond) and self.cond(input)) or (self.count is not None and cnt >= self.count):
+            if (callable(self.cond) and self.invoke(self.cond, input)) or (self.count is not None and cnt >= self.count):
                 break
         return helper.make_response(input)

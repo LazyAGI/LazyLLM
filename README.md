@@ -136,8 +136,6 @@ m = pipeline(t1, spliter, parallel(Identity, warp(writter)), collector)
 print(m({'query':'请帮我写一篇关于人工智能在医疗领域应用的文章。'}))
 ```
 
-### 3.4 智能体
-
 ## 四、功能点
 
 1. **应用搭建**：定义了pipeline、parallel、diverter、if、switch、loop等工作流(Flow)，开发者可以基于任意的函数和模块来快速搭建多Agent的AI应用。支持对组装好的多Agent应用进行一键部署，也支持对应用进行部分或者全部的更新。

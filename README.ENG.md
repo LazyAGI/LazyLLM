@@ -139,8 +139,6 @@ m = pipeline(t1, spliter, parallel(Identity, warp(writter)), collector)
 print(m({'query': 'Please help me write an article about the application of artificial intelligence in the medical field.'}))
 ```
 
-### AI Agent
-
 ## What can LazyLLM do
 
 1. **Application Building**: Defines workflows such as pipeline, parallel, diverter, if, switch, and loop. Developers can quickly build multi-agent AI applications based on any functions and modules. Supports one-click deployment for assembled multi-agent applications, and also supports partial or complete updates to the applications.
