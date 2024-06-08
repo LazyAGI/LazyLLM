@@ -37,9 +37,9 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
 
 lazyllm.launchers['Status'] = Status
 
-lazyllm.config.add('launcher', str, 'slurm', 'DEFAULT_LAUNCHER')
-lazyllm.config.add('partition', str, 'pat_rd', 'SLURM_PART')
-lazyllm.config.add('sco.workspace', str, 'expert-services', 'SCO_WORKSPACE')
+lazyllm.config.add('launcher', str, 'empty', 'DEFAULT_LAUNCHER')
+lazyllm.config.add('partition', str, 'your_part', 'SLURM_PART')
+lazyllm.config.add('sco.workspace', str, 'your_workspace', 'SCO_WORKSPACE')
 
 
 # store cmd, return message and command output.

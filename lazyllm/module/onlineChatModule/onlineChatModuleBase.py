@@ -175,6 +175,7 @@ class OnlineChatModuleBase(ModuleBase):
 
     def _get_deploy_tasks(self):
         if not self._is_trained: None
+
         def _start_for_deployment():
             (deployment_id, status) = self._create_deployment()
             lazyllm.LOG.info(f"deployment {deployment_id} created, status: {status}")

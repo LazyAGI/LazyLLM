@@ -196,13 +196,14 @@ class WebModule(ModuleBase):
                     if s.err[0] != 0: log_history.append(s.err[1])
                     if s.trace: log_history.append(s.trace)
                     s = s.messages
-                
+
                 if isinstance(s, dict):
                     s = s.get("message", {}).get("content", "")
                 else:
                     try:
                         r = json.loads(s)
-                        if "type" not in r["choices"][0] or ("type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
+                        if "type" not in r["choices"][0] or (
+                                "type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
                             delta = r["choices"][0]["delta"]
                             if "content" in delta:
                                 s = delta["content"]
@@ -210,7 +211,6 @@ class WebModule(ModuleBase):
                                 s = ""
                     except ValueError:
                         s = s
-                    
                 return s, ''.join(log_history)
 
             log_history = []
@@ -226,7 +226,6 @@ class WebModule(ModuleBase):
                         s, log = get_log_and_message(s)
                     chat_history[-1][1] = (chat_history[-1][1] + s) if append_text else s
                     if stream_output: yield chat_history, log
-                    
             elif isinstance(result, dict):
                 chat_history[-1][1] = result.get("message", "")
             else:

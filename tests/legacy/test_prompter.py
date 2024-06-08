@@ -209,7 +209,7 @@ query = "What's the weather like today in Tokyo"
 import lazyllm
 from lazyllm import launchers, deploy
 
-base_model = '/mnt/lustrenew/share/qitianlong/models/internlm2-chat-1_8b'
+base_model = 'internlm2-chat-1_8b'
 prompter = lazyllm.ChatPrompter(instruction="You are a helpful, respectful and honest assistant.", show=True)
 m = lazyllm.TrainableModule(base_model, '').prompt(prompt="you are an AI assistant whose name is InternLM (书生·浦语).\n- InternLM (书生·浦语) is a conversational language model that is developed by Shanghai AI Laboratory (上海人工>智能实验室). It is designed to be helpful, honest, and harmless.\n- InternLM (书生·浦语) can understand and communicate fluently in the language chosen by the user such as English and 中文.").deploy_method(deploy.vllm, launcher=launchers.remote(ngpus=1))
 

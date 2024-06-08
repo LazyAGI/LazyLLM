@@ -24,7 +24,7 @@ LazyLLM
    :caption: Contribution Guide
    :maxdepth: 1
 
-   develop_guide/getting_start
+   contribution/contribution
 
 .. toctree::
    :caption: releasenote
