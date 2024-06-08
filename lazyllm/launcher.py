@@ -167,10 +167,11 @@ class EmptyLauncher(LazyLLMLaunchersBase):
         def get_jobip(self):
             return '0.0.0.0'
 
-    def __init__(self, subprocess=False, sync=True):
+    def __init__(self, subprocess=False, ngpus=None, sync=True):
         super().__init__()
         self.subprocess = subprocess
         self.sync = sync
+        self.ngpus = ngpus
 
     def makejob(self, cmd):
         return EmptyLauncher.Job(cmd, launcher=self, sync=self.sync)

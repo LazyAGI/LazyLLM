@@ -33,6 +33,7 @@ class OnlineChatModuleBase(ModuleBase):
         self._set_headers()
         self._set_chat_url()
         self._prompt = prompter if prompter else ChatPrompter()
+        self._is_trained = False
 
     def system_prompt(self, prompt: str = ""):
         if len(prompt) > 0:
@@ -46,7 +47,8 @@ class OnlineChatModuleBase(ModuleBase):
             'Authorization': 'Bearer ' + self._api_key
         }
 
-    def get_model_type(self):
+    @property
+    def model_type(self):
         return self._model_type
 
     def _set_chat_url(self):
@@ -93,14 +95,15 @@ class OnlineChatModuleBase(ModuleBase):
                 for line in r.iter_lines():
                     if len(line) == 0:
                         continue
-                    yield self._parse_response_stream(line)
+                    chunk = self._parse_response_stream(line)
+                    if chunk == "[DONE]": return
+                    yield chunk
 
         def _impl_non_stream():
             """process http non-stream request"""
             with requests.post(self._url, json=data, headers=self._headers, stream=False) as r:
                 if r.status_code != 200:  # request error
                     raise requests.RequestException(r.text)
-
                 return self._parse_response_non_stream(r.text)
 
         if self._stream:
@@ -160,8 +163,9 @@ class OnlineChatModuleBase(ModuleBase):
 
             lazyllm.LOG.info(f"fine tuned model: {fine_tuned_model} finished")
             self._model_name = fine_tuned_model
+            self._is_trained = True
 
-        return Pipeline(_create_for_finetuning_job())
+        return Pipeline(_create_for_finetuning_job)
 
     def _create_deployment(self) -> Tuple[str, str]:
         raise NotImplementedError(f"{self._model_type} not implemented _create_deployment method in subclass")
@@ -170,6 +174,7 @@ class OnlineChatModuleBase(ModuleBase):
         raise NotImplementedError(f"{self._model_type} not implemented _query_deployment method in subclass")
 
     def _get_deploy_tasks(self):
+        if not self._is_trained: None
         def _start_for_deployment():
             (deployment_id, status) = self._create_deployment()
             lazyllm.LOG.info(f"deployment {deployment_id} created, status: {status}")
@@ -185,7 +190,7 @@ class OnlineChatModuleBase(ModuleBase):
                 if status.lower() == "failed":
                     raise ValueError(f"Deployment task {deployment_id} failed")
             lazyllm.LOG.info(f"deployment {deployment_id} finished")
-        return Pipeline(_start_for_deployment())
+        return Pipeline(_start_for_deployment)
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'OnlineChat', name=self._module_name, url=self._base_url,

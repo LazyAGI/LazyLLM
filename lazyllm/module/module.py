@@ -380,7 +380,7 @@ class TrainableModule(UrlModule):
         self.target_path = target_path
         self._train = None  # lazyllm.train.auto
         self._finetune = lazyllm.finetune.auto
-        self._deploy = None  # lazyllm.deploy.auto
+        self._deploy = lazyllm.deploy.auto
 
         self.base_model = base_model
         self._deploy_flag = lazyllm.once_flag()
