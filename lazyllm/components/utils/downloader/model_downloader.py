@@ -3,7 +3,7 @@ import shutil
 import lazyllm
 from .model_mapping import model_name_mapping
 
-lazyllm.config.add('model_source', str, '', 'MODEL_SOURCE')
+lazyllm.config.add('model_source', str, 'modelscope', 'MODEL_SOURCE')
 lazyllm.config.add('model_cache_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'model'),
                    'MODEL_CACHE_DIR')
 lazyllm.config.add('model_path', str, '', 'MODEL_PATH')
