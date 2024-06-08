@@ -61,5 +61,6 @@ model_name_mapping = {
     "Baichuan2-7B-Intermediate-Checkpoints": {"huggingface": "baichuan-inc/Baichuan2-7B-Intermediate-Checkpoints", "modelscope": "baichuan-inc/Baichuan2-7B-Intermediate-Checkpoints"},
     "baichuan-7B": {"huggingface": "baichuan-inc/Baichuan-7B", "modelscope": "baichuan-inc/baichuan-7B"},
 
-    "bge-large-zh-v1.5": {"huggingface": "BAAI/bge-large-zh-v1.5", "modelscope":"AI-ModelScope/bge-large-zh-v1.5", "type":"embed"},
+    "bge-large-zh-v1.5": {"huggingface": "BAAI/bge-large-zh-v1.5", "modelscope": "AI-ModelScope/bge-large-zh-v1.5", "type":"embed"},
+    "bge-reranker-large": {"huggingface": "BAAI/bge-reranker-large", "modelscope": "Xorbits/bge-reranker-large", "type":"embed"},
 }
