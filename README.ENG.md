@@ -157,6 +157,18 @@ print(m({'query': 'Please help me write an article about the application of arti
 
 ## Installation
 
+### from source-code
+
+```bash
+git clone git@github.com:LazyAGI/LazyLLM.git
+cd LazyLLM
+pip install -c requirements.txt
+```
+
+`pip install -c requirements.full.txt` is used when you want to finetune, deploy or build your rag application.
+
+### from pip
+
 Only install lazyllm and necessary dependencies, you can use:
 ```bash
 pip install lazyllm
