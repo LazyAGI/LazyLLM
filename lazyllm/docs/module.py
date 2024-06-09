@@ -595,35 +595,35 @@ If you need to support the capabilities of a new open platform's LLM, please ext
 
 add_example('OnlineChatModuleBase', '''\
 >>> class NewPlatformChatModule(OnlineChatModuleBase):
-...     def __init___(self,\
-                      base_url: str = "<new platform base url>",\
-                      model: str = "<new platform model name>",\
-                      system_prompt: str = "<new platform system prompt>",\
-                      stream: bool = True,\
-                      return_trace: bool = False):
-...         super().__init__(model_type="new_class_name",\
-                             api_key=lazyllm.config['new_platform_api_key'])\
-                             base_url=base_url,\
-                             system_prompt=system_prompt,\
-                             stream=stream,\
-                             return_trace=return_trace)
+...     def __init___(self,
+...                   base_url: str = "<new platform base url>",
+...                   model: str = "<new platform model name>",
+...                   system_prompt: str = "<new platform system prompt>",
+...                   stream: bool = True,
+...                   return_trace: bool = False):
+...         super().__init__(model_type="new_class_name",
+...                          api_key=lazyllm.config['new_platform_api_key'])
+...                          base_url=base_url,
+...                          system_prompt=system_prompt,
+...                          stream=stream,
+...                          return_trace=return_trace)
 ...
 >>> class NewPlatformChatModule1(OnlineChatModuleBase, FileHandlerBase):
 ...     TRAINABLE_MODELS_LIST = ['model_t1', 'model_t2', 'model_t3']
-...     def __init___(self,\
-                      base_url: str = "<new platform base url>",\
-                      model: str = "<new platform model name>",\
-                      system_prompt: str = "<new platform system prompt>",\
-                      stream: bool = True,\
-                      return_trace: bool = False):
-...         OnlineChatModuleBase.__init__(self,\
-                                          model_type="new_class_name",\
-                                          api_key=lazyllm.config['new_platform_api_key'])\
-                                          base_url=base_url,\
-                                          system_prompt=system_prompt,\
-                                          stream=stream,\
-                                          trainable_models=NewPlatformChatModule1.TRAINABLE_MODELS_LIST,\
-                                          return_trace=return_trace)
+...     def __init___(self,
+...                   base_url: str = "<new platform base url>",
+...                   model: str = "<new platform model name>",
+...                   system_prompt: str = "<new platform system prompt>",
+...                   stream: bool = True,
+...                   return_trace: bool = False):
+...         OnlineChatModuleBase.__init__(self,
+...                                       model_type="new_class_name",
+...                                       api_key=lazyllm.config['new_platform_api_key'])
+...                                       base_url=base_url,
+...                                       system_prompt=system_prompt,
+...                                       stream=stream,
+...                                       trainable_models=NewPlatformChatModule1.TRAINABLE_MODELS_LIST,
+...                                       return_trace=return_trace)
 ...         FileHandlerBase.__init__(self)
 ...     
 ...     def _convert_file_format(self, filepath:str) -> str:
@@ -650,7 +650,6 @@ add_example('OnlineChatModuleBase', '''\
 ...         pass
 ...         return "RUNNING"
 ...
-
 ''')
 
 add_chinese_doc('OnlineEmbeddingModuleBase', '''\
@@ -672,15 +671,15 @@ If you need to support the capabilities of embedding models on a new open platfo
 
 add_example('OnlineEmbeddingModuleBase', '''
 >>> class NewPlatformEmbeddingModule(OnlineEmbeddingModuleBase):
-...     def __init__(self,\
-                    embed_url: str = '<new platform embedding url>',\
-                    embed_model_name: str = '<new platform embedding model name>'):
+...     def __init__(self,
+...                 embed_url: str = '<new platform embedding url>',
+...                 embed_model_name: str = '<new platform embedding model name>'):
 ...         super().__init__(embed_url, lazyllm.config['new_platform_api_key'], embed_model_name)
 ...
 >>> class NewPlatformEmbeddingModule1(OnlineEmbeddingModuleBase):
-...     def __init__(self,\
-                    embed_url: str = '<new platform embedding url>',\
-                    embed_model_name: str = '<new platform embedding model name>')
+...     def __init__(self,
+...                 embed_url: str = '<new platform embedding url>',
+...                 embed_model_name: str = '<new platform embedding model name>')
 ...         super().__init__(embed_url, lazyllm.config['new_platform_api_key'], embed_model_name)
 ...
 ...     def _encapsulated_data(self, text:str, **kwargs):

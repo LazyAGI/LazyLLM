@@ -133,22 +133,35 @@ add_chinese_doc('Parallel', """\
 
 .. code-block:: text
 
-        //> module11 -> ... -> module1N -> out1 \\
-    input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
-        \\> module31 -> ... -> module3N -> out3 //
+    #       /> module11 -> ... -> module1N -> out1 \\
+    # input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
+    #       \> module31 -> ... -> module3N -> out3 /
         
 
 可以这样可视化`Parallel.sequential`方法：
 
 .. code-block:: text
 
-     input -> module21 -> ... -> module2N -> out2 -> 
+    # input -> module21 -> ... -> module2N -> out2 -> 
 
 参数:
     _scatter (bool, optional): 如果为`True`，输入将在项目之间分割。如果为`False`，相同的输入将传递给所有项目。默认为`False`。
     _concurrent (bool, optional): 如果为`True`，操作将使用线程并发执行。如果为`False`，操作将顺序执行。默认为`True`。
-    *args: 基类的可变长度参数列表。
-    **kw: 基类的任意关键字参数。
+    args: 基类的可变长度参数列表。
+    kwargs: 基类的任意关键字参数。
+
+.. property:: 
+    asdict
+
+    :type: flow.Parallel
+    :value: self
+
+    标记Parellel，使得Parallel每次调用时的返回值由tuple变为list。
+
+    .. note::
+
+        当使用 ``asdict`` 时，请务必保证parallel的元素被取了名字，例如:  ``parallel(name=value)``
+
 """)
 
 add_english_doc('Parallel', """\
@@ -161,27 +174,38 @@ The `Parallel` class can be visualized as follows:
 
 .. code-block:: text
 
-        //> module11 -> ... -> module1N -> out1 \\
-    input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
-        \\> module31 -> ... -> module3N -> out3 //
+    #       /> module11 -> ... -> module1N -> out1 \\
+    # input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
+    #       \> module31 -> ... -> module3N -> out3 /
         
 
 The `Parallel.sequential` method can be visualized as follows:
 
 .. code-block:: text
 
-     input -> module21 -> ... -> module2N -> out2 -> 
+    # input -> module21 -> ... -> module2N -> out2 -> 
 
 Arguments:
     _scatter (bool, optional): If `True`, the input is split across the items. If `False`, the same input is passed to all items. Defaults to `False`.
     _concurrent (bool, optional): If `True`, operations will be executed concurrently using threading. If `False`, operations will be executed sequentially. Defaults to `True`.
-    *args: Variable length argument list for the base class.
-    **kw: Arbitrary keyword arguments for the base class.
+    args: Variable length argument list for the base class.
+    kwargs: Arbitrary keyword arguments for the base class.
+
+.. property:: 
+    asdict
+
+    :type: flow.Parallel
+    :value: self
+
+    Tag `Parallel` so that the return value of each call to `Parallel` is changed from a tuple to a list.
+
+    .. note::
+    
+        When using `asdict`, make sure that the elements of `parallel` are named, for example: `parallel(name=value)`.
+
 """)
 
-add_example('Parallel', """\
->>> def test(a): return a + 1
-... 
+add_example('Parallel', '''\ 
 >>> def test1(a): return a + 1
 ... 
 >>> def test2(a): return a * 4
@@ -191,7 +215,10 @@ add_example('Parallel', """\
 >>> ppl = lazyllm.parallel(test1, test2, test3)
 >>> ppl(1)
 (2, 4, 0.5)
-""")
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3)
+>>> ppl(1)
+{'a': 2, 'b': 4, 'c': 0.5}
+''')
 
 add_chinese_doc('Pipeline', """\
 一个形成处理阶段管道的顺序执行模型。
@@ -199,10 +226,10 @@ add_chinese_doc('Pipeline', """\
 `Pipeline`类是一个处理阶段的线性序列，其中一个阶段的输出成为下一个阶段的输入。它支持添加在最后一个阶段之后执行的后续操作。它是`LazyLLMFlowsBase`的子类，提供了一个延迟执行模型，并允许以延迟方式包装和注册函数。
 
 参数:
-    *args (list of callables or single callable): 管道的处理阶段。每个元素可以是一个可调用的函数或`LazyLLMFlowsBase.FuncWrap`的实例。如果提供了单个列表或元组，则将其解包为管道的阶段。
+    args (list of callables or single callable): 管道的处理阶段。每个元素可以是一个可调用的函数或`LazyLLMFlowsBase.FuncWrap`的实例。如果提供了单个列表或元组，则将其解包为管道的阶段。
     post_action (callable, optional): 在管道的最后一个阶段之后执行的可选操作。默认为None。
     return_input (bool, optional): 如果设置为`True`，原始输入将与输出一起返回。默认为`False`。
-    **kw (dict of callables): 管道的命名处理阶段。每个键值对表示一个命名阶段，其中键是名称，值是可调用的阶段。
+    kwargs (dict of callables): 管道的命名处理阶段。每个键值对表示一个命名阶段，其中键是名称，值是可调用的阶段。
 
 返回:
     管道的最后一个阶段的输出，如果`return_input`为`True`，则可选地与原始输入一起返回。
@@ -216,10 +243,10 @@ A sequential execution model that forms a pipeline of processing stages.
 The `Pipeline` class is a linear sequence of processing stages, where the output of one stage becomes the input to the next. It supports the addition of post-actions that can be performed after the last stage. It is a subclass of `LazyLLMFlowsBase` which provides a lazy execution model and allows for functions to be wrapped and registered in a lazy manner.
 
 Arguments:
-    *args (list of callables or single callable): The processing stages of the pipeline. Each element can be a callable function or an instance of `LazyLLMFlowsBase.FuncWrap`. If a single list or tuple is provided, it is unpacked as the stages of the pipeline.
+    args (list of callables or single callable): The processing stages of the pipeline. Each element can be a callable function or an instance of `LazyLLMFlowsBase.FuncWrap`. If a single list or tuple is provided, it is unpacked as the stages of the pipeline.
     post_action (callable, optional): An optional action to perform after the last stage of the pipeline. Defaults to None.
     return_input (bool, optional): If set to `True`, the original input along with the output will be returned. Defaults to `False`.
-    **kw (dict of callables): Named processing stages of the pipeline. Each key-value pair represents a named stage, where the key is the name and the value is the callable stage.
+    kwargs (dict of callables): Named processing stages of the pipeline. Each key-value pair represents a named stage, where the key is the name and the value is the callable stage.
 
 Returns:
     The output of the last stage of the pipeline, optionally along with the original input if `return_input` is `True`.
@@ -332,18 +359,19 @@ add_chinese_doc('Switch', """\
 一个根据条件选择并执行流的控制流机制。
 
 `Switch`类提供了一种根据表达式的值或条件的真实性选择不同流的方法。它类似于其他编程语言中找到的switch-case语句。
+
 .. code-block:: text
 
-    switch(exp):
-        case cond1: input -> module11 -> ... -> module1N -> out; break
-        case cond2: input -> module21 -> ... -> module2N -> out; break
-        case cond3: input -> module31 -> ... -> module3N -> out; break
+    # switch(exp):
+    #     case cond1: input -> module11 -> ... -> module1N -> out; break
+    #     case cond2: input -> module21 -> ... -> module2N -> out; break
+    #     case cond3: input -> module31 -> ... -> module3N -> out; break
      
 参数:
-    *args: 可变长度参数列表，交替提供条件和对应的流或函数。条件可以是返回布尔值的可调用对象或与输入表达式进行比较的值。
+    args: 可变长度参数列表，交替提供条件和对应的流或函数。条件可以是返回布尔值的可调用对象或与输入表达式进行比较的值。
     post_action (callable, optional): 在执行选定流后要调用的函数。默认为`None`。
     return_input (bool, optional): 如果设置为`True`，原始输入将与输出一起返回。默认为`False`。
-    **kw: 代表命名条件和对应流或函数的任意关键字参数。
+    kwargs: 代表命名条件和对应流或函数的任意关键字参数。
 
 抛出:
     TypeError: 如果提供的参数数量为奇数，或者如果第一个参数不是字典且条件没有成对提供。
@@ -353,28 +381,25 @@ add_english_doc('Switch', """\
 A control flow mechanism that selects and executes a flow based on a condition.
 
 The `Switch` class provides a way to choose between different flows depending on the value of an expression or the truthiness of conditions. It is similar to a switch-case statement found in other programming languages.
+
 .. code-block:: text
 
-    switch(exp):
-        case cond1: input -> module11 -> ... -> module1N -> out; break
-        case cond2: input -> module21 -> ... -> module2N -> out; break
-        case cond3: input -> module31 -> ... -> module3N -> out; break
+    # switch(exp):
+    #     case cond1: input -> module11 -> ... -> module1N -> out; break
+    #     case cond2: input -> module21 -> ... -> module2N -> out; break
+    #     case cond3: input -> module31 -> ... -> module3N -> out; break
      
 Arguments:
-    *args: A variable length argument list, alternating between conditions and corresponding flows or functions. Conditions are either callables returning a boolean or values to be compared with the input expression.
+    args: A variable length argument list, alternating between conditions and corresponding flows or functions. Conditions are either callables returning a boolean or values to be compared with the input expression.
     post_action (callable, optional): A function to be called on the output after the selected flow is executed. Defaults to `None`.
     return_input (bool, optional): If set to `True`, the original input is returned along with the output. Defaults to `False`.
-    **kw: Arbitrary keyword arguments representing named conditions and corresponding flows or functions.
+    kwargs: Arbitrary keyword arguments representing named conditions and corresponding flows or functions.
 
 Raises:
     TypeError: If an odd number of arguments are provided, or if the first argument is not a dictionary and the conditions are not provided in pairs.
 """)
 
 add_example('Switch', """\
->>> switch = lazyllm.Switch(is_positive, lambda x: 2 * x, is_negative, lambda x : -x, 'default', lambda x : '000')
-Traceback (most recent call last):
-  File "<stdin>", line 1, in <module>
-AttributeError: module 'lazyllm' has no attribute 'Switch'. Did you mean: 'switch'?
 >>> switch = lazyllm.switch(is_positive, lambda x: 2 * x, is_negative, lambda x : -x, 'default', lambda x : '000')
 >>> switch(1)
 2
@@ -393,14 +418,19 @@ Diverter类是一种专门的并行处理形式，其中多个输入分别通过
 
 .. code-block:: text
 
-                    /> in1 -> module11 -> ... -> module1N -> out1 \
-    (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
-                    \> in3 -> module31 -> ... -> module3N -> out3 /
+    #                 /> in1 -> module11 -> ... -> module1N -> out1 \\
+    # (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
+    #                 \> in3 -> module31 -> ... -> module3N -> out3 /
                     
 参数:
-    *args: 可变长度参数列表，代表并行执行的模块。
-    _concurrent (bool, optional): 控制模块是否应并行或顺序运行的标志。默认为`True`。
-    **kw: 代表额外模块的任意关键字参数，其中键是模块的名称。
+    args: 可变长度参数列表，代表并行执行的模块。
+    _concurrent (bool, optional): 控制模块是否应并行执行的标志。默认为`True`。可用 ``Diverter.sequential`` 代替 ``Diverter`` 来设置此变量。
+    kwargs: 代表额外模块的任意关键字参数，其中键是模块的名称。
+
+.. property:: 
+    asdict
+
+    和 ``parallel.asdict`` 一样
 
 """)
                 
@@ -413,23 +443,30 @@ This class is useful when you have distinct data processing pipelines that can b
 
 .. code-block:: text
 
-                    /> in1 -> module11 -> ... -> module1N -> out1 \
-    (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
-                    \> in3 -> module31 -> ... -> module3N -> out3 /
+    #                 /> in1 -> module11 -> ... -> module1N -> out1 \\
+    # (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
+    #                 \> in3 -> module31 -> ... -> module3N -> out3 /
                     
 Arguments:
-    *args: Variable length argument list representing the modules to be executed in parallel.
-    _concurrent (bool, optional): A flag to control whether the modules should be run concurrently or sequentially. Defaults to `True`.
-    **kw: Arbitrary keyword arguments representing additional modules, where the key is the name of the module.
+    args: Variable length argument list representing the modules to be executed in parallel.
+    _concurrent (bool, optional): A flag to control whether the modules should be run concurrently. Defaults to `True`. You can use ``Diverter.sequential`` instead of ``Diverter`` to set this variable.
+    kwargs: Arbitrary keyword arguments representing additional modules, where the key is the name of the module.
 
+.. property:: 
+    asdict
+
+    the same as ``parallel.asdict``
 """)
 
 add_example('Diverter', """\
 >>> div = lazyllm.diverter(lambda x: x+1, lambda x: x*2, lambda x: -x)
 >>> div(1, 2, 3)
 (2, 4, -3)
->>> div(-1, -1, -1)
-(0, -2, 1)
+>>> div = lazyllm.diverter(a=lambda x: x+1, b=lambda x: x*2, c=lambda x: -x).asdict
+>>> div(1, 2, 3)
+{'a': 2, 'b': 4, 'c': -3}
+>>> div(dict(c=3, b=2, a=1))
+{'a': 2, 'b': 4, 'c': -3}
 """)
 
 add_chinese_doc('Warp', """\
@@ -439,13 +476,13 @@ Warp类设计用于将同一个处理模块应用于一组输入。它有效地�
 
 .. code-block:: text
 
-                    /> in1 \                            /> out1 \
-    (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
-                    \> in3 /                            \> out3 /
+    #                 /> in1 \                            /> out1 \\
+    # (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
+    #                 \> in3 /                            \> out3 /
                 
 参数:
-    *args: 可变长度参数列表，代表要应用于所有输入的单个模块。
-    **kw: 未来扩展的任意关键字参数。
+    args: 可变长度参数列表，代表要应用于所有输入的单个模块。
+    kwargs: 未来扩展的任意关键字参数。
 
 注意:
     - 只允许一个函数在warp中。
@@ -459,13 +496,13 @@ The Warp class is designed to apply the same processing module to a set of input
 
 .. code-block:: text
 
-                    /> in1 \                            /> out1 \
-    (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
-                    \> in3 /                            \> out3 /
+    #                 /> in1 \                            /> out1 \\
+    # (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
+    #                 \> in3 /                            \> out3 /
                 
 Arguments:
-    *args: Variable length argument list representing the single module to be applied to all inputs.
-    **kw: Arbitrary keyword arguments for future extensions.
+    args: Variable length argument list representing the single module to be applied to all inputs.
+    kwargs: Arbitrary keyword arguments for future extensions.
 
 Note:
     - Only one function is allowed in warp.
