@@ -1,4 +1,4 @@
-lazyllm.component
+lazyllm.Component
 -----------------------
 
 Finetune

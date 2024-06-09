@@ -292,9 +292,11 @@ class LazyLlmRequest(struct):
             if isinstance(self.input, dict):
                 assert len(self.kwargs) == 0, 'Cannot provived input and kwargs at the same time for split'
                 d = self.input
+            elif isinstance(self.input, tuple):
+                return self.split(len(flag))
             else:
                 assert not self.input, 'Cannot provived input and kwargs at the same time for split'
-                d = kwargs
+                d = self.kwargs
             return [LazyLlmRequest(input=d[key], global_parameters=self.global_parameters) for key in flag]
         else: raise TypeError(f'invalid flag type {type(flag)} given')
 

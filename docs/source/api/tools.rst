@@ -1,4 +1,4 @@
-lazyllm.TOOLS
+lazyllm.Tools
 -----------------------
 
 .. autoclass:: lazyllm.tools.Document
