@@ -128,11 +128,11 @@ Receive as follows:
 </details>
 
 ```python
-t1 = lazyllm.OnlineChatModule(source="openai", stream=False, system_prompt=toc_prompt)
-t2 = lazyllm.OnlineChatModule(source="openai", stream=False, system_prompt=completion_prompt)
+t1 = lazyllm.OnlineChatModule(source="openai", stream=False, prompter=ChatPrompter(instruction=toc_prompt))
+t2 = lazyllm.OnlineChatModule(source="openai", stream=False, prompter=ChatPrompter(instruction=completion_prompt))
 
-spliter = lambda s: tuple(eval(re.search(r'\[\s*\{.*\}\s*\]', s['content'], re.DOTALL).group()))
-writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2, lambda d : d['content'])
+spliter = lambda s: tuple(eval(re.search(r'\[\s*\{.*\}\s*\]', s['message']['content'], re.DOTALL).group()))
+writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2, lambda d : d['message']['content'])
 collector = lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])
 m = pipeline(t1, spliter, parallel(Identity, warp(writter)), collector)
 
