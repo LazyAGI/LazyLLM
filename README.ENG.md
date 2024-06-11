@@ -1,13 +1,17 @@
-# LazyLLM: A One-Stop Development Tool for Building and Optimizing Multi-Agent Applications.
+# LazyLLM: A  Low-code Development Tool For Building Multi-agent LLMs Applications.
 [中文](README.md) |  [EN](README.ENG.md)
 
 ## What is LazyLLM?
 
-LazyLLM provides a wide array of tools for every stage of the application development process, including application building, data preparation, model deployment, model fine-tuning, and evaluation. It assists developers in creating AI applications at extremely low costs and enables continuous iterative optimization of their performance.
+LazyLLM is a low-code development tool for building multi-agent LLMs(large language models) applications. It assists developers in creating complex AI applications at very low costs and enables continuous iterative optimization. LazyLLM offers a convenient workflow for application building and provides numerous standard processes and tools for various stages of the application development process.<br>
+
+The AI application development process based on LazyLLM follows the **prototype building -> data feedback -> iterative optimization** workflow. This means you can quickly build a prototype application using LazyLLM, then analyze bad cases using task-specific data, and subsequently iterate on algorithms and fine-tune models at critical stages of the application to gradually enhance the overall performance.<br>
 
 ## Features
 
-**Efficient Multi-Agent AI Application Development**: Easily build AI applications with multiple agents and provide the ability to deploy all sub-services with one click. During the POC (Proof of Concept) phase, LazyLLM simplifies the deployment process of multi-agent applications through a lightweight gateway mechanism. It addresses the issue of sequentially starting each sub-module (such as LLM, Embedding, etc.) service and configuring URLs, making the entire process smoother and more efficient. In the application release phase, LazyLLM offers the capability to package images with one click, enabling the application to conveniently leverage k8s (Kubernetes) features such as gateways, load balancing, and fault tolerance.<br>
+**Convenient AI Application Assembly Process**: Even if you are not familiar with large models, you can still easily assemble AI applications with multiple agents using our built-in data flow and functional modules, just like Lego building.
+
+**One-Click Deployment of Complex Applications**: We offer the capability to deploy all modules with a single click. Specifically, during the POC (Proof of Concept) phase, LazyLLM simplifies the deployment process of multi-agent applications through a lightweight gateway mechanism, solving the problem of sequentially starting each submodule service (such as LLM, Embedding, etc.) and configuring URLs, making the entire process smoother and more efficient. In the application release phase, LazyLLM provides the ability to package images with one click, making it easy to utilize Kubernetes' gateway, load balancing, and fault tolerance capabilities.
 
 **Cross-Platform Compatibility**: Switch IaaS platforms with one click without modifying code, compatible with bare-metal servers, development machines, Slurm clusters, public clouds, etc. This allows developed applications to be seamlessly migrated to other IaaS platforms, greatly reducing the workload of code modification.<br>
 
@@ -152,6 +156,7 @@ print(m({'query': 'Please help me write an article about the application of arti
         + Supports fine-tuning services: GPT, SenseNova, Tongyi Qianwen
         + Supports inference services: GPT, SenseNova, Kimi, Zhipu, Tongyi Qianwen
         + Supports embedding inference services: OpenAI, SenseNova, GLM, Tongyi Qianwen
+    * Support developers to use local services and online services uniformly.
 4. **Supports common RAG (Retrieval-Augmented Generation) components**: Document, Parser, Retriever, Reranker, etc.
 5. **Supports basic webs**: such as chat interface and document management interface, etc.
 
