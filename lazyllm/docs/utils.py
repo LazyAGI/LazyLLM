@@ -34,8 +34,12 @@ def add_doc(obj_name, docstr, module, append=''):
                 obj.__doc__ += append + docstr
             else:
                 cnt = obj.__doc__.count('.. function::')
-                assert cnt == len(docstr), f'{cnt}, {len(docstr)}'
-                docs = obj.__doc__.rsplit('.. function::', cnt - 1)
+                if cnt == len(docstr):
+                    docs = obj.__doc__.rsplit('.. function::', cnt - 1)
+                elif cnt + 1 == len(docstr):
+                    docs = obj.__doc__.rsplit('.. function::', cnt)
+                else:
+                    raise ValueError(f'function number {cnt}, doc number{len(docstr)}')
                 obj.__doc__ = '\n.. function::'.join(
                     [(o + append + a) if a.strip() else o for o, a in zip(docs, docstr)])
         else:

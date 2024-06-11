@@ -64,6 +64,10 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _parse_response_non_stream(self, response: str) -> str:
         cur_msg = json.loads(response)['data']["choices"][0]
+        content = cur_msg.get("message", "")
+        msg = {"role": cur_msg["role"], "content": content}
+        cur_msg.pop("role")
+        cur_msg['message'] = msg
         return cur_msg
 
     def _convert_file_format(self, filepath: str) -> None:

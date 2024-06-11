@@ -96,7 +96,7 @@ Detailed explanation of Parser types
   - MarkDownExtractor：Splits a document into Nodes using custom Markdown splitting logic.
                 
 Detailed explanation of similarity types
-  - defatult：Search documents using embedding method.
+  - defatult：Search documents using cosine method.
   - chinese_bm25：Search documents using chinese_bm25 method.The primary differences between chinese_bm25 and the standard bm25 stem from the specific adjustments and optimizations made for handling Chinese text. 
   - bm25：Search documents using bm25 method.
 """)
@@ -124,7 +124,7 @@ Arguments:
   - MarkDownExtractor：使用自定义 Markdown 拆分逻辑将文档拆分为节点。
 
 详细解释similarity类型
-  - defatult：使用 embedding 算法搜索文档。
+  - defatult：使用 cosine 算法搜索文档。
   - chinese_bm25：使用 chinese_bm25 算法搜索文档。chinese_bm25 与标准 bm25 的主要区别在于对中文的特定优化。
   - bm25：使用 bm25 算法搜索文档。
 """)

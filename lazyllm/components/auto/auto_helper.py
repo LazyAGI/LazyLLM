@@ -1,5 +1,6 @@
 import re
 import pkg_resources
+from packaging import version
 
 from .dependencies.modelsconfig import models_config
 from .dependencies.requirements import requirements
@@ -17,6 +18,15 @@ def get_configs(name):
     if name in models_config: return models_config[name]
     return models_config.get(name.split('-')[0], dict())
 
+def compare_versions(version1, version2):
+    v1 = version.parse(version1)
+    v2 = version.parse(version2)
+    if v1 > v2:
+        return 1
+    elif v1 < v2:
+        return -1
+    else:
+        return 0
 def check_requirements(frame):
     packages = [line.strip() for line in requirements[frame].split('\n') if line.strip()]
 
@@ -26,7 +36,8 @@ def check_requirements(frame):
         try:
             installed = pkg_resources.get_distribution(parts[0])
             if len(parts) > 1:
-                if parts[1] not in installed.version:
+                # if parts[1] not in installed.version:
+                if compare_versions(installed.version, parts[1]) == -1:
                     not_installed.append(f"{package} (Installed: {installed.version}, Required: {parts[1]})")
         except pkg_resources.DistributionNotFound:
             not_installed.append(f"Required: {package}")

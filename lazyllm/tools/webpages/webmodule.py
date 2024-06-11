@@ -8,6 +8,7 @@ from lazyllm import LazyLlmResponse, LazyLlmRequest, LOG
 from lazyllm.flow import Pipeline
 import lazyllm
 from types import GeneratorType
+import json
 
 
 css = """
@@ -195,10 +196,25 @@ class WebModule(ModuleBase):
                     if s.err[0] != 0: log_history.append(s.err[1])
                     if s.trace: log_history.append(s.trace)
                     s = s.messages
+
+                if isinstance(s, dict):
+                    s = s.get("message", {}).get("content", "")
+                else:
+                    try:
+                        r = json.loads(s)
+                        if "type" not in r["choices"][0] or (
+                                "type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
+                            delta = r["choices"][0]["delta"]
+                            if "content" in delta:
+                                s = delta["content"]
+                            else:
+                                s = ""
+                    except ValueError:
+                        s = s
                 return s, ''.join(log_history)
 
             log_history = []
-            if isinstance(result, (LazyLlmResponse, str)):
+            if isinstance(result, (LazyLlmResponse, str, dict)):
                 result, log = get_log_and_message(result)
 
             if isinstance(result, str):
@@ -210,6 +226,8 @@ class WebModule(ModuleBase):
                         s, log = get_log_and_message(s)
                     chat_history[-1][1] = (chat_history[-1][1] + s) if append_text else s
                     if stream_output: yield chat_history, log
+            elif isinstance(result, dict):
+                chat_history[-1][1] = result.get("message", "")
             else:
                 raise TypeError(f'function result should only be LazyLlmResponse or str, but got {type(result)}')
         except requests.RequestException as e:

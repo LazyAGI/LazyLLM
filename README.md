@@ -7,7 +7,7 @@ LazyLLM为应用开发过程中的全部环节（包括应用搭建、数据准�
 
 ## 二、特性
 
-**高效的多Agent AI应用构建**：轻松组建包含多个Agent的AI应用，并提供一键部署所有子服务的能力。LazyLLM通过一套轻量的网关机制，简化了多Agent应用的部署流程，解决了传统方法中需依次启动各个子模块（如LLM、Embedding等）服务并配置URL的问题，使整个过程更加顺畅高效。<br>
+**高效的多Agent AI应用构建**：轻松组建包含多个Agent的AI应用，并提供一键部署所有子服务的能力。在POC阶段，LazyLLM通过一套轻量的网关机制，简化了多Agent应用的部署流程，解决了依次启动各个子模块（如LLM、Embedding等）服务并配置URL的问题，使整个过程更加顺畅高效。而在应用的发布阶段，LazyLLM则提供了一键封装镜像的能力，使得应用可以方便地利用k8s的网关、负载均衡、容错等能力。<br>
 
 **跨平台兼容**：无需修改代码，即可一键切换IaaS平台，兼容裸金属服务器、开发机、Slurm集群、公有云等。这使得开发好的应用可以无缝迁移到其他IaaS平台，大大减少了代码修改的工作量。<br>
 
@@ -125,18 +125,16 @@ completion_prompt="""
 </details>
 
 ```python
-t1 = lazyllm.OnlineChatModule(source="openai", stream=False, system_prompt=toc_prompt)
-t2 = lazyllm.OnlineChatModule(source="openai", stream=False, system_prompt=completion_prompt)
+t1 = lazyllm.OnlineChatModule(source="openai", stream=False, prompter=ChatPrompter(instruction=toc_prompt))
+t2 = lazyllm.OnlineChatModule(source="openai", stream=False, prompter=ChatPrompter(instruction=completion_prompt))
 
-spliter = lambda s: tuple(eval(re.search(r'\[\s*\{.*\}\s*\]', s['content'], re.DOTALL).group()))
-writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2, lambda d : d['content'])
+spliter = lambda s: tuple(eval(re.search(r'\[\s*\{.*\}\s*\]', s['message']['content'], re.DOTALL).group()))
+writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2, lambda d : d['message']['content'])
 collector = lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])
 m = pipeline(t1, spliter, parallel(Identity, warp(writter)), collector)
 
 print(m({'query':'请帮我写一篇关于人工智能在医疗领域应用的文章。'}))
 ```
-
-### 3.4 智能体
 
 ## 四、功能点
 
@@ -156,6 +154,18 @@ print(m({'query':'请帮我写一篇关于人工智能在医疗领域应用的�
 
 ## 五、安装
 
+### 源码安装
+
+```bash
+git clone git@github.com:LazyAGI/LazyLLM.git
+cd LazyLLM
+pip install -c requirements.txt
+```
+
+如果想进行微调、推理部署或搭建rag应用等，则需使用 `pip install -c requirements.full.txt`
+
+### pip安装
+
 仅安装lazyllm及必要的依赖，可以使用
 ```bash
 pip install lazyllm
@@ -168,13 +178,15 @@ pip install lazyllm-full
 
 ## 六、设计理念
 
-LazyLLM的设计理念源自对我们对大模型在生产环境表现出的局限性的深刻洞察，我们深知现阶段的大模型尚无法完全端到端地解决所有实际问题。因此，基于LazyLLM的AI应用构建流程强调“快速原型搭建，结合场景任务数据进行bad-case分析，针对关键环节进行算法尝试和模型微调，从而提升整个应用的效果”。LazyLLM处理了这个过程中繁琐的工程化工作，提供便捷的操作接口，让用户能够集中精力提升算法效果，打造出色的AI应用。<br>
+LazyLLM的设计理念源自对我们对大模型在生产环节表现出的局限性的深刻洞察，我们深知现阶段的大模型尚无法完全端到端地解决所有实际问题。因此，基于LazyLLM的AI应用构建流程强调“快速原型搭建，结合场景任务数据进行bad-case分析，针对关键环节进行算法尝试和模型微调，从而提升整个应用的效果”。LazyLLM处理了这个过程中繁琐的工程化工作，提供便捷的操作接口，让用户能够集中精力提升算法效果，打造出色的AI应用。<br>
 
 LazyLLM的设计目标是让算法研究员和开发者能够能够从繁杂的工程实现中解脱出来，从而专注于他们最擅长的领域：算法和数据，解决他们在实际场景中的问题。无论你是初学者还是资深专家，我希望LazyLLM都能为你提供一些帮助。对于初级开发者，LazyLLM彻底简化了AI应用的构建过程。他们无需再考虑如何将任务调度到不同的IaaS平台上，不必了解API服务的构建细节，也无需在微调模型时选择框架或切分模型，更不需要掌握任何Web开发知识。通过预置的组件和简单的拼接操作，初级开发者便能轻松构建出具备生产价值的工具。而对于资深的专家，LazyLLM提供了极高的灵活性，每个模块都支持定制和扩展，使用户能够轻松集成自己的算法以及业界先进的生产工具，打造更为强大的应用。<br>
 
-与市面上多数框架不同，LazyLLM在每个环节都精挑细选了2-3个我们认为最具优势的工具进行集成。这不仅简化了用户选择的过程，还确保了用户能够以最低的成本，搭建出最具生产力的应用。我们不追求工具或模型的数量，而是专注于质量和实际效果，致力于提供最优的解决方案。<br>
+为了让您不被困于所依赖的辅助工具的实现细节，在LazyLLM中，我们会尽最大努力让相同定位的模块拥有一致的使用体验；例如我们通过一套Prompt的规则，让线上模型（ChatGPT、SenseNova、Kimi、ChatGlm等）和本地模型在使用的时候拥有着相同的使用方式，方便您灵活的将应用中的本地模型替换为线上模型。
 
-总之，LazyLLM旨在为AI应用构建提供一条快速、高效、低门槛的路径，解放开发者的创造力，推动AI技术在实际生产中的落地和普及。<br>
+与市面上多数框架不同，LazyLLM在每个环节都精挑细选了2-3个我们认为最具优势的工具进行集成。这不仅简化了用户选择的过程，还确保了用户能够以最低的成本，搭建出最具生产力的应用。我们不追求工具或模型的数量，而是专注于质量和实际效果，致力于提供最优的解决方案。LazyLLM旨在为AI应用构建提供一条快速、高效、低门槛的路径，解放开发者的创造力，推动AI技术在实际生产中的落地和普及。<br>
+
+最后，LazyLLM是一个用户至上的工具，您有什么想法都可以给我们留言，我们会尽自己所能解答您的困惑，让LazyLLM能给您带来便利。
 
 ## 七、架构说明
 

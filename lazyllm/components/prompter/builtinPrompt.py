@@ -68,7 +68,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         assert isinstance(input, dict)
         kwargs = {k: input.pop(k) for k in prompt_keys}
         assert len(input) <= 1, f'Unexpected keys found in input: {list(input.keys())}'
-        return self._instruction_template.format(**kwargs), list(input.values())[0] if input else ''
+        return (self._instruction_template.format(**kwargs) if len(kwargs) > 0 else self._instruction_template,
+                list(input.values())[0] if input else '')
 
     def _check_values(self, instruction, input, history, tools): pass
 
@@ -110,7 +111,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     def get_response(self, output: str, input: Union[str, None] = None) -> str:
         if input and output.startswith(input):
             return output[len(input):]
-        return output if self._split is None else output.split(self._split)[-1]
+        return output if getattr(self, '_split', None) is None else output.split(self._split)[-1]
 
 class EmptyPrompter(LazyLLMPrompterBase):
     def generate_prompt(self, input, history=None, tools=None, label=None, show=False):

@@ -7,7 +7,7 @@ LazyLLM provides a wide array of tools for every stage of the application develo
 
 ## Features
 
-**Efficient Multi-Agent AI Application Development**: Easily assemble AI applications with multiple agents and deploy all sub-services with a single click. LazyLLM simplifies the deployment process of multi-agent applications with a lightweight gateway mechanism, addressing the traditional need to sequentially start each sub-module service (such as LLM, Embedding, etc.) and configure URLs, making the entire process smoother and more efficient.<br>
+**Efficient Multi-Agent AI Application Development**: Easily build AI applications with multiple agents and provide the ability to deploy all sub-services with one click. During the POC (Proof of Concept) phase, LazyLLM simplifies the deployment process of multi-agent applications through a lightweight gateway mechanism. It addresses the issue of sequentially starting each sub-module (such as LLM, Embedding, etc.) service and configuring URLs, making the entire process smoother and more efficient. In the application release phase, LazyLLM offers the capability to package images with one click, enabling the application to conveniently leverage k8s (Kubernetes) features such as gateways, load balancing, and fault tolerance.<br>
 
 **Cross-Platform Compatibility**: Switch IaaS platforms with one click without modifying code, compatible with bare-metal servers, development machines, Slurm clusters, public clouds, etc. This allows developed applications to be seamlessly migrated to other IaaS platforms, greatly reducing the workload of code modification.<br>
 
@@ -128,18 +128,16 @@ Receive as follows:
 </details>
 
 ```python
-t1 = lazyllm.OnlineChatModule(source="openai", stream=False, system_prompt=toc_prompt)
-t2 = lazyllm.OnlineChatModule(source="openai", stream=False, system_prompt=completion_prompt)
+t1 = lazyllm.OnlineChatModule(source="openai", stream=False, prompter=ChatPrompter(instruction=toc_prompt))
+t2 = lazyllm.OnlineChatModule(source="openai", stream=False, prompter=ChatPrompter(instruction=completion_prompt))
 
-spliter = lambda s: tuple(eval(re.search(r'\[\s*\{.*\}\s*\]', s['content'], re.DOTALL).group()))
-writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2, lambda d : d['content'])
+spliter = lambda s: tuple(eval(re.search(r'\[\s*\{.*\}\s*\]', s['message']['content'], re.DOTALL).group()))
+writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2, lambda d : d['message']['content'])
 collector = lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])
 m = pipeline(t1, spliter, parallel(Identity, warp(writter)), collector)
 
 print(m({'query': 'Please help me write an article about the application of artificial intelligence in the medical field.'}))
 ```
-
-### AI Agent
 
 ## What can LazyLLM do
 
@@ -159,6 +157,18 @@ print(m({'query': 'Please help me write an article about the application of arti
 
 ## Installation
 
+### from source-code
+
+```bash
+git clone git@github.com:LazyAGI/LazyLLM.git
+cd LazyLLM
+pip install -c requirements.txt
+```
+
+`pip install -c requirements.full.txt` is used when you want to finetune, deploy or build your rag application.
+
+### from pip
+
 Only install lazyllm and necessary dependencies, you can use:
 ```bash
 pip install lazyllm
@@ -175,9 +185,11 @@ The design philosophy of LazyLLM stems from a deep understanding of the current 
 
 The goal of LazyLLM is to free algorithm researchers and developers from the complexities of engineering implementations, allowing them to concentrate on what they do best: algorithms and data, and solving real-world problems. Whether you are a beginner or an experienced expert, I hope LazyLLM can provide you with some assistance. For novice developers, LazyLLM thoroughly simplifies the AI application development process. They no longer need to worry about how to schedule tasks on different IaaS platforms, understand the details of API service construction, choose frameworks or split models during fine-tuning, or master any web development knowledge. With pre-built components and simple integration operations, novice developers can easily create tools with production value. For seasoned experts, LazyLLM offers a high degree of flexibility. Each module supports customization and extension, enabling users to seamlessly integrate their own algorithms and state-of-the-art production tools to build more powerful applications.<br>
 
-Unlike most frameworks on the market, LazyLLM carefully selects and integrates 2-3 tools that we believe are the most advantageous at each stage. This not only simplifies the user’s decision-making process but also ensures that users can build the most productive applications at the lowest cost. We do not pursue the quantity of tools or models, but focus on quality and practical effectiveness, committed to providing the optimal solutions.<br>
+To prevent you from being bogged down by the implementation details of dependent auxiliary tools, LazyLLM strives to ensure a consistent user experience across similar modules. For instance, we have established a set of Prompt rules that provide a uniform usage method for both online models (such as ChatGPT, SenseNova, Kimi, ChatGLM, etc.) and local models. This consistency allows you to easily and flexibly switch between local and online models in your applications.<br>
 
-In summary, LazyLLM aims to provide a quick, efficient, and low-threshold path for AI application development, freeing developers' creativity, and promoting the adoption and popularization of AI technology in real-world production.<br>
+Unlike most frameworks on the market, LazyLLM carefully selects and integrates 2-3 tools that we believe are the most advantageous at each stage. This not only simplifies the user’s decision-making process but also ensures that users can build the most productive applications at the lowest cost. We do not pursue the quantity of tools or models, but focus on quality and practical effectiveness, committed to providing the optimal solutions. LazyLLM aims to provide a quick, efficient, and low-threshold path for AI application development, freeing developers' creativity, and promoting the adoption and popularization of AI technology in real-world production.<br>
+
+Finally, LazyLLM is a user-centric tool. If you have any ideas or feedback, feel free to leave us a message. We will do our best to address your concerns and ensure that LazyLLM provides you with the convenience you need.<br>
 
 ## Architecture
 
