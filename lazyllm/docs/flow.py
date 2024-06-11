@@ -13,7 +13,7 @@ add_chinese_doc('FlowBase', """\
 
 这个类提供了一种组织项目的方式，这些项目可以是`FlowBase`的实例或其他类型，组织成一个层次结构。每个项目都可以有一个名称，结构可以动态地遍历或修改。
 
-参数:
+Args:
     items (iterable): 要包含在流中的项目的可迭代对象。这些可以是`FlowBase`的实例或其他对象。
     item_names (list of str, optional): 对应于项目的名称列表。这允许通过名称访问项目。如果未提供，则只能通过索引访问项目。
 
@@ -33,7 +33,7 @@ Arguments:
 add_chinese_doc('FlowBase.is_root', """\
 一个属性，指示当前流项目是否是流结构的根。
 
-返回:
+Returns:
     bool: 如果当前项目没有父级（`_father`为None），则为True，否则为False。
 """)
 
@@ -61,7 +61,7 @@ add_chinese_doc('FlowBase.ancestor', """\
 
 如果当前项目是根，则返回其自身。
 
-返回:
+Returns:
     FlowBase: 最顶层的祖先流项目。
 """)
 
@@ -87,11 +87,11 @@ add_chinese_doc('FlowBase.for_each', """\
 
 该方法递归地遍历流结构，将操作应用于通过过滤器的每个项目。
 
-参数:
+Args:
     filter (callable): 一个接受项目作为输入并返回True的函数，如果该项目应该应用操作。
     action (callable): 一个接受项目作为输入并对其执行某些操作的函数。
 
-返回:
+Returns:
     None
 
 """)
@@ -144,24 +144,16 @@ add_chinese_doc('Parallel', """\
 
     # input -> module21 -> ... -> module2N -> out2 -> 
 
-参数:
-    _scatter (bool, optional): 如果为`True`，输入将在项目之间分割。如果为`False`，相同的输入将传递给所有项目。默认为`False`。
-    _concurrent (bool, optional): 如果为`True`，操作将使用线程并发执行。如果为`False`，操作将顺序执行。默认为`True`。
+Args:
+    _scatter (bool, optional): 如果为 ``True``，输入将在项目之间分割。如果为 ``False``，相同的输入将传递给所有项目。默认为 ``False``。
+    _concurrent (bool, optional): 如果为 ``True`，操作将使用线程并发执行。如果为 ``False``，操作将顺序执行。默认为 ``True``。
     args: 基类的可变长度参数列表。
     kwargs: 基类的任意关键字参数。
 
 .. property:: 
     asdict
 
-    :type: flow.Parallel
-    :value: self
-
-    标记Parellel，使得Parallel每次调用时的返回值由tuple变为list。
-
-    .. note::
-
-        当使用 ``asdict`` 时，请务必保证parallel的元素被取了名字，例如:  ``parallel(name=value)``
-
+    标记Parellel，使得Parallel每次调用时的返回值由tuple变为list。当使用 ``asdict`` 时，请务必保证parallel的元素被取了名字，例如:  ``parallel(name=value)`` 。
 """)
 
 add_english_doc('Parallel', """\
@@ -194,24 +186,13 @@ Arguments:
 .. property:: 
     asdict
 
-    :type: flow.Parallel
-    :value: self
-
-    Tag `Parallel` so that the return value of each call to `Parallel` is changed from a tuple to a list.
-
-    .. note::
-    
-        When using `asdict`, make sure that the elements of `parallel` are named, for example: `parallel(name=value)`.
-
+    Tag `Parallel` so that the return value of each call to `Parallel` is changed from a tuple to a list. When using `asdict`, make sure that the elements of `parallel` are named, for example: `parallel(name=value)`.
 """)
 
-add_example('Parallel', '''\ 
->>> def test1(a): return a + 1
-... 
->>> def test2(a): return a * 4
-... 
->>> def test3(a): return a / 2
-... 
+add_example('Parallel', '''\
+>>> test1 = lambda a: return a + 1
+>>> test2 = lambda a: return a * 4
+>>> test3 = lambda a: return a / 2
 >>> ppl = lazyllm.parallel(test1, test2, test3)
 >>> ppl(1)
 (2, 4, 0.5)
@@ -225,13 +206,13 @@ add_chinese_doc('Pipeline', """\
 
 `Pipeline`类是一个处理阶段的线性序列，其中一个阶段的输出成为下一个阶段的输入。它支持添加在最后一个阶段之后执行的后续操作。它是`LazyLLMFlowsBase`的子类，提供了一个延迟执行模型，并允许以延迟方式包装和注册函数。
 
-参数:
+Args:
     args (list of callables or single callable): 管道的处理阶段。每个元素可以是一个可调用的函数或`LazyLLMFlowsBase.FuncWrap`的实例。如果提供了单个列表或元组，则将其解包为管道的阶段。
     post_action (callable, optional): 在管道的最后一个阶段之后执行的可选操作。默认为None。
     return_input (bool, optional): 如果设置为`True`，原始输入将与输出一起返回。默认为`False`。
     kwargs (dict of callables): 管道的命名处理阶段。每个键值对表示一个命名阶段，其中键是名称，值是可调用的阶段。
 
-返回:
+Returns:
     管道的最后一个阶段的输出，如果`return_input`为`True`，则可选地与原始输入一起返回。
 
 """)
@@ -268,8 +249,8 @@ add_chinese_doc('Loop', '''\
 
 Loop结构允许定义一个简单的控制流，其中一系列步骤在循环中应用，可以使用可选的停止条件来根据步骤的输出退出循环。
 
-参数:
-    *item (callable or list of callables): 将在循环中应用的函数或可调用对象。
+Args:
+    item (callable or list of callables): 将在循环中应用的函数或可调用对象。
     stop_condition (callable, optional): 一个函数，它接受循环中最后一个项目的输出作为输入并返回一个布尔值。如果返回`True`，循环将停止。如果为`None`，循环将继续直到达到`count`。默认为`None`。
     count (int, optional): 运行循环的最大迭代次数。如果为`None`，循环将无限期地继续或直到`stop_condition`返回`True`。默认为`None`。
     post_action (callable, optional): 循环结束后调用的函数。默认为`None`。
@@ -310,14 +291,14 @@ add_chinese_doc('IFS', '''\
 
 IFS（If-Else Flow Structure）类设计用于根据给定条件的评估有条件地执行两个提供的路径之一（真路径或假路径）。执行选定路径后，可以应用可选的后续操作，并且如果指定，输入可以与输出一起返回。
 
-参数:
+Args:
     cond (callable): 一个接受输入并返回布尔值的可调用对象。它决定执行哪个路径。如果 ``cond(input)`` 评估为True，则执行 ``tpath`` ；否则，执行 ``fpath`` 。
     tpath (callable): 如果条件为True，则执行的路径。
     fpath (callable): 如果条件为False，则执行的路径。
     post_action (callable, optional): 执行选定路径后执行的可选可调用对象。可以用于进行清理或进一步处理。默认为None。
     return_input (bool, optional): 如果设置为True，原始输入也将与执行路径的输出一起返回。默认为False。
 
-返回:
+Returns:
     执行路径的输出，如果 ``return_input`` 为True，则可选地与原始输入一起。
 ''')
                 
@@ -367,7 +348,7 @@ add_chinese_doc('Switch', """\
     #     case cond2: input -> module21 -> ... -> module2N -> out; break
     #     case cond3: input -> module31 -> ... -> module3N -> out; break
      
-参数:
+Args:
     args: 可变长度参数列表，交替提供条件和对应的流或函数。条件可以是返回布尔值的可调用对象或与输入表达式进行比较的值。
     post_action (callable, optional): 在执行选定流后要调用的函数。默认为`None`。
     return_input (bool, optional): 如果设置为`True`，原始输入将与输出一起返回。默认为`False`。
@@ -422,7 +403,7 @@ Diverter类是一种专门的并行处理形式，其中多个输入分别通过
     # (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
     #                 \> in3 -> module31 -> ... -> module3N -> out3 /
                     
-参数:
+Args:
     args: 可变长度参数列表，代表并行执行的模块。
     _concurrent (bool, optional): 控制模块是否应并行执行的标志。默认为`True`。可用 ``Diverter.sequential`` 代替 ``Diverter`` 来设置此变量。
     kwargs: 代表额外模块的任意关键字参数，其中键是模块的名称。
@@ -480,7 +461,7 @@ Warp类设计用于将同一个处理模块应用于一组输入。它有效地�
     # (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
     #                 \> in3 /                            \> out3 /
                 
-参数:
+Args:
     args: 可变长度参数列表，代表要应用于所有输入的单个模块。
     kwargs: 未来扩展的任意关键字参数。
 

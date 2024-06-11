@@ -62,6 +62,6 @@ def add_example(obj_name, docstr, module=lazyllm):
     else:
         docstr = ['\n'.join([f'    {d}' for d in doc.split('\n')]) for doc in docstr]
     if lazyllm.config['language'].upper() == 'CHINESE':
-        add_doc(obj_name, docstr, module, '\n示例::\n')
+        add_doc(obj_name, docstr, module, '\n\nExample::\n')
     if lazyllm.config['language'].upper() == 'ENGLISH':
-        add_doc(obj_name, docstr, module, '\nExample::\n')
+        add_doc(obj_name, docstr, module, '\n\nExample::\n')
