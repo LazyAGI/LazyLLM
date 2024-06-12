@@ -68,7 +68,7 @@ documents = Document(dataset_path='/file/to/yourpath', lazyllm.TrainableModule('
 #        |--------------↑            ↑
 #        |---------------------------↑
 with pipeline as ppl:
-    ppl.retriever = Retriever(documents, algo='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
+    ppl.retriever = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
     ppl.reranker = Rerank(types='Reranker', model='bge-reranker-large') | bind(ppl.input, _0)
     ppl.formatter = lambda ctx, query: dict(context_str=ctx, query_str=query) | bind(query=ppl.input)
     ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])) 

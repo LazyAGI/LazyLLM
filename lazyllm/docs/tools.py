@@ -34,7 +34,7 @@ Arguments:
 
 add_example('Document', r"""
     >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
-    >>> documents = Document(dataset_path='you doc path', embed=m, create_ui=False)
+    >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 """)
 
 add_english_doc('Rerank', r"""
@@ -66,7 +66,7 @@ Arguments:
 
 add_example('Rerank', r"""
     >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
-    >>> documents = Document(dataset_path='you doc path', embed=m, create_ui=False)
+    >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
     >>> rm = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
     >>> rerank = Rerank(types='SimilarityFilter', threshold=2.0)
     >>> m = lazyllm.ActionModule(rm, rerank)
@@ -131,7 +131,7 @@ Arguments:
 
 add_example('Retriever', r"""
     >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
-    >>> documents = Document(dataset_path='you doc path', embed=m, create_ui=False)
+    >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
     >>> rm = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
     >>> rm.start()
     >>> print(rm("query"))

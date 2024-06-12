@@ -16,13 +16,13 @@ Config模块自动生成一个config对象，其中包含所有的配置。
 .. function:: Config.done() -> None
 用于检查config.json配置文件中是否还有没有通过add方法载入的配置项
 
-参数：
+Args:
     无
 
 .. function:: Config.getenv(name, type, default): -> str
 获取LazyLLM相关环境变量的值
 
-参数:
+Args:
     name (str): 不包含前缀的环境变量名字，不区分大小写。函数将从拼接了前缀和此名字的全大写的环境变量中获取对应的值。
     type (type): 指定该配置的类型，例如str。对于bool型，函数会将'TRUE', 'True', 1, 'ON', '1'这5种输入转换为True。
     default (可选): 若无法获取到环境变量的值，将返回此变量。
@@ -32,7 +32,7 @@ Config模块自动生成一个config对象，其中包含所有的配置。
 若env是一个字符串，函数会调用getenv寻找env对应的LazyLLM环境变量，若找到则写入config。如果env为一个字典，函数将尝试调用getenv寻找字典中的key对于的环境变量并转换为bool型。
 若转换完成的bool值是True，则将字典中当前的key对应的值写入config。
 
-参数:
+Args:
     name (str): 配置项名称
     type (type): 该配置的类型
     default (可选): 若无法获取到任何值，该配置的默认值
@@ -41,7 +41,7 @@ Config模块自动生成一个config对象，其中包含所有的配置。
 .. function:: Config.get_all_configs() -> None
 获取config中所有的配置
 
-参数：
+Args:
     无
 ''')
 
@@ -54,13 +54,13 @@ The Config module automatically generates an object named 'config' containing al
 .. function:: Config.done() -> None
 Check if any configuration items in the config.json file that is not loaded by the add method.
 
-Arguments:
+Args:
     None.
 
 .. function:: Config.getenv(name, type, default): -> str
 Get value of LazyLLM-related environment variables.
 
-Arguments:
+Args:
     name (str): The name of the environment variable （without the prefix）, case-insensitive. The function obtains value
     from environment variable by concatenating the prefix and this name, with all uppercase letters.
     type (type): Specifies the type of the configuration, for example, str. For boolean types, the function will
@@ -75,7 +75,7 @@ it's found, writes it to the config. If 'env' is a dictionary, the function atte
 environment variables corresponding to the keys in the dict and convert them to boolean type.
 If the converted boolean value is True, the value corresponding to the current key in the dict is written to the config.
 
-Arguments:
+Args:
     name (str): The name of the configuration item
     type (type): The type of the configuration
     default (optional): The default value of the configuration if no value can be obtained
@@ -85,7 +85,7 @@ Arguments:
 .. function:: Config.get_all_configs() -> None
 Get all configurations from the config.
 
-Arguments:
+Args:
     None.
 ''')
 
@@ -95,5 +95,5 @@ add_example('Config', '''\
 >>> config['launcher']
 'empty'
 >>> config.get_all_configs()
-{'home': '~/.lazyllm/', 'mode': <Mode.Normal: (1,)>, 'repr_ml': False, 'rag_store': 'None', 'redis_url': 'None', 'gpu_type': 'A100', 'debug': False, 'log_name': 'lazyllm', 'log_level': 'INFO', 'log_format': '{process}: <green>{time:YYYY-MM-DD HH:mm:ss}</green> {extra[name]} <level>{level}</level>: ({name}) <cyan>{message}</cyan>', 'log_dir': '~/.lazyllm', 'log_file_level': 'ERROR', 'log_file_size': '4 MB', 'log_file_retention': '7 days', 'log_file_mode': 'merge', 'launcher': 'empty', 'partition': 'your_part', 'sco.workspace': 'your_workspace', 'model_source': 'modelscope', 'model_cache_dir': '/mnt/cache/wangzhihong/.lazyllm/model', 'model_path': '', 'model_source_token': '', 'redis_recheck_delay': 5, 'openai_api_key': '', 'moonshotai_api_key': '', 'glm_api_key': '', 'qwen_api_key': '', 'sensenova_ak': '', 'sensenova_sk': '', 'doubao_api_key': '', 'language': 'CHINESE'}
+{'home': '~/.lazyllm/', 'mode': <Mode.Normal: (1,)>, 'repr_ml': False, 'rag_store': 'None', 'redis_url': 'None', ...}
 ''')

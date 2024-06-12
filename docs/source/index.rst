@@ -14,7 +14,7 @@ LazyLLM
    :caption: LazyLLM API
    :maxdepth: 1
  
-   api/component
+   api/components
    api/flow
    api/module
    api/tools

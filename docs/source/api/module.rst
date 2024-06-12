@@ -13,6 +13,10 @@ lazyllm.Module
     :members: start, restart, update, evalset, eval
     :exclude-members:
 
+.. autoclass:: lazyllm.module.UrlModule
+    :members: 
+    :exclude-members:
+
 .. autoclass:: lazyllm.module.ServerModule
     :members: start, restart, evalset
     :exclude-members:
