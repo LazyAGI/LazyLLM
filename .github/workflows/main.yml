@@ -1,0 +1,33 @@
+name: LazyLLM ci
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - lwj/add_CI
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".git*"
+
+
+jobs:
+  build:
+    runs-on: tps_sco_nv
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        run: |
+          pwd 
+          whoami
+          ls
+
+
+      - name: Run tests
+        run: |
+          echo "test"
+          pwd
