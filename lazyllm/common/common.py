@@ -183,12 +183,6 @@ class Bind(object):
             return setattr(self._f, __name, __value)
         return super(__class__, self).__setattr__(__name, __value)
 
-    def __enter__(self):
-        self._f.__enter__()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        return self._f.__exit__(exc_type, exc_val, exc_tb)
 
 setattr(builtins, 'bind', Bind)
 

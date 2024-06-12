@@ -36,9 +36,9 @@ class FlowBase(metaclass=_MetaBind):
             else:
                 lazyllm.LOG.warning(f'{k} is already defined in this scope, ignor it')
 
-    def __enter__(self):
+    def __enter__(self, __frame=None):
         assert len(self._items) == 0, f'Cannot init {self.__class__} with items if you want to use it by context.'
-        self._curr_frame = inspect.currentframe().f_back
+        self._curr_frame = __frame if __frame else inspect.currentframe().f_back
         if self._auto_capture:
             self._frame_keys = list(self._curr_frame.f_locals.keys())
         else:
@@ -83,6 +83,18 @@ class FlowBase(metaclass=_MetaBind):
                 item.for_each(filter, action)
             elif filter(item):
                 action(item)
+
+
+def _bind_enter(self):
+    assert isinstance(self._f, FlowBase)
+    self._f.__enter__(inspect.currentframe().f_back)
+    return self
+
+def _bind_exit(self, exc_type, exc_val, exc_tb):
+    return self._f.__exit__(exc_type, exc_val, exc_tb)
+
+setattr(bind, '__enter__', _bind_enter)
+setattr(bind, '__exit__', _bind_exit)
 
 
 def _is_function(f):
