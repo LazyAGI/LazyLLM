@@ -30,17 +30,17 @@ LazyLLM提供的Component的注册机制，可以将任意函数注册成LazyLLM
 .. function:: register(cls, *, rewrite_func) -> Decorator
 
 函数调用后返回一个装饰器，它会将被装饰的函数包装成一个Component注册到名为cls的组中.
-
+ 
 Args:
-    cls (str): 函数即将被注册到的组的名字，要求组必须存在，默认的组有`finetune`、`deploy`，用户可以调用`new_group`创建新的组
-    rewrite_func (str): 注册后要重写的函数名称，默认为`'apply'`，当需要注册一个bash命令时需传入`'cmd'`
+    cls (str): 函数即将被注册到的组的名字，要求组必须存在，默认的组有 ``finetune`` 、 ``deploy`` ，用户可以调用 ``new_group`` 创建新的组
+    rewrite_func (str): 注册后要重写的函数名称，默认为 ``apply`` ，当需要注册一个bash命令时需传入 ``cmd`` 
 
 .. function:: register.cmd(cls) -> Decorator
 
 函数调用后返回一个装饰器，它会将被装饰的函数包装成一个Component注册到名为cls的组中。被包装的函数需要返回一个可执行的bash命令。
 
 Args:
-    cls (str): 函数即将被注册到的组的名字，要求组必须存在，默认的组有`finetune`、`deploy`，用户可以调用`new_group`创建新的组
+    cls (str): 函数即将被注册到的组的名字，要求组必须存在，默认的组有 ``finetune`` 、 ``deploy`` ，用户可以调用 ``new_group`` 创建新的组
 
 .. function:: register.new_group(group_name) -> None
 
@@ -77,24 +77,24 @@ Args:
 ''')
 
 add_example('register', ['''\
->>> lazyllm.component_register.new_group('mygroup')
->>> mygroup
-{}
-''', '''\
 >>> @lazyllm.component_register('mygroup')
 ... def myfunc(input):
 ...     return input
 ...
->>> mygroup.myfunc(launcher=launchers.empty)(1)
+>>> mygroup.myfunc()(1)
 1
 ''', '''\
 >>> @lazyllm.component_register.cmd('mygroup')
-... def myfunc(input):
+... def mycmdfunc(input):
 ...     return f'echo {input}'
 ...
->>> mygroup.myfunc(launcher=launchers.empty)(1)
+>>> mygroup.mycmdfunc()(1)
 PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) Command: echo 1
 PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1
+''', '''\
+>>> lazyllm.component_register.new_group('mygroup')
+>>> mygroup
+{}
 '''])
 
 # ============= Finetune
@@ -103,13 +103,13 @@ add_chinese_doc('finetune.AlpacaloraFinetune', '''\
 此类是 ``LazyLLMFinetuneBase`` 的子类，基于 `alpaca-lora <https://github.com/tloen/alpaca-lora>`_ 项目提供的LoRA微调能力，用于对大语言模型进行LoRA微调。
 
 Args:
-    base_model (str): 用于进行微调的基模型。要求是基模型的路径。
-    target_path (str): 微调后模型保存LoRA权重的路径。
-    merge_path (str): 模型合并LoRA权重后的路径，默认为``None``。如果未指定，则会在 ``target_path`` 下创建 "lora" 和 "merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
+    base_model (str): 用于进行微调的基模型的本地绝对路径。
+    target_path (str): 微调后模型保存LoRA权重的本地绝对路径。
+    merge_path (str): 模型合并LoRA权重后的路径，默认为 ``None`` 。如果未指定，则会在 ``target_path`` 下创建 "lora" 和 "merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
     model_name (str): 模型的名称，用于设置日志名的前缀，默认为 ``LLM``。
-    cp_files (str): 指定复制源自基模型路径下的配置文件，会被复制到  ``merge_path`` ，默认为 ``tokeniz\*``
+    cp_files (str): 指定复制源自基模型路径下的配置文件，会被复制到  ``merge_path`` ，默认为 ``tokeniz*``
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
-    kw: 关键字参数，用于更新默认的训练参数。注意这里能不能任意指定额外的关键字参数。
+    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
 
 此类的关键字参数及其默认值如下：
 
@@ -172,6 +172,7 @@ Keyword Args:
 ''')
 
 add_example('finetune.AlpacaloraFinetune', '''\
+>>> from lazyllm import finetune
 >>> trainer = finetune.alpacalora('path/to/base/model', 'path/to/target')
 ''')
 
@@ -186,7 +187,7 @@ Args:
     model_name (str): 模型的名称，用于设置日志名的前缀，默认为 "LLM"。
     cp_files (str): 指定复制源自基模型路径下的配置文件，会被复制到  ``merge_path`` ，默认为 "tokeniz\*"
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
-    kw: 关键字参数，用于更新默认的训练参数。注意这里能不能任意指定额外的关键字参数。
+    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
 
 此类的关键字参数及其默认值如下：
 
@@ -241,6 +242,7 @@ Keyword Args:
 ''')
 
 add_example('finetune.CollieFinetune', '''\
+>>> from lazyllm import finetune
 >>> trainer = finetune.collie('path/to/base/model', 'path/to/target')
 ''')
 
@@ -252,14 +254,14 @@ add_chinese_doc('auto.AutoFinetune', '''\
                 
 Args:
     base_model (str): 用于进行微调的基模型。要求是基模型的路径。
-    source (lazyllm.config['model_source']): 指定模型的下载源。可通过设置环境变量 ``LAZYLLM_MODEL_SOURCE`` 来配置。
+    source (lazyllm.config['model_source']): 指定模型的下载源。可通过设置环境变量 ``LAZYLLM_MODEL_SOURCE`` 来配置，目前仅支持 ``huggingface`` 或 ``modelscope`` 。若不设置，lazyllm不会启动自动模型下载。
     target_path (str): 微调后模型保存LoRA权重的路径。
     merge_path (str): 模型合并LoRA权重后的路径，默认为 ``None``。如果未指定，则会在 ``target_path`` 下创建 "lora" 和 "merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
     ctx_len (int): 输入微调模型的token最大长度，默认为 ``1024``。
-    batch_size (int): 处理大小，默认为 ``32``。
+    batch_size (int): 批处理大小，默认为 ``32``。
     lora_r (int): LoRA 的秩，默认为 ``8``；该数值决定添加参数的量，数值越小参数量越小。
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
-    kw: 关键字参数，用于更新默认的训练参数。注意这里能不能任意指定额外的关键字参数，取决于 LazyLLM 推测出的框架，因此建议谨慎设置。
+    kw: 关键字参数，用于更新默认的训练参数。注意这里能够指定的关键字参数取决于 LazyLLM 推测出的框架，因此建议谨慎设置。
 
 ''')
 
@@ -282,7 +284,8 @@ Args:
 ''')
 
 add_example('auto.AutoFinetune', '''\
->>> finetune.auto("LLLAMA_7B", 'path/to/target')
+>>> from lazyllm import finetune
+>>> finetune.auto("Llama-7b", 'path/to/target')
 <lazyllm.llm.finetune type=CollieFinetune>
 ''')
 
@@ -295,17 +298,17 @@ Args:
     trust_remote_code (bool): 是否允许加载来自远程服务器的模型代码，默认为 ``True``。
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
     stream (bool): 是否为流式响应，默认为 ``False``。
-    kw: 关键字参数，用于更新默认的训练参数。注意这里能不能任意指定额外的关键字参数。
+    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
 
 此类的关键字参数及其默认值如下：
 
 Keyword Args: 
     tp (int): 张量并行参数，默认为 ``1``。
-    max_total_token_num (int): 最大总tonken数，默认为 ``64000``。
+    max_total_token_num (int): 最大总token数，默认为 ``64000``。
     eos_id (int): 结束符ID，默认为 ``2``。
-    port (int): 服务的端口号，默认为 ``None``下, LazyLLM会自动生成随机端口号。
+    port (int): 服务的端口号，默认为 ``None``。此情况下LazyLLM会自动生成随机端口号。
     host (int): 服务的IP地址，默认为 ``0.0.0.0``。
-    nccl_port (int): NCCL 端口，默认为 ``None``下, LazyLLM会自动生成随机端口号。
+    nccl_port (int): NCCL 端口，默认为 ``None``。此情况下LazyLLM会自动生成随机端口号。
     tokenizer_mode (str): tokenizer的加载模式，默认为 ``auto``。
     running_max_req_size (int): 推理引擎最大的并行请求数， 默认为 ``256``。
 
@@ -335,6 +338,7 @@ Keyword Args:
 ''')
 
 add_example('deploy.Lightllm', '''\
+>>> from lazyllm import deploy
 >>> infer = deploy.lightllm()
 ''')
 
@@ -347,7 +351,7 @@ Args:
     trust_remote_code (bool): 是否允许加载来自远程服务器的模型代码，默认为 ``True``。
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
     stream (bool): 是否为流式响应，默认为 ``False``。
-    kw: 关键字参数，用于更新默认的训练参数。注意这里能不能任意指定额外的关键字参数。
+    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
 
 此类的关键字参数及其默认值如下：
 
@@ -391,6 +395,7 @@ Keyword Args:
 ''')
 
 add_example('deploy.Vllm', '''\
+>>> from lazyllm import deploy
 >>> infer = deploy.vllm()
 ''')
 
@@ -402,14 +407,14 @@ add_chinese_doc('auto.AutoDeploy', '''\
                 
 Args:
     base_model (str): 用于进行微调的基模型，要求是基模型的路径或模型名。用于提供基模型信息。
-    source (lazyllm.config['model_source']): 指定模型的下载源。可通过设置环境变量 ``LAZYLLM_MODEL_SOURCE`` 来配置。
+    source (lazyllm.config['model_source']): 指定模型的下载源。可通过设置环境变量 ``LAZYLLM_MODEL_SOURCE`` 来配置，目前仅支持 ``huggingface`` 或 ``modelscope`` 。若不设置，lazyllm不会启动自动模型下载。
     trust_remote_code (bool): 是否允许加载来自远程服务器的模型代码，默认为 ``True``。
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
     stream (bool): 是否为流式响应，默认为 ``False``。
     type (str): 类型参数，默认为 ``None``，及``llm``类型，另外还支持``embed``类型。
     max_token_num (int): 输入微调模型的token最大长度，默认为``1024``。
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
-    kw: 关键字参数，用于更新默认的训练参数。注意这里能不能任意指定额外的关键字参数，取决于 LazyLLM 推测出的框架，因此建议谨慎设置。
+    kw: 关键字参数，用于更新默认的训练参数。注意这里能够指定的关键字参数取决于 LazyLLM 推测出的框架，因此建议谨慎设置。
 
 ''')
 
@@ -432,7 +437,8 @@ Args:
 ''')
 
 add_example('auto.AutoDeploy', '''\
->>> deploy.auto('LLAMA_7B')
+>>> from lazyllm import deploy
+>>> deploy.auto('Llama-7b')
 <lazyllm.llm.deploy type=Vllm>    
 ''')
 
@@ -442,17 +448,27 @@ ModelDownloader是LazyLLM为开发者提供的自动下载模型的工具类。�
 
     - LAZYLLM_MODEL_SOURCE: 模型下载源，可以设置为 ``huggingface`` 或 ``modelscope`` 。
     - LAZYLLM_MODEL_SOURCE_TOKEN: ``huggingface`` 或 ``modelscope`` 提供的token，用于下载私有模型。
-    - LAZYLLM_MODEL_PATH: 冒号 ``:`` 隔的本地绝对路径列表用于搜索模型。
+    - LAZYLLM_MODEL_PATH: 冒号 ``:`` 分隔的本地绝对路径列表用于搜索模型。
     - LAZYLLM_MODEL_CACHE_DIR: 下载后的模型在本地的存储目录
-
+    
+Keyword Args: 
+    model_source (str, 可选): 模型下载源，目前仅支持 ``huggingface`` 或 ``modelscope`` 。如有必要，ModelDownloader将从此下载源下载模型数据。如果不提供，默认使用
+        LAZYLLM_MODEL_SOURCE环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE，ModelDownloader将从 ``modelscope`` 下载模型。
+    token (str, 可选): ``huggingface`` 或 ``modelscope`` 提供的token。如果token不为空，ModelDownloader将使用此token下载模型数据。如果不提供，默认使用
+        LAZYLLM_MODEL_SOURCE_TOKEN环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE_TOKEN，ModelDownloader将不会自动下载私有模型。
+    model_path (str, 可选)：冒号(:)分隔的本地绝对路径列表。在实际下载模型数据之前，ModelDownloader将在此列表包含的目录中尝试寻找目标模型。如果不提供，默认使用
+        LAZYLLM_MODEL_PATH环境变量中的设置。如果为空或LAZYLLM_MODEL_PATH未设置，ModelDownloader将跳过从model_path中寻找模型的步骤。
+    cache_dir (str, 可选): 一个本地目录的绝对路径。下载后的模型将存放在此目录下，如果不提供，默认使用LAZYLLM_MODEL_CACHE_DIR环境变量中的设置。如果
+        LAZYLLM_MODEL_PATH未设置，默认值为~/.lazyllm/model
+        
 .. function:: ModelDownloader.download(model) -> str
 
 用于从model_source下载模型。download函数首先在ModelDownloader类初始化参数model_path列出的目录中搜索目标模型。如果未找到，会在cache_dir下搜索目标模型。如果仍未找到，
 则从model_source上下载模型并存放于cache_dir下。
 
-参数：
+Args:
     model (str): 目标模型名称。download函数使用此名称从model_source上下载模型。为了方便开发者使用，LazyLLM为常用模型建立了简略模型名称到下载源实际模型名称的映射，
-    例如 ``Llama-3-8B`` , ``GLM3-6B`` 或 ``Qwen1.5-7B`` 。具体可参考文件 ``lazyllm/module/utils/downloader/model_mapping.py`` 。model可以接受简略模型名或下载源中的模型全名。
+        例如 ``Llama-3-8B`` , ``GLM3-6B`` 或 ``Qwen1.5-7B`` 。具体可参考文件 ``lazyllm/module/utils/downloader/model_mapping.py`` 。model可以接受简略模型名或下载源中的模型全名。
 ''')
 
 add_english_doc('ModelDownloader', '''\
@@ -464,6 +480,22 @@ huggingface or modelscope. Before using ModelDownloader, the following environme
     - LAZYLLM_MODEL_SOURCE_TOKEN: The token provided by ``huggingface`` or ``modelscope`` for private model download.
     - LAZYLLM_MODEL_PATH: A colon-separated ``:`` list of local absolute paths for model search.
     - LAZYLLM_MODEL_CACHE_DIR: Directory for downloaded models.
+
+Keyword Args: 
+    model_source (str, optional): The source for model downloads, currently only supports ``huggingface`` or ``modelscope`` .
+        If necessary, ModelDownloader downloads model data from the source. If not provided, LAZYLLM_MODEL_SOURCE
+        environment variable would be used, and if LAZYLLM_MODEL_SOURCE is not set, ModelDownloader will not download
+        any model.
+    token (str, optional): The token provided by ``huggingface`` or ``modelscope`` . If the token is present, ModelDownloader uses
+        the token to download model. If not provided, LAZYLLM_MODEL_SOURCE_TOKEN environment variable would be used.
+        and if LAZYLLM_MODEL_SOURCE_TOKEN is not set, ModelDownloader will not download private models, only public ones.
+    model_path (str, optional): A colon-separated list of absolute paths. Before actually start to download model,
+        ModelDownloader trys to find the target model in the directories in this list. If not provided,
+        LAZYLLM_MODEL_PATH environment variable would be used, and LAZYLLM_MODEL_PATH is not set, ModelDownloader skips
+        looking for models from model_path.
+    cache_dir (str, optional): An absolute path of a directory to save downloaded models. If not provided,
+        LAZYLLM_MODEL_CACHE_DIR environment variable would be used, and if LAZYLLM_MODEL_PATH is not set, the default
+        value is ~/.lazyllm/model.
         
 .. function:: ModelDownloader.download(model) -> str
 
@@ -471,7 +503,7 @@ Download models from model_source. The function first searches for the target mo
 model_path parameter of ModelDownloader class. If not found, it searches under cache_dir. If still not found,
 it downloads the model from model_source and stores it under cache_dir.
 
-Arguments:
+Args:
     model (str): The name of the target model. The function uses this name to download the model from model_source.
     To further simplify use of the function, LazyLLM provides a mapping dict from abbreviated model names to original
     names on the download source for popular models, such as ``Llama-3-8B`` , ``GLM3-6B`` or ``Qwen1.5-7B``. For more details,
@@ -549,12 +581,12 @@ add_example('SlurmLauncher', '''\
 
 # Launcher-ScoLauncher
 add_chinese_doc('ScoLauncher', '''\
-此类是 ``LazyLLMLaunchersBase`` 的子类，作为sco启动器。
+此类是 ``LazyLLMLaunchersBase`` 的子类，作为SCO (Sensecore)启动器。
 
 具体而言，它提供了启动和配置 SCO 作业的方法，包括指定分区、工作空间名称、框架类型、节点数量、进程数量、GPU 数量以及是否使用 torchrun 等参数。
         
 Args:
-    partition (str): 要使用的 Slurm 分区。默认为 ``None``，此时将使用 ``lazyllm.config['partition']`` 中的默认分区。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SLURM_PART=a100`` 。
+    partition (str): 要使用的分区。默认为 ``None``，此时将使用 ``lazyllm.config['partition']`` 中的默认分区。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SLURM_PART=a100`` 。
     workspace_name (str): SCO 上的工作空间名称。默认为 ``lazyllm.config['sco.workspace']`` 中的配置。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SCO_WORKSPACE=myspace`` 。
     framework (str): 要使用的框架类型，例如 ``pt`` 代表 PyTorch。默认为 ``pt``。
     nnode  (int): 要使用的节点数量。默认为 ``1``。
@@ -597,7 +629,7 @@ Args:
 
 注意事项: 
     - ``RemoteLauncher`` 不是一个直接的启动器，而是根据配置动态创建一个启动器。 
-    - 配置文件中的 ``lazyllm.config['launcher']`` 指定一个存在于 ``lazyllm.launchers`` 模块中的启动器类名。该配置可通过设置环境变量 ``LAZYLLM_DEAULT_LAUNCHER``来设置。如：``export LAZYLLM_DEAULT_LAUNCHER=sco``, ``export LAZYLLM_DEAULT_LAUNCHER=slurm``。
+    - 配置文件中的 ``lazyllm.config['launcher']`` 指定一个存在于 ``lazyllm.launchers`` 模块中的启动器类名。该配置可通过设置环境变量 ``LAZYLLM_DEFAULT_LAUNCHER`` 来设置。如：``export LAZYLLM_DEFAULT_LAUNCHER=sco`` , ``export LAZYLLM_DEFAULT_LAUNCHER=slurm`` 。
 ''')
 
 add_english_doc('RemoteLauncher', '''\

@@ -373,8 +373,7 @@ class TrainableModule(UrlModule):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
     __enable_request__ = False
 
-    def __init__(self, base_model: Option = '', target_path='', *, source=lazyllm.config['model_source'],
-                 stream=False, return_trace=False):
+    def __init__(self, base_model: Option = '', target_path='', *, stream=False, return_trace=False):
         super().__init__(url=None, stream=stream, meta=TrainableModule, return_trace=return_trace)
         # Fake base_model and target_path for dummy
         self.target_path = target_path

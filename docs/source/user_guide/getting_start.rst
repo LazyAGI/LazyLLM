@@ -9,7 +9,7 @@ LazyLLM使用Python开发，因此请确保您的计算机上已经安装了3.10
 
 如果您是从github上下载的LazyLLM，您需要先初始化一下LazyLLM的运行环境，确保它的依赖都被正确的安装。我们在 ``requirements.txt`` 和 ``requirements.full.txt`` 中提供了运行LazyLLM的基础依赖包的集合。
 
-如果您所在的计算机没有GPU，您仅仅想通过组装在线的模型服务和应用API来搭建自己的AI应用，则您仅需安装 ``requirements.txt`` 中通过的基础包即可。您可以进入LazyLLM的目录，使用命令 ``pip install -r requirements.txt`` 安装这些依赖包。
+如果您所使用的计算机没有GPU，仅希望基于在线的模型服务和应用API来搭建自己的AI应用，则您仅需安装 ``requirements.txt`` 中通过的基础包即可。您可以进入LazyLLM的目录，使用命令 ``pip install -r requirements.txt`` 安装这些依赖包。
 
 .. note::
     如果您遇到权限问题，您可能需要在命令前添加sudo，或者在命令后添加--user，以确保pip有足够的权限安装这些包
@@ -45,6 +45,6 @@ LazyLLM使用Python开发，因此请确保您的计算机上已经安装了3.10
     w.start().wait()
 
 .. note::
-    如果您本地没有该模型的权重，会自动为您下载。
+    如果您本地没有该模型的数据文件，LazyLLM会自动为您下载至~/.lazyllm/model下。
 
 祝您使用愉快。

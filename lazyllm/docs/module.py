@@ -10,14 +10,14 @@ add_example = functools.partial(utils.add_example, module=lazyllm.module)
 
 
 add_chinese_doc('ModuleBase', '''\
-Module是LazyLLM中的顶层组件，具备训练、部署、推理和评测四项关键能力，每个模块可以选择实现其中的部分或者全部的能力，每项能力都可以由1到多个Component组成。
-ModuleBase本身不可以直接实例化，继承并实现`forward`函数的子类可以作为一个仿函数来使用。
+Module是LazyLLM中的顶层组件，具备训练、部署、推理和评测四项关键能力，每个模块可以选择实现其中的部分或者全部的能力，每项能力都可以由一到多个Component组成。
+ModuleBase本身不可以直接实例化，继承并实现 ``forward`` 函数的子类可以作为一个仿函数来使用。
 类似pytorch的Moudule，当一个Module A持有了另一个Module B的实例作为成员变量时，会自动加入到submodule中。
 
 如果你需要以下的能力，请让你自定义的类继承自ModuleBase:
     1. 组合训练、部署、推理和评测的部分或全部能力，例如Embedding模型需要训练和推理
-    2. 持有的成员变量具备训练、部署和评测的部分或全部能力，并且想通过Module的根节点的`start`, `update`, `eval`等方法对其持有的成员进行训练、部署和评测时。
-    3. 将用户设置的参数从最外层直接传到你自定义的模块中（参考WebModule）
+    2. 持有的成员变量具备训练、部署和评测的部分或全部能力，并且想通过Module的根节点的 ``start``,  ``update``, ``eval`` 等方法对其持有的成员进行训练、部署和评测时。
+    3. 将用户设置的参数从最外层直接传到你自定义的模块中（参考Tools.webpages.WebModule）
     4. 希望能被参数网格搜索模块使用（参考TrialModule）
 ''')
 
@@ -82,7 +82,7 @@ LazyLlmResponse(messages="reply for 1, and parameters is {'do_sample': False, 't
 ''')
 
 add_chinese_doc('ModuleBase.restart', '''\
-重启模块及所有的子模块
+重新重启模块及所有的子模块
 ''')
 
 add_english_doc('ModuleBase.restart', '''\
@@ -97,13 +97,14 @@ LazyLlmResponse(messages="reply for 1, and parameters is {'do_sample': False, 't
 ''')
                 
 add_chinese_doc('ModuleBase.update', '''\
-更新模块（及所有的子模块）。当模块重写了`'_get_train_tasks'`方法后，模块会被更新。更新完后会自动进入部署和推理的流程。
+更新模块（及所有的子模块）。当模块重写了 ``_get_train_tasks`` 方法后，模块会被更新。更新完后会自动进入部署和推理的流程。
+
 Args:
     recursive (bool): 是否递归更新所有的子模块，默认为True
 ''')
 
 add_english_doc('ModuleBase.update', '''\
-Update the module (and all its submodules). The module will be updated when the `'_get_train_tasks'` method is overridden.
+Update the module (and all its submodules). The module will be updated when the ``_get_train_tasks`` method is overridden.
 
 Args:
     recursive (bool): Whether to recursively update all submodules, default is True.
@@ -120,7 +121,7 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 ''')
 
 add_chinese_doc('ModuleBase.evalset', '''\
-为Module设置评测集，设置过评测集的Module在`update`或`eval`的时候会进行评测，评测结果会存在eval_result变量中。
+为Module设置评测集，设置过评测集的Module在 ``update`` 或 ``eval`` 的时候会进行评测，评测结果会存在eval_result变量中。
 
 .. function:: evalset(evalset, collect_f=lambda x: x) -> None
 
@@ -164,7 +165,7 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 ''')
 
 add_chinese_doc('ModuleBase.eval', '''\
-对模块（及所有的子模块）进行评测。当模块通过`'evalset'`设置了评测集之后，本函数生效。
+对模块（及所有的子模块）进行评测。当模块通过 ``evalset`` 设置了评测集之后，本函数生效。
 
 Args:
     recursive (bool): 是否递归评测所有的子模块，默认为True
@@ -265,12 +266,11 @@ MyModule3 deployed!
 add_chinese_doc('TrainableModule', '''\
 可训练的模块，所有的模型(包括llm、Embedding等)均通过TrainableModule提供服务
 
-.. function:: TrainableModule(base_model='', target_path='', *, source=lazyllm.config['model_source'], stream=False, return_trace=False)
+.. function:: TrainableModule(base_model='', target_path='', *, stream=False, return_trace=False)
 
 Args:
-    base_model (str): 基模型的名称或者路径，如果本地没有模型，则会自动尝试从模型源进行下载
+    base_model (str): 基模型的名称或者路径，如果本地没有模型，且微调或部署的方法为finetune.auto/deploy.auto, 则会自动尝试下载
     target_path (str): 微调任务的保存路径，如只推理，则可以不填
-    source (str): 模型源，可选huggingface或，如果不设置则会读取环境变量LAZYLLM_MODEL_SOURCE的值
     stream (bool): 是否流式输出。如果使用的推理引擎不支持流式，则此参数会被忽略
     return_trace (bool): 是否将结果记录在trace中
 
@@ -284,21 +284,21 @@ Args:
 为TrainableModule设置训练方法，暂不支持继续预训练，预计下个版本上线
 
 Args:
-    v (LazyLLMTrainBase): 训练的方法，可选为`train.auto`等
+    v (LazyLLMTrainBase): 训练的方法，可选为 ``train.auto`` 等
     kw (**dict): 训练的方法所需要的参数，和v对应
 
 .. function:: TrainableModule.finetune_method(v, **kw):
 为TrainableModule设置微调方法及其参数
 
 Args:
-    v (LazyLLMFinetuneBase): 微调的方法，可选为`finetune.auto` / `finetune.alpacalora` / `finetune.collie`等
+    v (LazyLLMFinetuneBase): 微调的方法，可选为 ``finetune.auto`` / ``finetune.alpacalora`` / ``finetune.collie`` 等
     kw (**dict): 微调的方法所需要的参数，和v对应
 
 .. function:: TrainableModule.deploy_method(v, **kw):
 为TrainableModule设置推理方法及其参数
 
 Args:
-    v (LazyLLMDeployBase): 推理的方法，可选为`deploy.auto` / `deploy.lightllm` / `deploy.vllm`等
+    v (LazyLLMDeployBase): 推理的方法，可选为 ``deploy.auto`` / ``deploy.lightllm`` / ``deploy.vllm`` 等
     kw (**dict): 推理的方法所需要的参数，和v对应
 
 .. function:: TrainableModule.mode(v):
@@ -330,21 +330,21 @@ Args:
 Set the training method for TrainableModule. Continued pre-training is not supported yet, expected to be available in the next version.
 
 Args:
-    v (LazyLLMTrainBase): Training method, options include `train.auto` etc.
+    v (LazyLLMTrainBase): Training method, options include ``train.auto`` etc.
     kw (**dict): Parameters required by the training method, corresponding to v.
 
 .. function:: TrainableModule.finetune_method(v, **kw):
 Set the fine-tuning method and its parameters for TrainableModule.
 
 Args:
-    v (LazyLLMFinetuneBase): Fine-tuning method, options include `finetune.auto` / `finetune.alpacalora` / `finetune.collie` etc.
+    v (LazyLLMFinetuneBase): Fine-tuning method, options include ``finetune.auto`` / ``finetune.alpacalora`` / ``finetune.collie`` etc.
     kw (**dict): Parameters required by the fine-tuning method, corresponding to v.
 
 .. function:: TrainableModule.deploy_method(v, **kw):
 Set the deployment method and its parameters for TrainableModule.
 
 Args:
-    v (LazyLLMDeployBase): Deployment method, options include `deploy.auto` / `deploy.lightllm` / `deploy.vllm` etc.
+    v (LazyLLMDeployBase): Deployment method, options include ``deploy.auto`` / ``deploy.lightllm`` / ``deploy.vllm`` etc.
     kw (**dict): Parameters required by the deployment method, corresponding to v.
 
 .. function:: TrainableModule.mode(v):
@@ -361,24 +361,24 @@ add_example('TrainableModule', ['''\
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 ''', '''\
 ''', '''\
->>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).mode('finetune')
+>>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 ''', '''\
->>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy).mode('finetune')
 >>> m.evalset([1, 2, 3])
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 >>> m.eval_result
 ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
 ''', '''\
->>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).mode('finetune')
+>>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 '''])
 
 add_chinese_doc('UrlModule', '''\
-可以将ServerModule部署得到的Url包装成一个Module，调用`'__call__'`时会访问该服务。
+可以将ServerModule部署得到的Url包装成一个Module，调用 ``__call__`` 时会访问该服务。
 
 Args:
     url (str): 要包装的服务的Url
@@ -387,7 +387,7 @@ Args:
 ''')
 
 add_english_doc('UrlModule', '''\
-The URL obtained from deploying the ServerModule can be wrapped into a Module. When calling `__call__`, it will access the service.
+The URL obtained from deploying the ServerModule can be wrapped into a Module. When calling ``__call__`` , it will access the service.
 
 Args:
     url (str): The URL of the service to be wrapped.
@@ -422,12 +422,12 @@ add_english_doc('ServerModule', '''\
 Using FastAPI, any callable object can be wrapped into an API service, allowing the simultaneous launch of one main service and multiple satellite services.
 
 Args:
-    m (Callable): The function to be wrapped as a service. It can be a function or a functor. When launching satellite services, it needs to be an object implementing `__call__` (a functor).
+    m (Callable): The function to be wrapped as a service. It can be a function or a functor. When launching satellite services, it needs to be an object implementing ``__call__`` (a functor).
     pre (Callable): Preprocessing function executed in the service process. It can be a function or a functor, default is None.
     post (Callable): Postprocessing function executed in the service process. It can be a function or a functor, default is None.
     stream (bool): Whether to request and output in streaming mode, default is non-streaming.
     return_trace (bool): Whether to record the results in trace, default is False.
-    launcher (LazyLLMLaunchersBase): Used to select the compute node for service execution, default is `launchers.remote`.
+    launcher (LazyLLMLaunchersBase): Used to select the compute node for service execution, default is ``launchers.remote`` .
 ''')
 
 add_example('ServerModule', '''\
@@ -474,7 +474,7 @@ Args:
 ''')
 
 add_example('TrialModule', '''\
->>> m = lazyllm.TrainableModule(lazyllm.Option(['b1', 'b2', 'b3']), 't').finetune_method(finetune.dummy, **dict(a=lazyllm.Option(['f1', 'f2']))).deploy_method(None).mode('finetune')
+>>> m = lazyllm.TrainableModule(lazyllm.Option(['b1', 'b2', 'b3']), 't').finetune_method(finetune.dummy, **dict(a=lazyllm.Option(['f1', 'f2']))).deploy_method(deploy.dummy).mode('finetune')
 >>> s = lazyllm.ServerModule(m, post=lambda x, *, ori: f'post2({x})')
 >>> t = lazyllm.TrialModule(s)
 >>> t.update()
@@ -484,9 +484,9 @@ add_chinese_doc('OnlineChatModule', '''\
 用来管理创建目前市面上公开的大模型平台访问模块，目前支持openai、sensenova、glm、kimi、qwen、doubao(由于该平台暂时不对个人用户开发，暂时不支持访问)
 
 Args:
-    source (str): 指定要创建的模块类型，可选为`openai` / `sensenova` / `glm` / `kimi` / `qwen` / `doubao(暂未支持访问)`
+    source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao(暂未支持访问)`` 
     base_url (str): 指定要访问的平台的基础链接，默认是官方链接
-    model (str): 指定要访问的模型，默认为`gpt-3.5-turbo(openai)` / `SenseChat-5(sensenova)` / `glm-4(glm)` / `moonshot-v1-8k(kimi)` / `qwen-plus(qwen)`
+    model (str): 指定要访问的模型，默认为 ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` 
     system_prompt (str): 指定请求的system prompt，默认是官方给的system prompt
     stream (bool): 是否流式请求和输出，默认为流式
     return_trace (bool): 是否将结果记录在trace中，默认为False
@@ -496,9 +496,9 @@ add_english_doc('OnlineChatModule', '''\
 Used to manage and create access modules for large model platforms currently available on the market. Currently, it supports openai, sensenova, glm, kimi, qwen and doubao (since the platform is not currently being developed for individual users, access is not currently supported).
 
 Args:
-    source (str): Specify the type of module to create. Options include `openai` / `sensenova` / `glm` / `kimi` / `qwen` / `doubao (not yet supported)`.
+    source (str): Specify the type of module to create. Options include  ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao (not yet supported)`` .
     base_url (str): Specify the base link of the platform to be accessed. The default is the official link.
-    model (str): Specify the model to access, default is `gpt-3.5-turbo(openai)` / `SenseChat-5(sensenova)` / `glm-4(glm)` / `moonshot-v1-8k(kimi)` / `qwen-plus(qwen) `.
+    model (str): Specify the model to access, default is ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` .
     system_prompt (str): Specify the requested system prompt. The default is the official system prompt.
     stream (bool): Whether to request and output in streaming mode, default is streaming.
     return_trace (bool): Whether to record the results in trace, default is False.      
@@ -550,18 +550,18 @@ add_chinese_doc('OnlineEmbeddingModule', '''\
 用来管理创建目前市面上的在线Embedding服务模块，目前支持openai、sensenova、glm、qwen
 
 Args:
-    source (str): 指定要创建的模块类型，可选为`openai` / `sensenova` / `glm` / `qwen`
+    source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``qwen``
     embed_url (str): 指定要访问的平台的基础链接，默认是官方链接
-    embed_mode_name (str): 指定要访问的模型，默认为`text-embedding-ada-002(openai)` / `nova-embedding-stable(sensenova)` / `embedding-2(glm)` / `text-embedding-v1(qwen)`
+    embed_mode_name (str): 指定要访问的模型，默认为 ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` 
 ''')
 
 add_english_doc('OnlineEmbeddingModule', '''\
 Used to manage and create online Embedding service modules currently on the market, currently supporting openai, sensenova, glm, qwen.
 
 Args:
-    source (str): Specify the type of module to create. Options are `openai` / `sensenova` / `glm` / `qwen`.
+    source (str): Specify the type of module to create. Options are  ``openai`` /  ``sensenova`` /  ``glm`` /  ``qwen``.
     embed_url (str): Specify the base link of the platform to be accessed. The default is the official link.
-    embed_mode_name (str): Specify the model to access, default is `text-embedding-ada-002(openai)` / `nova-embedding-stable(sensenova)` / `embedding-2(glm)` / `text-embedding-v1(qwen)`
+    embed_mode_name (str): Specify the model to access, default is ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` 
 ''')
 
 add_example('OnlineEmbeddingModule', '''\
@@ -590,7 +590,7 @@ If you need to support the capabilities of a new open platform's LLM, please ext
     2. If the new platform supports model fine-tuning, you must also inherit from the FileHandlerBase class. This class primarily validates file formats and converts .jsonl formatted data into a format supported by the model for subsequent training. 
     3. If the new platform supports model fine-tuning, you must implement interfaces for file upload, creating fine-tuning services, and querying fine-tuning services. Even if the new platform does not require deployment of the fine-tuned model, please implement dummy interfaces for creating and querying deployment services.
     4. If the new platform supports model fine-tuning, provide a list of models that support fine-tuning to facilitate judgment during the fine-tuning service process.
-    5. Configure the api_key supported by the new platform as a global variable by using `lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`.
+    5. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
 ''')
 
 add_example('OnlineChatModuleBase', '''\
@@ -602,7 +602,7 @@ add_example('OnlineChatModuleBase', '''\
 ...                   stream: bool = True,
 ...                   return_trace: bool = False):
 ...         super().__init__(model_type="new_class_name",
-...                          api_key=lazyllm.config['new_platform_api_key'])
+...                          api_key=lazyllm.config['new_platform_api_key'],
 ...                          base_url=base_url,
 ...                          system_prompt=system_prompt,
 ...                          stream=stream,
@@ -618,7 +618,7 @@ add_example('OnlineChatModuleBase', '''\
 ...                   return_trace: bool = False):
 ...         OnlineChatModuleBase.__init__(self,
 ...                                       model_type="new_class_name",
-...                                       api_key=lazyllm.config['new_platform_api_key'])
+...                                       api_key=lazyllm.config['new_platform_api_key'],
 ...                                       base_url=base_url,
 ...                                       system_prompt=system_prompt,
 ...                                       stream=stream,
@@ -666,7 +666,7 @@ OnlineEmbeddingModuleBase is the base class for managing embedding model interfa
 If you need to support the capabilities of embedding models on a new open platform, please extend your custom class from OnlineEmbeddingModuleBase:
     1. If the request and response data formats of the new platform's embedding model are the same as OpenAI's, no additional processing is needed; simply pass the URL and model.
     2. If the request or response data formats of the new platform's embedding model differ from OpenAI's, you need to override the _encapsulated_data or _parse_response methods.
-    3. Configure the api_key supported by the new platform as a global variable by using `lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`.
+    3. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
 ''')
 
 add_example('OnlineEmbeddingModuleBase', '''
@@ -679,14 +679,14 @@ add_example('OnlineEmbeddingModuleBase', '''
 >>> class NewPlatformEmbeddingModule1(OnlineEmbeddingModuleBase):
 ...     def __init__(self,
 ...                 embed_url: str = '<new platform embedding url>',
-...                 embed_model_name: str = '<new platform embedding model name>')
+...                 embed_model_name: str = '<new platform embedding model name>'):
 ...         super().__init__(embed_url, lazyllm.config['new_platform_api_key'], embed_model_name)
 ...
 ...     def _encapsulated_data(self, text:str, **kwargs):
 ...         pass
 ...         return json_data
 ...
-...     def _parse_response(self, response: Dict[str, Any]):
+...     def _parse_response(self, response: dict[str, any]):
 ...         pass
 ...         return embedding
 ''')
