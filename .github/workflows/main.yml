@@ -12,7 +12,8 @@ on:
       - "**.md"
       - ".github/ISSUE_TEMPLATE/**"
       - ".git*"
-
+env:
+  CI_PATH: '~/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}'
 
 jobs:
   build:
@@ -20,14 +21,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          path: ${CI_PATH}
 
-      - name: List files and show current directory
-        run: |
-          pwd 
-          whoami
-          ls
 
       - name: Run tests
         run: |
           echo "test"
           pwd
+          ls
+          whoami
