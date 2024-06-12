@@ -27,11 +27,11 @@ jobs:
       - name: Create custom directory
         run: |
           set -ex
-          echo $CI_PATH
-          mkdir -p $CI_PATH
+          echo ${{ env.CI_PATH }}
+          mkdir -p ${{ env.CI_PATH }}
 
       - name: Move code to custom directory
-        run: mv $GITHUB_WORKSPACE/* $CI_PATH/
+        run: mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
       - name: Run tests
         run: |
