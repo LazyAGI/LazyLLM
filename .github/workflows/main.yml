@@ -16,8 +16,8 @@ env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}'
 
 jobs:
-  build:
-    runs-on: self-hosted
+  Clone:
+    runs-on: tps_sco_nv
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -33,10 +33,16 @@ jobs:
       - name: Move code to custom directory
         run: mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
-      - name: Run tests
+  test:
+    runs-on: tps_sco_nv
+    needs: [Clone]
+    steps:
+      - name: test1
         run: |
-          cd $CI_PATH
-          echo "test"
           pwd
           ls
           whoami
+
+      - name: test2
+        run: |
+          cd ${{ env.CI_PATH }}
