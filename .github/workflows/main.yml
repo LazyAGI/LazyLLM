@@ -21,12 +21,16 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        with:
-          path: ${CI_PATH}
 
+      - name: Create custom directory
+        run: mkdir -p $CI_PATH
+
+      - name: Move code to custom directory
+        run: mv $GITHUB_WORKSPACE/* $CI_PATH
 
       - name: Run tests
         run: |
+          cd $CI_PATH
           echo "test"
           pwd
           ls
