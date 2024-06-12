@@ -31,20 +31,22 @@ jobs:
           mkdir -p ${{ env.CI_PATH }}
 
       - name: Move code to custom directory
-        run: mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
+        run: |
+          set -ex
+          mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
-  test:
+  Test:
     runs-on: tps_sco_nv
     needs: [Clone]
     steps:
       - name: test1
         run: |
-          pwd
-          ls
-          whoami
+          set -ex
+          cd ${{ env.CI_PATH }}
+          echo "Placeholder only"
 
       - name: test2
         run: |
           cd ${{ env.CI_PATH }}
           which python
-          pip list --format=freeze
+          echo "Placeholder only"
