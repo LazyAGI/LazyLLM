@@ -19,7 +19,22 @@ class ModelDownloader():
         self.token = token
         self.cache_dir = cache_dir
         self.model_pathes = model_path.split(":") if len(model_path) > 0 else []
+        
+    @classmethod
+    def get_model_type(cls, model) ->str:
+        assert isinstance(model, str) and len(model) > 0, "model name should be a non-empty string"
+        for name, info in model_name_mapping.items():
+            if 'type' not in info: continue
+            
+            model_name_set={name.casefold()}
+            for source in info:
+                if source == 'type': continue
+                model_name_set.add(info[source].split('/')[-1].casefold())
 
+            if model.split(os.sep)[-1].casefold() in model_name_set:
+                return info['type']
+        return 'llm'
+            
     def download(self, model=''):
         assert isinstance(model, str), "model name should be a string."
         if len(model) == 0 or model[0] in (os.sep, '.', '~'): return model  # Dummy or local model.

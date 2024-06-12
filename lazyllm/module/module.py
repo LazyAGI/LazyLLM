@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import lazyllm
 from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, launchers, LOG
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
+from ..components.utils import ModelDownloader
 from ..flow import FlowBase, Pipeline, Parallel
 import uuid
 from ..client import get_redis, redis_client
@@ -374,18 +375,19 @@ class TrainableModule(UrlModule):
     __enable_request__ = False
 
     def __init__(self, base_model: Option = '', target_path='', *, stream=False, return_trace=False):
+        self.base_model = base_model
         super().__init__(url=None, stream=stream, meta=TrainableModule, return_trace=return_trace)
         # Fake base_model and target_path for dummy
         self.target_path = target_path
         self._train = None  # lazyllm.train.auto
         self._finetune = lazyllm.finetune.auto
         self._deploy = lazyllm.deploy.auto
-
-        self.base_model = base_model
         self._deploy_flag = lazyllm.once_flag()
 
     # modify default value to ''
     def prompt(self, prompt=''):
+        if prompt == '' and ModelDownloader.get_model_type(self.base_model) != 'llm':
+            prompt = None
         return super(__class__, self).prompt(prompt)
 
     def _get_args(self, arg_cls, disable=[]):
