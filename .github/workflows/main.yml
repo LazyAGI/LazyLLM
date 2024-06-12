@@ -46,3 +46,5 @@ jobs:
       - name: test2
         run: |
           cd ${{ env.CI_PATH }}
+          which python
+          pip list --format=freeze
