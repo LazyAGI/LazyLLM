@@ -13,7 +13,7 @@ on:
       - ".github/ISSUE_TEMPLATE/**"
       - ".git*"
 env:
-  CI_PATH: '~/GitHub/${{ github.repository }}'
+  CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}'
 
 jobs:
   build:
