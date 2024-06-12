@@ -1,6 +1,7 @@
 import builtins
 import lazyllm
 import re
+from .common import _MetaBind
 
 # Special Dict for lazy programmer. Suppose we have a LazyDict as follows：
 #    >>> ld = LazyDict(name='ld', ALd=int)
@@ -67,7 +68,7 @@ class LazyLLM{name}Base(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].b
 '''
 
 
-class LazyLLMRegisterMetaClass(type):
+class LazyLLMRegisterMetaClass(_MetaBind):
     all_clses = LazyDict()
 
     def __new__(metas, name, bases, attrs):

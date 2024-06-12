@@ -109,18 +109,63 @@ def _setattr(self, key, v):
 setattr(Placeholder, '__setattr__', _setattr)
 
 
+class _MetaBind(type):
+    def __instancecheck__(self, __instance):
+        if isinstance(__instance, Bind) and isinstance(__instance._f, self):
+            return True
+        return super(__class__, self).__instancecheck__(__instance)
+
+
 class Bind(object):
-    def __init__(self, f, *args, **kw):
-        self._f = f() if isinstance(f, type) else f
+
+    class Input(object):
+        def __init__(self): self._item_key, self._attr_key = None, None
+
+        def __getitem__(self, key):
+            self._item_key = key
+            return self
+
+        def __getattr__(self, key):
+            self._attr_key = key
+            return self
+
+        def get_input(self, input):
+            if isinstance(input, LazyLlmRequest):
+                input = input.input if input.input else input.kwargs
+            elif isinstance(input, LazyLlmResponse):
+                input = input.messages
+            if self._item_key:
+                return input[self._item_key]
+            elif self._attr_key: return getattr(input, self._attr_key)
+            return input
+
+    def __init__(self, __bind_func=None, *args, **kw):
+        self._f = __bind_func() if isinstance(__bind_func, type) else __bind_func
         self._args = args
         self._kw = kw
         self._has_root = any([isinstance(a, AttrTree) for a in args])
 
-    def __call__(self, *args, **kw):
+    def __ror__(self, __value: Callable):
+        self._f = __value
+        return self
+
+    # _bind_args_source: dict(input=input, args=dict(key=value))
+    def __call__(self, *args, _bind_args_source=None, **kw):
+        if self._f is None: return None
         keys = set(kw.keys()).intersection(set(self._kw.keys()))
         assert len(keys) == 0, f'Keys `{keys}` are already bind!'
-        return self._f(*[args[a.idx] if isinstance(a, Placeholder) else a
-                         for a in self._args], **self._kw, **kw)
+        bind_args = args if len(self._args) == 0 else (
+            [args[a.idx] if isinstance(a, Placeholder) else a for a in self._args])
+        bind_kwargs = self._kw
+
+        def get_bind_args(a):
+            return a.get_input(_bind_args_source['input']) if isinstance(a, Bind.Input) else (
+                _bind_args_source['args'][id(a)] if id(a) in _bind_args_source['args'] else a)
+
+        if _bind_args_source:
+            bind_args = [get_bind_args(a) for a in bind_args]
+            bind_kwargs = {k: get_bind_args(v) for k, v in bind_kwargs}
+        return self._f(*bind_args, **bind_kwargs, **kw)
 
     # TODO: modify it
     def __repr__(self) -> str:
@@ -132,6 +177,18 @@ class Bind(object):
         if name != '_f':
             return getattr(self._f, name)
         return super(__class__, self).__getattr__(name)
+
+    def __setattr__(self, __name: str, __value: Any) -> None:
+        if __name not in ('_f', '_args', '_kw', '_has_root'):
+            return setattr(self._f, __name, __value)
+        return super(__class__, self).__setattr__(__name, __value)
+
+    def __enter__(self):
+        self._f.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return self._f.__exit__(exc_type, exc_val, exc_tb)
 
 setattr(builtins, 'bind', Bind)
 
@@ -316,11 +373,11 @@ class ReqResHelper(object):
         if len(args) == 1:
             input = args[0]
             if isinstance(input, LazyLlmRequest):
-                assert len(kw) == 0, 'kwargs is already in LazyLlmRequest, Cannot provide it twice.'
                 if len(input.global_parameters) != 0:
                     assert len(self.parameters) == 0, 'Cannot set global_parameters twice!'
                     self.parameters = input.global_parameters
-                input, kw = input.input, input.kwargs
+                kw.update(input.kwargs)
+                input = input.input
             elif isinstance(input, LazyLlmResponse):
                 assert len(kw) == 0
                 if input.trace: self.trace += input.trace
@@ -331,6 +388,17 @@ class ReqResHelper(object):
                     else: assert not isinstance(i, LazyLlmRequest), 'Cannot process list of Requests'
                 input = type(input)(i.messages if isinstance(i, LazyLlmResponse) else i for i in input)
         else:
+            # bind args for flow
+            _is_req = [isinstance(a, LazyLlmRequest) for a in args]
+            if any(_is_req):
+                assert _is_req.count(True) == 1, f'More than one Request found in args: {args}'
+                idx = _is_req.index(True)
+                req = args[idx]
+                assert not isinstance(req.input, package) or len(req.input) == 1
+                args = list(args)
+                args[idx] = req.input[0] if isinstance(req.input, package) else req.input
+                if not self.parameters: self.parameters = req.global_parameters
+                kw.update(req.kwargs)
             input = package(args)
 
         if isinstance(input, kwargs):
