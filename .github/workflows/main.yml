@@ -22,10 +22,10 @@ jobs:
         uses: actions/checkout@v3
 
       - name: List files and show current directory
-          run: |
-            pwd 
-            whoami
-            ls
+        run: |
+          pwd 
+          whoami
+          ls
 
       - name: Run tests
         run: |
