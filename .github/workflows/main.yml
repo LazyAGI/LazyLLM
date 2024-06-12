@@ -17,15 +17,15 @@ on:
 jobs:
   build:
     runs-on: tps_sco_nv
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        run: |
-          pwd 
-          whoami
-          ls
 
+      - name: List files and show current directory
+          run: |
+            pwd 
+            whoami
+            ls
 
       - name: Run tests
         run: |
