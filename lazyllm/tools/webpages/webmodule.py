@@ -30,7 +30,7 @@ class WebModule(ModuleBase):
     def __init__(self, m, *, components=dict(), title='对话演示终端', port=range(20500, 20799),
                  history=[], text_mode=None, trace_mode=None) -> None:
         super().__init__()
-        self.m = m
+        self.m = lazyllm.ActionModule(m) if isinstance(m, lazyllm.FlowBase) else m
         self.title = title
         self.port = port
         components = sum([[([k._module_id, k._module_name] + list(v)) for v in vs]

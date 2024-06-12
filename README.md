@@ -52,7 +52,7 @@ w.start().wait()
 
 import os
 import lazyllm
-from lazyllm import pipeline, parallel, Identity, launchers, Document, Retriever, Rerank, deploy
+from lazyllm import pipeline, parallel, bind, _0, Document, Retriever, Rerank
 
 prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
 ```
@@ -60,22 +60,18 @@ prompt = '你将扮演一个人工智能问答助手的角色，完成一项对�
 
 ```python
 # If use redis, please set 'export LAZYLLM_RAG_STORE=Redis', and export LAZYLLM_REDIS_URL=redis://{IP}:{PORT}
-prompter = lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])
-llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(prompter)
 documents = Document(dataset_path='/file/to/yourpath', lazyllm.TrainableModule('bge-large-zh-v1.5'))
-retriever = Retriever(documents, algo='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
-rerank = Rerank(types='Reranker', model='bge-reranker-large')
 
 #  input ---> retriver -->  reranker---> llm
 #        |--------------↑            ↑
 #        |---------------------------↑
-m = lazyllm.ActionModule(
-    parallel.sequential(
-        context_str=pipeline(parallel.sequential(Identity, retriever), rerank), 
-        query_str=Identity).asdict, 
-    llm
-)
-mweb = lazyllm.WebModule(m, port=23456).start().wait()
+with pipeline as ppl:
+    ppl.retriever = Retriever(documents, algo='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
+    ppl.reranker = Rerank(types='Reranker', model='bge-reranker-large') | bind(ppl.input, _0)
+    ppl.formatter = lambda ctx, query: dict(context_str=ctx, query_str=query) | bind(query=ppl.input)
+    ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])) 
+
+mweb = lazyllm.WebModule(ppl, port=23456).start().wait()
 ```
 
 ### 3.3 故事创作
