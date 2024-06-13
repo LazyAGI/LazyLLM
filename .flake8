@@ -1,5 +1,5 @@
 [flake8]
-exclude = tests/legacy
+exclude = tests/legacy,venv
 max-line-length = 121
 # E701: multiple statements on one line (colon)
 # E702: multiple statements on one line (semicolon)
