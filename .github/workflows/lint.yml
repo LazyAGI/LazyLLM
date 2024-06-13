@@ -40,7 +40,7 @@ jobs:
 
       - name: Check for code formatting issues
         if: failure()
-        run: echo "Code formatting issues found. Please run 'black .' locally to format your code."
+        run: echo "Code formatting issues found. Please run 'black .' locally to format your code." && exit 1
 
       - name: Lint complete
         run: echo "Linting complete"
