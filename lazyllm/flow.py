@@ -41,18 +41,18 @@ class FlowBase(metaclass=_MetaBind):
         self._curr_frame = __frame if __frame else inspect.currentframe().f_back
         if self._auto_capture:
             self._frame_keys = list(self._curr_frame.f_locals.keys())
-        else:
-            self._capture = True
+        self._capture = True
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self._auto_capture:
             locals = self._curr_frame.f_locals.copy()
             for var, val in locals.items():
-                if var != 'self' and var not in self._frame_keys and val is not self:
+                if var != 'self' and var not in self._frame_keys and (
+                        (val._f if isinstance(val, bind) else val) is not self):
+                    print(var)
                     self._add(var, val)
-        else:
-            self._capture = False
+        self._capture = False
         self._curr_frame = None
         return False
 
@@ -116,13 +116,13 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             # TODO: add registry message
             return lazyllm.make_repr('Function', self.f.__name__.strip('<>'))
 
-    def __init__(self, *args, post_action=None, return_input=False, **kw):
+    def __init__(self, *args, post_action=None, return_input=False, auto_capture=False, **kw):
         assert len(args) == 0 or len(kw) == 0, f'Cannot provide args `{args}` and kwargs `{kw}` at the same time'
         if len(args) > 0 and isinstance(args[0], (tuple, list)):
             assert len(args) == 1, 'args should be list of callable functions'
             args = args[0]
         args = list(args) + [v() if isinstance(v, type) else v for v in kw.values()]
-        super(__class__, self).__init__(*args, item_names=list(kw.keys()))
+        super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self._return_input = return_input
         self._sync = False
@@ -178,7 +178,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             else:
                 return it(input, **kw)
         except Exception as e:
-            LOG.error(f'An error occored when invoking `{type(it)}` with `{input}`')
+            LOG.error(f'An error occored when invoking `{type(it)}({it})` with `{input}`')
             error_type, error_message = type(e).__name__, str(e)
             tb_str = ''.join(traceback.format_exception(*sys.exc_info()))
             LOG.debug(f'Error type: {error_type}, Error message: {error_message}\n'
@@ -216,15 +216,23 @@ def _hook(v): _barr.impl = v
 #  input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #        \> module31 -> ... -> module3N -> out3 /
 class Parallel(LazyLLMFlowsBase):
-    def __init__(self, *args, _scatter=False, _concurrent=True, **kw):
-        super().__init__(*args, **kw)
+    def __init__(self, *args, _scatter=False, _concurrent=True, auto_capture=False, **kw):
+        super().__init__(*args, **kw, auto_capture=auto_capture)
         self._return_dict = False
+        self._concat_result = False
         self._concurrent = _concurrent
         self._scatter = _scatter
 
     @property
     def asdict(self):
+        assert not self._concat_result, 'Cannor set asdict and concat at the same time'
         self._return_dict = True
+        return self
+
+    @property
+    def concat(self):
+        assert not self._return_dict, 'Cannor set asdict and concat at the same time'
+        self._concat_result = True
         return self
 
     @classmethod
@@ -255,6 +263,9 @@ class Parallel(LazyLLMFlowsBase):
         if self._return_dict:
             assert self._item_names, 'Item name should be set when you want to return dict.'
             return {k: v for k, v in zip(self._item_names, r)}
+        elif self._concat_result:
+            assert isinstance(type(r[0]), (tuple, list)), 'Only tuple and list support concat.'
+            return package(sum(r, type(r[0])()),)
         return r
 
 
@@ -262,8 +273,8 @@ class Parallel(LazyLLMFlowsBase):
 #  (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #                  \> in3 -> module31 -> ... -> module3N -> out3 /
 class Diverter(Parallel):
-    def __init__(self, *args, _concurrent=True, **kw):
-        super().__init__(*args, _scatter=True, _concurrent=_concurrent, **kw)
+    def __init__(self, *args, _concurrent=True, auto_capture=False, **kw):
+        super().__init__(*args, _scatter=True, _concurrent=_concurrent, auto_capture=auto_capture, **kw)
 
 
 #                  /> in1 \                            /> out1 \
@@ -319,8 +330,9 @@ class IFS(LazyLLMFlowsBase):
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
 #      ⬆----------------------------------------|
 class Loop(LazyLLMFlowsBase):
-    def __init__(self, *item, stop_condition=None, count=None, post_action=None, return_input=False):
-        super().__init__(*item, post_action=post_action, return_input=return_input)
+    def __init__(self, *item, stop_condition=None, count=None, post_action=None, return_input=False,
+                 auto_capture=False, **kw):
+        super().__init__(*item, post_action=post_action, return_input=return_input, auto_capture=auto_capture, **kw)
         assert (callable(stop_condition) and count is None) or (
             stop_condition is None and isinstance(count, int))
         self.cond = stop_condition
