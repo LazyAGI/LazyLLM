@@ -117,6 +117,7 @@ class _MetaBind(type):
 
 
 class Bind(object):
+    class __None: pass
 
     class Input(object):
         def __init__(self): self._item_key, self._attr_key = None, None
@@ -139,13 +140,14 @@ class Bind(object):
             elif self._attr_key: return getattr(input, self._attr_key)
             return input
 
-    def __init__(self, __bind_func=None, *args, **kw):
-        self._f = __bind_func() if isinstance(__bind_func, type) else __bind_func
+    def __init__(self, __bind_func=__None, *args, **kw):
+        self._f = __bind_func() if isinstance(__bind_func, type) and __bind_func is not Bind.__None else __bind_func
         self._args = args
         self._kw = kw
         self._has_root = any([isinstance(a, AttrTree) for a in args])
 
     def __ror__(self, __value: Callable):
+        if self._f is not Bind.__None: self._args = (self._f,) + self._args
         self._f = __value
         return self
 

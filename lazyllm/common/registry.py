@@ -2,6 +2,7 @@ import builtins
 import lazyllm
 import re
 from .common import _MetaBind
+from ..configs import config
 
 # Special Dict for lazy programmer. Suppose we have a LazyDict as follows：
 #    >>> ld = LazyDict(name='ld', ALd=int)
@@ -67,7 +68,6 @@ class LazyLLM{name}Base(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].b
     pass
 '''
 
-from ..configs import config
 config.add('use_builtin', bool, False, 'USE_BUILTIN')
 
 class LazyLLMRegisterMetaClass(_MetaBind):
