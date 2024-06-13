@@ -2,7 +2,9 @@ from .configs import config
 from .configs import * # noqa F401 of Config
 from .common import *  # noqa F403
 from .launcher import LazyLLMLaunchersBase
-from .flow import LazyLLMFlowsBase, FlowBase, barrier
+from .flow import (LazyLLMFlowsBase, FlowBase, barrier,
+                   Pipeline as pipeline, Parallel as parallel, Diverter as diverter,
+                   Loop as loop, Switch as switch, IFS as ifs, Warp as warp)
 from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                          LazyLLMValidateBase, register as component_register, Prompter,
                          AlpacaPrompter, ChatPrompter, FastapiApp)
@@ -12,18 +14,12 @@ from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
 from .client import redis_client
 from .tools import Document, Rerank, Retriever, WebModule
 from .docs import add_doc
-from . import flows
-
-pipeline, parallel = flows.pipeline, flows.parallel
-diverter, loop = flows.Diverter, flows.Loop
-switch, ifs, warp = flows.Switch, flows.IFS, flows.Warp
 
 config.done()
 
 
 del LazyLLMRegisterMetaClass  # noqa F821
 del _get_base_cls_from_registry  # noqa F821
-del flows
 
 
 __all__ = [
@@ -42,6 +38,13 @@ __all__ = [
     'LazyLLMFlowsBase',            # pipeline, parallel
     'FlowBase',
     'barrier',
+    'pipeline',
+    'parallel',
+    'diverter',
+    'loop',
+    'switch',
+    'ifs',
+    'warp',
 
     # launcher
     'LazyLLMLaunchersBase',        # empty, slurm, sco
