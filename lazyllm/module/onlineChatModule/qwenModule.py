@@ -32,6 +32,9 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
 
+    def _get_system_prompt(self):
+        return "你是来自阿里云的大规模语言模型，你叫通义千问，你是一个有用的助手。"
+
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'compatible-mode/v1/chat/completions')
 

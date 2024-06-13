@@ -28,6 +28,9 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
                                       **kwargs)
         FileHandlerBase.__init__(self)
 
+    def _get_system_prompt(self):
+        return "You are ChatGPT, a large language model trained by OpenAI.You are a helpful assistant."
+
     def _convert_file_format(self, filepath: str) -> str:
         with open(filepath, 'r', encoding='utf-8') as fr:
             dataset = [json.loads(line) for line in fr]

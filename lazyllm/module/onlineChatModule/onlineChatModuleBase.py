@@ -37,11 +37,15 @@ class OnlineChatModuleBase(ModuleBase):
             self._prompt = ChatPrompter()
         elif isinstance(prompt, PrompterBase):
             self._prompt = prompt
-        elif isinstatnce(prompt, str):
+        elif isinstance(prompt, str):
             self._prompt = ChatPrompter(prompt)
         else:
-            raise TypeError(f"{prmpt} type is not supported.")
+            raise TypeError(f"{prompt} type is not supported.")
+        self._prompt._set_model_configs(system=self._get_system_prompt())
         return self
+
+    def _get_system_prompt(self):
+        raise NotImplementedError("_get_system_prompt is not implemented.")
 
     def _set_headers(self):
         self._headers = {

@@ -18,6 +18,9 @@ class DoubaoModule(OnlineChatModuleBase):
                          trainable_models=[],
                          return_trace=return_trace)
 
+    def _get_system_prompt(self):
+        return "你是人工智能助手豆包。你的任务是针对用户的问题和要求提供适当的答复和支持。"
+
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'chat/completions')
 

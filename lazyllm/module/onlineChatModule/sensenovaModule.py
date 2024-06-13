@@ -29,6 +29,9 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
 
+    def _get_system_prompt(self):
+        return "You are an AI assistant whose name is InternLM (书生·浦语), develped by SenseTime."
+
     @staticmethod
     def encode_jwt_token(ak: str, sk: str) -> str:
         headers = {
