@@ -167,18 +167,18 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 it._args = [a.get_from(self.ancestor) if isinstance(a, type(root)) else a for a in it._args]
                 it._has_root = False
             if bind_args_source: it = bind(it, _bind_args_source=bind_args_source)
-        try:
             kw = dict()
             if isinstance(input, LazyLlmRequest):
                 if getattr(it, '__enable_request__', None):
                     return it(input)
                 input, kw = input.input, input.kwargs
+        try:
             if not isinstance(it, LazyLLMFlowsBase) and isinstance(input, (package, kwargs)):
                 return it(*input, **kw) if isinstance(input, package) else it(**input, **kw)
             else:
                 return it(input, **kw)
         except Exception as e:
-            LOG.error(f'An error occored when invoking `{type(it)}({it})` with `{input}`')
+            LOG.error(f'An error occored when invoking `{type(it)}({it})` with input `{input}` and kw `{kw}`')
             error_type, error_message = type(e).__name__, str(e)
             tb_str = ''.join(traceback.format_exception(*sys.exc_info()))
             LOG.debug(f'Error type: {error_type}, Error message: {error_message}\n'
@@ -219,20 +219,20 @@ class Parallel(LazyLLMFlowsBase):
     def __init__(self, *args, _scatter=False, _concurrent=True, auto_capture=False, **kw):
         super().__init__(*args, **kw, auto_capture=auto_capture)
         self._return_dict = False
-        self._concat_result = False
+        self._sum_result = False
         self._concurrent = _concurrent
         self._scatter = _scatter
 
     @property
     def asdict(self):
-        assert not self._concat_result, 'Cannor set asdict and concat at the same time'
+        assert not self._sum_result, 'Cannor set asdict and sum at the same time'
         self._return_dict = True
         return self
 
     @property
-    def concat(self):
-        assert not self._return_dict, 'Cannor set asdict and concat at the same time'
-        self._concat_result = True
+    def sum(self):
+        assert not self._return_dict, 'Cannor set asdict and sum at the same time'
+        self._sum_result = True
         return self
 
     @classmethod
@@ -263,8 +263,7 @@ class Parallel(LazyLLMFlowsBase):
         if self._return_dict:
             assert self._item_names, 'Item name should be set when you want to return dict.'
             return {k: v for k, v in zip(self._item_names, r)}
-        elif self._concat_result:
-            assert isinstance(type(r[0]), (tuple, list)), 'Only tuple and list support concat.'
+        elif self._sum_result:
             return package(sum(r, type(r[0])()),)
         return r
 
