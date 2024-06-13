@@ -166,7 +166,7 @@ class Bind(object):
 
         if _bind_args_source:
             bind_args = [get_bind_args(a) for a in bind_args]
-            bind_kwargs = {k: get_bind_args(v) for k, v in bind_kwargs}
+            bind_kwargs = {k: get_bind_args(v) for k, v in bind_kwargs.items()}
         return self._f(*bind_args, **bind_kwargs, **kw)
 
     # TODO: modify it
