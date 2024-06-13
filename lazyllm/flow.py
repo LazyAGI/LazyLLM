@@ -1,7 +1,7 @@
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, bind, root
 from lazyllm import Thread, ReadOnlyWrapper, LOG
-from lazyllm import LazyLlmRequest, ReqResHelper
+from lazyllm import LazyLlmRequest, LazyLlmResponse, ReqResHelper
 from .common.common import _MetaBind
 import types
 import inspect
@@ -50,7 +50,6 @@ class FlowBase(metaclass=_MetaBind):
             for var, val in locals.items():
                 if var != 'self' and var not in self._frame_keys and (
                         (val._f if isinstance(val, bind) else val) is not self):
-                    print(var)
                     self._add(var, val)
         self._capture = False
         self._curr_frame = None
@@ -135,7 +134,10 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         if self.post_action is not None: self.invoke(self.post_action, output)
         if self._return_input: output = package(req.input, output.input)
         if self._sync: self.wait()
-        return helper.make_response(output)
+        return self._post_process(helper.make_response(output))
+
+    def _post_process(self, output):
+        return output
 
     def _run(self, input):
         raise NotImplementedError
@@ -167,11 +169,11 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 it._args = [a.get_from(self.ancestor) if isinstance(a, type(root)) else a for a in it._args]
                 it._has_root = False
             if bind_args_source: it = bind(it, _bind_args_source=bind_args_source)
-            kw = dict()
-            if isinstance(input, LazyLlmRequest):
-                if getattr(it, '__enable_request__', None):
-                    return it(input)
-                input, kw = input.input, input.kwargs
+        kw = dict()
+        if isinstance(input, LazyLlmRequest):
+            if getattr(it, '__enable_request__', None):
+                return it(input)
+            input, kw = input.input, input.kwargs
         try:
             if not isinstance(it, LazyLLMFlowsBase) and isinstance(input, (package, kwargs)):
                 return it(*input, **kw) if isinstance(input, package) else it(**input, **kw)
@@ -259,13 +261,19 @@ class Parallel(LazyLLMFlowsBase):
             r = package(t.get_result() for t in ts)
         else:
             r = package(self.invoke(it, inp) for it, inp in zip(items, inputs))
+        return r
 
+    def _post_process(self, output):
+        o = output.messages if isinstance(output, LazyLlmResponse) else output
         if self._return_dict:
             assert self._item_names, 'Item name should be set when you want to return dict.'
-            return {k: v for k, v in zip(self._item_names, r)}
+            o = {k: v for k, v in zip(self._item_names, o)}
         elif self._sum_result:
-            return package(sum(r, type(r[0])()),)
-        return r
+            o = sum(o, type(o[0])())
+        if isinstance(output, LazyLlmResponse):
+            output.messages = o
+            return output
+        return o 
 
 
 #                  /> in1 -> module11 -> ... -> module1N -> out1 \
