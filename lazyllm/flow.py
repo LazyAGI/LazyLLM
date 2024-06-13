@@ -273,7 +273,7 @@ class Parallel(LazyLLMFlowsBase):
         if isinstance(output, LazyLlmResponse):
             output.messages = o
             return output
-        return o 
+        return o
 
 
 #                  /> in1 -> module11 -> ... -> module1N -> out1 \
