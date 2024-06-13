@@ -13,7 +13,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
     def __init__(self,
                  base_url="https://api.sensenova.cn/v1/llm",
                  model="SenseChat-5",
-                 system_prompt="You are an AI assistant whose name is InternLM (书生·浦语).",
                  stream=True,
                  return_trace=False,
                  **kwargs):
@@ -24,7 +23,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
                                       base_url=base_url,
                                       model_name=model,
                                       stream=stream,
-                                      system_prompt=system_prompt,
                                       trainable_models=SenseNovaModule.TRAINABLE_MODEL_LIST,
                                       return_trace=return_trace,
                                       **kwargs)
@@ -63,12 +61,19 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             return chunk
 
     def _parse_response_non_stream(self, response: str) -> str:
-        cur_msg = json.loads(response)['data']["choices"][0]
-        content = cur_msg.get("message", "")
-        msg = {"role": cur_msg["role"], "content": content}
-        cur_msg.pop("role")
-        cur_msg['message'] = msg
-        return cur_msg
+        try:
+            resp = json.loads(response)['data']
+            content = resp["choices"][0].get("message", "")
+            msg = {"role": resp['choices'][0].pop("role"), "content": content}
+            resp['choices'][0]['message'] = msg
+            if 'tool_calls' in resp['choices'][0]:
+                    tool_calls = resp['choices'][0].pop("tool_calls")
+                    resp['choices'][0]['message']['tool_calls'] = tool_calls
+            resp['model'] = self._model_name
+            return resp["choices"][0]
+        except Exception as e:
+            lazyllm.LOG.error(e)
+            return ""
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:

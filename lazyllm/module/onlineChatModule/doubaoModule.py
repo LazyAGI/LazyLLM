@@ -8,14 +8,12 @@ class DoubaoModule(OnlineChatModuleBase):
     def __init__(self,
                  model: str,
                  base_url: str = "https://ark.cn-beijing.volces.com/api/v3",
-                 system_prompt: str = "You are a helpful assistant.",
                  stream: bool = True,
                  return_trace: bool = False):
         super().__init__(model_type=self.__class__.__name__,
                          api_key=lazyllm.config['doubao_api_key'],
                          base_url=base_url,
                          model_name=model,
-                         system_prompt=system_prompt,
                          stream=stream,
                          trainable_models=[],
                          return_trace=return_trace)

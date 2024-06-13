@@ -14,7 +14,6 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
     def __init__(self,
                  base_url: str = "https://api.openai.com/v1",
                  model: str = "gpt-3.5-turbo",
-                 system_prompt: str = "You are a helpful assistant.",
                  stream: bool = True,
                  return_trace: bool = False,
                  **kwargs):
@@ -23,7 +22,6 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
                                       api_key=lazyllm.config['openai_api_key'],
                                       base_url=base_url,
                                       model_name=model,
-                                      system_prompt=system_prompt,
                                       stream=stream,
                                       trainable_models=OpenAIModule.TRAINABLE_MODEL_LIST,
                                       return_trace=return_trace,

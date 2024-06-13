@@ -17,7 +17,6 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
     def __init__(self,
                  base_url: str = "https://dashscope.aliyuncs.com",
                  model: str = "qwen-plus",
-                 system_prompt: str = "You are a helpful assistant.",
                  stream: bool = True,
                  return_trace: bool = False,
                  **kwargs):
@@ -26,7 +25,6 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                                       api_key=lazyllm.config['qwen_api_key'],
                                       base_url=base_url,
                                       model_name=model,
-                                      system_prompt=system_prompt,
                                       stream=stream,
                                       trainable_models=QwenModule.TRAINABLE_MODEL_LIST,
                                       return_trace=return_trace,
