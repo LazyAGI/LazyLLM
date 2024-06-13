@@ -4,13 +4,11 @@ on:
   push:
     branches:
       - main
-      - lwj/add_CI
   pull_request:
     branches:
       - main
     paths-ignore:
       - "**.md"
-      - ".github/ISSUE_TEMPLATE/**"
       - ".git*"
 env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}'
