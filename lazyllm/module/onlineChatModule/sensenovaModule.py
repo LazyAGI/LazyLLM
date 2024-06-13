@@ -70,8 +70,8 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             msg = {"role": resp['choices'][0].pop("role"), "content": content}
             resp['choices'][0]['message'] = msg
             if 'tool_calls' in resp['choices'][0]:
-                    tool_calls = resp['choices'][0].pop("tool_calls")
-                    resp['choices'][0]['message']['tool_calls'] = tool_calls
+                tool_calls = resp['choices'][0].pop("tool_calls")
+                resp['choices'][0]['message']['tool_calls'] = tool_calls
             resp['model'] = self._model_name
             return resp["choices"][0]
         except Exception as e:

@@ -29,10 +29,10 @@ class OnlineChatModuleBase(ModuleBase):
         self.trainable_mobels = trainable_models
         self._set_headers()
         self._set_chat_url()
-        self.prompt() 
+        self.prompt()
         self._is_trained = False
 
-    def prompt(self, prompt = None):
+    def prompt(self, prompt=None):
         if prompt is None:
             self._prompt = ChatPrompter()
         elif isinstance(prompt, PrompterBase):

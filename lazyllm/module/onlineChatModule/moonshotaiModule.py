@@ -25,6 +25,5 @@ class MoonshotAIModule(OnlineChatModuleBase):
                 你会为用户提供安全，有帮助，准确的回答。同时，你会拒绝一切涉及恐怖主义，种族歧视，\
                 黄色暴力等问题的回答。Moonshot AI 为专有名词，不可翻译成其他语言。"
 
-
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'v1/chat/completions')
