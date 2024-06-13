@@ -1,0 +1,46 @@
+name: Lint Python Code
+
+on:
+  push:
+    branches:
+      - main
+      - Lwj/lint
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install flake8 black
+
+      - name: Run flake8
+        run: |
+          source venv/bin/activate
+          flake8 .
+
+      - name: Run black
+        run: |
+          source venv/bin/activate
+          black --check .
+
+      - name: Check for code formatting issues
+        if: failure()
+        run: echo "Code formatting issues found. Please run 'black .' locally to format your code."
+
+      - name: Lint complete
+        run: echo "Linting complete"
