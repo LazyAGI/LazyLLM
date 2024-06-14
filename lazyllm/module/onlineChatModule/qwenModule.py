@@ -17,7 +17,6 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
     def __init__(self,
                  base_url: str = "https://dashscope.aliyuncs.com",
                  model: str = "qwen-plus",
-                 system_prompt: str = "You are a helpful assistant.",
                  stream: bool = True,
                  return_trace: bool = False,
                  **kwargs):
@@ -26,13 +25,15 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                                       api_key=lazyllm.config['qwen_api_key'],
                                       base_url=base_url,
                                       model_name=model,
-                                      system_prompt=system_prompt,
                                       stream=stream,
                                       trainable_models=QwenModule.TRAINABLE_MODEL_LIST,
                                       return_trace=return_trace,
                                       **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
+
+    def _get_system_prompt(self):
+        return "你是来自阿里云的大规模语言模型，你叫通义千问，你是一个有用的助手。"
 
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'compatible-mode/v1/chat/completions')
