@@ -13,7 +13,3 @@ python:
 sphinx:
   configuration: docs/source/conf.py
 
-commands:
-  - export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-  - echo $PYTHONPATH  # For debugging purposes
-  - sphinx-build -b html docs/source docs/build
