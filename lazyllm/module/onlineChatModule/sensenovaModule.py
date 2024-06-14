@@ -1,7 +1,7 @@
 import json
 import os
 import requests
-from typing import Tuple
+from typing import Tuple, Dict, Any
 import uuid
 import lazyllm
 from .onlineChatModuleBase import OnlineChatModuleBase
@@ -53,26 +53,25 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'chat-completions')
 
-    def _parse_response_stream(self, response: str) -> str:
+    def _stream_format_alignment(self, response: str) -> Dict[str, Any]:
         chunk = response.decode('utf-8')[5:]
-        if "[DONE]" in chunk:
-            return "[DONE]"
-        else:
-            try:
-                chunk = json.loads(chunk)["data"]
-                content = chunk['choices'][0]['delta']
-                role = chunk['choices'][0].pop("role")
-                chunk['choices'][0]['delta'] = {"content": content, "role": role}
-                if "tool_calls" in chunk["choices"][0]:
-                    tool_calls = chunk["choices"][0].pop("tool_calls")
-                    chunk["choices"][0]["delta"]["tool_calls"] = tool_calls
-                chunk["model"] = self._model_name
-                return self._synthetic_output(chunk)
-            except Exception as e:
-                lazyllm.LOG.error(e)
-                return ""
+        try:
+            chunk = json.loads(chunk)["data"]
+            content = chunk['choices'][0]['delta']
+            role = chunk['choices'][0].pop("role")
+            chunk['choices'][0]['delta'] = {"content": content, "role": role}
+            if "tool_calls" in chunk["choices"][0]:
+                tool_calls = chunk["choices"][0].pop("tool_calls")
+                chunk["choices"][0]["delta"]["tool_calls"] = tool_calls
+            chunk["model"] = self._model_name
+            return chunk
+        except ValueError:
+            return chunk
+        except Exception as e:
+            lazyllm.LOG.error(e)
+            return ""
 
-    def _parse_response_non_stream(self, response: str) -> str:
+    def _nonstream_format_alignment(self, response: str) -> Dict[str, Any]:
         try:
             resp = json.loads(response)['data']
             content = resp['choices'][0].get('message', '')
@@ -82,7 +81,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
                 tool_calls = resp["choices"][0].pop("tool_calls")
                 resp["choices"][0]["message"]["tool_calls"] = tool_calls
             resp["model"] = self._model_name
-            return self._synthetic_output(resp)
+            return resp
         except Exception as e:
             lazyllm.LOG.error(e)
             return ""

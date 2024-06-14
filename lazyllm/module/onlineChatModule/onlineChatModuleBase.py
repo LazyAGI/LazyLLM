@@ -33,8 +33,9 @@ class OnlineChatModuleBase(ModuleBase):
         self.prompt()
         self._is_trained = False
         self.formatter()
-        self._format_keys = []
-        self.format_key()
+        self._extractor_fields = []
+        self.field_extractor()
+        self._stream_end_token = "[DONE]"
 
     def prompt(self, prompt=None):
         if prompt is None:
@@ -94,39 +95,47 @@ class OnlineChatModuleBase(ModuleBase):
 
     def _synthetic_output(self, response: Dict[str, Any]):
         content = self._parse_dict(response)
-        if len(self._format_keys) == 1:
-            key = self._format_keys[0]
+        if len(self._extractor_fields) == 1:
+            key = self._extractor_fields[0]
             return self._formatter.format(content[key]) if key in content else ""
-        elif len(self._format_keys) > 1:
+        elif len(self._extractor_fields) > 1:
             res = {}
-            for key in self._format_keys:
+            for key in self._extractor_fields:
                 if key in content:
                     res[key] = self._formatter.format(content[key])
             return res
         else:
             return self._formatter.format(content["content"]) if "content" in content else ""
 
-    def _parse_response_stream(self, response: str) -> str:
-        chunk = response.decode('utf-8')[6:]
-        if "[DONE]" in chunk:
-            return "[DONE]"
-        else:
-            try:
-                chunk = chunk.replace("data: ", "")
-                chunk = json.loads(chunk)
-                return self._synthetic_output(chunk)
-            except Exception as e:
-                lazyllm.LOG.error(e)
-                return ""
-
-    def _parse_response_non_stream(self, response: str) -> Dict[str, Any]:
-        """Parse the response from the interface"""
+    def _stream_format_alignment(self, response: str) -> Dict[str, Any]:
+        chunk = response.decode('utf-8')
+        chunk = chunk.replace("data: ", "")
         try:
-            cur_msg = json.loads(response)
-            return self._synthetic_output(cur_msg)
+            chunk = json.loads(chunk)
+            return chunk
+        except ValueError:
+            return chunk
         except Exception as e:
             lazyllm.LOG.error(e)
             return ""
+
+    def _parse_response_stream(self, response: str) -> str:
+        chunk = self._stream_format_alignment(response)
+        if self._stream_end_token == chunk: return self._stream_end_token
+        return self._synthetic_output(chunk)
+
+    def _nonstream_format_alignment(self, response: str) -> Dict[str, Any]:
+        try:
+            chunk = json.loads(response)
+            return chunk
+        except Exception as e:
+            lazyllm.LOG.error(e)
+            return ""
+
+    def _parse_response_non_stream(self, response: str) -> Dict[str, Any]:
+        """Parse the response from the interface"""
+        cur_msg = self._nonstream_format_alignment(response)
+        return self._synthetic_output(cur_msg)
 
     def formatter(self, format: FormatterBase = None):
         if isinstance(format, FormatterBase):
@@ -136,13 +145,13 @@ class OnlineChatModuleBase(ModuleBase):
 
         return self
 
-    def format_key(self, key: Union[str, List[str]] = None):
+    def field_extractor(self, key: Union[str, List[str]] = None):
         if key is None:
-            self._format_keys = []
+            self._extractor_fields = []
         elif isinstance(key, str):
-            self._format_keys.append(key)
+            self._extractor_fields.append(key)
         elif isinstance(key, list):
-            self._format_keys.extend(key)
+            self._extractor_fields.extend(key)
         else:
             raise TypeError(f"Unsupported type: {type(key)}")
 
@@ -170,8 +179,9 @@ class OnlineChatModuleBase(ModuleBase):
                 for line in r.iter_lines():
                     if len(line) == 0:
                         continue
+
                     chunk = self._parse_response_stream(line)
-                    if chunk == "[DONE]": return
+                    if self._stream_end_token == chunk: return
                     yield chunk
 
         def _impl_non_stream():

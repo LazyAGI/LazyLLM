@@ -37,9 +37,11 @@ class JsonFormatter(FormatterBase):
 
     def _str_to_python(self, msg: str):
         # Convert str to json format
-        assert msg.count("{") == msg.count("}")
+        assert msg.count("{") == msg.count("}"), f"{msg} is not a valid json string."
         try:
             json_strs = self._extract_json_from_string(msg)
+            if len(json_strs) == 0:
+                raise TypeError(f"{msg} is not a valid json string.")
             res = []
             for json_str in json_strs:
                 res.append(json.loads(json_str))
