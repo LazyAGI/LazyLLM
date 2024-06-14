@@ -5,6 +5,7 @@ from typing import Tuple, List, Dict, Union, Any
 import time
 import lazyllm
 from lazyllm.components.prompter import PrompterBase, ChatPrompter
+from lazyllm.components.formatter import FormatterBase, EmptyFormatter
 from ..module import ModuleBase, Pipeline
 
 class OnlineChatModuleBase(ModuleBase):
@@ -34,6 +35,9 @@ class OnlineChatModuleBase(ModuleBase):
         self._set_chat_url()
         self._prompt = prompter if prompter else ChatPrompter()
         self._is_trained = False
+        self.formatter()
+        self._format_keys = []
+        self.format_key()
 
     def system_prompt(self, prompt: str = ""):
         if len(prompt) > 0:
@@ -64,14 +68,79 @@ class OnlineChatModuleBase(ModuleBase):
             res_json = r.json()
             return res_json
 
+    def _parse_dict(self, data: Dict[str, Any]):
+        res = {}
+        for k, v in data.items():
+            if isinstance(v, (str, int, type(None))):
+                res[k] = v
+            elif isinstance(v, dict):
+                res[k] = v
+                res.update(self._parse_dict(v))
+            elif isinstance(v, list):
+                res[k] = v
+                if len(v) > 0 and isinstance(v[0], dict):
+                    for i in v:
+                        res.update(self._parse_dict(i))
+            else:
+                raise TypeError(f"Unsupported type: {type(v)}")
+
+        return res
+
+    def _synthetic_output(self, response: Dict[str, Any]):
+        content = self._parse_dict(response)
+        if len(self._format_keys) == 1:
+            key = self._format_keys[0]
+            return self._formatter.format(content[key]) if key in content else ""
+        elif len(self._format_keys) > 1:
+            res = {}
+            for key in self._format_keys:
+                if key in content:
+                    res[key] = self._formatter.format(content[key])
+            return res
+        else:
+            return self._formatter.format(content["content"]) if "content" in content else ""
+
     def _parse_response_stream(self, response: str) -> str:
         chunk = response.decode('utf-8')[6:]
-        return chunk
+        if "[DONE]" in chunk:
+            return "[DONE]"
+        else:
+            try:
+                chunk = chunk.replace("data: ", "")
+                chunk = json.loads(chunk)
+                return self._synthetic_output(chunk)
+            except Exception as e:
+                lazyllm.LOG.error(e)
+                return ""
 
     def _parse_response_non_stream(self, response: str) -> Dict[str, Any]:
         """Parse the response from the interface"""
-        cur_msg = json.loads(response)["choices"][0]
-        return cur_msg
+        try:
+            cur_msg = json.loads(response)
+            return self._synthetic_output(cur_msg)
+        except Exception as e:
+            lazyllm.LOG.error(e)
+            return ""
+
+    def formatter(self, format: FormatterBase = None):
+        if isinstance(format, FormatterBase):
+            self._formatter = format
+        else:
+            self._formatter = EmptyFormatter()
+
+        return self
+
+    def format_key(self, key: Union[str, List[str]] = None):
+        if key is None:
+            self._format_keys = []
+        elif isinstance(key, str):
+            self._format_keys.append(key)
+        elif isinstance(key, list):
+            self._format_keys.extend(key)
+        else:
+            raise TypeError(f"Unsupported type: {type(key)}")
+
+        return self
 
     def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, **kw):  # noqa C901
         """LLM inference interface"""

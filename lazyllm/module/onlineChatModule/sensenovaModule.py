@@ -54,21 +54,37 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _parse_response_stream(self, response: str) -> str:
         chunk = response.decode('utf-8')[5:]
-        try:
-            chunk = json.loads(chunk)["data"]
-            content = chunk['choices'][0]['delta']
-            chunk['choices'][0]['delta'] = {"content": content}
-            return json.dumps(chunk, ensure_ascii=False)
-        except Exception:
-            return chunk
+        if "[DONE]" in chunk:
+            return "[DONE]"
+        else:
+            try:
+                chunk = json.loads(chunk)["data"]
+                content = chunk['choices'][0]['delta']
+                role = chunk['choices'][0].pop("role")
+                chunk['choices'][0]['delta'] = {"content": content, "role": role}
+                if "tool_calls" in chunk["choices"][0]:
+                    tool_calls = chunk["choices"][0].pop("tool_calls")
+                    chunk["choices"][0]["delta"]["tool_calls"] = tool_calls
+                chunk["model"] = self._model_name
+                return self._synthetic_output(chunk)
+            except Exception as e:
+                lazyllm.LOG.error(e)
+                return ""
 
     def _parse_response_non_stream(self, response: str) -> str:
-        cur_msg = json.loads(response)['data']["choices"][0]
-        content = cur_msg.get("message", "")
-        msg = {"role": cur_msg["role"], "content": content}
-        cur_msg.pop("role")
-        cur_msg['message'] = msg
-        return cur_msg
+        try:
+            resp = json.loads(response)['data']
+            content = resp['choices'][0].get('message', '')
+            msg = {"role": resp['choices'][0].pop("role"), "content": content}
+            resp["choices"][0]["message"] = msg
+            if "tool_calls" in resp["choices"][0]:
+                tool_calls = resp["choices"][0].pop("tool_calls")
+                resp["choices"][0]["message"]["tool_calls"] = tool_calls
+            resp["model"] = self._model_name
+            return self._synthetic_output(resp)
+        except Exception as e:
+            lazyllm.LOG.error(e)
+            return ""
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:
