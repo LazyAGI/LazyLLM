@@ -34,6 +34,7 @@ Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶
 
 
 .. code-block:: python
+
     import lazyllm
     from lazyllm import pipeline, component_register
 
@@ -54,6 +55,7 @@ with语句
 除了基本的用法之外，pipeline还支持一个更为灵活的用法 ``with pipeline() as p`` 来让代码更加的简洁和清晰，示例如下
 
 .. code-block:: python
+
     from lazyllm import pipeline
 
     class Functor(object):
@@ -83,6 +85,7 @@ with语句
 假设我们定义了一些函数，本小节会一直使用这些函数，不再重复定义。
 
 .. code-block:: python
+
     def f1(input, input2=0): return input + input2 + 1
     def f2(input): return input + 3
     def f3(input): return f'f3-{input}'
@@ -91,6 +94,7 @@ with语句
 下面给出一个参数绑定的具体例子：
 
 .. code-block:: python
+
     from lazyllm import pipeline, _0
     with pipeline() as p:
         p.f1 = f1
@@ -110,6 +114,7 @@ with语句
 上面的方式已经足够简单和清晰，如果您仍然觉得 ```bind`` 作为函数不够直观，可以尝试使用如下方式，两种方式没有任何区别：
 
 .. code-block:: python
+
     from lazyllm import pipeline, _0
     with pipeline() as p:
         p.f1 = f1
@@ -125,6 +130,7 @@ with语句
 除了C++的bind方式之外，作为python，我们额外提供了 ``kwargs`` 的参数绑定， ``kwargs``和c++的绑定方式可以混合使用，示例如下:
 
 .. code-block:: python
+
     from lazyllm import pipeline, _0
     with pipeline() as p:
         p.f1 = f1
@@ -140,6 +146,7 @@ with语句
 如果pipeline的输入比较复杂，可以直接对 ``input`` 做一次简单的解析处理，示例如下:
 
 .. code-block:: python
+
     def f1(input): return dict(a=input[0], b=input[1])
     def f2(input): return input['a'] + input['b']
     def f3(input, extro): return f'[{input} + {extro}]'
