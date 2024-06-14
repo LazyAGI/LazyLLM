@@ -1,0 +1,33 @@
+name: Deploy Documentation
+
+on:
+  push:
+    tags:
+      - '*'
+    branches:
+      - deploy_doc  #临时测试使用
+
+jobs:
+  deploy:
+    runs-on: tps_sco_nv
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract tag
+        id: extract_tag
+        run: |
+#          echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+
+      - name: Build documentation
+        run: |
+          set -e
+          echo "Placeholder only"
+          echo $BRANCH_NAME
+
+      - name: Deploy
+        run: |
+          set -e
+          echo "Placeholder only"
+          echo $BRANCH_NAME
