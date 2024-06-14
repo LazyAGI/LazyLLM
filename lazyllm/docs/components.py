@@ -516,6 +516,33 @@ add_example('ModelDownloader', '''\
     >>> downloader.download('GLM3-6B')
 ''')
 
+# ============= Formatter
+# JsonFormatter
+add_chinese_doc('JsonFormatter', '''\
+此类是JSON格式化器，即用户希望模型输出的内容格式为JSON，还可以通过索引方式对输出内容中的某个字段进行选择。
+''')
+add_english_doc('JsonFormatter', '''\
+This class is a JSON formatter, that is, the user wants the model to output content is JSON format, and can also select a field in the output content by indexing.
+''')
+add_example('JsonFormatter', '''\
+>>> from lazyllm.components import JsonFormatter
+>>> jsonFormatter=JsonFormatter("[:, title]")  # ":" represents all elements in a list. "title" represents the "title" field in the json data.
+>>> model.formatter(jsonFormatter)
+''')
+
+# EmptyFormatter
+add_chinese_doc('EmptyFormatter', '''\
+此类是空的格式化器，即用户希望对模型的输出不做格式化，用户可以对模型指定该格式化器，也可以不指定(模型默认的格式化器就是空格式化器)
+''')
+add_english_doc('EmptyFormatter', '''\
+This type is the system default formatter. When the user does not specify anything or does not want to format the model output, this type is selected. The model output will be in the same format.
+''')
+add_example('EmptyFormatter', '''\
+>>> from lazyllm.components import EmptyFormatter
+>>> emptyFormatter = EmptyFormatter()
+>>> model.formatter(emptyFormatter)
+''')
+
 add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.launcher)
 add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.launcher)
 add_example = functools.partial(utils.add_example, module=lazyllm.launcher)

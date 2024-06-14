@@ -41,3 +41,14 @@ ModelDownloader
 .. autoclass:: lazyllm.components.ModelDownloader
     :members: 
     :exclude-members:
+
+Formatter
+==========
+
+.. autoclass:: lazyllm.components.JsonFormatter
+    :members:
+    :exclude-members:
+
+.. autoclass:: lazyllm.components.EmptyFormatter
+    :members:
+    :exclude-members:
