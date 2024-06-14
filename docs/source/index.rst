@@ -13,7 +13,9 @@ LazyLLM
    :caption: Best Practice Guide
    :maxdepth: 1
 
+   best_practice/flow
    best_practice/prompt
+   best_practice/module
    best_practice/rag
 
 .. toctree::
