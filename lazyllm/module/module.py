@@ -386,7 +386,7 @@ class TrainableModule(UrlModule):
 
     # modify default value to ''
     def prompt(self, prompt=''):
-        if prompt == '' and ModelDownloader.get_model_type(self.base_model) != 'llm':
+        if self.base_model != '' and prompt == '' and ModelDownloader.get_model_type(self.base_model) != 'llm':
             prompt = None
         return super(__class__, self).prompt(prompt)
 
