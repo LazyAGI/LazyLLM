@@ -512,8 +512,8 @@ Args:
 ''')
 
 add_example('ModelDownloader', '''\
-    >>> downloader = ModelDownloader(model_source='huggingface')
-    >>> downloader.download('GLM3-6B')
+>>> downloader = ModelDownloader(model_source='huggingface')
+>>> downloader.download('GLM3-6B')
 ''')
 
 # ============= Formatter
@@ -543,11 +543,155 @@ add_example('EmptyFormatter', '''\
 >>> model.formatter(emptyFormatter)
 ''')
 
+
+# ============= Prompter
+
+add_chinese_doc('prompter.PrompterBase', '''\
+Prompter的基类，自定义的Prompter需要继承此基类，并通过基类提供的 ``_init_prompt`` 函数来设置Prompt模板和Instruction的模板，以及截取结果所使用的字符串。可以查看 :doc:`/best_practice/prompt` 进一步了解Prompt的设计思想和使用方式。
+
+Prompt模板和Instruction模板都用 ``{}`` 表示要填充的字段，其中Prompt可包含的字段有 ``system``, ``history``, ``tools``等，而instruction_template可包含的字段为 ``instruction`` 和 ``extro_keys`` 。
+``instruction`` 由应用的开发者传入， ``instruction`` 中也可以带有 ``{}`` 用于让定义可填充的字段，方便用户填入额外的信息。
+''')
+
+add_english_doc('prompter.PrompterBase', '''\
+The base class of Prompter. A custom Prompter needs to inherit from this base class and set the Prompt template and the Instruction template using the `_init_prompt` function provided by the base class, as well as the string used to capture results. Refer to :doc:`/best_practice/prompt.rst` for further understanding of the design philosophy and usage of Prompts.
+
+Both the Prompt template and the Instruction template use ``{}`` to indicate the fields to be filled in. The fields that can be included in the Prompt are `system`, `history`, `tools`, etc., while the fields that can be included in the instruction_template are `instruction` and `extro_keys`.
+``instruction`` is passed in by the application developer, and the ``instruction`` can also contain ``{}`` to define fillable fields, making it convenient for users to input additional information.
+''')
+
+add_example('prompter.PrompterBase', '''\
+>>> from lazyllm.components.prompter import PrompterBase
+>>> class MyPrompter(PrompterBase):
+...     def __init__(self, instruction = None, extro_keys = None, show = False):
+...         super(__class__, self).__init__(show)
+...         instruction_template = f'{instruction}\\n{{extro_keys}}\\n'.replace('{extro_keys}', PrompterBase._get_extro_key_template(extro_keys))
+...         self._init_prompt("<system>{system}</system>\\n</instruction>{instruction}</instruction>{history}\\n{input}\\n, ## Response::", instruction_template, '## Response::')
+... 
+>>> p = MyPrompter('ins {instruction}')
+>>> p.generate_prompt('hello')
+'<system>You are an AI-Agent developed by LazyLLM.</system>\\n</instruction>ins hello\\n\\n</instruction>\\n\\n, ## Response::'
+>>> p.generate_prompt('hello world', return_dict=True)
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nins hello world\\n\\n'}, {'role': 'user', 'content': ''}]}
+''')
+
+add_chinese_doc('prompter.PrompterBase.generate_prompt', '''\
+根据用户输入，生成对应的Prompt.
+
+Args:
+    input (Option[str | Dict]):  Prompter的输入，如果是dict，会填充到instruction的槽位中；如果是str，则会作为输入。
+    history (Option[List[List | Dict]]): 历史对话，可以为 ``[[u, s], [u, s]]`` 或 openai的history格式，默认为None。
+    tools (Option[List[Dict]]: 可以使用的工具合集，大模型用作FunctionCall时使用，默认为None
+    label (Option[str]): 标签，训练或微调时使用，默认为None
+    show (bool): 标志是否打印生成的Prompt，默认为False
+    return_dict (bool): 标志是否返回dict，一般情况下使用 ``OnlineChatModule`` 时会设置为True。如果返回dict，则仅填充 ``instruction``。默认为False
+''')
+
+add_english_doc('prompter.PrompterBase.generate_prompt', '''\
+
+Generate a corresponding Prompt based on user input.
+
+Args:
+    input (Option[str | Dict]): The input from the prompter, if it's a dict, it will be filled into the slots of the instruction; if it's a str, it will be used as input.
+    history (Option[List[List | Dict]]): Historical conversation, can be ``[[u, s], [u, s]]`` or in openai's history format, defaults to None.
+    tools (Option[List[Dict]]): A collection of tools that can be used, used when the large model performs FunctionCall, defaults to None.
+    label (Option[str]): Label, used during fine-tuning or training, defaults to None.
+    show (bool): Flag indicating whether to print the generated Prompt, defaults to False.
+    return_dict (bool): Flag indicating whether to return a dict, generally set to True when using ``OnlineChatModule``. If returning a dict, only the ``instruction`` will be filled. Defaults to False.
+''')
+
+add_chinese_doc('prompter.PrompterBase.get_response', '''\
+用作对Prompt的截断，只保留有价值的输出
+
+Args:
+     output (str): 大模型的输出
+     input (Option[[str]): 大模型的输入，若指定此参数，会将输出中包含输入的部分全部截断，默认为None
+''')
+
+add_english_doc('prompter.PrompterBase.get_response', '''\
+Used to truncate the Prompt, keeping only valuable output.
+
+Args:
+        output (str): The output of the large model.
+        input (Option[str]): The input of the large model. If this parameter is specified, any part of the output that includes the input will be completely truncated. Defaults to None.
+''')
+
+
+add_chinese_doc('AlpacaPrompter', '''\
+Alpaca格式的Prompter，支持工具调用，不支持历史对话。
+
+Args:
+    instruction (Option[str]): 大模型的任务指令，至少带一个可填充的槽位(如 ``{instruction}``)。
+    extro_keys (Option[List]): 额外的字段，用户的输入会填充这些字段。
+    show (bool): 标志是否打印生成的Prompt，默认为False
+''')
+
+add_english_doc('AlpacaPrompter', '''\
+Alpaca-style Prompter, supports tool calls, does not support historical dialogue.
+
+Sure! Here is the translation, keeping the original format:
+
+Args:
+    instruction (Option[str]): Task instructions for the large model, with at least one fillable slot (e.g. ``{instruction}``).
+    extro_keys (Option[List]): Additional fields that will be filled with user input.
+    show (bool): Flag indicating whether to print the generated Prompt, default is False.
+''')
+
+add_example('AlpacaPrompter', '''\
+>>> from lazyllm import AlpacaPrompter
+>>> p = AlpacaPrompter('hello world {instruction}')
+>>> p.generate_prompt('this is my input')
+'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello world this is my input\\n\\n\\n### Response:\\n'
+>>> p.generate_prompt('this is my input', return_dict=True)
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello world this is my input\\n\\n'}, {'role': 'user', 'content': ''}]}
+>>>
+>>> p = AlpacaPrompter('hello world {instruction}, {input}', extro_keys=['knowledge'])
+>>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'))
+'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello world hello world, my input\\n\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nlazyllm\\n\\n\\n### Response:\\n'
+>>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'), return_dict=True)
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello world hello world, my input\\n\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nlazyllm\\n\\n'}, {'role': 'user', 'content': ''}]}
+''')
+
+add_chinese_doc('ChatPrompter', '''\
+多轮对话的Prompt，支持工具调用和历史对话
+
+Args:
+    instruction (Option[str]): 大模型的任务指令，可以带0到多个待填充的槽位,用 ``{}`` 表示。
+    extro_keys (Option[List]): 额外的字段，用户的输入会填充这些字段。
+    show (bool): 标志是否打印生成的Prompt，默认为False
+''')
+
+add_english_doc('ChatPrompter', '''\
+chat prompt, supports tool calls and historical dialogue.
+
+Args:
+    instruction (Option[str]): Task instructions for the large model, with 0 to multiple fillable slot, represented by ``{}``.
+    extro_keys (Option[List]): Additional fields that will be filled with user input.
+    show (bool): Flag indicating whether to print the generated Prompt, default is False.
+''')
+
+add_example('ChatPrompter', '''\
+>>> p = ChatPrompter('hello world')
+>>> p.generate_prompt('this is my input')
+'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\nthis is my input\\n<|Assistant|>:\\n'
+>>> p.generate_prompt('this is my input', return_dict=True)
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nhello world\\n\\n'}, {'role': 'user', 'content': 'this is my input'}]}
+>>>
+>>> p = ChatPrompter('hello world {instruction}', extro_keys=['knowledge'])
+>>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'))
+'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nLazyLLM-Knowledge\\n\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\nthis is my inp\\n<|Assistant|>:\\n'
+>>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), return_dict=True)
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nhello world this is my ins\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nLazyLLM-Knowledge\\n\\n\\n'}, {'role': 'user', 'content': 'this is my inp'}]}
+>>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), history=[['s1', 'e1'], ['s2', 'e2']])
+'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nLazyLLM-Knowledge\\n\\n\\n<|end_system|>\\n\\n<|Human|>:s1<|Assistant|>:e1<|Human|>:s2<|Assistant|>:e2\\n<|Human|>:\\nthis is my inp\\n<|Assistant|>:\\n'
+''')
+
+# ============= Launcher
+
 add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.launcher)
 add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.launcher)
 add_example = functools.partial(utils.add_example, module=lazyllm.launcher)
 
-# ============= Launcher
 # Launcher-EmptyLauncher
 add_chinese_doc('EmptyLauncher', '''\
 此类是 ``LazyLLMLaunchersBase`` 的子类，作为一个本地的启动器。
