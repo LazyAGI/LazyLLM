@@ -7,6 +7,7 @@ DEFAULT_SYSTEM_MESSAGE = 'You are a helpful assistant.'
 ROLE = 'role'
 CONTENT = 'content'
 NAME = 'name'
+TOOL_CALLS = 'tool_calls'
 
 SYSTEM = 'system'
 USER = 'user'
@@ -23,6 +24,9 @@ class BaseModelDict(BaseModel):
     
     def __str__(self):
         return f'{self.model_dump()}'
+
+    def model_dump(self, **kwargs):
+        return super().model_dump(exclude_none=True, **kwargs)
     
     def get(self, item, default=None):
         return getattr(self, item, default)
@@ -40,7 +44,8 @@ class ToolCall(BaseModelDict):
     type: Literal["function"] = "function"
 
 class Message(BaseModelDict):
-    role: Literal["system", "user", "assistant"] = "assistant"
+    role: Optional[Literal["system", "user", "assistant", "tool"]] = None
     content: Optional[str] = None
     name: Optional[str] = None
     tool_calls: Optional[List[ToolCall]] = None
+    tool_call_id: Optional[str] = None
