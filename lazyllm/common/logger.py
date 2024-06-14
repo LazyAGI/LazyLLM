@@ -132,6 +132,6 @@ def add_file_sink():
 
 add_file_sink()
 
-# os.register_at_fork(
-#     after_in_child=add_file_sink,
-# )
+os.register_at_fork(
+    after_in_child=add_file_sink,
+)
