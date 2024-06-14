@@ -5,7 +5,7 @@ LazyLLM中定义了大量的数据流组件，用于让您像搭积木一样，�
 
 定义和API文档
 ============
-数据流的定义和基本使用方法如 :ref:`apo.flow` 中所述
+数据流的定义和基本使用方法如 :ref:`api.flow` 中所述
 
 pipeline
 ============
@@ -184,6 +184,7 @@ AutoCapture（试验特性）
 为了进一步简化代码的复杂性，我们上线了自动捕获with块内定义的变量的能力，示例如下：
 
 .. code-block:: python
+
     from lazyllm import pipeline, _0
     with pipeline(auto_capture=True) as p:
         p1 = f1
@@ -211,6 +212,7 @@ parallel的所有组件共享输入，并将结果合并输出。 ``parallel`` �
 为了进一步简化流程的复杂性，不引入过多的匿名函数，parallel的结果可以做一个简单的后处理（目前仅支持 ``sum`` 或 ``asdict``），然后传给下一级。下面给出一个例子:
 
 .. code-block:: python
+
     from lazyllm import parallel
 
     def f1(input): return input
@@ -240,6 +242,7 @@ parallel的所有组件共享输入，并将结果合并输出。 ``parallel`` �
 ``parallel`` 默认是多线程并行执行的，在一些特殊情况下，可以根据需求改成顺序执行。下面给出一个例子：
 
 .. code-block:: python
+
     from lazyllm import parallel
 
     def f1(input): return input
@@ -257,4 +260,4 @@ parallel的所有组件共享输入，并将结果合并输出。 ``parallel`` �
 小结
 ============
 
-本篇着重讲解了 ``pipeline`` 和 ``parallel``，相信您对如何利用LazyLLM的flow搭建复杂的应用已经有了初步的认识，其他的数据流组件不做过多赘述，您可以参考 :ref:`apo.flow` 来获取他们的使用方式。
+本篇着重讲解了 ``pipeline`` 和 ``parallel``，相信您对如何利用LazyLLM的flow搭建复杂的应用已经有了初步的认识，其他的数据流组件不做过多赘述，您可以参考 :ref:`api.flow` 来获取他们的使用方式。

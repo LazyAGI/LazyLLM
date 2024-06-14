@@ -1,7 +1,7 @@
+.. _api.flow:
+
 lazyllm.Flow
 -----------------------
-
-.. _api.flow:
 
 .. autoclass:: lazyllm.flow.FlowBase
     :members: is_root, ancestor, for_each
