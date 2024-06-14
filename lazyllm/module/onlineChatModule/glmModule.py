@@ -12,7 +12,6 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
     def __init__(self,
                  base_url: str = "https://open.bigmodel.cn/api/paas/v4",
                  model: str = "glm-4",
-                 system_prompt: str = "你是一个乐于解答各种问题的助手，你的任务是为用户提供专业、准确、有见地的建议。",
                  stream: str = True,
                  return_trace: bool = False,
                  **kwargs):
@@ -22,11 +21,13 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
                                       base_url=base_url,
                                       model_name=model,
                                       stream=stream,
-                                      system_prompt=system_prompt,
                                       trainable_models=GLMModule.TRAINABLE_MODEL_LIST,
                                       return_trace=return_trace,
                                       **kwargs)
         FileHandlerBase.__init__(self)
+
+    def _get_system_prompt(self):
+        return "你是人工智能助手智谱清言（ChatGLM），是基于智谱 AI 公司于2023训练的语言模型开发的。你的任务是针对用户的问题和要求提供适当的答复和支持。"
 
     def _get_models_list(self):
         return ["glm-4", "glm-4v", "glm-3-turbo", "chatglm-turbo", "cogview-3", "embedding-2", "text-embedding"]

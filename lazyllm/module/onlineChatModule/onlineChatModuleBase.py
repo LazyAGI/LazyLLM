@@ -15,11 +15,9 @@ class OnlineChatModuleBase(ModuleBase):
                  api_key: str,
                  base_url: str,
                  model_name: str,
-                 system_prompt: str,
                  stream: bool,
                  trainable_models: List[str],
                  return_trace: bool = False,
-                 prompter: PrompterBase = None,
                  **kwargs):
         super().__init__(return_trace=return_trace)
         self._model_type = model_type
@@ -28,22 +26,30 @@ class OnlineChatModuleBase(ModuleBase):
         self._api_key = api_key
         self._base_url = base_url
         self._model_name = model_name
-        self.system_prompt(prompt=system_prompt)
         self._stream = stream
         self.trainable_mobels = trainable_models
         self._set_headers()
         self._set_chat_url()
-        self._prompt = prompter if prompter else ChatPrompter()
+        self.prompt()
         self._is_trained = False
         self.formatter()
         self._format_keys = []
         self.format_key()
 
-    def system_prompt(self, prompt: str = ""):
-        if len(prompt) > 0:
-            self._system_prompt = {"role": "system", "content": prompt}
+    def prompt(self, prompt=None):
+        if prompt is None:
+            self._prompt = ChatPrompter()
+        elif isinstance(prompt, PrompterBase):
+            self._prompt = prompt
+        elif isinstance(prompt, str):
+            self._prompt = ChatPrompter(prompt)
         else:
-            self._system_prompt = {"role": "system", "content": "You are a helpful assistant."}
+            raise TypeError(f"{prompt} type is not supported.")
+        self._prompt._set_model_configs(system=self._get_system_prompt())
+        return self
+
+    def _get_system_prompt(self):
+        raise NotImplementedError("_get_system_prompt is not implemented.")
 
     def _set_headers(self):
         self._headers = {

@@ -71,4 +71,4 @@ class JsonFormatter(FormatterBase):
                 lazyllm.LOG.error(f"{e}")
                 return ""
 
-            return result
+            return result[0] if len(result) == 1 and isinstance(result, list) else result
