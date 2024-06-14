@@ -1,6 +1,8 @@
-from typing import Dict, Optional, Any
 import pandas as pd
-import ahocorasick
+try:
+    import ahocorasick
+except ImportError:
+    raise ImportError("Please use `pip install pyahocorasick` to install ahocorasick")
 import os
 
 # 获取当前文件的绝对路径

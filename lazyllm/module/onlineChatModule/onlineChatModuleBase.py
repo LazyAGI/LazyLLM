@@ -58,7 +58,7 @@ class OnlineChatModuleBase(ModuleBase):
         return self._model_type
 
     def _set_chat_url(self):
-        self._url = os.path.join(self._base_url, 'chat/completions')
+        self._url = os.path.join(self._base_url, 'chat/completions').replace('\\','/')
 
     def _get_models_list(self):
         url = os.path.join(self._base_url, 'models')

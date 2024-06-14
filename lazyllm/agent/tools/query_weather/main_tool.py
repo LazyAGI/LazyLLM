@@ -1,7 +1,5 @@
-from typing import Literal, Dict, Any
-from datetime import datetime
+from typing import Literal
 import requests
-import json
 
 from lazyllm.agent.configs import WEATHER_URL, WEATHER_KEY
 from lazyllm.agent.tools.base import BaseTool
@@ -9,13 +7,6 @@ from lazyllm.agent.tools.query_weather.utils import CityCodeMatcher
 
 
 class QueryWeather(BaseTool):
-    """
-    查询目标城市当前/未来的天气情况，数据来源是中国气象局
-
-    Args:
-        city_name (str): 要查询的城市名，支持中文和拼音，例如"北京"、"上海"、"guangzhou"等
-        weather_type (Literal["base","all"]): 气象类型，可选值：base/all，base表示返回实况天气，all表示返回预报天气，默认值查询实况天气
-    """
 
     name = "query_weather"
     
@@ -34,6 +25,13 @@ class QueryWeather(BaseTool):
             weather_type:Literal["base","all"] = "base",
             **kwargs
         ) -> str:
+        """
+        查询目标城市当前/未来的天气情况，数据来源是中国气象局
+
+        Args:
+            city_name (str): 要查询的城市名，支持中文和拼音，例如"北京"、"上海"、"guangzhou"等
+            weather_type (Literal["base","all"]): 气象类型，可选值：base/all，base表示返回实况天气，all表示返回预报天气，默认值查询实况天气
+        """
         
         citycode, full_city_name = self._city_code_matcher.get_adcode_and_fullname(city_name)
         if not citycode: return f"没有找到[{city_name}]的天气信息，请确认城市名是否正确"

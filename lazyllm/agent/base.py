@@ -13,8 +13,8 @@ from lazyllm.module import OnlineChatModule
 from lazyllm.module import TrainableModule
 from lazyllm import LOG as logger
 
-from lazyllm.agent.protocol import DEFAULT_SYSTEM_MESSAGE, Message
-from lazyllm.agent.protocol import ASSISTANT, SYSTEM, USER, TOOL, ROLE, CONTENT, NAME
+from lazyllm.agent.protocol import DEFAULT_SYSTEM_MESSAGE, ASSISTANT, Message, Function, ToolCall
+from lazyllm.agent.protocol import SYSTEM, USER, TOOL, ROLE
 from lazyllm.agent.tools import BaseTool, TOOLS_MAP
 
 
@@ -52,38 +52,41 @@ class BaseAgent(lazyllm.ModuleBase, ABC):
         
     
     def forward(self,
-                input:Optional[str] = None,
-                history:Optional[Union[List[Dict], List[Message]]] = None,
+                __input:Optional[Union[str, Dict]] = None,
+                llm_chat_history:Optional[Union[List[Dict], List[Message]]] = None,
                 **kwargs
                 ) -> Iterator[Union[List[Message], List[Dict]]]:
         """
         Run the agent with the given input and messages.
 
         Args:
-            input (Optional[str]): The last input text of user.
-            history (Optional[Union[List[Dict], List[Message]]]): The messages to use for the agent.
+            __input (Optional[str]): The last input text of user.
+            llm_chat_history (Optional[Union[List[Dict], List[Message]]]): The history of the conversation.
             **kwargs: Additional keyword arguments to pass to the agent.
 
         Yields:
             Iterator[Union[List[Message], List[Dict]]]: The agent's response messages.
         """
-        history = history or []
-        assert input or history, "Either input or history must be provided."
-        messages:List[Message] = []
+        llm_chat_history = llm_chat_history or []
+        assert __input or llm_chat_history, "Either __input or llm_chat_history must be provided."
+        new_history:List[Message] = []
         ret_type = kwargs.pop("return_message_type", "message")
-        for message in history:
+        for message in llm_chat_history:
             if isinstance(message, dict):
-                messages.append(Message(**message))
+                new_history.append(Message(**message))
                 ret_type = "dict"
             elif isinstance(message, Message):
-                messages.append(message)
+                new_history.append(message)
             else:
                 raise ValueError(f"Unsupported message type: {type(message)}")
-            
-        if input:
-            messages.append(Message(role=USER, content=input))
+        if isinstance(__input, str):
+            __input = Message(role=USER, content=__input)
+        elif isinstance(__input, dict):
+            __input = Message(**__input)
+        else:
+            raise ValueError(f"Unsupported input type: {type(__input)}")
         
-        for response in self._run(messages=messages, **kwargs):
+        for response in self._run(__input, llm_chat_history=new_history, **kwargs):
             if ret_type == "message":
                 yield response
             else:
@@ -92,12 +95,13 @@ class BaseAgent(lazyllm.ModuleBase, ABC):
         
         
     @abstractmethod
-    def _run(self, messages:List[Message], **kwargs) -> Iterator[Message]:
+    def _run(self, __input:Message, llm_chat_history:List[Message], **kwargs) -> Iterator[Message]:
         raise NotImplementedError
 
 
     def _call_llm(self,
-                  messages:List[Message],
+                  __input:Message,
+                  llm_chat_history:List[Message],
                   tools:List[str] = None,
                   stream:bool = True,
                   generate_cfg: Dict[str, Any] = None) -> Iterator[Message]:
@@ -114,9 +118,9 @@ class BaseAgent(lazyllm.ModuleBase, ABC):
             Iterator[Message]: The LLM's response messages.
         """
         generate_cfg = generate_cfg or {}
-        if messages[0][ROLE] != SYSTEM:
-            messages.insert(0, Message(role=SYSTEM, content=self._system_message))
-        if messages[-1][ROLE] not in (USER, TOOL):
+        if not llm_chat_history or llm_chat_history[0][ROLE] != SYSTEM:
+            llm_chat_history.insert(0, Message(role=SYSTEM, content=self._system_message))
+        if __input[ROLE] not in (USER, TOOL):
             raise ValueError("The last message must be a user or tool message.")
         
         tools_desc_list = []
@@ -134,11 +138,13 @@ class BaseAgent(lazyllm.ModuleBase, ABC):
             if extra_param in generate_cfg:
                 generate_cfg['extra_body'][extra_param] = generate_cfg.pop(extra_param)
 
-        for response in self._llm(messages=messages, 
-                                 tools=tools_desc_list,
-                                 stream=stream, 
-                                 **generate_cfg):
-            yield response
+        response = self._llm( {"it_can_be_any_key":__input.model_dump()},
+                              llm_chat_history=[item.model_dump() for item in llm_chat_history],
+                              tools=tools_desc_list,
+                              stream=stream, 
+                              **generate_cfg)
+        
+        return transform_online_chat_module_response(response)
 
 
     def _call_tool(self, tool_name:str, tool_args:Union[str, dict], **kwargs) -> str:
@@ -180,3 +186,58 @@ class BaseAgent(lazyllm.ModuleBase, ABC):
             return {tool_name : TOOLS_MAP[tool_name]}
         if isinstance(tool, BaseTool):
             return {tool.name : tool}
+
+def transform_online_chat_module_response(response:Iterator[str]) -> Iterator[Message]:
+    args_cache, tool_name, tool_id = [], None, None
+    yield Message(role=ASSISTANT, content=None) # first response, role is not None
+    for chunk in response:
+        if isinstance(chunk, str):
+            chunk = json5.loads(chunk)
+        resp_message = chunk["choices"][0]["delta"]
+        content = resp_message.get("content", None)
+        tool_calls = resp_message.get("tool_calls", [])
+        ret_tool_calls = []
+        if tool_calls:
+            for tool_call in tool_calls:
+                tool_name = tool_call["function"].get("name", None)
+                if tool_name: # new tool call
+                    ret_tool_call = _get_tool_call(tool_name, args_cache, tool_id)
+                    if ret_tool_call:
+                        ret_tool_calls.append(ret_tool_call)
+                    args_cache = [] # ret_tool_call为空表示解析失败，也清空args_cache
+                tool_id = tool_call["id"]
+                tool_args = tool_call["function"].get("arguments", None)
+                if tool_args:
+                    args_cache.append(tool_args)
+            if content or ret_tool_calls:
+                yield Message(role=None, content=content, tool_calls=ret_tool_calls)
+        else:
+            if tool_name and args_cache:
+                ret_tool_call = _get_tool_call(tool_name, args_cache, tool_id)
+                if ret_tool_call:
+                    ret_tool_calls.append(ret_tool_call)
+                args_cache, tool_name, tool_id = [], None, None
+            if content or ret_tool_calls:
+                yield Message(role=None, content=content, tool_calls=ret_tool_calls if ret_tool_calls else None)
+        
+    if tool_name and args_cache:
+        ret_tool_call = _get_tool_call(tool_name, args_cache, tool_id)
+        if ret_tool_call:
+            yield Message(role=None, content=None, tool_calls=[ret_tool_call])         
+
+
+def _get_tool_call(tool_name:str, tool_args_cache:list, tool_id:str) -> str:
+    if not tool_args_cache: return
+    args = ''.join(tool_args_cache)
+    func = _format_func(tool_name, args)
+    if func:
+        return ToolCall(id=tool_id, function=func, type="function")
+
+def _format_func(func_name:str, args:str):
+    try:
+        args = json.loads(args)
+        return Function(name=func_name, arguments=json.dumps(args, ensure_ascii=False))
+    except:
+        logger.error(f"The args `{args}` of tool {func_name} is not json format, it will be ignored. ")
+        logger.debug(traceback.format_exc())
+    return None

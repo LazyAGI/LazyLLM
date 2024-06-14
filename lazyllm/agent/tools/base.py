@@ -1,4 +1,4 @@
-from typing import Dict, List, Any, Optional, Union
+from typing import  Any, Union
 from abc import ABC, abstractmethod
 try:
     import docstring_parser
@@ -68,9 +68,9 @@ def get_args_without_defaults(func):
 
 # 抽取 function 描述
 def transform_to_openai_function(tool:BaseTool):
-    parsed = docstring_parser.parse(tool.__doc__)
+    parsed = docstring_parser.parse(tool.call.__doc__)
 
-    # Extract descriptions, args, and returns
+    # Extract descriptions, args
     description = parsed.short_description
 
     args = {}
@@ -79,11 +79,6 @@ def transform_to_openai_function(tool:BaseTool):
             "description": param.description
         }
         args[param.arg_name].update(map_type(param.type_name))
-
-    returns = {
-        "description": parsed.returns.description if hasattr(parsed.returns, "description") else ""
-    }
-    returns.update(map_type(parsed.returns.type_name) if hasattr(parsed.returns, "type_name") else {'type':'string'})
 
     return {
         "type": "function",
@@ -95,7 +90,6 @@ def transform_to_openai_function(tool:BaseTool):
                 "properties": args,
                 "required": get_args_without_defaults(tool.call)
             },
-            # "returns": returns,
         }
     }
 
