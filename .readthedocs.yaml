@@ -4,10 +4,7 @@ build:
   os: "ubuntu-22.04"
   tools:
     python: "3.10"
-  jobs:
-      post_install:
-        - export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-        - echo $PYTHONPATH  # For debugging purposes
+
 
 python:
   install:
@@ -16,3 +13,7 @@ python:
 sphinx:
   configuration: docs/source/conf.py
 
+commands:
+  - export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+  - echo $PYTHONPATH  # For debugging purposes
+  - sphinx-build -b html docs/source docs/build
