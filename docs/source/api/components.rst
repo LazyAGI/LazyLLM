@@ -33,7 +33,7 @@ Launcher
 Prompter
 =========
 
-.. autoclass:: lazyllm.components.prompter.PrompterBase
+.. autoclass:: lazyllm.components.prompter.LazyLLMPrompterBase
     :members: generate_prompt, get_response
     :exclude-members:
 
