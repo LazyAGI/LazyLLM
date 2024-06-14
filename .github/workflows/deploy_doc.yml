@@ -6,7 +6,7 @@ on:
       - '*'
   pull_request:
     branches:
-      - main  #测试使用
+      - main
 
 jobs:
   deploy:
@@ -18,17 +18,25 @@ jobs:
       - name: Extract tag
         id: extract_tag
         run: |
-#          echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
           echo "BRANCH_NAME=${{ github.head_ref }}" >> $GITHUB_ENV
 
       - name: Build documentation
         run: |
           set -e
-          echo "Placeholder only"
-          echo $BRANCH_NAME
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+          cd docs
+          make clean
+          make html
+          cd ..
+          if [ -d "docs/build" ]; then
+            mv docs/build /home/mnt/platform_ci/GitHub/LazyAGI/LazyLLM_doc/$BRANCH_NAME
+          else
+            echo "Build directory does not exist."
+            exit 1
+          fi
 
       - name: Deploy
         run: |
           set -e
-          echo "Placeholder only"
-          echo $BRANCH_NAME
+          python -m http.server 8847 --directory /home/mnt/platform_ci/GitHub/LazyAGI/LazyLLM_doc
