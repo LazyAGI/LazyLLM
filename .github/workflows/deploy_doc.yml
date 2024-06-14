@@ -4,8 +4,9 @@ on:
   push:
     tags:
       - '*'
+  pull_request:
     branches:
-      - deploy_doc  #临时测试使用
+      - main  #测试使用
 
 jobs:
   deploy:
@@ -18,7 +19,7 @@ jobs:
         id: extract_tag
         run: |
 #          echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+          echo "BRANCH_NAME=${{ github.head_ref }}" >> $GITHUB_ENV
 
       - name: Build documentation
         run: |
