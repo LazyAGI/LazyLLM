@@ -62,6 +62,10 @@ ModelDownloader
 Formatter
 ==========
 
+.. autoclass:: lazyllm.components.formatter.LazyLLMFormatterBase
+    :members:
+    :exclude-members:
+
 .. autoclass:: lazyllm.components.JsonFormatter
     :members:
     :exclude-members:

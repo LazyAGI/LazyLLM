@@ -517,13 +517,41 @@ add_example('ModelDownloader', '''\
 ''')
 
 # ============= Formatter
+
+# FormatterBase
+add_chinese_doc('formatter.FormatterBase', '''\
+此类是格式化器的基类，格式化器是模型输出结果的格式化器，用户可以自定义格式化器，也可以使用LazyLLM提供的格式化器。
+主要方法：_parse_formatter:解析索引内容。_str_to_python:把字符串转化为python对象。_parse_py_data_by_formatter:根据自定义的格式化器和索引对python对象进行格式化。format:对传入的内容进行格式化，如果内容是字符串类型，先将字符串转化为python对象，再进行格式化。如果内容是python对象，直接进行格式化。
+''')
+
+add_english_doc('formatter.FormatterBase', '''\
+This class is the base class of the formatter. The formatter is the formatter of the model output result. Users can customize the formatter or use the formatter provided by LazyLLM.
+Main methods: _parse_formatter: parse the index content. _str_to_python: convert the string into a python object. _parse_py_data_by_formatter: format the python object according to the custom formatter and index. format: format the passed content. If the content is a string type, convert the string into a python object first, and then format it. If the content is a python object, format it directly.
+''')
+
+add_example('formatter.FormatterBase', '''\
+>>> from lazyllm.components.formatter import FormatterBase
+>>> class MyFormatter(LazyLLMFormatterBase):
+...    def _str_to_python(self, data):
+...        return custom(data)
+...
+...    def _parse_py_data_by_formatter(self, data, formatter):
+...        return custom(data, formatter)
+...
+>>> fmt = MyFormatter("[:]")
+>>> fmt.format("[1,2,3]")
+[1,2,3]
+''')
+
 # JsonFormatter
 add_chinese_doc('JsonFormatter', '''\
 此类是JSON格式化器，即用户希望模型输出的内容格式为JSON，还可以通过索引方式对输出内容中的某个字段进行选择。
 ''')
+
 add_english_doc('JsonFormatter', '''\
 This class is a JSON formatter, that is, the user wants the model to output content is JSON format, and can also select a field in the output content by indexing.
 ''')
+
 add_example('JsonFormatter', '''\
 >>> from lazyllm.components import JsonFormatter
 >>> jsonFormatter=JsonFormatter("[:, title]")  # ":" represents all elements in a list. "title" represents the "title" field in the json data.
@@ -534,15 +562,16 @@ add_example('JsonFormatter', '''\
 add_chinese_doc('EmptyFormatter', '''\
 此类是空的格式化器，即用户希望对模型的输出不做格式化，用户可以对模型指定该格式化器，也可以不指定(模型默认的格式化器就是空格式化器)
 ''')
+
 add_english_doc('EmptyFormatter', '''\
 This type is the system default formatter. When the user does not specify anything or does not want to format the model output, this type is selected. The model output will be in the same format.
 ''')
+
 add_example('EmptyFormatter', '''\
 >>> from lazyllm.components import EmptyFormatter
 >>> emptyFormatter = EmptyFormatter()
 >>> model.formatter(emptyFormatter)
 ''')
-
 
 # ============= Prompter
 
