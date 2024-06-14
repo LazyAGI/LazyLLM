@@ -35,8 +35,3 @@ jobs:
             echo "Build directory does not exist."
             exit 1
           fi
-
-      - name: Deploy
-        run: |
-          set -e
-          python -m http.server 8847 --directory /home/mnt/platform_ci/GitHub/LazyAGI/LazyLLM_doc
