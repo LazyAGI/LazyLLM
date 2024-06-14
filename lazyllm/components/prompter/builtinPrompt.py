@@ -98,7 +98,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                         history: List[Union[List[str], Dict[str, Any]]] = None,
                         tools: Union[List[Dict[str, Any]], None] = None,
                         label: Union[str, None] = None,
-                        *, show: bool = False, return_dict: bool = False) -> str:
+                        *, show: bool = False, return_dict: bool = False) -> Union[str, Dict]:
         instruction, input = self._get_instruction_and_input(input)
         history = self._get_histories(history, return_dict=return_dict)
         tools = self._get_tools(tools, return_dict=return_dict)

@@ -120,7 +120,9 @@ class Bind(object):
     class __None: pass
 
     class Input(object):
-        def __init__(self): self._item_key, self._attr_key = None, None
+        class __None: pass
+
+        def __init__(self): self._item_key, self._attr_key = Bind.Input.__None, Bind.Input.__None
 
         def __getitem__(self, key):
             self._item_key = key
@@ -135,9 +137,8 @@ class Bind(object):
                 input = input.input if input.input else input.kwargs
             elif isinstance(input, LazyLlmResponse):
                 input = input.messages
-            if self._item_key:
-                return input[self._item_key]
-            elif self._attr_key: return getattr(input, self._attr_key)
+            if self._item_key is not Bind.Input.__None: return input[self._item_key]
+            elif self._attr_key is not Bind.Input.__None: return getattr(input, self._attr_key)
             return input
 
     def __init__(self, __bind_func=__None, *args, **kw):
