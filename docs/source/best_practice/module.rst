@@ -58,7 +58,7 @@ Module的API文档可以参考 :ref:`api.module`
 
 .. note::
     
-    通过调用 ``evalset`` 来设置测试集，所有的 ``Module`` 均可以设置测试集
+    测试集是通过调用 ``evalset`` 来设置的，不需要显式的重写某个函数。所有的 ``Module`` 均可以设置测试集
 
 
 通过内置的注册器
@@ -99,6 +99,123 @@ Submodules的概念
 
 1. 作为构造参数传入 ``ActionModule`` 或 ``ServerModule`` 等，下面给出一个例子
 
+    .. code-block:: python
+
+        >>> m1 = MyModule('m1')
+        >>> m2 = MyModule('m2')
+        >>> am = lazyllm.ActionModule(m1, m2)
+        >>> am.submodules
+        [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>]
+        >>> sm = lazyllm.ServerModule(m1)
+        >>> sm.submodules
+        [<Module type=MyModule name=m1>]
+
 .. note::
     
-    当flow作为 ``ActionModule`` 或 ``ServerModule`` 的构造参数时，若其中的存在 ``Module`` ，也会变成  ``ActionModule`` 或 ``ServerModule`` 的 ``SubModule``
+    - 当flow作为 ``ActionModule`` 或 ``ServerModule`` 的构造参数时，若其中的存在 ``Module`` ，也会变成  ``ActionModule`` 或 ``ServerModule`` 的 ``SubModule`` 。下面给出一个例子：
+
+        .. code-block:: python
+
+            >>> m1 = MyModule('m1')
+            >>> m2 = MyModule('m2')
+            >>> m3 = MyModule('m3')
+            >>> am = lazyllm.ActionModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
+            >>> am.submodules
+            [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
+            >>> sm = lazyllm.ServerModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
+            >>> sm.submodules
+            [<Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>]
+            >>> sm.submodules[0].submodules
+            [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
+    
+    - 直接对 ``Module`` 打印 ``repr`` 时，会以层级结构的形式展示其所有的submodule。接上一个例子：
+
+        .. code-block:: python
+
+            >>> sm
+            <Module type=Server stream=False return_trace=False>
+            └- <Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>
+                └- <Flow type=Pipeline items=[]>
+                    |- <Module type=MyModule name=m1>
+                    └- <Flow type=Parallel items=[]>
+                        |- <Module type=MyModule name=m2>
+                        └- <Module type=MyModule name=m3>
+
+2. 在一个 ``Module`` 中设置另一个 ``Module`` 为成员变量，即可以让另一个 ``Module`` 变成自己是 ``submodule``，下面给出一个例子
+
+    .. code-block:: python
+
+        >>> class MyModule2(lazyllm.module.ModuleBase):
+        ...    
+        ...     def __init__(self, name, return_trace=True):
+        ...         super(__class__, self).__init__(return_trace=return_trace)
+        ...         self.name = name
+        ...         self.m1_1 = MyModule('m1-1')
+        ...         self.m1_2 = MyModule('m1-2')
+        ...
+        >>> m2 = MyModule2('m2')
+        >>> m2.submodules
+        [<Module type=MyModule name=m1-1>, <Module type=MyModule name=m1-2>]
+
+利用Submodules实现应用的联合部署
+++++++++++++++++++++++++++++++
+
+当训练/微调或部署一个 ``Module`` 时，会通过深度优先的策略查找其所有的 ``SubModule`` ，并逐一部署。示例如下：
+
+.. code-block::
+
+    >>> class MyModule2(lazyllm.module.ModuleBase):
+    ...    
+    ...     def __init__(self, name, return_trace=True):
+    ...         super(__class__, self).__init__(return_trace=return_trace)
+    ...         self.name = name
+    ...         self.m1_1 = MyModule(f'{name} m1-1')
+    ...         self.m1_2 = MyModule(f'{name} m1-2')
+    ...
+    ...     def _get_deploy_tasks(self):
+    ...         return lazyllm.pipeline(lambda : print(f'Module {self.name} deployed!'))
+    ...
+    ...     def __repr__(self):
+    ...         return lazyllm.make_repr('Module', self.__class__, subs=[repr(self.m1_1), repr(self.m1_2)])
+    ...
+    >>> am = lazyllm.ActionModule(MyModule2('m2-1'), MyModule2('m2-2'))
+    >>> am
+    <Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>
+    |- <Module type=MyModule2>
+    |   |- <Module type=MyModule name=m2-1 m1-1>
+    |   └- <Module type=MyModule name=m2-1 m1-2>
+    └- <Module type=MyModule2>
+        |- <Module type=MyModule name=m2-2 m1-1>
+        └- <Module type=MyModule name=m2-2 m1-2>
+    >>> am.update()
+    Module m2-1 m1-1 trained!
+    Module m2-1 m1-2 trained!
+    Module m2-2 m1-1 trained!
+    Module m2-2 m1-2 trained!
+    Module m2-1 m1-1 deployed!
+    Module m2-1 m1-2 deployed!
+    Module m2-1 deployed!
+    Module m2-2 m1-1 deployed!
+    Module m2-2 m1-2 deployed!
+    Module m2-2 deployed!
+
+.. note::
+
+    可以看出，当更新 ``ActionModule`` 时，会将其所有的 ``SubModule`` 一并进行更新；然后若有部署任务，则会在全部的训练/微调任务执行完毕之后，
+    执行所有的部署任务。因为可能存在父模块对子模块的依赖，因此在部署时，会优先部署子模块，然后部署父模块。
+
+.. note::
+
+    当配置了 ``Redis`` 服务时，便可以利用LazyLLM提供的轻量级网关的机制，实现所有服务的并行部署。
+
+结合FLow搭建复杂应用
+--------------------
+
+
+.. note::
+
+    虽然看起来是由模块组合成数据流，然后统一启动，但我们并不是“静态图”，主要表现为：
+    
+    - 我们使用了基础的python语法来搭建应用，使用方式非常接近于传统的编程方式。
+    - 你仍然可以利用python强大而灵活的特性，在运行的过程中改变已经搭建好的应用的拓扑结构，而后续的执行依据你修改之后的结构。
+    - 你可以灵活的向模块的连接处，注入你所希望执行的hook函数，这些函数甚至可以是运行时定义的。
