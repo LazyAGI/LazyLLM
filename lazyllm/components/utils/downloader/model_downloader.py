@@ -33,7 +33,7 @@ class ModelDownloader():
             if model.split(os.sep)[-1].casefold() in model_name_set:
                 return info['type']
         return 'llm'
-    
+
     @classmethod
     def get_model_name(cls, model) -> str:
         search_string = os.path.basename(model)
@@ -44,7 +44,7 @@ class ModelDownloader():
             ):
                 return model_name
         return ""
-    
+
     @classmethod
     def get_model_prompt_keys(cls, model) -> dict:
         model_name = cls.get_model_name(model)
