@@ -360,6 +360,9 @@ class LazyLlmResponse(struct):
     trace: str = ''
     err: Tuple[int, str] = (0, '')
 
+    def __repr__(self): return repr(self.messages)
+    def __str__(self): return str(self.messages)
+
 
 class ReqResHelper(object):
     def __init__(self):
