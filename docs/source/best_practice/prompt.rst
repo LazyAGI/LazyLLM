@@ -81,6 +81,8 @@ LazyLLM Prompter的设计思路
 
     在内置的 ``Prompter`` 中， ``Alpaca``的 ``InstructionTemplate`` 额外附带了 ``alpaca`` 格式的标准提示词，即 ``Below is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request``
 
+.. _bestpractice.prompt.analysis:
+
 Prompt生成过程解析
 ^^^^^^^^^^^^^^^^^^^^^
 
@@ -211,18 +213,77 @@ Query为string，而非dict
     >>> prompter.generate_prompt('帮我查询一下今天的天气', tools=tools)
     '<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\n帮我查询一下今天的天气\\n<|Assistant|>:\\n'
 
+工具会在 :ref:`bestpractice.prompt.analysis` 中的步骤4，转换为json后被读取。
+
+.. note::
+    
+    如果是使用线上模型，工具会变成和 ``messages`` 并列的一个字段，示例如下：
+
+    .. code-block:: python
+
+        >>> import lazyllm
+        >>> tools=[dict(type='function', function=dict(name='example'))]
+        >>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extro_keys='input', tools=tools)
+        >>> prompter.generate_prompt('帮我查询一下今天的天气', return_dict=True)
+        {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n'}, {'role': 'user', 'content': ''}],
+         'tools': [{'type': 'function', 'function': {'name': 'example'}}]}
 
 使用历史对话
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
+如果我们想让模型具备多轮对话的能力，就需要将对话上下文拼接到 ``prompt`` 当中。上下文是由用户传入的，但需要以键值对的形式传入。下面给出一个例子：
+
+.. code-block:: python
+
+    >>> import lazyllm
+    >>> prompter = lazyllm.ChatPrompter('你是一个对话机器人，现在你要和用户进行友好的对话')
+    >>> prompter.generate_prompt('我们聊会儿天吧', history=[['你好', '你好，我是一个对话机器人，有什么能为您服务的']])
+    '<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n<|end_system|>\\n\\n<|Human|>:你好<|Assistant|>:你好，我是一个对话机器人，有什么能为您服务的\\n<|Human|>:\\n我们聊会儿天吧\\n<|Assistant|>:\\n'
+    >>> prompter.generate_prompt('我们聊会儿天吧', history=[['你好', '你好，我是一个对话机器人，有什么能为您服务的']], return_dict=True)
+    {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\n你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n'}, {'role': 'user', 'content': '你好'}, {'role': 'assistant', 'content': '你好，我是一个对话机器人，有什么能为您服务的'}, {'role': 'user', 'content': '我们聊会儿天吧'}]}
+    >>> prompter.generate_prompt('我们聊会儿天吧', history=[dict(role='user', content='你好'), dict(role='assistant', content='你好，我是一个对话机器人，有什么能为您服务的')], return_dict=True)
+    {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\n你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n'}, {'role': 'user', 'content': '你好'}, {'role': 'assistant', 'content': '你好，我是一个对话机器人，有什么能为您服务的'}, {'role': 'user', 'content': '我们聊会儿天吧'}]}
+
+历史对话会在 :ref:`bestpractice.prompt.analysis` 中的步骤4，做简单的格式转换后被读取。
+
+.. note::
+
+    - 只有 ``ChatPrompter`` 支持传入历史对话
+    - 当输入是 ``[[a, b], ...]`` 格式时，同时支持 ``return_dict`` 为 ``True`` 或 ``False`` ， 而当输入为  ``[dict, dict]`` 格式时，仅支持 ``return_dict`` 为 ``True``
 
 和OnlineChatModule一起使用
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
+当 ``Prompter`` 和 ``和OnlineChatModule`` 一起使用时， ``和OnlineChatModule.__call__`` 会调用 ``Prompter.generate_prompt`` ，并且将 ``__input``,
+``history`` 和 ``tools`` 传给 ``generate_prompt`` ，此时 ``generate_prompt`` 的 ``return_dict`` 会被设置为 ``True``。下面给出一个例子：
+
+.. code-block:: python
+
+    import lazyllm
+    instruction = '你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{context}，用户的问题是{input}, 现在请你做出回答。'
+    prompter = lazyllm.AlpacaPrompter(instruction)
+    module = lazyllm.OnlineChatModule('openai').prompt(prompter)
+    module(dict(context='背景', input='输入'))
 
 和TrainableModule一起使用
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
+当 ``Prompter`` 和 ``TrainableModule`` 一起使用时， ``TrainableModule.__call__`` 会调用 ``Prompter.generate_prompt`` ，并且将 ``__input``,
+``history`` 和 ``tools`` 传给 ``generate_prompt`` ，此时 ``generate_prompt`` 的 ``return_dict`` 会被设置为 ``True``。下面给出一个例子：
+
+.. code-block:: python
+
+    import lazyllm
+    instruction = '你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{context}，用户的问题是{input}, 现在请你做出回答。'
+    prompter = lazyllm.AlpacaPrompter(instruction)
+    module = lazyllm.TrainableModule('internlm2-chat-7b').prompt(prompter)
+    module.start()
+    module(dict(context='背景', input='输入'))
+
+.. note::
+
+    - 我们保证了 ``Prompter`` 在 ``TrainableModule`` 和 ``和OnlineChatModule`` 具有一致的使用体验，您可以方便的更换模型以进行效果的尝试。
+    - ``TrainableModule`` 需要手动调用 ``start`` 以启动服务，想了解更多关于 ``TrainableModule`` 的用法，可以参考 :ref:`api.module`
 
 LazyLLM中内置的场景Prompt
 -------------------------
