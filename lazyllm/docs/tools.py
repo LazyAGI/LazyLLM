@@ -37,9 +37,9 @@ add_example('Document', r"""
     >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 """)
 
-add_english_doc('Rerank', r"""
+add_english_doc('Reranker', r"""
 Initializes a Rerank module for postprocessing and reranking of nodes (documents).
-This constructor initializes a Rerank module that configures a reranking process based on a specified reranking type. It allows for the dynamic selection and instantiation of reranking kernels (algorithms) based on the type and provided keyword arguments.
+This constructor initializes a Reranker module that configures a reranking process based on a specified reranking type. It allows for the dynamic selection and instantiation of reranking kernels (algorithms) based on the type and provided keyword arguments.
 
 Arguments:
     types: The type of reranker to be used for the postprocessing and reranking process. Defaults to 'Reranker'.
@@ -51,7 +51,7 @@ Detailed explanation of reranker types
   - KeywordFilter：This registered reranking function instantiates a KeywordNodePostprocessor with specified required and excluded keywords. It filters nodes based on the presence or absence of these keywords.
 """)
 
-add_chinese_doc('Rerank', r"""
+add_chinese_doc('Reranker', r"""
 用于创建节点（文档）后处理和重排序的模块。
 
 Arguments:
@@ -64,12 +64,12 @@ Arguments:
   - KeywordFilter：实例化一个具有指定必需和排除关键字的 KeywordNodePostprocessor。它根据这些关键字的存在或缺失来过滤节点。
 """)
 
-add_example('Rerank', r"""
+add_example('Reranker', r"""
     >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
     >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
     >>> rm = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
-    >>> rerank = Rerank(types='SimilarityFilter', threshold=2.0)
-    >>> m = lazyllm.ActionModule(rm, rerank)
+    >>> reranker = Reranker(types='SimilarityFilter', threshold=2.0)
+    >>> m = lazyllm.ActionModule(rm, reranker)
     >>> m.start()
     >>> print(m("query"))  
 """)

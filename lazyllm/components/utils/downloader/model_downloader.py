@@ -27,13 +27,31 @@ class ModelDownloader():
             if 'type' not in info: continue
 
             model_name_set = {name.casefold()}
-            for source in info:
-                if source == 'type': continue
-                model_name_set.add(info[source].split('/')[-1].casefold())
+            for source in info['source']:
+                model_name_set.add(info['source'][source].split('/')[-1].casefold())
 
             if model.split(os.sep)[-1].casefold() in model_name_set:
                 return info['type']
         return 'llm'
+    
+    @classmethod
+    def get_model_name(cls, model) -> str:
+        search_string = os.path.basename(model)
+        for model_name, sources in model_name_mapping.items():
+            if model_name.lower() == search_string.lower() or any(
+                os.path.basename(source_file).lower() == search_string.lower()
+                for source_file in sources["source"].values()
+            ):
+                return model_name
+        return ""
+    
+    @classmethod
+    def get_model_prompt_keys(cls, model) -> dict:
+        model_name = cls.get_model_name(model)
+        if model_name and "prompt_keys" in model_name_mapping[model_name]:
+            return model_name_mapping[model_name]["prompt_keys"]
+        else:
+            return dict()
 
     def download(self, model=''):
         assert isinstance(model, str), "model name should be a string."
@@ -46,7 +64,7 @@ class ModelDownloader():
             print("[WARNING] model automatic downloads only support Huggingface and Modelscope currently.")
             return model
 
-        if model in model_name_mapping.keys() and self.model_source in model_name_mapping[model].keys():
+        if model in model_name_mapping.keys() and self.model_source in model_name_mapping[model][['source']].keys():
             full_model_dir = os.path.join(self.cache_dir, model)
             if self._is_model_valid(full_model_dir):
                 print(f"[INFO] model link found at {full_model_dir}")
@@ -54,7 +72,7 @@ class ModelDownloader():
             else:
                 self._unlink_or_remove_model(full_model_dir)
 
-            mapped_model_name = model_name_mapping[model][self.model_source]
+            mapped_model_name = model_name_mapping[model]['source'][self.model_source]
             model_save_dir = self._do_download(mapped_model_name)
             if model_save_dir:
                 os.symlink(model_save_dir, full_model_dir, target_is_directory=True)
@@ -72,8 +90,8 @@ class ModelDownloader():
         # For short model name, get all possible names from the mapping.
         if model_name in model_name_mapping.keys():
             for source in ('huggingface', 'modelscope'):
-                if source in model_name_mapping[model_name].keys():
-                    model_dirs.append(model_name_mapping[model_name][source].replace('/', os.sep))
+                if source in model_name_mapping[model_name]['source'].keys():
+                    model_dirs.append(model_name_mapping[model_name]['source'][source].replace('/', os.sep))
         model_dirs.append(model_name.replace('/', os.sep))
 
         for model_path in self.model_pathes:

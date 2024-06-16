@@ -240,7 +240,7 @@ class UrlModule(ModuleBase):
 
         def _callback(text):
             if isinstance(text, LazyLlmResponse):
-                text.messages = self._prompt.get_response(self._extract_result_func(text.messages))
+                text = self._prompt.get_response(self._extract_result_func(text.messages))
             else:
                 text = self._prompt.get_response(self._extract_result_func(text))
             return text
@@ -264,13 +264,15 @@ class UrlModule(ModuleBase):
             for r in _impl(): pass
             return r
 
-    def prompt(self, prompt=None):
+    def prompt(self, prompt=None, prompt_keys=None):
         if prompt is None:
             self._prompt = EmptyPrompter()
         elif isinstance(prompt, PrompterBase):
             self._prompt = prompt
         elif isinstance(prompt, str):
             self._prompt = ChatPrompter(prompt)
+        if prompt_keys:
+            self._prompt.set_prompt_keys(prompt_keys)
         return self
 
     def _set_template(self, template_message=None, input_key_name=None, template_headers=None):
@@ -302,6 +304,7 @@ class UrlModule(ModuleBase):
         m.prompt(prompt=self._prompt)
         m._module_id = self._module_id
         m.name = self.name
+        m._extract_result_func = self._extract_result_func
         m._set_template(
             self.template_message,
             self.input_key_name,
@@ -388,7 +391,11 @@ class TrainableModule(UrlModule):
     def prompt(self, prompt=''):
         if prompt == '' and ModelDownloader.get_model_type(self.base_model) != 'llm':
             prompt = None
-        return super(__class__, self).prompt(prompt)
+        if prompt:
+            prompt_keys = ModelDownloader.get_model_prompt_keys(self.base_model)
+        else:
+            prompt_keys = None
+        return super(__class__, self).prompt(prompt, prompt_keys=prompt_keys)
 
     def _get_args(self, arg_cls, disable=[]):
         args = getattr(self, f'_{arg_cls}_args', dict())
@@ -428,13 +435,13 @@ class TrainableModule(UrlModule):
             self._deploy = deployer.__class__
             self._set_template(copy.deepcopy(deployer.message_format), deployer.input_key_name,
                                copy.deepcopy(deployer.default_headers))
+            if hasattr(self._deploy, 'extract_result'): self._extract_result_func = self._deploy.extract_result
             return deployer
         return Pipeline(lambda *a: lazyllm.package(target_path, self.base_model),
                         build_deployer(self.base_model), self.url)
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
-        if hasattr(self._deploy, 'extract_result'): self._extract_result_func = self._deploy.extract_result
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Trainable', mode=self._mode, basemodel=self.base_model,

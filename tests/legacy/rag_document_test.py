@@ -1,5 +1,5 @@
 import lazyllm
-from lazyllm import pipeline, parallel, Identity, Document, Retriever, Rerank, deploy, launchers
+from lazyllm import pipeline, parallel, Identity, Document, Retriever, Reranker, deploy, launchers
 from lazyllm.components.embedding.embed import LazyHuggingFaceEmbedding
 
 template = (
@@ -15,10 +15,10 @@ documents = Document(dataset_path='/file/to/yourpath',
                      embed=lazyllm.ServerModule(LazyHuggingFaceEmbedding('BAAI/bge-large-zh-v1.5')))
 
 rm = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
-rerank = Rerank(types='Reranker', model='BAAI/bge-reranker-large')
+reranker = Reranker(types='MoudleReranker', model='BAAI/bge-reranker-large')
 m = lazyllm.ActionModule(
     parallel.sequential(
-        context_str=pipeline(parallel.sequential(Identity, rm), rerank),
+        context_str=pipeline(parallel.sequential(Identity, rm), reranker),
         query_str=Identity
     ).asdict,
     llm

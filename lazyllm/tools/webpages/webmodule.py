@@ -211,6 +211,8 @@ class WebModule(ModuleBase):
                                 s = ""
                     except ValueError:
                         s = s
+                    except KeyError:
+                        s = s
                 return s, ''.join(log_history)
 
             log_history = []
