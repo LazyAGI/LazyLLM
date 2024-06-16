@@ -179,6 +179,9 @@ class ModuleBase(object):
     def _overwrote(self, f):
         return getattr(self.__class__, f) is not getattr(__class__, f)
 
+    def __repr__(self):
+        return lazyllm.make_repr('Module', self.__class__, name=self.name)
+
 
 class UrlModule(ModuleBase):
     __enable_request__ = True

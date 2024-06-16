@@ -599,6 +599,7 @@ Args:
     instruction (Option[str]): 大模型的任务指令，至少带一个可填充的槽位(如 ``{instruction}``)。
     extro_keys (Option[List]): 额外的字段，用户的输入会填充这些字段。
     show (bool): 标志是否打印生成的Prompt，默认为False
+    tools (Option[list]): 大模型可以使用的工具集合，默认为None
 ''')
 
 add_english_doc('AlpacaPrompter', '''\
@@ -610,6 +611,7 @@ Args:
     instruction (Option[str]): Task instructions for the large model, with at least one fillable slot (e.g. ``{instruction}``).
     extro_keys (Option[List]): Additional fields that will be filled with user input.
     show (bool): Flag indicating whether to print the generated Prompt, default is False.
+    tools (Option[list]): Tool-set which is provived for LLMs, default is None.
 ''')
 
 add_example('AlpacaPrompter', '''\
