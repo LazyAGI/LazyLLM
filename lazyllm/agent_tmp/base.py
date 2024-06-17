@@ -13,9 +13,9 @@ from lazyllm.module import OnlineChatModule
 from lazyllm.module import TrainableModule
 from lazyllm import LOG as logger
 
-from lazyllm.agent.protocol import DEFAULT_SYSTEM_MESSAGE, ASSISTANT, Message, Function, ToolCall
-from lazyllm.agent.protocol import SYSTEM, USER, TOOL, ROLE
-from lazyllm.agent.tools import BaseTool, TOOLS_MAP
+from lazyllm.agent_tmp.protocol import DEFAULT_SYSTEM_MESSAGE, ASSISTANT, Message, Function, ToolCall
+from lazyllm.agent_tmp.protocol import SYSTEM, USER, TOOL, ROLE
+from lazyllm.agent_tmp.tools import BaseTool, TOOLS_MAP
 
 
 class BaseAgent(lazyllm.ModuleBase, ABC):

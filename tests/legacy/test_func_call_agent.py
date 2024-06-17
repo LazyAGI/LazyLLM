@@ -1,8 +1,9 @@
 import lazyllm
-from lazyllm.agent import FuncCallAgent
+from lazyllm.agent_tmp import FuncCallAgent
 from lazyllm.module.onlineChatModule.openaiModule import OpenAIModule
 
 lazyllm.config.add("openai_api_key", str, "Your OpenAI API key", "OPENAI_API_KEY")
+lazyllm.config.add("weather_key", str, "Your amap weather API key", "WEATHER_KEY")
 
 if __name__ == '__main__':
     fc_agent = FuncCallAgent(

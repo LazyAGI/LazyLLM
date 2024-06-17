@@ -4,10 +4,10 @@ import copy
 from lazyllm.module import OnlineChatModule
 from lazyllm.module import TrainableModule
 
-from lazyllm.agent.protocol import DEFAULT_SYSTEM_MESSAGE, Message, ROLE, CONTENT, NAME, TOOL_CALLS, ASSISTANT, TOOL
-from lazyllm.agent.base import BaseAgent
-from lazyllm.agent.configs import MAX_CONSECUTIVE_TOOL_CALL_NUM
-from lazyllm.agent.tools import BaseTool
+from lazyllm.agent_tmp.protocol import DEFAULT_SYSTEM_MESSAGE, Message, ROLE, CONTENT, NAME, TOOL_CALLS, ASSISTANT, TOOL
+from lazyllm.agent_tmp.base import BaseAgent
+from lazyllm.agent_tmp.configs import MAX_CONSECUTIVE_TOOL_CALL_NUM
+from lazyllm.agent_tmp.tools import BaseTool
 
 
 class FuncCallAgent(BaseAgent):
