@@ -21,6 +21,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     @staticmethod
     def _get_extro_key_template(extro_keys, prefix='Here are some extra messages you can referred to:\n\n'):
         if extro_keys:
+            if isinstance(extro_keys, str): extro_keys = [extro_keys]
+            assert isinstance(extro_keys, (tuple, list)), 'Only str, tuple[str], list[str] are supported'
             return prefix + ''.join([f"### {k}:\n{{{k}}}\n\n" for k in extro_keys])
         return ''
 
@@ -34,7 +36,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     def _get_tools(self, tools, *, return_dict):
         if self._tools:
             assert tools is None
-            tools = self.tools
+            tools = self._tools
 
         return tools if return_dict else '### Function-call Tools. \n\n' + json.dumps(tools) + '\n\n' if tools else ''
 

@@ -30,6 +30,8 @@ Launcher
     :members: 
     :exclude-members: Status, get_idle_nodes
 
+.. _api.components.prompter:
+
 Prompter
 =========
 

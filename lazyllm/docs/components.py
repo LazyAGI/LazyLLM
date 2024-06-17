@@ -81,19 +81,20 @@ add_example('register', ['''\
 ... def myfunc(input):
 ...     return input
 ...
->>> mygroup.myfunc()(1)
+>>> lazyllm.mygroup.myfunc()(1)
 1
 ''', '''\
 >>> @lazyllm.component_register.cmd('mygroup')
 ... def mycmdfunc(input):
 ...     return f'echo {input}'
 ...
->>> mygroup.mycmdfunc()(1)
+>>> lazyllm.mygroup.mycmdfunc()(1)
 PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) Command: echo 1
 PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1
 ''', '''\
+>>> import lazyllm
 >>> lazyllm.component_register.new_group('mygroup')
->>> mygroup
+>>> lazyllm.mygroup
 {}
 '''])
 
@@ -512,7 +513,8 @@ Args:
 ''')
 
 add_example('ModelDownloader', '''\
->>> downloader = ModelDownloader(model_source='huggingface')
+>>> from lazyllm.components import ModelDownloader
+>>> downloader = ModelDownloader(model_source='modelscope')
 >>> downloader.download('GLM3-6B')
 ''')
 
@@ -653,6 +655,7 @@ Args:
     instruction (Option[str]): 大模型的任务指令，至少带一个可填充的槽位(如 ``{instruction}``)。
     extro_keys (Option[List]): 额外的字段，用户的输入会填充这些字段。
     show (bool): 标志是否打印生成的Prompt，默认为False
+    tools (Option[list]): 大模型可以使用的工具集合，默认为None
 ''')
 
 add_english_doc('AlpacaPrompter', '''\
@@ -664,6 +667,7 @@ Args:
     instruction (Option[str]): Task instructions for the large model, with at least one fillable slot (e.g. ``{instruction}``).
     extro_keys (Option[List]): Additional fields that will be filled with user input.
     show (bool): Flag indicating whether to print the generated Prompt, default is False.
+    tools (Option[list]): Tool-set which is provived for LLMs, default is None.
 ''')
 
 add_example('AlpacaPrompter', '''\
@@ -741,6 +745,7 @@ Args:
 ''')
 
 add_example('EmptyLauncher', '''\
+>>> import lazyllm
 >>> launcher = lazyllm.launchers.empty()
 ''')
 
@@ -776,6 +781,7 @@ Args:
 ''')
 
 add_example('SlurmLauncher', '''\
+>>> import lazyllm
 >>> launcher = lazyllm.launchers.slurm(partition='partition_name', nnode=1, nproc=1, ngpus=1, sync=False)
 ''')
 
@@ -815,6 +821,7 @@ Args:
 ''')
 
 add_example('ScoLauncher', '''\
+>>> import lazyllm
 >>> launcher = lazyllm.launchers.sco(partition='partition_name', nnode=1, nproc=1, ngpus=1, sync=False)
 ''')
 
@@ -847,5 +854,6 @@ Notes:
 ''')
 
 add_example('RemoteLauncher', '''\
+>>> import lazyllm
 >>> launcher = lazyllm.launchers.remote(ngpus=1)
 ''')
