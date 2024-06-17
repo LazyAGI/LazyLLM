@@ -1,3 +1,5 @@
+.. _api.module:
+
 lazyllm.Module
 -----------------------
 

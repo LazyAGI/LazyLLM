@@ -1,10 +1,10 @@
-from typing import List, Union
+from typing import List, Union, Optional
 from .builtinPrompt import LazyLLMPrompterBase
 
 class AlpacaPrompter(LazyLLMPrompterBase):
     def __init__(self, instruction: Union[None, str] = None,
-                 extro_keys: Union[None, List[str]] = None, show: bool = False):
-        super(__class__, self).__init__(show)
+                 extro_keys: Union[None, List[str]] = None, show: bool = False, tools: Optional[List] = None):
+        super(__class__, self).__init__(show, tools=tools)
         instruction_template = ("Below is an instruction that describes a task, paired with extra messages such as "
                                 "input that provides further context if possible. Write a response that "
                                 f"appropriately completes the request.\n\n ### Instruction:\n{instruction}"
