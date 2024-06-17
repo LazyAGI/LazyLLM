@@ -179,6 +179,9 @@ class ModuleBase(object):
     def _overwrote(self, f):
         return getattr(self.__class__, f) is not getattr(__class__, f)
 
+    def __repr__(self):
+        return lazyllm.make_repr('Module', self.__class__, name=self.name)
+
 
 class UrlModule(ModuleBase):
     __enable_request__ = True
@@ -386,7 +389,7 @@ class TrainableModule(UrlModule):
 
     # modify default value to ''
     def prompt(self, prompt=''):
-        if prompt == '' and ModelDownloader.get_model_type(self.base_model) != 'llm':
+        if self.base_model != '' and prompt == '' and ModelDownloader.get_model_type(self.base_model) != 'llm':
             prompt = None
         return super(__class__, self).prompt(prompt)
 

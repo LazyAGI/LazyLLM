@@ -1,8 +1,8 @@
 环境依赖
-=======
+========
 
 依赖及场景说明
-~~~~~~~~~~
+~~~~~~~~~~~~~
 
 - 微调（基于alpaca-lora）: datasets, deepspeed, faiss-cpu, fire, gradio, numpy, peft, torch, transformers
 - 微调（基于collie）: collie-lm, numpy, peft, torch, transformers, datasets, deepspeed, fire
@@ -11,7 +11,7 @@
 - RAG: llama_index, llama-index-retrievers-bm25, llama-index-storage-docstore-redis, llama-index-vector-stores-redis, rank_bm25, redisvl, llama_index, llama-index-embeddings-huggingface
 
 基础依赖
-~~~~~~~
+~~~~~~~~~~
 
 - fastapi: FastAPI 是一个现代、快速（高性能）的Web框架，用于构建API，与Python 3.6+类型提示一起使用。
 - loguru: Loguru 是一个Python日志库，旨在通过简洁、易用的API提供灵活的日志记录功能。
