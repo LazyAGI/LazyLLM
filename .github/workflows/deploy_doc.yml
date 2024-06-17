@@ -26,11 +26,10 @@ jobs:
           set -e
           export PYTHONPATH="${PYTHONPATH}:$(pwd)"
           cd docs
-          make clean; make html
+          make clean
+          make html
           cd ..
-          if [ -d "docs/build" ]; then
-            mv docs/build /home/mnt/platform_ci/GitHub/LazyAGI/LazyLLM_doc/$BRANCH_NAME
-          else
+          if [ ! -d "docs/build" ]; then
             echo "Build directory does not exist."
             exit 1
           fi
