@@ -188,10 +188,11 @@ class UrlModule(ModuleBase):
         self._url = url
         self._stream = stream
         self._meta = meta if meta else UrlModule
-        self.prompt()
         # Set for request by specific deploy:
         self._set_template(template_headers={'Content-Type': 'application/json'})
         self._extract_result_func = lambda x: x
+        self._prompt_keys = None
+        self.prompt()
 
     def url(self, url):
         if redis_client:
@@ -264,15 +265,15 @@ class UrlModule(ModuleBase):
             for r in _impl(): pass
             return r
 
-    def prompt(self, prompt=None, prompt_keys=None):
+    def prompt(self, prompt=None):
         if prompt is None:
             self._prompt = EmptyPrompter()
         elif isinstance(prompt, PrompterBase):
             self._prompt = prompt
         elif isinstance(prompt, str):
             self._prompt = ChatPrompter(prompt)
-        if prompt_keys:
-            self._prompt.set_prompt_keys(prompt_keys)
+        if self._prompt_keys:
+            self._prompt._set_model_configs(self._prompt_keys)
         return self
 
     def _set_template(self, template_message=None, input_key_name=None, template_headers=None):
@@ -305,6 +306,7 @@ class UrlModule(ModuleBase):
         m._module_id = self._module_id
         m.name = self.name
         m._extract_result_func = self._extract_result_func
+        m._prompt_keys = self._prompt_keys
         m._set_template(
             self.template_message,
             self.input_key_name,
@@ -392,10 +394,8 @@ class TrainableModule(UrlModule):
         if prompt == '' and ModelDownloader.get_model_type(self.base_model) != 'llm':
             prompt = None
         if prompt:
-            prompt_keys = ModelDownloader.get_model_prompt_keys(self.base_model)
-        else:
-            prompt_keys = None
-        return super(__class__, self).prompt(prompt, prompt_keys=prompt_keys)
+            self._prompt_keys = ModelDownloader.get_model_prompt_keys(self.base_model)
+        return super(__class__, self).prompt(prompt)
 
     def _get_args(self, arg_cls, disable=[]):
         args = getattr(self, f'_{arg_cls}_args', dict())

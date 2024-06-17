@@ -253,10 +253,10 @@ class WebModule(ModuleBase):
             assert self._verify_port_access(port), f'port {port} is occupied'
 
         def _impl():
-            self.demo.queue().launch(server_name='localhost', server_port=port)
+            self.demo.queue().launch(server_name='0.0.0.0', server_port=port)
         self.p = multiprocessing.Process(target=_impl)
         self.p.start()
-        self.url = f'http://localhost:{port}'
+        self.url = f'http://0.0.0.0:{port}'
 
     def _get_deploy_tasks(self):
         return Pipeline(self._work)

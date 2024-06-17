@@ -24,9 +24,6 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             return prefix + ''.join([f"### {k}:\n{{{k}}}\n\n" for k in extro_keys])
         return ''
 
-    def set_prompt_keys(self, prompt_keys):
-        self._set_model_configs(**prompt_keys)
-
     def _set_model_configs(self, system: str = None, sos: Union[None, str] = None, soh: Union[None, str] = None,
                            soa: Union[None, str] = None, eos: Union[None, str] = None,
                            eoh: Union[None, str] = None, eoa: Union[None, str] = None, **kwargs):
