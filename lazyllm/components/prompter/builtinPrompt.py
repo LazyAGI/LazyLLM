@@ -1,4 +1,4 @@
-from typing import Dict, Union, Any, List
+from typing import Dict, Union, Any, List, Callable, Optional
 from ...common import LazyLLMRegisterMetaClass
 from lazyllm import LOG
 import json
@@ -10,6 +10,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                                 soh='<|Human|>:', soa='<|Assistant|>:', eos='<|end_system|>', eoh='', eoa='')
         self._show = show
         self._tools = tools
+        self._pre_hook = None
 
     def _init_prompt(self, template: str, instruction_template: str, split: Union[None, str] = None):
         self._template = template
@@ -96,11 +97,17 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
         return dict(messages=history, tools=tools) if tools else dict(messages=history)
 
+    def pre_hook(self, func: Optional[Callable] = None):
+        self._pre_hook = func
+        return self
+
     def generate_prompt(self, input: Union[str, Dict[str, str], None] = None,
                         history: List[Union[List[str], Dict[str, Any]]] = None,
                         tools: Union[List[Dict[str, Any]], None] = None,
                         label: Union[str, None] = None,
                         *, show: bool = False, return_dict: bool = False) -> Union[str, Dict]:
+        if self._pre_hook:
+            input, history, tools, label = self._pre_hook(input, history, tools, label)
         instruction, input = self._get_instruction_and_input(input)
         history = self._get_histories(history, return_dict=return_dict)
         tools = self._get_tools(tools, return_dict=return_dict)
