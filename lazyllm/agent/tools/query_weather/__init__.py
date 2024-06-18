@@ -1,1 +1,1 @@
-from .main_tool import query_weather
+from .main_tool import QueryWeather

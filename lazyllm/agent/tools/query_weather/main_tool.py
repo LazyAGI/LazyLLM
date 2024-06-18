@@ -1,9 +1,9 @@
 from typing import Literal
 import requests
 
-from lazyllm.agent.configs import WEATHER_URL, WEATHER_KEY
-from lazyllm.agent.tools.base import BaseTool
-from lazyllm.agent.tools.query_weather.utils import CityCodeMatcher
+from ..baseTool import BaseTool
+from .utils import CityCodeMatcher
+from .configs import WEATHER_URL, WEATHER_KEY
 
 
 class QueryWeather(BaseTool):
@@ -13,7 +13,7 @@ class QueryWeather(BaseTool):
     def __init__(self):
         self._city_code_matcher = CityCodeMatcher()
         if not WEATHER_KEY:
-            raise ValueError('If you want to use the tool "QueryWeather", '
+            raise ValueError('If you want to use the tool "query_weather", '
                              'please set "LAZYLLM_WEATHER_KEY" in the environment variable, '
                              'or set `lazyllm.agent.configs.WEATHER_KEY = "your key"`. '
                              '\nThe key can be obtained at https://lbs.amap.com/dev/key/app ')
@@ -42,5 +42,3 @@ class QueryWeather(BaseTool):
         if response.status_code != 200: return "查询天气失败，请稍后重试"
 
         return response.content.decode('utf-8')
-
-query_weather = QueryWeather()

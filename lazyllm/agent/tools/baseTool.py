@@ -16,8 +16,7 @@ class BaseTool(ABC):
     def __call__(self, *args: Any, **kwages: Any) -> Union[str, list, dict]:
         return self.call(*args, **kwages)
 
-    @property
-    def description(self):
+    def get_description(self):
         return transform_to_openai_function(self)
 
 
@@ -83,7 +82,7 @@ def transform_to_openai_function(tool:BaseTool):
     return {
         "type": "function",
         "function": {
-            "name": tool.name if hasattr(tool, "name") else tool.__name__,
+            "name": tool.name if hasattr(tool, "name") else tool.__class__.__name__.lower(),
             "description": description,
             "parameters": {
                 "type": "object",

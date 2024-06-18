@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional, Union, Literal, List
 
 
-DEFAULT_SYSTEM_MESSAGE = 'You are a helpful assistant.'
+DEFAULT_SYSTEM_MESSAGE = 'You are an AI-Agent developed by LazyLLM.'
 
 ROLE = 'role'
 CONTENT = 'content'
