@@ -163,10 +163,10 @@ print(m({'query':'请帮我写一篇关于人工智能在医疗领域应用的�
 ```bash
 git clone git@github.com:LazyAGI/LazyLLM.git
 cd LazyLLM
-pip install -c requirements.txt
+pip install -r requirements.txt
 ```
 
-如果想进行微调、推理部署或搭建rag应用等，则需使用 `pip install -c requirements.full.txt`
+如果想进行微调、推理部署或搭建rag应用等，则需使用 `pip install -r requirements.full.txt`
 
 ### pip安装
 
@@ -177,7 +177,7 @@ pip install lazyllm
 
 安装lazyllm及所有的依赖，可以使用
 ```bash
-pip install lazyllm-full
+pip install lazyllm[full]
 ```
 
 ## 六、设计理念
