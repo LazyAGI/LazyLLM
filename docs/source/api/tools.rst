@@ -5,7 +5,7 @@ lazyllm.Tools
     :members: 
     :exclude-members:
 
-.. autoclass:: lazyllm.tools.Rerank
+.. autoclass:: lazyllm.tools.Reranker
     :members: 
     :exclude-members: forward
 

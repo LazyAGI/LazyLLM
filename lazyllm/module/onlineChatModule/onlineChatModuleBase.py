@@ -198,10 +198,9 @@ class OnlineChatModuleBase(ModuleBase):
         else:
             return _impl_non_stream()
 
-    def _set_template(self, template_message=None, input_key_name=None, template_headers=None):
-        assert input_key_name is None or input_key_name in template_message.keys()
+    def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None):
         self.template_message = template_message
-        self.input_key_name = input_key_name
+        self.keys_name_handle = keys_name_handle
         self.template_headers = template_headers
 
     def _upload_train_file(self, train_file) -> str:

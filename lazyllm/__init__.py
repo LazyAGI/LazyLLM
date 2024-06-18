@@ -13,7 +13,7 @@ from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
                      OnlineChatModule, OnlineEmbeddingModule)
 from .client import redis_client
-from .tools import Document, Rerank, Retriever, WebModule
+from .tools import Document, Reranker, Retriever, WebModule
 from .docs import add_doc
 
 config.done()
@@ -72,7 +72,7 @@ __all__ = [
     # tools
     'Document',
     'Retriever',
-    'Rerank',
+    'Reranker',
 
     # docs
     'add_doc',

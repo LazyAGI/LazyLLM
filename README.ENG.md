@@ -53,6 +53,8 @@ w.start().wait()
 
 ### RAG
 
+![Demo RAG](docs/demo_rag.svg)
+
 <details>
 <summary>click to look up prompts and imports</summary>
 
@@ -60,25 +62,22 @@ w.start().wait()
 
 import os
 import lazyllm
-from lazyllm import pipeline, parallel, bind, _0, Document, Retriever, Rerank
+from lazyllm import pipeline, parallel, bind, _0, Document, Retriever, Reranker
 
 prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task. In this task, you need to provide your answer based on the given context and question.'
 ```
 </details>
 
 ```python
-# If use redis, please set 'export LAZYLLM_RAG_STORE=Redis', and export LAZYLLM_REDIS_URL=redis://{IP}:{PORT}
-documents = Document(dataset_path='/file/to/yourpath', lazyllm.TrainableModule('bge-large-zh-v1.5'))
-
-#  input ---> retriver -->  reranker---> llm
-#        |--------------↑            ↑
-#        |---------------------------↑
-with pipeline as ppl:
-    ppl.retriever = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
-    ppl.reranker = Rerank(types='Reranker', model='bge-reranker-large') | bind(ppl.input, _0)
-    ppl.formatter = lambda ctx, query: dict(context_str=ctx, query_str=query) | bind(query=ppl.input)
+documents = Document(dataset_path='/file/to/yourpath', embed=TrainableModule('bge-large-zh-v1.5'))
+with pipeline() as ppl:
+    with parallel().sum as ppl.prl:
+        prl.retriever1 = Retriever(documents, parser='CoarseChunk', similarity_top_k=6)
+        prl.retriever2 = Retriever(documents, parser='SentenceDivider', similarity='chinese_bm25', similarity_top_k=6)
+    ppl.reranker = Reranker(types='ModuleReranker', model='bge-reranker-large') | bind(ppl.input, _0)
+    ppl.post_processer = lambda nodes: f'《{nodes[0].metadata["file_name"].split(".")[0]}》{nodes[0].get_content()}' if len(nodes) > 0 else 'cannot find.'
+    ppl.formatter = (lambda ctx, query: dict(context_str=ctx, query_str=query)) | bind(query=ppl.input)
     ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])) 
-
 mweb = lazyllm.WebModule(ppl, port=23456).start().wait()
 ```
 
@@ -172,10 +171,10 @@ print(m({'query': 'Please help me write an article about the application of arti
 ```bash
 git clone git@github.com:LazyAGI/LazyLLM.git
 cd LazyLLM
-pip install -c requirements.txt
+pip install -r requirements.txt
 ```
 
-`pip install -c requirements.full.txt` is used when you want to finetune, deploy or build your rag application.
+`pip install -r requirements.full.txt` is used when you want to finetune, deploy or build your rag application.
 
 ### from pip
 
@@ -186,7 +185,7 @@ pip install lazyllm
 
 Install lazyllm and all dependencies, you can use:
 ```bash
-pip install lazyllm-full
+pip install lazyllm[full]
 ```
 
 ## Design concept
