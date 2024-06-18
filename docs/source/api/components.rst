@@ -30,6 +30,25 @@ Launcher
     :members: 
     :exclude-members: Status, get_idle_nodes
 
+.. _api.components.prompter:
+
+Prompter
+=========
+
+.. autoclass:: lazyllm.components.prompter.LazyLLMPrompterBase
+    :members: generate_prompt, get_response
+    :exclude-members:
+
+.. autoclass:: lazyllm.components.AlpacaPrompter
+    :members: generate_prompt, get_response
+    :exclude-members:
+
+.. autoclass:: lazyllm.components.ChatPrompter
+    :members: generate_prompt, get_response
+    :exclude-members:
+
+.. _api.components.register:
+
 Register
 =========
 

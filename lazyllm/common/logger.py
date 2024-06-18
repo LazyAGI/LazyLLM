@@ -6,6 +6,7 @@ from os.path import join
 from sys import stderr
 from zipfile import ZipFile
 import lazyllm
+import platform
 from .utils import check_path
 
 from loguru import logger
@@ -116,7 +117,7 @@ def add_file_sink():
         log_file_path = join(log_dir_path, log_file_name)
         LOG.add(
             log_file_path,
-            level=lazyllm.config['log_file_level'],
+            level=lazyllm.config["log_file_level"],
             format="{message}",
             encoding="utf-8",
             rotation=lazyllm.config["log_file_size"],
@@ -132,6 +133,7 @@ def add_file_sink():
 
 add_file_sink()
 
-os.register_at_fork(
-    after_in_child=add_file_sink,
-)
+if platform.system() != "Windows":
+    os.register_at_fork(
+        after_in_child=add_file_sink,
+    )

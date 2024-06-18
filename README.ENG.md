@@ -11,6 +11,8 @@ LazyLLM is a low-code development tool for building multi-agent LLMs(large langu
 
 The AI application development process based on LazyLLM follows the **prototype building -> data feedback -> iterative optimization** workflow. This means you can quickly build a prototype application using LazyLLM, then analyze bad cases using task-specific data, and subsequently iterate on algorithms and fine-tune models at critical stages of the application to gradually enhance the overall performance.<br>
 
+**Tutorials**： https://lazyllm.readthedocs.io/
+
 ## Features
 
 **Convenient AI Application Assembly Process**: Even if you are not familiar with large models, you can still easily assemble AI applications with multiple agents using our built-in data flow and functional modules, just like Lego building.
@@ -252,7 +254,7 @@ Flow in LazyLLM defines the data stream, describing how data is passed from one 
 
 ## RoadMap
 
-We plan to support the following features by the end of July:
+We plan to support the following features by the end of July: <br>
 
 RAG
 - [ ]  Refactor the RAG module to remove the dependency on llamaindex
@@ -261,15 +263,17 @@ RAG
 One-Click Deployment of Applications
 - [ ]  Support one-click generation of Docker, one-click application startup, supporting high concurrency and fault tolerance
 
-Model Service
-- [ ]  Enhance the ability to automatically select fine-tuning/inference frameworks and parameters based on user scenarios
-- [ ]  Support fine-tuning of 70B models
+Model Services
+- [ ]  Continue support for pre-training and RLHF
 - [ ]  Support multiple inference services during model inference and achieve load balancing
+- [ ]  Support models for text-to-image and image-text QA, including VQA and SD
+- [ ]  Support voice models, including TTS and STT
 
 Tools
+- [ ]  Support Function-Call & Agent
 - [ ]  Integrate common search engines
 - [ ]  Support common formatters
-- [ ]  Built-in Prompter templates
+- [ ]  Provide Prompter templates for common scenarios
 
 User Experience Optimization
-- [ ] Optimize the flow of data in flow, support flexible data flow, and reduce the number of times Identity is used
+- [ ] Optimize the flow of data in flow, support flexible data flow
