@@ -92,6 +92,7 @@ import lazyllm
 from lazyllm import pipeline, parallel, Identity, warp, package
 import time
 import re, json
+from lazyllm.components.formatter import JsonFormatter
 
 toc_prompt="""
 You are now an intelligent assistant. Your task is to understand the user's input and convert the outline into a list of nested dictionaries. Each dictionary contains a `title` and a `describe`, where the `title` should clearly indicate the level using Markdown format, and the `describe` is a description and writing guide for that section.
@@ -134,11 +135,12 @@ Receive as follows:
 </details>
 
 ```python
-t1 = lazyllm.OnlineChatModule(source="openai", stream=False, prompter=ChatPrompter(instruction=toc_prompt))
-t2 = lazyllm.OnlineChatModule(source="openai", stream=False, prompter=ChatPrompter(instruction=completion_prompt))
+jsonFormatter = JsonFormatter("[:]")
+t1 = lazyllm.OnlineChatModule(source="openai", stream=False).formatter(jsonFormatter).prompt(ChatPrompter(instruction=toc_prompt))
+t2 = lazyllm.OnlineChatModule(source="openai", stream=False).prompt(ChatPrompter(instruction=completion_prompt))
 
-spliter = lambda s: tuple(eval(re.search(r'\[\s*\{.*\}\s*\]', s['message']['content'], re.DOTALL).group()))
-writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2, lambda d : d['message']['content'])
+warper = lambda s: tuple(s)
+writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2, lambda d : d)
 collector = lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])
 m = pipeline(t1, spliter, parallel(Identity, warp(writter)), collector)
 

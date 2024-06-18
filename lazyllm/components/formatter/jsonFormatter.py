@@ -1,7 +1,8 @@
+import copy
 import json
 from .formatterBase import LazyLLMFormatterBase as FormatterBase
 import lazyllm
-from typing import List, Dict
+from typing import List, Dict, Union, Any
 
 class JsonFormatter(FormatterBase):
     def _extract_json_from_string(self, mixed_str: str):
@@ -35,7 +36,7 @@ class JsonFormatter(FormatterBase):
 
         return json_objects
 
-    def _str_to_python(self, msg: str):
+    def _load_str(self, msg: str):
         # Convert str to json format
         assert msg.count("{") == msg.count("}"), f"{msg} is not a valid json string."
         try:
@@ -50,27 +51,32 @@ class JsonFormatter(FormatterBase):
             lazyllm.LOG.info(f"Error: {e}")
             return ""
 
+    def _parsing_format_output(self, keys: List, data: Union[List[Dict[str, Any]], Dict[str, Any]]):
+        if not keys:
+            return data
+        key = keys.pop(0)
+        try:
+            if isinstance(key, slice):
+                return self._parsing_format_output(keys, data[key])
+            elif isinstance(key, str):
+                if isinstance(data, List):
+                    res = [val[key] for val in data]
+                    return self._parsing_format_output(keys, res if len(res) > 1 else res[0])
+                elif isinstance(data, Dict):
+                    return self._parsing_format_output(keys, data.get(key, {}))
+                else:
+                    return data
+            else:
+                raise TypeError(f"This class is not support {key} index.")
+        except Exception as e:
+            lazyllm.LOG.error(f"{e}")
+            return ""
+
     def _parse_py_data_by_formatter(self, data):
         if self._slices is None:
             return data
         else:
-            result = data
-            try:
-                for s in self._slices:
-                    if isinstance(s, slice):
-                        result = result[s]
-                    elif isinstance(s, str):
-                        if isinstance(result, List):
-                            res = [val[s] for val in result]
-                            result = res if len(res) > 1 else res[0]
-                        elif isinstance(result, Dict):
-                            result = result[s]
-                        else:
-                            raise TypeError(f"{result} is not support {s} index.")
-                    else:
-                        raise TypeError(f"This class is not support {s} index.")
-            except Exception as e:
-                lazyllm.LOG.error(f"{e}")
-                return ""
+            keys = copy.deepcopy(self._slices)
+            result = self._parsing_format_output(keys, data)
 
-            return result[0] if len(result) == 1 and isinstance(result, list) else result
+            return result[0] if len(result) == 1 and isinstance(result, List) else result

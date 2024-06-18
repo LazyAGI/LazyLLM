@@ -1,6 +1,7 @@
 import json
 import os
 import requests
+import re
 from typing import Tuple, List, Dict, Union, Any
 import time
 import lazyllm
@@ -33,7 +34,6 @@ class OnlineChatModuleBase(ModuleBase):
         self.prompt()
         self._is_trained = False
         self.formatter()
-        self._extractor_fields = []
         self.field_extractor()
         self._stream_end_token = "[DONE]"
 
@@ -75,56 +75,58 @@ class OnlineChatModuleBase(ModuleBase):
             res_json = r.json()
             return res_json
 
-    def _parse_dict(self, data: Dict[str, Any]):
-        res = {}
-        for k, v in data.items():
-            if isinstance(v, (str, int, type(None))):
-                res[k] = v
-            elif isinstance(v, dict):
-                res[k] = v
-                res.update(self._parse_dict(v))
-            elif isinstance(v, list):
-                res[k] = v
-                if len(v) > 0 and isinstance(v[0], dict):
-                    for i in v:
-                        res.update(self._parse_dict(i))
-            else:
-                raise TypeError(f"Unsupported type: {type(v)}")
+    def _get_content_by_key(self, key: str, data: Dict[str, Any]):
+        if not key:
+            return data
+        keys = key.split(".", 1)
+        if len(keys) == 1:
+            # key只有一级
+            return data.get(keys[0], "") if keys[0] else data
+        elif len(keys) == 2:
+            return self._get_content_by_key(keys[1], data.get(keys[0], {}) if keys[0] else data)
+        else:
+            raise ValueError(f"The key {key} is error.")
 
-        return res
+    def _parse_output_by_key(self, key: str, data: Dict[str, Any]):
+        if "choices" in data and isinstance(data["choices"], list):
+            item = data['choices'][0]
+            return self._get_content_by_key(key, item.get("delta", {}) if "delta" in item else item.get("message", {}))
+        else:
+            raise ValueError(f"The response {data} does not contain a 'choices' field.")
 
     def _synthetic_output(self, response: Dict[str, Any]):
-        content = self._parse_dict(response)
         if len(self._extractor_fields) == 1:
             key = self._extractor_fields[0]
-            return self._formatter.format(content[key]) if key in content else ""
+            content = self._parse_output_by_key(key, response) if key else ""
+            return self._formatter.format(content) if content else ""
         elif len(self._extractor_fields) > 1:
             res = {}
             for key in self._extractor_fields:
-                if key in content:
-                    res[key] = self._formatter.format(content[key])
+                content = self._parse_output_by_key(key, response) if key else ""
+                res[key] = self._formatter.format(content) if content else ""
             return res
         else:
-            return self._formatter.format(content["content"]) if "content" in content else ""
+            content = self._parse_output_by_key(".", response)
+            return self._formatter.format(content) if content else ""
 
-    def _stream_format_alignment(self, response: str) -> Dict[str, Any]:
-        chunk = response.decode('utf-8')
-        chunk = chunk.replace("data: ", "")
+    def _stream_post_process(self, response: str) -> Dict[str, Any]:
         try:
-            chunk = json.loads(chunk)
+            chunk = json.loads(response)
             return chunk
         except ValueError:
-            return chunk
+            return response
         except Exception as e:
             lazyllm.LOG.error(e)
             return ""
 
     def _parse_response_stream(self, response: str) -> str:
-        chunk = self._stream_format_alignment(response)
+        pattern = re.compile(r"^data:\s*")
+        response = re.sub(pattern, "", response.decode('utf-8'))
+        chunk = self._stream_post_process(response)
         if self._stream_end_token == chunk: return self._stream_end_token
         return self._synthetic_output(chunk)
 
-    def _nonstream_format_alignment(self, response: str) -> Dict[str, Any]:
+    def _nonstream_post_process(self, response: str) -> Dict[str, Any]:
         try:
             chunk = json.loads(response)
             return chunk
@@ -134,7 +136,7 @@ class OnlineChatModuleBase(ModuleBase):
 
     def _parse_response_non_stream(self, response: str) -> Dict[str, Any]:
         """Parse the response from the interface"""
-        cur_msg = self._nonstream_format_alignment(response)
+        cur_msg = self._nonstream_post_process(response)
         return self._synthetic_output(cur_msg)
 
     def formatter(self, format: FormatterBase = None):
@@ -147,11 +149,11 @@ class OnlineChatModuleBase(ModuleBase):
 
     def field_extractor(self, key: Union[str, List[str]] = None):
         if key is None:
-            self._extractor_fields = []
+            self._extractor_fields = ["content"]
         elif isinstance(key, str):
-            self._extractor_fields.append(key)
+            self._extractor_fields = [key]
         elif isinstance(key, list):
-            self._extractor_fields.extend(key)
+            self._extractor_fields = key
         else:
             raise TypeError(f"Unsupported type: {type(key)}")
 
@@ -187,6 +189,7 @@ class OnlineChatModuleBase(ModuleBase):
         def _impl_non_stream():
             """process http non-stream request"""
             with requests.post(self._url, json=data, headers=self._headers, stream=False) as r:
+                lazyllm.LOG.info(f"response: {r.text}")
                 if r.status_code != 200:  # request error
                     raise requests.RequestException(r.text)
                 return self._parse_response_non_stream(r.text)

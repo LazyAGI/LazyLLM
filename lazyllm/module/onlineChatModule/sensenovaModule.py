@@ -53,10 +53,9 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'chat-completions')
 
-    def _stream_format_alignment(self, response: str) -> Dict[str, Any]:
-        chunk = response.decode('utf-8')[5:]
+    def _stream_post_process(self, response: str) -> Dict[str, Any]:
         try:
-            chunk = json.loads(chunk)["data"]
+            chunk = json.loads(response)["data"]
             content = chunk['choices'][0]['delta']
             role = chunk['choices'][0].pop("role")
             chunk['choices'][0]['delta'] = {"content": content, "role": role}
@@ -71,7 +70,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             lazyllm.LOG.error(e)
             return ""
 
-    def _nonstream_format_alignment(self, response: str) -> Dict[str, Any]:
+    def _nonstream_post_process(self, response: str) -> Dict[str, Any]:
         try:
             resp = json.loads(response)['data']
             content = resp['choices'][0].get('message', '')
