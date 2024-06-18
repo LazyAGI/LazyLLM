@@ -1,8 +1,8 @@
 from .docment import Document
-from .base import Rerank, Retriever
+from .base import Reranker, Retriever
 
 __all__ = [
     'Document',
-    'Rerank',
+    'Reranker',
     'Retriever',
 ]

@@ -9,10 +9,13 @@ from .base import LazyLLMDeployBase, verify_fastapi_func
 
 
 class Vllm(LazyLLMDeployBase):
-    input_key_name = 'prompt'
+    keys_name_handle = {
+        'inputs': 'prompt',
+        'stop': 'stop'
+    }
     default_headers = {'Content-Type': 'application/json'}
     message_format = {
-        input_key_name: 'Who are you ?',
+        'prompt': 'Who are you ?',
         'stream': False,
         'stop': ['<|im_end|>', '<|im_start|>', '</s>', '<|assistant|>', '<|user|>', '<|system|>', '<eos>'],
         'skip_special_tokens': False,
