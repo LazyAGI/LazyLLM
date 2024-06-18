@@ -1,1 +1,0 @@
-from .main_tool import query_weather

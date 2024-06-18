@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Union, Literal, List
+from typing import Optional, Literal, List
 
 
 DEFAULT_SYSTEM_MESSAGE = 'You are a helpful assistant.'
