@@ -191,7 +191,6 @@ class UrlModule(ModuleBase):
         # Set for request by specific deploy:
         self._set_template(template_headers={'Content-Type': 'application/json'})
         self._extract_result_func = lambda x: x
-        self._prompt_keys = None
         self.prompt()
 
     def url(self, url):
@@ -273,20 +272,14 @@ class UrlModule(ModuleBase):
             self._prompt = prompt
         elif isinstance(prompt, str):
             self._prompt = ChatPrompter(prompt)
-        if self._prompt_keys:
-            self._prompt._set_model_configs(**self._prompt_keys)
         return self
 
     def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None):
-        assert keys_name_handle is None or all(x in template_message.keys() for x in keys_name_handle.values())
         self.template_message = template_message
         self.keys_name_handle = keys_name_handle
         self.template_headers = template_headers
 
     def _modify_parameters(self, paras, kw):
-        if 'stop' in self.keys_name_handle and self._prompt_keys and 'stop_words' in \
-           self._prompt_keys and self.keys_name_handle['stop'] not in kw:
-            kw[self.keys_name_handle['stop']] = self._prompt_keys['stop_words']
         for key, value in paras.items():
             if key == self.keys_name_handle['inputs']:
                 continue
@@ -310,7 +303,6 @@ class UrlModule(ModuleBase):
         m._module_id = self._module_id
         m.name = self.name
         m._extract_result_func = self._extract_result_func
-        m._prompt_keys = self._prompt_keys
         m._set_template(
             self.template_message,
             self.keys_name_handle,
@@ -385,6 +377,7 @@ class TrainableModule(UrlModule):
 
     def __init__(self, base_model: Option = '', target_path='', *, stream=False, return_trace=False):
         self.base_model = base_model
+        self._stop_words = None
         super().__init__(url=None, stream=stream, meta=TrainableModule, return_trace=return_trace)
         # Fake base_model and target_path for dummy
         self.target_path = target_path
@@ -392,15 +385,17 @@ class TrainableModule(UrlModule):
         self._finetune = lazyllm.finetune.auto
         self._deploy = lazyllm.deploy.auto
         self._deploy_flag = lazyllm.once_flag()
-        self._prompt_keys = ModelDownloader.get_model_prompt_keys(self.base_model)
-        if self._prompt_keys and self._prompt:
-            self._prompt._set_model_configs(**self._prompt_keys)
 
     # modify default value to ''
     def prompt(self, prompt=''):
         if prompt == '' and ModelDownloader.get_model_type(self.base_model) != 'llm':
             prompt = None
-        return super(__class__, self).prompt(prompt)
+        prompt = super(__class__, self).prompt(prompt)._prompt
+        keys = ModelDownloader.get_model_prompt_keys(self.base_model)
+        if keys: prompt._set_model_configs(**keys)
+        if 'stop_words' in keys:
+            self._stop_words = keys['stop_words']
+        return self
 
     def _get_args(self, arg_cls, disable=[]):
         args = getattr(self, f'_{arg_cls}_args', dict())
@@ -441,9 +436,21 @@ class TrainableModule(UrlModule):
             self._set_template(copy.deepcopy(deployer.message_format), deployer.keys_name_handle,
                                copy.deepcopy(deployer.default_headers))
             if hasattr(self._deploy, 'extract_result'): self._extract_result_func = self._deploy.extract_result
+            self._update_stop_words()
             return deployer
         return Pipeline(lambda *a: lazyllm.package(target_path, self.base_model),
                         build_deployer(self.base_model), self.url)
+
+    def _update_stop_words(self):
+        if self.keys_name_handle and 'stop' in self.keys_name_handle and self._stop_words and self.template_message:
+            if self.keys_name_handle['stop'] in self.template_message:
+                self.template_message[self.keys_name_handle['stop']] = self._stop_words
+            else:
+                # stop in sub dict:
+                for _, v in self.template_message.items():
+                    if isinstance(v, dict) and self.keys_name_handle['stop'] in v:
+                        v[self.keys_name_handle['stop']] = self._stop_words
+        return
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])

@@ -118,7 +118,6 @@ class OnlineChatModuleBase(ModuleBase):
             return _impl_non_stream()
 
     def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None):
-        assert keys_name_handle is None or all(x in template_message.keys() for x in keys_name_handle.values())
         self.template_message = template_message
         self.keys_name_handle = keys_name_handle
         self.template_headers = template_headers
