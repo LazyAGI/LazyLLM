@@ -450,7 +450,6 @@ class TrainableModule(UrlModule):
                 for _, v in self.template_message.items():
                     if isinstance(v, dict) and self.keys_name_handle['stop'] in v:
                         v[self.keys_name_handle['stop']] = self._stop_words
-        return
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
