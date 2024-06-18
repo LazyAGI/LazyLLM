@@ -168,10 +168,10 @@ print(m({'query': 'Please help me write an article about the application of arti
 ```bash
 git clone git@github.com:LazyAGI/LazyLLM.git
 cd LazyLLM
-pip install -c requirements.txt
+pip install -r requirements.txt
 ```
 
-`pip install -c requirements.full.txt` is used when you want to finetune, deploy or build your rag application.
+`pip install -r requirements.full.txt` is used when you want to finetune, deploy or build your rag application.
 
 ### from pip
 
@@ -182,7 +182,7 @@ pip install lazyllm
 
 Install lazyllm and all dependencies, you can use:
 ```bash
-pip install lazyllm-full
+pip install lazyllm[full]
 ```
 
 ## Design concept
