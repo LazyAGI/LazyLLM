@@ -256,7 +256,7 @@ Flow in LazyLLM defines the data stream, describing how data is passed from one 
 
 ## RoadMap
 
-We plan to support the following features by the end of July:
+We plan to support the following features by the end of July: <br>
 
 RAG
 - [ ]  Refactor the RAG module to remove the dependency on llamaindex
@@ -265,15 +265,17 @@ RAG
 One-Click Deployment of Applications
 - [ ]  Support one-click generation of Docker, one-click application startup, supporting high concurrency and fault tolerance
 
-Model Service
-- [ ]  Enhance the ability to automatically select fine-tuning/inference frameworks and parameters based on user scenarios
-- [ ]  Support fine-tuning of 70B models
+Model Services
+- [ ]  Continue support for pre-training and RLHF
 - [ ]  Support multiple inference services during model inference and achieve load balancing
+- [ ]  Support models for text-to-image and image-text QA, including VQA and SD
+- [ ]  Support voice models, including TTS and STT
 
 Tools
+- [ ]  Support Function-Call & Agent
 - [ ]  Integrate common search engines
 - [ ]  Support common formatters
-- [ ]  Built-in Prompter templates
+- [ ]  Provide Prompter templates for common scenarios
 
 User Experience Optimization
-- [ ] Optimize the flow of data in flow, support flexible data flow, and reduce the number of times Identity is used
+- [ ] Optimize the flow of data in flow, support flexible data flow
