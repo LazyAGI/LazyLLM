@@ -16,6 +16,7 @@ LazyLLM
    best_practice/flow
    best_practice/prompt
    best_practice/module
+   best_practice/flowapp
    best_practice/rag
 
 .. toctree::
