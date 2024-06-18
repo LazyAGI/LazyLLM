@@ -8,7 +8,7 @@ from ..utils.downloader import ModelDownloader
 
 class AutoDeploy(LazyLLMDeployBase):
     message_format = {}
-    input_key_name = None
+    keys_name_handle = None
     default_headers = {'Content-Type': 'application/json'}
 
     def __new__(cls, base_model, source=lazyllm.config['model_source'], trust_remote_code=True, max_token_num=1024,

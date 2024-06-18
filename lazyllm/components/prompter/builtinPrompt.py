@@ -26,7 +26,11 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
     def _set_model_configs(self, system: str = None, sos: Union[None, str] = None, soh: Union[None, str] = None,
                            soa: Union[None, str] = None, eos: Union[None, str] = None,
-                           eoh: Union[None, str] = None, eoa: Union[None, str] = None, **kwargs):
+                           eoh: Union[None, str] = None, eoa: Union[None, str] = None,
+                           soe: Union[None, str] = None, eoe: Union[None, str] = None,
+                           separator: Union[None, str] = None, plugin: Union[None, str] = None,
+                           interpreter: Union[None, str] = None, stop_words: Union[None, List[str]] = None):
+
         local = locals()
         for name in ['system', 'sos', 'soh', 'soa', 'eos', 'eoh', 'eoa']:
             if local[name] is not None: setattr(self, f'_{name}', local[name])

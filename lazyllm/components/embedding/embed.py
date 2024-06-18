@@ -42,7 +42,7 @@ class LazyHuggingFaceEmbedding(object):
 
 class EmbeddingDeploy():
     message_format = None
-    input_key_name = None
+    keys_name_handle = None
     default_headers = {'Content-Type': 'application/json'}
 
     def __init__(self, trust_remote_code=True, launcher=None):

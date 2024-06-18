@@ -234,7 +234,8 @@ class UrlModule(ModuleBase):
             data = codecs.encode(pickle.dumps(__input), 'base64').decode('utf-8')
         elif self.template_message is not None:
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
-            data[self.input_key_name] = input
+            assert 'inputs' in self.keys_name_handle
+            data[self.keys_name_handle['inputs']] = input
         else:
             if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
             data = input
@@ -273,18 +274,21 @@ class UrlModule(ModuleBase):
         elif isinstance(prompt, str):
             self._prompt = ChatPrompter(prompt)
         if self._prompt_keys:
-            self._prompt._set_model_configs(self._prompt_keys)
+            self._prompt._set_model_configs(**self._prompt_keys)
         return self
 
-    def _set_template(self, template_message=None, input_key_name=None, template_headers=None):
-        assert input_key_name is None or input_key_name in template_message.keys()
+    def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None):
+        assert keys_name_handle is None or all(x in template_message.keys() for x in keys_name_handle.values())
         self.template_message = template_message
-        self.input_key_name = input_key_name
+        self.keys_name_handle = keys_name_handle
         self.template_headers = template_headers
 
     def _modify_parameters(self, paras, kw):
+        if 'stop' in self.keys_name_handle and self._prompt_keys and 'stop_words' in \
+           self._prompt_keys and self.keys_name_handle['stop'] not in kw:
+            kw[self.keys_name_handle['stop']] = self._prompt_keys['stop_words']
         for key, value in paras.items():
-            if key == self.input_key_name:
+            if key == self.keys_name_handle['inputs']:
                 continue
             elif isinstance(value, dict):
                 if key in kw:
@@ -309,7 +313,7 @@ class UrlModule(ModuleBase):
         m._prompt_keys = self._prompt_keys
         m._set_template(
             self.template_message,
-            self.input_key_name,
+            self.keys_name_handle,
             self.template_headers,
         )
         return m
@@ -359,7 +363,7 @@ class ServerModule(UrlModule):
         assert (post is None) or (stream is False)
         self._set_template(
             copy.deepcopy(lazyllm.deploy.RelayServer.message_format),
-            lazyllm.deploy.RelayServer.input_key_name,
+            lazyllm.deploy.RelayServer.keys_name_handle,
             copy.deepcopy(lazyllm.deploy.RelayServer.default_headers),
         )
         self._deploy_flag = lazyllm.once_flag()
@@ -388,13 +392,14 @@ class TrainableModule(UrlModule):
         self._finetune = lazyllm.finetune.auto
         self._deploy = lazyllm.deploy.auto
         self._deploy_flag = lazyllm.once_flag()
+        self._prompt_keys = ModelDownloader.get_model_prompt_keys(self.base_model)
+        if self._prompt_keys and self._prompt:
+            self._prompt._set_model_configs(**self._prompt_keys)
 
     # modify default value to ''
     def prompt(self, prompt=''):
         if prompt == '' and ModelDownloader.get_model_type(self.base_model) != 'llm':
             prompt = None
-        if prompt:
-            self._prompt_keys = ModelDownloader.get_model_prompt_keys(self.base_model)
         return super(__class__, self).prompt(prompt)
 
     def _get_args(self, arg_cls, disable=[]):
@@ -433,7 +438,7 @@ class TrainableModule(UrlModule):
                 deployer = self._deploy(stream=self._stream, **self._deploy_args)
             # For AutoDeploy: class attributes can only be obtained after instantiation
             self._deploy = deployer.__class__
-            self._set_template(copy.deepcopy(deployer.message_format), deployer.input_key_name,
+            self._set_template(copy.deepcopy(deployer.message_format), deployer.keys_name_handle,
                                copy.deepcopy(deployer.default_headers))
             if hasattr(self._deploy, 'extract_result'): self._extract_result_func = self._deploy.extract_result
             return deployer

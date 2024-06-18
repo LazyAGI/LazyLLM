@@ -40,7 +40,7 @@ model_groups = {
 		"prompt_keys": {'soh': '<reserved_106>', 'soa': '<reserved_107>'},
 	},
 	"GLM3": {
-		"prompt_keys": {'sos': '<|system|>\n', 'soh': '<|user|>\n', 'soa': '<|assistant|>\n', 'observation': '<|observation|>\n', 'stop_words': ['<|user|>', '<|observation|>']},
+		"prompt_keys": {'sos': '<|system|>\n', 'soh': '<|user|>\n', 'soa': '<|assistant|>\n', 'plugin': '<|observation|>\n', 'stop_words': ['<|user|>', '<|observation|>']},
 	},
 }
 
