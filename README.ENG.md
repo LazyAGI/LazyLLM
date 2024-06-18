@@ -89,7 +89,7 @@ mweb = lazyllm.WebModule(ppl, port=23456).start().wait()
 
 ```python
 import lazyllm
-from lazyllm import pipeline, parallel, Identity, warp, package
+from lazyllm import pipeline, warp, package, bind
 import time
 import re, json
 from lazyllm.components.formatter import JsonFormatter
@@ -135,14 +135,15 @@ Receive as follows:
 </details>
 
 ```python
-jsonFormatter = JsonFormatter("[:]")
-t1 = lazyllm.OnlineChatModule(source="openai", stream=False).formatter(jsonFormatter).prompt(ChatPrompter(instruction=toc_prompt))
+t1 = lazyllm.OnlineChatModule(source="openai", stream=False).formatter(JsonFormatter("[:]").prompt(ChatPrompter(instruction=toc_prompt))
 t2 = lazyllm.OnlineChatModule(source="openai", stream=False).prompt(ChatPrompter(instruction=completion_prompt))
 
-warper = lambda s: tuple(s)
-writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2, lambda d : d)
+writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2)
 collector = lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])
-m = pipeline(t1, spliter, parallel(Identity, warp(writter)), collector)
+with pipeline() as m:
+    m.m1 = t1
+    m.m2 = warp(writter)
+    m.m3 = bind(collector, m.m1, m.m2)
 
 print(m({'query': 'Please help me write an article about the application of artificial intelligence in the medical field.'}))
 ```

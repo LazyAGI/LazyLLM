@@ -523,18 +523,18 @@ add_example('ModelDownloader', '''\
 # FormatterBase
 add_chinese_doc('formatter.FormatterBase', '''\
 此类是格式化器的基类，格式化器是模型输出结果的格式化器，用户可以自定义格式化器，也可以使用LazyLLM提供的格式化器。
-主要方法：_parse_formatter:解析索引内容。_load_str:解析str对象，其中包含python对象的部分被解析出来，比如list，dict等对象。_parse_py_data_by_formatter:根据自定义的格式化器和索引对python对象进行格式化。format:对传入的内容进行格式化，如果内容是字符串类型，先将字符串转化为python对象，再进行格式化。如果内容是python对象，直接进行格式化。
+主要方法：_parse_formatter:解析索引内容。_load:解析str对象，其中包含python对象的部分被解析出来，比如list，dict等对象。_parse_py_data_by_formatter:根据自定义的格式化器和索引对python对象进行格式化。format:对传入的内容进行格式化，如果内容是字符串类型，先将字符串转化为python对象，再进行格式化。如果内容是python对象，直接进行格式化。
 ''')
 
 add_english_doc('formatter.FormatterBase', '''\
 This class is the base class of the formatter. The formatter is the formatter of the model output result. Users can customize the formatter or use the formatter provided by LazyLLM.
-Main methods: _parse_formatter: parse the index content. _load_str: Parse the str object, and the part containing Python objects is parsed out, such as list, dict and other objects. _parse_py_data_by_formatter: format the python object according to the custom formatter and index. format: format the passed content. If the content is a string type, convert the string into a python object first, and then format it. If the content is a python object, format it directly.
+Main methods: _parse_formatter: parse the index content. _load: Parse the str object, and the part containing Python objects is parsed out, such as list, dict and other objects. _parse_py_data_by_formatter: format the python object according to the custom formatter and index. format: format the passed content. If the content is a string type, convert the string into a python object first, and then format it. If the content is a python object, format it directly.
 ''')
 
 add_example('formatter.FormatterBase', '''\
 >>> from lazyllm.components.formatter import FormatterBase
 >>> class MyFormatter(LazyLLMFormatterBase):
-...    def _load_str(self, data):
+...    def _load(self, data):
 ...        return str_to_list(data)
 ...
 ...    def _parse_py_data_by_formatter(self, data, formatter):

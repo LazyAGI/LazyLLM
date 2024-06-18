@@ -189,7 +189,6 @@ class OnlineChatModuleBase(ModuleBase):
         def _impl_non_stream():
             """process http non-stream request"""
             with requests.post(self._url, json=data, headers=self._headers, stream=False) as r:
-                lazyllm.LOG.info(f"response: {r.text}")
                 if r.status_code != 200:  # request error
                     raise requests.RequestException(r.text)
                 return self._parse_response_non_stream(r.text)

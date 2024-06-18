@@ -1,8 +1,6 @@
-import copy
 import json
 from .formatterBase import LazyLLMFormatterBase as FormatterBase
 import lazyllm
-from typing import List, Dict, Union, Any
 
 class JsonFormatter(FormatterBase):
     def _extract_json_from_string(self, mixed_str: str):
@@ -36,7 +34,7 @@ class JsonFormatter(FormatterBase):
 
         return json_objects
 
-    def _load_str(self, msg: str):
+    def _load(self, msg: str):
         # Convert str to json format
         assert msg.count("{") == msg.count("}"), f"{msg} is not a valid json string."
         try:
@@ -51,32 +49,9 @@ class JsonFormatter(FormatterBase):
             lazyllm.LOG.info(f"Error: {e}")
             return ""
 
-    def _parsing_format_output(self, keys: List, data: Union[List[Dict[str, Any]], Dict[str, Any]]):
-        if not keys:
-            return data
-        key = keys.pop(0)
-        try:
-            if isinstance(key, slice):
-                return self._parsing_format_output(keys, data[key])
-            elif isinstance(key, str):
-                if isinstance(data, List):
-                    res = [val[key] for val in data]
-                    return self._parsing_format_output(keys, res if len(res) > 1 else res[0])
-                elif isinstance(data, Dict):
-                    return self._parsing_format_output(keys, data.get(key, {}))
-                else:
-                    return data
-            else:
-                raise TypeError(f"This class is not support {key} index.")
-        except Exception as e:
-            lazyllm.LOG.error(f"{e}")
-            return ""
-
-    def _parse_py_data_by_formatter(self, data):
-        if self._slices is None:
-            return data
-        else:
-            keys = copy.deepcopy(self._slices)
-            result = self._parsing_format_output(keys, data)
-
-            return result[0] if len(result) == 1 and isinstance(result, List) else result
+    def _parse_py_data_by_formatter(self, data, *, slices=None):
+        if slices is None: slices = self._slices
+        if not slices: return data
+        if isinstance(slices[0], slice): return [self._parse_py_data_by_formatter(d, slices=slices[1:])
+                                                 for d in data[slices[0]]]
+        else: return self._parse_py_data_by_formatter(data[slices[0]], slices=slices[1:])

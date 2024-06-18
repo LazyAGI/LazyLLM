@@ -1,19 +1,14 @@
 from ...common import LazyLLMRegisterMetaClass
 
-def is_number(s):
+def is_number(s: str):
     try:
-        float(s)
+        int(s)
         return True
     except ValueError:
-        pass
-
-    try:
-        import unicodedata
-        unicodedata.numeric(s)
-        return True
-    except (TypeError, ValueError):
-        pass
-    return False
+        if s.lower == "none" or len(s) == 0:
+            return False
+        else:
+            raise ValueError("Invalid number: " + s)
 
 class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, formatter: str = None):
@@ -40,14 +35,14 @@ class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
                 slices.append(dim.strip())
         self._slices = slices
 
-    def _load_str(self, msg: str):
+    def _load(self, msg: str):
         raise NotImplementedError("This parse str function is not implemented.")
 
     def _parse_py_data_by_formatter(self, py_data):
         raise NotImplementedError("This data parse function is not implemented.")
 
     def format(self, msg):
-        if isinstance(msg, str): msg = self._load_str(msg)
+        if isinstance(msg, str): msg = self._load(msg)
         return self._parse_py_data_by_formatter(msg)
 
 class EmptyFormatter(LazyLLMFormatterBase):
