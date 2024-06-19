@@ -17,6 +17,6 @@ if __name__ == "__main__":
     # for item in resp:
     #     print("item:", item)
 
-    resp = fc(messages=[{"role": "user", "content": "谷歌一下，小米su7的发布日期"}])
+    resp = fc(messages=[{"role": "user", "content": "用谷歌搜索一下，小米su7的发布日期"}])
     for item in resp:
         print("item:", item)
