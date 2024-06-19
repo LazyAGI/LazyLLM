@@ -5,10 +5,10 @@ def is_number(s: str):
         int(s)
         return True
     except ValueError:
-        if s.lower == "none" or len(s) == 0:
+        if s == "None" or len(s) == 0:
             return False
         else:
-            raise ValueError("Invalid number: " + s)
+            raise ValueError("Invalid number: " + s + ". You can enter an integer, None or an empyt string.")
 
 class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, formatter: str = None):

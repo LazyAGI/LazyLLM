@@ -130,19 +130,16 @@ This is the expanded content for writing.
 Receive as follows:
 
 """
+
+writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "describe": {describe}}'}
 ```
 </details>
 
 ```python
-t1 = lazyllm.OnlineChatModule(source="openai", stream=False).formatter(JsonFormatter().prompt(toc_prompt)
-t2 = lazyllm.OnlineChatModule(source="openai", stream=False).prompt(completion_prompt)
-
-writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2)
-collector = lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])
 with pipeline() as m:
-    m.m1 = t1
-    m.m2 = warp(writter)
-    m.m3 = bind(collector, m.m1, m.m2)
+    m.m1 = lazyllm.OnlineChatModule(source="openai", stream=False).formatter(JsonFormatter().prompt(toc_prompt)
+    m.m2 = warp(lazyllm.OnlineChatModule(source="openai", stream=False).prompt(writer_prompt))
+    m.m3 = (lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])) | bind(m.m1, m.m2)
 
 print(m({'query': 'Please help me write an article about the application of artificial intelligence in the medical field.'}))
 ```

@@ -1,6 +1,7 @@
 from typing import Dict, Union, Any, List, Callable, Optional
 from ...common import LazyLLMRegisterMetaClass
 from lazyllm import LOG
+from functools import reduce
 import json
 import re
 
@@ -11,6 +12,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         self._show = show
         self._tools = tools
         self._pre_hook = None
+        self._isa = "<!lazyllm-spliter!>"
+        self._ise = "</!lazyllm-spliter!>"
 
     def _init_prompt(self, template: str, instruction_template: str, split: Union[None, str] = None):
         self._template = template
@@ -74,9 +77,11 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                 return self._instruction_template, input
         assert isinstance(input, dict)
         kwargs = {k: input.pop(k) for k in prompt_keys}
-        assert len(input) <= 1, f'Unexpected keys found in input: {list(input.keys())}'
-        return (self._instruction_template.format(**kwargs) if len(kwargs) > 0 else self._instruction_template,
-                list(input.values())[0] if input else '')
+        self._instruction_template = reduce(lambda s, kv: s.replace(f"{{{kv[0]}}}", kv[1]),
+                                            kwargs.items(),
+                                            self._instruction_template)\
+            if len(kwargs) > 0 else self._instruction_template
+        return (self._instruction_template, list(input.values())[0] if input else "")
 
     def _check_values(self, instruction, input, history, tools): pass
 
@@ -105,6 +110,18 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         self._pre_hook = func
         return self
 
+    def _split_instruction(self, instruction: str):
+        system_instruction = instruction
+        user_instruction = ""
+        if self._isa in instruction and self._ise in instruction:
+            # The instruction includes system prompts and/or user prompts
+            pattern = re.compile(r"%s(.*)%s" % (self._isa, self._ise))
+            ret = re.split(pattern, instruction)
+            system_instruction = ret[0]
+            user_instruction = ret[1]
+
+        return system_instruction, user_instruction
+
     def generate_prompt(self, input: Union[str, Dict[str, str], None] = None,
                         history: List[Union[List[str], Dict[str, Any]]] = None,
                         tools: Union[List[Dict[str, Any]], None] = None,
@@ -116,6 +133,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         history = self._get_histories(history, return_dict=return_dict)
         tools = self._get_tools(tools, return_dict=return_dict)
         self._check_values(instruction, input, history, tools)
+        instruction, user_instruction = self._split_instruction(instruction)
+        input = user_instruction + input
         func = self._generate_prompt_dict_impl if return_dict else self._generate_prompt_impl
         result = func(instruction, input, history, tools, label)
         if self._show or show: LOG.info(result)

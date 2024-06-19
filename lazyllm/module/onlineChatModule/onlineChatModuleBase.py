@@ -42,7 +42,7 @@ class OnlineChatModuleBase(ModuleBase):
             self._prompt = ChatPrompter()
         elif isinstance(prompt, PrompterBase):
             self._prompt = prompt
-        elif isinstance(prompt, str):
+        elif isinstance(prompt, (str, dict)):
             self._prompt = ChatPrompter(prompt)
         else:
             raise TypeError(f"{prompt} type is not supported.")
@@ -75,22 +75,11 @@ class OnlineChatModuleBase(ModuleBase):
             res_json = r.json()
             return res_json
 
-    def _get_content_by_key(self, key: str, data: Dict[str, Any]):
-        if not key:
-            return data
-        keys = key.split(".", 1)
-        if len(keys) == 1:
-            # key只有一级
-            return data.get(keys[0], "") if keys[0] else data
-        elif len(keys) == 2:
-            return self._get_content_by_key(keys[1], data.get(keys[0], {}) if keys[0] else data)
-        else:
-            raise ValueError(f"The key {key} is error.")
-
     def _parse_output_by_key(self, key: str, data: Dict[str, Any]):
         if "choices" in data and isinstance(data["choices"], list):
             item = data['choices'][0]
-            return self._get_content_by_key(key, item.get("delta", {}) if "delta" in item else item.get("message", {}))
+            data = item.get("delta", {}) if "delta" in item else item.get("message", {})
+            return data if not key else data.get(key, "")
         else:
             raise ValueError(f"The response {data} does not contain a 'choices' field.")
 

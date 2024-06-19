@@ -18,7 +18,7 @@ lazyllm.config.add(
     "log_format",
     str,
     "{process}: <green>{time:YYYY-MM-DD HH:mm:ss}</green> {extra[name]} "
-    "<level>{level}</level>: ({name}) <cyan>{message}</cyan>",
+    "<level>{level}</level>: ({name}:{line}) <cyan>{message}</cyan>",
     "LOG_FORMAT",
 )
 lazyllm.config.add("log_dir", str, "~/.lazyllm", "LOG_DIR")
