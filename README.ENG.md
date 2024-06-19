@@ -141,12 +141,12 @@ writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "descr
 </details>
 
 ```python
-with pipeline() as m:
-    m.m1 = lazyllm.OnlineChatModule(source="openai", stream=False).formatter(JsonFormatter().prompt(toc_prompt)
-    m.m2 = warp(lazyllm.OnlineChatModule(source="openai", stream=False).prompt(writer_prompt))
-    m.m3 = (lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])) | bind(m.m1, m.m2)
+with pipeline() as ppl:
+    ppl.outline_writer = lazyllm.OnlineChatModule(source="openai", stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
+    ppl.story_generater = warp(lazyllm.OnlineChatModule(source="openai", stream=False).prompt(writer_prompt))
+    ppl.synthesizer = (lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])) | bind(ppl.outline_writer, ppl.story_generater)
 
-print(m({'query': 'Please help me write an article about the application of artificial intelligence in the medical field.'}))
+print(ppl({'query': 'Please help me write an article about the application of artificial intelligence in the medical field.'}))
 ```
 
 ## What can LazyLLM do

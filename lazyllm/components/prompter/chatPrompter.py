@@ -6,7 +6,8 @@ class ChatPrompter(LazyLLMPrompterBase):
                  extro_keys: Union[None, List[str]] = None, show: bool = False, tools: Optional[List] = None):
         super(__class__, self).__init__(show, tools=tools)
         if isinstance(instruction, dict):
-            splice_instruction = instruction.get("system", "") + self._isa + instruction.get("user", "") + self._ise
+            splice_instruction = instruction.get("system", "") + \
+                ChatPrompter.ISA + instruction.get("user", "") + ChatPrompter.ISE
             instruction = splice_instruction
         instruction_template = f'{instruction}\n{{extro_keys}}\n'.replace(
             '{extro_keys}', LazyLLMPrompterBase._get_extro_key_template(extro_keys))

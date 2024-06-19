@@ -6,14 +6,15 @@ import json
 import re
 
 class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
+    ISA = "<!lazyllm-spliter!>"
+    ISE = "</!lazyllm-spliter!>"
+
     def __init__(self, show=False, tools=None):
         self._set_model_configs(system='You are an AI-Agent developed by LazyLLM.', sos='<|start_system|>',
                                 soh='<|Human|>:', soa='<|Assistant|>:', eos='<|end_system|>', eoh='', eoa='')
         self._show = show
         self._tools = tools
         self._pre_hook = None
-        self._isa = "<!lazyllm-spliter!>"
-        self._ise = "</!lazyllm-spliter!>"
 
     def _init_prompt(self, template: str, instruction_template: str, split: Union[None, str] = None):
         self._template = template
@@ -77,17 +78,23 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                 return self._instruction_template, input
         assert isinstance(input, dict)
         kwargs = {k: input.pop(k) for k in prompt_keys}
-        self._instruction_template = reduce(lambda s, kv: s.replace(f"{{{kv[0]}}}", kv[1]),
-                                            kwargs.items(),
-                                            self._instruction_template)\
-            if len(kwargs) > 0 else self._instruction_template
-        return (self._instruction_template, list(input.values())[0] if input else "")
+        assert len(input) <= 1, f"Unexpected keys found in input: {list(input.keys())}"
+        # instruction = reduce(lambda s, kv: s.replace(f"{{{kv[0]}}}", kv[1]),
+        #                                     kwargs.items(),
+        #                                     self._instruction_template)\
+        #     if len(kwargs) > 0 else self._instruction_template
+        # return (instruction, list(input.values())[0] if input else "")
+        return (reduce(lambda s, kv: s.replace(f"{{{kv[0]}}}", kv[1]),
+                       kwargs.items(),
+                       self._instruction_template)
+                if len(kwargs) > 0 else self._instruction_template,
+                list(input.values())[0] if input else "")
 
     def _check_values(self, instruction, input, history, tools): pass
 
     # Used for TrainableModule(local deployed)
     def _generate_prompt_impl(self, instruction, input, history, tools, label):
-        params = dict(system=self._system, instruction=instruction, input=input, history=history, tools=tools,
+        params = dict(system=self._system, instruction=instruction, user=input, history=history, tools=tools,
                       sos=self._sos, eos=self._eos, soh=self._soh, eoh=self._eoh, soa=self._soa, eoa=self._eoa)
         return self._template.format(**params) + (label if label else '')
 
@@ -113,9 +120,9 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     def _split_instruction(self, instruction: str):
         system_instruction = instruction
         user_instruction = ""
-        if self._isa in instruction and self._ise in instruction:
+        if LazyLLMPrompterBase.ISA in instruction and LazyLLMPrompterBase.ISE in instruction:
             # The instruction includes system prompts and/or user prompts
-            pattern = re.compile(r"%s(.*)%s" % (self._isa, self._ise))
+            pattern = re.compile(r"%s(.*)%s" % (LazyLLMPrompterBase.ISA, LazyLLMPrompterBase.ISE))
             ret = re.split(pattern, instruction)
             system_instruction = ret[0]
             user_instruction = ret[1]
