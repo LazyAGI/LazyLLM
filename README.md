@@ -1,9 +1,14 @@
+<div align="center">
+  <img src="https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/docs/LazyLLM-logo.png" width="100%"/>
+</div>
+
 # LazyLLM: 低代码构建多Agent大模型应用的开发工具
 [中文](README.md) |  [EN](README.ENG.md)
 
 [![CI](https://github.com/LazyAGI/LazyLLM/actions/workflows/main.yml/badge.svg)](https://github.com/LazyAGI/LazyLLM/actions/workflows/main.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellow.svg)](https://opensource.org/license/apache-2-0)
 [![GitHub star chart](https://img.shields.io/github/stars/LazyAGI/LazyLLM?style=flat-square)](https://star-history.com/#LazyAGI/LazyLLM)
+[![](https://dcbadge.vercel.app/api/server/cDSrRycuM6?compact=true&style=flat)](https://discord.gg/cDSrRycuM6)
 
 ## 一、简介
 
