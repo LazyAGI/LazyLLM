@@ -1,10 +1,16 @@
 from typing import Literal
 import requests
 
-from ..baseTool import BaseTool
+import lazyllm
+from ..base import BaseTool
 from .utils import CityCodeMatcher
-from .configs import WEATHER_URL, WEATHER_KEY
 
+# 查询天气
+# 使用高德开放平台的天气查询API
+# API文档: https://lbs.amap.com/api/webservice/guide/api/weatherinfo
+
+WEATHER_KEY = lazyllm.config.getenv("weather_key", str, "")
+WEATHER_URL = "https://restapi.amap.com/v3/weather/weatherInfo?"
 
 class QueryWeather(BaseTool):
 

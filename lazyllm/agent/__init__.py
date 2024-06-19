@@ -1,2 +1,1 @@
-from .baseAgent import BaseAgent
-from .funcCallAgent import FuncCallAgent
+from .base import FuncCall

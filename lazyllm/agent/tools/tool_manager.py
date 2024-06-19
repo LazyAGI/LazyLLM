@@ -7,16 +7,21 @@ try:
 except ImportError:
     raise ImportError("Please install json5 using `pip install json5`. ")
 
+import lazyllm
 from lazyllm import LOG as logger
-from .baseTool import BaseTool
+from .base import BaseTool
 
 
-class ToolManager(object):
-    def __init__(self, tools:List[BaseTool]):
-        super().__init__()
+class ToolManager(lazyllm.ModuleBase):
+    def __init__(self, tools:List[BaseTool], return_trace=False):
+        super().__init__(return_trace=return_trace)
         tools = [self._check_tool(tool) for tool in tools]
         self._tools_map:Dict[str, BaseTool] = {tool.name: tool for tool in tools}
         self._tools_desc_map:Dict[str, Dict] = {tool.name: tool.get_description() for tool in tools}
+
+    def forward(self, tool_name:str, tool_args:Union[str, Dict[str, Any]], **kwargs) -> str:
+        return self._call_tool(tool_name, tool_args, **kwargs)
+    
 
     def _check_tool(self, tool:BaseTool) -> BaseTool:
         if not isinstance(tool, BaseTool):
@@ -79,6 +84,13 @@ class ToolManager(object):
             raise KeyError(f"Tool {tool_name} is not registered")
         return self._tools_map[tool_name]
         
+    def get_description(self, tool_name:str, default=None) -> Union[Dict, None]:
+        return self._tools_desc_map.get(tool_name, default)
+    
+    def get_description(self, tool_name:str) -> Dict:
+        if tool_name not in self._tools_desc_map:
+            raise KeyError(f"Tool {tool_name} is not registered")
+        return self._tools_desc_map[tool_name]
 
     @property
     def all_tools(self) -> List[str]:
@@ -88,13 +100,13 @@ class ToolManager(object):
     def all_tools_description(self) -> List[Dict]:
         return list(self._tools_desc_map.values())
     
-    def _call_tool(self, tool_name:str, tool_args:Dict[str, Any], **kwargs) -> Union[str, None]:
+    def _call_tool(self, tool_name:str, tool_args:Union[str, Dict[str, Any]], **kwargs) -> str:
         """
         Call the tool with the given name.
 
         Args:
             tool_name (str): The name of the tool to call.
-            tool_args (Dict[str, Any]): The arguments to pass to the tool.
+            tool_args (Union[str, Dict[str, Any]]): The arguments to pass to the tool.
         Returns:
             str: The output of the tool.
         """
@@ -110,6 +122,7 @@ class ToolManager(object):
             tool_res = self._tools_map[tool_name](**tool_args, **kwargs)
             logger.debug(f"Tool {tool_name} takes {time.time() - start_time:.2f}s.")
             return tool_res if isinstance(tool_res, str) else json.dumps(tool_res, ensure_ascii=False, indent=4)
-        except:
+        except Exception as e:
             logger.error(f"Error calling tool {tool_name}, args: {tool_args}, kwargs: {kwargs}.")
             logger.debug(traceback.format_exc())
+            return f"Error calling tool {tool_name}. Error: {e}"

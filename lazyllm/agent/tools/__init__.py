@@ -1,14 +1,7 @@
-from .baseTool import BaseTool
-from .toolManager import ToolManager
+from .base import BaseTool
 from .query_weather import QueryWeather
 from .web_search import WebSearch
+from .tool_manager import ToolManager
 
 query_weather = QueryWeather()
 web_search = WebSearch()
-
-TOOL_LIST = [
-    query_weather,
-    web_search,
-]
-
-default_tool_manager = ToolManager(TOOL_LIST)

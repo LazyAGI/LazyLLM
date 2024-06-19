@@ -1,6 +1,6 @@
 from typing import Literal, Dict, Union
 
-from ..baseTool import BaseTool
+from ..base import BaseTool
 from .searcher import GoogleSearch, SearXNGSearch
 
 
