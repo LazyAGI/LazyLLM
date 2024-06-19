@@ -13,7 +13,7 @@ class Document(ModuleBase):
         super().__init__()
         if not os.path.exists(dataset_path):
             defatult_path = os.path.join(lazyllm.config['data_path'], dataset_path)
-            if  os.path.exists(defatult_path):
+            if os.path.exists(defatult_path):
                 dataset_path = defatult_path
         self._create_ui = create_ui
         launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
