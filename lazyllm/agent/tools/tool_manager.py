@@ -59,11 +59,15 @@ class ToolManager(lazyllm.ModuleBase):
         Returns:
             BaseTool: The removed tool.
         """
-        return self._tools_map.pop(tool_name, default)
+        if tool_name not in self._tools_map:
+            return default
+        self._tools_desc_map.pop(tool_name)
+        return self._tools_map.pop(tool_name)
     
     def pop(self, tool_name:str) -> BaseTool:
         if tool_name not in self._tools_map:
             raise KeyError(f"Tool {tool_name} is not registered")
+        self._tools_desc_map.pop(tool_name)
         return self._tools_map.pop(tool_name)
 
     def get(self, tool_name:str, default=None) -> Union[BaseTool, None]:
