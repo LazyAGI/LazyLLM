@@ -109,13 +109,14 @@ Returns:
 
 """)
 add_example('FlowBase.for_each', """\
+>>> import lazyllm
 >>> def test1(): print('1')
 ... 
 >>> def test2(): print('2')
 ... 
 >>> def test3(): print('3')
 ... 
->>> flow = pipeline(test1, pipeline(test2, test3))
+>>> flow = lazyllm.pipeline(test1, lazyllm.pipeline(test2, test3))
 >>> flow.for_each(lambda x: callable(x), lambda x: print(x))
 <function test1 at 0x7f389c3d3ac0>
 <function test2 at 0x7f389c3d3b50>
@@ -189,6 +190,7 @@ Arguments:
 """)
 
 add_example('Parallel', '''\
+>>> import lazyllm
 >>> test1 = lambda a: return a + 1
 >>> test2 = lambda a: return a * 4
 >>> test3 = lambda a: return a / 2
@@ -233,6 +235,7 @@ Returns:
 """)
 
 add_example('Pipeline', """\
+>>> import lazyllm
 >>> ppl = lazyllm.pipeline(
 ...     stage1=lambda x: x+1,
 ...     stage2=lambda x: f'get {x}'
@@ -325,10 +328,11 @@ Returns:
 ''')
 
 add_example('IFS', '''\
+>>> import lazyllm
 >>> cond = lambda x: x > 0
 >>> tpath = lambda x: x * 2
 >>> fpath = lambda x: -x
->>> ifs_flow = IFS(cond, tpath, fpath)
+>>> ifs_flow = lazyllm.ifs(cond, tpath, fpath)
 >>> ifs_flow(10)
 20
 >>> ifs_flow(-5)
@@ -380,7 +384,13 @@ Raises:
 """)
 
 add_example('Switch', """\
+>>> import lazyllm
+>>> def is_positive(x): return x > 0
+...
+>>> def is_negative(x): return x < 0
+...
 >>> switch = lazyllm.switch(is_positive, lambda x: 2 * x, is_negative, lambda x : -x, 'default', lambda x : '000')
+>>>
 >>> switch(1)
 2
 >>> switch(0)
@@ -439,6 +449,7 @@ Arguments:
 """)
 
 add_example('Diverter', """\
+>>> import lazyllm
 >>> div = lazyllm.diverter(lambda x: x+1, lambda x: x*2, lambda x: -x)
 >>> div(1, 2, 3)
 (2, 4, -3)
@@ -490,6 +501,7 @@ Note:
 """)
 
 add_example('Warp', """\
+>>> import lazyllm
 >>> warp = lazyllm.warp(lambda x: x * 2)
 >>> warp(1, 2, 3, 4)
 (2, 4, 6, 8)
