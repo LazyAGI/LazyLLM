@@ -30,7 +30,7 @@ class ToolManager(lazyllm.ModuleBase):
             raise ValueError(f"Tool {tool} does not have a callable 'call' method")
         if not tool.call.__doc__:
             raise ValueError(f"Tool {tool} does not have a docstring for its 'call' method")
-        if hasattr(tool, "name"):
+        if not hasattr(tool, "name"):
              tool.name = tool.__class__.__name__.lower()
         return tool
 
