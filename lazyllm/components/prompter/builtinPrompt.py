@@ -89,15 +89,16 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     # Used for OnlineChatModule
     def _generate_prompt_dict_impl(self, instruction, input, history, tools, label):
         if not history: history = []
-        if isinstance(input, str):
-            history.append({"role": "user", "content": input})
-        elif isinstance(input, dict):
-            history.append(input)
-        else:
-            raise TypeError("input must be a string or a dict")
+        if input:
+            if isinstance(input, str):
+                history.append({"role": "user", "content": input})
+            elif isinstance(input, dict):
+                history.append(input)
+            else:
+                raise TypeError("input must be a string or a dict")
 
-        history.insert(0, {"role": "system",
-                           "content": self._system + "\n" + instruction if instruction else self._system})
+            history.insert(0, {"role": "system",
+                               "content": self._system + "\n" + instruction if instruction else self._system})
 
         return dict(messages=history, tools=tools) if tools else dict(messages=history)
 

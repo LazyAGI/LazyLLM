@@ -11,9 +11,17 @@ from lazyllm import LOG as logger
 from lazyllm.agent.protocol import Message, ToolCall, Function, ASSISTANT, USER
 from .tools import TOOLS_MAP
 
-def trans_chat_module_request(messages:Union[List[Dict], List[Message]] = None, 
+def trans_chat_module_request(__input:Dict = None,
+                              *,
+                              messages:Union[List[Dict], List[Message]] = None, 
                               tools:List[Dict] = None, 
                               **kwargs):
+    if __input is not None:
+        messages = __input.get("messages", messages)
+        tools = __input.get("tools", tools)
+        kwargs.update(__input.get("kwargs", {}))
+    kwargs.update(kwargs.pop("kwargs", {}))
+
     new_messages = []
     for message in messages:
         if isinstance(message, dict):
@@ -22,7 +30,7 @@ def trans_chat_module_request(messages:Union[List[Dict], List[Message]] = None,
             new_messages.append(message.model_dump())
         else:
             raise ValueError(f"Unsupported message type: {type(message)}")
-    return {"instruction_kwargs": kwargs.pop("instruction_kwargs", {}), "messages": messages, "tools":tools, **kwargs}
+    return {"instruction_kwargs": kwargs.pop("instruction_kwargs", {}), "messages": new_messages, "tools":tools, **kwargs}
 
 def trans_chat_module_response(response:Dict[str, Any]) -> Message:
     rsp_message = response["message"]
@@ -88,32 +96,6 @@ def _format_func(func_name:str, args:str):
     return None
 
 
-def call_tool(tool_call:ToolCall, **kwargs) -> str:
-    """
-    Call the tool with the given name.
-
-    Args:
-        tool_name (str): The name of the tool to call.
-        tool_args (Union[str, dict]): The arguments to pass to the tool.
-        kwargs (dict): Additional keyword arguments to pass to the tool.
-    Returns:
-        str: The output of the tool.
-    """
-    start_time = time.time()
-    tool_id = tool_call["id"]
-    tool_name, tool_args = tool_call["function"]["name"], tool_call["function"]["arguments"]
-    if tool_name not in TOOLS_MAP:
-        raise ValueError(f"Tool {tool_name} not found in tool_map")
-    try:
-        tool_args = json5.loads(tool_args) if isinstance(tool_args, str) else tool_args
-        intersection_keys = tool_args.keys() & kwargs.keys()
-        poped_args = {k:tool_args.pop(k) for k in intersection_keys}
-        if poped_args:
-            logger.debug(f"The following args of tool {tool_name} are overridden: {poped_args}")
-        tool_res = TOOLS_MAP[tool_name](**tool_args, **kwargs)
-        logger.debug(f"Tool {tool_name} takes {time.time() - start_time:.2f}s.")
-        tool_res = tool_res if isinstance(tool_res, str) else json.dumps(tool_res, ensure_ascii=False, indent=4)
-        return {"id": tool_id, "name": tool_name, "content": tool_res}
-    except:
-        logger.error(f"Error calling tool {tool_name}, args: {tool_args}, kwargs: {kwargs}.")
-        logger.debug(traceback.format_exc())
+def pre_hook(input, history, tools, label):
+    if not input: input = {"it_is_a_unique_key": None}
+    return input, history, tools, label
