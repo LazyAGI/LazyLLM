@@ -33,6 +33,7 @@ If you need the following capabilities, please have your custom class inherit fr
 ''')
 
 add_example('ModuleBase', '''\
+>>> import lazyllm
 >>> class Module(lazyllm.module.ModuleBase):
 ...     pass
 ... 
@@ -58,6 +59,7 @@ Define computation steps executed each time, all subclasses of ModuleBase need t
 ''')
                 
 add_example('ModuleBase.forward', '''\
+>>> import lazyllm
 >>> class MyModule(lazyllm.module.ModuleBase):
 ...     def forward(self, input):
 ...         return input + 1
@@ -75,6 +77,7 @@ Deploy the module and all its submodules.
 ''')
 
 add_example('ModuleBase.start', '''\
+>>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
 >>> m.start()
 >>> m(1)
@@ -90,6 +93,7 @@ Re-deploy the module and all its submodules.
 ''')
 
 add_example('ModuleBase.restart', '''\
+>>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
 >>> m.restart()
 >>> m(1)
@@ -179,6 +183,7 @@ Args:
 ''')
 
 add_example('ModuleBase.eval', '''\
+>>> import lazyllm
 >>> class MyModule(lazyllm.module.ModuleBase):
 ...     def forward(self, input):
 ...         return f'reply for input'
@@ -198,6 +203,7 @@ Define a training task. This function returns a training pipeline. Subclasses th
 ''')
                 
 add_example('ModuleBase._get_train_tasks', '''\
+>>> import lazyllm
 >>> class MyModule(lazyllm.module.ModuleBase):
 ...     def _get_train_tasks(self):
 ...         return lazyllm.pipeline(lambda : 1, lambda x: print(x))
@@ -215,6 +221,7 @@ Define a deployment task. This function returns a deployment pipeline. Subclasse
 ''')
 
 add_example('ModuleBase._get_deploy_tasks', '''\
+>>> import lazyllm
 >>> class MyModule(lazyllm.module.ModuleBase):
 ...     def _get_deploy_tasks(self):
 ...         return lazyllm.pipeline(lambda : 1, lambda x: print(x))
@@ -238,6 +245,7 @@ Args:
 ''')
 
 add_example('ActionModule', '''\
+>>> import lazyllm
 >>> def myfunc(input): return input + 1
 ... 
 >>> class MyModule1(lazyllm.module.ModuleBase):
@@ -356,15 +364,18 @@ Args:
 
 add_example('TrainableModule', ['''\
 ''', '''\
+>>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).trainset('/file/to/path').deploy_method(None).mode('finetune')
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 ''', '''\
 ''', '''\
+>>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 ''', '''\
+>>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy).mode('finetune')
 >>> m.evalset([1, 2, 3])
 >>> m.update()
@@ -372,6 +383,7 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 >>> m.eval_result
 ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
 ''', '''\
+>>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
@@ -396,6 +408,7 @@ Args:
 ''')
 
 add_example('UrlModule', '''\
+>>> import lazyllm
 >>> def demo(input): return input * 2
 ... 
 >>> s = lazyllm.ServerModule(demo, launcher=launchers.empty(sync=False))
@@ -431,6 +444,7 @@ Args:
 ''')
 
 add_example('ServerModule', '''\
+>>> import lazyllm
 >>> def demo(input): return input * 2
 ... 
 >>> s = lazyllm.ServerModule(demo, launcher=launchers.empty(sync=False))
@@ -474,6 +488,7 @@ Args:
 ''')
 
 add_example('TrialModule', '''\
+>>> import lazyllm
 >>> m = lazyllm.TrainableModule(lazyllm.Option(['b1', 'b2', 'b3']), 't').finetune_method(finetune.dummy, **dict(a=lazyllm.Option(['f1', 'f2']))).deploy_method(deploy.dummy).mode('finetune')
 >>> s = lazyllm.ServerModule(m, post=lambda x, *, ori: f'post2({x})')
 >>> t = lazyllm.TrialModule(s)
@@ -505,6 +520,7 @@ Args:
 ''')
 
 add_example('OnlineChatModule', '''\
+>>> import lazyllm
 >>> m = lazyllm.OnlineChatModule(source="sensenova", stream=True)
 >>> query = "Hello!"
 >>> resp = m(query)
@@ -565,6 +581,7 @@ Args:
 ''')
 
 add_example('OnlineEmbeddingModule', '''\
+>>> import lazyllm
 >>> m = lazyllm.OnlineEmbeddingModule(source="sensenova")
 >>> emb = m("hello world")
 >>> print(f"emb: {emb}")
@@ -594,6 +611,9 @@ If you need to support the capabilities of a new open platform's LLM, please ext
 ''')
 
 add_example('OnlineChatModuleBase', '''\
+>>> import lazyllm
+>>> from lazyllm.module import OnlineChatModuleBase
+>>> from lazyllm.module.onlineChatModule.fileHandler import FileHandlerBase
 >>> class NewPlatformChatModule(OnlineChatModuleBase):
 ...     def __init___(self,
 ...                   base_url: str = "<new platform base url>",
@@ -670,6 +690,8 @@ If you need to support the capabilities of embedding models on a new open platfo
 ''')
 
 add_example('OnlineEmbeddingModuleBase', '''
+>>> import lazyllm
+>>> from lazyllm.module import OnlineEmbeddingModuleBase
 >>> class NewPlatformEmbeddingModule(OnlineEmbeddingModuleBase):
 ...     def __init__(self,
 ...                 embed_url: str = '<new platform embedding url>',
