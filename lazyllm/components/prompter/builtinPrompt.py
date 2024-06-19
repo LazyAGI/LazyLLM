@@ -97,8 +97,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             else:
                 raise TypeError("input must be a string or a dict")
 
-            history.insert(0, {"role": "system",
-                               "content": self._system + "\n" + instruction if instruction else self._system})
+        history.insert(0, {"role": "system",
+                            "content": self._system + "\n" + instruction if instruction else self._system})
 
         return dict(messages=history, tools=tools) if tools else dict(messages=history)
 
