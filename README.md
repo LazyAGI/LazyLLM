@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/docs/LazyLLM-logo.png" width="300"/>
+</div>
+
 # LazyLLM: 低代码构建多Agent大模型应用的开发工具
 [中文](README.md) |  [EN](README.ENG.md)
 
