@@ -22,9 +22,9 @@ void addDocStr(py::object obj, std::string docs) {
 }
 '''
 
-all_examples=[]
+all_examples = []
 
-def get_all_examples(): # Examples are not always exported, so process them in case of need.
+def get_all_examples():   # Examples are not always exported, so process them in case of need.
     result = []
     for example in all_examples:
         if len(example.strip()) == 0: continue
@@ -79,7 +79,7 @@ def add_example(obj_name, docstr, module=lazyllm):
     else:
         docstr = ["\n".join([f'    {d}' for d in doc.split('\n')]) for doc in docstr]
         all_examples.extend(docstr)
-        
+
     if lazyllm.config['language'].upper() == 'CHINESE':
         add_doc(obj_name, docstr, module, '\n\nExample::\n')
     if lazyllm.config['language'].upper() == 'ENGLISH':
