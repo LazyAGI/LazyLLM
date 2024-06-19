@@ -77,6 +77,7 @@ Args:
 ''')
 
 add_example('register', ['''\
+>>> import lazyllm
 >>> @lazyllm.component_register('mygroup')
 ... def myfunc(input):
 ...     return input
@@ -84,6 +85,7 @@ add_example('register', ['''\
 >>> lazyllm.mygroup.myfunc()(1)
 1
 ''', '''\
+>>> import lazyllm
 >>> @lazyllm.component_register.cmd('mygroup')
 ... def mycmdfunc(input):
 ...     return f'echo {input}'
@@ -648,6 +650,7 @@ Args:
 ''')
 
 add_example('ChatPrompter', '''\
+>>> from lazyllm import ChatPrompter
 >>> p = ChatPrompter('hello world')
 >>> p.generate_prompt('this is my input')
 '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\nthis is my input\\n<|Assistant|>:\\n'
