@@ -11,25 +11,18 @@ from lazyllm import LOG as logger
 from lazyllm.agent.protocol import Message, ToolCall, Function, ASSISTANT, USER
 from .tools import TOOLS_MAP
 
-def trans_chat_module_request(__input:Union[str, Message, Dict[str, Any]] = None, 
-                              messages:Union[List[Dict], List[Message]] = None, 
+def trans_chat_module_request(messages:Union[List[Dict], List[Message]] = None, 
                               tools:List[Dict] = None, 
                               **kwargs):
-    if isinstance(__input, dict) and "messages" in __input:
-        tools = tools or __input.get("tools", None)
-        messages = messages or __input["messages"]
-    if isinstance(__input, str):
-        messages = [Message(role=USER, content=__input)]
-    last_msg = messages[-1].model_dump() if not isinstance(messages[-1], dict) else messages[-1]
-    llm_chat_history = []
-    for message in messages[:-1]:
+    new_messages = []
+    for message in messages:
         if isinstance(message, dict):
-            llm_chat_history.append(message)
+            new_messages.append(message)
         elif isinstance(message, Message):
-            llm_chat_history.append(message.model_dump())
+            new_messages.append(message.model_dump())
         else:
             raise ValueError(f"Unsupported message type: {type(message)}")
-    return {"input": {"any_key": last_msg}, "tools":tools, "llm_chat_history": llm_chat_history, **kwargs}
+    return {"instruction_kwargs": kwargs.pop("instruction_kwargs", {}), "messages": messages, "tools":tools, **kwargs}
 
 def trans_chat_module_response(response:Dict[str, Any]) -> Message:
     rsp_message = response["message"]

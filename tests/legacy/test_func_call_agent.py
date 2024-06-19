@@ -41,10 +41,11 @@ def merge_all_message(input_message:Union[Message, List[Message]], llm_message:M
         input_message = [input_message]
     return input_message+[llm_message]+tool_call_messages
 
-def prepare_fc_ppl_request(messages:List[Message], tools:List[Dict[str, str]]):
-    return {"messages": messages, "tools": tools}
+def prepare_fc_ppl_request(messages:List[Message], tools:List[Dict[str, str]], **kwargs):
+    return {"messages": messages, "tools": tools, "kwargs": kwargs}
 
 with lazyllm.pipeline() as fc_ppl:
+    fc_ppl.request = prepare_fc_ppl_request
     fc_ppl.llm_ppl = lazyllm.pipeline(trans_chat_module_request, call_llm, trans_chat_module_response)
     fc_ppl.tool_call = lazyllm.ifs(is_tool_calls, 
                                    lazyllm.pipeline(extract_tool_calls, lazyllm.warp(call_tool), merge_tool_call_message), 
@@ -52,7 +53,7 @@ with lazyllm.pipeline() as fc_ppl:
     fc_ppl.merge_message = merge_all_message | lazyllm.bind(fc_ppl.input["messages"], 
                                                             fc_ppl.llm_ppl, 
                                                             lazyllm._0,)
-    fc_ppl.recall_request = prepare_fc_ppl_request | lazyllm.bind(tools=fc_ppl.input["tools"])
+    fc_ppl.recall_request = prepare_fc_ppl_request | lazyllm.bind(tools=fc_ppl.input["tools"], kwargs=fc_ppl.input["kwargs"])
 
 
 fc_loop = lazyllm.loop(fc_ppl, stop_condition=lambda x:x["messages"][-1][ROLE]==ASSISTANT)

@@ -16,8 +16,7 @@ class BaseTool(ABC):
     def __call__(self, *args: Any, **kwages: Any) -> Union[str, list, dict]:
         return self.call(*args, **kwages)
 
-    @property
-    def description(self):
+    def get_description(self):
         return transform_to_openai_function(self)
 
 
