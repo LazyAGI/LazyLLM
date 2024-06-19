@@ -12,7 +12,9 @@ class AlpacaPrompter(LazyLLMPrompterBase):
                                 "input that provides further context if possible. Write a response that "
                                 f"appropriately completes the request.\n\n ### Instruction:\n{instruction}"
                                 "\n\n" + LazyLLMPrompterBase._get_extro_key_template(extro_keys))
-        self._init_prompt("{system}\n{instruction}\n{tools}\n{input}### Response:\n", instruction_template, "### Response:")
+        self._init_prompt("{system}\n{instruction}\n{tools}\n{input}### Response:\n",
+                          instruction_template,
+                          "### Response:")
 
     def _check_values(self, instruction, input, history, tools):
         assert not history, f"Chat history is not supported in {__class__}."
