@@ -1,4 +1,4 @@
-LazyLLM的顶层核心概念：模块
+顶层核心概念：模块
 =========================
 
 Module是LazyLLM中的顶层组件，也是LazyLLM最核心的概念之一。Module具备训练、部署、推理和评测四项关键能力，每个模块可以选择实现其中的部分或者全部的能力，
@@ -208,14 +208,21 @@ Submodules的概念
 
     当配置了 ``Redis`` 服务时，便可以利用LazyLLM提供的轻量级网关的机制，实现所有服务的并行部署。
 
-结合FLow搭建复杂应用
+LazyLLM内置模块
 --------------------
 
+TrainableModule
+^^^^^^^^^^^^^^^^^^^^^
 
-.. note::
+API文档参考 :py:class:`lazyllm.module.TrainableModule`
 
-    虽然看起来是由模块组合成数据流，然后统一启动，但我们并不是“静态图”，主要表现为：
-    
-    - 我们使用了基础的python语法来搭建应用，使用方式非常接近于传统的编程方式。
-    - 你仍然可以利用python强大而灵活的特性，在运行的过程中改变已经搭建好的应用的拓扑结构，而后续的执行依据你修改之后的结构。
-    - 你可以灵活的向模块的连接处，注入你所希望执行的hook函数，这些函数甚至可以是运行时定义的。
+ServerModule
+^^^^^^^^^^^^^^^^^^^^^
+
+API文档参考 :py:class:`lazyllm.module.ServerModule`
+
+ActionModule
+^^^^^^^^^^^^^^^^^^^^^
+
+API文档参考 :py:class:`lazyllm.module.ServerModule`
+
