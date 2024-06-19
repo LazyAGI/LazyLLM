@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/docs/LazyLLM-logo.png" width="300"/>
+</div>
+
 # LazyLLM: A  Low-code Development Tool For Building Multi-agent LLMs Applications.
 [中文](README.md) |  [EN](README.ENG.md)
 
