@@ -273,7 +273,7 @@ class UrlModule(ModuleBase):
             self._prompt = EmptyPrompter()
         elif isinstance(prompt, PrompterBase):
             self._prompt = prompt
-        elif isinstance(prompt, str):
+        elif isinstance(prompt, (str, dict)):
             self._prompt = ChatPrompter(prompt)
         return self
 
