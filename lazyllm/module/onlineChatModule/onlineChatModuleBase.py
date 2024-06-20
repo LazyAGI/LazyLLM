@@ -131,8 +131,10 @@ class OnlineChatModuleBase(ModuleBase):
     def formatter(self, format: FormatterBase = None):
         if isinstance(format, FormatterBase):
             self._formatter = format
-        else:
+        elif format is None:
             self._formatter = EmptyFormatter()
+        else:
+            raise TypeError("format must be a FormatterBase")
 
         return self
 
