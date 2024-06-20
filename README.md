@@ -90,9 +90,7 @@ mweb = lazyllm.WebModule(ppl, port=23456).start().wait()
 
 ```python
 import lazyllm
-from lazyllm import pipeline, warp, package, bind
-import time
-import re, json
+from lazyllm import pipeline, warp, bind
 from lazyllm.components.formatter import JsonFormatter
 
 toc_prompt=""" 你现在是一个智能助手。你的任务是理解用户的输入，将大纲以列表嵌套字典的列表。每个字典包含一个 `title` 和 `describe`，其中 `title` 中需要用Markdown格式标清层级，`describe` `describe` 是对该段的描述和写作指导。
@@ -139,7 +137,7 @@ writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "descr
 with pipeline() as ppl:
     ppl.outline_writer = lazyllm.OnlineChatModule(source="openai", stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(lazyllm.OnlineChatModule(source="openai", stream=False).prompt(writer_prompt))
-    ppl.synthesizer = (lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])) | bind(ppl.outline_writer, ppl.story_generater)
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
 
 print(ppl({'query':'请帮我写一篇关于人工智能在医疗领域应用的文章。'}))
 ```

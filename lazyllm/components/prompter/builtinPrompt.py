@@ -4,6 +4,7 @@ from lazyllm import LOG
 from functools import reduce
 import json
 import re
+import copy
 
 class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     ISA = "<!lazyllm-spliter!>"
@@ -77,13 +78,9 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                 assert len(prompt_keys) == 0
                 return self._instruction_template, input
         assert isinstance(input, dict)
+        input = input.copy()
         kwargs = {k: input.pop(k) for k in prompt_keys}
         assert len(input) <= 1, f"Unexpected keys found in input: {list(input.keys())}"
-        # instruction = reduce(lambda s, kv: s.replace(f"{{{kv[0]}}}", kv[1]),
-        #                                     kwargs.items(),
-        #                                     self._instruction_template)\
-        #     if len(kwargs) > 0 else self._instruction_template
-        # return (instruction, list(input.values())[0] if input else "")
         return (reduce(lambda s, kv: s.replace(f"{{{kv[0]}}}", kv[1]),
                        kwargs.items(),
                        self._instruction_template)
@@ -93,16 +90,16 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     def _check_values(self, instruction, input, history, tools): pass
 
     # Used for TrainableModule(local deployed)
-    def _generate_prompt_impl(self, instruction, input, history, tools, label):
-        params = dict(system=self._system, instruction=instruction, user=input, history=history, tools=tools,
+    def _generate_prompt_impl(self, instruction, input, user, history, tools, label):
+        params = dict(system=self._system, instruction=instruction, input=input, user=user, history=history, tools=tools,
                       sos=self._sos, eos=self._eos, soh=self._soh, eoh=self._eoh, soa=self._soa, eoa=self._eoa)
         return self._template.format(**params) + (label if label else '')
 
     # Used for OnlineChatModule
-    def _generate_prompt_dict_impl(self, instruction, input, history, tools, label):
+    def _generate_prompt_dict_impl(self, instruction, input, user, history, tools, label):
         if not history: history = []
-        if isinstance(input, str):
-            history.append({"role": "user", "content": input})
+        if isinstance(input, str) or isinstance(user, str):
+            history.append({"role": "user", "content": user + input})
         elif isinstance(input, dict):
             history.append(input)
         else:
@@ -134,6 +131,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                         tools: Union[List[Dict[str, Any]], None] = None,
                         label: Union[str, None] = None,
                         *, show: bool = False, return_dict: bool = False) -> Union[str, Dict]:
+        # input = copy.deepcopy(input)
         if self._pre_hook:
             input, history, tools, label = self._pre_hook(input, history, tools, label)
         instruction, input = self._get_instruction_and_input(input)
@@ -141,9 +139,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         tools = self._get_tools(tools, return_dict=return_dict)
         self._check_values(instruction, input, history, tools)
         instruction, user_instruction = self._split_instruction(instruction)
-        input = user_instruction + input
         func = self._generate_prompt_dict_impl if return_dict else self._generate_prompt_impl
-        result = func(instruction, input, history, tools, label)
+        result = func(instruction, input, user_instruction, history, tools, label)
         if self._show or show: LOG.info(result)
         return result
 

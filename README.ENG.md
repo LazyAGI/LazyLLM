@@ -93,9 +93,7 @@ mweb = lazyllm.WebModule(ppl, port=23456).start().wait()
 
 ```python
 import lazyllm
-from lazyllm import pipeline, warp, package, bind
-import time
-import re, json
+from lazyllm import pipeline, warp, bind
 from lazyllm.components.formatter import JsonFormatter
 
 toc_prompt="""
@@ -144,7 +142,7 @@ writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "descr
 with pipeline() as ppl:
     ppl.outline_writer = lazyllm.OnlineChatModule(source="openai", stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(lazyllm.OnlineChatModule(source="openai", stream=False).prompt(writer_prompt))
-    ppl.synthesizer = (lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])) | bind(ppl.outline_writer, ppl.story_generater)
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
 
 print(ppl({'query': 'Please help me write an article about the application of artificial intelligence in the medical field.'}))
 ```
