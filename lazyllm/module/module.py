@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import lazyllm
 from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, launchers, LOG
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
+from ..components.utils import ModelDownloader
 from ..flow import FlowBase, Pipeline, Parallel
 import uuid
 from ..client import get_redis, redis_client
@@ -178,6 +179,9 @@ class ModuleBase(object):
     def _overwrote(self, f):
         return getattr(self.__class__, f) is not getattr(__class__, f)
 
+    def __repr__(self):
+        return lazyllm.make_repr('Module', self.__class__, name=self.name)
+
 
 class UrlModule(ModuleBase):
     __enable_request__ = True
@@ -187,10 +191,10 @@ class UrlModule(ModuleBase):
         self._url = url
         self._stream = stream
         self._meta = meta if meta else UrlModule
-        self.prompt()
         # Set for request by specific deploy:
         self._set_template(template_headers={'Content-Type': 'application/json'})
         self._extract_result_func = lambda x: x
+        self.prompt()
 
     def url(self, url):
         if redis_client:
@@ -232,14 +236,15 @@ class UrlModule(ModuleBase):
             data = codecs.encode(pickle.dumps(__input), 'base64').decode('utf-8')
         elif self.template_message is not None:
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
-            data[self.input_key_name] = input
+            assert 'inputs' in self.keys_name_handle
+            data[self.keys_name_handle['inputs']] = input
         else:
             if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
             data = input
 
         def _callback(text):
             if isinstance(text, LazyLlmResponse):
-                text.messages = self._prompt.get_response(self._extract_result_func(text.messages))
+                text = self._prompt.get_response(self._extract_result_func(text.messages))
             else:
                 text = self._prompt.get_response(self._extract_result_func(text))
             return text
@@ -272,15 +277,14 @@ class UrlModule(ModuleBase):
             self._prompt = ChatPrompter(prompt)
         return self
 
-    def _set_template(self, template_message=None, input_key_name=None, template_headers=None):
-        assert input_key_name is None or input_key_name in template_message.keys()
+    def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None):
         self.template_message = template_message
-        self.input_key_name = input_key_name
+        self.keys_name_handle = keys_name_handle
         self.template_headers = template_headers
 
     def _modify_parameters(self, paras, kw):
         for key, value in paras.items():
-            if key == self.input_key_name:
+            if key == self.keys_name_handle['inputs']:
                 continue
             elif isinstance(value, dict):
                 if key in kw:
@@ -301,9 +305,10 @@ class UrlModule(ModuleBase):
         m.prompt(prompt=self._prompt)
         m._module_id = self._module_id
         m.name = self.name
+        m._extract_result_func = self._extract_result_func
         m._set_template(
             self.template_message,
-            self.input_key_name,
+            self.keys_name_handle,
             self.template_headers,
         )
         return m
@@ -353,7 +358,7 @@ class ServerModule(UrlModule):
         assert (post is None) or (stream is False)
         self._set_template(
             copy.deepcopy(lazyllm.deploy.RelayServer.message_format),
-            lazyllm.deploy.RelayServer.input_key_name,
+            lazyllm.deploy.RelayServer.keys_name_handle,
             copy.deepcopy(lazyllm.deploy.RelayServer.default_headers),
         )
         self._deploy_flag = lazyllm.once_flag()
@@ -373,21 +378,27 @@ class TrainableModule(UrlModule):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
     __enable_request__ = False
 
-    def __init__(self, base_model: Option = '', target_path='', *, source=lazyllm.config['model_source'],
-                 stream=False, return_trace=False):
+    def __init__(self, base_model: Option = '', target_path='', *, stream=False, return_trace=False):
+        self.base_model = ModelDownloader(lazyllm.config['model_source']).download(base_model)
+        self._stop_words = None
         super().__init__(url=None, stream=stream, meta=TrainableModule, return_trace=return_trace)
         # Fake base_model and target_path for dummy
         self.target_path = target_path
         self._train = None  # lazyllm.train.auto
         self._finetune = lazyllm.finetune.auto
         self._deploy = lazyllm.deploy.auto
-
-        self.base_model = base_model
         self._deploy_flag = lazyllm.once_flag()
 
     # modify default value to ''
     def prompt(self, prompt=''):
-        return super(__class__, self).prompt(prompt)
+        if self.base_model != '' and prompt == '' and ModelDownloader.get_model_type(self.base_model) != 'llm':
+            prompt = None
+        prompt = super(__class__, self).prompt(prompt)._prompt
+        keys = ModelDownloader.get_model_prompt_keys(self.base_model)
+        if keys: prompt._set_model_configs(**keys)
+        if 'stop_words' in keys:
+            self._stop_words = keys['stop_words']
+        return self
 
     def _get_args(self, arg_cls, disable=[]):
         args = getattr(self, f'_{arg_cls}_args', dict())
@@ -425,15 +436,26 @@ class TrainableModule(UrlModule):
                 deployer = self._deploy(stream=self._stream, **self._deploy_args)
             # For AutoDeploy: class attributes can only be obtained after instantiation
             self._deploy = deployer.__class__
-            self._set_template(copy.deepcopy(deployer.message_format), deployer.input_key_name,
+            self._set_template(copy.deepcopy(deployer.message_format), deployer.keys_name_handle,
                                copy.deepcopy(deployer.default_headers))
+            if hasattr(self._deploy, 'extract_result'): self._extract_result_func = self._deploy.extract_result
+            self._update_stop_words()
             return deployer
         return Pipeline(lambda *a: lazyllm.package(target_path, self.base_model),
                         build_deployer(self.base_model), self.url)
 
+    def _update_stop_words(self):
+        if self.keys_name_handle and 'stop' in self.keys_name_handle and self._stop_words and self.template_message:
+            if self.keys_name_handle['stop'] in self.template_message:
+                self.template_message[self.keys_name_handle['stop']] = self._stop_words
+            else:
+                # stop in sub dict:
+                for _, v in self.template_message.items():
+                    if isinstance(v, dict) and self.keys_name_handle['stop'] in v:
+                        v[self.keys_name_handle['stop']] = self._stop_words
+
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
-        if hasattr(self._deploy, 'extract_result'): self._extract_result_func = self._deploy.extract_result
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Trainable', mode=self._mode, basemodel=self.base_model,

@@ -1,6 +1,8 @@
 import builtins
 import lazyllm
 import re
+from .common import _MetaBind
+from ..configs import config
 
 # Special Dict for lazy programmer. Suppose we have a LazyDict as follows：
 #    >>> ld = LazyDict(name='ld', ALd=int)
@@ -66,8 +68,9 @@ class LazyLLM{name}Base(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].b
     pass
 '''
 
+config.add('use_builtin', bool, False, 'USE_BUILTIN')
 
-class LazyLLMRegisterMetaClass(type):
+class LazyLLMRegisterMetaClass(_MetaBind):
     all_clses = LazyDict()
 
     def __new__(metas, name, bases, attrs):
@@ -78,9 +81,9 @@ class LazyLLMRegisterMetaClass(type):
             new_cls._lazy_llm_group = f'{getattr(new_cls, "_lazy_llm_group", "")}.{group}'.strip('.')
             ld = LazyDict(group, new_cls)
             if new_cls._lazy_llm_group == group:
-                for m in (builtins, lazyllm):
+                for m in (builtins, lazyllm) if config['use_builtin'] else (lazyllm,):
                     assert not (hasattr(m, group) and hasattr(m, ori)), f'group name \'{ori}\' cannot be used'
-                for m in (builtins, lazyllm):
+                for m in (builtins, lazyllm) if config['use_builtin'] else (lazyllm,):
                     setattr(m, group, ld)
                     setattr(m, ori, ld)
             LazyLLMRegisterMetaClass.all_clses[new_cls._lazy_llm_group] = ld

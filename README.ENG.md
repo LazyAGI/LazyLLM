@@ -1,13 +1,28 @@
-# LazyLLM: A One-Stop Development Tool for Building and Optimizing Multi-Agent Applications.
+<div align="center">
+  <img src="https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/docs/LazyLLM-logo.png" width="100%"/>
+</div>
+
+# LazyLLM: A  Low-code Development Tool For Building Multi-agent LLMs Applications.
 [中文](README.md) |  [EN](README.ENG.md)
+
+[![CI](https://github.com/LazyAGI/LazyLLM/actions/workflows/main.yml/badge.svg)](https://github.com/LazyAGI/LazyLLM/actions/workflows/main.yml)
+[![License](https://img.shields.io/badge/License-Apache_2.0-yellow.svg)](https://opensource.org/license/apache-2-0)
+[![GitHub star chart](https://img.shields.io/github/stars/LazyAGI/LazyLLM?style=flat-square)](https://star-history.com/#LazyAGI/LazyLLM)
+[![](https://dcbadge.vercel.app/api/server/cDSrRycuM6?compact=true&style=flat)](https://discord.gg/cDSrRycuM6)
 
 ## What is LazyLLM?
 
-LazyLLM provides a wide array of tools for every stage of the application development process, including application building, data preparation, model deployment, model fine-tuning, and evaluation. It assists developers in creating AI applications at extremely low costs and enables continuous iterative optimization of their performance.
+LazyLLM is a low-code development tool for building multi-agent LLMs(large language models) applications. It assists developers in creating complex AI applications at very low costs and enables continuous iterative optimization. LazyLLM offers a convenient workflow for application building and provides numerous standard processes and tools for various stages of the application development process.<br>
+
+The AI application development process based on LazyLLM follows the **prototype building -> data feedback -> iterative optimization** workflow. This means you can quickly build a prototype application using LazyLLM, then analyze bad cases using task-specific data, and subsequently iterate on algorithms and fine-tune models at critical stages of the application to gradually enhance the overall performance.<br>
+
+**Tutorials**： https://lazyllm.readthedocs.io/
 
 ## Features
 
-**Efficient Multi-Agent AI Application Development**: Easily build AI applications with multiple agents and provide the ability to deploy all sub-services with one click. During the POC (Proof of Concept) phase, LazyLLM simplifies the deployment process of multi-agent applications through a lightweight gateway mechanism. It addresses the issue of sequentially starting each sub-module (such as LLM, Embedding, etc.) service and configuring URLs, making the entire process smoother and more efficient. In the application release phase, LazyLLM offers the capability to package images with one click, enabling the application to conveniently leverage k8s (Kubernetes) features such as gateways, load balancing, and fault tolerance.<br>
+**Convenient AI Application Assembly Process**: Even if you are not familiar with large models, you can still easily assemble AI applications with multiple agents using our built-in data flow and functional modules, just like Lego building.
+
+**One-Click Deployment of Complex Applications**: We offer the capability to deploy all modules with a single click. Specifically, during the POC (Proof of Concept) phase, LazyLLM simplifies the deployment process of multi-agent applications through a lightweight gateway mechanism, solving the problem of sequentially starting each submodule service (such as LLM, Embedding, etc.) and configuring URLs, making the entire process smoother and more efficient. In the application release phase, LazyLLM provides the ability to package images with one click, making it easy to utilize Kubernetes' gateway, load balancing, and fault tolerance capabilities.
 
 **Cross-Platform Compatibility**: Switch IaaS platforms with one click without modifying code, compatible with bare-metal servers, development machines, Slurm clusters, public clouds, etc. This allows developed applications to be seamlessly migrated to other IaaS platforms, greatly reducing the workload of code modification.<br>
 
@@ -43,6 +58,8 @@ w.start().wait()
 
 ### RAG
 
+![Demo RAG](docs/demo_rag.svg)
+
 <details>
 <summary>click to look up prompts and imports</summary>
 
@@ -50,30 +67,23 @@ w.start().wait()
 
 import os
 import lazyllm
-from lazyllm import pipeline, parallel, Identity, launchers, Document, Retriever, Rerank, deploy
+from lazyllm import pipeline, parallel, bind, _0, Document, Retriever, Reranker
 
 prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task. In this task, you need to provide your answer based on the given context and question.'
 ```
 </details>
 
 ```python
-# If use redis, please set 'export LAZYLLM_RAG_STORE=Redis', and export LAZYLLM_REDIS_URL=redis://{IP}:{PORT}
-prompter = lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])
-llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(prompter)
-documents = Document(dataset_path='/file/to/yourpath', lazyllm.TrainableModule('bge-large-zh-v1.5'))
-retriever = Retriever(documents, algo='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
-rerank = Rerank(types='Reranker', model='bge-reranker-large')
-
-#  input ---> retriver -->  reranker--> llm
-#        |--------------↑            ↑
-#        |---------------------------↑
-m = lazyllm.ActionModule(
-    parallel.sequential(
-        context_str=pipeline(parallel.sequential(Identity, retriever), rerank), 
-        query_str=Identity).asdict, 
-    llm
-)
-mweb = lazyllm.WebModule(m, port=23456).start().wait()
+documents = Document(dataset_path='/file/to/yourpath', embed=TrainableModule('bge-large-zh-v1.5'))
+with pipeline() as ppl:
+    with parallel().sum as ppl.prl:
+        prl.retriever1 = Retriever(documents, parser='CoarseChunk', similarity_top_k=6)
+        prl.retriever2 = Retriever(documents, parser='SentenceDivider', similarity='chinese_bm25', similarity_top_k=6)
+    ppl.reranker = Reranker(types='ModuleReranker', model='bge-reranker-large') | bind(ppl.input, _0)
+    ppl.post_processer = lambda nodes: f'《{nodes[0].metadata["file_name"].split(".")[0]}》{nodes[0].get_content()}' if len(nodes) > 0 else 'cannot find.'
+    ppl.formatter = (lambda ctx, query: dict(context_str=ctx, query_str=query)) | bind(query=ppl.input)
+    ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])) 
+mweb = lazyllm.WebModule(ppl, port=23456).start().wait()
 ```
 
 ### Stories Creator
@@ -152,6 +162,7 @@ print(m({'query': 'Please help me write an article about the application of arti
         + Supports fine-tuning services: GPT, SenseNova, Tongyi Qianwen
         + Supports inference services: GPT, SenseNova, Kimi, Zhipu, Tongyi Qianwen
         + Supports embedding inference services: OpenAI, SenseNova, GLM, Tongyi Qianwen
+    * Support developers to use local services and online services uniformly.
 4. **Supports common RAG (Retrieval-Augmented Generation) components**: Document, Parser, Retriever, Reranker, etc.
 5. **Supports basic webs**: such as chat interface and document management interface, etc.
 
@@ -162,10 +173,10 @@ print(m({'query': 'Please help me write an article about the application of arti
 ```bash
 git clone git@github.com:LazyAGI/LazyLLM.git
 cd LazyLLM
-pip install -c requirements.txt
+pip install -r requirements.txt
 ```
 
-`pip install -c requirements.full.txt` is used when you want to finetune, deploy or build your rag application.
+`pip install -r requirements.full.txt` is used when you want to finetune, deploy or build your rag application.
 
 ### from pip
 
@@ -176,7 +187,7 @@ pip install lazyllm
 
 Install lazyllm and all dependencies, you can use:
 ```bash
-pip install lazyllm-full
+pip install lazyllm[full]
 ```
 
 ## Design concept
@@ -247,7 +258,7 @@ Flow in LazyLLM defines the data stream, describing how data is passed from one 
 
 ## RoadMap
 
-We plan to support the following features by the end of July:
+We plan to support the following features by the end of July: <br>
 
 RAG
 - [ ]  Refactor the RAG module to remove the dependency on llamaindex
@@ -256,15 +267,17 @@ RAG
 One-Click Deployment of Applications
 - [ ]  Support one-click generation of Docker, one-click application startup, supporting high concurrency and fault tolerance
 
-Model Service
-- [ ]  Enhance the ability to automatically select fine-tuning/inference frameworks and parameters based on user scenarios
-- [ ]  Support fine-tuning of 70B models
+Model Services
+- [ ]  Continue support for pre-training and RLHF
 - [ ]  Support multiple inference services during model inference and achieve load balancing
+- [ ]  Support models for text-to-image and image-text QA, including VQA and SD
+- [ ]  Support voice models, including TTS and STT
 
 Tools
+- [ ]  Support Function-Call & Agent
 - [ ]  Integrate common search engines
 - [ ]  Support common formatters
-- [ ]  Built-in Prompter templates
+- [ ]  Provide Prompter templates for common scenarios
 
 User Experience Optimization
-- [ ] Optimize the flow of data in flow, support flexible data flow, and reduce the number of times Identity is used
+- [ ] Optimize the flow of data in flow, support flexible data flow

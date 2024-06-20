@@ -1,0 +1,48 @@
+name: LazyLLM ci
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - ".git*"
+env:
+  CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}'
+
+jobs:
+  Clone:
+    runs-on: tps_sco_nv
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create custom directory
+        run: |
+          set -ex
+          echo ${{ env.CI_PATH }}
+          mkdir -p ${{ env.CI_PATH }}
+
+      - name: Move code to custom directory
+        run: |
+          set -ex
+          mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
+
+  Test:
+    runs-on: tps_sco_nv
+    needs: [Clone]
+    steps:
+      - name: test1
+        run: |
+          set -ex
+          cd ${{ env.CI_PATH }}
+          echo "Placeholder only"
+
+      - name: test2
+        run: |
+          cd ${{ env.CI_PATH }}
+          which python
+          echo "Placeholder only"

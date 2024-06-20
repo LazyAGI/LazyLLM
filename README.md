@@ -1,15 +1,28 @@
-# LazyLLM: 构建和优化多Agent应用的一站式开发工具。
+<div align="center">
+  <img src="https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/docs/LazyLLM-logo.png" width="100%"/>
+</div>
+
+# LazyLLM: 低代码构建多Agent大模型应用的开发工具
 [中文](README.md) |  [EN](README.ENG.md)
+
+[![CI](https://github.com/LazyAGI/LazyLLM/actions/workflows/main.yml/badge.svg)](https://github.com/LazyAGI/LazyLLM/actions/workflows/main.yml)
+[![License](https://img.shields.io/badge/License-Apache_2.0-yellow.svg)](https://opensource.org/license/apache-2-0)
+[![GitHub star chart](https://img.shields.io/github/stars/LazyAGI/LazyLLM?style=flat-square)](https://star-history.com/#LazyAGI/LazyLLM)
+[![](https://dcbadge.vercel.app/api/server/cDSrRycuM6?compact=true&style=flat)](https://discord.gg/cDSrRycuM6)
 
 ## 一、简介
 
-LazyLLM为应用开发过程中的全部环节（包括应用搭建、数据准备、模型部署、模型微调、评测等）提供了大量的工具，协助开发者用极低的成本构建AI应用，并可以持续的迭代优化效果。
+LazyLLM是一款低代码构建**多Agent**大模型应用的开发工具，协助开发者用极低的成本构建复杂的AI应用，并可以持续的迭代优化效果。LazyLLM提供了便捷的搭建应用的workflow，并且为应用开发过程中的各个环节提供了大量的标准流程和工具。<br>
+基于LazyLLM的AI应用构建流程是**原型搭建 -> 数据回流 -> 迭代优化**，即您可以先基于LazyLLM快速跑通应用的原型，再结合场景任务数据进行bad-case分析，然后对应用中的关键环节进行算法迭代和模型微调，进而逐步提升整个应用的效果。<br>
+**用户文档**： https://lazyllm.readthedocs.io/
 
 ## 二、特性
 
-**高效的多Agent AI应用构建**：轻松组建包含多个Agent的AI应用，并提供一键部署所有子服务的能力。在POC阶段，LazyLLM通过一套轻量的网关机制，简化了多Agent应用的部署流程，解决了依次启动各个子模块（如LLM、Embedding等）服务并配置URL的问题，使整个过程更加顺畅高效。而在应用的发布阶段，LazyLLM则提供了一键封装镜像的能力，使得应用可以方便地利用k8s的网关、负载均衡、容错等能力。<br>
+**便捷的AI应用组装流程**：即使您不了解大模型，您仍然可以像搭积木一样，借助我们内置的数据流和功能模块，轻松组建包含多个Agent的AI应用。<br>
 
-**跨平台兼容**：无需修改代码，即可一键切换IaaS平台，兼容裸金属服务器、开发机、Slurm集群、公有云等。这使得开发好的应用可以无缝迁移到其他IaaS平台，大大减少了代码修改的工作量。<br>
+**复杂应用一键部署** 我们提供一键部署所有模块的能力。具体就是：在POC阶段，LazyLLM通过一套轻量的网关机制，简化了多Agent应用的部署流程，解决了依次启动各个子模块（如LLM、Embedding等）服务并配置URL的问题，使整个过程更加顺畅高效。而在应用的发布阶段，LazyLLM则提供了一键封装镜像的能力，使得应用可以方便地利用k8s的网关、负载均衡、容错等能力。<br>
+
+**跨平台兼容**：无需修改代码，即可一键切换IaaS平台，目前兼容裸金属服务器、开发机、Slurm集群、公有云等。这使得开发中的应用可以无缝迁移到其他IaaS平台，大大减少了代码修改的工作量。<br>
 
 **支持网格搜索参数优化**：根据用户配置，自动尝试不同的基模型、召回策略和微调参数，对应用进行评测和优化。这使得超参数调优过程无需对应用代码进行大量侵入式修改，提高了调优效率，帮助用户快速找到最佳配置。<br>
 
@@ -42,6 +55,8 @@ w.start().wait()
 
 ### 3.2 检索增强生成
 
+![Demo RAG](docs/demo_rag.svg)
+
 <details>
 <summary>点击获取import和prompt</summary>
 
@@ -49,30 +64,23 @@ w.start().wait()
 
 import os
 import lazyllm
-from lazyllm import pipeline, parallel, Identity, launchers, Document, Retriever, Rerank, deploy
+from lazyllm import pipeline, parallel, bind, _0, Document, Retriever, Reranker
 
 prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
 ```
 </details>
 
 ```python
-# If use redis, please set 'export LAZYLLM_RAG_STORE=Redis', and export LAZYLLM_REDIS_URL=redis://{IP}:{PORT}
-prompter = lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])
-llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(prompter)
-documents = Document(dataset_path='/file/to/yourpath', lazyllm.TrainableModule('bge-large-zh-v1.5'))
-retriever = Retriever(documents, algo='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
-rerank = Rerank(types='Reranker', model='bge-reranker-large')
-
-#  input ---> retriver -->  reranker---> llm
-#        |--------------↑            ↑
-#        |---------------------------↑
-m = lazyllm.ActionModule(
-    parallel.sequential(
-        context_str=pipeline(parallel.sequential(Identity, retriever), rerank), 
-        query_str=Identity).asdict, 
-    llm
-)
-mweb = lazyllm.WebModule(m, port=23456).start().wait()
+documents = Document(dataset_path='/file/to/yourpath', embed=TrainableModule('bge-large-zh-v1.5'))
+with pipeline() as ppl:
+    with parallel().sum as ppl.prl:
+        prl.retriever1 = Retriever(documents, parser='CoarseChunk', similarity_top_k=6)
+        prl.retriever2 = Retriever(documents, parser='SentenceDivider', similarity='chinese_bm25', similarity_top_k=6)
+    ppl.reranker = Reranker(types='ModuleReranker', model='bge-reranker-large') | bind(ppl.input, _0)
+    ppl.post_processer = lambda nodes: f'《{nodes[0].metadata["file_name"].split(".")[0]}》{nodes[0].get_content()}' if len(nodes) > 0 else '未找到'
+    ppl.formatter = (lambda ctx, query: dict(context_str=ctx, query_str=query)) | bind(query=ppl.input)
+    ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])) 
+mweb = lazyllm.WebModule(ppl, port=23456).start().wait()
 ```
 
 ### 3.3 故事创作
@@ -149,6 +157,7 @@ print(m({'query':'请帮我写一篇关于人工智能在医疗领域应用的�
         + 支持微调服务：GPT、SenseNova、通义千问
         + 支持推理服务：GPT、SenseNova、Kimi、智谱、通义千问
         + 支持Embedding推理服务：Openai、SenseNova、GLM、通义千问
+    * 支持开发者以统一的方式使用本地服务和线上服务
 4. **支持RAG常用组件**：Document、Parser、Retriever、Reranker等。
 5. **基础的界面支持**：如聊天界面、文档管理界面等。
 
@@ -159,10 +168,10 @@ print(m({'query':'请帮我写一篇关于人工智能在医疗领域应用的�
 ```bash
 git clone git@github.com:LazyAGI/LazyLLM.git
 cd LazyLLM
-pip install -c requirements.txt
+pip install -r requirements.txt
 ```
 
-如果想进行微调、推理部署或搭建rag应用等，则需使用 `pip install -c requirements.full.txt`
+如果想进行微调、推理部署或搭建rag应用等，则需使用 `pip install -r requirements.full.txt`
 
 ### pip安装
 
@@ -173,12 +182,12 @@ pip install lazyllm
 
 安装lazyllm及所有的依赖，可以使用
 ```bash
-pip install lazyllm-full
+pip install lazyllm[full]
 ```
 
 ## 六、设计理念
 
-LazyLLM的设计理念源自对我们对大模型在生产环节表现出的局限性的深刻洞察，我们深知现阶段的大模型尚无法完全端到端地解决所有实际问题。因此，基于LazyLLM的AI应用构建流程强调“快速原型搭建，结合场景任务数据进行bad-case分析，针对关键环节进行算法尝试和模型微调，从而提升整个应用的效果”。LazyLLM处理了这个过程中繁琐的工程化工作，提供便捷的操作接口，让用户能够集中精力提升算法效果，打造出色的AI应用。<br>
+LazyLLM的设计理念源自对我们对大模型在生产环节表现出的局限性的深刻洞察，我们深知现阶段的大模型尚无法完全端到端地解决所有实际问题。因此，基于LazyLLM的AI应用构建流程强调“快速原型搭建，结合场景任务数据进行bad-case分析，针对关键环节进行算法尝试和模型微调，进而逐步提升整个应用的效果”。LazyLLM处理了这个过程中繁琐的工程化工作，提供便捷的操作接口，让用户能够集中精力提升算法效果，打造出色的AI应用。<br>
 
 LazyLLM的设计目标是让算法研究员和开发者能够能够从繁杂的工程实现中解脱出来，从而专注于他们最擅长的领域：算法和数据，解决他们在实际场景中的问题。无论你是初学者还是资深专家，我希望LazyLLM都能为你提供一些帮助。对于初级开发者，LazyLLM彻底简化了AI应用的构建过程。他们无需再考虑如何将任务调度到不同的IaaS平台上，不必了解API服务的构建细节，也无需在微调模型时选择框架或切分模型，更不需要掌握任何Web开发知识。通过预置的组件和简单的拼接操作，初级开发者便能轻松构建出具备生产价值的工具。而对于资深的专家，LazyLLM提供了极高的灵活性，每个模块都支持定制和扩展，使用户能够轻松集成自己的算法以及业界先进的生产工具，打造更为强大的应用。<br>
 
@@ -242,7 +251,8 @@ Flow 是LazyLLM中定义的数据流，描述了数据如何从一个可调用�
 
 ## 九、研发路线
 
-我们计划于7月底支持如下功能：
+我们计划于7月底支持如下功能： <br>
+
 RAG
 - [ ]  重构RAG模块，去除对llamaindex的依赖
 - [ ]  支持在线的parser
@@ -251,14 +261,16 @@ RAG
 - [ ]  支持一键生成docker，一键启动应用，支持高并发和容错
 
 模型服务
-- [ ]  增强根据用户场景自动选择微调/推理框架和参数的能力
-- [ ]  支持70B模型微调
+- [ ]  继续预训练和RLHF支持
 - [ ]  支持模型推理时起多个推理服务，并实现负载均衡
+- [ ]  支持文生图和图文问答的模型，包括VQA和SD
+- [ ]  支持语音模型，包括TTS和STT
 
 工具
+- [ ]  支持Function-Call & Agent
 - [ ]  接入常用的搜索引擎
 - [ ]  支持常用的formatter
-- [ ]  内置Prompter模板
+- [ ]  支持常用场景下的Prompter模板
 
 用户体验优化
-- [ ] 优化flow的数据流动方式，支持灵活的数据流动，减少Indetity的使用次数
+- [ ] 优化flow的数据流动方式，支持灵活的数据流动

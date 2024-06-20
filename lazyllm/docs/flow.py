@@ -10,11 +10,10 @@ add_example = functools.partial(utils.add_example, module=lazyllm.flow)
 
 add_chinese_doc('FlowBase', """\
 一个用于创建可以包含各种项目的流式结构的基类。
+这个类提供了一种组织项目的方式，这些项目可以是 ``FlowBase`` 的实例或其他类型，组织成一个层次结构。每个项目都可以有一个名称，结构可以动态地遍历或修改。
 
-这个类提供了一种组织项目的方式，这些项目可以是`FlowBase`的实例或其他类型，组织成一个层次结构。每个项目都可以有一个名称，结构可以动态地遍历或修改。
-
-参数:
-    items (iterable): 要包含在流中的项目的可迭代对象。这些可以是`FlowBase`的实例或其他对象。
+Args:
+    items (iterable): 要包含在流中的项目的可迭代对象。这些可以是 ``FlowBase`` 的实例或其他对象。
     item_names (list of str, optional): 对应于项目的名称列表。这允许通过名称访问项目。如果未提供，则只能通过索引访问项目。
 
 """)
@@ -22,10 +21,10 @@ add_chinese_doc('FlowBase', """\
 add_english_doc('FlowBase', """\
 A base class for creating flow-like structures that can contain various items.
 
-This class provides a way to organize items, which can be instances of `FlowBase` or other types, into a hierarchical structure. Each item can have a name and the structure can be traversed or modified dynamically.
+This class provides a way to organize items, which can be instances of ``FlowBase`` or other types, into a hierarchical structure. Each item can have a name and the structure can be traversed or modified dynamically.
 
 Arguments:
-    items (iterable): An iterable of items to be included in the flow. These can be instances of `FlowBase` or other objects.
+    items (iterable): An iterable of items to be included in the flow. These can be instances of ``FlowBase`` or other objects.
     item_names (list of str, optional): A list of names corresponding to the items. This allows items to be accessed by name. If not provided, items can only be accessed by index.
 
 """)
@@ -33,15 +32,15 @@ Arguments:
 add_chinese_doc('FlowBase.is_root', """\
 一个属性，指示当前流项目是否是流结构的根。
 
-返回:
-    bool: 如果当前项目没有父级（`_father`为None），则为True，否则为False。
+Returns:
+    bool: 如果当前项目没有父级（ ``_father`` 为None），则为True，否则为False。
 """)
 
 add_english_doc('FlowBase.is_root', """\
 A property that indicates whether the current flow item is the root of the flow structure.
 
 Returns:
-    bool: True if the current item has no parent (`_father` is None), otherwise False.
+    bool: True if the current item has no parent (`` _father`` is None), otherwise False.
 """)
 
 add_example('FlowBase.is_root', '''\
@@ -61,7 +60,7 @@ add_chinese_doc('FlowBase.ancestor', """\
 
 如果当前项目是根，则返回其自身。
 
-返回:
+Returns:
     FlowBase: 最顶层的祖先流项目。
 """)
 
@@ -74,7 +73,7 @@ Returns:
     FlowBase: The topmost ancestor flow item.
 """)
 
-add_example('FlowBase.is_root', '''\
+add_example('FlowBase.ancestor', '''\
 >>> import lazyllm
 >>> p = lazyllm.pipeline()
 >>> p2 = lazyllm.pipeline(p)
@@ -83,15 +82,15 @@ True
 ''')
 
 add_chinese_doc('FlowBase.for_each', """\
-对流中每个匹配给定过滤器的项目执行一个操作。
+对流中每个通过过滤器的项目执行一个操作。
 
 该方法递归地遍历流结构，将操作应用于通过过滤器的每个项目。
 
-参数:
-    filter (callable): 一个接受项目作为输入并返回True的函数，如果该项目应该应用操作。
+Args:
+    filter (callable): 一个接受项目作为输入并返回bool的函数，如果该项目应该应用操作，则返回True。
     action (callable): 一个接受项目作为输入并对其执行某些操作的函数。
 
-返回:
+Returns:
     None
 
 """)
@@ -110,13 +109,14 @@ Returns:
 
 """)
 add_example('FlowBase.for_each', """\
+>>> import lazyllm
 >>> def test1(): print('1')
 ... 
 >>> def test2(): print('2')
 ... 
 >>> def test3(): print('3')
 ... 
->>> flow = pipeline(test1, pipeline(test2, test3))
+>>> flow = lazyllm.pipeline(test1, lazyllm.pipeline(test2, test3))
 >>> flow.for_each(lambda x: callable(x), lambda x: print(x))
 <function test1 at 0x7f389c3d3ac0>
 <function test2 at 0x7f389c3d3b50>
@@ -129,7 +129,7 @@ add_chinese_doc('Parallel', """\
 这个类继承自LazyLLMFlowsBase，提供了一个并行或顺序运行操作的接口。它支持使用线程进行并发执行，并允许以字典形式返回结果。
 
 
-可以这样可视化`Parallel`类：
+可以这样可视化 ``Parallel`` 类：
 
 .. code-block:: text
 
@@ -138,30 +138,42 @@ add_chinese_doc('Parallel', """\
     #       \> module31 -> ... -> module3N -> out3 /
         
 
-可以这样可视化`Parallel.sequential`方法：
+可以这样可视化 ``Parallel.sequential`` 方法：
 
 .. code-block:: text
 
     # input -> module21 -> ... -> module2N -> out2 -> 
 
-参数:
-    _scatter (bool, optional): 如果为`True`，输入将在项目之间分割。如果为`False`，相同的输入将传递给所有项目。默认为`False`。
-    _concurrent (bool, optional): 如果为`True`，操作将使用线程并发执行。如果为`False`，操作将顺序执行。默认为`True`。
+Args:
+    _scatter (bool, optional): 如果为 ``True``，输入将在项目之间分割。如果为 ``False``，相同的输入将传递给所有项目。默认为 ``False``。
+    _concurrent (bool, optional): 如果为 ``True``，操作将使用线程并发执行。如果为 ``False``，操作将顺序执行。默认为 ``True``。
     args: 基类的可变长度参数列表。
     kwargs: 基类的任意关键字参数。
 
 .. property:: 
     asdict
 
-    :type: flow.Parallel
-    :value: self
+    标记Parellel，使得Parallel每次调用时的返回值由package变为dict。当使用 ``asdict`` 时，请务必保证parallel的元素被取了名字，例如:  ``parallel(name=value)`` 。
 
-    标记Parellel，使得Parallel每次调用时的返回值由tuple变为list。
+.. property:: 
+    tuple
 
-    .. note::
+    标记Parellel，使得Parallel每次调用时的返回值由package变为tuple。
 
-        当使用 ``asdict`` 时，请务必保证parallel的元素被取了名字，例如:  ``parallel(name=value)``
+.. property:: 
+    list
 
+    标记Parellel，使得Parallel每次调用时的返回值由package变为list。
+
+.. property:: 
+    sum
+
+    标记Parellel，使得Parallel每次调用时的返回值做一次累加。
+
+.. function:: 
+    join(self, string)
+
+    标记Parellel，使得Parallel每次调用时的返回值通过 ``string`` 做一次join。
 """)
 
 add_english_doc('Parallel', """\
@@ -170,7 +182,7 @@ A class for managing parallel flows in LazyLLMFlows.
 This class inherits from LazyLLMFlowsBase and provides an interface for running operations in parallel or sequentially. It supports concurrent execution using threads and allows for the return of results as a dictionary.
 
 
-The `Parallel` class can be visualized as follows:
+The ``Parallel`` class can be visualized as follows:
 
 .. code-block:: text
 
@@ -179,60 +191,83 @@ The `Parallel` class can be visualized as follows:
     #       \> module31 -> ... -> module3N -> out3 /
         
 
-The `Parallel.sequential` method can be visualized as follows:
+The ``Parallel.sequential`` method can be visualized as follows:
 
 .. code-block:: text
 
     # input -> module21 -> ... -> module2N -> out2 -> 
 
 Arguments:
-    _scatter (bool, optional): If `True`, the input is split across the items. If `False`, the same input is passed to all items. Defaults to `False`.
-    _concurrent (bool, optional): If `True`, operations will be executed concurrently using threading. If `False`, operations will be executed sequentially. Defaults to `True`.
+    _scatter (bool, optional): If ``True``, the input is split across the items. If ``False``, the same input is passed to all items. Defaults to ``False``.
+    _concurrent (bool, optional): If ``True``, operations will be executed concurrently using threading. If ``False``, operations will be executed sequentially. Defaults to ``True``.
     args: Variable length argument list for the base class.
     kwargs: Arbitrary keyword arguments for the base class.
 
 .. property:: 
     asdict
 
-    :type: flow.Parallel
-    :value: self
+    Tag ``Parallel`` so that the return value of each call to ``Parallel`` is changed from a tuple to a dict. When using ``asdict``, make sure that the elements of ``parallel`` are named, for example: ``parallel(name=value)``.
 
-    Tag `Parallel` so that the return value of each call to `Parallel` is changed from a tuple to a list.
+.. property:: 
+    tuple
 
-    .. note::
-    
-        When using `asdict`, make sure that the elements of `parallel` are named, for example: `parallel(name=value)`.
+    Mark Parallel so that the return value of Parallel changes from package to tuple each time it is called.
 
+.. property:: 
+    list
+
+    Mark Parallel so that the return value of Parallel changes from package to list each time it is called.
+
+.. property:: 
+    sum
+
+    Mark Parallel so that the return value of Parallel is accumulated each time it is called.
+
+.. function:: 
+    join(self, string)
+
+    Mark Parallel so that the return value of Parallel is joined by ``string`` each time it is called.
+```
 """)
 
-add_example('Parallel', '''\ 
->>> def test1(a): return a + 1
-... 
->>> def test2(a): return a * 4
-... 
->>> def test3(a): return a / 2
-... 
+add_example('Parallel', '''\
+>>> import lazyllm
+>>> test1 = lambda a: a + 1
+>>> test2 = lambda a: a * 4
+>>> test3 = lambda a: a / 2
 >>> ppl = lazyllm.parallel(test1, test2, test3)
 >>> ppl(1)
 (2, 4, 0.5)
 >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3)
 >>> ppl(1)
 {'a': 2, 'b': 4, 'c': 0.5}
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).asdict
+>>> ppl(2)
+{'a': 3, 'b': 8, 'c': 1.0}
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).astuple
+>>> ppl(-1)
+(0, -4, -0.5)
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).aslist
+>>> ppl(0)
+[1, 0, 0.0]
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).join('\\n')
+>>> ppl(1)
+'2\\n4\\n0.5'
 ''')
 
 add_chinese_doc('Pipeline', """\
 一个形成处理阶段管道的顺序执行模型。
 
-`Pipeline`类是一个处理阶段的线性序列，其中一个阶段的输出成为下一个阶段的输入。它支持添加在最后一个阶段之后执行的后续操作。它是`LazyLLMFlowsBase`的子类，提供了一个延迟执行模型，并允许以延迟方式包装和注册函数。
+ ``Pipeline``类是一个处理阶段的线性序列，其中一个阶段的输出成为下一个阶段的输入。它支持在最后一个阶段之后添加后续操作。它是 ``LazyLLMFlowsBase``的子类，提供了一个延迟执行模型，并允许以延迟方式包装和注册函数。
 
-参数:
-    args (list of callables or single callable): 管道的处理阶段。每个元素可以是一个可调用的函数或`LazyLLMFlowsBase.FuncWrap`的实例。如果提供了单个列表或元组，则将其解包为管道的阶段。
+Args:
+    args (list of callables or single callable): 管道的处理阶段。每个元素可以是一个可调用的函数或 ``LazyLLMFlowsBase.FuncWrap``的实例。如果提供了单个列表或元组，则将其解包为管道的阶段。
     post_action (callable, optional): 在管道的最后一个阶段之后执行的可选操作。默认为None。
-    return_input (bool, optional): 如果设置为`True`，原始输入将与输出一起返回。默认为`False`。
+    return_input (bool, optional): 如果设置为 ``True``，原始输入将与输出一起返回。默认为 ``False``。
     kwargs (dict of callables): 管道的命名处理阶段。每个键值对表示一个命名阶段，其中键是名称，值是可调用的阶段。
 
-返回:
-    管道的最后一个阶段的输出，如果`return_input`为`True`，则可选地与原始输入一起返回。
+Returns:
+    管道的最后一个阶段的输出，如果 ``return_input`` 为 ``True``，则可选地与原始输入一起返回。
 
 """)
 
@@ -240,19 +275,20 @@ add_chinese_doc('Pipeline', """\
 add_english_doc('Pipeline', """\
 A sequential execution model that forms a pipeline of processing stages.
 
-The `Pipeline` class is a linear sequence of processing stages, where the output of one stage becomes the input to the next. It supports the addition of post-actions that can be performed after the last stage. It is a subclass of `LazyLLMFlowsBase` which provides a lazy execution model and allows for functions to be wrapped and registered in a lazy manner.
+The ``Pipeline`` class is a linear sequence of processing stages, where the output of one stage becomes the input to the next. It supports the addition of post-actions that can be performed after the last stage. It is a subclass of ``LazyLLMFlowsBase`` which provides a lazy execution model and allows for functions to be wrapped and registered in a lazy manner.
 
 Arguments:
-    args (list of callables or single callable): The processing stages of the pipeline. Each element can be a callable function or an instance of `LazyLLMFlowsBase.FuncWrap`. If a single list or tuple is provided, it is unpacked as the stages of the pipeline.
+    args (list of callables or single callable): The processing stages of the pipeline. Each element can be a callable function or an instance of ``LazyLLMFlowsBase.FuncWrap``. If a single list or tuple is provided, it is unpacked as the stages of the pipeline.
     post_action (callable, optional): An optional action to perform after the last stage of the pipeline. Defaults to None.
-    return_input (bool, optional): If set to `True`, the original input along with the output will be returned. Defaults to `False`.
+    return_input (bool, optional): If set to ``True``, the original input along with the output will be returned. Defaults to ``False``.
     kwargs (dict of callables): Named processing stages of the pipeline. Each key-value pair represents a named stage, where the key is the name and the value is the callable stage.
 
 Returns:
-    The output of the last stage of the pipeline, optionally along with the original input if `return_input` is `True`.
+    The output of the last stage of the pipeline, optionally along with the original input if ``return_input`` is ``True``.
 """)
 
 add_example('Pipeline', """\
+>>> import lazyllm
 >>> ppl = lazyllm.pipeline(
 ...     stage1=lambda x: x+1,
 ...     stage2=lambda x: f'get {x}'
@@ -268,15 +304,15 @@ add_chinese_doc('Loop', '''\
 
 Loop结构允许定义一个简单的控制流，其中一系列步骤在循环中应用，可以使用可选的停止条件来根据步骤的输出退出循环。
 
-参数:
-    *item (callable or list of callables): 将在循环中应用的函数或可调用对象。
-    stop_condition (callable, optional): 一个函数，它接受循环中最后一个项目的输出作为输入并返回一个布尔值。如果返回`True`，循环将停止。如果为`None`，循环将继续直到达到`count`。默认为`None`。
-    count (int, optional): 运行循环的最大迭代次数。如果为`None`，循环将无限期地继续或直到`stop_condition`返回`True`。默认为`None`。
-    post_action (callable, optional): 循环结束后调用的函数。默认为`None`。
-    return_input (bool, optional): 如果为`True`，最终输出将包括初始输入和最后一次迭代的输出。默认为`False`。
+Args:
+    item (callable or list of callables): 将在循环中应用的函数或可调用对象。
+    stop_condition (callable, optional): 一个函数，它接受循环中最后一个项目的输出作为输入并返回一个布尔值。如果返回 ``True``，循环将停止。如果为 ``None``，循环将继续直到达到 ``count``。默认为 ``None``。
+    count (int, optional): 运行循环的最大迭代次数。如果为 ``None``，循环将无限期地继续或直到 ``stop_condition`` 返回 ``True``。默认为 ``None``。
+    post_action (callable, optional): 循环结束后调用的函数。默认为 ``None``。
+    return_input (bool, optional): 如果为 ``True``，最终输出将包括初始输入和最后一次迭代的输出。默认为 ``False``。
 
 抛出:
-    AssertionError: 如果同时提供了`stop_condition`和`count`，或者当提供`count`时它不是一个整数。
+    AssertionError: 如果同时提供了 ``stop_condition`` 和 ``count``，或者当提供的 ``count``不是一个整数。
 ''')
 
 
@@ -287,13 +323,13 @@ The Loop structure allows for the definition of a simple control flow where a se
 
 Arguments:
     *item (callable or list of callables): The function(s) or callable object(s) that will be applied in the loop.
-    stop_condition (callable, optional): A function that takes the output of the last item in the loop as input and returns a boolean. If it returns `True`, the loop will stop. If `None`, the loop will continue until `count` is reached. Defaults to `None`.
-    count (int, optional): The maximum number of iterations to run the loop for. If `None`, the loop will continue indefinitely or until `stop_condition` returns `True`. Defaults to `None`.
-    post_action (callable, optional): A function to be called with the final output after the loop ends. Defaults to `None`.
-    return_input (bool, optional): If `True`, the final output will include both the initial input and the output of the last iteration. Defaults to `False`.
+    stop_condition (callable, optional): A function that takes the output of the last item in the loop as input and returns a boolean. If it returns ``True``, the loop will stop. If ``None``, the loop will continue until ``count`` is reached. Defaults to ``None``.
+    count (int, optional): The maximum number of iterations to run the loop for. If ``None``, the loop will continue indefinitely or until ``stop_condition`` returns ``True``. Defaults to ``None``.
+    post_action (callable, optional): A function to be called with the final output after the loop ends. Defaults to ``None``.
+    return_input (bool, optional): If ``True``, the final output will include both the initial input and the output of the last iteration. Defaults to ``False``.
 
 Raises:
-    AssertionError: If both `stop_condition` and `count` are provided or if `count` is not an integer when provided.
+    AssertionError: If both ``stop_condition`` and ``count`` are provided or if ``count`` is not an integer when provided.
 ''')
 
 add_example('Loop', '''\
@@ -310,15 +346,15 @@ add_chinese_doc('IFS', '''\
 
 IFS（If-Else Flow Structure）类设计用于根据给定条件的评估有条件地执行两个提供的路径之一（真路径或假路径）。执行选定路径后，可以应用可选的后续操作，并且如果指定，输入可以与输出一起返回。
 
-参数:
+Args:
     cond (callable): 一个接受输入并返回布尔值的可调用对象。它决定执行哪个路径。如果 ``cond(input)`` 评估为True，则执行 ``tpath`` ；否则，执行 ``fpath`` 。
     tpath (callable): 如果条件为True，则执行的路径。
     fpath (callable): 如果条件为False，则执行的路径。
     post_action (callable, optional): 执行选定路径后执行的可选可调用对象。可以用于进行清理或进一步处理。默认为None。
     return_input (bool, optional): 如果设置为True，原始输入也将与执行路径的输出一起返回。默认为False。
 
-返回:
-    执行路径的输出，如果 ``return_input`` 为True，则可选地与原始输入一起。
+Returns:
+    执行路径的输出，如果 ``return_input`` 为True，则与原始输入一起返回。
 ''')
                 
 add_english_doc('IFS', '''\
@@ -341,14 +377,15 @@ Arguments:
                                     of the executed path. Defaults to False.
 
 Returns:
-    The output of the executed path, optionally paired with the original input if `return_input` is True.
+    The output of the executed path, optionally paired with the original input if ``return_input`` is True.
 ''')
 
 add_example('IFS', '''\
+>>> import lazyllm
 >>> cond = lambda x: x > 0
 >>> tpath = lambda x: x * 2
 >>> fpath = lambda x: -x
->>> ifs_flow = IFS(cond, tpath, fpath)
+>>> ifs_flow = lazyllm.ifs(cond, tpath, fpath)
 >>> ifs_flow(10)
 20
 >>> ifs_flow(-5)
@@ -358,7 +395,7 @@ add_example('IFS', '''\
 add_chinese_doc('Switch', """\
 一个根据条件选择并执行流的控制流机制。
 
-`Switch`类提供了一种根据表达式的值或条件的真实性选择不同流的方法。它类似于其他编程语言中找到的switch-case语句。
+ ``Switch``类提供了一种根据表达式的值或条件的真实性选择不同流的方法。它类似于其他编程语言中找到的switch-case语句。
 
 .. code-block:: text
 
@@ -367,10 +404,10 @@ add_chinese_doc('Switch', """\
     #     case cond2: input -> module21 -> ... -> module2N -> out; break
     #     case cond3: input -> module31 -> ... -> module3N -> out; break
      
-参数:
+Args:
     args: 可变长度参数列表，交替提供条件和对应的流或函数。条件可以是返回布尔值的可调用对象或与输入表达式进行比较的值。
-    post_action (callable, optional): 在执行选定流后要调用的函数。默认为`None`。
-    return_input (bool, optional): 如果设置为`True`，原始输入将与输出一起返回。默认为`False`。
+    post_action (callable, optional): 在执行选定流后要调用的函数。默认为 ``None``。
+    return_input (bool, optional): 如果设置为 ``True``，原始输入将与输出一起返回。默认为 ``False``。
     kwargs: 代表命名条件和对应流或函数的任意关键字参数。
 
 抛出:
@@ -380,7 +417,7 @@ add_chinese_doc('Switch', """\
 add_english_doc('Switch', """\
 A control flow mechanism that selects and executes a flow based on a condition.
 
-The `Switch` class provides a way to choose between different flows depending on the value of an expression or the truthiness of conditions. It is similar to a switch-case statement found in other programming languages.
+The ``Switch`` class provides a way to choose between different flows depending on the value of an expression or the truthiness of conditions. It is similar to a switch-case statement found in other programming languages.
 
 .. code-block:: text
 
@@ -391,8 +428,8 @@ The `Switch` class provides a way to choose between different flows depending on
      
 Arguments:
     args: A variable length argument list, alternating between conditions and corresponding flows or functions. Conditions are either callables returning a boolean or values to be compared with the input expression.
-    post_action (callable, optional): A function to be called on the output after the selected flow is executed. Defaults to `None`.
-    return_input (bool, optional): If set to `True`, the original input is returned along with the output. Defaults to `False`.
+    post_action (callable, optional): A function to be called on the output after the selected flow is executed. Defaults to ``None``.
+    return_input (bool, optional): If set to ``True``, the original input is returned along with the output. Defaults to ``False``.
     kwargs: Arbitrary keyword arguments representing named conditions and corresponding flows or functions.
 
 Raises:
@@ -400,7 +437,13 @@ Raises:
 """)
 
 add_example('Switch', """\
+>>> import lazyllm
+>>> def is_positive(x): return x > 0
+...
+>>> def is_negative(x): return x < 0
+...
 >>> switch = lazyllm.switch(is_positive, lambda x: 2 * x, is_negative, lambda x : -x, 'default', lambda x : '000')
+>>>
 >>> switch(1)
 2
 >>> switch(0)
@@ -422,9 +465,9 @@ Diverter类是一种专门的并行处理形式，其中多个输入分别通过
     # (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
     #                 \> in3 -> module31 -> ... -> module3N -> out3 /
                     
-参数:
+Args:
     args: 可变长度参数列表，代表并行执行的模块。
-    _concurrent (bool, optional): 控制模块是否应并行执行的标志。默认为`True`。可用 ``Diverter.sequential`` 代替 ``Diverter`` 来设置此变量。
+    _concurrent (bool, optional): 控制模块是否应并行执行的标志。默认为 ``True``。可用 ``Diverter.sequential`` 代替 ``Diverter`` 来设置此变量。
     kwargs: 代表额外模块的任意关键字参数，其中键是模块的名称。
 
 .. property:: 
@@ -449,7 +492,7 @@ This class is useful when you have distinct data processing pipelines that can b
                     
 Arguments:
     args: Variable length argument list representing the modules to be executed in parallel.
-    _concurrent (bool, optional): A flag to control whether the modules should be run concurrently. Defaults to `True`. You can use ``Diverter.sequential`` instead of ``Diverter`` to set this variable.
+    _concurrent (bool, optional): A flag to control whether the modules should be run concurrently. Defaults to ``True``. You can use ``Diverter.sequential`` instead of ``Diverter`` to set this variable.
     kwargs: Arbitrary keyword arguments representing additional modules, where the key is the name of the module.
 
 .. property:: 
@@ -459,6 +502,7 @@ Arguments:
 """)
 
 add_example('Diverter', """\
+>>> import lazyllm
 >>> div = lazyllm.diverter(lambda x: x+1, lambda x: x*2, lambda x: -x)
 >>> div(1, 2, 3)
 (2, 4, -3)
@@ -480,7 +524,7 @@ Warp类设计用于将同一个处理模块应用于一组输入。它有效地�
     # (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
     #                 \> in3 /                            \> out3 /
                 
-参数:
+Args:
     args: 可变长度参数列表，代表要应用于所有输入的单个模块。
     kwargs: 未来扩展的任意关键字参数。
 
@@ -510,6 +554,7 @@ Note:
 """)
 
 add_example('Warp', """\
+>>> import lazyllm
 >>> warp = lazyllm.warp(lambda x: x * 2)
 >>> warp(1, 2, 3, 4)
 (2, 4, 6, 8)

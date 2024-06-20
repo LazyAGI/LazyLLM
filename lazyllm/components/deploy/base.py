@@ -12,10 +12,10 @@ class LazyLLMDeployBase(ComponentBase):
 
 
 class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
-    input_key_name = 'inputs'
+    keys_name_handle = {'inputs': 'inputs'}
     default_headers = {'Content-Type': 'application/json'}
     message_format = {
-        input_key_name: '',
+        'inputs': '',
         'parameters': {
             'do_sample': False,
             'temperature': 0.1,

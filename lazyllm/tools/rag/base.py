@@ -242,10 +242,10 @@ class Retriever(ModuleBase):
         return self.doc._query_with_sig(str, self.signature, self.parser)
 
 
-class Rerank(ModuleBase):
-    registered_rerank = dict()
+class Reranker(ModuleBase):
+    registered_reranker = dict()
 
-    def __init__(self, types='Reranker', **kwargs):
+    def __init__(self, types='ModuleReranker', **kwargs):
         super().__init__()
         self.type = types
         self.kw = kwargs
@@ -253,7 +253,7 @@ class Rerank(ModuleBase):
 
     def forward(self, *inputs):
         if not self.kernel:
-            self.kernel = self.get_rerank(self.type)
+            self.kernel = self.get_reranker(self.type)
         if len(inputs) == 1:
             return self.kernel.postprocess_nodes(*inputs)
         elif len(inputs) == 2:
@@ -265,35 +265,35 @@ class Rerank(ModuleBase):
             raise RuntimeError("Inputs len should be 1 or 2.")
 
     @classmethod
-    def register_rerank(cls, func):
-        cls.registered_rerank[func.__name__] = func
+    def register_reranker(cls, func):
+        cls.registered_reranker[func.__name__] = func
         return func
 
-    def get_rerank(self, rerank):
-        if rerank in self.registered_rerank:
-            return self.registered_rerank[rerank](**self.kw)
+    def get_reranker(self, reranker):
+        if reranker in self.registered_reranker:
+            return self.registered_reranker[reranker](**self.kw)
         else:
             module = importlib.import_module('llama_index.core.postprocessor')
-            clazz = getattr(module, rerank, None)
+            clazz = getattr(module, reranker, None)
             if clazz is None:
                 raise ImportError(
-                    f"Class '{rerank}' is not registered and cannot be found "
-                    "in '{module.__name__}'. Please use 'register_rerank' to register.")
+                    f"Class '{reranker}' is not registered and cannot be found "
+                    "in '{module.__name__}'. Please use 'register_reranker' to register.")
             return clazz(**self.kw)
 
-@Rerank.register_rerank
-def Reranker(model, source=lazyllm.config['model_source'], top_n=-1):
+@Reranker.register_reranker
+def ModuleReranker(model, source=lazyllm.config['model_source'], top_n=-1):
     from llama_index.core.postprocessor import SentenceTransformerRerank
     from lazyllm.components.utils.downloader import ModelDownloader
     model = ModelDownloader(source).download(model)
     return SentenceTransformerRerank(model=model, top_n=top_n)
 
-@Rerank.register_rerank
+@Reranker.register_reranker
 def SimilarityFilter(threshold=0.003):
     from llama_index.core.postprocessor import SimilarityPostprocessor
     return SimilarityPostprocessor(similarity_cutoff=threshold)
 
-@Rerank.register_rerank
+@Reranker.register_reranker
 def KeywordFilter(required_keys, exclude_keys):
     from llama_index.core.postprocessor import KeywordNodePostprocessor
     return KeywordNodePostprocessor(required_keywords=required_keys, exclude_keywords=exclude_keys)

@@ -23,7 +23,7 @@ def dump_func(f, old_value=None):
 
 
 class RelayServer(LazyLLMDeployBase):
-    input_key_name = None
+    keys_name_handle = None
     default_headers = {'Content-Type': 'application/json'}
     message_format = None
 

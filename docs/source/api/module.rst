@@ -1,3 +1,5 @@
+.. _api.module:
+
 lazyllm.Module
 -----------------------
 
@@ -11,6 +13,10 @@ lazyllm.Module
 
 .. autoclass:: lazyllm.module.TrainableModule
     :members: start, restart, update, evalset, eval
+    :exclude-members:
+
+.. autoclass:: lazyllm.module.UrlModule
+    :members: 
     :exclude-members:
 
 .. autoclass:: lazyllm.module.ServerModule

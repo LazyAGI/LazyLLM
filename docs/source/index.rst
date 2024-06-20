@@ -7,14 +7,23 @@ LazyLLM
 
    user_guide/getting_start
    user_guide/environment
-   user_guide/best_practice
    user_guide/FAQ
+
+.. toctree::
+   :caption: Best Practice Guide
+   :maxdepth: 1
+
+   best_practice/flow
+   best_practice/prompt
+   best_practice/module
+   best_practice/flowapp
+   best_practice/rag
 
 .. toctree::
    :caption: LazyLLM API
    :maxdepth: 1
  
-   api/component
+   api/components
    api/flow
    api/module
    api/tools

@@ -1,6 +1,6 @@
 import os
 import lazyllm
-from lazyllm import pipeline, parallel, Identity, Document, Retriever, Rerank, deploy
+from lazyllm import pipeline, parallel, Identity, Document, Retriever, Reranker, deploy
 
 # If use redis, please set 'export LAZYLLM_RAG_STORE=Redis', and export LAZYLLM_REDIS_URL=redis://{IP}:{PORT}
 
@@ -15,12 +15,12 @@ llm = lazyllm.TrainableModule('internlm2-chat-7b').deploy_method(deploy.AutoDepl
 documents = Document(dataset_path='/file/to/yourpath', embed=lazyllm.TrainableModule('bge-large-zh-v1.5').deploy_method(deploy.AutoDeploy))
 rma1 = Retriever(documents, parser='FineChunk', similarity_top_k=3)
 rma2 = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
-rerank1 = Rerank(types='Reranker', model='bge-reranker-large')
-rerank2 = Rerank(types='SimilarityFilter', threshold=0.003)
+reranker1 = Reranker(types='ModuleReranker', model='bge-reranker-large')
+reranker2 = Reranker(types='SimilarityFilter', threshold=0.003)
 
 rmf = lazyllm.ActionModule(pipeline(
         parallel.sequential(Identity, pipeline(parallel.sequential(x=rma1, y=rma2), lambda x, y : x + y)),
-        rerank1, rerank2, lambda nodes: '《'+nodes[0].metadata["file_name"].split('.')[0] + '》 ' + nodes[0].get_content() if len(nodes)>0 else '未找到'))
+        reranker1, reranker2, lambda nodes: '《'+nodes[0].metadata["file_name"].split('.')[0] + '》 ' + nodes[0].get_content() if len(nodes)>0 else '未找到'))
 m = lazyllm.ActionModule(parallel(context_str=rmf, query_str=Identity).asdict, llm)
 
 m.evalset(['介绍五行。','什么是色？','什么是中庸？','非常道是什么？','应该怎么学习？'])

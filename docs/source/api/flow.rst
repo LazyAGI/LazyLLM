@@ -1,8 +1,10 @@
+.. _api.flow:
+
 lazyllm.Flow
 -----------------------
 
 .. autoclass:: lazyllm.flow.FlowBase
-    :members: is_toot, ancestor, for_each
+    :members: is_root, ancestor, for_each
     :exclude-members:
 
 .. autoclass:: lazyllm.flow.Pipeline
