@@ -4,7 +4,6 @@ from lazyllm import LOG
 from functools import reduce
 import json
 import re
-import copy
 
 class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     ISA = "<!lazyllm-spliter!>"
