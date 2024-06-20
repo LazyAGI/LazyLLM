@@ -1,0 +1,3 @@
+
+# 最大连续调用工具次数
+MAX_CONSECUTIVE_TOOL_CALL_NUM = 5
