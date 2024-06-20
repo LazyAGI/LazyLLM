@@ -3,6 +3,8 @@ from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, bind, root
 from lazyllm import Thread, ReadOnlyWrapper, LOG
 from lazyllm import LazyLlmRequest, LazyLlmResponse, ReqResHelper
 from .common.common import _MetaBind
+from functools import partial
+from enum import Enum
 import types
 import inspect
 import threading
@@ -218,24 +220,37 @@ def _hook(v): _barr.impl = v
 #  input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #        \> module31 -> ... -> module3N -> out3 /
 class Parallel(LazyLLMFlowsBase):
+
+    class PostProcessType(Enum):
+        NONE = 0
+        DICT = 1
+        TUPLE = 2
+        LIST = 3
+        SUM = 4
+        JOIN = 5
+
     def __init__(self, *args, _scatter=False, _concurrent=True, auto_capture=False, **kw):
         super().__init__(*args, **kw, auto_capture=auto_capture)
-        self._return_dict = False
-        self._sum_result = False
+        self._post_process_type = Parallel.PostProcessType.NONE
+        self._post_process_args = None
         self._concurrent = _concurrent
         self._scatter = _scatter
 
-    @property
-    def asdict(self):
-        assert not self._sum_result, 'Cannor set asdict and sum at the same time'
-        self._return_dict = True
+    @staticmethod
+    def _set_status(self, type, args=None):
+        assert self._post_process_type is Parallel.PostProcessType.NONE, 'Cannor set post process twice'
+        self._post_process_type = type
+        self._post_process_args = args
         return self
 
-    @property
-    def sum(self):
-        assert not self._return_dict, 'Cannor set asdict and sum at the same time'
-        self._sum_result = True
-        return self
+    asdict = property(partial(_set_status, type=PostProcessType.DICT))
+    astuple = property(partial(_set_status, type=PostProcessType.TUPLE))
+    aslist = property(partial(_set_status, type=PostProcessType.LIST))
+    sum = property(partial(_set_status, type=PostProcessType.SUM))
+
+    def join(self, string):
+        assert isinstance(string, str), 'argument of join shoule be str'
+        return Parallel._set_status(self, type=Parallel.PostProcessType.JOIN, args=string)
 
     @classmethod
     def sequential(cls, *args, **kw):
@@ -265,11 +280,17 @@ class Parallel(LazyLLMFlowsBase):
 
     def _post_process(self, output):
         o = output.messages if isinstance(output, LazyLlmResponse) else output
-        if self._return_dict:
+        if self._post_process_type == Parallel.PostProcessType.DICT:
             assert self._item_names, 'Item name should be set when you want to return dict.'
             o = {k: v for k, v in zip(self._item_names, o)}
-        elif self._sum_result:
+        elif self._post_process_type == Parallel.PostProcessType.TUPLE:
+            o = tuple(o)
+        elif self._post_process_type == Parallel.PostProcessType.LIST:
+            o = list(o)
+        elif self._post_process_type == Parallel.PostProcessType.SUM:
             o = sum(o, type(o[0])())
+        elif self._post_process_type == Parallel.PostProcessType.JOIN:
+            o = self._post_process_args.join([str(i) for i in o])
         if isinstance(output, LazyLlmResponse):
             output.messages = o
             return output
