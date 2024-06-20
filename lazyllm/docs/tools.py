@@ -33,6 +33,8 @@ Arguments:
 """)
 
 add_example('Document', r"""
+    >>> import lazyllm
+    >>> from lazyllm.tools.rag.docment import Document
     >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
     >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 """)
@@ -65,6 +67,9 @@ Arguments:
 """)
 
 add_example('Reranker', r"""
+    >>> import lazyllm
+    >>> from lazyllm.tools.rag.base import Reranker, Retriever
+    >>> from lazyllm.tools.rag.docment import Document
     >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
     >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
     >>> rm = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
@@ -130,6 +135,9 @@ Arguments:
 """)
 
 add_example('Retriever', r"""
+    >>> import lazyllm
+    >>> from lazyllm.tools.rag.base import Retriever
+    >>> from lazyllm.tools.rag.docment import Document
     >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
     >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
     >>> rm = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
