@@ -590,14 +590,14 @@ add_example('EmptyFormatter', '''\
 add_chinese_doc('prompter.PrompterBase', '''\
 Prompter的基类，自定义的Prompter需要继承此基类，并通过基类提供的 ``_init_prompt`` 函数来设置Prompt模板和Instruction的模板，以及截取结果所使用的字符串。可以查看 :doc:`/best_practice/prompt` 进一步了解Prompt的设计思想和使用方式。
 
-Prompt模板和Instruction模板都用 ``{}`` 表示要填充的字段，其中Prompt可包含的字段有 ``system``, ``history``, ``tools``等，而instruction_template可包含的字段为 ``instruction`` 和 ``extro_keys`` 。
-``instruction`` 由应用的开发者传入， ``instruction`` 中也可以带有 ``{}`` 用于让定义可填充的字段，方便用户填入额外的信息。
+Prompt模板和Instruction模板都用 ``{}`` 表示要填充的字段，其中Prompt可包含的字段有 ``system``, ``history``, ``tools``, ``user`` 等，而instruction_template可包含的字段为 ``instruction`` 和 ``extro_keys`` 。
+``instruction`` 由应用的开发者传入， ``instruction`` 中也可以带有 ``{}`` 用于让定义可填充的字段，方便用户填入额外的信息。如果 ``instruction`` 字段为字符串，则认为是系统instruction；如果是字典，则它包含的key只能是 ``user`` 和 ``system`` 两种选择。 ``user`` 表示用户输入的instruction，在prompt中放在用户输入前面， ``system`` 表示系统instruction，在prompt中凡在system prompt后面。
 ''')
 
 add_english_doc('prompter.PrompterBase', '''\
 The base class of Prompter. A custom Prompter needs to inherit from this base class and set the Prompt template and the Instruction template using the `_init_prompt` function provided by the base class, as well as the string used to capture results. Refer to :doc:`/best_practice/prompt.rst` for further understanding of the design philosophy and usage of Prompts.
 
-Both the Prompt template and the Instruction template use ``{}`` to indicate the fields to be filled in. The fields that can be included in the Prompt are `system`, `history`, `tools`, etc., while the fields that can be included in the instruction_template are `instruction` and `extro_keys`.
+Both the Prompt template and the Instruction template use ``{}`` to indicate the fields to be filled in. The fields that can be included in the Prompt are `system`, `history`, `tools`, `user` etc., while the fields that can be included in the instruction_template are `instruction` and `extro_keys`. If the ``instruction`` field is a string, it is considered as a system instruction; if it is a dictionary, it can only contain the keys ``user`` and ``system``. ``user`` represents the user input instruction, which is placed before the user input in the prompt, and ``system`` represents the system instruction, which is placed after the system prompt in the prompt.
 ``instruction`` is passed in by the application developer, and the ``instruction`` can also contain ``{}`` to define fillable fields, making it convenient for users to input additional information.
 ''')
 
@@ -662,7 +662,7 @@ add_chinese_doc('AlpacaPrompter', '''\
 Alpaca格式的Prompter，支持工具调用，不支持历史对话。
 
 Args:
-    instruction (Option[str]): 大模型的任务指令，至少带一个可填充的槽位(如 ``{instruction}``)。
+    instruction (Option[str]): 大模型的任务指令，至少带一个可填充的槽位(如 ``{instruction}``)。或者使用字典指定 ``system`` 和 ``user`` 的指令。
     extro_keys (Option[List]): 额外的字段，用户的输入会填充这些字段。
     show (bool): 标志是否打印生成的Prompt，默认为False
     tools (Option[list]): 大模型可以使用的工具集合，默认为None
@@ -674,7 +674,7 @@ Alpaca-style Prompter, supports tool calls, does not support historical dialogue
 Sure! Here is the translation, keeping the original format:
 
 Args:
-    instruction (Option[str]): Task instructions for the large model, with at least one fillable slot (e.g. ``{instruction}``).
+    instruction (Option[str]): Task instructions for the large model, with at least one fillable slot (e.g. ``{instruction}``). Or use a dictionary to specify the ``system`` and ``user`` instructions.
     extro_keys (Option[List]): Additional fields that will be filled with user input.
     show (bool): Flag indicating whether to print the generated Prompt, default is False.
     tools (Option[list]): Tool-set which is provived for LLMs, default is None.
@@ -693,13 +693,20 @@ add_example('AlpacaPrompter', '''\
 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello world hello world, my input\\n\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nlazyllm\\n\\n\\n### Response:\\n'
 >>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'), return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello world hello world, my input\\n\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nlazyllm\\n\\n'}, {'role': 'user', 'content': ''}]}
+>>> 
+>>> p = AlpacaPrompter(dict(system="hello world", user="this is user instruction {input}"))
+>>> p.generate_prompt(dict(input="my input"))
+'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello word\\n\\n\\n\\nthis is user instruction my input### Response:\\n'
+>>> p.generate_prompt(dict(input="my input"), return_dict=True)
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input'}]}
+
 ''')
 
 add_chinese_doc('ChatPrompter', '''\
 多轮对话的Prompt，支持工具调用和历史对话
 
 Args:
-    instruction (Option[str]): 大模型的任务指令，可以带0到多个待填充的槽位,用 ``{}`` 表示。
+    instruction (Option[str]): 大模型的任务指令，可以带0到多个待填充的槽位,用 ``{}`` 表示。针对用户instruction可以通过字典传递，字段为 ``user`` 和 ``system`` 。
     extro_keys (Option[List]): 额外的字段，用户的输入会填充这些字段。
     show (bool): 标志是否打印生成的Prompt，默认为False
 ''')
@@ -708,7 +715,7 @@ add_english_doc('ChatPrompter', '''\
 chat prompt, supports tool calls and historical dialogue.
 
 Args:
-    instruction (Option[str]): Task instructions for the large model, with 0 to multiple fillable slot, represented by ``{}``.
+    instruction (Option[str]): Task instructions for the large model, with 0 to multiple fillable slot, represented by ``{}``. For user instructions, you can pass a dictionary with fields ``user`` and ``system``.
     extro_keys (Option[List]): Additional fields that will be filled with user input.
     show (bool): Flag indicating whether to print the generated Prompt, default is False.
 ''')
@@ -728,6 +735,12 @@ add_example('ChatPrompter', '''\
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nhello world this is my ins\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nLazyLLM-Knowledge\\n\\n\\n'}, {'role': 'user', 'content': 'this is my inp'}]}
 >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), history=[['s1', 'e1'], ['s2', 'e2']])
 '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nLazyLLM-Knowledge\\n\\n\\n<|end_system|>\\n\\n<|Human|>:s1<|Assistant|>:e1<|Human|>:s2<|Assistant|>:e2\\n<|Human|>:\\nthis is my inp\\n<|Assistant|>:\\n'
+>>>
+>>> p = ChatPrompter(dict(system="hello world", user="this is user instruction {input} "))
+>>> p.generate_prompt(dict(input="my input", query="this is user query"))
+'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\nthis is user instruction my input this is user query\\n<|Assistant|>:\\n'
+>>> p.generate_prompt(dict(input="my input", query="this is user query"), return_dict=True)
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nhello world\\n\\n'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
 ''')
 
 # ============= Launcher
