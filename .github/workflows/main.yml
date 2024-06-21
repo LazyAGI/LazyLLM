@@ -35,21 +35,23 @@ jobs:
     runs-on: tps_sco_nv
     needs: [Clone]
     steps:
-      - name: test1
+      - name: BasicTests
         run: |
           set -ex
           cd ${{ env.CI_PATH }}
           ls -alh
+          source activate lazyllm
           export LAZYLLM_DEFAULT_LAUNCHER=sco
           export LAZYLLM_SLURM_PART=a100
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_SCO_WORKSPACE=expert-services
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+          env
           python -m pytest tests/basic_tests/
           echo "Placeholder only"
 
-      - name: test2
+      - name: AdvancedTests
         run: |
           cd ${{ env.CI_PATH }}
           which python
