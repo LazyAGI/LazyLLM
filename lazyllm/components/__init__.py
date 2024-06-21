@@ -6,6 +6,7 @@ from .deploy import LazyLLMDeployBase, FastapiApp
 from .validate import LazyLLMValidateBase
 from .auto import AutoDeploy, AutoFinetune
 from .utils import ModelDownloader
+from .formatter import FormatterBase, EmptyFormatter, JsonFormatter
 
 __all__ = [
     'register',
@@ -19,5 +20,8 @@ __all__ = [
     'FastapiApp',
     'AutoDeploy',
     'AutoFinetune',
-    'ModelDownloader'
+    'ModelDownloader',
+    'FormatterBase',
+    'EmptyFormatter',
+    'JsonFormatter'
 ]

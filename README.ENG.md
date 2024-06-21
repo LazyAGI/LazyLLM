@@ -93,9 +93,8 @@ mweb = lazyllm.WebModule(ppl, port=23456).start().wait()
 
 ```python
 import lazyllm
-from lazyllm import pipeline, parallel, Identity, warp, package
-import time
-import re, json
+from lazyllm import pipeline, warp, bind
+from lazyllm.components.formatter import JsonFormatter
 
 toc_prompt="""
 You are now an intelligent assistant. Your task is to understand the user's input and convert the outline into a list of nested dictionaries. Each dictionary contains a `title` and a `describe`, where the `title` should clearly indicate the level using Markdown format, and the `describe` is a description and writing guide for that section.
@@ -134,19 +133,18 @@ This is the expanded content for writing.
 Receive as follows:
 
 """
+
+writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "describe": {describe}}'}
 ```
 </details>
 
 ```python
-t1 = lazyllm.OnlineChatModule(source="openai", stream=False, prompter=ChatPrompter(instruction=toc_prompt))
-t2 = lazyllm.OnlineChatModule(source="openai", stream=False, prompter=ChatPrompter(instruction=completion_prompt))
+with pipeline() as ppl:
+    ppl.outline_writer = lazyllm.OnlineChatModule(source="openai", stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
+    ppl.story_generater = warp(lazyllm.OnlineChatModule(source="openai", stream=False).prompt(writer_prompt))
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
 
-spliter = lambda s: tuple(eval(re.search(r'\[\s*\{.*\}\s*\]', s['message']['content'], re.DOTALL).group()))
-writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2, lambda d : d['message']['content'])
-collector = lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])
-m = pipeline(t1, spliter, parallel(Identity, warp(writter)), collector)
-
-print(m({'query': 'Please help me write an article about the application of artificial intelligence in the medical field.'}))
+print(ppl({'query': 'Please help me write an article about the application of artificial intelligence in the medical field.'}))
 ```
 
 ## What can LazyLLM do

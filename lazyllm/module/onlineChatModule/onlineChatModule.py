@@ -20,7 +20,6 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
     @staticmethod
     def _encapsulate_parameters(base_url: str,
                                 model: str,
-                                system_prompt: str,
                                 stream: bool,
                                 return_trace: bool,
                                 **kwargs) -> Dict[str, Any]:
@@ -29,8 +28,6 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
             params['base_url'] = base_url
         if model is not None:
             params['model'] = model
-        if system_prompt is not None:
-            params['system_prompt'] = system_prompt
         params.update(kwargs)
 
         return params
@@ -39,11 +36,10 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
                 source: str,
                 base_url: str = None,
                 model: str = None,
-                system_prompt: str = None,
                 stream: bool = True,
                 return_trace: bool = False,
                 **kwargs):
-        params = OnlineChatModule._encapsulate_parameters(base_url, model, system_prompt, stream, return_trace, **kwargs)
+        params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace, **kwargs)
 
         if source.lower() == "openai":
             return OpenAIModule(**params)

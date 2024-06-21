@@ -1,10 +1,14 @@
 from typing import Dict, Union, Any, List, Callable, Optional
 from ...common import LazyLLMRegisterMetaClass
 from lazyllm import LOG
+from functools import reduce
 import json
 import re
 
 class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
+    ISA = "<!lazyllm-spliter!>"
+    ISE = "</!lazyllm-spliter!>"
+
     def __init__(self, show=False, tools=None):
         self._set_model_configs(system='You are an AI-Agent developed by LazyLLM.', sos='<|start_system|>',
                                 soh='<|Human|>:', soa='<|Assistant|>:', eos='<|end_system|>', eoh='', eoa='')
@@ -73,21 +77,25 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                 assert len(prompt_keys) == 0
                 return self._instruction_template, input
         assert isinstance(input, dict)
+        input = input.copy()
         kwargs = {k: input.pop(k) for k in prompt_keys}
-        assert len(input) <= 1, f'Unexpected keys found in input: {list(input.keys())}'
-        return (self._instruction_template.format(**kwargs) if len(kwargs) > 0 else self._instruction_template,
-                list(input.values())[0] if input else '')
+        assert len(input) <= 1, f"Unexpected keys found in input: {list(input.keys())}"
+        return (reduce(lambda s, kv: s.replace(f"{{{kv[0]}}}", kv[1]),
+                       kwargs.items(),
+                       self._instruction_template)
+                if len(kwargs) > 0 else self._instruction_template,
+                list(input.values())[0] if input else "")
 
     def _check_values(self, instruction, input, history, tools): pass
 
     # Used for TrainableModule(local deployed)
-    def _generate_prompt_impl(self, instruction, input, history, tools, label):
-        params = dict(system=self._system, instruction=instruction, input=input, history=history, tools=tools,
+    def _generate_prompt_impl(self, instruction, input, user, history, tools, label):
+        params = dict(system=self._system, instruction=instruction, input=input, user=user, history=history, tools=tools,
                       sos=self._sos, eos=self._eos, soh=self._soh, eoh=self._eoh, soa=self._soa, eoa=self._eoa)
         return self._template.format(**params) + (label if label else '')
 
     # Used for OnlineChatModule
-    def _generate_prompt_dict_impl(self, instruction, input, history, tools, label):
+    def _generate_prompt_dict_impl(self, instruction, input, user, history, tools, label):
         if not history: history = []
         if isinstance(input, str):
             history.append({"role": "user", "content": input})
@@ -95,6 +103,9 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             history.append(input)
         else:
             raise TypeError("input must be a string or a dict")
+
+        if user:
+            history[-1]["content"] = user + history[-1]['content']
 
         history.insert(0, {"role": "system",
                            "content": self._system + "\n" + instruction if instruction else self._system})
@@ -104,6 +115,18 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     def pre_hook(self, func: Optional[Callable] = None):
         self._pre_hook = func
         return self
+
+    def _split_instruction(self, instruction: str):
+        system_instruction = instruction
+        user_instruction = ""
+        if LazyLLMPrompterBase.ISA in instruction and LazyLLMPrompterBase.ISE in instruction:
+            # The instruction includes system prompts and/or user prompts
+            pattern = re.compile(r"%s(.*)%s" % (LazyLLMPrompterBase.ISA, LazyLLMPrompterBase.ISE))
+            ret = re.split(pattern, instruction)
+            system_instruction = ret[0]
+            user_instruction = ret[1]
+
+        return system_instruction, user_instruction
 
     def generate_prompt(self, input: Union[str, Dict[str, str], None] = None,
                         history: List[Union[List[str], Dict[str, Any]]] = None,
@@ -116,8 +139,9 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         history = self._get_histories(history, return_dict=return_dict)
         tools = self._get_tools(tools, return_dict=return_dict)
         self._check_values(instruction, input, history, tools)
+        instruction, user_instruction = self._split_instruction(instruction)
         func = self._generate_prompt_dict_impl if return_dict else self._generate_prompt_impl
-        result = func(instruction, input, history, tools, label)
+        result = func(instruction, input, user_instruction, history, tools, label)
         if self._show or show: LOG.info(result)
         return result
 
