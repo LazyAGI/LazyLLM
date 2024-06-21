@@ -19,7 +19,7 @@ class TestFn_Module:
 
     def test_UrlModule(self):
         def func(x):
-            return str(x)+' after'
+            return str(x) + ' after'
         # Generate accessible URL service:
         m1 = lazyllm.ServerModule(func)
         m1.update()
@@ -61,6 +61,6 @@ class TestFn_Module:
         m = lazyllm.WebModule(func)
         m.update()
         time.sleep(4)
-        assert m.p.is_alive() == True
+        assert m.p.is_alive()
         response = requests.get(m.url)
         assert response.status_code == 200

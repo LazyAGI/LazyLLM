@@ -21,8 +21,7 @@ class TestLazyLLM(object):
 
     @pytest.mark.usefixtures('set_env_vars')
     def test_debug_env_var(self):
-        assert os.environ.get('LAZYLLM_DEBUG') == '1'
-        assert os.environ.get('LAZYLLM_LOG_LEVEL') == 'INFO'
-        assert os.environ.get('LAZYLLM_LOG_DIR') == '~/.lazyllm'
-        assert os.environ.get('LAZYLLM_LOG_FILE_SIZE') == '1 MB'
-
+        assert lazyllm.config('debug') == '1'
+        assert lazyllm.config('log_level') == 'INFO'
+        assert lazyllm.config('log_dir') == '~/.lazyllm'
+        assert lazyllm.config('log_file_size') == '1 MB'

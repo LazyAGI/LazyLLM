@@ -1,7 +1,3 @@
-import json
-
-import lazyllm
-from lazyllm import finetune
 
 class TestFn_Finetune(object):
 
@@ -17,4 +13,3 @@ class TestFn_Finetune(object):
 
     def test_finetune_auto(self):
         pass
-

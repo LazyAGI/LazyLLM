@@ -49,8 +49,6 @@ class TestFn_Config(object):
         print(os.environ.get('LAZYLLM_DISPLAY'))
         assert lazyllm.config['mode'] == Mode.Display
 
-
-
 @contextlib.contextmanager
 def clear_env():
     LAZYLLM_DISPLAY = "LAZYLLM_DISPLAY"
