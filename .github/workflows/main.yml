@@ -47,7 +47,7 @@ jobs:
           export LAZYLLM_SCO_WORKSPACE=expert-services
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-          env
+          env | grep '^SCC'
           python -m pytest tests/basic_tests/
           echo "Placeholder only"
 
