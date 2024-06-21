@@ -64,3 +64,4 @@ class TestFn_Module:
         assert m.p.is_alive()
         response = requests.get(m.url)
         assert response.status_code == 200
+        m.stop()
