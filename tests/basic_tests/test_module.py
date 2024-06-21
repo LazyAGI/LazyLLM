@@ -8,8 +8,8 @@ from lazyllm.launcher import cleanup
 class TestFn_Module:
 
     def setup_method(self):
-        self.base_model = 'base_model_path'
-        self.target_path = 'target_path'
+        self.base_model = 'internlm2-chat-7b'
+        self.target_path = ''
         self.data_path = 'data_path'
 
     def test_ActionModule(self):
