@@ -1,7 +1,9 @@
-from .base import LazyLLMFinetuneBase
-from lazyllm import launchers, ArgsDict, thirdparty
 import os
 import copy
+
+import lazyllm
+from lazyllm import launchers, ArgsDict, thirdparty
+from .base import LazyLLMFinetuneBase
 
 
 class CollieFinetune(LazyLLMFinetuneBase):
@@ -53,6 +55,10 @@ class CollieFinetune(LazyLLMFinetuneBase):
 
     def cmd(self, trainset, valset=None) -> str:
         thirdparty.check_packages(['numpy', 'peft', 'torch', 'transformers'])
+        if not os.path.exists(trainset):
+            defatult_path = os.path.join(lazyllm.config['data_path'], trainset)
+            if os.path.exists(defatult_path):
+                trainset = defatult_path
         if not self.kw['data_path']:
             self.kw['data_path'] = trainset
 

@@ -3,7 +3,6 @@ from lazyllm.configs import Mode
 import os
 import pytest
 import contextlib
-import binding
 import inspect
 
 

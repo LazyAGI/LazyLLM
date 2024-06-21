@@ -8,8 +8,7 @@ class TestFn_Common(object):
     def test_common_argsdict(self):
         
         my_ob = ArgsDict({'a':'1', 'b':'2'})
-        my_ob.check_and_update(my_ob) 
-        # print(my_ob)
+        my_ob.check_and_update(my_ob)
         expected_output = '--a="1" --b="2"'
         assert my_ob.parse_kwargs() == expected_output
         
@@ -35,8 +34,9 @@ class TestFn_Common(object):
         assert str(ret) == 'python a --a=b --c=d'
         
     def test_common_timeout(self):
+        from lazyllm.common.common import TimeoutException
         
-        with pytest.raises(TimeoutError) as e:
+        with pytest.raises(TimeoutException) as e:
             with lazyllm.timeout(1, msg='hello'):
                 time.sleep(2)
                 

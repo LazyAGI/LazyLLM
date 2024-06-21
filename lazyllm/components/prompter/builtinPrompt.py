@@ -66,7 +66,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
     def _get_instruction_and_input(self, input):
         prompt_keys = list(set(re.findall(r'\{(\w+)\}', self._instruction_template)))
-        if isinstance(input, (str, int)):
+        if isinstance(input, (str, int, list)): # list for rag-nodes
             if len(prompt_keys) == 1:
                 return self._instruction_template.format(**{prompt_keys[0]: input}), ''
             else:

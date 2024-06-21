@@ -24,7 +24,7 @@ class TestFn_Option(object):
         o3 = lazyllm.Option([5,6])
         
         expected_output = '''[[<Option options="[1, 2]" curr="1">, 5, 1], [<Option options="[1, 2]" curr="1">, 5, 2], [<Option options="[1, 2]" curr="1">, 6, 1], [<Option options="[1, 2]" curr="1">, 6, 2], [3, 5], [3, 6], [4, 5], [4, 6]]'''
-        # pdb.set_trace()
+
         assert str(list(lazyllm.OptionIter([o2, o3], get_options))) == expected_output
-        
+
         

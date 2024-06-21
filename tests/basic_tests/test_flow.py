@@ -1,4 +1,5 @@
-from lazyllm import pipeline, parallel, diverter, warp, switch, ifs, loop
+import lazyllm
+from lazyllm import pipeline, parallel, diverter, warp, switch, ifs, loop, barrier
 
 def add_one(x):    return x+1
 def is_1(x):    return True if x==1 else False       
@@ -48,3 +49,37 @@ class TestFn_Flow(object):
         
         assert loop(add_one, count=2)(0) == 2
         # assert loop(add_one, stop_condition=is_1)(0)
+
+    def test_barrier(self):
+        res = []
+
+        def get_data(idx):
+            res.append(str(idx))
+            return idx + 1
+
+        ppl = pipeline(
+            get_data,
+            parallel(
+                pipeline(
+                    get_data,
+                    barrier,
+                    get_data,
+                    barrier,
+                    get_data,
+                    get_data,
+                ),
+                pipeline(
+                    get_data,
+                    barrier,
+                    get_data,
+                    get_data,
+                    get_data,
+                    get_data,
+                    barrier,
+                    get_data,
+                ),
+            ),
+        )
+
+        ppl(0)
+        print(res, res==['0', '1', '1', '2', '3', '4', '5', '2', '6', '3', '4'])

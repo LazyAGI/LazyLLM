@@ -34,6 +34,7 @@ class _Log:
     def __init__(self):
         self._name = lazyllm.config["log_name"]
         self._pid = getpid()
+        self._log_dir_path = check_path(lazyllm.config["log_dir"], exist=False, file=False)
 
         if getenv("LOGURU_AUTOINIT", "true").lower() in ("1", "true") and stderr:
             try:
@@ -101,6 +102,7 @@ LOG = _Log()
 def add_file_sink():
     name = lazyllm.config["log_name"]
     pid = getpid()
+    log_dir_path = LOG._log_dir_path
     log_dir_path = lazyllm.config["log_dir"]
     if log_dir_path:
         log_dir_path = check_path(log_dir_path, exist=False, file=False)

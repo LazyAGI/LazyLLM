@@ -1,6 +1,6 @@
 import os
 
-os.environ['LAZYLLM_REDIS_URL'] = 'redis://SH-IDC1-10-142-5-209:6379'
+os.environ['LAZYLLM_REDIS_URL'] = 'redis://SH-IDC1-10-142-4-31:9997'
 # os.environ['LAZYLLM_REDIS_URL'] = ''
 
 import lazyllm
