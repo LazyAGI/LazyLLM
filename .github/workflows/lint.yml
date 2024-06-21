@@ -46,7 +46,10 @@ jobs:
           version: ${{ env.POETRY_VERSION }}
       - name: Install deps
         shell: bash
-        run: cp LazyLLM-Env/poetry.lock . && poetry install
+        run: |
+          pwd
+          ls
+          cp LazyLLM-Env/poetry.lock . && poetry install
       - name: Build
         shell: bash
         run: poetry build
