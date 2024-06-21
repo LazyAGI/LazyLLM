@@ -39,6 +39,14 @@ jobs:
         run: |
           set -ex
           cd ${{ env.CI_PATH }}
+          ls -alh
+          export LAZYLLM_DEFAULT_LAUNCHER=sco
+          export LAZYLLM_SLURM_PART=a100
+          export PYTHONPATH=$PWD:$PYTHONPATH
+          export LAZYLLM_SCO_WORKSPACE=expert-services
+          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
+          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+          python -m pytest tests/basic_tests/
           echo "Placeholder only"
 
       - name: test2
