@@ -105,7 +105,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             raise TypeError("input must be a string or a dict")
 
         if user:
-            history[-1]["content"].insert(0, user)
+            history[-1]["content"] = user + history[-1]['content']
 
         history.insert(0, {"role": "system",
                            "content": self._system + "\n" + instruction if instruction else self._system})
