@@ -41,6 +41,7 @@ jobs:
           cd ${{ env.CI_PATH }}
           echo "hihihihihihihihihihihihi"
           conda info -e
+          source <(grep '^export SCC' ~/.zshrc)
           env | grep '^SCC'
           echo "hihihihihihihihihihihihi"
           ls -alh  
