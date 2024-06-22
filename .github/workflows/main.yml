@@ -41,7 +41,7 @@ jobs:
           cd ${{ env.CI_PATH }}
           echo "hihihihihihihihihihihihi"
           conda info -e
-          env | grep '^SCC
+          env | grep '^SCC'
           echo "hihihihihihihihihihihihi"
           ls -alh  
           export LAZYLLM_DEFAULT_LAUNCHER=sco
