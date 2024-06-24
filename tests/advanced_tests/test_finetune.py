@@ -1,5 +1,5 @@
 
-class TestFn_Finetune(object):
+class TestFinetune(object):
 
     def setup_method(self):
         self.data = 'alpaca/alpaca_data_zh_128.json'

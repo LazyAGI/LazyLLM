@@ -7,7 +7,7 @@ def t1(x): return 2 * x
 def t2(x): return 3 * x
 def t3(x): return x
 
-class TestFn_Flow(object):
+class TestFlow(object):
 
     def test_pipeline(self):
 

@@ -1,7 +1,7 @@
 import sys
 from lazyllm.thirdparty import llama_index
 
-class TestFn_Thirdparty(object):
+class TestThirdparty(object):
 
     def test_import(self, monkeypatch):
         def check_installed(third_import_type):

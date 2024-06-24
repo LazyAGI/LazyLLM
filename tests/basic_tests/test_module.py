@@ -5,7 +5,7 @@ import requests
 import lazyllm
 from lazyllm.launcher import cleanup
 
-class TestFn_Module:
+class TestModule:
 
     def setup_method(self):
         self.base_model = 'internlm2-chat-7b'

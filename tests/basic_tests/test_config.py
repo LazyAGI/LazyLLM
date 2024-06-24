@@ -39,7 +39,7 @@ def isolated(func):
         return pytest.mark.isolate(run_subprocess)
 
 
-class TestFn_Config(object):
+class TestConfig(object):
     def test_config_mode(self):
         print(os.environ.get('LAZYLLM_DISPLAY'))
         assert lazyllm.config['mode'] == Mode.Normal

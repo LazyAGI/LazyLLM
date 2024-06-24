@@ -4,7 +4,7 @@ import lazyllm
 from lazyllm import finetune, deploy, launchers
 
 
-class TestFn_Component(object):
+class TestComponent(object):
     def test_prompter(self):
         p = lazyllm.Prompter(prompt='hello world2 <{input}>')
         assert not p.is_empty(), "Prompter should not be empty"

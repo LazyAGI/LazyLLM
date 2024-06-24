@@ -3,7 +3,7 @@ import json
 import lazyllm
 from lazyllm import deploy
 
-class TestFn_Deploy(object):
+class TestDeploy(object):
 
     def setup_method(self):
         self.model_path = 'internlm2-chat-7b'

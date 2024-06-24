@@ -4,7 +4,7 @@ import lazyllm
 from lazyllm import launchers
 
 
-class TestFn_Launcher(object):
+class TestLauncher(object):
 
     def test_slurm(self):
         launcher = launchers.slurm(

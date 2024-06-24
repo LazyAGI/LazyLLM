@@ -4,7 +4,7 @@ import random
 import time
 import pytest
 
-class TestFn_Common(object):
+class TestCommon(object):
 
     def test_common_argsdict(self):
 

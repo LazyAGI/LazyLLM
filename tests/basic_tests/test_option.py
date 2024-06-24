@@ -1,6 +1,6 @@
 import lazyllm
 
-class TestFn_Option(object):
+class TestOption(object):
 
     def test_option(self):
         l1 = [1, 2]
