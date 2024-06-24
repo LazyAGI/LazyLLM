@@ -2,7 +2,7 @@
 name = "lazyllm"
 version = "0.1.1"
 description = "A Low-code Development Tool For Building Multi-agent LLMs Applications."
-authors = ["yangyihe <yangchichi@126.com>"]
+authors = ["<wangzhihong@sensetime.com>"]
 license = "Apache-2.0 license"
 readme = "README.md"
 
