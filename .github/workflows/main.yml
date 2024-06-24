@@ -30,6 +30,13 @@ jobs:
           echo ${{ env.CI_PATH }}
           mkdir -p ${{ env.CI_PATH }}
 
+      - name: Clean custom directory
+        run: |
+          set -ex
+          if [ -d "${{ env.CI_PATH }}" ]; then
+            rm -rf ${{ env.CI_PATH }}/*
+          fi
+
       - name: Move code to custom directory
         run: |
           set -ex
@@ -57,7 +64,7 @@ jobs:
     runs-on: tps_sco_nv
     needs: [Clone]
     steps:
-      - name: AdvancedTests
+      - name: RunTests
         run: |
           cd ${{ env.CI_PATH }}
           env | grep '^SCC'
