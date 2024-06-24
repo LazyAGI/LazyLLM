@@ -1,9 +1,14 @@
+<div align="center">
+  <img src="https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/docs/LazyLLM-logo.png" width="100%"/>
+</div>
+
 # LazyLLM: 低代码构建多Agent大模型应用的开发工具
 [中文](README.md) |  [EN](README.ENG.md)
 
 [![CI](https://github.com/LazyAGI/LazyLLM/actions/workflows/main.yml/badge.svg)](https://github.com/LazyAGI/LazyLLM/actions/workflows/main.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellow.svg)](https://opensource.org/license/apache-2-0)
 [![GitHub star chart](https://img.shields.io/github/stars/LazyAGI/LazyLLM?style=flat-square)](https://star-history.com/#LazyAGI/LazyLLM)
+[![](https://dcbadge.vercel.app/api/server/cDSrRycuM6?compact=true&style=flat)](https://discord.gg/cDSrRycuM6)
 
 ## 一、简介
 
@@ -85,9 +90,8 @@ mweb = lazyllm.WebModule(ppl, port=23456).start().wait()
 
 ```python
 import lazyllm
-from lazyllm import pipeline, parallel, Identity, warp, package
-import time
-import re, json
+from lazyllm import pipeline, warp, bind
+from lazyllm.components.formatter import JsonFormatter
 
 toc_prompt=""" 你现在是一个智能助手。你的任务是理解用户的输入，将大纲以列表嵌套字典的列表。每个字典包含一个 `title` 和 `describe`，其中 `title` 中需要用Markdown格式标清层级，`describe` `describe` 是对该段的描述和写作指导。
 
@@ -124,19 +128,18 @@ completion_prompt="""
 接收如下：
 
 """
+
+writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "describe": {describe}}'}
 ```
 </details>
 
 ```python
-t1 = lazyllm.OnlineChatModule(source="openai", stream=False, prompter=ChatPrompter(instruction=toc_prompt))
-t2 = lazyllm.OnlineChatModule(source="openai", stream=False, prompter=ChatPrompter(instruction=completion_prompt))
+with pipeline() as ppl:
+    ppl.outline_writer = lazyllm.OnlineChatModule(source="openai", stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
+    ppl.story_generater = warp(lazyllm.OnlineChatModule(source="openai", stream=False).prompt(writer_prompt))
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
 
-spliter = lambda s: tuple(eval(re.search(r'\[\s*\{.*\}\s*\]', s['message']['content'], re.DOTALL).group()))
-writter = pipeline(lambda d: json.dumps(d, ensure_ascii=False), t2, lambda d : d['message']['content'])
-collector = lambda dict_tuple, repl_tuple: "\n".join([v for d in [{**d, "describe": repl_tuple[i]} for i, d in enumerate(dict_tuple)] for v in d.values()])
-m = pipeline(t1, spliter, parallel(Identity, warp(writter)), collector)
-
-print(m({'query':'请帮我写一篇关于人工智能在医疗领域应用的文章。'}))
+print(ppl({'query':'请帮我写一篇关于人工智能在医疗领域应用的文章。'}))
 ```
 
 ## 四、功能点

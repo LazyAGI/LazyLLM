@@ -109,13 +109,14 @@ Returns:
 
 """)
 add_example('FlowBase.for_each', """\
+>>> import lazyllm
 >>> def test1(): print('1')
 ... 
 >>> def test2(): print('2')
 ... 
 >>> def test3(): print('3')
 ... 
->>> flow = pipeline(test1, pipeline(test2, test3))
+>>> flow = lazyllm.pipeline(test1, lazyllm.pipeline(test2, test3))
 >>> flow.for_each(lambda x: callable(x), lambda x: print(x))
 <function test1 at 0x7f389c3d3ac0>
 <function test2 at 0x7f389c3d3b50>
@@ -152,7 +153,27 @@ Args:
 .. property:: 
     asdict
 
-    标记Parellel，使得Parallel每次调用时的返回值由tuple变为dict。当使用 ``asdict`` 时，请务必保证parallel的元素被取了名字，例如:  ``parallel(name=value)`` 。
+    标记Parellel，使得Parallel每次调用时的返回值由package变为dict。当使用 ``asdict`` 时，请务必保证parallel的元素被取了名字，例如:  ``parallel(name=value)`` 。
+
+.. property:: 
+    tuple
+
+    标记Parellel，使得Parallel每次调用时的返回值由package变为tuple。
+
+.. property:: 
+    list
+
+    标记Parellel，使得Parallel每次调用时的返回值由package变为list。
+
+.. property:: 
+    sum
+
+    标记Parellel，使得Parallel每次调用时的返回值做一次累加。
+
+.. function:: 
+    join(self, string)
+
+    标记Parellel，使得Parallel每次调用时的返回值通过 ``string`` 做一次join。
 """)
 
 add_english_doc('Parallel', """\
@@ -186,18 +207,52 @@ Arguments:
     asdict
 
     Tag ``Parallel`` so that the return value of each call to ``Parallel`` is changed from a tuple to a dict. When using ``asdict``, make sure that the elements of ``parallel`` are named, for example: ``parallel(name=value)``.
+
+.. property:: 
+    tuple
+
+    Mark Parallel so that the return value of Parallel changes from package to tuple each time it is called.
+
+.. property:: 
+    list
+
+    Mark Parallel so that the return value of Parallel changes from package to list each time it is called.
+
+.. property:: 
+    sum
+
+    Mark Parallel so that the return value of Parallel is accumulated each time it is called.
+
+.. function:: 
+    join(self, string)
+
+    Mark Parallel so that the return value of Parallel is joined by ``string`` each time it is called.
+```
 """)
 
 add_example('Parallel', '''\
->>> test1 = lambda a: return a + 1
->>> test2 = lambda a: return a * 4
->>> test3 = lambda a: return a / 2
+>>> import lazyllm
+>>> test1 = lambda a: a + 1
+>>> test2 = lambda a: a * 4
+>>> test3 = lambda a: a / 2
 >>> ppl = lazyllm.parallel(test1, test2, test3)
 >>> ppl(1)
 (2, 4, 0.5)
 >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3)
 >>> ppl(1)
 {'a': 2, 'b': 4, 'c': 0.5}
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).asdict
+>>> ppl(2)
+{'a': 3, 'b': 8, 'c': 1.0}
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).astuple
+>>> ppl(-1)
+(0, -4, -0.5)
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).aslist
+>>> ppl(0)
+[1, 0, 0.0]
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).join('\\n')
+>>> ppl(1)
+'2\\n4\\n0.5'
 ''')
 
 add_chinese_doc('Pipeline', """\
@@ -233,6 +288,7 @@ Returns:
 """)
 
 add_example('Pipeline', """\
+>>> import lazyllm
 >>> ppl = lazyllm.pipeline(
 ...     stage1=lambda x: x+1,
 ...     stage2=lambda x: f'get {x}'
@@ -325,10 +381,11 @@ Returns:
 ''')
 
 add_example('IFS', '''\
+>>> import lazyllm
 >>> cond = lambda x: x > 0
 >>> tpath = lambda x: x * 2
 >>> fpath = lambda x: -x
->>> ifs_flow = IFS(cond, tpath, fpath)
+>>> ifs_flow = lazyllm.ifs(cond, tpath, fpath)
 >>> ifs_flow(10)
 20
 >>> ifs_flow(-5)
@@ -380,7 +437,13 @@ Raises:
 """)
 
 add_example('Switch', """\
+>>> import lazyllm
+>>> def is_positive(x): return x > 0
+...
+>>> def is_negative(x): return x < 0
+...
 >>> switch = lazyllm.switch(is_positive, lambda x: 2 * x, is_negative, lambda x : -x, 'default', lambda x : '000')
+>>>
 >>> switch(1)
 2
 >>> switch(0)
@@ -439,6 +502,7 @@ Arguments:
 """)
 
 add_example('Diverter', """\
+>>> import lazyllm
 >>> div = lazyllm.diverter(lambda x: x+1, lambda x: x*2, lambda x: -x)
 >>> div(1, 2, 3)
 (2, 4, -3)
@@ -490,6 +554,7 @@ Note:
 """)
 
 add_example('Warp', """\
+>>> import lazyllm
 >>> warp = lazyllm.warp(lambda x: x * 2)
 >>> warp(1, 2, 3, 4)
 (2, 4, 6, 8)

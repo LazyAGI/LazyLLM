@@ -1,10 +1,12 @@
 import json
 import os
 import requests
+import re
 from typing import Tuple, List, Dict, Union, Any
 import time
 import lazyllm
 from lazyllm.components.prompter import PrompterBase, ChatPrompter
+from lazyllm.components.formatter import FormatterBase, EmptyFormatter
 from ..module import ModuleBase, Pipeline
 
 class OnlineChatModuleBase(ModuleBase):
@@ -31,13 +33,16 @@ class OnlineChatModuleBase(ModuleBase):
         self._set_chat_url()
         self.prompt()
         self._is_trained = False
+        self.formatter()
+        self.field_extractor()
+        self._stream_end_token = "[DONE]"
 
     def prompt(self, prompt=None):
         if prompt is None:
             self._prompt = ChatPrompter()
         elif isinstance(prompt, PrompterBase):
             self._prompt = prompt
-        elif isinstance(prompt, str):
+        elif isinstance(prompt, (str, dict)):
             self._prompt = ChatPrompter(prompt)
         else:
             raise TypeError(f"{prompt} type is not supported.")
@@ -70,14 +75,80 @@ class OnlineChatModuleBase(ModuleBase):
             res_json = r.json()
             return res_json
 
+    def _parse_output_by_key(self, key: str, data: Dict[str, Any]):
+        if "choices" in data and isinstance(data["choices"], list):
+            item = data['choices'][0]
+            data = item.get("delta", {}) if "delta" in item else item.get("message", {})
+            return data if not key else data.get(key, "")
+        else:
+            raise ValueError(f"The response {data} does not contain a 'choices' field.")
+
+    def _synthetic_output(self, response: Dict[str, Any]):
+        if len(self._extractor_fields) == 1:
+            key = self._extractor_fields[0]
+            content = self._parse_output_by_key(key, response) if key else ""
+            return self._formatter.format(content) if content else ""
+        elif len(self._extractor_fields) > 1:
+            res = {}
+            for key in self._extractor_fields:
+                content = self._parse_output_by_key(key, response) if key else ""
+                res[key] = self._formatter.format(content) if content else ""
+            return res
+        else:
+            content = self._parse_output_by_key(".", response)
+            return self._formatter.format(content) if content else ""
+
+    def _stream_post_process(self, response: str) -> Dict[str, Any]:
+        try:
+            chunk = json.loads(response)
+            return chunk
+        except ValueError:
+            return response
+        except Exception as e:
+            lazyllm.LOG.error(e)
+            return ""
+
     def _parse_response_stream(self, response: str) -> str:
-        chunk = response.decode('utf-8')[6:]
-        return chunk
+        pattern = re.compile(r"^data:\s*")
+        response = re.sub(pattern, "", response.decode('utf-8'))
+        chunk = self._stream_post_process(response)
+        if self._stream_end_token == chunk: return self._stream_end_token
+        return self._synthetic_output(chunk)
+
+    def _nonstream_post_process(self, response: str) -> Dict[str, Any]:
+        try:
+            chunk = json.loads(response)
+            return chunk
+        except Exception as e:
+            lazyllm.LOG.error(e)
+            return ""
 
     def _parse_response_non_stream(self, response: str) -> Dict[str, Any]:
         """Parse the response from the interface"""
-        cur_msg = json.loads(response)["choices"][0]
-        return cur_msg
+        cur_msg = self._nonstream_post_process(response)
+        return self._synthetic_output(cur_msg)
+
+    def formatter(self, format: FormatterBase = None):
+        if isinstance(format, FormatterBase):
+            self._formatter = format
+        elif format is None:
+            self._formatter = EmptyFormatter()
+        else:
+            raise TypeError("format must be a FormatterBase")
+
+        return self
+
+    def field_extractor(self, key: Union[str, List[str]] = None):
+        if key is None:
+            self._extractor_fields = ["content"]
+        elif isinstance(key, str):
+            self._extractor_fields = [key]
+        elif isinstance(key, list):
+            self._extractor_fields = key
+        else:
+            raise TypeError(f"Unsupported type: {type(key)}")
+
+        return self
 
     def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, **kw):  # noqa C901
         """LLM inference interface"""
@@ -101,8 +172,9 @@ class OnlineChatModuleBase(ModuleBase):
                 for line in r.iter_lines():
                     if len(line) == 0:
                         continue
+
                     chunk = self._parse_response_stream(line)
-                    if chunk == "[DONE]": return
+                    if self._stream_end_token == chunk: return
                     yield chunk
 
         def _impl_non_stream():

@@ -53,9 +53,10 @@ LazyLLM Prompter的设计思路
 
 - PrompterTemplate中可选的字段有：
     - system: 系统提示，一般会读取模型的归属信息并进行设置，如不设置默认为 ``You are an AI-Agent developed by LazyLLM.`` 。
-    - instruction: 任务指令，由 ``InstructionTemplate`` 拼接用户的输入得到。这个是应用开发者需要着重了解的字段。
+    - instruction: 任务指令，由 ``InstructionTemplate`` 拼接用户的输入得到。这个是应用开发者需要着重了解的字段。如果instruction是字符串，则默认是系统指令，如果是字典，且其键值只能是 ``system`` 和 ``user`` 。``system`` 指定的是系统级指令， ``user`` 指定的是用户级指令。
     - history: 历史对话，由用户的输入得到，格式为 ``[[a, b], [c, d]]`` 或 ``[{"role": "user", "content": ""}, {"role": "assistant", "content": ""}]``
     - tools: 可以使用的工具，在构造 ``prompter`` 时传入或者由用户使用时传入，当构造 ``prompter`` 时定义了工具之后，将禁止用户使用时再次传入。格式为 ``[{"type": "function",  "function": {"name": "", "description": "", "parameters": {},  "required": []}]``
+    - user: 用户级指令，可选指令，由用户通过instruction指定。
     - sos: ``start of system`` , 标志着系统提示的开始，该符号由模型填入，开发者和用户均无需考虑
     - eos: ``end of system`` , 标志着系统提示的结束，该符号由模型填入，开发者和用户均无需考虑
     - soh: ``start of human`` , 标志着用户输入的开始，常用于多轮对话中作为分隔符。该符号由模型填入，开发者和用户均无需考虑
@@ -63,8 +64,8 @@ LazyLLM Prompter的设计思路
     - soa: ``start of assistant`` , 标志着模型输出的开始，常用于多轮对话中作为分隔符。该符号由模型填入，开发者和用户均无需考虑
     - eoa: ``end of assistant`` , 标志着模型输出的结束，常用于多轮对话中作为分隔符。该符号由模型填入，开发者和用户均无需考虑
 - ``TrainableModule`` 所使用的内置的Prompt的拼接规则如下：
-    - AlpacaPrompter: ``{system}\n{instruction}\n{tools}### Response:\n``
-    - ChatPrompter: ``{sos}{system}{instruction}{tools}{eos}\n\n{history}\n{soh}\n{input}\n{eoh}{soa}\n``
+    - AlpacaPrompter: ``{system}\n{instruction}\n{tools}\n{user}### Response:\n``
+    - ChatPrompter: ``{sos}{system}{instruction}{tools}{eos}\n\n{history}\n{soh}\n{user}{input}\n{eoh}{soa}\n``
 - ``OnlineChatModule`` 的输出格式为: ``dict(messages=[{"role": "system", "content": ""}, {"role": "user", "content": ""}, ...], tools=[])``
 
 .. note::
@@ -74,7 +75,7 @@ LazyLLM Prompter的设计思路
 
 **InstructionTemplate**: 每个Prompter内置的，用于结合用户输入的 ``instruction`` ，产生最终的 ``instruction`` 的模板。 ``InstructionTemplate`` 中的用到的2个字段是：
 
-- ``instruction`` : 由开发者在构造 ``Prompter`` 时传入，可带若干个待填充的槽位，用于填充用户的输入。
+- ``instruction`` : 由开发者在构造 ``Prompter`` 时传入，可带若干个待填充的槽位，用于填充用户的输入。或者指定系统级指令和用户级指令，当指定用户级指令时，需要使用字典类型，且键值为 ``user`` 和 ``system`` 。
 - ``extro_keys`` : 需要用户调用大模型时额外提供的信息，有开发者在构造 ``Prompter`` 时传入，会自动转换成 ``instruction`` 中的槽位。
 
 .. note::
@@ -105,11 +106,11 @@ Prompt生成过程解析
         "Below is an instruction that describes a task, paired with extra messages such as input that provides "
         "further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
         "Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，"
-        "用户的问题是输入, 现在请你做出回答。### Response:\\n}"
+        "用户的问题是问题, 现在请你做出回答。### Response:\\n}"
 
 4. ``AlpacaPrompter`` 读取 ``system`` 和 ``tools`` 字段，其中 ``system`` 字段由 ``Module`` 设置，而 ``tools`` 字段则会在后面的 :ref:`bestpractice.prompt.tools` 一节中介绍。
 5. 如果 ``prompter`` 的结果用于线上模型（ ``OnlineChatModule`` ），则不会再进一步拼接 ``PromptTemplate`` ，而是会直接得到一个dict，即 ``{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是输入，现在请你做出回答。\n\n'}, {'role': 'user', 'content': ''}]}``
-6. 如果 ``prompter`` 的结果用于线下模型（ ``TrainableModule`` ），则会通过 ``PromptTemplate`` 得到最终的结果： ``You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是输入，现在请你做出回答。\n\n\n### Response:\n``
+6. 如果 ``prompter`` 的结果用于线下模型（ ``TrainableModule`` ），则会通过 ``PromptTemplate`` 得到最终的结果： ``You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是问题，现在请你做出回答。\n\n\n### Response:\n``
 
 定义和使用Prompter
 -------------------------
@@ -153,6 +154,7 @@ Query为string，而非dict
     - 当使用 ``ChatPrompter`` 时，不同于 ``AlpacaPrompter`` ，在 ``instruction`` 中定义槽位不是必须的。
     - 如果不定义槽位，则输入会放到对话中作为用户的输入，在 ``<soh>`` 和 ``<eoh>`` 之间。
     - 如果像 ``AlpacaPrompter`` 一样定义了槽位，也可以任意取一个名字，此时输入会放到 ``<system>`` 字段中。
+    - 如果 ``instruction`` 中指定了系统级指令和用户级指令，则在拼接完成后，系统级指令放在prompt_template中的{instruction}位置，用户级指令放在{user}位置。
 
 .. _bestpractice.prompt.tools:
 

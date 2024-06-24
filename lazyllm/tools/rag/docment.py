@@ -1,3 +1,5 @@
+import os
+
 import lazyllm
 from lazyllm import ModuleBase, ServerModule
 
@@ -9,6 +11,10 @@ from .group_doc import DocGroupImpl
 class Document(ModuleBase):
     def __init__(self, dataset_path: str, embed, create_ui: bool = True, launcher=None):
         super().__init__()
+        if not os.path.exists(dataset_path):
+            defatult_path = os.path.join(lazyllm.config['data_path'], dataset_path)
+            if os.path.exists(defatult_path):
+                dataset_path = defatult_path
         self._create_ui = create_ui
         launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
 

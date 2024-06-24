@@ -273,7 +273,7 @@ class UrlModule(ModuleBase):
             self._prompt = EmptyPrompter()
         elif isinstance(prompt, PrompterBase):
             self._prompt = prompt
-        elif isinstance(prompt, str):
+        elif isinstance(prompt, (str, dict)):
             self._prompt = ChatPrompter(prompt)
         return self
 
@@ -379,7 +379,7 @@ class TrainableModule(UrlModule):
     __enable_request__ = False
 
     def __init__(self, base_model: Option = '', target_path='', *, stream=False, return_trace=False):
-        self.base_model = base_model
+        self.base_model = ModelDownloader(lazyllm.config['model_source']).download(base_model)
         self._stop_words = None
         super().__init__(url=None, stream=stream, meta=TrainableModule, return_trace=return_trace)
         # Fake base_model and target_path for dummy

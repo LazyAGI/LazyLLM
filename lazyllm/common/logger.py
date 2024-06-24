@@ -18,7 +18,7 @@ lazyllm.config.add(
     "log_format",
     str,
     "{process}: <green>{time:YYYY-MM-DD HH:mm:ss}</green> {extra[name]} "
-    "<level>{level}</level>: ({name}) <cyan>{message}</cyan>",
+    "<level>{level}</level>: ({name}:{line}) <cyan>{message}</cyan>",
     "LOG_FORMAT",
 )
 lazyllm.config.add("log_dir", str, "~/.lazyllm", "LOG_DIR")
@@ -34,6 +34,7 @@ class _Log:
     def __init__(self):
         self._name = lazyllm.config["log_name"]
         self._pid = getpid()
+        self._log_dir_path = check_path(lazyllm.config["log_dir"], exist=False, file=False)
 
         if getenv("LOGURU_AUTOINIT", "true").lower() in ("1", "true") and stderr:
             try:
@@ -101,9 +102,8 @@ LOG = _Log()
 def add_file_sink():
     name = lazyllm.config["log_name"]
     pid = getpid()
-    log_dir_path = lazyllm.config["log_dir"]
+    log_dir_path = LOG._log_dir_path
     if log_dir_path:
-        log_dir_path = check_path(log_dir_path, exist=False, file=False)
         log_file_mode = lazyllm.config["log_file_mode"]
         if log_file_mode == "merge":
             log_file_name = f"{name}.json.log"

@@ -7,7 +7,8 @@ from .flow import (LazyLLMFlowsBase, FlowBase, barrier,
                    Loop as loop, Switch as switch, IFS as ifs, Warp as warp)
 from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                          LazyLLMValidateBase, register as component_register, Prompter,
-                         AlpacaPrompter, ChatPrompter, FastapiApp)
+                         AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter)
+
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
                      OnlineChatModule, OnlineEmbeddingModule)
@@ -33,6 +34,7 @@ __all__ = [
     'AlpacaPrompter',
     'ChatPrompter',
     'FastapiApp',
+    'JsonFormatter',
 
     # flow
     'LazyLLMFlowsBase',            # pipeline, parallel
