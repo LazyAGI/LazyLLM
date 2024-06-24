@@ -55,6 +55,7 @@ jobs:
       - name: AdvancedTests
         run: |
           cd ${{ env.CI_PATH }}
+          env | grep '^SCC'
           export LAZYLLM_DEFAULT_LAUNCHER=sco
           export LAZYLLM_SLURM_PART=a100
           export PYTHONPATH=$PWD:$PYTHONPATH
