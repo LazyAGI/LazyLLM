@@ -49,6 +49,8 @@ class Lightllm(LazyLLMDeployBase):
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
+        self.random_port = False if 'port' in kw and kw['port'] else True
+        self.random_nccl_port = False if 'nccl_port' in kw and kw['nccl_port'] else True
 
     def cmd(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
@@ -60,9 +62,9 @@ class Lightllm(LazyLLMDeployBase):
             finetuned_model = base_model
 
         def impl():
-            if not self.kw['port']:
+            if self.random_port:
                 self.kw['port'] = random.randint(30000, 40000)
-            if not self.kw['nccl_port']:
+            if self.random_nccl_port:
                 self.kw['nccl_port'] = random.randint(20000, 30000)
             cmd = f'python -m lightllm.server.api_server --model_dir {finetuned_model} '
             cmd += self.kw.parse_kwargs()

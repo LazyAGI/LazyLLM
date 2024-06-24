@@ -39,10 +39,11 @@ jobs:
     runs-on: tps_sco_nv
     needs: [Clone]
     steps:
-      - name: BasicTests
+      - name: SetEnvVars
         run: |
           set -ex
           cd ${{ env.CI_PATH }}
+          realpath .
           env | grep '^SCC'
           export LAZYLLM_DEFAULT_LAUNCHER=sco
           export LAZYLLM_SLURM_PART=a100
@@ -50,13 +51,14 @@ jobs:
           export LAZYLLM_SCO_WORKSPACE=expert-services
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-          python -m pytest tests/basic_tests/
-      - name: ShowTest
+      - name: RunTests
         run: |
           set -ex
+          realpath .
           cd ${{ env.CI_PATH }}
           env | grep '^SCC'
           env | grep '^LAZYLLM'
+          python -m pytest tests/basic_tests/
 
   AdvancedTests:
     runs-on: tps_sco_nv
