@@ -38,7 +38,6 @@ jobs:
   Test:
     runs-on: tps_sco_nv
     needs: [Clone]
-    retry: 3
     steps:
       - name: BasicTests
         run: |
