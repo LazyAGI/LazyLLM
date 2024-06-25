@@ -400,6 +400,8 @@ class ScoLauncher(LazyLLMLaunchersBase):
                                 '--master_addr ${MASTER_ADDR} --master_port ${MASTER_PORT} '
             pythonpath = os.getenv('PYTHONPATH', '')
             precmd = f'''export PYTHONPATH={os.getcwd()}:{pythonpath}:$PYTHONPATH && '''
+            if lazyllm.config['sco_env_name']:
+                precmd = f"source activate {lazyllm.config['sco_env_name']} && " + precmd
             env_vars = os.environ
             lazyllm_vars = {k: v for k, v in env_vars.items() if k.startswith("LAZYLLM")}
             if lazyllm_vars:
@@ -509,6 +511,8 @@ def cleanup():
     for k, v in ScoLauncher.all_processes.items():
         v.stop()
         LOG.info(f"killed job:{k}")
+
+    LOG.close()
 
 atexit.register(cleanup)
 

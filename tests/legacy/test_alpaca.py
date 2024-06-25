@@ -14,7 +14,7 @@ except ImportError:
 @lazyllm.component_register('dataproc')
 def gen_data(idx):
     print(f'idx {idx}: gen data done')
-    datapath = '/file/to/yourfile.json'
+    datapath = 'alpaca/alpaca_data_zh_51k.json'
     return package(datapath, idx + 1)
 
 def before_func(input_json):
@@ -29,11 +29,11 @@ def after_func(input_json, llm_output):
 ppl = lazyllm.pipeline(
     dataproc.gen_data(),
     finetune.alpacalora(
-        base_model='internlm2-chat-20b',
-        target_path='Internlm2-chat-20b/lazy_demo/lora',
-        merge_path='Internlm2-chat-20b/lazy_demo/merge',
+        base_model='models/internlm2-chat-7b',
+        target_path='Internlm2-chat-7b/lazy_demo/lora',
+        merge_path='Internlm2-chat-7b/lazy_demo/merge',
         cp_files='tokeniz*',
-        model_name='internlm20b',
+        model_name='internlm7b',
         batch_size=8,
         micro_batch_size=2,
         num_epochs=2,
@@ -46,7 +46,6 @@ ppl = lazyllm.pipeline(
         lora_dropout=0.05,
         lora_target_modules='[wo,wqkv]',
         modules_to_save='[tok_embeddings,output]',
-        deepspeed='../lazyllm/llms/finetune/alpaca-lora/ds.json',
         prompt_template_name='alpaca',
         train_on_inputs=True,
         show_prompt=False,

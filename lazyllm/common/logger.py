@@ -95,6 +95,8 @@ class _Log:
             return getattr(self._logger, attr)
         return getattr(self, attr)
 
+    def close(self):
+        logger.remove()
 
 LOG = _Log()
 

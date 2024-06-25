@@ -11,11 +11,11 @@ llm = lazyllm.TrainableModule('internlm2-chat-7b', ''
         ).deploy_method(deploy.vllm, launcher=launchers.remote(ngpus=1)
         ).prompt(template, response_split='<|im_start|>assistant\n')
 
-documents = Document(dataset_path='/file/to/yourpath',
-                     embed=lazyllm.ServerModule(LazyHuggingFaceEmbedding('BAAI/bge-large-zh-v1.5')))
+documents = Document(dataset_path='rag_master',
+                     embed=lazyllm.ServerModule(LazyHuggingFaceEmbedding('bge-large-zh-v1.5')))
 
 rm = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
-reranker = Reranker(types='MoudleReranker', model='BAAI/bge-reranker-large')
+reranker = Reranker(types='MoudleReranker', model='bge-reranker-large')
 m = lazyllm.ActionModule(
     parallel.sequential(
         context_str=pipeline(parallel.sequential(Identity, rm), reranker),
