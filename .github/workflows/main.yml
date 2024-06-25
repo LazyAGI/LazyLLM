@@ -52,6 +52,7 @@ jobs:
           cd ${{ env.CI_PATH }}
           realpath .
           env | grep '^SCC'
+          export LAZYLLM_SCO_ENV_NAME=lazyllm
           export LAZYLLM_DEFAULT_LAUNCHER=sco
           export LAZYLLM_SLURM_PART=a100
           export PYTHONPATH=$PWD:$PYTHONPATH
@@ -68,6 +69,7 @@ jobs:
         run: |
           cd ${{ env.CI_PATH }}
           env | grep '^SCC'
+          export LAZYLLM_SCO_ENV_NAME=lazyllm
           export LAZYLLM_DEFAULT_LAUNCHER=sco
           export LAZYLLM_SLURM_PART=a100
           export PYTHONPATH=$PWD:$PYTHONPATH
