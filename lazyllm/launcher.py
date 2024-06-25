@@ -383,7 +383,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def _wrap_cmd(self, cmd):
             launcher = self.launcher
             # Assemble the cmd
-            sco_cmd = f'srun -p {launcher.partition} --workspace-name {self.workspace_name} ' \
+            sco_cmd = f'srun -p {launcher.partition} --workspace-id {self.workspace_name} ' \
                       f'--job-name={self.name} -f {launcher.framework} -r N2lS.Ie.I60.{launcher.ngpus} ' \
                       f'-N {launcher.nnode} --priority normal '
 
