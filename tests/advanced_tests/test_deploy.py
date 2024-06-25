@@ -2,6 +2,7 @@ import json
 
 import lazyllm
 from lazyllm import deploy
+from lazyllm.launcher import cleanup
 
 class TestDeploy(object):
 
@@ -15,6 +16,7 @@ class TestDeploy(object):
         m.update_server()
         m.eval()
         assert len(m.eval_result) == len(self.inputs)
+        cleanup()
 
     def test_deploy_vllm(self):
         m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.vllm)
@@ -22,6 +24,7 @@ class TestDeploy(object):
         m.update_server()
         m.eval()
         assert len(m.eval_result) == len(self.inputs)
+        cleanup()
 
     def test_deploy_auto(self):
         m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.AutoDeploy)
@@ -29,9 +32,11 @@ class TestDeploy(object):
         m.update_server()
         m.eval()
         assert len(m.eval_result) == len(self.inputs)
+        cleanup()
 
     def test_embedding(self):
         m = lazyllm.TrainableModule('bge-large-zh-v1.5').deploy_method(deploy.AutoDeploy)
         m.update_server()
         res = m('你好')
         assert len(json.loads(res)) == 1024
+        cleanup()

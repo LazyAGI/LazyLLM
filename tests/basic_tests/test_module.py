@@ -38,6 +38,7 @@ class TestModule:
         server_module.evalset(['input1', 'input2'])
         server_module.eval()
         assert server_module.eval_result == ['INPUT1', 'INPUT2']
+        cleanup()
 
     def test_TrainableModule(self):
         trainable_module = lazyllm.TrainableModule(self.base_model, self.target_path)
@@ -54,6 +55,7 @@ class TestModule:
         trainable_module.evalset(['input1', 'input2'])
         trainable_module.eval()
         assert trainable_module.eval_result == [res_template.format(x) for x in inputs]
+        cleanup()
 
     def test_WebModule(self):
         def func(x):
