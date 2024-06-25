@@ -417,7 +417,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def _get_jobid(self):
             time.sleep(0.5)  # Wait for cmd to be stably submitted to sco
             id_str = subprocess.check_output([
-                'squeue', f'--workspace-name={self.workspace_name}',
+                'squeue', f'--workspace-id={self.workspace_name}',
                 '-o', 'jobname,jobid']).decode("utf-8")
             pattern = re.compile(rf"{re.escape(self.name)}\s+(\S+)")
             match = pattern.search(id_str)
@@ -432,7 +432,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
 
         def stop(self):
             if self.jobid:
-                cmd = f"scancel --workspace-name={self.workspace_name} {self.jobid}"
+                cmd = f"scancel --workspace-id={self.workspace_name} {self.jobid}"
                 subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                  encoding='utf-8', executable='/bin/bash')
             if self.ps:
@@ -445,7 +445,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def status(self):
             if self.jobid:
                 try:
-                    id_str = subprocess.check_output(['scontrol', f'--workspace-name={self.workspace_name}',
+                    id_str = subprocess.check_output(['scontrol', f'--workspace-id={self.workspace_name}',
                                                       'show', 'job', str(self.jobid)]).decode("utf-8")
                     id_json = json.loads(id_str)
                     job_state = id_json['status_phase'].strip().lower()
