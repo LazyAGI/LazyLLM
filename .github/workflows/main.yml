@@ -77,3 +77,6 @@ jobs:
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           python -m pytest tests/advanced_tests/
+        env:
+          SKIP_TESTS: ${{ secrets.SKIP_ADVAN_TESTS }}
+        if: ${{ env.SKIP_TESTS != 'true' }}
