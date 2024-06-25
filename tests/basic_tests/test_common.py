@@ -80,4 +80,4 @@ class TestCommon(object):
         r1 = lazyllm.make_repr('a', 1)
         r2 = lazyllm.make_repr('b', 2)
         rr = lazyllm.make_repr('c', 3, subs=[r1, r2])
-        assert rr == '<c type=3>\n |- <a type=1>\n └- <b type=2>\n'
+        assert rr == '<c type="3">\n |- <a type="1">\n └- <b type="2">\n'
