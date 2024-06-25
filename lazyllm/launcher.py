@@ -399,7 +399,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
                 torchrun_cmd += '--nnodes ${WORLD_SIZE} --node_rank ${RANK} ' \
                                 '--master_addr ${MASTER_ADDR} --master_port ${MASTER_PORT} '
             pythonpath = os.getenv('PYTHONPATH', '')
-            precmd = f'''export PYTHONPATH={os.getcwd()}:{pythonpath}:$PYTHONPATH && '''
+            precmd = f'''source activate lazyllm && export PYTHONPATH={os.getcwd()}:{pythonpath}:$PYTHONPATH && '''
             env_vars = os.environ
             lazyllm_vars = {k: v for k, v in env_vars.items() if k.startswith("LAZYLLM")}
             if lazyllm_vars:
