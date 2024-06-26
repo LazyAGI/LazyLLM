@@ -40,6 +40,7 @@ lazyllm.launchers['Status'] = Status
 lazyllm.config.add('launcher', str, 'empty', 'DEFAULT_LAUNCHER')
 lazyllm.config.add('partition', str, 'your_part', 'SLURM_PART')
 lazyllm.config.add('sco.workspace', str, 'your_workspace', 'SCO_WORKSPACE')
+lazyllm.config.add('sco_keep_record', bool, False, 'SCO_KEEP_RECORD')
 
 
 # store cmd, return message and command output.
@@ -433,8 +434,15 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def stop(self):
             if self.jobid:
                 cmd = f"scancel --workspace-name={self.workspace_name} {self.jobid}"
-                subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                 encoding='utf-8', executable='/bin/bash')
+                if lazyllm.config["sco_keep_record"]:
+                    LOG.warning(
+                        f"`sco_keep_record` is on, not executing scancel. "
+                        f"You can now check the logs on the web. "
+                        f"To delete by terminal, you can execute: `{cmd}`"
+                    )
+                else:
+                    subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    encoding='utf-8', executable='/bin/bash')
             if self.ps:
                 self.ps.terminate()
                 self.queue = Queue()
