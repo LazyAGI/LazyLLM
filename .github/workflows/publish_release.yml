@@ -69,6 +69,8 @@ jobs:
           if echo "$RELEASES" | jq -e ".[] | select(.tag_name == \"$RELEASE_TAG\")" > /dev/null; then
             echo "Release $RELEASE_TAG already exists. Skipping release creation."
             echo "release_exists=true" >> $GITHUB_ENV
+            UPLOAD_URL=$(echo "$RELEASES" | jq -r ".[] | select(.tag_name == \"$RELEASE_TAG\") | .upload_url")
+            echo "upload_url=$UPLOAD_URL" >> $GITHUB_ENV
           else
             echo "Release $RELEASE_TAG does not exist. Proceeding with release creation."
             echo "release_exists=false" >> $GITHUB_ENV
@@ -84,21 +86,21 @@ jobs:
           release_name: ${{ github.ref }}
           draft: false
           prerelease: false
-
-      - name: Get Asset name
+      - name: Set upload_url for new release
         if: env.release_exists == 'false'
+        run: echo "upload_url=${{ steps.create_release.outputs.upload_url }}" >> $GITHUB_ENV
+      - name: Get Asset name
         run: |
           export PKG=$(ls dist/ | grep tar)
           set -- $PKG
           echo "name=$1" >> $GITHUB_ENV
       - name: Upload Release Asset (sdist) to GitHub
-        if: env.release_exists == 'false'
         id: upload-release-asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          upload_url: ${{ env.upload_url }}
           asset_path: dist/${{ env.name }}
           asset_name: ${{ env.name }}
           asset_content_type: application/zip
