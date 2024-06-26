@@ -37,17 +37,48 @@ jobs:
         working-directory: ${{ vars.RUNNER_TEMP }}
         shell: bash
         run: python -c "import lazyllm" && cp LazyLLM-Env/poetry.lock .
+      - name: Check PyPI for existing version
+        id: pypi_check
+        run: |
+          VERSION=$(poetry version -s)
+          PACKAGE_NAME=$(poetry version | awk '{print $1}')
+          RESPONSE=$(curl -s https://pypi.org/pypi/$PACKAGE_NAME/json)
+          if echo "$RESPONSE" | jq -e ".releases | has(\"$VERSION\")"; then
+            echo "Version $VERSION already exists on PyPI. Skipping publish."
+            echo "pypi_version_exists=true" >> $GITHUB_ENV
+          else
+            echo "Version $VERSION does not exist on PyPI. Proceeding with publish."
+            echo "pypi_version_exists=false" >> $GITHUB_ENV
+          fi
       - name: Build and publish to pypi
+        if: env.pypi_version_exists == 'false'
         uses: JRubics/poetry-publish@v1.17
         with:
           pypi_token: ${{ secrets.LazyLLM_INDEX_PYPI_TOKEN }}
           ignore_dev_requirements: "yes"
+      - name: Build
+        if: env.pypi_version_exists == 'true'
+        shell: bash
+        run: poetry build
 
+      - name: Check if GitHub Release exists
+        id: release_check
+        run: |
+          RELEASE_TAG=${GITHUB_REF#refs/tags/}
+          RELEASES=$(curl -H "Authorization: token ${{ secrets.PERSONAL_GITHUB_TOKEN }}" -s https://api.github.com/repos/${GITHUB_REPOSITORY}/releases)
+          if echo "$RELEASES" | jq -e ".[] | select(.tag_name == \"$RELEASE_TAG\")" > /dev/null; then
+            echo "Release $RELEASE_TAG already exists. Skipping release creation."
+            echo "release_exists=true" >> $GITHUB_ENV
+          else
+            echo "Release $RELEASE_TAG does not exist. Proceeding with release creation."
+            echo "release_exists=false" >> $GITHUB_ENV
+          fi
       - name: Create GitHub Release
+        if: env.release_exists == 'false'
         id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
@@ -55,15 +86,17 @@ jobs:
           prerelease: false
 
       - name: Get Asset name
+        if: env.release_exists == 'false'
         run: |
           export PKG=$(ls dist/ | grep tar)
           set -- $PKG
           echo "name=$1" >> $GITHUB_ENV
       - name: Upload Release Asset (sdist) to GitHub
+        if: env.release_exists == 'false'
         id: upload-release-asset
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: dist/${{ env.name }}
