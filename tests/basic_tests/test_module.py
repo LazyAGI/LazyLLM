@@ -1,6 +1,7 @@
 
 import time
 import requests
+import pytest
 
 import lazyllm
 from lazyllm.launcher import cleanup
@@ -11,6 +12,11 @@ class TestModule:
         self.base_model = 'internlm2-chat-7b'
         self.target_path = ''
         self.data_path = 'data_path'
+
+    @pytest.fixture(autouse=True)
+    def run_around_tests(self):
+        yield
+        cleanup()
 
     def test_ActionModule(self):
         action_module = lazyllm.ActionModule(lambda x: x + 1)
@@ -29,7 +35,6 @@ class TestModule:
         m2.evalset([1, 'hi'])
         m2.update()
         assert m2.eval_result == ['1 after', 'hi after']
-        cleanup()
 
     def test_ServerModule(self):
         server_module = lazyllm.ServerModule(lambda x: x.upper())
@@ -38,7 +43,6 @@ class TestModule:
         server_module.evalset(['input1', 'input2'])
         server_module.eval()
         assert server_module.eval_result == ['INPUT1', 'INPUT2']
-        cleanup()
 
     def test_TrainableModule(self):
         trainable_module = lazyllm.TrainableModule(self.base_model, self.target_path)
@@ -55,7 +59,6 @@ class TestModule:
         trainable_module.evalset(['input1', 'input2'])
         trainable_module.eval()
         assert trainable_module.eval_result == [res_template.format(x) for x in inputs]
-        cleanup()
 
     def test_WebModule(self):
         def func(x):
