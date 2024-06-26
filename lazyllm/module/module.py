@@ -127,28 +127,24 @@ class ModuleBase(object):
 
     # update module(train or finetune),
     def _update(self, *, mode=None, recursive=True):  # noqa C901
-        if not mode:
-            mode = list(self.mode_list)
-        if type(mode) is not list:
-            mode = [mode]
+        if not mode: mode = list(self.mode_list)
+        if type(mode) is not list: mode = [mode]
         for item in mode:
             assert item in self.mode_list, f"Cannot find {item} in mode list: {self.mode_list}"
         # dfs to get all train tasks
         train_tasks, deploy_tasks, eval_tasks, post_process_tasks = FlatList(), FlatList(), FlatList(), FlatList()
-        stack = [(self, iter(self.submodules if recursive else []))]
+        stack, visited = [(self, iter(self.submodules if recursive else []))], set()
         while len(stack) > 0:
             try:
                 top = next(stack[-1][1])
                 stack.append((top, iter(top.submodules)))
             except StopIteration:
                 top = stack.pop()[0]
-                if 'train' in mode:
-                    train_tasks.absorb(top._get_train_tasks())
-                if 'server' in mode:
-                    deploy_tasks.absorb(lazyllm.call_once(top._deploy_flag, top._get_deploy_tasks)
-                                        if hasattr(top, '_deploy_flag') else top._get_deploy_tasks())
-                if 'eval' in mode:
-                    eval_tasks.absorb(top._get_eval_tasks())
+                if top._module_id in visited: continue
+                visited.add(top._module_id)
+                if 'train' in mode: train_tasks.absorb(top._get_train_tasks())
+                if 'server' in mode: deploy_tasks.absorb(top._get_deploy_tasks())
+                if 'eval' in mode: eval_tasks.absorb(top._get_eval_tasks())
                 post_process_tasks.absorb(top._get_post_process_tasks())
 
         if 'train' in mode and len(train_tasks) > 0:
@@ -220,12 +216,12 @@ class UrlModule(ModuleBase, UrlTemplate):
         self._extract_result_func = lambda x: x
         self.prompt()
 
-    @property()
+    @property
     def _url(self):
         if redis_client:
             try:
                 while not self.__url:
-                    self.__url = get_redis(self._module_id)
+                    self.__url = get_redis(getattr(self, '_impl', self)._module_id)
                     if self.__url: break
                     time.sleep(lazyllm.config["redis_recheck_delay"])
             except Exception as e:
@@ -233,8 +229,7 @@ class UrlModule(ModuleBase, UrlTemplate):
                 raise
         return self.__url
 
-    @_url.setter
-    def _url(self, url):
+    def _set_url(self, url):
         if redis_client:
             redis_client.set(self._module_id, url)
         LOG.debug(f'url: {url}')
@@ -348,23 +343,20 @@ lazyllm.ReprRule.add_rule('Module', 'Action', 'Flow')
 
 
 class _ServerModule(ModuleBase):
-    def __init__(self, m, pre, post, launcher):
+    def __init__(self, m, pre, post, launcher, *, father):
         super().__init__()
-        self.m = ActionModule(m) if isinstance(m, FlowBase) else m
+        self._m = ActionModule(m) if isinstance(m, FlowBase) else m
         self._pre_func, self._post_func = pre, post
-        self._deploy_flag = lazyllm.once_flag()
         self._launcher = launcher if launcher else launchers.remote(sync=False)
+        self._set_url_f = father._set_url
 
+    @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
-        if self.m is None: return None
-
-        def seturl(url):
-            for f in self._father: f.url = url
-
+        if self._m is None: return None
         return Pipeline(
-            lazyllm.deploy.RelayServer(func=self.m, pre_func=self._pre_func,
+            lazyllm.deploy.RelayServer(func=self._m, pre_func=self._pre_func,
                                        post_func=self._post_func, launcher=self._launcher),
-            seturl)
+            self._set_url_f)
 
     def __reduce__(self):
         assert self._deploy_flag, 'ServerModule shoule be deployed before pickling to another process'
@@ -386,25 +378,22 @@ class ServerModule(UrlModule):
             lazyllm.deploy.RelayServer.keys_name_handle,
             copy.deepcopy(lazyllm.deploy.RelayServer.default_headers),
         )
-        self._impl = _ServerModule(m, pre, post, launcher)
+        self._impl = _ServerModule(m, pre, post, launcher, father=self)
 
     def __repr__(self):
-        return lazyllm.make_repr('Module', 'Server', subs=[repr(self.m)], name=self._module_name,
+        return lazyllm.make_repr('Module', 'Server', subs=[repr(self._m)], name=self._module_name,
                                  stream=self._stream, return_trace=self._return_trace)
 
 
 class _TrainableModuleImpl(ModuleBase):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
 
-    def __init__(self, base_model, target_path, stream):
+    def __init__(self, base_model, target_path, stream, train=None, finetune=None, deploy=None):
         super().__init__()
         # Fake base_model and target_path for dummy
         self._base_model = ModelDownloader(lazyllm.config['model_source']).download(base_model)
         self._target_path = target_path
-        self._train = None  # lazyllm.train.auto
-        self._finetune = lazyllm.finetune.auto
-        self._deploy = lazyllm.deploy.auto
-        self._deploy_flag = lazyllm.once_flag()
+        self._train, self._finetune, self._deploy = train, finetune, deploy
         self._stream = stream
         self._father = []
 
@@ -431,6 +420,7 @@ class _TrainableModuleImpl(ModuleBase):
             raise RuntimeError('mode must be train or finetune')
         return Pipeline(trainset_getf, train)
 
+    @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
         if self._deploy is None: return None
 
@@ -451,10 +441,8 @@ class _TrainableModuleImpl(ModuleBase):
             if hasattr(deployer.__class__, 'extract_result'):
                 self._extract_result_func = deployer.__class__.extract_result
 
-        def seturl(url):
-            for f in self._father: f.url = url
-
-        return Pipeline(lambda *a: lazyllm.package(target_path, self.base_model), deployer, seturl)
+        return Pipeline(lambda *a: lazyllm.package(target_path, self.base_model), deployer,
+                        lambda url: [f._set_url(url) for f in self._father])
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
@@ -465,7 +453,6 @@ class _TrainableModuleImpl(ModuleBase):
         assert self._deploy_flag, 'TrainableModule shoule be deployed before pickling to another process'
         if os.getenv('LAZYLLM_ON_CLOUDPICKLE', False) == 'ON':
             m = _TrainableModuleImpl(self._base_model, self._target_path, self._stream)
-            m._train, m._finetune, m._deploy, m._father = None, None, None, []
             m._module_id = self._module_id
             return m.__reduce__()
         else:
@@ -478,7 +465,8 @@ class TrainableModule(UrlModule):
 
     def __init__(self, base_model: Option = '', target_path='', *, stream=False, return_trace=False):
         super().__init__(url=None, stream=stream, return_trace=return_trace)
-        self._impl = _TrainableModuleImpl(base_model, target_path, stream)
+        self._impl = _TrainableModuleImpl(base_model, target_path, stream,
+                                          None, lazyllm.finetune.auto, lazyllm.deploy.auto)
         self._impl._add_father(self)
 
     base_model = property(lambda self: self._impl._base_model)
