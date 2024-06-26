@@ -61,4 +61,5 @@ config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBU
                 ).add('rag_store', str, 'none', 'RAG_STORE'
                 ).add('redis_url', str, 'none', 'REDIS_URL'
                 ).add('gpu_type', str, 'A100', 'GPU_TYPE'
+                ).add('sco_env_name', str, '', 'SCO_ENV_NAME'
                 )

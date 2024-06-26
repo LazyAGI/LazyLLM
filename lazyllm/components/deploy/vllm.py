@@ -46,6 +46,7 @@ class Vllm(LazyLLMDeployBase):
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
+        self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
 
     def cmd(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
@@ -57,7 +58,7 @@ class Vllm(LazyLLMDeployBase):
             finetuned_model = base_model
 
         def impl():
-            if not self.kw['port'] or self.kw['port'] == 'auto':
+            if self.random_port:
                 self.kw['port'] = random.randint(30000, 40000)
 
             cmd = f'{sys.executable} -m vllm.entrypoints.api_server --model {finetuned_model} '

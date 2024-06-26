@@ -231,16 +231,19 @@ class TimeoutException(Exception):
 @contextmanager
 def timeout(duration, *, msg=''):
     def raise_timeout_exception():
-        raise TimeoutException(f'{msg}, block timed out after {duration} s')
+        event.set()
 
+    event = threading.Event()
     timer = threading.Timer(duration, raise_timeout_exception)
     timer.start()
 
     try:
         yield
     finally:
-        if timer.is_alive():
+        if not event.is_set():
             timer.cancel()
+        else:
+            raise TimeoutException(f'{msg}, block timed out after {duration} s')
 
 
 class ReadOnlyWrapper(object):

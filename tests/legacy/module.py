@@ -8,8 +8,8 @@ m3 = lazyllm.ServerModule(m2, post=lambda x, ori: f'post3({x})')
 m4 = lazyllm.ServerModule(m3,
                           pre=lambda input, background='b': dict(inputs=input, background=f'{background}-1', appendix=1),
                           post=lambda x: f'post4({x})')
-m4.prompt('m4: {input}', response_split=None)
-m.prompt('m: i-{inputs}, b-{background}, a-{appendix}', response_split=None)
+m4.prompt('m4: {input}')
+m.prompt('m: i-{inputs}, b-{background}, a-{appendix}')
 m4.evalset([1, 2, 3, 4, 5, 6])
 m4.update()
 print(m4.eval_result)
