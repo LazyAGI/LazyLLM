@@ -42,4 +42,3 @@ class TestDeploy(object):
         m.update_server()
         res = m('你好')
         assert len(json.loads(res)) == 1024
-
