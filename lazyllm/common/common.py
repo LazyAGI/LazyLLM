@@ -99,7 +99,7 @@ class Placeholder(object):
         return self
 
     def __repr__(self):
-        return f'placeholder._{self.idx}'
+        return make_repr('Placeholder', '', index=self.idx)
 
 for i in range(10):
     vars()[f'_{i}'] = Placeholder(i)
@@ -141,6 +141,12 @@ class Bind(object):
             elif self._attr_key is not Bind.Input.__None: return getattr(input, self._attr_key)
             return input
 
+        def __repr__(self):
+            kwargs = {}
+            if self._item_key is not Bind.Input.__None: kwargs['item_key'] = self._item_key
+            if self._attr_key is not Bind.Input.__None: kwargs['attr_key'] = self._attr_key
+            return make_repr('Bind', 'Input', **kwargs)
+
     def __init__(self, __bind_func=__None, *args, **kw):
         self._f = __bind_func() if isinstance(__bind_func, type) and __bind_func is not Bind.__None else __bind_func
         self._args = args
@@ -172,8 +178,23 @@ class Bind(object):
 
     # TODO: modify it
     def __repr__(self) -> str:
-        return self._f.__repr__() + '(bind args:{})'.format(
-            ', '.join([repr(a) if a is not self else 'self' for a in self._args]))
+        # The function (or pipeline) to bind is by default the 1st elem in subs list.
+        subs = [repr(FuncWrapper(self._f)) if is_function(self._f) else repr(self._f)]
+
+        subs.extend([repr(FuncWrapper(it) if is_function(it) else it) for it in self._args])
+        if len(self._kw):
+            kwargs = {}
+            for k, v in self._kw.items():
+                repr_str = repr(FuncWrapper(v) if is_function(v) else v)
+                if repr_str.startswith('<') and repr_str.endswith('>'):
+                    index = len(subs)
+                    subs.append(repr_str)
+                    kwargs[k] = f'__subnode_{index}'
+                else:
+                    kwargs[k] = v
+
+            return make_repr('Bind', '', subs=subs, attrs=kwargs)
+        return make_repr('Bind', '', subs=subs)
 
     def __getattr__(self, name):
         # name will be '_f' in copy.deepcopy
@@ -419,6 +440,32 @@ class ReqResHelper(object):
             return LazyLlmResponse(messages=res, trace=self.trace) if self.trace or force else res
 
 
+def is_function(f):
+    return isinstance(f, (types.BuiltinFunctionType, types.FunctionType,
+                          types.BuiltinMethodType, types.MethodType, types.LambdaType))
+
+def prep_repr(category, type, *, name=None, **kwargs):
+    result = {'category': category, 'type': type}
+    if name:
+        result['name'] = name
+    return result.update(kwargs)
+
+class FuncWrapper(object):
+    def __init__(self, f, name=''):
+        self.f = f.f if isinstance(f, FuncWrapper) else f
+        if len(name):
+            self.name = name
+
+    def __call__(self, *args, **kw): return self.f(*args, **kw)
+
+    def __repr__(self):
+        # TODO: specify lambda/staticmethod/classmethod/instancemethod
+        # TODO: add registry message
+        if hasattr(self, 'name'):
+            return lazyllm.make_repr('Function', self.f.__name__.strip('<>'), name=self.name)
+        return lazyllm.make_repr('Function', self.f.__name__.strip('<>'))
+
+
 class ReprRule(object):
     rules = {}
 
@@ -443,19 +490,13 @@ def make_repr(category, type, *, name=None, subs=[], attrs=dict(), **kw):
         attrs = kw
 
     if isinstance(type, builtins.type): type = type.__name__
-    name = f' name={name}' if name else ''
-    attrs = ' ' + ' '.join([f'{k}={v}' for k, v in attrs.items()]) if attrs else ''
-    repr = f'<{category} type={type}{name}{attrs}>'
+    name = f' name="{name}"' if name else ''
 
-    if len(subs) == 1 and ReprRule.check_combine(category, type, subs[0]):
-        if lazyllm.config['repr_ml']:
-            sub_cate = re.split('>| ', subs[0][1:])[0]
-            subs = rreplace(subs[0], f'</{sub_cate}>', f'</{category}>', 1)
-        else:
-            subs = subs[0]
-        return repr[:-1] + f' sub-category={subs[1:]}'
+    # XML requires all attributes of a node to be strings even if they are digits.
+    attrs = ' ' + ' '.join([f'{k}="{v}"' for k, v in attrs.items()]) if attrs else ''
+    repr = f'<{category} type="{type}"{name}{attrs}>'
 
-    # ident
+    # indent
     sub_repr = []
     for idx, value in enumerate(subs):
         for i, v in enumerate(value.strip().split('\n')):
