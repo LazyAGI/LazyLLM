@@ -371,7 +371,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def __init__(self, cmd, launcher, *, sync=True):
             super(__class__, self).__init__(cmd, launcher, sync=sync)
             # SCO job name must start with a letter
-            self.name = 'xys_flag' + self._generate_name()
+            self.name = 's_flag' + self._generate_name()
             self.workspace_name = launcher.workspace_name
             self.torchrun = launcher.torchrun
             self.output_hooks = [self.output_hook]
