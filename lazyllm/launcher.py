@@ -40,6 +40,7 @@ lazyllm.launchers['Status'] = Status
 lazyllm.config.add('launcher', str, 'empty', 'DEFAULT_LAUNCHER')
 lazyllm.config.add('partition', str, 'your_part', 'SLURM_PART')
 lazyllm.config.add('sco.workspace', str, 'your_workspace', 'SCO_WORKSPACE')
+lazyllm.config.add('sco_env_name', str, '', 'SCO_ENV_NAME')
 lazyllm.config.add('sco_keep_record', bool, False, 'SCO_KEEP_RECORD')
 
 
