@@ -441,8 +441,10 @@ class ScoLauncher(LazyLLMLaunchersBase):
                         f"To delete by terminal, you can execute: `{cmd}`"
                     )
                 else:
-                    subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                    encoding='utf-8', executable='/bin/bash')
+                    subprocess.Popen(
+                        cmd, shell=True, stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        encoding='utf-8', executable='/bin/bash')
             if self.ps:
                 self.ps.terminate()
                 self.queue = Queue()
