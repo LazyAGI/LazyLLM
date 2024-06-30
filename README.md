@@ -14,7 +14,8 @@
 
 LazyLLM是一款低代码构建**多Agent**大模型应用的开发工具，协助开发者用极低的成本构建复杂的AI应用，并可以持续的迭代优化效果。LazyLLM提供了便捷的搭建应用的workflow，并且为应用开发过程中的各个环节提供了大量的标准流程和工具。<br>
 基于LazyLLM的AI应用构建流程是**原型搭建 -> 数据回流 -> 迭代优化**，即您可以先基于LazyLLM快速跑通应用的原型，再结合场景任务数据进行bad-case分析，然后对应用中的关键环节进行算法迭代和模型微调，进而逐步提升整个应用的效果。<br>
-**用户文档**： https://lazyllm.readthedocs.io/
+**用户文档**： https://lazyllm.readthedocs.io/ <br>
+**近期计划**：[v0.2 PRD](https://aicarrier.feishu.cn/wiki/BeFfwBFv8iXq7vkVGyrcv1kGnIh?from=from_copylink)
 
 ## 二、特性
 
@@ -82,6 +83,8 @@ with pipeline() as ppl:
     ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])) 
 mweb = lazyllm.WebModule(ppl, port=23456).start().wait()
 ```
+
+https://github.com/LazyAGI/LazyLLM/assets/12124621/77267adc-6e40-47b8-96a8-895df165b0ce
 
 ### 3.3 故事创作
 
