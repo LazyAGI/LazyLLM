@@ -46,6 +46,7 @@ class TestModule:
 
     def test_TrainableModule(self):
         trainable_module = lazyllm.TrainableModule(self.base_model, self.target_path)
+        trainable_module2 = trainable_module.share()
         trainable_module.finetune_method(lazyllm.finetune.dummy)
         trainable_module.deploy_method(lazyllm.deploy.dummy)
         trainable_module.mode('finetune')
@@ -59,6 +60,9 @@ class TestModule:
         trainable_module.evalset(['input1', 'input2'])
         trainable_module.eval()
         assert trainable_module.eval_result == [res_template.format(x) for x in inputs]
+        trainable_module2.evalset(['input1', 'input2'])
+        trainable_module2.eval()
+        assert trainable_module2.eval_result == [res_template.format(x) for x in inputs]
 
     def test_WebModule(self):
         def func(x):
