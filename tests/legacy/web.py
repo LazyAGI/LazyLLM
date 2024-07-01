@@ -1,4 +1,5 @@
 import lazyllm
+from lazyllm import finetune, deploy
 import time
 
 t1 = lazyllm.TrainableModule(stream=False).finetune_method(finetune.dummy).deploy_method(
@@ -21,6 +22,7 @@ w = lazyllm.WebModule(s0, port=[20570, 20571, 20572], components={
         t1:[('do_sample', 'Checkbox', True), ('temperature', 'Text', 0.1)],
         t2:[('do_sample', 'Checkbox', False), ('temperature', 'Text', 0.2)]},
     history=[t2])
+
 t1 = lazyllm.ForkProcess(target=w.update, args=(), sync=False)
 t2 = lazyllm.ForkProcess(target=w.update, args=(), sync=False)
 t1.start()

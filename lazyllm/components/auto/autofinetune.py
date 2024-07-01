@@ -3,15 +3,15 @@ from lazyllm import launchers, finetune
 from ..finetune.base import LazyLLMFinetuneBase
 from .configure import get_configer
 from .auto_helper import model_map, get_model_name, get_configs, check_requirements
-from ..utils.downloader import ModelDownloader
+from ..utils.downloader import ModelManager
 
 
 class AutoFinetune(LazyLLMFinetuneBase):
     def __new__(cls, base_model, target_path, source=lazyllm.config['model_source'], merge_path=None, ctx_len=1024,
                 batch_size=32, lora_r=8, launcher=launchers.remote(ngpus=1), **kw):
-        base_model = ModelDownloader(source).download(base_model)
+        base_model = ModelManager(source).download(base_model)
         model_name = get_model_name(base_model)
-        if ModelDownloader.get_model_type(model_name) == 'embed':
+        if ModelManager.get_model_type(model_name) == 'embed':
             raise RuntimeError('Fine-tuning of the embed model is not currently supported.')
         map_name = model_map(model_name)
         base_name = model_name.split('-')[0].split('_')[0].lower()
