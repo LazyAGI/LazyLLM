@@ -63,7 +63,10 @@ class DocNode:
         return root
 
     def __str__(self) -> str:
-        return f"DocNode(id: {self.node_id}, text: {self.get_content()}) parent: {self.parent.node_id}, children: {[c.node_id for c in self.children]}"
+        return (
+            f"DocNode(id: {self.node_id}, text: {self.get_content()}) parent: "
+            f"{self.parent.node_id}, children: {[c.node_id for c in self.children]}"
+        )
 
     def __repr__(self) -> str:
         return str(self)
@@ -116,4 +119,3 @@ class DocNode:
             "parent": self.parent,
             "children": self.children,
         }
-
