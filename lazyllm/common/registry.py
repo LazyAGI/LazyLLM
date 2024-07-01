@@ -1,4 +1,5 @@
 import builtins
+import functools
 import lazyllm
 import re
 from .common import _MetaBind
@@ -109,7 +110,6 @@ class {name}(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].base):
     pass
 '''
 
-import functools
 def bind_to_instance(func):
     @functools.wraps(func)
     def wrapper(instance, *args, **kwargs):
