@@ -109,6 +109,12 @@ class {name}(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].base):
     pass
 '''
 
+import functools
+def bind_to_instance(func):
+    @functools.wraps(func)
+    def wrapper(instance, *args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper
 
 class Register(object):
     def __init__(self, base, fnames, template=reg_template):
@@ -134,7 +140,8 @@ class Register(object):
             # 'func' cannot be recognized by exec, so we use 'setattr' instead
             f = LazyLLMRegisterMetaClass.all_clses[cls.lower()].__getattr__(func_name)
             f.__name__ = func_name
-            setattr(f, rewrite_func, lambda _, *args, **kw: func(*args, **kw))
+            # setattr(f, rewrite_func, lambda _, *args, **kw: func(*args, **kw))
+            setattr(f, rewrite_func, bind_to_instance(func))
             return func
         return impl
 

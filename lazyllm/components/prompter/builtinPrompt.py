@@ -61,6 +61,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                 elif isinstance(item, dict):
                     content.append(item)
                 else:
+                    LOG.error(f"history: {history}")
                     raise ValueError("history must be a list of list or dict")
             return content
         else:

@@ -7,13 +7,14 @@ from .flow import (LazyLLMFlowsBase, FlowBase, barrier,
                    Loop as loop, Switch as switch, IFS as ifs, Warp as warp)
 from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                          LazyLLMValidateBase, register as component_register, Prompter,
-                         AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter)
+                         AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter,
+                         FunctionCallFormatter)
 
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
                      OnlineChatModule, OnlineEmbeddingModule)
 from .client import redis_client
-from .tools import Document, Reranker, Retriever, WebModule
+from .tools import Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, register as tool_register
 from .docs import add_doc
 
 config.done()
@@ -35,6 +36,7 @@ __all__ = [
     'ChatPrompter',
     'FastapiApp',
     'JsonFormatter',
+    'FunctionCallFormatter',
 
     # flow
     'LazyLLMFlowsBase',            # pipeline, parallel
@@ -73,6 +75,9 @@ __all__ = [
     'Document',
     'Retriever',
     'Reranker',
+    'ToolManager',
+    'FunctionCall',
+    'tool_register',
 
     # docs
     'add_doc',

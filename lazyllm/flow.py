@@ -133,7 +133,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         req = helper.make_request(*args, **kw)
         output = helper.make_request(self._run(req))
 
-        if self.post_action is not None: self.invoke(self.post_action, output)
+        if self.post_action is not None: output = self.invoke(self.post_action, output)
         if self._return_input: output = package(req.input, output.input)
         if self._sync: self.wait()
         return self._post_process(helper.make_response(output))
@@ -361,8 +361,9 @@ class Loop(LazyLLMFlowsBase):
     def __init__(self, *item, stop_condition=None, count=None, post_action=None, return_input=False,
                  auto_capture=False, **kw):
         super().__init__(*item, post_action=post_action, return_input=return_input, auto_capture=auto_capture, **kw)
-        assert (callable(stop_condition) and count is None) or (
-            stop_condition is None and isinstance(count, int))
+        # assert (callable(stop_condition) and count is None) or (
+        #     stop_condition is None and isinstance(count, int))
+        assert (callable(stop_condition) or isinstance(count, int))
         self.cond = stop_condition
         self.count = count
 
