@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import lazyllm
 from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, launchers, LOG
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
-from ..components.utils import ModelDownloader
+from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
 import uuid
 from ..client import get_redis, redis_client
@@ -190,14 +190,17 @@ class UrlTemplate(object):
         else:
             self._url_template = dict(template_message=template_message,
                                       keys_name_handle=keys_name_handle, template_headers=template_headers)
-            if self.keys_name_handle and 'stop' in self.keys_name_handle and stop_words and self.template_message:
-                if self.keys_name_handle['stop'] in self.template_message:
-                    self.template_message[self.keys_name_handle['stop']] = stop_words
+        if self.keys_name_handle and 'stop' in self.keys_name_handle and stop_words and self.template_message:
+            if self.keys_name_handle['stop'] in self.template_message:
+                self.template_message[self.keys_name_handle['stop']] = stop_words
+            else:
+                # stop in sub dict:
+                for _, v in self.template_message.items():
+                    if isinstance(v, dict) and self.keys_name_handle['stop'] in v:
+                        v[self.keys_name_handle['stop']] = stop_words
+                        break
                 else:
-                    # stop in sub dict:
-                    for _, v in self.template_message.items():
-                        if isinstance(v, dict) and self.keys_name_handle['stop'] in v:
-                            v[self.keys_name_handle['stop']] = stop_words
+                    raise RuntimeError('No stop symbol found in template_message')
 
     template_message = property(lambda self: self._url_template['template_message'])
     keys_name_handle = property(lambda self: self._url_template['keys_name_handle'])
@@ -234,10 +237,6 @@ class UrlModule(ModuleBase, UrlTemplate):
             redis_client.set(self._module_id, url)
         LOG.debug(f'url: {url}')
         self.__url = url
-
-    def __call__(self, *args, **kw):
-        self.maybe_wait_for_url()
-        return super().__call__(*args, **kw)
 
     # Cannot modify or add any attrubute of self
     # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
@@ -341,9 +340,21 @@ class ActionModule(ModuleBase):
 
 lazyllm.ReprRule.add_rule('Module', 'Action', 'Flow')
 
+def light_reduce(cls):
+    def _impl(self):
+        assert self._deploy_flag, f'{cls.__name__[1:-4]} shoule be deployed before pickling to another process'
+        if os.getenv('LAZYLLM_ON_CLOUDPICKLE', False) == 'ON':
+            m = cls()
+            m._module_id = self._module_id
+            return m.__reduce__()
+        else:
+            return super(cls, self).__reduce__()
+    setattr(cls, '__reduce__', _impl)
+    return cls
 
-class _ServerModule(ModuleBase):
-    def __init__(self, m, pre, post, launcher, *, father):
+@light_reduce
+class _ServerModuleImpl(ModuleBase):
+    def __init__(self, m=None, pre=None, post=None, launcher=None, *, father):
         super().__init__()
         self._m = ActionModule(m) if isinstance(m, FlowBase) else m
         self._pre_func, self._post_func = pre, post
@@ -358,15 +369,6 @@ class _ServerModule(ModuleBase):
                                        post_func=self._post_func, launcher=self._launcher),
             self._set_url_f)
 
-    def __reduce__(self):
-        assert self._deploy_flag, 'ServerModule shoule be deployed before pickling to another process'
-        if os.getenv('LAZYLLM_ON_CLOUDPICKLE', False) == 'ON':
-            m = _ServerModule(None, None, None, None)
-            m._module_id = self._module_id
-            return m.__reduce__()
-        else:
-            return super(__class__, self).__reduce__()
-
 
 class ServerModule(UrlModule):
     def __init__(self, m, pre=None, post=None, stream=False, return_trace=False, launcher=None):
@@ -378,20 +380,20 @@ class ServerModule(UrlModule):
             lazyllm.deploy.RelayServer.keys_name_handle,
             copy.deepcopy(lazyllm.deploy.RelayServer.default_headers),
         )
-        self._impl = _ServerModule(m, pre, post, launcher, father=self)
+        self._impl = _ServerModuleImpl(m, pre, post, launcher, father=self)
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._m)], name=self._module_name,
                                  stream=self._stream, return_trace=self._return_trace)
 
-
+@light_reduce
 class _TrainableModuleImpl(ModuleBase):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
 
-    def __init__(self, base_model, target_path, stream, train=None, finetune=None, deploy=None):
+    def __init__(self, base_model='', target_path='', stream=False, train=None, finetune=None, deploy=None):
         super().__init__()
         # Fake base_model and target_path for dummy
-        self._base_model = ModelDownloader(lazyllm.config['model_source']).download(base_model)
+        self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model)
         self._target_path = target_path
         self._train, self._finetune, self._deploy = train, finetune, deploy
         self._stream = stream
@@ -433,8 +435,7 @@ class _TrainableModuleImpl(ModuleBase):
         template = dict(template_message=copy.deepcopy(deployer.message_format),
                         keys_name_handle=deployer.keys_name_handle,
                         template_headers=copy.deepcopy(deployer.default_headers))
-        keys = ModelDownloader.get_model_prompt_keys(self.base_model)
-        stop_words = keys['stop_words'] if 'stop_words' in keys else None
+        stop_words = ModelManager.get_model_prompt_keys(self.base_model).get('stop_words')
 
         for f in self._father:
             f._set_template(template, stop_words=stop_words)
@@ -447,16 +448,6 @@ class _TrainableModuleImpl(ModuleBase):
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
         if self._deploy is lazyllm.deploy.AutoDeploy: self._deploy_args['base_model'] = self.base_model
-
-    # change to urlmodule when pickling to server process
-    def __reduce__(self):
-        assert self._deploy_flag, 'TrainableModule shoule be deployed before pickling to another process'
-        if os.getenv('LAZYLLM_ON_CLOUDPICKLE', False) == 'ON':
-            m = _TrainableModuleImpl(self._base_model, self._target_path, self._stream)
-            m._module_id = self._module_id
-            return m.__reduce__()
-        else:
-            return super(__class__, self).__reduce__()
 
 
 class TrainableModule(UrlModule):
@@ -474,10 +465,10 @@ class TrainableModule(UrlModule):
 
     # modify default value to ''
     def prompt(self, prompt=''):
-        if self.base_model != '' and prompt == '' and ModelDownloader.get_model_type(self.base_model) != 'llm':
+        if self.base_model != '' and prompt == '' and ModelManager.get_model_type(self.base_model) != 'llm':
             prompt = None
         prompt = super(__class__, self).prompt(prompt)._prompt
-        keys = ModelDownloader.get_model_prompt_keys(self.base_model)
+        keys = ModelManager.get_model_prompt_keys(self.base_model)
         if keys: prompt._set_model_configs(**keys)
         return self
 
@@ -485,6 +476,10 @@ class TrainableModule(UrlModule):
         return lazyllm.make_repr('Module', 'Trainable', mode=self._mode, basemodel=self.base_model,
                                  target=self.target_path, name=self._module_name,
                                  stream=self._stream, return_trace=self._return_trace)
+
+    def __getattr__(self, key):
+        if key in self.__class__.builder_keys: return getattr(self._impl, key)
+        raise AttributeError(f'{__class__} object has no attribute {key}')
 
     def share(self, prompt=None):
         new = copy.copy(self)

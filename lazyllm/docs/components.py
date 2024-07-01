@@ -445,9 +445,9 @@ add_example('auto.AutoDeploy', '''\
 <lazyllm.llm.deploy type=Vllm>    
 ''')
 
-add_chinese_doc('ModelDownloader', '''\
-ModelDownloader是LazyLLM为开发者提供的自动下载模型的工具类。目前支持从一个本地目录列表查找指定模型，以及从huggingface或者modelscope自动下载模型数据至指定目录。
-在使用ModelDownloader之前，需要设置下列环境变量：
+add_chinese_doc('ModelManager', '''\
+ModelManager是LazyLLM为开发者提供的自动下载模型的工具类。目前支持从一个本地目录列表查找指定模型，以及从huggingface或者modelscope自动下载模型数据至指定目录。
+在使用ModelManager之前，需要设置下列环境变量：
 
     - LAZYLLM_MODEL_SOURCE: 模型下载源，可以设置为 ``huggingface`` 或 ``modelscope`` 。
     - LAZYLLM_MODEL_SOURCE_TOKEN: ``huggingface`` 或 ``modelscope`` 提供的token，用于下载私有模型。
@@ -455,18 +455,18 @@ ModelDownloader是LazyLLM为开发者提供的自动下载模型的工具类。�
     - LAZYLLM_MODEL_CACHE_DIR: 下载后的模型在本地的存储目录
     
 Keyword Args: 
-    model_source (str, 可选): 模型下载源，目前仅支持 ``huggingface`` 或 ``modelscope`` 。如有必要，ModelDownloader将从此下载源下载模型数据。如果不提供，默认使用
-        LAZYLLM_MODEL_SOURCE环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE，ModelDownloader将从 ``modelscope`` 下载模型。
-    token (str, 可选): ``huggingface`` 或 ``modelscope`` 提供的token。如果token不为空，ModelDownloader将使用此token下载模型数据。如果不提供，默认使用
-        LAZYLLM_MODEL_SOURCE_TOKEN环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE_TOKEN，ModelDownloader将不会自动下载私有模型。
-    model_path (str, 可选)：冒号(:)分隔的本地绝对路径列表。在实际下载模型数据之前，ModelDownloader将在此列表包含的目录中尝试寻找目标模型。如果不提供，默认使用
-        LAZYLLM_MODEL_PATH环境变量中的设置。如果为空或LAZYLLM_MODEL_PATH未设置，ModelDownloader将跳过从model_path中寻找模型的步骤。
+    model_source (str, 可选): 模型下载源，目前仅支持 ``huggingface`` 或 ``modelscope`` 。如有必要，ModelManager将从此下载源下载模型数据。如果不提供，默认使用
+        LAZYLLM_MODEL_SOURCE环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE，ModelManager将从 ``modelscope`` 下载模型。
+    token (str, 可选): ``huggingface`` 或 ``modelscope`` 提供的token。如果token不为空，ModelManager将使用此token下载模型数据。如果不提供，默认使用
+        LAZYLLM_MODEL_SOURCE_TOKEN环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE_TOKEN，ModelManager将不会自动下载私有模型。
+    model_path (str, 可选)：冒号(:)分隔的本地绝对路径列表。在实际下载模型数据之前，ModelManager将在此列表包含的目录中尝试寻找目标模型。如果不提供，默认使用
+        LAZYLLM_MODEL_PATH环境变量中的设置。如果为空或LAZYLLM_MODEL_PATH未设置，ModelManager将跳过从model_path中寻找模型的步骤。
     cache_dir (str, 可选): 一个本地目录的绝对路径。下载后的模型将存放在此目录下，如果不提供，默认使用LAZYLLM_MODEL_CACHE_DIR环境变量中的设置。如果
         LAZYLLM_MODEL_PATH未设置，默认值为~/.lazyllm/model
         
-.. function:: ModelDownloader.download(model) -> str
+.. function:: ModelManager.download(model) -> str
 
-用于从model_source下载模型。download函数首先在ModelDownloader类初始化参数model_path列出的目录中搜索目标模型。如果未找到，会在cache_dir下搜索目标模型。如果仍未找到，
+用于从model_source下载模型。download函数首先在ModelManager类初始化参数model_path列出的目录中搜索目标模型。如果未找到，会在cache_dir下搜索目标模型。如果仍未找到，
 则从model_source上下载模型并存放于cache_dir下。
 
 Args:
@@ -474,10 +474,10 @@ Args:
         例如 ``Llama-3-8B`` , ``GLM3-6B`` 或 ``Qwen1.5-7B`` 。具体可参考文件 ``lazyllm/module/utils/downloader/model_mapping.py`` 。model可以接受简略模型名或下载源中的模型全名。
 ''')
 
-add_english_doc('ModelDownloader', '''\
-ModelDownloader is a utility class provided by LazyLLM for developers to automatically download models.
+add_english_doc('ModelManager', '''\
+ModelManager is a utility class provided by LazyLLM for developers to automatically download models.
 Currently, it supports search for models from local directories, as well as automatically downloading model from
-huggingface or modelscope. Before using ModelDownloader, the following environment variables need to be set:
+huggingface or modelscope. Before using ModelManager, the following environment variables need to be set:
 
     - LAZYLLM_MODEL_SOURCE: The source for model downloads, which can be set to ``huggingface`` or ``modelscope`` .
     - LAZYLLM_MODEL_SOURCE_TOKEN: The token provided by ``huggingface`` or ``modelscope`` for private model download.
@@ -486,24 +486,24 @@ huggingface or modelscope. Before using ModelDownloader, the following environme
 
 Keyword Args: 
     model_source (str, optional): The source for model downloads, currently only supports ``huggingface`` or ``modelscope`` .
-        If necessary, ModelDownloader downloads model data from the source. If not provided, LAZYLLM_MODEL_SOURCE
-        environment variable would be used, and if LAZYLLM_MODEL_SOURCE is not set, ModelDownloader will not download
+        If necessary, ModelManager downloads model data from the source. If not provided, LAZYLLM_MODEL_SOURCE
+        environment variable would be used, and if LAZYLLM_MODEL_SOURCE is not set, ModelManager will not download
         any model.
-    token (str, optional): The token provided by ``huggingface`` or ``modelscope`` . If the token is present, ModelDownloader uses
+    token (str, optional): The token provided by ``huggingface`` or ``modelscope`` . If the token is present, ModelManager uses
         the token to download model. If not provided, LAZYLLM_MODEL_SOURCE_TOKEN environment variable would be used.
-        and if LAZYLLM_MODEL_SOURCE_TOKEN is not set, ModelDownloader will not download private models, only public ones.
+        and if LAZYLLM_MODEL_SOURCE_TOKEN is not set, ModelManager will not download private models, only public ones.
     model_path (str, optional): A colon-separated list of absolute paths. Before actually start to download model,
-        ModelDownloader trys to find the target model in the directories in this list. If not provided,
-        LAZYLLM_MODEL_PATH environment variable would be used, and LAZYLLM_MODEL_PATH is not set, ModelDownloader skips
+        ModelManager trys to find the target model in the directories in this list. If not provided,
+        LAZYLLM_MODEL_PATH environment variable would be used, and LAZYLLM_MODEL_PATH is not set, ModelManager skips
         looking for models from model_path.
     cache_dir (str, optional): An absolute path of a directory to save downloaded models. If not provided,
         LAZYLLM_MODEL_CACHE_DIR environment variable would be used, and if LAZYLLM_MODEL_PATH is not set, the default
         value is ~/.lazyllm/model.
         
-.. function:: ModelDownloader.download(model) -> str
+.. function:: ModelManager.download(model) -> str
 
 Download models from model_source. The function first searches for the target model in directories listed in the
-model_path parameter of ModelDownloader class. If not found, it searches under cache_dir. If still not found,
+model_path parameter of ModelManager class. If not found, it searches under cache_dir. If still not found,
 it downloads the model from model_source and stores it under cache_dir.
 
 Args:
@@ -514,9 +514,9 @@ Args:
     an abbreviated name or one from the download source.
 ''')
 
-add_example('ModelDownloader', '''\
->>> from lazyllm.components import ModelDownloader
->>> downloader = ModelDownloader(model_source='modelscope')
+add_example('ModelManager', '''\
+>>> from lazyllm.components import ModelManager
+>>> downloader = ModelManager(model_source='modelscope')
 >>> downloader.download('GLM3-6B')
 ''')
 
