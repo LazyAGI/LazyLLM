@@ -97,7 +97,10 @@ class ModuleBase(object):
     def _get_deploy_tasks(self): return None
     def _get_post_process_tasks(self): return None
 
-    def _set_mid(self, mid=None): self._module_id = mid if mid else str(uuid.uuid4().hex)
+    def _set_mid(self, mid=None):
+        self._module_id = mid if mid else str(uuid.uuid4().hex)
+        return self
+
     _url_id = property(lambda self: self._module_id)
 
     @property

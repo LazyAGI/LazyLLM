@@ -173,7 +173,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             if bind_args_source: it = bind(it, _bind_args_source=bind_args_source)
         kw = dict()
         if isinstance(input, LazyLlmRequest):
-            if getattr(it, '__enable_request__', None):
+            if hasattr(it, '__enable_request__'):  # flow, module
                 return it(input)
             input, kw = input.input, input.kwargs
         try:
