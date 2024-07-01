@@ -65,7 +65,7 @@ class ModelManager():
             print("[WARNING] model automatic downloads only support Huggingface and Modelscope currently.")
             return model
 
-        if model in model_name_mapping.keys() and self.model_source in model_name_mapping[model][['source']].keys():
+        if model in model_name_mapping.keys() and self.model_source in model_name_mapping[model]['source'].keys():
             full_model_dir = os.path.join(self.cache_dir, model)
             if self._is_model_valid(full_model_dir):
                 print(f"[INFO] model link found at {full_model_dir}")
