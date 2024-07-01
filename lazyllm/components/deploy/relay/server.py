@@ -68,7 +68,7 @@ async def generate(request: Request): # noqa C901
             else:
                 input = before_func(input, **kw)
                 kw = dict()
-        if getattr(getattr(func, '_meta', func.__class__), '__enable_request__', False):
+        if hasattr(func, '__enable_request__'):  # flow or module
             output = func(h.make_request(input, **kw))
         else:
             output = func(input, **kw)

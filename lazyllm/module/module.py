@@ -5,6 +5,7 @@ import requests
 import pickle
 import codecs
 import inspect
+import functools
 from concurrent.futures import ThreadPoolExecutor
 
 import lazyllm
@@ -41,7 +42,7 @@ class ModuleBase(object):
         self._evalset = None
         self._return_trace = return_trace
         self.mode_list = ('train', 'server', 'eval')
-        self._module_id = str(uuid.uuid4().hex)
+        self._set_mid()
         self._module_name = None
         self._options = []
         self.eval_result = None
@@ -58,7 +59,7 @@ class ModuleBase(object):
         return super().__setattr__(name, value)
 
     def __getattr__(self, key):
-        def _setattr(v, **kw):
+        def _setattr(v, *, _return_value=self, **kw):
             k = key[:-7] if key.endswith('_method') else key
             if isinstance(v, tuple) and len(v) == 2 and isinstance(v[1], dict):
                 kw.update(v[1])
@@ -67,7 +68,7 @@ class ModuleBase(object):
                 setattr(self, f'_{k}_args', kw)
             setattr(self, f'_{k}', v)
             if hasattr(self, f'_{k}_setter_hook'): getattr(self, f'_{k}_setter_hook')()
-            return self
+            return _return_value
         keys = self.__class__.builder_keys
         if key in keys:
             return _setattr
@@ -75,7 +76,7 @@ class ModuleBase(object):
             return None
         elif key.startswith('_') and key.endswith('_args') and (key[1:-5] in keys or f'{key[1:-4]}method' in keys):
             return dict()
-        raise AttributeError(f'{__class__} object has no attribute {key}')
+        raise AttributeError(f'{self.__class__} object has no attribute {key}')
 
     def __call__(self, *args, **kw):
         if len(args) == 1 and isinstance(args[0], LazyLlmRequest):
@@ -95,6 +96,9 @@ class ModuleBase(object):
     def _get_train_tasks(self): return None
     def _get_deploy_tasks(self): return None
     def _get_post_process_tasks(self): return None
+
+    def _set_mid(self, mid=None): self._module_id = mid if mid else str(uuid.uuid4().hex)
+    _url_id = property(lambda self: self._module_id)
 
     @property
     def name(self): return self._module_name
@@ -180,16 +184,17 @@ class ModuleBase(object):
 
 
 class UrlTemplate(object):
-    def __init__(self) -> None:
-        self._set_template(template_headers={'Content-Type': 'application/json'})
+    def __init__(self, template_message=None, keys_name_handle=None, template_headers=None) -> None:
+        self._set_template(template_message, keys_name_handle, template_headers)
 
     def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None):
         if isinstance(template_message, UrlTemplate):
             assert keys_name_handle is None and template_headers is None
             self._url_template = template_message._url_template.copy()
         else:
-            self._url_template = dict(template_message=template_message,
-                                      keys_name_handle=keys_name_handle, template_headers=template_headers)
+            if template_headers is None: template_headers = {'Content-Type': 'application/json'}
+            self._url_template = dict(template_message=template_message, keys_name_handle=keys_name_handle,
+                                      template_headers=template_headers)
         if self.keys_name_handle and 'stop' in self.keys_name_handle and stop_words and self.template_message:
             if self.keys_name_handle['stop'] in self.template_message:
                 self.template_message[self.keys_name_handle['stop']] = stop_words
@@ -217,14 +222,14 @@ class UrlModule(ModuleBase, UrlTemplate):
         # Set for request by specific deploy:
         UrlTemplate.__init__(self)
         self._extract_result_func = lambda x: x
-        self.prompt()
+        __class__.prompt(self)
 
     @property
     def _url(self):
         if redis_client:
             try:
                 while not self.__url:
-                    self.__url = get_redis(getattr(self, '_impl', self)._module_id)
+                    self.__url = get_redis(self._url_id)
                     if self.__url: break
                     time.sleep(lazyllm.config["redis_recheck_delay"])
             except Exception as e:
@@ -253,7 +258,7 @@ class UrlModule(ModuleBase, UrlTemplate):
             if isinstance(__input, LazyLlmRequest): __input.input = input
             else: __input = LazyLlmRequest(input=input, kwargs=kw)
             data = codecs.encode(pickle.dumps(__input), 'base64').decode('utf-8')
-        elif self.template_message is not None:
+        elif self.template_message:
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
             assert 'inputs' in self.keys_name_handle
             data[self.keys_name_handle['inputs']] = input
@@ -341,25 +346,22 @@ class ActionModule(ModuleBase):
 lazyllm.ReprRule.add_rule('Module', 'Action', 'Flow')
 
 def light_reduce(cls):
+    def rebuild(mid): return cls()._set_mid(mid)
     def _impl(self):
-        assert self._deploy_flag, f'{cls.__name__[1:-4]} shoule be deployed before pickling to another process'
-        if os.getenv('LAZYLLM_ON_CLOUDPICKLE', False) == 'ON':
-            m = cls()
-            m._module_id = self._module_id
-            return m.__reduce__()
-        else:
-            return super(cls, self).__reduce__()
+        assert self._get_deploy_tasks.flag, f'{cls.__name__[1:-4]} shoule be deployed before pickling to another process'
+        if os.getenv('LAZYLLM_ON_CLOUDPICKLE', False) == 'ON': return rebuild, (self._module_id,)
+        return super(cls, self).__reduce__()
     setattr(cls, '__reduce__', _impl)
     return cls
 
 @light_reduce
 class _ServerModuleImpl(ModuleBase):
-    def __init__(self, m=None, pre=None, post=None, launcher=None, *, father):
+    def __init__(self, m=None, pre=None, post=None, launcher=None, *, father=None):
         super().__init__()
         self._m = ActionModule(m) if isinstance(m, FlowBase) else m
         self._pre_func, self._post_func = pre, post
         self._launcher = launcher if launcher else launchers.remote(sync=False)
-        self._set_url_f = father._set_url
+        self._set_url_f = father._set_url if father else None
 
     @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
@@ -382,8 +384,10 @@ class ServerModule(UrlModule):
         )
         self._impl = _ServerModuleImpl(m, pre, post, launcher, father=self)
 
+    _url_id = property(lambda self: self._impl._module_id)
+
     def __repr__(self):
-        return lazyllm.make_repr('Module', 'Server', subs=[repr(self._m)], name=self._module_name,
+        return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
                                  stream=self._stream, return_trace=self._return_trace)
 
 @light_reduce
@@ -414,10 +418,10 @@ class _TrainableModuleImpl(ModuleBase):
             if isinstance(self._trainset, str) else self._trainset  # noqa E731
         if self._mode == 'train':
             args = self._get_args('train', disable=['base_model', 'target_path'])
-            train = self._train(base_model=self.base_model, target_path=self.target_path, **args)
+            train = self._train(base_model=self._base_model, target_path=self._target_path, **args)
         elif self._mode == 'finetune':
             args = self._get_args('finetune', disable=['base_model', 'target_path'])
-            train = self._finetune(base_model=self.base_model, target_path=self.target_path, **args)
+            train = self._finetune(base_model=self._base_model, target_path=self._target_path, **args)
         else:
             raise RuntimeError('mode must be train or finetune')
         return Pipeline(trainset_getf, train)
@@ -426,28 +430,27 @@ class _TrainableModuleImpl(ModuleBase):
     def _get_deploy_tasks(self):
         if self._deploy is None: return None
 
-        target_path = self.target_path
-        if os.path.basename(self.target_path) != 'merge':
-            merge_path = os.path.join(self.target_path, 'merge')
+        target_path = self._target_path
+        if os.path.basename(self._target_path) != 'merge':
+            merge_path = os.path.join(self._target_path, 'merge')
             if os.path.exists(merge_path): target_path = merge_path
 
         deployer = self._deploy(stream=self._stream, **self._deploy_args)
-        template = dict(template_message=copy.deepcopy(deployer.message_format),
-                        keys_name_handle=deployer.keys_name_handle,
-                        template_headers=copy.deepcopy(deployer.default_headers))
-        stop_words = ModelManager.get_model_prompt_keys(self.base_model).get('stop_words')
+        template = UrlTemplate(copy.deepcopy(deployer.message_format), deployer.keys_name_handle,
+                               copy.deepcopy(deployer.default_headers))
+        stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
 
         for f in self._father:
             f._set_template(template, stop_words=stop_words)
             if hasattr(deployer.__class__, 'extract_result'):
-                self._extract_result_func = deployer.__class__.extract_result
+                f._extract_result_func = deployer.__class__.extract_result
 
-        return Pipeline(lambda *a: lazyllm.package(target_path, self.base_model), deployer,
+        return Pipeline(lambda *a: lazyllm.package(target_path, self._base_model), deployer,
                         lambda url: [f._set_url(url) for f in self._father])
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
-        if self._deploy is lazyllm.deploy.AutoDeploy: self._deploy_args['base_model'] = self.base_model
+        if self._deploy is lazyllm.deploy.AutoDeploy: self._deploy_args['base_model'] = self._base_model
 
 
 class TrainableModule(UrlModule):
@@ -462,6 +465,7 @@ class TrainableModule(UrlModule):
 
     base_model = property(lambda self: self._impl._base_model)
     target_path = property(lambda self: self._impl._target_path)
+    _url_id = property(lambda self: self._impl._module_id)
 
     # modify default value to ''
     def prompt(self, prompt=''):
@@ -473,19 +477,20 @@ class TrainableModule(UrlModule):
         return self
 
     def __repr__(self):
-        return lazyllm.make_repr('Module', 'Trainable', mode=self._mode, basemodel=self.base_model,
+        return lazyllm.make_repr('Module', 'Trainable', mode=self._impl._mode, basemodel=self.base_model,
                                  target=self.target_path, name=self._module_name,
                                  stream=self._stream, return_trace=self._return_trace)
 
     def __getattr__(self, key):
-        if key in self.__class__.builder_keys: return getattr(self._impl, key)
+        if key in self.__class__.builder_keys:
+            return functools.partial(getattr(self._impl, key), _return_value=self)
         raise AttributeError(f'{__class__} object has no attribute {key}')
 
     def share(self, prompt=None):
         new = copy.copy(self)
-        new._module_id = str(uuid.uuid4().hex)
+        new._set_mid()
         if prompt is not None: new.prompt(prompt)
-        new._impl._add_father(self)
+        new._impl._add_father(new)
         return new
 
 class Module(object):

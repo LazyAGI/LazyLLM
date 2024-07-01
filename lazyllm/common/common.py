@@ -519,7 +519,8 @@ def once_wrapper(reset_on_pickle):
 
         def wrapper(self, *args, **kw):
             if not hasattr(self, flag_name): setattr(self, flag_name, once_flag(flag))
-            return call_once(getattr(self, flag_name), func, self, *args, **kw)
+            wrapper.flag = getattr(self, flag_name)
+            return call_once(wrapper.flag, func, self, *args, **kw)
 
         return wrapper
 
