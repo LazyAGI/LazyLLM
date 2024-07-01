@@ -1,4 +1,4 @@
-from .docment import Document
+from .document import Document
 from .base import Reranker, Retriever
 
 __all__ = [
