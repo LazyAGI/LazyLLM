@@ -350,6 +350,7 @@ lazyllm.ReprRule.add_rule('Module', 'Action', 'Flow')
 
 def light_reduce(cls):
     def rebuild(mid): return cls()._set_mid(mid)
+
     def _impl(self):
         assert self._get_deploy_tasks.flag, f'{cls.__name__[1:-4]} shoule be deployed before pickling to another process'
         if os.getenv('LAZYLLM_ON_CLOUDPICKLE', False) == 'ON': return rebuild, (self._module_id,)
