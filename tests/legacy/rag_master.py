@@ -10,9 +10,9 @@ template = (
     '道德修养和社会实践达到最高的善治状态。\n注意以上仅为示例，禁止在下面任务中提取或使用上述示例已知国学篇章。\n现在，请对比以下给定的国学篇章和给出的问题。如果已知国学篇章中有该问题相关的原文，请提取相关原文出来。\n'
     '已知国学篇章：{context_str}\n问题: {query_str}\n回答：\n<|im_end|>\n<|im_start|>assistant\n')
 
-llm = lazyllm.TrainableModule('internlm2-chat-7b').deploy_method(deploy.AutoDeploy).prompt(template, response_split='<|im_start|>assistant\n')
+llm = lazyllm.TrainableModule('internlm2-chat-7b').deploy_method(deploy.AutoDeploy).prompt(template)
 
-documents = Document(dataset_path='/file/to/yourpath', embed=lazyllm.TrainableModule('bge-large-zh-v1.5').deploy_method(deploy.AutoDeploy))
+documents = Document(dataset_path='rag_master', embed=lazyllm.TrainableModule('bge-large-zh-v1.5').deploy_method(deploy.AutoDeploy))
 rma1 = Retriever(documents, parser='FineChunk', similarity_top_k=3)
 rma2 = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
 reranker1 = Reranker(types='ModuleReranker', model='bge-reranker-large')

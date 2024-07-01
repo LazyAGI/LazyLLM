@@ -268,6 +268,11 @@ class WebModule(ModuleBase):
         if hasattr(self, 'p'):
             return self.p.join()
 
+    def stop(self):
+        if self.p and self.p.is_alive():
+            self.p.terminate()
+            self.p.join()
+
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Web', name=self._module_name, subs=[repr(self.m)])
 

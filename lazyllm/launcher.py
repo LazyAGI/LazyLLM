@@ -40,6 +40,8 @@ lazyllm.launchers['Status'] = Status
 lazyllm.config.add('launcher', str, 'empty', 'DEFAULT_LAUNCHER')
 lazyllm.config.add('partition', str, 'your_part', 'SLURM_PART')
 lazyllm.config.add('sco.workspace', str, 'your_workspace', 'SCO_WORKSPACE')
+lazyllm.config.add('sco_env_name', str, '', 'SCO_ENV_NAME')
+lazyllm.config.add('sco_keep_record', bool, False, 'SCO_KEEP_RECORD')
 
 
 # store cmd, return message and command output.
@@ -371,7 +373,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def __init__(self, cmd, launcher, *, sync=True):
             super(__class__, self).__init__(cmd, launcher, sync=sync)
             # SCO job name must start with a letter
-            self.name = 's' + self._generate_name()
+            self.name = 's_flag' + self._generate_name()
             self.workspace_name = launcher.workspace_name
             self.torchrun = launcher.torchrun
             self.output_hooks = [self.output_hook]
@@ -383,7 +385,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def _wrap_cmd(self, cmd):
             launcher = self.launcher
             # Assemble the cmd
-            sco_cmd = f'srun -p {launcher.partition} --workspace-name {self.workspace_name} ' \
+            sco_cmd = f'srun -p {launcher.partition} --workspace-id {self.workspace_name} ' \
                       f'--job-name={self.name} -f {launcher.framework} -r N2lS.Ie.I60.{launcher.ngpus} ' \
                       f'-N {launcher.nnode} --priority normal '
 
@@ -400,6 +402,8 @@ class ScoLauncher(LazyLLMLaunchersBase):
                                 '--master_addr ${MASTER_ADDR} --master_port ${MASTER_PORT} '
             pythonpath = os.getenv('PYTHONPATH', '')
             precmd = f'''export PYTHONPATH={os.getcwd()}:{pythonpath}:$PYTHONPATH && '''
+            if lazyllm.config['sco_env_name']:
+                precmd = f"source activate {lazyllm.config['sco_env_name']} && " + precmd
             env_vars = os.environ
             lazyllm_vars = {k: v for k, v in env_vars.items() if k.startswith("LAZYLLM")}
             if lazyllm_vars:
@@ -415,7 +419,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def _get_jobid(self):
             time.sleep(0.5)  # Wait for cmd to be stably submitted to sco
             id_str = subprocess.check_output([
-                'squeue', f'--workspace-name={self.workspace_name}',
+                'squeue', f'--workspace-id={self.workspace_name}',
                 '-o', 'jobname,jobid']).decode("utf-8")
             pattern = re.compile(rf"{re.escape(self.name)}\s+(\S+)")
             match = pattern.search(id_str)
@@ -430,9 +434,19 @@ class ScoLauncher(LazyLLMLaunchersBase):
 
         def stop(self):
             if self.jobid:
-                cmd = f"scancel --workspace-name={self.workspace_name} {self.jobid}"
-                subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                 encoding='utf-8', executable='/bin/bash')
+                cmd = f"scancel --workspace-id={self.workspace_name} {self.jobid}"
+                if lazyllm.config["sco_keep_record"]:
+                    LOG.warning(
+                        f"`sco_keep_record` is on, not executing scancel. "
+                        f"You can now check the logs on the web. "
+                        f"To delete by terminal, you can execute: `{cmd}`"
+                    )
+                else:
+                    subprocess.Popen(
+                        cmd, shell=True, stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        encoding='utf-8', executable='/bin/bash')
+
             if self.ps:
                 self.ps.terminate()
                 self.queue = Queue()
@@ -443,7 +457,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def status(self):
             if self.jobid:
                 try:
-                    id_str = subprocess.check_output(['scontrol', f'--workspace-name={self.workspace_name}',
+                    id_str = subprocess.check_output(['scontrol', f'--workspace-id={self.workspace_name}',
                                                       'show', 'job', str(self.jobid)]).decode("utf-8")
                     id_json = json.loads(id_str)
                     job_state = id_json['status_phase'].strip().lower()
@@ -509,6 +523,8 @@ def cleanup():
     for k, v in ScoLauncher.all_processes.items():
         v.stop()
         LOG.info(f"killed job:{k}")
+
+    LOG.close()
 
 atexit.register(cleanup)
 
