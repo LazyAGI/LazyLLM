@@ -57,7 +57,7 @@ jobs:
       - name: Move code to custom directory
         run: |
           set -ex
-          mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
+          rsync -a $GITHUB_WORKSPACE/ ${{ env.CI_PATH }}/
 
   BasicTests:
     runs-on: tps_sco_nv
