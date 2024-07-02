@@ -95,7 +95,7 @@ jobs:
   Poetry_Test:
     runs-on: tps_sco_nv
     needs: [BasicTests,AdvancedTests]
-    if: env.submodule_updated == 'true'
+    if: ${{ env.submodule_updated == 'true' }}
     steps:
       - name: Install deps
         shell: bash
