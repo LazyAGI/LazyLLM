@@ -169,50 +169,51 @@ class SentenceSplitter(NodeParser):
         chunks: List[str] = []
         cur_chunk: List[Tuple[str, int]] = []  # list of (text, length)
         cur_chunk_len = 0
-        new_chunk = True
+        is_chunk_new = True
 
         def close_chunk() -> None:
-            nonlocal chunks, cur_chunk, cur_chunk_len, new_chunk
+            nonlocal chunks, cur_chunk, cur_chunk_len, is_chunk_new
 
             chunks.append("".join([text for text, _ in cur_chunk]))
             last_chunk = cur_chunk
             cur_chunk = []
             cur_chunk_len = 0
-            new_chunk = True
+            is_chunk_new = True
 
             # Add overlap to the next chunk using the last one first
             overlap_len = 0
             for text, length in reversed(last_chunk):
                 if overlap_len + length > self.chunk_overlap:
                     break
-                cur_chunk.insert(0, (text, length))
+                cur_chunk.append((text, length))
                 overlap_len += length
                 cur_chunk_len += length
+            cur_chunk.reverse()
 
         i = 0
         while i < len(splits):
             cur_split = splits[i]
             if cur_split.token_size > chunk_size:
                 raise ValueError("Single token exceeded chunk size")
-            if cur_chunk_len + cur_split.token_size > chunk_size and not new_chunk:
+            if cur_chunk_len + cur_split.token_size > chunk_size and not is_chunk_new:
                 # if adding split to current chunk exceeds chunk size
                 close_chunk()
             else:
                 if (
                     cur_split.is_sentence
                     or cur_chunk_len + cur_split.token_size <= chunk_size
-                    or new_chunk  # new chunk, always add at least one split
+                    or is_chunk_new  # new chunk, always add at least one split
                 ):
                     # add split to chunk
                     cur_chunk_len += cur_split.token_size
                     cur_chunk.append((cur_split.text, cur_split.token_size))
                     i += 1
-                    new_chunk = False
+                    is_chunk_new = False
                 else:
                     close_chunk()
 
         # handle the last chunk
-        if not new_chunk:
+        if not is_chunk_new:
             chunks.append("".join([text for text, _ in cur_chunk]))
 
         # Remove whitespace only chunks and remove leading and trailing whitespace.
