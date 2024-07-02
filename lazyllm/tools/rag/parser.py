@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from functools import partial
 import re
 from typing import Any, List, Tuple, Union
 
@@ -80,14 +81,14 @@ class SentenceSplitter(NodeParser):
         self._punkt_st_tokenizer = nltk.tokenize.PunktSentenceTokenizer()
 
         self._sentence_split_fns = [
-            lambda t: split_text_keep_separator(t, "\n\n\n"),  # paragraph
-            lambda t: self._punkt_st_tokenizer.tokenize(t),
+            partial(split_text_keep_separator, separator="\n\n\n"),  # paragraph
+            self._punkt_st_tokenizer.tokenize,
         ]
 
         self._sub_sentence_split_fns = [
-            lambda t: re.findall("[^,.;。？！]+[,.;。？！]?", t),
-            lambda t: split_text_keep_separator(t, " "),
-            lambda t: list(t),  # split by character
+            partial(re.findall, pattern="[^,.;。？！]+[,.;。？！]?"),
+            partial(split_text_keep_separator, separator=" "),
+            list,  # split by character
         ]
 
         self.chunk_size = chunk_size
