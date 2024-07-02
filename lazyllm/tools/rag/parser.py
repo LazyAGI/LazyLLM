@@ -8,6 +8,7 @@ import nltk
 import tiktoken
 
 from .store import DocNode, MetadataMode
+from lazyllm import LOG
 
 
 def build_nodes_from_splits(text_splits: List[str], doc: DocNode) -> List[DocNode]:
@@ -91,6 +92,7 @@ class SentenceSplitter(NodeParser):
 
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        self.metadata_size = 0
 
     def transform(self, document: DocNode, **kwargs) -> List[str]:
         return self.split_text(
@@ -100,10 +102,12 @@ class SentenceSplitter(NodeParser):
 
     def _get_metadata_size(self, node: DocNode) -> int:
         # Return the bigger size to ensure chunk_size < limit
-        return max(
-            self._token_size(node.get_metadata_str(mode=MetadataMode.EMBED)),
-            self._token_size(node.get_metadata_str(mode=MetadataMode.LLM)),
-        )
+        if not self.metadata_size:
+            self.metadata_size = max(
+                self._token_size(node.get_metadata_str(mode=MetadataMode.EMBED)),
+                self._token_size(node.get_metadata_str(mode=MetadataMode.LLM)),
+            )
+        return self.metadata_size
 
     def split_text(self, text: str, metadata_size: int) -> List[str]:
         if text == "":
@@ -116,7 +120,7 @@ class SentenceSplitter(NodeParser):
                 "decreasing the size of your metadata to avoid this."
             )
         elif effective_chunk_size < 50:
-            print(
+            LOG.warning(
                 f"Metadata length ({metadata_size}) is close to chunk size "
                 f"({self.chunk_size}). Resulting chunks are less than 50 tokens. "
                 "Consider increasing the chunk size or decreasing the size of "
