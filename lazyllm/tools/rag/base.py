@@ -284,8 +284,8 @@ class Reranker(ModuleBase):
 @Reranker.register_reranker
 def ModuleReranker(model, source=lazyllm.config['model_source'], top_n=-1):
     from llama_index.core.postprocessor import SentenceTransformerRerank
-    from lazyllm.components.utils.downloader import ModelDownloader
-    model = ModelDownloader(source).download(model)
+    from lazyllm.components.utils.downloader import ModelManager
+    model = ModelManager(source).download(model)
     return SentenceTransformerRerank(model=model, top_n=top_n)
 
 @Reranker.register_reranker

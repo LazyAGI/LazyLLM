@@ -1,5 +1,5 @@
-from .downloader import ModelDownloader
+from .downloader import ModelManager
 
 __all__ = [
-    'ModelDownloader',
+    'ModelManager',
 ]

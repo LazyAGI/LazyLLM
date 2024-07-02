@@ -6,9 +6,9 @@ from lazyllm import LOG
 
 class LazyHuggingFaceEmbedding(object):
     def __init__(self, base_embed, source=None, embed_batch_size=30, trust_remote_code=True, init=False):
-        from ..utils.downloader import ModelDownloader
+        from ..utils.downloader import ModelManager
         source = lazyllm.config['model_source'] if not source else source
-        self.base_embed = ModelDownloader(source).download(base_embed)
+        self.base_embed = ModelManager(source).download(base_embed)
         self.embed_batch_size = embed_batch_size
         self.trust_remote_code = trust_remote_code
         self.embed = None

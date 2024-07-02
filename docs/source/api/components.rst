@@ -54,10 +54,10 @@ Register
 
 .. autofunction:: lazyllm.components.register
 
-ModelDownloader
+ModelManager
 ================
 
-.. autoclass:: lazyllm.components.ModelDownloader
+.. autoclass:: lazyllm.components.ModelManager
     :members: 
     :exclude-members:
 
