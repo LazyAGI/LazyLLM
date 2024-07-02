@@ -6,6 +6,8 @@ on:
     paths:
       - 'LazyLLM-Env/**'
   pull_request:
+    branches:
+      -main
     paths:
       - 'LazyLLM-Env/**'
 
