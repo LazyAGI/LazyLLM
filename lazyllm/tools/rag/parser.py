@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 import re
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, Union
 
 import nltk
 import tiktoken
@@ -44,11 +44,19 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
 
 
 class NodeParser(ABC):
-    @abstractmethod
+
     def forward(
-        self,
-        documents: List[DocNode],
+        self, documents: Union[DocNode, List[DocNode]], **kwargs
     ) -> List[DocNode]:
+        documents = documents if isinstance(documents, list) else [documents]
+        all_nodes: List[DocNode] = []
+        for node in documents:
+            splits = self.transform(node, **kwargs)
+            all_nodes.extend(build_nodes_from_splits(splits, node))
+        return all_nodes
+
+    @abstractmethod
+    def transform(self, document: DocNode, **kwargs) -> List[str]:
         raise NotImplementedError("Not implemented")
 
     def __call__(self, nodes: List[DocNode], **kwargs: Any) -> List[DocNode]:
@@ -56,11 +64,7 @@ class NodeParser(ABC):
 
 
 class SentenceSplitter(NodeParser):
-    def __init__(
-        self,
-        chunk_size: int = 1024,
-        chunk_overlap: int = 200,
-    ):
+    def __init__(self, chunk_size: int = 1024, chunk_overlap: int = 200):
         if chunk_overlap > chunk_size:
             raise ValueError(
                 f"Got a larger chunk overlap ({chunk_overlap}) than chunk size "
@@ -88,20 +92,11 @@ class SentenceSplitter(NodeParser):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
-    def forward(
-        self,
-        documents: List[DocNode],
-    ) -> List[DocNode]:
-        all_nodes: List[DocNode] = []
-
-        for node in documents:
-            splits = self.split_text(
-                node.get_content(metadata_mode=MetadataMode.NONE),
-                metadata_size=self._get_metadata_size(node),
-            )
-            all_nodes.extend(build_nodes_from_splits(splits, node))
-
-        return all_nodes
+    def transform(self, document: DocNode, **kwargs) -> List[str]:
+        return self.split_text(
+            document.get_content(metadata_mode=MetadataMode.NONE),
+            metadata_size=self._get_metadata_size(document),
+        )
 
     def _get_metadata_size(self, node: DocNode) -> int:
         # Return the bigger size to ensure chunk_size < limit

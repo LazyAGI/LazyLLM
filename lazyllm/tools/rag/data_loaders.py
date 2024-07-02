@@ -7,9 +7,12 @@ class DirectoryReader:
     def __init__(self, input_files: List[str]):
         self.input_files = input_files
 
-    def load_data(self) -> List['DocNode']:
+    def load_data(self) -> List["DocNode"]:
         from llama_index.core import SimpleDirectoryReader
-        llama_index_docs = SimpleDirectoryReader(input_files=self.input_files).load_data()
+
+        llama_index_docs = SimpleDirectoryReader(
+            input_files=self.input_files
+        ).load_data()
         nodes: List[DocNode] = []
         for doc in llama_index_docs:
             node = DocNode(
@@ -20,5 +23,7 @@ class DirectoryReader:
             )
             nodes.append(node)
         if not nodes:
-            LOG.warning(f'No nodes load from path {self.input_files}, please check your data path.')
+            LOG.warning(
+                f"No nodes load from path {self.input_files}, please check your data path."
+            )
         return nodes
