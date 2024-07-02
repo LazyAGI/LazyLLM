@@ -510,3 +510,18 @@ def call_once(flag, func, *args, **kw):
             flag._set()
             return func(*args, **kw)
     return None
+
+def once_wrapper(reset_on_pickle):
+    flag = reset_on_pickle if isinstance(reset_on_pickle, bool) else False
+
+    def impl(func):
+        flag_name = f'_lazyllm_{func.__name__}_once_flag'
+
+        def wrapper(self, *args, **kw):
+            if not hasattr(self, flag_name): setattr(self, flag_name, once_flag(flag))
+            wrapper.flag = getattr(self, flag_name)
+            return call_once(wrapper.flag, func, self, *args, **kw)
+
+        return wrapper
+
+    return impl if isinstance(reset_on_pickle, bool) else impl(reset_on_pickle)

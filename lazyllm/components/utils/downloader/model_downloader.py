@@ -11,7 +11,7 @@ lazyllm.config.add('model_source_token', str, '', 'MODEL_SOURCE_TOKEN')
 lazyllm.config.add('data_path', str, '', 'DATA_PATH')
 
 
-class ModelDownloader():
+class ModelManager():
     def __init__(self, model_source=lazyllm.config['model_source'],
                  token=lazyllm.config['model_source_token'],
                  cache_dir=lazyllm.config['model_cache_dir'],
@@ -65,7 +65,7 @@ class ModelDownloader():
             print("[WARNING] model automatic downloads only support Huggingface and Modelscope currently.")
             return model
 
-        if model in model_name_mapping.keys() and self.model_source in model_name_mapping[model][['source']].keys():
+        if model in model_name_mapping.keys() and self.model_source in model_name_mapping[model]['source'].keys():
             full_model_dir = os.path.join(self.cache_dir, model)
             if self._is_model_valid(full_model_dir):
                 print(f"[INFO] model link found at {full_model_dir}")
