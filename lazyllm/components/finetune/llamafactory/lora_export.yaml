@@ -1,0 +1,11 @@
+### model
+model_name_or_path: internlm2-chat-7b
+adapter_name_or_path: save/lora
+template: intern2
+finetuning_type: lora
+
+### export
+export_dir: save/merge
+export_size: 2
+export_device: cpu
+export_legacy_format: True

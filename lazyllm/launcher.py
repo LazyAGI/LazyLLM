@@ -401,7 +401,8 @@ class ScoLauncher(LazyLLMLaunchersBase):
                 torchrun_cmd += '--nnodes ${WORLD_SIZE} --node_rank ${RANK} ' \
                                 '--master_addr ${MASTER_ADDR} --master_port ${MASTER_PORT} '
             pythonpath = os.getenv('PYTHONPATH', '')
-            precmd = f'''export PYTHONPATH={os.getcwd()}:{pythonpath}:$PYTHONPATH && '''
+            precmd = (f'''export PYTHONPATH={os.getcwd()}:{pythonpath}:$PYTHONPATH '''
+                      f'''&& export PATH={os.path.join(os.path.expanduser('~'), '.local/bin')}:$PATH && ''')
             if lazyllm.config['sco_env_name']:
                 precmd = f"source activate {lazyllm.config['sco_env_name']} && " + precmd
             env_vars = os.environ
