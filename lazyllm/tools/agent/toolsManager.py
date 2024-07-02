@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import lazyllm
 import docstring_parser
 from lazyllm.module import ModuleBase
-from lazyllm.common import LazyLLMRegisterMetaClass
+from lazyllm.common import LazyLLMRegisterMetaClass, package
 from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Tuple, Set
 import inspect
 from pydantic import validate_call, create_model, BaseModel, ValidationError
@@ -159,6 +160,12 @@ class ToolManager(ModuleBase):
     def tools_info(self):
         return self._tool_call
 
+    def _validate_tool(self, tool_name: str, tool_arguments: Dict[str, Any]):
+        # Does the tool exists
+        tool = self._tool_call.get(tool_name)
+        if tool: return tool.validate_parameters(tool_arguments)
+        return False
+
     def _format_tools(self):
         if isinstance(self._tools, List):
             self._tool_call = {tool.name: tool for tool in self._tools}
@@ -203,8 +210,41 @@ class ToolManager(ModuleBase):
         else:
             raise TypeError(f"The tools type should be List instead of {type(self._tools)}")
 
-    def forward(self, tool_name: str, tool_input: Union[str, Dict[str, Any]], verbose: bool = False):
-        if tool_name in self._tool_call:
-            return self._tool_call[tool_name](tool_input, verbose)
+    def forward(self, query: tuple, llm_output: tuple, verbose: bool = False):
+        # if tool_name in self._tool_call:
+        #     return self._tool_call[tool_name](tool_input, verbose)
+        # else:
+        #     raise ValueError(f"There is no tool {tool_name} in the toolset.")
+        isFinish = not llm_output[0]
+        history = query[1]
+        input = {"history": []}
+        if isinstance(query[0], str):
+            input['history'].append({'role': 'user', 'content': query[0]})
+        elif isinstance(query[0], dict):
+            assert len(query[0]) <= 1, f"Unexpected keys found in input: {list(query.keys())}"
+            input['history'].append(list(query[0].values())[0])
         else:
-            raise ValueError(f"There is no tool {tool_name} in the toolset.")
+            raise TypeError(f"The input type only supports str and dict, not {type(query[0])}")
+        input['history'].append(llm_output[1])
+
+        tool_calls = llm_output[2]
+        if not tool_calls or len(tool_calls) == 0:
+            input['input'] = f"{tool_calls} is not a valid parameter."
+        elif len(tool_calls) == 1:
+            # single function call
+            tool_call = tool_calls[0]
+            isVal = self._validate_tool(tool_call['name'], tool_call['tool_input'])
+            if isVal:
+                ret = self._tool_call[tool_call['name']](tool_call['tool_input'], verbose)
+                tool_call.pop("tool_input")
+                tool_call['content'] = json.dumps(ret, ensure_ascii=False) if isinstance(ret, dict) else ret
+                tool_call['role'] = 'tool'
+                input['input'] = tool_call
+            else:
+                # Parameter error
+                input['input'] = f"{tool_call} parameters error."
+        else:
+            # multi function call
+            raise TypeError("Multiple function calls are not yet implemented.")
+
+        return package(isFinish, input, history)
