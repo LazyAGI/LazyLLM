@@ -79,7 +79,7 @@ class OnlineChatModuleBase(ModuleBase):
         if "choices" in data and isinstance(data["choices"], list):
             item = data['choices'][0]
             data = item.get("delta", {}) if "delta" in item else item.get("message", {})
-            return data if not key else data.get(key, "")
+            return data if not key or key == "." else data.get(key, "")
         else:
             raise ValueError(f"The response {data} does not contain a 'choices' field.")
 
