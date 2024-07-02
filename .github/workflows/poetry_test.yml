@@ -1,11 +1,12 @@
 name: Poetry Test
 on:
+  workflow_dispatch:
   push:
     paths:
-      - '**/LazyLLM-Env/**'
+      - 'LazyLLM-Env/**'
   pull_request:
     paths:
-      - '**/LazyLLM-Env/**'
+      - 'LazyLLM-Env/**'
 
 env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}_poetry'
