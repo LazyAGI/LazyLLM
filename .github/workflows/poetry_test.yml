@@ -1,17 +1,14 @@
-name: LazyLLM ci
+name: Poetry Test
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    paths:
+      - '**/LazyLLM-Env/**'
   pull_request:
-    branches:
-      - main
-    paths-ignore:
-      - "**.md"
-      - ".git*"
+    paths:
+      - '**/LazyLLM-Env/**'
+
 env:
-  CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}'
+  CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}_poetry'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,6 +20,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
 
       - name: Create custom directory
         run: |
@@ -42,14 +42,23 @@ jobs:
           set -ex
           rsync -a $GITHUB_WORKSPACE/ ${{ env.CI_PATH }}/
 
-  BasicTests:
+  Poetry_Test:
     runs-on: tps_sco_nv
-    needs: [Clone]
+    needs: [ Clone ]
     steps:
+      - name: Install deps
+        shell: bash
+        run: |
+          set -ex
+          cd ${{ env.CI_PATH }}
+          source deactivate
+          cp LazyLLM-Env/poetry.lock . && poetry install
       - name: RunTests
         run: |
           set -ex
           cd ${{ env.CI_PATH }}
+          source deactivate
+          poetry shell
           realpath .
           env | grep '^SCC'
           export LAZYLLM_SCO_ENV_NAME=lazyllm
@@ -60,21 +69,12 @@ jobs:
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           python -m pytest tests/basic_tests/
-
-  AdvancedTests:
-    runs-on: tps_sco_nv
-    needs: [Clone]
-    steps:
-      - name: RunTests
+          python -m pytest tests/advanced_tests/
+      - name: Clean_Poetry_env
+        if: always()
         run: |
           set -ex
           cd ${{ env.CI_PATH }}
-          env | grep '^SCC'
-          export LAZYLLM_SCO_ENV_NAME=lazyllm
-          export LAZYLLM_DEFAULT_LAUNCHER=sco
-          export LAZYLLM_SLURM_PART=a100
-          export PYTHONPATH=$PWD:$PYTHONPATH
-          export LAZYLLM_SCO_WORKSPACE=expert-services
-          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
-          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-          python -m pytest tests/advanced_tests/
+          source deactivate
+          current_env=$(poetry env list | grep 'Activated' | awk '{print $1}')
+          poetry env remove "$current_env"
