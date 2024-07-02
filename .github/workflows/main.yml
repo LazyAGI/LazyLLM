@@ -35,8 +35,10 @@ jobs:
           git submodule update --init --recursive
           if [[ $(git diff --submodule) != "" ]]; then
             echo "::set-output name=submodule_updated::true"
+            echo "true"
           else
             echo "::set-output name=submodule_updated::false"
+            echo "false"
           fi
 
       - name: Create custom directory
