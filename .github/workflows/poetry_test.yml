@@ -8,8 +8,7 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'LazyLLM-Env/**'
+
 
 env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}_poetry'
