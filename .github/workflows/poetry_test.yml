@@ -2,9 +2,6 @@ name: Poetry Test
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'LazyLLM-Env/**'
   pull_request:
     branches:
       - main
@@ -18,8 +15,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  Check:
+    runs-on: ubuntu_latest
+      outputs:
+        submodule_updated: ${{ steps.check_submodule.outputs.submodule_updated }}
+      steps:
+        - name: Set up Python
+          uses: actions/setup-python@v2
+          with:
+            python-version: '3.x'
+        - name: Check if submodules are updated
+            id: check_submodule
+            run: |
+              python scripts/check_submodule_changes.py
+            env:
+              GITHUB_REPOSITORY: ${{ github.repository }}
+              GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+
   Clone:
     runs-on: tps_sco_nv
+    needs: [Check]
+    if: needs.Check.outputs.submodule_updated == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
