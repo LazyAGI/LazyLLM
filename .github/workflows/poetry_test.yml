@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   Check:
-    runs-on: ubuntu_latest
+    runs-on: ubuntu-latest
     outputs:
       submodule_updated: ${{ steps.check_submodule.outputs.submodule_updated }}
     steps:
