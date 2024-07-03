@@ -41,7 +41,7 @@ jobs:
   Clone:
     runs-on: tps_sco_nv
     needs: [Check]
-    if: needs.Check.outputs.submodule_updated == 'true'
+#    if: needs.Check.outputs.submodule_updated == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
