@@ -54,6 +54,10 @@ class CaseInsensitiveDict(dict):
         assert isinstance(key, str)
         super().__setitem__(key.lower(), value)
 
+    def __contains__(self, key):
+        assert isinstance(key, str)
+        return super().__contains__(key.lower())
+
 # pack return value of modules used in pipeline / parallel.
 # will unpack when passing it to the next item.
 class package(tuple):

@@ -8,8 +8,10 @@ from lazyllm import launchers, ArgsDict, thirdparty, CaseInsensitiveDict
 from .base import LazyLLMFinetuneBase
 
 class LlamafactoryFinetune(LazyLLMFinetuneBase):
-    defatult_kw = ArgsDict({})
-    auto_map = {}
+    auto_map = {
+        'gradient_step': 'gradient_accumulation_steps',
+        'micro_batch_size': 'per_device_train_batch_size',
+    }
 
     def __init__(self,
                  base_model,
@@ -38,20 +40,24 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.config_path = config_path
         self.export_config_path = export_config_path
         self.config_folder_path = os.path.dirname(os.path.abspath(__file__))
+
+        default_config_path = os.path.join(self.config_folder_path, 'llamafactory/sft.yaml')
+        self.template_dict = ArgsDict(self.load_yaml(default_config_path))
+
         if self.config_path:
-            self.template_dict = self.load_yaml(self.config_path)
-        else:
-            default_config_path = os.path.join(self.config_folder_path, 'llamafactory/sft.yaml')
-            self.template_dict = self.load_yaml(default_config_path)
+            self.template_dict.update(self.load_yaml(self.config_path))
+
         self.template_dict['model_name_or_path'] = base_model
         self.template_dict['output_dir'] = target_path
         self.template_dict['template'] = self.get_template_name(base_model)
+        self.template_dict.check_and_update(kw)
+
+        default_export_config_path = os.path.join(self.config_folder_path, 'llamafactory/lora_export.yaml')
+        self.export_dict = ArgsDict(self.load_yaml(default_export_config_path))
 
         if self.export_config_path:
-            self.export_dict = self.load_yaml(self.export_config_path)
-        else:
-            default_export_config_path = os.path.join(self.config_folder_path, 'llamafactory/lora_export.yaml')
-            self.export_dict = self.load_yaml(default_export_config_path)
+            self.export_dict.update(self.load_yaml(self.export_config_path))
+
         self.export_dict['model_name_or_path'] = base_model
         self.export_dict['adapter_name_or_path'] = target_path
         self.export_dict['export_dir'] = merge_path
@@ -65,6 +71,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         try:
             from llamafactory.extras.constants import DEFAULT_TEMPLATE
         except Exception:
+            # llamfactory need a gpu, 1st import raise error, so import 2nd.
             from llamafactory.extras.constants import DEFAULT_TEMPLATE
         teplate_dict = CaseInsensitiveDict(DEFAULT_TEMPLATE)
         key = os.path.basename(base_model).split('-')[0]
@@ -72,7 +79,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             return teplate_dict[key]
         else:
             raise RuntimeError(f'Cannot find prfix({key}) of base_model({base_model}) '
-                               'in DEFAULT_TEMPLATE of LLaMA_Factory: {DEFAULT_TEMPLATE}')
+                               f'in DEFAULT_TEMPLATE of LLaMA_Factory: {DEFAULT_TEMPLATE}')
 
     def load_yaml(self, config_path):
         with open(config_path, 'r') as file:
@@ -94,6 +101,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             raise TypeError(f'datapaths({datapaths}) should be str or list of str.')
         temp_dataset_dict = dict()
         for datapath in datapaths:
+            datapath = os.path.join(lazyllm.config['data_path'], datapath)
             assert os.path.isfile(datapath)
             file_name, _ = os.path.splitext(os.path.basename(datapath))
             temp_dataset_dict[file_name] = {'file_name': datapath}
@@ -111,20 +119,19 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
     def cmd(self, trainset, valset=None) -> str:
         thirdparty.check_packages(['datasets', 'deepspeed', 'numpy', 'peft', 'torch', 'transformers', 'trl'])
         # train config update
-        if 'dataset_dir' not in self.template_dict:
+        if 'dataset_dir' in self.template_dict and self.template_dict['dataset_dir'] == 'lazyllm_temp_dir':
             _, datasets = self.build_temp_dataset_info(trainset)
             self.template_dict['dataset_dir'] = self.temp_folder
         else:
             datasets = trainset
         self.template_dict['dataset'] = datasets
-        self.template_dict['report_to'] = 'tensorboard'
 
         # save config update
         if self.template_dict['finetuning_type'] == 'lora':
-            updated_export_str = yaml.dump(self.export_dict, default_flow_style=False)
+            updated_export_str = yaml.dump(dict(self.export_dict), default_flow_style=False)
             self.temp_export_yaml_file = self.build_temp_yaml(updated_export_str, prefix='merge_')
 
-        updated_template_str = yaml.dump(self.template_dict, default_flow_style=False)
+        updated_template_str = yaml.dump(dict(self.template_dict), default_flow_style=False)
         self.temp_yaml_file = self.build_temp_yaml(updated_template_str)
 
         cmds = f'llamafactory-cli train {self.temp_yaml_file}'
