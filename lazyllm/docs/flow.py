@@ -339,6 +339,13 @@ add_example('Loop', '''\
 16
 >>> loop(3)
 12
+>>>
+>>> with lazyllm.loop(stop_condition=lambda x: x > 10) as lp:
+...    lp.f1 = lambda x: x + 1
+...    lp.f2 = lambda x: x * 2
+...
+>>> lp(0)
+14
 ''')
 
 add_chinese_doc('IFS', '''\
@@ -408,6 +415,7 @@ Args:
     args: 可变长度参数列表，交替提供条件和对应的流或函数。条件可以是返回布尔值的可调用对象或与输入表达式进行比较的值。
     post_action (callable, optional): 在执行选定流后要调用的函数。默认为 ``None``。
     return_input (bool, optional): 如果设置为 ``True``，原始输入将与输出一起返回。默认为 ``False``。
+    judge_on_input(bool): 如果设置为 ``True`` ， 则通过 ``switch`` 的输入进行条件判断，否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
     kwargs: 代表命名条件和对应流或函数的任意关键字参数。
 
 抛出:
@@ -430,6 +438,7 @@ Arguments:
     args: A variable length argument list, alternating between conditions and corresponding flows or functions. Conditions are either callables returning a boolean or values to be compared with the input expression.
     post_action (callable, optional): A function to be called on the output after the selected flow is executed. Defaults to ``None``.
     return_input (bool, optional): If set to ``True``, the original input is returned along with the output. Defaults to ``False``.
+    judge_on_input(bool): If set to ``True``, the conditional judgment will be performed through the input of ``switch``, otherwise the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
     kwargs: Arbitrary keyword arguments representing named conditions and corresponding flows or functions.
 
 Raises:
@@ -442,7 +451,7 @@ add_example('Switch', """\
 ...
 >>> def is_negative(x): return x < 0
 ...
->>> switch = lazyllm.switch(is_positive, lambda x: 2 * x, is_negative, lambda x : -x, 'default', lambda x : '000')
+>>> switch = lazyllm.switch(is_positive, lambda x: 2 * x, is_negative, lambda x : -x, 'default', lambda x : '000', judge_on_input=True)
 >>>
 >>> switch(1)
 2
@@ -450,6 +459,30 @@ add_example('Switch', """\
 '000'
 >>> switch(-4)
 4
+>>>
+>>> def is_1(x): return True if x == 1 else False
+...
+>>> def is_2(x): return True if x == 2 else False
+...
+>>> def is_3(x): return True if x == 3 else False
+...
+>>> def t1(x): return 2 * x
+...
+>>> def t2(x): return 3 * x
+...
+>>> def t3(x): return x
+...
+>>> with lazyllm.switch(judge_on_input=True) as sw:
+...     sw.case[is_1::t1]
+...     sw.case(is_2, t2)
+...     sw.case[is_3, t3]
+...
+>>> sw(1)
+2
+>>> sw(2)
+6
+>>> sw(3)
+3
 """)
 
 add_chinese_doc('Diverter', """\
