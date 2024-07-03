@@ -16,7 +16,8 @@ LazyLLM is a low-code development tool for building multi-agent LLMs(large langu
 
 The AI application development process based on LazyLLM follows the **prototype building -> data feedback -> iterative optimization** workflow. This means you can quickly build a prototype application using LazyLLM, then analyze bad cases using task-specific data, and subsequently iterate on algorithms and fine-tune models at critical stages of the application to gradually enhance the overall performance.<br>
 
-**Tutorials**： https://lazyllm.readthedocs.io/
+**Tutorials**： https://lazyllm.readthedocs.io/<br>
+**Recent Plans**: [v0.2 PRD](https://aicarrier.feishu.cn/wiki/H8bIwORVtiAKv2kwRRJcyfwZnAo?from=from_copylink)
 
 ## Features
 
@@ -85,6 +86,8 @@ with pipeline() as ppl:
     ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])) 
 mweb = lazyllm.WebModule(ppl, port=23456).start().wait()
 ```
+
+https://github.com/LazyAGI/LazyLLM/assets/12124621/77267adc-6e40-47b8-96a8-895df165b0ce
 
 ### Stories Creator
 
