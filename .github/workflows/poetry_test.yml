@@ -83,7 +83,6 @@ jobs:
           set -ex
           cd ${{ env.CI_PATH }}
           source deactivate
-          poetry shell
           realpath .
           env | grep '^SCC'
           export LAZYLLM_SCO_ENV_NAME=lazyllm
