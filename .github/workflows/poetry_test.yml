@@ -93,8 +93,8 @@ jobs:
           export LAZYLLM_SCO_WORKSPACE=expert-services
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-          python -m pytest tests/basic_tests/
-          python -m pytest tests/advanced_tests/
+          poetry run python -m pytest tests/basic_tests/
+          poetry run python -m pytest tests/advanced_tests/
 
       - name: Clean_Poetry_env
         if: always()
