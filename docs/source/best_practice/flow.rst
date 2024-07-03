@@ -73,7 +73,7 @@ with语句
     assert p(1) == 16
 
 .. note::
-    ``parallel``, ``diverter`` 等也支持with的用法。
+    ``parallel``, ``diverter``, ``switch``, ``loop`` 等也支持with的用法。
 
 参数绑定
 ^^^^^^^^
