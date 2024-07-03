@@ -19,7 +19,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
                  merge_path=None,
                  config_path=None,
                  export_config_path=None,
-                 launcher=launchers.remote(ngpus=1),
+                 launcher=launchers.remote(ngpus=1, sync=True),
                  **kw
                  ):
         if not os.path.exists(base_model):
@@ -35,6 +35,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             target_path,
             launcher=launcher,
         )
+        self.merge_path = merge_path
         self.temp_yaml_file = None
         self.temp_export_yaml_file = None
         self.config_path = config_path
