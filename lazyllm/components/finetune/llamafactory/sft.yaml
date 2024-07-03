@@ -51,7 +51,6 @@ dataset: identity,alpaca_en_demo
 dataset_dir: lazyllm_temp_dir
 split: train
 cutoff_len: 1024
-reserved_label_len: 1
 train_on_prompt: false
 streaming: false
 buffer_size: 16384
