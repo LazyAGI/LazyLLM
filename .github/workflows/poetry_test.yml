@@ -32,6 +32,7 @@ jobs:
       - name: Check if submodules are updated
         id: check_submodule
         run: |
+          python -m pip install requests
           python scripts/check_submodule_changes.py
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
