@@ -12,6 +12,21 @@ import traceback
 import sys
 
 
+class _FuncWrap(object):
+    def __init__(self, f):
+        self.f = f.f if isinstance(f, _FuncWrap) else f
+
+    def __call__(self, *args, **kw): return self.f(*args, **kw)
+
+    def __repr__(self):
+        # TODO: specify lambda/staticmethod/classmethod/instancemethod
+        # TODO: add registry message
+        return lazyllm.make_repr('Function', self.f.__name__.strip('<>'))
+
+def _is_function(f):
+    return isinstance(f, (types.BuiltinFunctionType, types.FunctionType, _FuncWrap,
+                          types.BuiltinMethodType, types.MethodType, types.LambdaType))
+
 class FlowBase(metaclass=_MetaBind):
     __enable_request__ = True
 
@@ -29,7 +44,7 @@ class FlowBase(metaclass=_MetaBind):
 
     def _add(self, k, v):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
-        self._items.append(v() if isinstance(v, type) else v)
+        self._items.append(v() if isinstance(v, type) else _FuncWrap(v) if _is_function(v) else v)
         if isinstance(v, FlowBase): v._father = self
         if k: self._item_names.append(k)
         if self._curr_frame and isinstance(v, FlowBase):
@@ -98,25 +113,9 @@ setattr(bind, '__enter__', _bind_enter)
 setattr(bind, '__exit__', _bind_exit)
 
 
-def _is_function(f):
-    return isinstance(f, (types.BuiltinFunctionType, types.FunctionType,
-                          types.BuiltinMethodType, types.MethodType, types.LambdaType))
-
-
 # TODO(wangzhihong): support workflow launcher.
 # Disable item launchers if launcher is already set in workflow.
 class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
-    class FuncWrap(object):
-        def __init__(self, f):
-            self.f = f.f if isinstance(f, LazyLLMFlowsBase.FuncWrap) else f
-
-        def __call__(self, *args, **kw): return self.f(*args, **kw)
-
-        def __repr__(self):
-            # TODO: specify lambda/staticmethod/classmethod/instancemethod
-            # TODO: add registry message
-            return lazyllm.make_repr('Function', self.f.__name__.strip('<>'))
-
     def __init__(self, *args, post_action=None, return_input=False, auto_capture=False, **kw):
         assert len(args) == 0 or len(kw) == 0, f'Cannot provide args `{args}` and kwargs `{kw}` at the same time'
         if len(args) > 0 and isinstance(args[0], (tuple, list)):
@@ -153,7 +152,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         return self
 
     def __repr__(self):
-        subs = [repr(LazyLLMFlowsBase.FuncWrap(it) if _is_function(it) else it) for it in self._items]
+        subs = [repr(it) for it in self._items]
         if self.post_action is not None:
             subs.append(lazyllm.make_repr('Flow', 'PostAction', subs=[self.post_action.__repr__()]))
         return lazyllm.make_repr('Flow', self.__class__.__name__, subs=subs, items=self._item_names)
@@ -202,13 +201,32 @@ class Pipeline(LazyLLMFlowsBase):
     def input(self):
         return bind.Input()
 
+    @property
+    def _loop_count(self):
+        return getattr(self, '_loop_count_var', 1)
+
+    @_loop_count.setter
+    def _loop_count(self, count):
+        assert count > 1, 'At least one loop is required!'
+        self._loop_count_var = count
+
+    @property
+    def _stop_condition(self):
+        return getattr(self, '_stop_condition_var', None)
+
+    @_stop_condition.setter
+    def _stop_condition(self, cond):
+        self._stop_condition_var = cond
+
     def _run(self, input):
         helper = ReqResHelper()
         output = helper.make_request(input)
         bind_args_source = dict(input=output, args=dict())
-        for it in self._items:
-            output = helper.make_request(self.invoke(it, output, bind_args_source=bind_args_source))
-            bind_args_source['args'][id(it)] = output.input if output.input else output.kwargs
+        for _ in range(self._loop_count):
+            for it in self._items:
+                output = helper.make_request(self.invoke(it, output, bind_args_source=bind_args_source))
+                bind_args_source['args'][id(it)] = output.input if output.input else output.kwargs
+            if callable(self._stop_condition) and self.invoke(self._stop_condition, output): break
         return helper.make_response(output)
 
 
@@ -327,22 +345,45 @@ class Warp(Parallel):
 class Switch(LazyLLMFlowsBase):
     # Switch({cond1: M1, cond2: M2, ..., condN: MN})
     # Switch(cond1, M1, cond2, M2, ..., condN, MN)
-    def __init__(self, *args, post_action=None, return_input=False, **kw):
+    def __init__(self, *args, post_action=None, return_input=False, judge_on_input=True, **kw):
         if len(args) == 1 and isinstance(args[0], dict):
             self.conds, items = list(args[0].keys()), list(args[0].values())
         else:
-            self.conds, items = args[0::2], args[1::2]
+            self.conds, items = list(args[0::2]), args[1::2]
         items = {repr(k): v for k, v in zip(self.conds, items)}
         super().__init__(**items, post_action=post_action, return_input=return_input, **kw)
+        self._judge_on_input = judge_on_input
 
     def _run(self, input):
         exp = input
-        if isinstance(input.input, package) and len(input.input) == 2 and not callable(self.conds[0]):
+        if not self._judge_on_input:
+            assert isinstance(input.input, package) and len(input.input) >= 2
             exp = input.input[0]
-            input.input = input.input[1]
+            input.input = input.input[1:]
         for idx, cond in enumerate(self.conds):
             if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or cond == 'default':
                 return self.invoke(self._items[idx], input)
+
+    class Case:
+        def __init__(self, m) -> None: self._m = m
+        def __call__(self, cond, func): self._m._add_case(cond, func)
+
+        def __getitem__(self, key):
+            if isinstance(key, slice):
+                assert key.start and callable(key.step) and key.stop is None, \
+                    f'Only [cond::func] is allowed in case, but you give {key}'
+                self._m._add_case(key.start, key.step)
+            else:
+                assert isinstance(key, tuple) and len(key) == 2, \
+                    f'Only [cond, func] is allowed in case, but you give {key}'
+                self._m._add_case(key[0], key[1])
+
+    @property
+    def case(self): return Switch.Case(self)
+
+    def _add_case(self, case, func):
+        self.conds.append(case)
+        self._add(None, func)
 
 
 # result = cond(input) ? tpath(input) : fpath(input)
@@ -357,23 +398,10 @@ class IFS(LazyLLMFlowsBase):
 
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
 #      ⬆----------------------------------------|
-class Loop(LazyLLMFlowsBase):
-    def __init__(self, *item, stop_condition=None, count=None, post_action=None, return_input=False,
+class Loop(Pipeline):
+    def __init__(self, *item, stop_condition=None, count=sys.maxsize, post_action=None, return_input=False,
                  auto_capture=False, **kw):
         super().__init__(*item, post_action=post_action, return_input=return_input, auto_capture=auto_capture, **kw)
-        # assert (callable(stop_condition) and count is None) or (
-        #     stop_condition is None and isinstance(count, int))
-        assert (callable(stop_condition) or isinstance(count, int))
-        self.cond = stop_condition
-        self.count = count
-
-    def _run(self, input):
-        cnt = 0
-        helper = ReqResHelper()
-        while True:
-            for item in self._items:
-                input = helper.make_request(self.invoke(item, input))
-            cnt += 1
-            if (callable(self.cond) and self.invoke(self.cond, input)) or (self.count is not None and cnt >= self.count):
-                break
-        return helper.make_response(input)
+        assert callable(stop_condition) or stop_condition is None
+        self._stop_condition = stop_condition
+        self._loop_count = count

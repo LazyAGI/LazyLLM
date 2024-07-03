@@ -140,7 +140,6 @@ class Register(object):
             # 'func' cannot be recognized by exec, so we use 'setattr' instead
             f = LazyLLMRegisterMetaClass.all_clses[cls.lower()].__getattr__(func_name)
             f.__name__ = func_name
-            # setattr(f, rewrite_func, lambda _, *args, **kw: func(*args, **kw))
             setattr(f, rewrite_func, bind_to_instance(func))
             return func
         return impl
