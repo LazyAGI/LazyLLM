@@ -3,7 +3,7 @@
 </div>
 
 # LazyLLM: A  Low-code Development Tool For Building Multi-agent LLMs Applications.
-[中文](README.md) |  [EN](README.ENG.md)
+[中文](README.CN.md) |  [EN](README.md)
 
 [![CI](https://github.com/LazyAGI/LazyLLM/actions/workflows/main.yml/badge.svg)](https://github.com/LazyAGI/LazyLLM/actions/workflows/main.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellow.svg)](https://opensource.org/license/apache-2-0)
