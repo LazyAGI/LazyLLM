@@ -3,7 +3,7 @@
 </div>
 
 # LazyLLM: 低代码构建多Agent大模型应用的开发工具
-[中文](README.md) |  [EN](README.ENG.md)
+[EN](README.md)  |  [中文](README.CN.md)
 
 [![CI](https://github.com/LazyAGI/LazyLLM/actions/workflows/main.yml/badge.svg)](https://github.com/LazyAGI/LazyLLM/actions/workflows/main.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellow.svg)](https://opensource.org/license/apache-2-0)
