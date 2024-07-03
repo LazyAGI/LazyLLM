@@ -20,6 +20,11 @@ jobs:
     outputs:
       submodule_updated: ${{ steps.check_submodule.outputs.submodule_updated }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
