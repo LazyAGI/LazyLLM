@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 import lazyllm
 import docstring_parser
@@ -211,10 +209,6 @@ class ToolManager(ModuleBase):
             raise TypeError(f"The tools type should be List instead of {type(self._tools)}")
 
     def forward(self, query: tuple, llm_output: tuple, verbose: bool = False):
-        # if tool_name in self._tool_call:
-        #     return self._tool_call[tool_name](tool_input, verbose)
-        # else:
-        #     raise ValueError(f"There is no tool {tool_name} in the toolset.")
         isFinish = not llm_output[0]
         history = query[1]
         input = {"history": []}

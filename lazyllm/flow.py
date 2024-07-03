@@ -133,7 +133,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         req = helper.make_request(*args, **kw)
         output = helper.make_request(self._run(req))
 
-        if self.post_action is not None: output = self.invoke(self.post_action, output)
+        if self.post_action is not None: self.invoke(self.post_action, output)
         if self._return_input: output = package(req.input, output.input)
         if self._sync: self.wait()
         return self._post_process(helper.make_response(output))
