@@ -78,7 +78,6 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                 assert len(prompt_keys) == 0
                 return self._instruction_template, input
         assert isinstance(input, dict)
-        input = input.copy()
         kwargs = {k: input.pop(k) for k in prompt_keys}
         assert len(input) <= 1, f"Unexpected keys found in input: {list(input.keys())}"
         return (reduce(lambda s, kv: s.replace(f"{{{kv[0]}}}", kv[1]),
@@ -134,6 +133,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                         tools: Union[List[Dict[str, Any]], None] = None,
                         label: Union[str, None] = None,
                         *, show: bool = False, return_dict: bool = False) -> Union[str, Dict]:
+        if isinstance(input, dict):
+            input = input.copy()
         if self._pre_hook:
             input, history, tools, label = self._pre_hook(input, history, tools, label)
         instruction, input = self._get_instruction_and_input(input)

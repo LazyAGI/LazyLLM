@@ -79,7 +79,6 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
                     return tool_input
                 except ValidationError as e:
                     lazyllm.LOG.error(f"ValidationError: {e}")
-                    # raise TypeError(f"The tool_input: {tool_input} type error.")
                     raise
         else:
             if input_params is not None:
@@ -88,7 +87,6 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
                     return {key: getattr(ret, key) for key in ret.model_dump().keys() if key in tool_input}
                 except ValidationError as e:
                     lazyllm.LOG.error(f"ValidationError: {e}")
-                    # raise TypeError(f"The tool_input: {tool_input} type error.")
                     raise
 
         return tool_input
@@ -126,7 +124,6 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return ret
 
 register = lazyllm.Register(ModuleTool, ["apply"])
-register.new_group("functionCall")
 
 class ToolManager(ModuleBase):
     def __init__(self, tools: List[str], return_trace: bool = False):
@@ -172,38 +169,54 @@ class ToolManager(ModuleBase):
         if isinstance(self._tools, List):
             format_tools = []
             for tool in self._tools:
-                parsed = docstring_parser.parse(tool.description)
-                tool_args = tool.args
-                assert len(tool_args) == len(parsed.params), "The parameter description and the actual \
-                                                              number of input parameters are inconsistent."
-                args_description = {}
-                for param in parsed.params:
-                    args_description[param.arg_name] = param.description
-                args = {}
-                for k, v in tool_args.items():
-                    val = v.copy()
-                    if "title" in val.keys():
-                        del val["title"]
-                    if "default" in val.keys():
-                        del val["default"]
-                    args[k] = val if val else {"type": "string"}
-                    if k in args_description:
-                        args[k].update({"description": args_description[k]})
-                    else:
-                        raise ValueError(f"The actual input parameter {k} is not found in the parameter description.")
-                func = {
-                    "type": "function",
-                    "function": {
-                        "name": tool.name,
-                        "description": parsed.short_description,
-                        "parameters": {
-                            "type": "object",
-                            "properties": args,
-                            "required": tool.get_params_schema().model_json_schema().get("required", [])
+                try:
+                    parsed = docstring_parser.parse(tool.description)
+                    tool_args = tool.args
+                    assert len(tool_args) == len(parsed.params), "The parameter description and the actual \
+                                                                  number of input parameters are inconsistent."
+                    args_description = {}
+                    for param in parsed.params:
+                        args_description[param.arg_name] = param.description
+                    args = {}
+                    for k, v in tool_args.items():
+                        val = v.copy()
+                        if "title" in val.keys():
+                            del val["title"]
+                        if "default" in val.keys():
+                            del val["default"]
+                        args[k] = val if val else {"type": "string"}
+                        if k in args_description:
+                            args[k].update({"description": args_description[k]})
+                        else:
+                            raise ValueError(f"The actual input parameter {k} is not found "
+                                             "in the parameter description.")
+                    func = {
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": parsed.short_description,
+                            "parameters": {
+                                "type": "object",
+                                "properties": args,
+                                "required": tool.get_params_schema().model_json_schema().get("required", [])
+                            }
                         }
                     }
-                }
-                format_tools.append(func)
+                    format_tools.append(func)
+                except Exception:
+                    typehints_template = """
+                    def myfunc(arg1: str, arg2: Dict[str, Any], arg3: Literal["aaa", "bbb", "ccc"]="aaa"):
+                        '''
+                        Function description ...
+
+                        Args:
+                            arg1 (str): arg1 description.
+                            arg2 (Dict[str, Any]): arg2 description
+                            arg3 (Literal["aaa", "bbb", "ccc"]): arg3 description
+                        '''
+                    """
+                    raise TypeError("Function description must include function description and"
+                                    f"parameter description, the format is as follows: {typehints_template}")
             return format_tools
         else:
             raise TypeError(f"The tools type should be List instead of {type(self._tools)}")
@@ -215,6 +228,8 @@ class ToolManager(ModuleBase):
         if isinstance(query[0], str):
             input['history'].append({'role': 'user', 'content': query[0]})
         elif isinstance(query[0], dict):
+            if "history" in query[0]:
+                query[0].pop("history")
             assert len(query[0]) <= 1, f"Unexpected keys found in input: {list(query.keys())}"
             input['history'].append(list(query[0].values())[0])
         else:
