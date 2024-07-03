@@ -13,7 +13,7 @@ class MetadataMode(str, Enum):
 class DocNode:
     def __init__(
         self,
-        _id: Optional[str] = None,
+        uid: Optional[str] = None,
         text: Optional[str] = None,
         embedding: Optional[List[float]] = None,
         metadata: Optional[Dict[str, Any]] = None,
@@ -22,10 +22,10 @@ class DocNode:
         parent: Optional["DocNode"] = None,
         children: Optional[List["DocNode"]] = None,
     ) -> None:
-        self._id: str = _id if _id else str(uuid.uuid4())
+        self.uid: str = uid if uid else str(uuid.uuid4())
         self.text: Optional[str] = text
         self.embedding: Optional[List[float]] = embedding
-        self._metadata: Dict[str, Any] = metadata if metadata is not None else {}
+        self.metadata: Dict[str, Any] = metadata if metadata is not None else {}
         # Metadata keys that are excluded from text for the embed model.
         self.excluded_embed_metadata_keys: List[str] = (
             excluded_embed_metadata_keys
@@ -42,18 +42,7 @@ class DocNode:
 
     @property
     def node_id(self) -> str:
-        return self._id
-
-    @property
-    def metadata(self) -> Dict[str, Any]:
-        # fetch the original metadata if needed
-        if not self._metadata and self.root_node:
-            self._metadata = self.root_node.metadata
-        return self._metadata
-
-    @metadata.setter
-    def metadata(self, metadata: Dict[str, Any]) -> None:
-        self._metadata = metadata
+        return self.uid
 
     @property
     def root_node(self) -> Optional["DocNode"]:
@@ -65,7 +54,7 @@ class DocNode:
     def __str__(self) -> str:
         return (
             f"DocNode(id: {self.node_id}, text: {self.get_content()}) parent: "
-            f"{self.parent.node_id}, children: {[c.node_id for c in self.children]}"
+            f"{self.parent.node_id if self.parent else None}, children: {[c.node_id for c in self.children]}"
         )
 
     def __repr__(self) -> str:
@@ -110,7 +99,7 @@ class DocNode:
 
     def get_node_info(self) -> Dict[str, Any]:
         return {
-            "_id": self._id,
+            "uid": self.uid,
             "text": self.text,
             "embedding": self.embedding,
             "metadata": self.metadata,

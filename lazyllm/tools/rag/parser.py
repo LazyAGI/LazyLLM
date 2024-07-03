@@ -19,6 +19,7 @@ def build_nodes_from_splits(text_splits: List[str], doc: DocNode) -> List[DocNod
             node = DocNode(
                 text=text_chunk,
                 embedding=doc.embedding,
+                metadata=doc.metadata,
                 excluded_embed_metadata_keys=doc.excluded_embed_metadata_keys,
                 excluded_llm_metadata_keys=doc.excluded_llm_metadata_keys,
                 parent=doc,
@@ -93,7 +94,6 @@ class SentenceSplitter(NodeParser):
 
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        self.metadata_size = 0
 
     def transform(self, document: DocNode, **kwargs) -> List[str]:
         return self.split_text(
@@ -103,12 +103,10 @@ class SentenceSplitter(NodeParser):
 
     def _get_metadata_size(self, node: DocNode) -> int:
         # Return the bigger size to ensure chunk_size < limit
-        if not self.metadata_size:
-            self.metadata_size = max(
-                self._token_size(node.get_metadata_str(mode=MetadataMode.EMBED)),
-                self._token_size(node.get_metadata_str(mode=MetadataMode.LLM)),
-            )
-        return self.metadata_size
+        return max(
+            self._token_size(node.get_metadata_str(mode=MetadataMode.EMBED)),
+            self._token_size(node.get_metadata_str(mode=MetadataMode.LLM)),
+        )
 
     def split_text(self, text: str, metadata_size: int) -> List[str]:
         if text == "":
