@@ -345,7 +345,7 @@ class Warp(Parallel):
 class Switch(LazyLLMFlowsBase):
     # Switch({cond1: M1, cond2: M2, ..., condN: MN})
     # Switch(cond1, M1, cond2, M2, ..., condN, MN)
-    def __init__(self, *args, post_action=None, return_input=False, judge_on_input=False, **kw):
+    def __init__(self, *args, post_action=None, return_input=False, judge_on_input=True, **kw):
         if len(args) == 1 and isinstance(args[0], dict):
             self.conds, items = list(args[0].keys()), list(args[0].values())
         else:
