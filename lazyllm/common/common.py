@@ -6,7 +6,6 @@ from contextlib import contextmanager
 import copy
 import threading
 import types
-from queue import Queue
 from pydantic import BaseModel as struct
 from typing import Tuple
 
@@ -275,29 +274,6 @@ class ReadOnlyWrapper(object):
 
     def isNone(self):
         return self.obj is None
-
-
-class Thread(threading.Thread):
-    def __init__(self, group=None, target=None, name=None,
-                 args=(), kwargs=None, *, prehook=None, daemon=None):
-        self.q = Queue()
-        super().__init__(group, self.work, name, (prehook, target, args), kwargs, daemon=daemon)
-
-    def work(self, prehook, target, args):
-        if prehook:
-            prehook()
-        try:
-            r = target(*args)
-        except Exception as e:
-            self.q.put(e)
-        else:
-            self.q.put(r)
-
-    def get_result(self):
-        r = self.q.get()
-        if isinstance(r, Exception):
-            raise r
-        return r
 
 
 class Identity():

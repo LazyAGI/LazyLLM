@@ -3,6 +3,7 @@ from lazyllm.common import ArgsDict
 import random
 import time
 import pytest
+import threading
 
 class TestCommon(object):
 
@@ -81,3 +82,20 @@ class TestCommon(object):
         r2 = lazyllm.make_repr('b', 2)
         rr = lazyllm.make_repr('c', 3, subs=[r1, r2])
         assert rr == '<c type=3>\n |- <a type=1>\n └- <b type=2>\n'
+
+
+class TestCommonGlobals(object):
+
+    def _worker():
+        assert lazyllm.globals['a'] == 1
+        assert lazyllm.globals['chat_history'] == []
+        assert lazyllm.globals['global_parameters']['key'] == 'value'
+
+    def test_globals(self):
+        assert lazyllm.globals._sid == f'tid-{hex(threading.get_ident())}'
+        assert lazyllm.globals['chat_history'] == []
+        assert lazyllm.globals['global_parameters'] == {}
+        lazyllm.globals['global_parameters']['key'] = 'value'
+        t = lazyllm.Thread(target=self._worker)
+        t.start()
+        t.join()
