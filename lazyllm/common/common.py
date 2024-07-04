@@ -49,6 +49,11 @@ class package(tuple):
         else:
             return super(__class__, cls).__new__(cls, args)
 
+    def __getitem__(self, key):
+        if isinstance(key, slice):
+            return package(super(__class__, self).__getitem__(key))
+        return super(__class__, self).__getitem__(key)
+
 
 class kwargs(dict):
     pass
