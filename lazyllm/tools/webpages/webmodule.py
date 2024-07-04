@@ -213,6 +213,8 @@ class WebModule(ModuleBase):
                         s = s
                     except KeyError:
                         s = s
+                    except TypeError:
+                        s = s
                 return s, ''.join(log_history)
 
             log_history = []
