@@ -63,7 +63,7 @@ class FunctionCall(ModuleBase):
 
             with switch(judge_on_input=False).bind(input=ppl.input) as ppl.sw:
                 ppl.sw.case[(lambda isFC: not isFC),
-                            (lambda llm_output, input: package(True, llm_output[0]['content'], input[1]))]
+                            (lambda out, input: package(True, out[0]['content'], input[1]))]
                 ppl.sw.case[(lambda isFC: isFC), self._tools_manager]
 
         return ppl
