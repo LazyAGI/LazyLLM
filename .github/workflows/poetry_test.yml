@@ -2,9 +2,12 @@ name: Poetry Test
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'LazyLLM-Env'
   pull_request:
-    branches:
-      - main
+    paths:
+      - 'LazyLLM-Env'
 
 
 env:
