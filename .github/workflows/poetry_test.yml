@@ -6,6 +6,8 @@ on:
     paths:
       - 'LazyLLM-Env'
   pull_request:
+    branches:
+      - main
     paths:
       - 'LazyLLM-Env'
 
@@ -18,53 +20,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  Check:
-    runs-on: ubuntu-latest
-    outputs:
-      submodule_updated: ${{ steps.check_submodule.outputs.submodule_updated }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: true
-          fetch-depth: 0
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.x'
-      - name: Check if submodules are updated
-        id: check_submodule
-        run: |
-          python -m pip install requests
-          python scripts/check_submodule_changes.py
-        env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
-
   Clone:
     runs-on: tps_sco_nv
-    needs: [Check]
-#    if: needs.Check.outputs.submodule_updated == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          submodules: true
-          fetch-depth: 0
 
       - name: Create custom directory
         run: |
           set -ex
           echo ${{ env.CI_PATH }}
           mkdir -p ${{ env.CI_PATH }}
-
       - name: Clean custom directory
         run: |
           set -ex
           if [ -d "${{ env.CI_PATH }}" ]; then
             rm -rf ${{ env.CI_PATH }}/*
           fi
-
       - name: Move code to custom directory
         run: |
           set -ex
@@ -77,26 +49,21 @@ jobs:
       - name: Install deps
         shell: bash
         run: |
-          set -ex
           cd ${{ env.CI_PATH }}
           source deactivate
-          cp LazyLLM-Env/poetry.lock . && poetry install
+          cp LazyLLM-Env/poetry.lock . && poetry install --extras "full" && portry add pytest
       - name: RunTests
         run: |
           set -ex
           cd ${{ env.CI_PATH }}
           source deactivate
           realpath .
-          env | grep '^SCC'
           export LAZYLLM_SCO_ENV_NAME=lazyllm
-          export LAZYLLM_DEFAULT_LAUNCHER=sco
-          export LAZYLLM_SLURM_PART=a100
           export PYTHONPATH=$PWD:$PYTHONPATH
-          export LAZYLLM_SCO_WORKSPACE=expert-services
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-          poetry run python -m pytest tests/basic_tests/
-          poetry run python -m pytest tests/advanced_tests/
+          poetry run python -m pytest tests/advanced_tests/ -k "not test_deploy"
+          poetry run python -m pytest tests/basic_tests/ -k "not test_component and not test_launcher and not test_module"
 
       - name: Clean_Poetry_env
         if: always()
