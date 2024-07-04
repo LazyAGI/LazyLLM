@@ -221,24 +221,24 @@ class ToolManager(ModuleBase):
         else:
             raise TypeError(f"The tools type should be List instead of {type(self._tools)}")
 
-    def forward(self, query: tuple, llm_output: tuple, verbose: bool = False):
-        isFinish = not llm_output[0]
-        history = query[1]
-        input = {"history": []}
-        if isinstance(query[0], str):
-            input['history'].append({'role': 'user', 'content': query[0]})
-        elif isinstance(query[0], dict):
-            if "history" in query[0]:
-                query[0].pop("history")
-            assert len(query[0]) <= 1, f"Unexpected keys found in input: {list(query.keys())}"
-            input['history'].append(list(query[0].values())[0])
+    def forward(self, llm_output: tuple, input: tuple, verbose: bool = False):
+        isFinish = False
+        history = input[1]
+        output = {"history": []}
+        if isinstance(input[0], str):
+            output['history'].append({'role': 'user', 'content': input[0]})
+        elif isinstance(input[0], dict):
+            if "history" in input[0]:
+                input[0].pop("history")
+            assert len(input[0]) <= 1, f"Unexpected keys found in input: {list(input.keys())}"
+            output['history'].append(list(input[0].values())[0])
         else:
-            raise TypeError(f"The input type only supports str and dict, not {type(query[0])}")
-        input['history'].append(llm_output[1])
+            raise TypeError(f"The input type only supports str and dict, not {type(input[0])}")
+        output['history'].append(llm_output[0])
 
-        tool_calls = llm_output[2]
+        tool_calls = llm_output[1]
         if not tool_calls or len(tool_calls) == 0:
-            input['input'] = f"{tool_calls} is not a valid parameter."
+            output['input'] = f"{tool_calls} is not a valid parameter."
         elif len(tool_calls) == 1:
             # single function call
             tool_call = tool_calls[0]
@@ -248,12 +248,12 @@ class ToolManager(ModuleBase):
                 tool_call.pop("tool_input")
                 tool_call['content'] = json.dumps(ret, ensure_ascii=False) if isinstance(ret, dict) else ret
                 tool_call['role'] = 'tool'
-                input['input'] = tool_call
+                output['input'] = tool_call
             else:
                 # Parameter error
-                input['input'] = f"{tool_call} parameters error."
+                output['input'] = f"{tool_call} parameters error."
         else:
             # multi function call
             raise TypeError("Multiple function calls are not yet implemented.")
 
-        return package(isFinish, input, history)
+        return package(isFinish, output, history)

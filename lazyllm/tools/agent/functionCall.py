@@ -50,25 +50,21 @@ class FunctionCall(ModuleBase):
                     if "index" in output_content['tool_calls'][0]:
                         output_content['tool_calls'][0].pop('index')
                 output_content['content'] = content
-            return package(isFC, output_content, tool_calls)
+            return package(isFC, (output_content, tool_calls))
 
         else:
-            return data
+            return package(data[0], (data[1:]))
 
     def _build_pipeline(self, llm):
         with pipeline() as ppl:
             ppl.m1 = lambda x, y: package(x, y, self._tools_manager.tools_description)
             ppl.m2 = llm.share(prompt=self._prompter, formatter=self._formatter)
             ppl.m3 = self._process_stream
-            # ppl.m4 = switch((lambda input, llm_output: not llm_output[0]),
-            #                 (lambda input, llm_output: package(not llm_output[0], llm_output[1]['content'], input[1])),
-            #                 (lambda input, llm_output: llm_output[0]),
-            #                 self._tools_manager) | bind(ppl.input, ppl.m3)
-            with switch().bind(ppl.input, ppl.m3) as ppl.sw:
-                ppl.sw.case[(lambda input, llm_output: not llm_output[0]),
-                            (lambda input, llm_output: package(not llm_output[0],
-                                                               llm_output[1]['content'], input[1]))]
-                ppl.sw.case[(lambda input, llm_output: llm_output[0]), self._tools_manager]
+
+            with switch(judge_on_input=False).bind(input=ppl.input) as ppl.sw:
+                ppl.sw.case[(lambda isFC: not isFC),
+                            (lambda llm_output, input: package(True, llm_output[0]['content'], input[1]))]
+                ppl.sw.case[(lambda isFC: isFC), self._tools_manager]
 
         return ppl
 
