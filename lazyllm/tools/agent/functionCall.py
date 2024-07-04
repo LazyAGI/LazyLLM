@@ -50,10 +50,10 @@ class FunctionCall(ModuleBase):
                     if "index" in output_content['tool_calls'][0]:
                         output_content['tool_calls'][0].pop('index')
                 output_content['content'] = content
-            return package(isFC, (output_content, tool_calls))
+            return (isFC, output_content, tool_calls)
 
         else:
-            return package(data[0], (data[1:]))
+            return data
 
     def _build_pipeline(self, llm):
         with pipeline() as ppl:

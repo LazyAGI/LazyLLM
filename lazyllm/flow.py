@@ -357,7 +357,7 @@ class Switch(LazyLLMFlowsBase):
     def _run(self, input):
         exp = input
         if not self._judge_on_input:
-            assert isinstance(input.input, package) and len(input.input) >= 2
+            assert isinstance(input.input, tuple) and len(input.input) >= 2
             exp = input.input[0]
             input.input = input.input[1:]
         for idx, cond in enumerate(self.conds):
