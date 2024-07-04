@@ -340,6 +340,11 @@ Keyword Args:
 
 ''')
 
+add_example('finetune.LlamafactoryFinetune', '''\
+>>> from lazyllm import finetune
+>>> trainer = finetune.llamafactory('internlm2-chat-7b', 'path/to/target')
+''')
+
 # Finetune-Auto
 add_chinese_doc('auto.AutoFinetune', '''\
 此类是 ``LazyLLMFinetuneBase`` 的子类，可根据输入的参数自动选择合适的微调框架和参数，以对大语言模型进行微调。
