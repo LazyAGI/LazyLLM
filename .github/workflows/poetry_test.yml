@@ -8,8 +8,7 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'LazyLLM-Env'
+
 
 
 env:
