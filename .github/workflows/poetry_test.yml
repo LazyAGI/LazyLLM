@@ -50,7 +50,7 @@ jobs:
         run: |
           cd ${{ env.CI_PATH }}
           source deactivate
-          cp LazyLLM-Env/poetry.lock . && poetry install --extras "full" && portry add pytest
+          cp LazyLLM-Env/poetry.lock . && poetry install --extras "full" && poetry add pytest
       - name: RunTests
         run: |
           set -ex
