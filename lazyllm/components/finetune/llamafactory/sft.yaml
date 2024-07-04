@@ -46,7 +46,7 @@ export_hub_model_id: null
 print_param_status: false
 
 ### DataArguments
-template: intern2
+template: null
 dataset: identity,alpaca_en_demo
 dataset_dir: lazyllm_temp_dir
 split: train
