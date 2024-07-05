@@ -1,13 +1,16 @@
+import inspect
 import logging
 from json import JSONDecodeError, loads
 from os import getenv, getpid, listdir
 import os
 from os.path import join
 from sys import stderr
+from typing import Dict
 from zipfile import ZipFile
 import lazyllm
 import platform
 from .utils import check_path
+from .common import call_once, once_flag
 
 from loguru import logger
 
@@ -30,7 +33,7 @@ lazyllm.config.add("log_file_mode", str, "merge", "LOG_FILE_MODE")
 
 class _Log:
     _stderr_initialized = False
-    _logged_once_messages = set()
+    _once_flags: Dict = {}
 
     def __init__(self):
         self._name = lazyllm.config["log_name"]
@@ -57,9 +60,7 @@ class _Log:
                 ),
                 format=lazyllm.config["log_format"],
                 filter=lambda record: (
-                    record["extra"].get("name") == self._name
-                    and self.stderr
-                    and record["message"] not in self._logged_once_messages
+                    record["extra"].get("name") == self._name and self.stderr
                 ),
                 colorize=True,
             )
@@ -68,9 +69,16 @@ class _Log:
         self._logger = logger.bind(name=self._name, process=self._pid)
 
     def log_once(self, message: str, level: str = "warning") -> None:
+        frame = inspect.currentframe().f_back
+        context = (frame.f_code.co_filename, frame.f_code.co_name, frame.f_lineno)
+        if context not in self._once_flags:
+            self._once_flags[context] = once_flag()
         # opt depth for printing correct stack depth information
-        getattr(self.opt(depth=1, record=True).bind(name=self._name), level)(message)
-        self._logged_once_messages.add(message)
+        call_once(
+            self._once_flags[context],
+            getattr(self.opt(depth=1, record=True).bind(name=self._name), level),
+            message,
+        )
 
     def read(self, limit: int = 10, level: str = "error"):
         names = listdir(self._log_dir_path)
