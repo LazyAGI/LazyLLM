@@ -30,6 +30,7 @@ lazyllm.config.add("log_file_mode", str, "merge", "LOG_FILE_MODE")
 
 class _Log:
     _stderr_initialized = False
+    _logged_once_messages = set()
 
     def __init__(self):
         self._name = lazyllm.config["log_name"]
@@ -53,12 +54,18 @@ class _Log:
                 format=lazyllm.config["log_format"],
                 filter=lambda record: (
                     record["extra"].get("name") == self._name and self.stderr
+                    and record['message'] not in self._logged_once_messages
                 ),
                 colorize=True,
             )
             _Log._stderr_initialized = True
 
         self._logger = logger.bind(name=self._name, process=self._pid)
+
+    def log_once(self, message: str, level: str = 'warning') -> None:
+        # opt depth for printing correct stack depth information
+        getattr(self.opt(depth=1, record=True).bind(name=self._name), level)(message)
+        self._logged_once_messages.add(message)
 
     def read(self, limit: int = 10, level: str = "error"):
         names = listdir(self._log_dir_path)
