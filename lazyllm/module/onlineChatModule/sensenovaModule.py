@@ -1,7 +1,8 @@
 import json
 import os
+import re
 import requests
-from typing import Tuple, Dict, Any
+from typing import Tuple
 import uuid
 import lazyllm
 from .onlineChatModuleBase import OnlineChatModuleBase
@@ -53,37 +54,35 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'chat-completions')
 
-    def _stream_post_process(self, response: str) -> Dict[str, Any]:
-        try:
-            chunk = json.loads(response)["data"]
-            content = chunk['choices'][0]['delta']
-            role = chunk['choices'][0].pop("role")
-            chunk['choices'][0]['delta'] = {"content": content, "role": role}
-            if "tool_calls" in chunk["choices"][0]:
-                tool_calls = chunk["choices"][0].pop("tool_calls")
-                chunk["choices"][0]["delta"]["tool_calls"] = tool_calls
-            chunk["model"] = self._model_name
-            return chunk
-        except ValueError:
-            return chunk
-        except Exception as e:
-            lazyllm.LOG.error(e)
-            return ""
-
-    def _nonstream_post_process(self, response: str) -> Dict[str, Any]:
-        try:
-            resp = json.loads(response)['data']
-            content = resp['choices'][0].get('message', '')
-            msg = {"role": resp['choices'][0].pop("role"), "content": content}
-            resp["choices"][0]["message"] = msg
-            if "tool_calls" in resp["choices"][0]:
-                tool_calls = resp["choices"][0].pop("tool_calls")
-                resp["choices"][0]["message"]["tool_calls"] = tool_calls
-            resp["model"] = self._model_name
-            return resp
-        except Exception as e:
-            lazyllm.LOG.error(e)
-            return ""
+    def _str_to_json(self, response: str):
+        if isinstance(response, bytes):
+            pattern = re.compile(r"^data:\s*")
+            response = re.sub(pattern, "", response.decode('utf-8'))
+            try:
+                chunk = json.loads(response)["data"]
+                content = chunk['choices'][0]['delta']
+                role = chunk['choices'][0].pop("role")
+                chunk['choices'][0]['delta'] = {"content": content, "role": role}
+                if "tool_calls" in chunk["choices"][0]:
+                    tool_calls = chunk["choices"][0].pop("tool_calls")
+                    chunk["choices"][0]["delta"]["tool_calls"] = tool_calls
+                chunk["model"] = self._model_name
+                return chunk
+            except Exception:
+                return ""
+        else:
+            try:
+                resp = json.loads(response)['data']
+                content = resp['choices'][0].get('message', '')
+                msg = {"role": resp['choices'][0].pop("role"), "content": content}
+                resp["choices"][0]["message"] = msg
+                if "tool_calls" in resp["choices"][0]:
+                    tool_calls = resp["choices"][0].pop("tool_calls")
+                    resp["choices"][0]["message"]["tool_calls"] = tool_calls
+                resp["model"] = self._model_name
+                return resp
+            except Exception:
+                return ""
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:

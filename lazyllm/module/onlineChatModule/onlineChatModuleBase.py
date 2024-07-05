@@ -36,6 +36,7 @@ class OnlineChatModuleBase(ModuleBase):
         self.formatter()
         self.field_extractor()
         self._stream_end_token = "[DONE]"
+        self._model_optional_params = {}
 
     def prompt(self, prompt=None):
         if prompt is None:
@@ -79,54 +80,9 @@ class OnlineChatModuleBase(ModuleBase):
         if "choices" in data and isinstance(data["choices"], list):
             item = data['choices'][0]
             data = item.get("delta", {}) if "delta" in item else item.get("message", {})
-            return data if not key else data.get(key, "")
+            return data if not key or key == "." else data.get(key, "")
         else:
             raise ValueError(f"The response {data} does not contain a 'choices' field.")
-
-    def _synthetic_output(self, response: Dict[str, Any]):
-        if len(self._extractor_fields) == 1:
-            key = self._extractor_fields[0]
-            content = self._parse_output_by_key(key, response) if key else ""
-            return self._formatter.format(content) if content else ""
-        elif len(self._extractor_fields) > 1:
-            res = {}
-            for key in self._extractor_fields:
-                content = self._parse_output_by_key(key, response) if key else ""
-                res[key] = self._formatter.format(content) if content else ""
-            return res
-        else:
-            content = self._parse_output_by_key(".", response)
-            return self._formatter.format(content) if content else ""
-
-    def _stream_post_process(self, response: str) -> Dict[str, Any]:
-        try:
-            chunk = json.loads(response)
-            return chunk
-        except ValueError:
-            return response
-        except Exception as e:
-            lazyllm.LOG.error(e)
-            return ""
-
-    def _parse_response_stream(self, response: str) -> str:
-        pattern = re.compile(r"^data:\s*")
-        response = re.sub(pattern, "", response.decode('utf-8'))
-        chunk = self._stream_post_process(response)
-        if self._stream_end_token == chunk: return self._stream_end_token
-        return self._synthetic_output(chunk)
-
-    def _nonstream_post_process(self, response: str) -> Dict[str, Any]:
-        try:
-            chunk = json.loads(response)
-            return chunk
-        except Exception as e:
-            lazyllm.LOG.error(e)
-            return ""
-
-    def _parse_response_non_stream(self, response: str) -> Dict[str, Any]:
-        """Parse the response from the interface"""
-        cur_msg = self._nonstream_post_process(response)
-        return self._synthetic_output(cur_msg)
 
     def formatter(self, format: FormatterBase = None):
         if isinstance(format, FormatterBase):
@@ -150,6 +106,87 @@ class OnlineChatModuleBase(ModuleBase):
 
         return self
 
+    def _str_to_json(self, msg: str):
+        if isinstance(msg, bytes):
+            pattern = re.compile(r"^data:\s*")
+            msg = re.sub(pattern, "", msg.decode('utf-8'))
+        try:
+            chunk = json.loads(msg)
+            return chunk
+        except Exception:
+            return ""
+
+    def _extract_specified_key_fields(self, response: Dict[str, Any]):
+        if len(self._extractor_fields) == 1:
+            key = self._extractor_fields[0]
+            return self._parse_output_by_key(key, response) if key else ""
+        elif len(self._extractor_fields) > 1:
+            res = {}
+            for key in self._extractor_fields:
+                res[key] = self._parse_output_by_key(key, response) if key else ""
+            return res
+        else:
+            return self._parse_output_by_key(".", response)
+
+    def _merge_stream_result(self,
+                             data: Union[str, List[Dict[str, Any]], Dict[str, Any]],
+                             ret: Union[str, List[Dict[str, Any]], Dict[str, Any]]):
+        if isinstance(ret, str) and isinstance(data, str):
+            if ret != data:
+                if len(self._model_optional_params) > 0 and \
+                        not self._model_optional_params.get('incremental_output', True):
+                    return ret
+                else:
+                    return data + ret
+            else:
+                return ret
+        elif isinstance(ret, list) and isinstance(data, list):
+            assert len(data) == len(ret), f"The amount of data: ({ret}) to be merged and \
+                    the amount of stored data: ({data}) are different."
+            for idx, item in enumerate(ret):
+                data[idx] = self._merge_stream_result(data[idx], ret[idx])
+            return data
+        elif isinstance(ret, dict) and isinstance(data, dict):
+            for k, v in ret.items():
+                if k not in data:
+                    data[k] = v
+                else:
+                    data[k] = self._merge_stream_result(data[k], v)
+            return data
+        elif isinstance(ret, int) and isinstance(data, int):
+            return ret
+        else:
+            raise TypeError(f"The types of data {type(data)} and ret {type(ret)} are inconsistent.")
+
+    def _stream_to_extract(self, response):
+        data = {}
+        content = ""
+        for line in response.iter_lines():
+            if len(line) == 0:
+                continue
+
+            msg_json = self._str_to_json(line)
+            if not msg_json:
+                continue
+            extract_keys = self._extract_specified_key_fields(msg_json)
+            if isinstance(extract_keys, str):
+                content += extract_keys
+            elif isinstance(extract_keys, dict):
+                data = self._merge_stream_result(data, extract_keys)
+            else:
+                raise TypeError(f"{type(extract_keys)} type merging is not supported yet.")
+
+        return content if content else data
+
+    def _nonstream_to_extract(self, response):
+        msg_json = self._str_to_json(response.text)
+        if not msg_json:
+            return ""
+        extract_keys = self._extract_specified_key_fields(msg_json)
+
+        return extract_keys
+
+
     def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, **kw):  # noqa C901
         """LLM inference interface"""
         params = {"input": __input, "history": llm_chat_history}
@@ -163,31 +200,22 @@ class OnlineChatModuleBase(ModuleBase):
         if len(kw) > 0:
             data.update(kw)
 
-        def _impl_stream():
-            """process http stream request"""
-            with requests.post(self._url, json=data, headers=self._headers, stream=True) as r:
-                if r.status_code != 200:  # request error
+        if len(self._model_optional_params) > 0:
+            data.update(self._model_optional_params)
+
+        with requests.post(self._url, json=data, headers=self._headers, stream=self._stream) as r:
+            if r.status_code != 200:  # request error
+                if self._stream:
                     raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
-
-                for line in r.iter_lines():
-                    if len(line) == 0:
-                        continue
-
-                    chunk = self._parse_response_stream(line)
-                    if self._stream_end_token == chunk: return
-                    yield chunk
-
-        def _impl_non_stream():
-            """process http non-stream request"""
-            with requests.post(self._url, json=data, headers=self._headers, stream=False) as r:
-                if r.status_code != 200:  # request error
+                else:
                     raise requests.RequestException(r.text)
-                return self._parse_response_non_stream(r.text)
 
-        if self._stream:
-            return _impl_stream()
-        else:
-            return _impl_non_stream()
+            if self._stream:
+                resp = self._stream_to_extract(r)
+            else:
+                resp = self._nonstream_to_extract(r)
+
+            return self._formatter.format(resp) if resp else ""
 
     def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None):
         self.template_message = template_message
