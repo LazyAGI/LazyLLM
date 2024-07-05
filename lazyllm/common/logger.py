@@ -35,7 +35,9 @@ class _Log:
     def __init__(self):
         self._name = lazyllm.config["log_name"]
         self._pid = getpid()
-        self._log_dir_path = check_path(lazyllm.config["log_dir"], exist=False, file=False)
+        self._log_dir_path = check_path(
+            lazyllm.config["log_dir"], exist=False, file=False
+        )
 
         if getenv("LOGURU_AUTOINIT", "true").lower() in ("1", "true") and stderr:
             try:
@@ -48,13 +50,16 @@ class _Log:
             self.stderr: bool = bool(stderr)
             self._stderr_i = logger.add(
                 stderr,
-                level=lazyllm.config["log_level"]
-                if not lazyllm.config["debug"]
-                else "DEBUG",
+                level=(
+                    lazyllm.config["log_level"]
+                    if not lazyllm.config["debug"]
+                    else "DEBUG"
+                ),
                 format=lazyllm.config["log_format"],
                 filter=lambda record: (
-                    record["extra"].get("name") == self._name and self.stderr
-                    and record['message'] not in self._logged_once_messages
+                    record["extra"].get("name") == self._name
+                    and self.stderr
+                    and record["message"] not in self._logged_once_messages
                 ),
                 colorize=True,
             )
@@ -62,7 +67,7 @@ class _Log:
 
         self._logger = logger.bind(name=self._name, process=self._pid)
 
-    def log_once(self, message: str, level: str = 'warning') -> None:
+    def log_once(self, message: str, level: str = "warning") -> None:
         # opt depth for printing correct stack depth information
         getattr(self.opt(depth=1, record=True).bind(name=self._name), level)(message)
         self._logged_once_messages.add(message)
@@ -104,6 +109,7 @@ class _Log:
 
     def close(self):
         logger.remove()
+
 
 LOG = _Log()
 
