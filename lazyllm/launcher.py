@@ -373,7 +373,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def __init__(self, cmd, launcher, *, sync=True):
             super(__class__, self).__init__(cmd, launcher, sync=sync)
             # SCO job name must start with a letter
-            self.name = 's_flag' + self._generate_name()
+            self.name = 's_flag_'+ launcher._flag_name + self._generate_name()
             self.workspace_name = launcher.workspace_name
             self.torchrun = launcher.torchrun
             self.output_hooks = [self.output_hook]
@@ -476,7 +476,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
             return Status.Failed
 
     def __init__(self, partition=None, workspace_name=lazyllm.config['sco.workspace'],
-                 framework='pt', nnode=1, nproc=1, ngpus=1, torchrun=False, sync=True, **kwargs):
+                 framework='pt', nnode=1, nproc=1, ngpus=1, torchrun=False, sync=True, flag_name='', **kwargs):
         assert nnode >= 1, "Use at least one node."
         assert nproc >= 1, "Start at least one process."
         assert ngpus >= 1, "Use at least one GPU."
@@ -489,6 +489,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         self.ngpus = ngpus
         self.torchrun = torchrun
         self.sync = sync
+        self._flag_name = flag_name
         super(__class__, self).__init__()
 
     def makejob(self, cmd):

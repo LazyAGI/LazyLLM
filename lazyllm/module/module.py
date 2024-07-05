@@ -364,7 +364,7 @@ class _ServerModuleImpl(ModuleBase):
         super().__init__()
         self._m = ActionModule(m) if isinstance(m, FlowBase) else m
         self._pre_func, self._post_func = pre, post
-        self._launcher = launcher if launcher else launchers.remote(sync=False)
+        self._launcher = launcher if launcher else launchers.remote(sync=False, flag_name=m.__name__)
         self._set_url_f = father._set_url if father else None
 
     @lazyllm.once_wrapper
