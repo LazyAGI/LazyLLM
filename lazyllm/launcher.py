@@ -373,7 +373,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def __init__(self, cmd, launcher, *, sync=True):
             super(__class__, self).__init__(cmd, launcher, sync=sync)
             # SCO job name must start with a letter
-            self.name = 's_flag' + self._generate_name()
+            self.name = 's_flag_' + self._generate_name()
             self.workspace_name = launcher.workspace_name
             self.torchrun = launcher.torchrun
             self.output_hooks = [self.output_hook]
@@ -418,14 +418,18 @@ class ScoLauncher(LazyLLMLaunchersBase):
             return f'{sco_cmd} bash -c \'{precmd} {torchrun_cmd if self.torchrun else ""} {cmd}\''
 
         def _get_jobid(self):
-            time.sleep(0.5)  # Wait for cmd to be stably submitted to sco
-            id_str = subprocess.check_output([
-                'squeue', f'--workspace-id={self.workspace_name}',
-                '-o', 'jobname,jobid']).decode("utf-8")
-            pattern = re.compile(rf"{re.escape(self.name)}\s+(\S+)")
-            match = pattern.search(id_str)
-            if match:
-                self.jobid = match.group(1).strip()
+            for i in range(5):
+                time.sleep(0.5)  # Wait for cmd to be stably submitted to sco
+                id_str = subprocess.check_output([
+                    'squeue', f'--workspace-id={self.workspace_name}',
+                    '-o', 'jobname,jobid']).decode("utf-8")
+                pattern = re.compile(rf"{re.escape(self.name)}\s+(\S+)")
+                match = pattern.search(id_str)
+                if match:
+                    self.jobid = match.group(1).strip()
+                    break
+                else:
+                    LOG.warning(f'Failed to capture job_id, retry the {i}-th time.')
 
         def get_jobip(self):
             if self.ip:
