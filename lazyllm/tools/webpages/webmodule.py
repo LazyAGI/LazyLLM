@@ -209,13 +209,11 @@ class WebModule(ModuleBase):
                                 s = delta["content"]
                             else:
                                 s = ""
-                    except ValueError:
+                    except (ValueError, KeyError, TypeError):
                         s = s
-                    except KeyError:
-                        s = s
-                    except TypeError:
-                        s = s
-                return s, ''.join(log_history)
+                    except Exception as e:
+                        LOG.error(f"Uncaptured error `{e}` when parsing `{s}`, please contact us if you see this.")
+                return s, "".join(log_history)
 
             log_history = []
             if isinstance(result, (LazyLlmResponse, str, dict)):
