@@ -37,6 +37,13 @@ class TestDeploy(object):
         m.eval()
         assert len(m.eval_result) == len(self.inputs)
 
+    def test_deploy_auto_without_calling_method(self):
+        m = lazyllm.TrainableModule(self.model_path, '')
+        m.evalset(self.inputs)
+        m.update_server()
+        m.eval()
+        assert len(m.eval_result) == len(self.inputs)
+
     def test_embedding(self):
         m = lazyllm.TrainableModule('bge-large-zh-v1.5').deploy_method(deploy.AutoDeploy)
         m.update_server()

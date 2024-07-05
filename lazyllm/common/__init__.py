@@ -2,7 +2,7 @@ from .registry import LazyLLMRegisterMetaClass, _get_base_cls_from_registry, Reg
 from .common import package, kwargs, LazyLLMCMD, timeout, final, ReadOnlyWrapper
 from .common import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9
 from .common import (Thread, FlatList, Identity, ResultCollector, ArgsDict,
-                     LazyLlmResponse, LazyLlmRequest, ReqResHelper)
+                     LazyLlmResponse, LazyLlmRequest, ReqResHelper, CaseInsensitiveDict)
 from .common import ReprRule, make_repr, modify_repr
 from .common import once_flag, call_once, once_wrapper
 from .option import Option, OptionIter
@@ -22,6 +22,7 @@ __all__ = [
     'Identity',
     'ResultCollector',
     'ArgsDict',
+    'CaseInsensitiveDict',
     'timeout',
     'final',
 
