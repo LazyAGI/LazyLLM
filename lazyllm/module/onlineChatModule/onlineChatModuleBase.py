@@ -1,3 +1,4 @@
+from itertools import groupby
 import json
 import os
 import requests
@@ -128,64 +129,38 @@ class OnlineChatModuleBase(ModuleBase):
         else:
             return self._parse_output_by_key(".", response)
 
-    def _merge_stream_result(self,
-                             data: Union[str, List[Dict[str, Any]], Dict[str, Any]],
-                             ret: Union[str, List[Dict[str, Any]], Dict[str, Any]]):
-        if isinstance(ret, str) and isinstance(data, str):
-            if ret != data:
-                if len(self._model_optional_params) > 0 and \
-                        not self._model_optional_params.get('incremental_output', True):
-                    return ret
-                else:
-                    return data + ret
-            else:
-                return ret
-        elif isinstance(ret, list) and isinstance(data, list):
-            assert len(data) == len(ret), f"The amount of data: ({ret}) to be merged and \
-                    the amount of stored data: ({data}) are different."
-            for idx, item in enumerate(ret):
-                data[idx] = self._merge_stream_result(data[idx], ret[idx])
-            return data
-        elif isinstance(ret, dict) and isinstance(data, dict):
-            for k, v in ret.items():
-                if k not in data:
-                    data[k] = v
-                else:
-                    data[k] = self._merge_stream_result(data[k], v)
-            return data
-        elif isinstance(ret, int) and isinstance(data, int):
-            return ret
+    def _merge_stream_result(self, src: List[str | int | list | dict]):
+        assert len(src) > 0 and all(isinstance(ele, type(src[-1])) or ele is None for ele in src), \
+               f"The elements in the list: {src} are of inconsistent types"
+        if len(src) == 1:
+            return src[0]
+        if isinstance(src[-1], str) or src[-1] is None:
+            return src[-1] if all(ele == src[-1] or ele is None for ele in src) or \
+                (len(self._model_optional_params) > 0
+                 and not self._model_optional_params.get("incremental_output", True)) else "".join(src)
+        elif isinstance(src[-1], list):
+            assert all(len(src[-1]) == len(ele) for ele in src), f"The lists of elements: {src} have different lengths."
+            ret = [self._merge_stream_result([ele[idx] for ele in src]) for idx in range(len(src[-1]))]
+            return ret[0] if isinstance(ret[0], list) else ret
+        elif isinstance(src[-1], dict):
+            if "index" in src[-1]:  # If there are multiple index values that need to be appended.
+                data_sorted = sorted(src, key=lambda x: x['index'])
+                grouped_data = [list(g) for k, g in groupby(data_sorted, key=lambda x: x['index'])]
+                if len(grouped_data) > 1:
+                    return [self._merge_stream_result(src) for src in grouped_data]
+            return {k: "tool_calls" if k == "finish_reason" and "tool_calls" in [d[k] for d in src if k in d]
+                    else self._merge_stream_result([d[k] for d in src if k in d]) for k in set().union(*src)}
+        elif isinstance(src[-1], int):
+            return src[-1] if all(ele == src[-1] for ele in src) else src[-1]
         else:
-            raise TypeError(f"The types of data {type(data)} and ret {type(ret)} are inconsistent.")
+            raise TypeError(f"Invalid type: {src[-1]}- {type(src[-1])} found")
 
-    def _stream_to_extract(self, response):
-        data = {}
-        content = ""
-        for line in response.iter_lines():
-            if len(line) == 0:
-                continue
-
-            msg_json = self._str_to_json(line)
-            if not msg_json:
-                continue
-            extract_keys = self._extract_specified_key_fields(msg_json)
-            if isinstance(extract_keys, str):
-                content += extract_keys
-            elif isinstance(extract_keys, dict):
-                data = self._merge_stream_result(data, extract_keys)
-            else:
-                raise TypeError(f"{type(extract_keys)} type merging is not supported yet.")
-
-        return content if content else data
-
-    def _nonstream_to_extract(self, response):
-        msg_json = self._str_to_json(response.text)
-        if not msg_json:
-            return ""
-        extract_keys = self._extract_specified_key_fields(msg_json)
-
-        return extract_keys
-
+    def _post_action(self, response):
+        resp = [line for line in response.iter_lines() if len(line)] if self._stream else [response.text]
+        msg_json = list(filter(lambda x: x, [self._str_to_json(line) for line in resp]))
+        out = self._merge_stream_result(msg_json)
+        extractor = self._extract_specified_key_fields(out)
+        return extractor
 
     def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, **kw):  # noqa C901
         """LLM inference interface"""
@@ -205,15 +180,10 @@ class OnlineChatModuleBase(ModuleBase):
 
         with requests.post(self._url, json=data, headers=self._headers, stream=self._stream) as r:
             if r.status_code != 200:  # request error
-                if self._stream:
-                    raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
-                else:
-                    raise requests.RequestException(r.text)
+                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
+                    if self._stream else requests.RequestException(r.text)
 
-            if self._stream:
-                resp = self._stream_to_extract(r)
-            else:
-                resp = self._nonstream_to_extract(r)
+            resp = self._post_action(r)
 
             return self._formatter.format(resp) if resp else ""
 
