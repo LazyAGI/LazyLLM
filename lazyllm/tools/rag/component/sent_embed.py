@@ -14,8 +14,6 @@ class LLamaIndexEmbeddingWrapper(BaseEmbedding):
 
     def _query_embedding(self, query):
         embeddings = self.model(query)
-        if isinstance(embeddings, lazyllm.LazyLlmResponse):
-            embeddings = embeddings.messages
 
         if isinstance(embeddings, str):
             embeddings = json.loads(embeddings)

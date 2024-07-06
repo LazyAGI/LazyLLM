@@ -2,7 +2,7 @@ import threading
 import copy
 from typing import Any, Tuple
 from pydantic import BaseModel as struct
-from .common import package, kwargs
+from .common import package, kwargs, deprecated
 
 class Globals(object):
     __global_attrs__ = dict(chat_history=[], global_parameters={}, trace=[], err=None)
@@ -72,6 +72,7 @@ class LazyLlmRequest(struct):
         else: raise TypeError(f'invalid flag type {type(flag)} given')
 
 
+@deprecated
 class LazyLlmResponse(struct):
     messages: Any = None
     trace: str = ''
@@ -95,15 +96,10 @@ class ReqResHelper(object):
                     self.parameters = input.global_parameters
                 kw.update(input.kwargs)
                 input = input.input
-            elif isinstance(input, LazyLlmResponse):
-                assert len(kw) == 0
-                if input.trace: self.trace += input.trace
-                input = input.messages
             elif isinstance(input, (tuple, list)):
                 for i in input:
-                    if isinstance(i, LazyLlmResponse): self.trace += i.trace
-                    else: assert not isinstance(i, LazyLlmRequest), 'Cannot process list of Requests'
-                input = type(input)(i.messages if isinstance(i, LazyLlmResponse) else i for i in input)
+                    assert not isinstance(i, LazyLlmRequest), 'Cannot process list of Requests'
+                input = type(input)(i for i in input)
         else:
             # bind args for flow
             _is_req = [isinstance(a, LazyLlmRequest) for a in args]
@@ -123,11 +119,3 @@ class ReqResHelper(object):
             kw = dict(input)
             input = tuple()
         return LazyLlmRequest(input=input, kwargs=kw, global_parameters=self.parameters)
-
-    def make_response(self, res, *, force=False):
-        if isinstance(res, LazyLlmResponse):
-            res.trace = self.trace + res.trace
-            return res
-        else:
-            res = res.input if isinstance(res, LazyLlmRequest) else res
-            return LazyLlmResponse(messages=res, trace=self.trace) if self.trace or force else res

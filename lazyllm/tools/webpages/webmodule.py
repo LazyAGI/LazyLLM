@@ -190,12 +190,10 @@ class WebModule(ModuleBase):
             result = self.m(LazyLlmRequest(input=input, global_parameters=kwargs))
 
             def get_log_and_message(s):
-                if isinstance(s, LazyLlmResponse):
-                    if not self.trace_mode == WebModule.Mode.Appendix:
-                        log_history.clear()
-                    if s.err[0] != 0: log_history.append(s.err[1])
-                    if s.trace: log_history.append(s.trace)
-                    s = s.messages
+                if not self.trace_mode == WebModule.Mode.Appendix:
+                    log_history.clear()
+                if globals['err']: log_history.append(globals['err'][1])
+                if globals['trace']: log_history.extend(globals['trace'])
 
                 if isinstance(s, dict):
                     s = s.get("message", {}).get("content", "")
@@ -216,12 +214,13 @@ class WebModule(ModuleBase):
                 return s, ''.join(log_history)
 
             log_history = []
-            if isinstance(result, (LazyLlmResponse, str, dict)):
+            if isinstance(result, (str, dict)):
                 result, log = get_log_and_message(result)
 
             if isinstance(result, str):
                 chat_history[-1][1] = result
             elif isinstance(result, GeneratorType):
+                # TODO(wzh/server): refactor this code
                 chat_history[-1][1] = ''
                 for s in result:
                     if isinstance(s, (LazyLlmResponse, str)):
@@ -231,7 +230,7 @@ class WebModule(ModuleBase):
             elif isinstance(result, dict):
                 chat_history[-1][1] = result.get("message", "")
             else:
-                raise TypeError(f'function result should only be LazyLlmResponse or str, but got {type(result)}')
+                raise TypeError(f'function result should only be str, but got {type(result)}')
         except requests.RequestException as e:
             chat_history = None
             log = str(e)

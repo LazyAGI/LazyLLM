@@ -9,7 +9,7 @@ import functools
 from concurrent.futures import ThreadPoolExecutor
 
 import lazyllm
-from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, launchers, LOG
+from lazyllm import FlatList, LazyLlmRequest, Option, launchers, LOG
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
@@ -87,8 +87,7 @@ class ModuleBase(object):
                 args = args[0].input if isinstance(args[0].input, lazyllm.package) else (args[0].input,)
         r = self.forward(*args, **kw)
         if self._return_trace:
-            if isinstance(r, LazyLlmResponse): r.trace += f'{str(r)}\n'
-            else: r = LazyLlmResponse(messages=r, trace=f'{str(r)}\n')
+            globals['trace'].append(str(r))
         return r
 
     # interfaces
@@ -269,13 +268,6 @@ class UrlModule(ModuleBase, UrlTemplate):
             if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
             data = input
 
-        def _callback(text):
-            if isinstance(text, LazyLlmResponse):
-                text = self._prompt.get_response(self._extract_result_func(text.messages))
-            else:
-                text = self._prompt.get_response(self._extract_result_func(text))
-            return text
-
         # context bug with httpx, so we use requests
         def _impl():
             with requests.post(self._url, json=data, stream=True) as r:
@@ -283,10 +275,9 @@ class UrlModule(ModuleBase, UrlTemplate):
                     for chunk in r.iter_content(None):
                         try:
                             chunk = pickle.loads(codecs.decode(chunk, "base64"))
-                            assert isinstance(chunk, LazyLlmResponse)
                         except Exception:
                             chunk = chunk.decode('utf-8')
-                        yield (_callback(chunk))
+                        yield self._prompt.get_response(self._extract_result_func(chunk))
                 else:
                     raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         if self._stream:

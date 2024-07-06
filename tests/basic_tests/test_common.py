@@ -57,25 +57,6 @@ class TestCommon(object):
         with pytest.raises(Exception):
             ts[1].get_result()
 
-    def test_common_llmreqreshelper(self):
-
-        h = lazyllm.ReqResHelper()
-        assert h.make_request(1, a=3, b=2)
-        assert h.make_request(1, 2, a=3)
-
-        r1 = lazyllm.LazyLlmResponse(messages=1, trace='t1')
-        r2 = lazyllm.LazyLlmResponse(messages=2, trace='t2')
-        assert h.make_request(r1)
-        assert h.make_request(r2)
-        assert h.trace == 't1t2'
-
-        assert h.make_response('abc')
-        assert h.trace == 't1t2'
-
-        r3 = lazyllm.LazyLlmResponse(messages=3, trace='t3')
-        assert h.make_response(r3)
-        assert h.trace == 't1t2'
-
     def test_common_makerepr(self):
 
         r1 = lazyllm.make_repr('a', 1)

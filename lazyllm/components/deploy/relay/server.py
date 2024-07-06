@@ -7,7 +7,7 @@ import sys
 import inspect
 import traceback
 from types import GeneratorType
-from lazyllm import LazyLlmResponse, ReqResHelper, LazyLlmRequest
+from lazyllm import ReqResHelper, LazyLlmRequest
 from lazyllm import FastapiApp
 import pickle
 import codecs
@@ -75,8 +75,6 @@ async def generate(request: Request): # noqa C901
         output = h.make_request(output).input
 
         def impl(o):
-            o = h.make_response(o, force=True)
-            assert isinstance(o, LazyLlmResponse), 'output of func must be LazyLlmResponse'
             return codecs.encode(pickle.dumps(o), 'base64')
 
         if isinstance(output, GeneratorType):

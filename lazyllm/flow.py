@@ -1,7 +1,7 @@
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, bind, root
 from lazyllm import Thread, ReadOnlyWrapper, LOG
-from lazyllm import LazyLlmRequest, LazyLlmResponse, ReqResHelper
+from lazyllm import LazyLlmRequest, ReqResHelper
 from .common.common import _MetaBind
 from functools import partial
 from enum import Enum
@@ -135,7 +135,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         if self.post_action is not None: self.invoke(self.post_action, output)
         if self._return_input: output = package(req.input, output.input)
         if self._sync: self.wait()
-        return self._post_process(helper.make_response(output))
+        return self._post_process(output)
 
     def _post_process(self, output):
         return output
@@ -227,7 +227,7 @@ class Pipeline(LazyLLMFlowsBase):
                 output = helper.make_request(self.invoke(it, output, bind_args_source=bind_args_source))
                 bind_args_source['args'][id(it)] = output.input if output.input else output.kwargs
             if callable(self._stop_condition) and self.invoke(self._stop_condition, output): break
-        return helper.make_response(output)
+        return output
 
 
 _barr = threading.local()
@@ -297,22 +297,18 @@ class Parallel(LazyLLMFlowsBase):
         return r
 
     def _post_process(self, output):
-        o = output.messages if isinstance(output, LazyLlmResponse) else output
         if self._post_process_type == Parallel.PostProcessType.DICT:
             assert self._item_names, 'Item name should be set when you want to return dict.'
-            o = {k: v for k, v in zip(self._item_names, o)}
+            output = {k: v for k, v in zip(self._item_names, output)}
         elif self._post_process_type == Parallel.PostProcessType.TUPLE:
-            o = tuple(o)
+            output = tuple(output)
         elif self._post_process_type == Parallel.PostProcessType.LIST:
-            o = list(o)
+            output = list(output)
         elif self._post_process_type == Parallel.PostProcessType.SUM:
-            o = sum(o, type(o[0])())
+            output = sum(output, type(output[0])())
         elif self._post_process_type == Parallel.PostProcessType.JOIN:
-            o = self._post_process_args.join([str(i) for i in o])
-        if isinstance(output, LazyLlmResponse):
-            output.messages = o
-            return output
-        return o
+            output = self._post_process_args.join([str(i) for i in output])
+        return output
 
 
 #                  /> in1 -> module11 -> ... -> module1N -> out1 \
