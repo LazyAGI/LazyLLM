@@ -20,15 +20,15 @@ if "SLURM_JOB_ID" in os.environ:
     rank = int(os.environ['SLURM_PROCID'])
     local_rank = int(os.environ['SLURM_LOCALID'])
 
-    os.environ['WORLD_SIZE'] = str(world_size)
-    os.environ['RANK'] = str(rank)
-    os.environ['LOCAL_RANK'] = str(local_rank)
-
     print("comm: ", world_size, rank, local_rank)
 else:
     world_size = int(os.getenv("WORLD_SIZE", "1"))
     local_rank = int(os.getenv("LOCAL_RANK", "0"))
     rank = int(os.getenv("RANK", "0"))
+
+os.environ['WORLD_SIZE'] = str(world_size)
+os.environ['RANK'] = str(rank)
+os.environ['LOCAL_RANK'] = str(local_rank)
 
 def proccess(data_path, prompter):
     processed_data = []

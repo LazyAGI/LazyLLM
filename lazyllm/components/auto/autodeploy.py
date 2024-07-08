@@ -24,6 +24,8 @@ class AutoDeploy(LazyLLMDeployBase):
         for c in candidates:
             if check_requirements(c.framework.lower()):
                 deploy_cls = getattr(deploy, c.framework.lower())
+            else:
+                continue
             if c.tgs <= 0: LOG.warning(f"Model {model_name} may out of memory under Framework {c.framework}")
             for key, value in deploy_cls.auto_map.items():
                 if value:
