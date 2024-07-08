@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from functools import partial
 import re
-from typing import Any, List, Tuple, Union
+from typing import Any, Callable, List, Tuple, Union
 
 import nltk
 import tiktoken
@@ -12,23 +12,23 @@ from .store import DocNode, MetadataMode
 from lazyllm import LOG
 
 
-def build_nodes_from_splits(text_splits: List[str], doc: DocNode) -> List[DocNode]:
+def build_nodes_from_splits(text_splits: List[str], doc: DocNode, parser_name: str) -> List[DocNode]:
     nodes: List[DocNode] = []
     for text_chunk in text_splits:
-        if isinstance(doc, DocNode):
-            node = DocNode(
-                text=text_chunk,
-                embedding=doc.embedding,
-                metadata=doc.metadata,
-                excluded_embed_metadata_keys=doc.excluded_embed_metadata_keys,
-                excluded_llm_metadata_keys=doc.excluded_llm_metadata_keys,
-                parent=doc,
-            )
-            nodes.append(node)
-        else:
-            raise ValueError(f"Unknown document type: {type(doc)}")
+        if not text_chunk:
+            continue
+        node = DocNode(
+            text=text_chunk,
+            ntype=parser_name,
+            embedding=doc.embedding,
+            metadata=doc.metadata,
+            excluded_embed_metadata_keys=doc.excluded_embed_metadata_keys,
+            excluded_llm_metadata_keys=doc.excluded_llm_metadata_keys,
+            parent=doc,
+        )
+        nodes.append(node)
 
-    doc.children = nodes
+    doc.children[parser_name] = nodes
     return nodes
 
 
@@ -42,27 +42,29 @@ class _Split:
 def split_text_keep_separator(text: str, separator: str) -> List[str]:
     """Split text and keep the separator."""
     parts = text.split(separator)
-    return [separator + s if i > 0 else s for i, s in enumerate(parts) if s]
+    result = [separator + s if i > 0 else s for i, s in enumerate(parts)]
+    return result[1:] if len(result) > 0 and not result[0] else result
 
 
 class NodeParser(ABC):
 
     def forward(
-        self, documents: Union[DocNode, List[DocNode]], **kwargs
+        self, documents: Union[DocNode, List[DocNode]],
+        parser_name: str, **kwargs
     ) -> List[DocNode]:
         documents = documents if isinstance(documents, list) else [documents]
         all_nodes: List[DocNode] = []
         for node in documents:
             splits = self.transform(node, **kwargs)
-            all_nodes.extend(build_nodes_from_splits(splits, node))
+            all_nodes.extend(build_nodes_from_splits(splits, node, parser_name))
         return all_nodes
 
     @abstractmethod
     def transform(self, document: DocNode, **kwargs) -> List[str]:
         raise NotImplementedError("Not implemented")
 
-    def __call__(self, nodes: List[DocNode], **kwargs: Any) -> List[DocNode]:
-        return self.forward(nodes, **kwargs)
+    def __call__(self, nodes: List[DocNode], parser_name: str, **kwargs: Any) -> List[DocNode]:
+        return self.forward(nodes, parser_name, **kwargs)
 
 
 class SentenceSplitter(NodeParser):
@@ -231,3 +233,22 @@ class SentenceSplitter(NodeParser):
                 break
 
         return splits, False
+
+
+class FuncNodeParser(NodeParser):
+    """Used for user defined function.
+
+    Wrapped the transform to: List[Docnode] -> List[Docnode]
+
+    This wrapper supports:
+        1. str -> list: transform=lambda t: t.split('\n')
+        2. str -> str: transform=lambda t: t[:3]
+    """
+
+    def __init__(self, func: Callable[[str], List[str]]):
+        self.func = func
+
+    def transform(self, document: DocNode, **kwargs) -> List[str]:
+        result = self.func(document.get_content(metadata_mode=MetadataMode.NONE))
+        text_splits = [result] if isinstance(result, str) else result
+        return text_splits
