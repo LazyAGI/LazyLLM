@@ -8,7 +8,7 @@ import inspect
 import traceback
 from types import GeneratorType
 from lazyllm import kwargs
-from lazyllm import FastapiApp, globals
+from lazyllm import FastapiApp, globals, encode_request, decode_request
 import pickle
 import codecs
 
@@ -49,22 +49,21 @@ FastapiApp.update()
 async def generate(request: Request): # noqa C901
     try:
         origin = input = (await request.json())
+        globals._update(decode_request(request.headers['Global-Parameters']))
         try:
-            input = pickle.loads(codecs.decode(input.encode('utf-8'), "base64"))
+            input = decode_request(input)
         except Exception: input = origin
         finally: origin = input
-
-        globals._update(pickle.loads(codecs.decode(request.headers['Global-Parameters'].encode('utf-8'), "base64")))
 
         if args.before_function:
             assert (callable(before_func)), 'before_func must be callable'
             r = inspect.getfullargspec(before_func)
-            if isinstance(input, kwargs) or (isinstance(input, dict) and
-                    set(r.args[1:] if r.args[0] == 'self' else r.args) == set(input.keys())):
+            if isinstance(input, kwargs) or (
+                    isinstance(input, dict) and set(r.args[1:] if r.args[0] == 'self' else r.args) == set(input.keys())):
                 input = before_func(**input)
             else:
                 input = before_func(input)
-        output = func(input, **kw)
+        output = func(**input) if isinstance(input, kwargs) else func(input)
 
         def impl(o):
             return codecs.encode(pickle.dumps(o), 'base64')
@@ -85,7 +84,7 @@ async def generate(request: Request): # noqa C901
                     after_func(output, **{r.kwonlyargs[0]: origin})
             elif len(new_args) == 2:
                 output = after_func(output, origin)
-        return Response(content=impl(output))
+        return Response(content=impl(output), headers=encode_request(globals._get_data(['trace', 'err'])))
     except requests.RequestException as e:
         return Response(content=f'{str(e)}', status_code=500)
     except Exception as e:

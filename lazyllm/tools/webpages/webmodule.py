@@ -222,7 +222,7 @@ class WebModule(ModuleBase):
                 # TODO(wzh/server): refactor this code
                 chat_history[-1][1] = ''
                 for s in result:
-                    if isinstance(s,  str):
+                    if isinstance(s, str):
                         s, log = get_log_and_message(s)
                     chat_history[-1][1] = (chat_history[-1][1] + s) if append_text else s
                     if stream_output: yield chat_history, log

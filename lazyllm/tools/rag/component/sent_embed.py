@@ -1,7 +1,6 @@
 import json
 from typing import Any, List
 
-import lazyllm
 from llama_index.core.embeddings import BaseEmbedding
 from lazyllm import LOG
 

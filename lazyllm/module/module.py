@@ -9,7 +9,7 @@ import functools
 from concurrent.futures import ThreadPoolExecutor
 
 import lazyllm
-from lazyllm import FlatList, Option, launchers, LOG, kwargs
+from lazyllm import FlatList, Option, launchers, LOG, kwargs, encode_request, decode_request
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
@@ -19,7 +19,6 @@ from ..client import get_redis, redis_client
 
 class ModuleBase(object):
     builder_keys = []  # keys in builder support Option by default
-    __enable_request__ = False
 
     def __new__(cls, *args, **kw):
         sig = inspect.signature(cls.__init__)
@@ -211,8 +210,6 @@ class UrlTemplate(object):
 
 
 class UrlModule(ModuleBase, UrlTemplate):
-    __enable_request__ = True
-
     def __init__(self, *, url='', stream=False, return_trace=False):
         super().__init__(return_trace=return_trace)
         self.__url = url
@@ -248,11 +245,11 @@ class UrlModule(ModuleBase, UrlTemplate):
         assert self._url is not None, f'Please start {self.__class__} first'
 
         __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
-        headers =  {'Content-Type': 'application/json'}
+        headers = {'Content-Type': 'application/json'}
 
         if isinstance(self, ServerModule):
-            headers['Global-Parameters'] = codecs.encode(pickle.dumps(globals._data), 'base64').decode('utf-8')
-            __input = codecs.encode(pickle.dumps(__input), 'base64').decode('utf-8')
+            headers['Global-Parameters'] = encode_request(globals._data)
+            __input = encode_request(__input)
         elif self.template_message:
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
             assert 'inputs' in self.keys_name_handle
@@ -271,7 +268,7 @@ class UrlModule(ModuleBase, UrlTemplate):
                         except Exception:
                             chunk = chunk.decode('utf-8')
                         yield self._prompt.get_response(self._extract_result_func(chunk))
-                    globals._update(r.headers.get('Global-Parameters', dict()))
+                    globals._update(decode_request(r.headers.get('Global-Parameters'), dict()))
                 else:
                     raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         if self._stream:
@@ -312,8 +309,6 @@ class UrlModule(ModuleBase, UrlTemplate):
 
 
 class ActionModule(ModuleBase):
-    __enable_request__ = True
-
     def __init__(self, *action, return_trace=False):
         super().__init__(return_trace=return_trace)
         if len(action) == 1 and isinstance(action, FlowBase): action = action[0]
@@ -444,7 +439,6 @@ class _TrainableModuleImpl(ModuleBase):
 
 class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
-    __enable_request__ = False
 
     def __init__(self, base_model: Option = '', target_path='', *, stream=False, return_trace=False):
         super().__init__(url=None, stream=stream, return_trace=return_trace)

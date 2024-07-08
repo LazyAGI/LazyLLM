@@ -224,8 +224,6 @@ def bm25(name, nodes, embed, func_kw, store):
     return BM25Retriever.from_defaults(nodes=nodes['nodes'], **func_kw)
 
 class Retriever(ModuleBase):
-    __enable_request__ = False
-
     def __init__(self, doc, parser, similarity='defatult', index='vector', **kw):
         super().__init__()
         self.doc = doc

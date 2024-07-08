@@ -28,8 +28,6 @@ def _is_function(f):
                           types.BuiltinMethodType, types.MethodType, types.LambdaType))
 
 class FlowBase(metaclass=_MetaBind):
-    __enable_request__ = True
-
     def __init__(self, *items, item_names=[], auto_capture=False) -> None:
         self._father = None
         self._items, self._item_names = [], []
@@ -225,7 +223,7 @@ def barrier(args): _barr.impl.wait(); return args
 def _hook(v): _barr.impl = v
 
 
-def _split_input(input: Union[Tuple, List], flag : Optional[Union[int, List]] = None):
+def _split_input(input: Union[Tuple, List], flag: Optional[Union[int, List]] = None):
     if flag is None or isinstance(flag, int):
         assert isinstance(input, (tuple, list)), (
             f'Only tuple and list input can be split automatically, your input is {input} <{type(input)}>')
@@ -236,7 +234,7 @@ def _split_input(input: Union[Tuple, List], flag : Optional[Union[int, List]] = 
         if isinstance(input, dict):
             return package(input[key] for key in flag)
         elif isinstance(input, (tuple, list)):
-            return _split_input(len(flag))    
+            return _split_input(len(flag))
     raise TypeError(f'invalid flag type {type(flag)} given')
 
 

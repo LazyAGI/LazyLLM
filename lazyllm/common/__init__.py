@@ -5,7 +5,7 @@ from .common import FlatList, Identity, ResultCollector, ArgsDict
 from .common import ReprRule, make_repr, modify_repr
 from .common import once_flag, call_once, once_wrapper
 from .option import Option, OptionIter
-from .globals import globals, LazyLlmResponse, LazyLlmRequest
+from .globals import globals, LazyLlmResponse, LazyLlmRequest, encode_request, decode_request
 from .threading import Thread
 from .multiprocessing import SpawnProcess, ForkProcess
 from .logger import LOG
@@ -39,6 +39,8 @@ __all__ = [
     'globals',
     'LazyLlmResponse',
     'LazyLlmRequest',
+    'encode_request',
+    'decode_request',
 
     # multiprocessing
     'ForkProcess',
