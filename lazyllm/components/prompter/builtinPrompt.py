@@ -101,6 +101,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             history.append({"role": "user", "content": input})
         elif isinstance(input, dict):
             history.append(input)
+        elif isinstance(input, list) and all(isinstance(ele, dict) for ele in input):
+            history.extend(input)
         else:
             raise TypeError("input must be a string or a dict")
 

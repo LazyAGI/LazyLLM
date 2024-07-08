@@ -254,6 +254,22 @@ class ToolManager(ModuleBase):
                 output['input'] = f"{tool_call} parameters error."
         else:
             # multi function call
-            raise TypeError("Multiple function calls are not yet implemented.")
+            tool_inputs = []
+            tools = []
+            for tool_call in tool_calls:
+                tool_inputs.append(tool_call['tool_input'])
+                tools.append(self._tool_call[tool_call['name']])
+            # Building a concurrent
+            tool_diverter = lazyllm.diverter(*tools)
+            rets = tool_diverter(*tool_inputs)
+            output['input'] = []
+            for idx, tool_call in enumerate(tool_calls):
+                ret = rets[idx]
+                tool_call.pop("tool_input")
+                tool_call['content'] = json.dumps(ret, ensure_ascii=False) if isinstance(ret, dict) else ret
+                tool_call['role'] = 'tool'
+                output['input'].append(tool_call)
+
+            # raise TypeError("Multiple function calls are not yet implemented.")
 
         return package(isFinish, output, history)
