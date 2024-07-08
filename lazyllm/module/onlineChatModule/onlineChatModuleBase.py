@@ -137,9 +137,11 @@ class OnlineChatModuleBase(ModuleBase):
         if len(src) == 1:
             return src[0]
         if all(isinstance(ele, str) or ele is None for ele in src):
-            return src[-1] if all(ele == src[-1] or ele is None for ele in src) or \
-                (len(self._model_optional_params) > 0
-                 and not self._model_optional_params.get("incremental_output", True)) else "".join(src)
+            if all(ele == src[-1] or ele is None for ele in src) or (self._model_optional_params
+               and not self._model_optional_params.get("incremental_output", True)):
+                return src[-1]
+            else:
+                return "".join(ele for ele in src if ele is not None)
         elif all(isinstance(ele, list) for ele in src):
             assert all(len(src[-1]) == len(ele) for ele in src), f"The lists of elements: {src} have different lengths."
             ret = [self._merge_stream_result([ele[idx] for ele in src]) for idx in range(len(src[-1]))]
