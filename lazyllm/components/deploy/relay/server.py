@@ -7,7 +7,7 @@ import sys
 import inspect
 import traceback
 from types import GeneratorType
-from lazyllm import ReqResHelper, LazyLlmRequest
+from lazyllm import kwargs
 from lazyllm import FastapiApp
 import pickle
 import codecs
@@ -49,30 +49,20 @@ FastapiApp.update()
 async def generate(request: Request): # noqa C901
     try:
         origin = input = (await request.json())
-        kw = dict()
         try:
             input = pickle.loads(codecs.decode(input.encode('utf-8'), "base64"))
-            assert isinstance(input, LazyLlmRequest)
-            kw = input.kwargs
         except Exception: input = origin
         finally: origin = input
 
-        h = ReqResHelper()
-        origin = input = h.make_request(input).input
         if args.before_function:
             assert (callable(before_func)), 'before_func must be callable'
             r = inspect.getfullargspec(before_func)
-            if isinstance(input, dict) and set(r.args[1:] if r.args[0] == 'self' else r.args) == set(input.keys()):
-                assert len(kw) == 0, f'Duplicate kwargs provide, keys are {kw.keys()}'
+            if isinstance(input, kwargs) or (isinstance(input, dict) and
+                    set(r.args[1:] if r.args[0] == 'self' else r.args) == set(input.keys())):
                 input = before_func(**input)
             else:
-                input = before_func(input, **kw)
-                kw = dict()
-        if hasattr(func, '__enable_request__'):  # flow or module
-            output = func(h.make_request(input, **kw))
-        else:
-            output = func(input, **kw)
-        output = h.make_request(output).input
+                input = before_func(input)
+        output = func(input, **kw)
 
         def impl(o):
             return codecs.encode(pickle.dumps(o), 'base64')

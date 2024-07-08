@@ -4,7 +4,6 @@ import hashlib
 import importlib
 
 from lazyllm import ModuleBase
-from lazyllm.common import LazyLlmRequest
 from lazyllm.thirdparty import llama_index
 import lazyllm
 
@@ -132,8 +131,6 @@ class DocImpl(ModuleBase):
             raise ValueError(f"Func '{signature}' donse not exist.")
 
     def _query_with_sig(self, string, signature, parser):
-        if type(string) is LazyLlmRequest:
-            string = string.input
         retriever = self.get_retriever(parser, signature)
         if not isinstance(string, llama_index.core.schema.QueryBundle):
             string = llama_index.core.schema.QueryBundle(string)

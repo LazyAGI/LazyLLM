@@ -4,7 +4,7 @@ import traceback
 import multiprocessing
 from ...module.module import ModuleBase
 import gradio as gr
-from lazyllm import LazyLlmResponse, LazyLlmRequest, LOG
+from lazyllm import LazyLlmResponse, LOG
 from lazyllm.flow import Pipeline
 import lazyllm
 from types import GeneratorType
@@ -178,16 +178,15 @@ class WebModule(ModuleBase):
             input = chat_history[-1][0]
             history = chat_history[:-1] if use_context and len(chat_history) > 1 else None
 
-            kwargs = dict()
             for k, v in zip(self.ckeys, args):
-                if k[0] not in kwargs: kwargs[k[0]] = dict()
-                kwargs[k[0]][k[1]] = v
+                if k[0] not in globals['global_parameters']: globals['global_parameters'][k[0]] = dict()
+                globals['global_parameters'][k[0]][k[1]] = v
 
             if use_context:
                 for h in self.history:
-                    if h not in kwargs: kwargs[h] = dict()
-                    kwargs[h]['llm_chat_history'] = history
-            result = self.m(LazyLlmRequest(input=input, global_parameters=kwargs))
+                    if h not in globals['chat_history']: globals['chat_history'] = dict()
+                    globals['chat_history'][h]['llm_chat_history'] = history
+            result = self.m(input=input)
 
             def get_log_and_message(s):
                 if not self.trace_mode == WebModule.Mode.Appendix:
