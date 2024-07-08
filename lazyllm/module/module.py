@@ -9,7 +9,7 @@ import functools
 from concurrent.futures import ThreadPoolExecutor
 
 import lazyllm
-from lazyllm import FlatList, LazyLlmRequest, Option, launchers, LOG
+from lazyllm import FlatList, Option, launchers, LOG, kwargs
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
@@ -79,13 +79,9 @@ class ModuleBase(object):
         raise AttributeError(f'{self.__class__} object has no attribute {key}')
 
     def __call__(self, *args, **kw):
-        if len(args) == 1 and isinstance(args[0], LazyLlmRequest):
-            assert len(kw) == 0, 'Cannot use LazyLlmRequest and kwargs at the same time'
-            args[0].kwargs.update(args[0].global_parameters.get(self._module_id, dict()))
-            if not getattr(self.__class__, '__enable_request__', False):
-                kw = args[0].kwargs
-                args = args[0].input if isinstance(args[0].input, lazyllm.package) else (args[0].input,)
-        r = self.forward(*args, **kw)
+        kw.update(globals['global_parameters'].get(self._module_id, dict()))
+        kw['llm_chat_history'] = globals['chat_history'].get(self._module_id, None)
+        r = self.forward(**args[0], **kw) if isinstance(args[0], kwargs) else self.forward(*args, **kw)
         if self._return_trace:
             globals['trace'].append(str(r))
         return r
@@ -250,23 +246,19 @@ class UrlModule(ModuleBase, UrlTemplate):
     # deploy parameters keys are in **kw
     def forward(self, __input=None, *, llm_chat_history=None, tools=None, **kw):  # noqa C901
         assert self._url is not None, f'Please start {self.__class__} first'
-        assert len(kw) == 0 or not isinstance(__input, LazyLlmRequest), \
-            'Cannot provide LazyLlmRequest and kw args at the same time.'
 
-        input, kw = (__input.input, __input.kwargs) if isinstance(__input, LazyLlmRequest) else (__input, kw)
-        input = self._prompt.generate_prompt(input, llm_chat_history, tools)
+        __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
 
         if isinstance(self, ServerModule):
-            if isinstance(__input, LazyLlmRequest): __input.input = input
-            else: __input = LazyLlmRequest(input=input, kwargs=kw)
-            data = codecs.encode(pickle.dumps(__input), 'base64').decode('utf-8')
+            # TODO(wzh/servers): add globals here
+            headers = {}
         elif self.template_message:
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
             assert 'inputs' in self.keys_name_handle
-            data[self.keys_name_handle['inputs']] = input
+            data[self.keys_name_handle['inputs']] = __input
         else:
             if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
-            data = input
+            data = __input
 
         # context bug with httpx, so we use requests
         def _impl():
