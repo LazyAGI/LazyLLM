@@ -84,7 +84,8 @@ class DocImplV2:
         LOG.debug(f"building {node_group} nodes: {sub_nodes}")
 
     def retrieve(self, query, node_group, similarity, index, topk, similarity_kws):
-        assert index == "default", "we only support default index currently"
+        if index:
+            assert index == "default", "we only support default index currently"
         if isinstance(query, LazyLlmRequest):
             query = query.input
 
