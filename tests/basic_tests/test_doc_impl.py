@@ -39,7 +39,7 @@ class TestDocImplV2:
         }
         result = self.doc_impl.retrieve(
             query="test query",
-            parser_name="FineChunk",
+            node_group="FineChunk",
             similarity="default",
             index=None,
             topk=1,

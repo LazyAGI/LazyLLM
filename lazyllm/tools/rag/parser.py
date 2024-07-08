@@ -12,14 +12,14 @@ from .store import DocNode, MetadataMode
 from lazyllm import LOG
 
 
-def build_nodes_from_splits(text_splits: List[str], doc: DocNode, parser_name: str) -> List[DocNode]:
+def build_nodes_from_splits(text_splits: List[str], doc: DocNode, node_group: str) -> List[DocNode]:
     nodes: List[DocNode] = []
     for text_chunk in text_splits:
         if not text_chunk:
             continue
         node = DocNode(
             text=text_chunk,
-            ntype=parser_name,
+            ntype=node_group,
             embedding=doc.embedding,
             metadata=doc.metadata,
             excluded_embed_metadata_keys=doc.excluded_embed_metadata_keys,
@@ -28,7 +28,7 @@ def build_nodes_from_splits(text_splits: List[str], doc: DocNode, parser_name: s
         )
         nodes.append(node)
 
-    doc.children[parser_name] = nodes
+    doc.children[node_group] = nodes
     return nodes
 
 
@@ -50,21 +50,21 @@ class NodeParser(ABC):
 
     def forward(
         self, documents: Union[DocNode, List[DocNode]],
-        parser_name: str, **kwargs
+        node_group: str, **kwargs
     ) -> List[DocNode]:
         documents = documents if isinstance(documents, list) else [documents]
         all_nodes: List[DocNode] = []
         for node in documents:
             splits = self.transform(node, **kwargs)
-            all_nodes.extend(build_nodes_from_splits(splits, node, parser_name))
+            all_nodes.extend(build_nodes_from_splits(splits, node, node_group))
         return all_nodes
 
     @abstractmethod
     def transform(self, document: DocNode, **kwargs) -> List[str]:
         raise NotImplementedError("Not implemented")
 
-    def __call__(self, nodes: List[DocNode], parser_name: str, **kwargs: Any) -> List[DocNode]:
-        return self.forward(nodes, parser_name, **kwargs)
+    def __call__(self, nodes: List[DocNode], node_group: str, **kwargs: Any) -> List[DocNode]:
+        return self.forward(nodes, node_group, **kwargs)
 
 
 class SentenceSplitter(NodeParser):

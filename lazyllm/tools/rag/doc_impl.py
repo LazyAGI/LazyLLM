@@ -38,13 +38,6 @@ class DocImplV2:
             chunk_size=128,
             chunk_overlap=12,
         )
-        # TODO: SentenceDivider is deprecated and will be removed in the future
-        self.create_node_group(
-            name="SentenceDivider",
-            transform=SentenceSplitter,
-            chunk_size=1024,
-            chunk_overlap=20,
-        )
         self.create_node_group(
             name="SentenceSplitter",
             transform=SentenceSplitter,
@@ -75,22 +68,23 @@ class DocImplV2:
             else FuncNodeParser(transform)
         )
 
-    def _dynamic_create_nodes(self, parser_name) -> None:
-        parser_dict = self.parser_dict.get(parser_name)
-        if self.store.has_nodes(parser_name):
+    def _dynamic_create_nodes(self, node_group) -> None:
+        parser_dict = self.parser_dict.get(node_group)
+        if self.store.has_nodes(node_group):
             return
-        transform = self._get_transform(parser_name)
+        transform = self._get_transform(node_group)
         parent_name = parser_dict["parent_name"]
         if parent_name:
             self._dynamic_create_nodes(parent_name)
 
         parent_nodes = self.store.traverse_nodes(parent_name)
 
-        sub_nodes = transform(parent_nodes, parser_name)
-        self.store.add_nodes(parser_name, sub_nodes)
-        LOG.debug(f"building {parser_name} nodes: {sub_nodes}")
+        sub_nodes = transform(parent_nodes, node_group)
+        self.store.add_nodes(node_group, sub_nodes)
+        LOG.debug(f"building {node_group} nodes: {sub_nodes}")
 
-    def retrieve(self, query, parser_name, similarity, index, topk, similarity_kws):
+    def retrieve(self, query, node_group, similarity, index, topk, similarity_kws):
+        assert index == "default", "we only support default index currently"
         if isinstance(query, LazyLlmRequest):
             query = query.input
 
@@ -100,9 +94,9 @@ class DocImplV2:
             self.store.add_nodes("root", docs)
             LOG.debug(f"building root nodes: {docs}")
 
-        self._dynamic_create_nodes(parser_name)
+        self._dynamic_create_nodes(node_group)
 
-        nodes = self.store.traverse_nodes(parser_name)
+        nodes = self.store.traverse_nodes(node_group)
 
         similarity_func, use_embedding = self.index.registered_similarity[similarity]
         if use_embedding:
@@ -198,7 +192,7 @@ class RetrieverV2(ModuleBase):
     def __init__(
         self,
         doc,
-        parser: str,
+        node_group: str,
         similarity: str = "dummy_similarity",
         index: str = "default",
         topk: int = 6,
@@ -206,7 +200,7 @@ class RetrieverV2(ModuleBase):
     ):
         super().__init__()
         self.doc = doc
-        self.parser_name = parser
+        self.node_group = node_group
         self.similarity = similarity  # similarity function str
         self.index = index
         self.topk = topk
@@ -217,7 +211,7 @@ class RetrieverV2(ModuleBase):
         # if we've developed all of the components
         return self.doc._impl._impl.retrieve(
             query,
-            self.parser_name,
+            self.node_group,
             self.similarity,
             self.index,
             self.topk,
