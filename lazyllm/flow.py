@@ -125,7 +125,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         self._sync = False
 
     def __call__(self, *args, **kw):
-        output = self._run(*args, **kw)
+        output = self._run(args[0] if len(args) == 1 else package(args), **kw)
         if self.post_action is not None: self.invoke(self.post_action, output)
         if self._sync: self.wait()
         return self._post_process(output)
@@ -280,6 +280,7 @@ class Parallel(LazyLLMFlowsBase):
 
     def _run(self, input, items=None, **kw):
         if items is None:
+            print('here items is None')
             items = self._items
             size = len(items)
             if self._scatter:
@@ -287,6 +288,7 @@ class Parallel(LazyLLMFlowsBase):
             else:
                 inputs = [input] * size
         else:
+            print('here items is not None, input:', input, 'items:', items, 'kw', kw)
             inputs = input
 
         if self._concurrent:
