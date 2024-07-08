@@ -8,7 +8,7 @@ import inspect
 import traceback
 from types import GeneratorType
 from lazyllm import kwargs
-from lazyllm import FastapiApp
+from lazyllm import FastapiApp, globals
 import pickle
 import codecs
 
@@ -53,6 +53,8 @@ async def generate(request: Request): # noqa C901
             input = pickle.loads(codecs.decode(input.encode('utf-8'), "base64"))
         except Exception: input = origin
         finally: origin = input
+
+        globals._update(pickle.loads(codecs.decode(request.headers['Global-Parameters'].encode('utf-8'), "base64")))
 
         if args.before_function:
             assert (callable(before_func)), 'before_func must be callable'

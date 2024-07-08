@@ -20,10 +20,17 @@ class Globals(object):
         self.__sid = sid
 
     @property
-    def _data(self) -> dict:
+    def _data(self, rois=None) -> dict:
         if self._sid not in self.__data:
             self.__data[self._sid] = copy.deepcopy(__class__.__global_attrs__)
+        if rois:
+            assert isinstance(rois, (tuple, list))
+            return {k: v for k, v in self.__data[self._sid] if k in rois}
         return self.__data[self._sid]
+
+    def _update(self, d) -> None:
+        if d:
+            self.__data.update(d)
 
     def __setitem__(self, __key: str, __value: Any):
         self._data[__key] = __value

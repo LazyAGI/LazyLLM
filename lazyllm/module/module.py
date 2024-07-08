@@ -248,10 +248,11 @@ class UrlModule(ModuleBase, UrlTemplate):
         assert self._url is not None, f'Please start {self.__class__} first'
 
         __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
+        headers =  {'Content-Type': 'application/json'}
 
         if isinstance(self, ServerModule):
-            # TODO(wzh/servers): add globals here
-            headers = {}
+            headers['Global-Parameters'] = codecs.encode(pickle.dumps(globals._data), 'base64').decode('utf-8')
+            __input = codecs.encode(pickle.dumps(__input), 'base64').decode('utf-8')
         elif self.template_message:
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
             assert 'inputs' in self.keys_name_handle
@@ -262,7 +263,7 @@ class UrlModule(ModuleBase, UrlTemplate):
 
         # context bug with httpx, so we use requests
         def _impl():
-            with requests.post(self._url, json=data, stream=True) as r:
+            with requests.post(self._url, json=data, stream=True, headers=headers) as r:
                 if r.status_code == 200:
                     for chunk in r.iter_content(None):
                         try:
@@ -270,6 +271,7 @@ class UrlModule(ModuleBase, UrlTemplate):
                         except Exception:
                             chunk = chunk.decode('utf-8')
                         yield self._prompt.get_response(self._extract_result_func(chunk))
+                    globals._update(r.headers.get('Global-Parameters', dict()))
                 else:
                     raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         if self._stream:
