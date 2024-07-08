@@ -56,6 +56,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
     def _convert_msg_format(self, msg: Dict[str, Any]):
         try:
             resp = msg['data']
+            resp['plugins'] = {} if resp['plugins'] is None else resp['plugins']
             data = resp['choices'][0]
             content = data.get('delta', '') if 'delta' in data else data.get('message', '')
             message = {"role": data.pop("role"), "content": content}

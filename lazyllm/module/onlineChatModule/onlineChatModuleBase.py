@@ -136,16 +136,15 @@ class OnlineChatModuleBase(ModuleBase):
                f"The elements in the list: {src} are of inconsistent types"
         if len(src) == 1:
             return src[0]
-        if isinstance(src[-1], str) or src[-1] is None:
+        if all(isinstance(ele, str) or ele is None for ele in src):
             return src[-1] if all(ele == src[-1] or ele is None for ele in src) or \
                 (len(self._model_optional_params) > 0
                  and not self._model_optional_params.get("incremental_output", True)) else "".join(src)
-        elif isinstance(src[-1], list):
+        elif all(isinstance(ele, list) for ele in src):
             assert all(len(src[-1]) == len(ele) for ele in src), f"The lists of elements: {src} have different lengths."
             ret = [self._merge_stream_result([ele[idx] for ele in src]) for idx in range(len(src[-1]))]
             return ret[0] if isinstance(ret[0], list) else ret
-        elif isinstance(src[-1], dict):
-            src = [{} if ele is None else ele for ele in src]  # Handling None elements
+        elif all(isinstance(ele, dict) for ele in src):
             if "index" in src[-1]:  # If there are multiple index values that need to be appended.
                 data_sorted = sorted(src, key=lambda x: x['index'])
                 grouped_data = [list(g) for k, g in groupby(data_sorted, key=lambda x: x['index'])]
@@ -153,10 +152,10 @@ class OnlineChatModuleBase(ModuleBase):
                     return [self._merge_stream_result(src) for src in grouped_data]
             return {k: "tool_calls" if k == "finish_reason" and "tool_calls" in [d[k] for d in src if k in d]
                     else self._merge_stream_result([d[k] for d in src if k in d]) for k in set().union(*src)}
-        elif isinstance(src[-1], int):
+        elif all(isinstance(ele, int) for ele in src):
             return src[-1] if all(ele == src[-1] for ele in src) else src[-1]
         else:
-            raise TypeError(f"Invalid type: {src[-1]}- {type(src[-1])} found")
+            raise TypeError(f"The elements in list {src} are of inconsistent types.")
 
     def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, **kw):  # noqa C901
         """LLM inference interface"""
