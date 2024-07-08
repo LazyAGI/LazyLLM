@@ -48,29 +48,6 @@ class LazyLlmRequest(struct):
     kwargs: Any = kwargs()
     global_parameters: dict = dict()
 
-    # move split to flow
-    def split(self, flag=None):
-        if flag is None:
-            assert len(self.kwargs) == 0 and isinstance(self.input, (tuple, list)), (
-                f'Only tuple input can be split automatically, your input is {self.input} <{type(self.input)}>')
-            return [LazyLlmRequest(input=inp, global_parameters=self.global_parameters) for inp in self.input]
-        elif isinstance(flag, int):
-            assert len(self.kwargs) == 0 and isinstance(self.input, (tuple, list)), (
-                f'Only tuple input can be split automatically, your input is {self.input} <{type(self.input)}>')
-            assert flag == len(self.input), 'input size mismatch with split number'
-            return [LazyLlmRequest(input=inp, global_parameters=self.global_parameters) for inp in self.input]
-        elif isinstance(flag, list):
-            if isinstance(self.input, dict):
-                assert len(self.kwargs) == 0, 'Cannot provived input and kwargs at the same time for split'
-                d = self.input
-            elif isinstance(self.input, (tuple, list)):
-                return self.split(len(flag))
-            else:
-                assert not self.input, 'Cannot provived input and kwargs at the same time for split'
-                d = self.kwargs
-            return [LazyLlmRequest(input=d[key], global_parameters=self.global_parameters) for key in flag]
-        else: raise TypeError(f'invalid flag type {type(flag)} given')
-
 
 @deprecated
 class LazyLlmResponse(struct):

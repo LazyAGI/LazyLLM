@@ -1,7 +1,6 @@
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, bind, root
 from lazyllm import Thread, ReadOnlyWrapper, LOG
-from lazyllm import LazyLlmRequest, ReqResHelper
 from .common.common import _MetaBind
 from functools import partial
 from enum import Enum
@@ -10,6 +9,7 @@ import inspect
 import threading
 import traceback
 import sys
+from typing import Union, Tuple, List, Optional
 
 
 class _FuncWrap(object):
@@ -116,7 +116,7 @@ setattr(bind, '__exit__', _bind_exit)
 # TODO(wangzhihong): support workflow launcher.
 # Disable item launchers if launcher is already set in workflow.
 class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
-    def __init__(self, *args, post_action=None, return_input=False, auto_capture=False, **kw):
+    def __init__(self, *args, post_action=None, auto_capture=False, **kw):
         assert len(args) == 0 or len(kw) == 0, f'Cannot provide args `{args}` and kwargs `{kw}` at the same time'
         if len(args) > 0 and isinstance(args[0], (tuple, list)):
             assert len(args) == 1, 'args should be list of callable functions'
@@ -124,23 +124,18 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         args = list(args) + [v() if isinstance(v, type) else v for v in kw.values()]
         super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
-        self._return_input = return_input
         self._sync = False
 
     def __call__(self, *args, **kw):
-        helper = ReqResHelper()
-        req = helper.make_request(*args, **kw)
-        output = helper.make_request(self._run(req))
-
+        output = self._run(*args, **kw)
         if self.post_action is not None: self.invoke(self.post_action, output)
-        if self._return_input: output = package(req.input, output.input)
         if self._sync: self.wait()
         return self._post_process(output)
 
     def _post_process(self, output):
         return output
 
-    def _run(self, input):
+    def _run(self, input, **kw):
         raise NotImplementedError
 
     def start(self, *args, **kw):
@@ -164,17 +159,12 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         return self
 
     # bind_args: dict(input=input, args=dict(key=value))
-    def invoke(self, it, input, *, bind_args_source=None):
+    def invoke(self, it, input, *, bind_args_source=None, **kw):
         if isinstance(it, bind):
             if it._has_root:
                 it._args = [a.get_from(self.ancestor) if isinstance(a, type(root)) else a for a in it._args]
                 it._has_root = False
             if bind_args_source: it = bind(it, _bind_args_source=bind_args_source)
-        kw = dict()
-        if isinstance(input, LazyLlmRequest):
-            if hasattr(it, '__enable_request__'):  # flow, module
-                return it(input)
-            input, kw = input.input, input.kwargs
         try:
             if not isinstance(it, LazyLLMFlowsBase) and isinstance(input, (package, kwargs)):
                 return it(*input, **kw) if isinstance(input, package) else it(**input, **kw)
@@ -218,14 +208,14 @@ class Pipeline(LazyLLMFlowsBase):
     def _stop_condition(self, cond):
         self._stop_condition_var = cond
 
-    def _run(self, input):
-        helper = ReqResHelper()
-        output = helper.make_request(input)
+    def _run(self, input, **kw):
+        output = input
         bind_args_source = dict(input=output, args=dict())
         for _ in range(self._loop_count):
             for it in self._items:
-                output = helper.make_request(self.invoke(it, output, bind_args_source=bind_args_source))
-                bind_args_source['args'][id(it)] = output.input if output.input else output.kwargs
+                output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
+                kw.clear()
+                bind_args_source['args'][id(it)] = output
             if callable(self._stop_condition) and self.invoke(self._stop_condition, output): break
         return output
 
@@ -233,6 +223,22 @@ class Pipeline(LazyLLMFlowsBase):
 _barr = threading.local()
 def barrier(args): _barr.impl.wait(); return args
 def _hook(v): _barr.impl = v
+
+
+def _split_input(input: Union[Tuple, List], flag : Optional[Union[int, List]] = None):
+    if flag is None or isinstance(flag, int):
+        assert isinstance(input, (tuple, list)), (
+            f'Only tuple and list input can be split automatically, your input is {input} <{type(input)}>')
+        if isinstance(flag, int):
+            assert flag == len(input), 'input size mismatch with split number'
+        return package(input)
+    elif isinstance(flag, list):
+        if isinstance(input, dict):
+            return package(input[key] for key in flag)
+        elif isinstance(input, (tuple, list)):
+            return _split_input(len(flag))    
+    raise TypeError(f'invalid flag type {type(flag)} given')
+
 
 #        /> module11 -> ... -> module1N -> out1 \
 #  input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
@@ -274,12 +280,12 @@ class Parallel(LazyLLMFlowsBase):
     def sequential(cls, *args, **kw):
         return cls(*args, _concurrent=False, **kw)
 
-    def _run(self, input, items=None):
+    def _run(self, input, items=None, **kw):
         if items is None:
             items = self._items
             size = len(items)
             if self._scatter:
-                inputs = input.split(self._item_names if self._item_names else size)
+                inputs = _split_input(input, self._item_names if self._item_names else size)
             else:
                 inputs = [input] * size
         else:
@@ -288,12 +294,12 @@ class Parallel(LazyLLMFlowsBase):
         if self._concurrent:
             nthreads = len(items)
             impl = threading.Barrier(nthreads)
-            ts = [Thread(target=self.invoke, args=(it, inp), prehook=bind(_hook, impl))
+            ts = [Thread(target=self.invoke, args=(it, inp), kwargs=kw, prehook=bind(_hook, impl))
                   for it, inp in zip(items, inputs)]
             [t.start() for t in ts]
             r = package(t.get_result() for t in ts)
         else:
-            r = package(self.invoke(it, inp) for it, inp in zip(items, inputs))
+            r = package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
         return r
 
     def _post_process(self, output):
@@ -325,11 +331,11 @@ class Diverter(Parallel):
 # Attention: Cannot be used in async tasks, ie: training and deploy
 # TODO: add check for async tasks
 class Warp(Parallel):
-    def _run(self, input):
+    def _run(self, input, **kw):
         assert 1 == len(self._items), 'Only one function is enabled in warp'
-        inputs = input.split()
+        inputs = _split_input(input)
         items = self._items * len(inputs)
-        return super(__class__, self)._run(inputs, items)
+        return super(__class__, self)._run(inputs, items, **kw)
 
     @property
     def asdict(self): raise NotImplementedError
@@ -341,16 +347,16 @@ class Warp(Parallel):
 class Switch(LazyLLMFlowsBase):
     # Switch({cond1: M1, cond2: M2, ..., condN: MN})
     # Switch(cond1, M1, cond2, M2, ..., condN, MN)
-    def __init__(self, *args, post_action=None, return_input=False, judge_on_input=True, **kw):
+    def __init__(self, *args, post_action=None, judge_on_input=True, **kw):
         if len(args) == 1 and isinstance(args[0], dict):
             self.conds, items = list(args[0].keys()), list(args[0].values())
         else:
             self.conds, items = list(args[0::2]), args[1::2]
         items = {repr(k): v for k, v in zip(self.conds, items)}
-        super().__init__(**items, post_action=post_action, return_input=return_input, **kw)
+        super().__init__(**items, post_action=post_action, **kw)
         self._judge_on_input = judge_on_input
 
-    def _run(self, input):
+    def _run(self, input, **kw):
         exp = input
         if not self._judge_on_input:
             assert isinstance(input.input, package) and len(input.input) >= 2
@@ -358,7 +364,7 @@ class Switch(LazyLLMFlowsBase):
             input.input = input.input[1:]
         for idx, cond in enumerate(self.conds):
             if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or cond == 'default':
-                return self.invoke(self._items[idx], input)
+                return self.invoke(self._items[idx], input, **kw)
 
     class Case:
         def __init__(self, m) -> None: self._m = m
@@ -384,20 +390,19 @@ class Switch(LazyLLMFlowsBase):
 
 # result = cond(input) ? tpath(input) : fpath(input)
 class IFS(LazyLLMFlowsBase):
-    def __init__(self, cond, tpath, fpath, post_action=None, return_input=False):
-        super().__init__(cond, tpath, fpath, post_action=post_action, return_input=return_input)
+    def __init__(self, cond, tpath, fpath, post_action=None):
+        super().__init__(cond, tpath, fpath, post_action=post_action)
 
-    def _run(self, input):
+    def _run(self, input, **kw):
         cond, tpath, fpath = self._items
-        return self.invoke(tpath, input) if self.invoke(cond, input) else self.invoke(fpath, input)
+        return self.invoke(tpath if self.invoke(cond, input) else fpath, input, **kw)
 
 
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
 #      ⬆----------------------------------------|
 class Loop(Pipeline):
-    def __init__(self, *item, stop_condition=None, count=sys.maxsize, post_action=None, return_input=False,
-                 auto_capture=False, **kw):
-        super().__init__(*item, post_action=post_action, return_input=return_input, auto_capture=auto_capture, **kw)
+    def __init__(self, *item, stop_condition=None, count=sys.maxsize, post_action=None, auto_capture=False, **kw):
+        super().__init__(*item, post_action=post_action, auto_capture=auto_capture, **kw)
         assert callable(stop_condition) or stop_condition is None
         self._stop_condition = stop_condition
         self._loop_count = count
