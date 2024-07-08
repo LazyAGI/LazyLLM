@@ -7,7 +7,7 @@ class DirectoryReader:
     def __init__(self, input_files: List[str]):
         self.input_files = input_files
 
-    def load_data(self, ntype: str ='root') -> List["DocNode"]:
+    def load_data(self, ntype: str = "root") -> List["DocNode"]:
         from llama_index.core import SimpleDirectoryReader
 
         llama_index_docs = SimpleDirectoryReader(

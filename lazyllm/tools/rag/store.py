@@ -49,7 +49,10 @@ class DocNode:
         return root
 
     def __str__(self) -> str:
-        children_str = {key: [node.uid for node in self.children[key]] for key in self.children.keys()}
+        children_str = {
+            key: [node.uid for node in self.children[key]]
+            for key in self.children.keys()
+        }
         return (
             f"DocNode(id: {self.uid}, ntype: {self.ntype}, text: {self.get_content()}) parent: "
             f"{self.parent.uid if self.parent else None}, children: {children_str}"
@@ -116,6 +119,7 @@ class MapStore:
 
     def traverse_nodes(self, category: str) -> List[DocNode]:
         return list(self.store.get(category, {}).values())
+
 
 class ChromadbStore:
     pass

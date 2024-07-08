@@ -3,6 +3,7 @@ from lazyllm.tools.rag.parser import SentenceSplitter
 from lazyllm.tools.rag.store import DocNode
 from unittest.mock import MagicMock
 
+
 class TestDocImplV2:
     def setup_method(self):
         self.mock_embed = MagicMock()
@@ -36,5 +37,12 @@ class TestDocImplV2:
         self.doc_impl.index.registered_similarity = {
             "default": (MagicMock(return_value=[]), False)
         }
-        result = self.doc_impl.retrieve(query="test query", parser_name="FineChunk", similarity="default", index=None, topk=1, similarity_kws={})
+        result = self.doc_impl.retrieve(
+            query="test query",
+            parser_name="FineChunk",
+            similarity="default",
+            index=None,
+            topk=1,
+            similarity_kws={},
+        )
         assert result == []
