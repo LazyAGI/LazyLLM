@@ -1,8 +1,7 @@
 import json
 import os
-import re
 import requests
-from typing import Tuple
+from typing import Tuple, Dict, Any
 import uuid
 import lazyllm
 from .onlineChatModuleBase import OnlineChatModuleBase
@@ -54,35 +53,23 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'chat-completions')
 
-    def _str_to_json(self, response: str):
-        if isinstance(response, bytes):
-            pattern = re.compile(r"^data:\s*")
-            response = re.sub(pattern, "", response.decode('utf-8'))
-            try:
-                chunk = json.loads(response)["data"]
-                content = chunk['choices'][0]['delta']
-                role = chunk['choices'][0].pop("role")
-                chunk['choices'][0]['delta'] = {"content": content, "role": role}
-                if "tool_calls" in chunk["choices"][0]:
-                    tool_calls = chunk["choices"][0].pop("tool_calls")
-                    chunk["choices"][0]["delta"]["tool_calls"] = tool_calls
-                chunk["model"] = self._model_name
-                return chunk
-            except Exception:
-                return ""
-        else:
-            try:
-                resp = json.loads(response)['data']
-                content = resp['choices'][0].get('message', '')
-                msg = {"role": resp['choices'][0].pop("role"), "content": content}
-                resp["choices"][0]["message"] = msg
-                if "tool_calls" in resp["choices"][0]:
-                    tool_calls = resp["choices"][0].pop("tool_calls")
-                    resp["choices"][0]["message"]["tool_calls"] = tool_calls
-                resp["model"] = self._model_name
-                return resp
-            except Exception:
-                return ""
+    def _convert_msg_format(self, msg: Dict[str, Any]):
+        try:
+            resp = msg['data']
+            data = resp['choices'][0]
+            content = data.get('delta', '') if 'delta' in data else data.get('message', '')
+            message = {"role": data.pop("role"), "content": content}
+            data["delta" if "delta" in data else "message"] = message
+
+            if "tool_calls" in data:
+                tool_calls = data.pop('tool_calls')
+                for idx in range(len(tool_calls)):
+                    tool_calls[idx]['index'] = idx
+                data["delta" if "delta" in data else "message"]["tool_calls"] = tool_calls
+            resp['model'] = self._model_name
+            return resp
+        except Exception:
+            return ""
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:

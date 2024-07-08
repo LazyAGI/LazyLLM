@@ -36,7 +36,6 @@ class OnlineChatModuleBase(ModuleBase):
         self._is_trained = False
         self.formatter()
         self.field_extractor()
-        self._stream_end_token = "[DONE]"
         self._model_optional_params = {}
 
     def prompt(self, prompt=None):
@@ -107,13 +106,16 @@ class OnlineChatModuleBase(ModuleBase):
 
         return self
 
+    def _convert_msg_format(self, msg: Dict[str, Any]):
+        return msg
+
     def _str_to_json(self, msg: str):
         if isinstance(msg, bytes):
             pattern = re.compile(r"^data:\s*")
             msg = re.sub(pattern, "", msg.decode('utf-8'))
         try:
             chunk = json.loads(msg)
-            return chunk
+            return self._convert_msg_format(chunk)
         except Exception:
             return ""
 
@@ -143,6 +145,7 @@ class OnlineChatModuleBase(ModuleBase):
             ret = [self._merge_stream_result([ele[idx] for ele in src]) for idx in range(len(src[-1]))]
             return ret[0] if isinstance(ret[0], list) else ret
         elif isinstance(src[-1], dict):
+            src = [{} if ele is None else ele for ele in src]  # Handling None elements
             if "index" in src[-1]:  # If there are multiple index values that need to be appended.
                 data_sorted = sorted(src, key=lambda x: x['index'])
                 grouped_data = [list(g) for k, g in groupby(data_sorted, key=lambda x: x['index'])]
@@ -154,13 +157,6 @@ class OnlineChatModuleBase(ModuleBase):
             return src[-1] if all(ele == src[-1] for ele in src) else src[-1]
         else:
             raise TypeError(f"Invalid type: {src[-1]}- {type(src[-1])} found")
-
-    def _post_action(self, response):
-        resp = [line for line in response.iter_lines() if len(line)] if self._stream else [response.text]
-        msg_json = list(filter(lambda x: x, [self._str_to_json(line) for line in resp]))
-        out = self._merge_stream_result(msg_json)
-        extractor = self._extract_specified_key_fields(out)
-        return extractor
 
     def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, **kw):  # noqa C901
         """LLM inference interface"""
@@ -183,9 +179,11 @@ class OnlineChatModuleBase(ModuleBase):
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
                     if self._stream else requests.RequestException(r.text)
 
-            resp = self._post_action(r)
+            resp = [line for line in r.iter_lines() if len(line)] if self._stream else [r.text]
+            msg_json = list(filter(lambda x: x, [self._str_to_json(line) for line in resp]))
+            extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
 
-            return self._formatter.format(resp) if resp else ""
+            return self._formatter.format(extractor) if extractor else ""
 
     def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None):
         self.template_message = template_message
