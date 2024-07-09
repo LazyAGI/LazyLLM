@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+import requests
 
 from functools import partial
 import re
@@ -46,7 +47,6 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
 
 
 class NodeParser(ABC):
-
     def forward(
         self, documents: Union[DocNode, List[DocNode]], **kwargs
     ) -> List[DocNode]:
@@ -77,7 +77,19 @@ class SentenceSplitter(NodeParser):
             chunk_size > 0 and chunk_overlap >= 0
         ), "chunk size should > 0 and chunk_overlap should >= 0"
 
-        self._tiktoken_tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        try:
+            self._tiktoken_tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        except requests.exceptions.ConnectionError:
+            LOG.error(
+                "Unable to download the vocabulary file for tiktoken `gpt-3.5-turbo`. "
+                "Please check your internet connection. "
+                "Alternatively, you can manually download the file "
+                "and set the `TIKTOKEN_CACHE_DIR` environment variable."
+            )
+            raise
+        except Exception as e:
+            LOG.error(f"Unable to build tiktoken tokenizer with error `{e}`")
+            raise
         self._punkt_st_tokenizer = nltk.tokenize.PunktSentenceTokenizer()
 
         self._sentence_split_fns = [
