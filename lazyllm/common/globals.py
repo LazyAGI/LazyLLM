@@ -1,4 +1,5 @@
 import threading
+import contextvars
 import copy
 from typing import Any, Tuple, Optional, List, Dict
 import pickle
@@ -13,24 +14,24 @@ class Globals(object):
 
     def __init__(self):
         self.__data = {}
+        self.__sid = contextvars.ContextVar('local_var')
         self._init_sid()
 
     def _init_sid(self, sid: Optional[str] = None):
         if sid is None:
             try:
-                self._sid = id(asyncio.current_task())
+                sid = f'aid-{hex(id(asyncio.current_task()))}'
             except Exception:
-                self._sid = threading.local()
-        else:
-            self._sid = sid
+                sid = f'tid-{hex(threading.get_ident())}'
+        self.__sid.set(sid)
 
     @property
     def _sid(self) -> str:
-        return getattr(self.__sid, 'id', f'tid-{hex(threading.get_ident())}')
-
-    @_sid.setter
-    def _sid(self, sid: str) -> None:
-        self.__sid = sid
+        try:
+            return self.__sid.get()
+        except Exception:
+            self._init_sid()
+        return self.__sid.get()
 
     @property
     def _data(self): return self._get_data()
