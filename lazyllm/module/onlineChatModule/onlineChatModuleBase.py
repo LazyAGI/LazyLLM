@@ -1,3 +1,4 @@
+from itertools import groupby
 import json
 import os
 import requests
@@ -35,7 +36,7 @@ class OnlineChatModuleBase(ModuleBase):
         self._is_trained = False
         self.formatter()
         self.field_extractor()
-        self._stream_end_token = "[DONE]"
+        self._model_optional_params = {}
 
     def prompt(self, prompt=None):
         if prompt is None:
@@ -79,54 +80,9 @@ class OnlineChatModuleBase(ModuleBase):
         if "choices" in data and isinstance(data["choices"], list):
             item = data['choices'][0]
             data = item.get("delta", {}) if "delta" in item else item.get("message", {})
-            return data if not key else data.get(key, "")
+            return data if not key or key == "." else data.get(key, "")
         else:
             raise ValueError(f"The response {data} does not contain a 'choices' field.")
-
-    def _synthetic_output(self, response: Dict[str, Any]):
-        if len(self._extractor_fields) == 1:
-            key = self._extractor_fields[0]
-            content = self._parse_output_by_key(key, response) if key else ""
-            return self._formatter.format(content) if content else ""
-        elif len(self._extractor_fields) > 1:
-            res = {}
-            for key in self._extractor_fields:
-                content = self._parse_output_by_key(key, response) if key else ""
-                res[key] = self._formatter.format(content) if content else ""
-            return res
-        else:
-            content = self._parse_output_by_key(".", response)
-            return self._formatter.format(content) if content else ""
-
-    def _stream_post_process(self, response: str) -> Dict[str, Any]:
-        try:
-            chunk = json.loads(response)
-            return chunk
-        except ValueError:
-            return response
-        except Exception as e:
-            lazyllm.LOG.error(e)
-            return ""
-
-    def _parse_response_stream(self, response: str) -> str:
-        pattern = re.compile(r"^data:\s*")
-        response = re.sub(pattern, "", response.decode('utf-8'))
-        chunk = self._stream_post_process(response)
-        if self._stream_end_token == chunk: return self._stream_end_token
-        return self._synthetic_output(chunk)
-
-    def _nonstream_post_process(self, response: str) -> Dict[str, Any]:
-        try:
-            chunk = json.loads(response)
-            return chunk
-        except Exception as e:
-            lazyllm.LOG.error(e)
-            return ""
-
-    def _parse_response_non_stream(self, response: str) -> Dict[str, Any]:
-        """Parse the response from the interface"""
-        cur_msg = self._nonstream_post_process(response)
-        return self._synthetic_output(cur_msg)
 
     def formatter(self, format: FormatterBase = None):
         if isinstance(format, FormatterBase):
@@ -150,6 +106,59 @@ class OnlineChatModuleBase(ModuleBase):
 
         return self
 
+    def _convert_msg_format(self, msg: Dict[str, Any]):
+        return msg
+
+    def _str_to_json(self, msg: str):
+        if isinstance(msg, bytes):
+            pattern = re.compile(r"^data:\s*")
+            msg = re.sub(pattern, "", msg.decode('utf-8'))
+        try:
+            chunk = json.loads(msg)
+            return self._convert_msg_format(chunk)
+        except Exception:
+            return ""
+
+    def _extract_specified_key_fields(self, response: Dict[str, Any]):
+        if len(self._extractor_fields) == 1:
+            key = self._extractor_fields[0]
+            return self._parse_output_by_key(key, response) if key else ""
+        elif len(self._extractor_fields) > 1:
+            res = {}
+            for key in self._extractor_fields:
+                res[key] = self._parse_output_by_key(key, response) if key else ""
+            return res
+        else:
+            return self._parse_output_by_key(".", response)
+
+    def _merge_stream_result(self, src: List[str | int | list | dict]):
+        assert len(src) > 0 and all(isinstance(ele, type(src[-1])) or ele is None for ele in src), \
+               f"The elements in the list: {src} are of inconsistent types"
+        if len(src) == 1:
+            return src[0]
+        if all(isinstance(ele, str) or ele is None for ele in src):
+            if all(ele == src[-1] or ele is None for ele in src) or (self._model_optional_params
+               and not self._model_optional_params.get("incremental_output", True)):
+                return src[-1]
+            else:
+                return "".join(ele for ele in src if ele is not None)
+        elif all(isinstance(ele, list) for ele in src):
+            assert all(len(src[-1]) == len(ele) for ele in src), f"The lists of elements: {src} have different lengths."
+            ret = [self._merge_stream_result([ele[idx] for ele in src]) for idx in range(len(src[-1]))]
+            return ret[0] if isinstance(ret[0], list) else ret
+        elif all(isinstance(ele, dict) for ele in src):
+            if "index" in src[-1]:  # If there are multiple index values that need to be appended.
+                data_sorted = sorted(src, key=lambda x: x['index'])
+                grouped_data = [list(g) for k, g in groupby(data_sorted, key=lambda x: x['index'])]
+                if len(grouped_data) > 1:
+                    return [self._merge_stream_result(src) for src in grouped_data]
+            return {k: "tool_calls" if k == "finish_reason" and "tool_calls" in [d[k] for d in src if k in d]
+                    else self._merge_stream_result([d[k] for d in src if k in d]) for k in set().union(*src)}
+        elif all(isinstance(ele, int) for ele in src):
+            return src[-1] if all(ele == src[-1] for ele in src) else src[-1]
+        else:
+            raise TypeError(f"The elements in list {src} are of inconsistent types.")
+
     def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, **kw):  # noqa C901
         """LLM inference interface"""
         params = {"input": __input, "history": llm_chat_history}
@@ -163,31 +172,19 @@ class OnlineChatModuleBase(ModuleBase):
         if len(kw) > 0:
             data.update(kw)
 
-        def _impl_stream():
-            """process http stream request"""
-            with requests.post(self._url, json=data, headers=self._headers, stream=True) as r:
-                if r.status_code != 200:  # request error
-                    raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+        if len(self._model_optional_params) > 0:
+            data.update(self._model_optional_params)
 
-                for line in r.iter_lines():
-                    if len(line) == 0:
-                        continue
+        with requests.post(self._url, json=data, headers=self._headers, stream=self._stream) as r:
+            if r.status_code != 200:  # request error
+                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
+                    if self._stream else requests.RequestException(r.text)
 
-                    chunk = self._parse_response_stream(line)
-                    if self._stream_end_token == chunk: return
-                    yield chunk
+            resp = [line for line in r.iter_lines() if len(line)] if self._stream else [r.text]
+            msg_json = list(filter(lambda x: x, [self._str_to_json(line) for line in resp]))
+            extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
 
-        def _impl_non_stream():
-            """process http non-stream request"""
-            with requests.post(self._url, json=data, headers=self._headers, stream=False) as r:
-                if r.status_code != 200:  # request error
-                    raise requests.RequestException(r.text)
-                return self._parse_response_non_stream(r.text)
-
-        if self._stream:
-            return _impl_stream()
-        else:
-            return _impl_non_stream()
+            return self._formatter.format(extractor) if extractor else ""
 
     def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None):
         self.template_message = template_message
