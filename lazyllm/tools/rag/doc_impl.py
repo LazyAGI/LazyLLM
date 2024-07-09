@@ -37,12 +37,6 @@ class DocImplV2:
             chunk_size=128,
             chunk_overlap=12,
         )
-        self.create_node_group(
-            name="SentenceSplitter",
-            transform=SentenceSplitter,
-            chunk_size=1024,
-            chunk_overlap=20,
-        )
 
     def create_node_group(self, name, transform, parent="root", **kwargs) -> None:
         if name in self.parser_dict:
