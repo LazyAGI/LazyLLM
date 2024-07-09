@@ -34,15 +34,13 @@ class TestDocImplV2:
 
     def test_retrieve(self):
         self.mock_embed.return_value = "[0.1, 0.2, 0.3]"
-        self.doc_impl.index.registered_similarity = {
-            "default": (MagicMock(return_value=[]), False)
-        }
         result = self.doc_impl.retrieve(
             query="test query",
             node_group="FineChunk",
-            similarity="default",
+            similarity="dummy_similarity",
             index=None,
             topk=1,
             similarity_kws={},
         )
-        assert result == []
+        node = result[0]
+        assert node.text == "dummy text"
