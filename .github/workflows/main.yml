@@ -1,6 +1,7 @@
 name: LazyLLM ci
 on:
   workflow_dispatch:
+  pull_request_target:
   push:
     branches:
       - main
@@ -10,7 +11,7 @@ on:
     paths-ignore:
       - "**.md"
       - ".git*"
-  pull_request_target:
+
 
 env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}'
@@ -44,42 +45,6 @@ jobs:
           set -ex
           mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
-  BasicTests:
-    runs-on: tps_sco_nv
-    needs: [Clone]
-    steps:
-      - name: RunTests
-        run: |
-          set -ex
-          cd ${{ env.CI_PATH }}
-          realpath .
-          env | grep '^SCC'
-          export LAZYLLM_SCO_ENV_NAME=lazyllm
-          export LAZYLLM_DEFAULT_LAUNCHER=sco
-          export LAZYLLM_SLURM_PART=a100
-          export PYTHONPATH=$PWD:$PYTHONPATH
-          export LAZYLLM_SCO_WORKSPACE=expert-services
-          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
-          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-#          python -m pytest tests/basic_tests/
-
-  AdvancedTests:
-    runs-on: tps_sco_nv
-    needs: [Clone]
-    steps:
-      - name: RunTests
-        run: |
-          cd ${{ env.CI_PATH }}
-          env | grep '^SCC'
-          export LAZYLLM_SCO_ENV_NAME=lazyllm
-          export LAZYLLM_DEFAULT_LAUNCHER=sco
-          export LAZYLLM_SLURM_PART=a100
-          export PYTHONPATH=$PWD:$PYTHONPATH
-          export LAZYLLM_SCO_WORKSPACE=expert-services
-          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
-          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-#          python -m pytest tests/advanced_tests/
-
   ChargeTests:
     runs-on: tps_sco_nv
     needs: [ Clone ]
@@ -88,7 +53,7 @@ jobs:
     steps:
       - name: RunTests
         run: |
-          env
+          echo $LAZYLLM_MOONSHOTAI_API_KEY
           cd ${{ env.CI_PATH }}
           export PYTHONPATH=$PWD:$PYTHONPATH
 #          python -m pytest tests/charge_tests/
