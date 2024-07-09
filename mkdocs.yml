@@ -1,0 +1,94 @@
+site_name: LazyLLM
+nav:
+- Home:
+  - getting start: index.md
+  - Faq: Home/FAQ.md
+  - Environment: Home/environment.md
+- Use cases:
+  - Flow: USE CASES/flow.md
+  - Flowapp: USE CASES/flowapp.md
+  - Module: USE CASES/module.md
+  - Prompt: USE CASES/prompt.md
+  - Rag: USE CASES/rag.md
+- Advanced topics:
+  - Contribution: Advanced Topics/contribution.md
+- Api reference:
+  - Components: API Reference/components.md
+  - Configs: API Reference/configs.md
+  - Flow: API Reference/flow.md
+  - Module: API Reference/module.md
+  - Tools: API Reference/tools.md
+theme:
+  language: en
+  name: material
+  features:
+  - navigation.tabs
+  - navigation.footer
+  - navigation.top
+  - search.highlight
+  - search.suggest
+  palette:
+  - accent: white
+    primary: white
+    scheme: default
+    toggle:
+      icon: material/brightness-auto
+      name: Switch to light mode
+  - accent: white
+    media: '(prefers-color-scheme: light)'
+    primary: white
+    scheme: default
+    toggle:
+      icon: material/brightness-7
+      name: Switch to dark mode
+  - accent: black
+    media: '(prefers-color-scheme: dark)'
+    primary: black
+    scheme: slate
+    toggle:
+      icon: material/brightness-4
+      name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+  logo: https://img.icons8.com/ios-filled/50/000000/rocket.png
+  favicon: https://img.icons8.com/ios-filled/50/000000/rocket.png
+extra:
+  generator: false
+  social:
+  - icon: fontawesome/brands/github
+    link: https://github.com/nmhjklnm
+  - icon: fontawesome/brands/twitter
+    link: https://twitter.com/nmhjklnm
+  alternate:
+    - name: English
+      link: /en/ 
+      lang: en
+    - name: 中文
+      link: /zh/
+      lang: zh
+plugins:
+- i18n:
+    docs_structure: folder
+    languages:
+      - locale: en
+        default: true
+        name: English
+        build: true
+      - locale: zh
+        name: 中文
+        build: true
+- search:
+- section-index:
+- mkdocstrings:
+    handlers:
+      python:
+        setup_commands:
+          - "import sys; sys.path.append('/home/mnt/yangyihe/project/streamlit_flow/LazyLLM')"
+        options:
+          find_stubs_package: true
+          allow_inspection: true
+          show_source: true
+- autorefs:
+
+
