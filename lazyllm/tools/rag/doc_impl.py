@@ -66,8 +66,7 @@ class DocImplV2:
             return
         transform = self._get_transform(group_name)
         parent_name = node_group["parent_name"]
-        if parent_name:
-            self._dynamic_create_nodes(parent_name)
+        self._dynamic_create_nodes(parent_name)
 
         parent_nodes = self.store.traverse_nodes(parent_name)
 
