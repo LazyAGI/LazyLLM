@@ -78,7 +78,7 @@ class StableDiffusionDeploy(object):
     def __call__(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
-                    for _, _, filename in os.walk(finetuned_model)):
+                    for _, _, filename in os.walk(finetuned_model) if filename):
             if not finetuned_model:
                 LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                             f"base_model({base_model}) will be used")
