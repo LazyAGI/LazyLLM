@@ -18,6 +18,8 @@ class FunctionCallFormatter(FormatterBase):
                 for tool_call in tool_calls:
                     tool_call_id = tool_call['id']
                     tool_name = tool_call['function']['name']
+                    if "index" in tool_call:
+                        tool_call.pop("index")
                     try:
                         if len(tool_call['function']['arguments'].strip()) == 0:
                             # This function call contains no parameters.
