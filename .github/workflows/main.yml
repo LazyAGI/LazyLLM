@@ -2,10 +2,9 @@ name: LazyLLM ci
 on:
   workflow_dispatch:
   pull_request_target:
-  push:
     branches:
       - main
-  pull_request:
+  push:
     branches:
       - main
     paths-ignore:
