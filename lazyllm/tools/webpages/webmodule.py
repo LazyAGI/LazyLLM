@@ -4,7 +4,7 @@ import traceback
 import multiprocessing
 from ...module.module import ModuleBase
 import gradio as gr
-from lazyllm import LOG
+from lazyllm import LOG, globals
 from lazyllm.flow import Pipeline
 import lazyllm
 from types import GeneratorType

@@ -280,7 +280,6 @@ class Parallel(LazyLLMFlowsBase):
 
     def _run(self, input, items=None, **kw):
         if items is None:
-            print('here items is None')
             items = self._items
             size = len(items)
             if self._scatter:
@@ -288,7 +287,6 @@ class Parallel(LazyLLMFlowsBase):
             else:
                 inputs = [input] * size
         else:
-            print('here items is not None, input:', input, 'items:', items, 'kw', kw)
             inputs = input
 
         if self._concurrent:

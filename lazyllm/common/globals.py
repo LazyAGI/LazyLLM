@@ -1,13 +1,13 @@
 import threading
 import copy
 from typing import Any, Tuple
-import codecs
 import pickle
 from pydantic import BaseModel as struct
 from .common import package, kwargs, deprecated
+import base64
 
 class Globals(object):
-    __global_attrs__ = dict(chat_history=[], global_parameters={}, trace=[], err=None)
+    __global_attrs__ = dict(chat_history={}, global_parameters={}, trace=[], err=None)
 
     def __init__(self):
         self.__data = {}
@@ -29,7 +29,7 @@ class Globals(object):
             self.__data[self._sid] = copy.deepcopy(__class__.__global_attrs__)
         if rois:
             assert isinstance(rois, (tuple, list))
-            return {k: v for k, v in self.__data[self._sid] if k in rois}
+            return {k: v for k, v in self.__data[self._sid].items() if k in rois}
         return self.__data[self._sid]
 
     def _update(self, d) -> None:
@@ -71,9 +71,9 @@ class LazyLlmResponse(struct):
 
 
 def encode_request(input):
-    return codecs.encode(pickle.dumps(input), 'base64').decode('utf-8')
+    return base64.b64encode(pickle.dumps(input)).decode('utf-8')
 
 
 def decode_request(input, default=None):
     if input is None: return default
-    return pickle.loads(codecs.decode(input.encode('utf-8'), "base64"))
+    return pickle.loads(base64.b64decode(input.encode('utf-8')))

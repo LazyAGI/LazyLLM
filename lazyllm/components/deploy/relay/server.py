@@ -84,7 +84,8 @@ async def generate(request: Request): # noqa C901
                     after_func(output, **{r.kwonlyargs[0]: origin})
             elif len(new_args) == 2:
                 output = after_func(output, origin)
-        return Response(content=impl(output), headers=encode_request(globals._get_data(['trace', 'err'])))
+        return Response(content=impl(output),
+                        headers={'Global-Parameters': encode_request(globals._get_data(['trace', 'err']))})
     except requests.RequestException as e:
         return Response(content=f'{str(e)}', status_code=500)
     except Exception as e:

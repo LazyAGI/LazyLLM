@@ -9,7 +9,7 @@ import functools
 from concurrent.futures import ThreadPoolExecutor
 
 import lazyllm
-from lazyllm import FlatList, Option, launchers, LOG, kwargs, encode_request, decode_request
+from lazyllm import FlatList, Option, launchers, LOG, kwargs, encode_request, decode_request, globals
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
@@ -79,7 +79,7 @@ class ModuleBase(object):
 
     def __call__(self, *args, **kw):
         kw.update(globals['global_parameters'].get(self._module_id, dict()))
-        kw['llm_chat_history'] = globals['chat_history'].get(self._module_id, None)
+        if history := globals['chat_history'].get(self._module_id, None): kw['llm_chat_history'] = history
         r = self.forward(**args[0], **kw) if isinstance(args[0], kwargs) else self.forward(*args, **kw)
         if self._return_trace:
             globals['trace'].append(str(r))
@@ -245,11 +245,10 @@ class UrlModule(ModuleBase, UrlTemplate):
         assert self._url is not None, f'Please start {self.__class__} first'
 
         __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
-        headers = {'Content-Type': 'application/json'}
+        headers = {'Content-Type': 'application/json', 'Global-Parameters': encode_request(globals._data)}
 
         if isinstance(self, ServerModule):
-            headers['Global-Parameters'] = encode_request(globals._data)
-            __input = encode_request(__input)
+            data = encode_request(__input)
         elif self.template_message:
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
             assert 'inputs' in self.keys_name_handle
