@@ -84,7 +84,7 @@ jobs:
     runs-on: tps_sco_nv
     needs: [ Clone ]
     env:
-      LAZYLLM_MOONSHOTAI_API_KEY: ${{ secrets.LAZYLLM_MOONSHOTAI_API_KEY }}
+      LAZYLLM_MOONSHOTAI_API_KEY: ${{ secrets.LAZYLLM_MOONSHOTAI_API_KEY2 }}
     steps:
       - name: RunTests
         run: |
