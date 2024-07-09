@@ -9,6 +9,9 @@ from lazyllm.flow import Pipeline
 import lazyllm
 from types import GeneratorType
 import json
+from PIL import Image
+from io import BytesIO
+import base64
 
 
 css = """
@@ -41,6 +44,7 @@ class WebModule(ModuleBase):
         self.text_mode = text_mode if text_mode else WebModule.Mode.Dynamic
         self.demo = self.init_web(components)
         self.url = None
+        self.frozen_query = None
 
     def init_web(self, component_descs):
         with gr.Blocks(css=css, title=self.title) as demo:
@@ -106,6 +110,7 @@ class WebModule(ModuleBase):
     def _init_session(self, query, session):
         if session['curr_sess'] != '':  # remain unchanged.
             return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), session
+        self.frozen_query = query
 
         session['curr_sess'] = f"({session['sess_num']})  {query}"
         session['sess_num'] += 1
@@ -168,6 +173,8 @@ class WebModule(ModuleBase):
             return self._change_session(session['sess_titles'][0], None, None, session)
 
     def _prepare(self, query, chat_history):
+        if not query:
+            query = self.frozen_query
         if chat_history is None:
             chat_history = []
         return '', chat_history + [[query, None]]
@@ -202,30 +209,39 @@ class WebModule(ModuleBase):
                 else:
                     try:
                         r = json.loads(s)
-                        if "type" not in r["choices"][0] or (
-                                "type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
-                            delta = r["choices"][0]["delta"]
-                            if "content" in delta:
-                                s = delta["content"]
-                            else:
-                                s = ""
+                        if 'choices' in r:
+                            if "type" not in r["choices"][0] or (
+                                    "type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
+                                delta = r["choices"][0]["delta"]
+                                if "content" in delta:
+                                    s = delta["content"]
+                                else:
+                                    s = ""
+                        elif 'images_base64' in r:
+                            image_data = r.pop('images_base64')[0]
+                            image = Image.open(BytesIO(base64.b64decode(image_data)))
+                            return "The image is: ", "".join(log_history), image
+                        else:
+                            s = s
                     except (ValueError, KeyError, TypeError):
                         s = s
                     except Exception as e:
                         LOG.error(f"Uncaptured error `{e}` when parsing `{s}`, please contact us if you see this.")
-                return s, "".join(log_history)
+                return s, "".join(log_history), None
 
             log_history = []
             if isinstance(result, (LazyLlmResponse, str, dict)):
-                result, log = get_log_and_message(result)
+                result, log, image = get_log_and_message(result)
 
-            if isinstance(result, str):
+            if image:
+                chat_history[-1][1] = gr.Image(image)
+            elif isinstance(result, str):
                 chat_history[-1][1] = result
             elif isinstance(result, GeneratorType):
                 chat_history[-1][1] = ''
                 for s in result:
                     if isinstance(s, (LazyLlmResponse, str)):
-                        s, log = get_log_and_message(s)
+                        s, log, _ = get_log_and_message(s)
                     chat_history[-1][1] = (chat_history[-1][1] + s) if append_text else s
                     if stream_output: yield chat_history, log
             elif isinstance(result, dict):

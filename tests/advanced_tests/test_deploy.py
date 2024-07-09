@@ -49,3 +49,9 @@ class TestDeploy(object):
         m.update_server()
         res = m('你好')
         assert len(json.loads(res)) == 1024
+
+    def test_sd3(self):
+        m = lazyllm.TrainableModule('stable-diffusion-3-medium')
+        m.update_server()
+        res = m('a little cat')
+        assert "images_base64" in json.loads(res)
