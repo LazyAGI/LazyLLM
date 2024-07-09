@@ -1,6 +1,6 @@
 import threading
 import copy
-from typing import Any, Tuple
+from typing import Any, Tuple, Optional, List, Dict
 import pickle
 from pydantic import BaseModel as struct
 from .common import package, kwargs
@@ -13,10 +13,16 @@ class Globals(object):
 
     def __init__(self):
         self.__data = {}
-        try:
-            self.__sid = id(asyncio.current_task())
-        except Exception:
-            self.__sid = threading.local()
+        self._init_sid()
+
+    def _init_sid(self, sid: Optional[str] = None):
+        if sid is None:
+            try:
+                self._sid = id(asyncio.current_task())
+            except Exception:
+                self._sid = threading.local()
+        else:
+            self._sid = sid
 
     @property
     def _sid(self) -> str:
@@ -29,7 +35,7 @@ class Globals(object):
     @property
     def _data(self): return self._get_data()
 
-    def _get_data(self, rois=None) -> dict:
+    def _get_data(self, rois: Optional[List[str]] = None) -> dict:
         if self._sid not in self.__data:
             self.__data[self._sid] = copy.deepcopy(__class__.__global_attrs__)
         if rois:
@@ -37,9 +43,9 @@ class Globals(object):
             return {k: v for k, v in self.__data[self._sid].items() if k in rois}
         return self.__data[self._sid]
 
-    def _update(self, d) -> None:
+    def _update(self, d: Dict) -> None:
         if d:
-            self.__data.update(d)
+            self._data.update(d)
 
     def __setitem__(self, __key: str, __value: Any):
         self._data[__key] = __value
@@ -54,7 +60,9 @@ class Globals(object):
             super(__class__, self).__setattr__(__name, __value)
 
     def __getattr__(self, __name: str) -> Any:
-        return self[__name]
+        if __name in __class__.__global_attrs__:
+            return self[__name]
+        raise AttributeError(f'Attr {__name} not found in globals')
 
     def clear(self):
         self.__data.pop(self._sid)
@@ -65,7 +73,8 @@ class Globals(object):
 globals = Globals()
 
 
-class LazyLlmRequest(struct):
+@deprecated
+class LazyLlmRequest(object):
     input: Any = package()
     kwargs: Any = kwargs()
     global_parameters: dict = dict()

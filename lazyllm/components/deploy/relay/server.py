@@ -48,6 +48,7 @@ FastapiApp.update()
 @app.post("/generate")
 async def generate(request: Request): # noqa C901
     try:
+        globals._init_sid()
         origin = input = (await request.json())
         globals._update(decode_request(request.headers['Global-Parameters']))
         try:
