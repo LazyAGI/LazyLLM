@@ -37,7 +37,9 @@ class DocImplV2:
             chunk_overlap=12,
         )
 
-    def create_node_group(self, name, transform, parent="_lazyllm_root", **kwargs) -> None:
+    def create_node_group(
+        self, name, transform, parent="_lazyllm_root", **kwargs
+    ) -> None:
         if name in self.node_groups:
             LOG.warning(f"Duplicate group name: {name}")
         assert callable(transform), "transform should be callable"
@@ -82,7 +84,7 @@ class DocImplV2:
             LOG.debug(f"building _lazyllm_root nodes: {docs}")
         self._dynamic_create_nodes(group_name)
         return self.store.traverse_nodes(group_name)
-        
+
     def retrieve(self, query, group_name, similarity, index, topk, similarity_kws):
         if index:
             assert index == "default", "we only support default index currently"
