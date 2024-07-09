@@ -12,7 +12,9 @@ from .store import DocNode, MetadataMode
 from lazyllm import LOG
 
 
-def build_nodes_from_splits(text_splits: List[str], doc: DocNode, node_group: str) -> List[DocNode]:
+def build_nodes_from_splits(
+    text_splits: List[str], doc: DocNode, node_group: str
+) -> List[DocNode]:
     nodes: List[DocNode] = []
     for text_chunk in text_splits:
         if not text_chunk:
@@ -49,8 +51,7 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
 class NodeParser(ABC):
 
     def forward(
-        self, documents: Union[DocNode, List[DocNode]],
-        node_group: str, **kwargs
+        self, documents: Union[DocNode, List[DocNode]], node_group: str, **kwargs
     ) -> List[DocNode]:
         documents = documents if isinstance(documents, list) else [documents]
         all_nodes: List[DocNode] = []
@@ -63,7 +64,9 @@ class NodeParser(ABC):
     def transform(self, document: DocNode, **kwargs) -> List[str]:
         raise NotImplementedError("Not implemented")
 
-    def __call__(self, nodes: List[DocNode], node_group: str, **kwargs: Any) -> List[DocNode]:
+    def __call__(
+        self, nodes: List[DocNode], node_group: str, **kwargs: Any
+    ) -> List[DocNode]:
         return self.forward(nodes, node_group, **kwargs)
 
 
@@ -246,9 +249,9 @@ class FuncNodeParser(NodeParser):
     """
 
     def __init__(self, func: Callable[[str], List[str]]):
-        self.func = func
+        self._func = func
 
     def transform(self, document: DocNode, **kwargs) -> List[str]:
-        result = self.func(document.get_content(metadata_mode=MetadataMode.NONE))
+        result = self._func(document.get_content(metadata_mode=MetadataMode.NONE))
         text_splits = [result] if isinstance(result, str) else result
         return text_splits
