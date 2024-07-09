@@ -81,8 +81,10 @@ class SentenceSplitter(NodeParser):
             self._tiktoken_tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo")
         except requests.exceptions.ConnectionError:
             LOG.error(
-                "Unable to download the vocabulary file for tiktoken `gpt-3.5-turbo`. Please check your internet connection. "
-                "Alternatively, you can manually download the file and set the `TIKTOKEN_CACHE_DIR` environment variable."
+                "Unable to download the vocabulary file for tiktoken `gpt-3.5-turbo`. "
+                "Please check your internet connection. "
+                "Alternatively, you can manually download the file "
+                "and set the `TIKTOKEN_CACHE_DIR` environment variable."
             )
             raise
         except Exception as e:
