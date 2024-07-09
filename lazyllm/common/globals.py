@@ -3,7 +3,8 @@ import copy
 from typing import Any, Tuple
 import pickle
 from pydantic import BaseModel as struct
-from .common import package, kwargs, deprecated
+from .common import package, kwargs
+from .deprecated import deprecated
 import asyncio
 import base64
 
