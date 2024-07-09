@@ -1,6 +1,5 @@
 import os
 import json
-import torch
 import base64
 from PIL import Image
 import numpy as np
@@ -23,6 +22,7 @@ class StableDiffusion3(object):
             lazyllm.call_once(self.init_flag, self.load_sd)
 
     def load_sd(self):
+        import torch
         from diffusers import StableDiffusion3Pipeline
         self.sd = StableDiffusion3Pipeline.from_pretrained(self.base_sd, torch_dtype=torch.float16).to("cuda")
 
