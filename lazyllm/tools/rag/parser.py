@@ -84,8 +84,10 @@ class SentenceSplitter(NodeParser):
                 "Unable to download the vocabulary file for tiktoken `gpt-3.5-turbo`. Please check your internet connection. "
                 "Alternatively, you can manually download the file and set the `TIKTOKEN_CACHE_DIR` environment variable."
             )
+            raise
         except Exception as e:
-            LOG.error(f"Unable to build tiktoken tokenizer with error`{e}`")
+            LOG.error(f"Unable to build tiktoken tokenizer with error `{e}`")
+            raise
         self._punkt_st_tokenizer = nltk.tokenize.PunktSentenceTokenizer()
 
         self._sentence_split_fns = [
