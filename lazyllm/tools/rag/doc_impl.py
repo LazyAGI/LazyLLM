@@ -12,12 +12,11 @@ from .index import DefaultIndex
 class DocImplV2:
     def __init__(self, embed, doc_files=Optional[List[str]], **kwargs):
         super().__init__()
-        self.embed = embed
         self.directory_reader = DirectoryReader(input_files=doc_files)
         self.parser_dict: Dict[str, Dict] = {}
         self.create_node_group_default()
         self.store = MapStore()
-        self.index = DefaultIndex()
+        self.index = DefaultIndex(embed)
 
     def create_node_group_default(self):
         self.create_node_group(
@@ -99,21 +98,7 @@ class DocImplV2:
 
         nodes = self.store.traverse_nodes(node_group)
 
-        similarity_func, use_embedding = self.index.registered_similarity[similarity]
-        if use_embedding:
-            assert self.embed, "Chosen similarity needs embed model."
-            assert len(query) > 0, "query empty!"
-            query_embedding = ast.literal_eval(self.embed(query))
-            for node in nodes:
-                if not node.embedding:
-                    node.embedding = ast.literal_eval(self.embed(node.text))
-            similar_nodes = similarity_func(
-                query_embedding, nodes, topk=topk, **similarity_kws
-            )
-        else:
-            similar_nodes = similarity_func(query, nodes, topk=topk, **similarity_kws)
-
-        return similar_nodes
+        return self.index.query(query, nodes, similarity, topk, **similarity_kws)
 
     def _find_parent(self, nodes: List[DocNode], name: str) -> List[DocNode]:
         def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
@@ -194,7 +179,7 @@ class RetrieverV2(ModuleBase):
         self,
         doc,
         node_group: str,
-        similarity: str = "dummy_similarity",
+        similarity: str = "dummy",
         index: str = "default",
         topk: int = 6,
         **kwargs,
