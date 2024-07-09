@@ -37,7 +37,7 @@ class DocImplV2:
             chunk_overlap=12,
         )
 
-    def create_node_group(self, name, transform, parent="root", **kwargs) -> None:
+    def create_node_group(self, name, transform, parent="_lazyllm_root", **kwargs) -> None:
         if name in self.node_groups:
             LOG.warning(f"Duplicate group name: {name}")
         assert callable(transform), "transform should be callable"
@@ -81,10 +81,10 @@ class DocImplV2:
             query = query.input
 
         # lazy load files
-        if not self.store.has_nodes("root"):
+        if not self.store.has_nodes("_lazyllm_root"):
             docs = self.directory_reader.load_data()
-            self.store.add_nodes("root", docs)
-            LOG.debug(f"building root nodes: {docs}")
+            self.store.add_nodes("_lazyllm_root", docs)
+            LOG.debug(f"building _lazyllm_root nodes: {docs}")
 
         self._dynamic_create_nodes(node_group)
 
