@@ -439,7 +439,10 @@ class _TrainableModuleImpl(ModuleBase):
             merge_path = os.path.join(self._target_path, 'merge')
             if os.path.exists(merge_path): target_path = merge_path
 
-        deployer = self._deploy(stream=self._stream, **self._deploy_args)
+        if self._deploy is lazyllm.deploy.AutoDeploy:
+            deployer = self._deploy(base_model=self._base_model, stream=self._stream, **self._deploy_args)
+        else:
+            deployer = self._deploy(stream=self._stream, **self._deploy_args)
         template = UrlTemplate(copy.deepcopy(deployer.message_format), deployer.keys_name_handle,
                                copy.deepcopy(deployer.default_headers))
         stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
@@ -454,7 +457,6 @@ class _TrainableModuleImpl(ModuleBase):
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
-        if self._deploy is lazyllm.deploy.AutoDeploy: self._deploy_args['base_model'] = self._base_model
 
 
 class TrainableModule(UrlModule):

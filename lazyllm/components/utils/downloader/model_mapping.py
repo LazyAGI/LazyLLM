@@ -112,6 +112,10 @@ model_name_mapping = {
 		"source": {"huggingface": "Qwen/Qwen-72B", "modelscope": "qwen/Qwen-72B"},
 		"prompt_keys": model_groups["QWen"]["prompt_keys"],
 		},
+    "Qwen1.5-0.5B-Chat": {
+		"source": {"huggingface": "Qwen/Qwen1.5-0.5B-Chat", "modelscope": "qwen/Qwen1.5-0.5B-Chat"},
+		"prompt_keys": model_groups["QWen"]["prompt_keys"],
+		},
     "Qwen1.5-1.8B": {
 		"source": {"huggingface": "Qwen/Qwen1.5-1.8B", "modelscope": "qwen/Qwen1.5-1.8B"},
 		"prompt_keys": model_groups["QWen"]["prompt_keys"],
@@ -132,7 +136,6 @@ model_name_mapping = {
 		"source": {"huggingface": "Qwen/Qwen1.5-72B", "modelscope": "qwen/Qwen1.5-72B"},
 		"prompt_keys": model_groups["QWen"]["prompt_keys"],
 		},
-
     "internlm-20b": {
 		"source": {"huggingface": "internlm/internlm-20b", "modelscope": "Shanghai_AI_Laboratory/internlm-20b"},
 		"prompt_keys": model_groups["internlm"]["prompt_keys"],
