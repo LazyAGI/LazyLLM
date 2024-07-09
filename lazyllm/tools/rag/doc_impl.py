@@ -74,22 +74,22 @@ class DocImplV2:
         self.store.add_nodes(group_name, sub_nodes)
         LOG.debug(f"building {group_name} nodes: {sub_nodes}")
 
-    def retrieve(self, query, node_group, similarity, index, topk, similarity_kws):
+    def _get_nodes(self, group_name: str) -> List[DocNode]:
+        # lazy load files, if group isn't set, create the group
+        if not self.store.has_nodes("_lazyllm_root"):
+            docs = self.directory_reader.load_data()
+            self.store.add_nodes("_lazyllm_root", docs)
+            LOG.debug(f"building _lazyllm_root nodes: {docs}")
+        self._dynamic_create_nodes(group_name)
+        return self.store.traverse_nodes(group_name)
+        
+    def retrieve(self, query, group_name, similarity, index, topk, similarity_kws):
         if index:
             assert index == "default", "we only support default index currently"
         if isinstance(query, LazyLlmRequest):
             query = query.input
 
-        # lazy load files
-        if not self.store.has_nodes("_lazyllm_root"):
-            docs = self.directory_reader.load_data()
-            self.store.add_nodes("_lazyllm_root", docs)
-            LOG.debug(f"building _lazyllm_root nodes: {docs}")
-
-        self._dynamic_create_nodes(node_group)
-
-        nodes = self.store.traverse_nodes(node_group)
-
+        nodes = self._get_nodes(group_name)
         return self.index.query(query, nodes, similarity, topk, **similarity_kws)
 
     def _find_parent(self, nodes: List[DocNode], name: str) -> List[DocNode]:
@@ -131,8 +131,8 @@ class DocImplV2:
 
         result = set()
 
-        if not self.store.has_nodes(name):
-            self._dynamic_create_nodes(name)
+        # case when user hasn't used the group before.
+        _ = self._get_nodes(name)
 
         for node in nodes:
             if name in node.children:
@@ -170,7 +170,7 @@ class RetrieverV2(ModuleBase):
     def __init__(
         self,
         doc,
-        node_group: str,
+        group_name: str,
         similarity: str = "dummy",
         index: str = "default",
         topk: int = 6,
@@ -178,7 +178,7 @@ class RetrieverV2(ModuleBase):
     ):
         super().__init__()
         self.doc = doc
-        self.node_group = node_group
+        self.group_name = group_name
         self.similarity = similarity  # similarity function str
         self.index = index
         self.topk = topk
@@ -189,7 +189,7 @@ class RetrieverV2(ModuleBase):
         # if we've developed all of the components
         return self.doc._impl._impl.retrieve(
             query,
-            self.node_group,
+            self.group_name,
             self.similarity,
             self.index,
             self.topk,
