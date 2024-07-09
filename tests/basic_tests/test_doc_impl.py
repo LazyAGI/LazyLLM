@@ -1,5 +1,5 @@
 from lazyllm.tools.rag.doc_impl import DocImplV2
-from lazyllm.tools.rag.parser import SentenceSplitter
+from LazyLLM.lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import DocNode
 from unittest.mock import MagicMock
 

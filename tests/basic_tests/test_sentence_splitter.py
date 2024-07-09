@@ -1,6 +1,6 @@
 # flake8: noqa: E501
 
-from lazyllm.tools.rag.parser import SentenceSplitter
+from LazyLLM.lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import DocNode, MetadataMode
 
 

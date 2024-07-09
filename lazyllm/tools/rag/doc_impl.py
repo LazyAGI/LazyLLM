@@ -2,10 +2,9 @@ from functools import partial
 from typing import Dict, List, Optional, Set
 from lazyllm import ModuleBase, LOG
 from lazyllm.common import LazyLlmRequest
-from .parser import FuncNodeParser, SentenceSplitter
+from .transform import FuncNodeTransform, SentenceSplitter
 from .store import MapStore, DocNode
 from .data_loaders import DirectoryReader
-import ast
 from .index import DefaultIndex
 
 
@@ -13,7 +12,7 @@ class DocImplV2:
     def __init__(self, embed, doc_files=Optional[List[str]], **kwargs):
         super().__init__()
         self.directory_reader = DirectoryReader(input_files=doc_files)
-        self.parser_dict: Dict[str, Dict] = {}
+        self.node_groups: Dict[str, Dict] = {}
         self.create_node_group_default()
         self.store = MapStore()
         self.index = DefaultIndex(embed)
@@ -39,42 +38,42 @@ class DocImplV2:
         )
 
     def create_node_group(self, name, transform, parent="root", **kwargs) -> None:
-        if name in self.parser_dict:
-            LOG.warning(f"Duplicate parser rule: {name}")
+        if name in self.node_groups:
+            LOG.warning(f"Duplicate group name: {name}")
         assert callable(transform), "transform should be callable"
-        self.parser_dict[name] = dict(
-            parser=transform, parser_kwargs=kwargs, parent_name=parent
+        self.node_groups[name] = dict(
+            transform=transform, transform_kwargs=kwargs, parent_name=parent
         )
 
     def _get_transform(self, name):
-        parser_dict = self.parser_dict.get(name)
-        if parser_dict is None:
+        node_group = self.node_groups.get(name)
+        if node_group is None:
             raise ValueError(
-                f"Parser '{name}' does not exist. "
-                "Please check the parser name or add a new one through 'create_node_group'."
+                f"Node group '{name}' does not exist. "
+                "Please check the group name or add a new one through `create_node_group`."
             )
 
-        transform = parser_dict["parser"]
+        transform = node_group["transform"]
         return (
-            transform(**parser_dict["parser_kwargs"])
+            transform(**node_group["transform_kwargs"])
             if isinstance(transform, type)
-            else FuncNodeParser(transform)
+            else FuncNodeTransform(transform)
         )
 
-    def _dynamic_create_nodes(self, node_group) -> None:
-        parser_dict = self.parser_dict.get(node_group)
-        if self.store.has_nodes(node_group):
+    def _dynamic_create_nodes(self, group_name) -> None:
+        node_group = self.node_groups.get(group_name)
+        if self.store.has_nodes(group_name):
             return
-        transform = self._get_transform(node_group)
-        parent_name = parser_dict["parent_name"]
+        transform = self._get_transform(group_name)
+        parent_name = node_group["parent_name"]
         if parent_name:
             self._dynamic_create_nodes(parent_name)
 
         parent_nodes = self.store.traverse_nodes(parent_name)
 
-        sub_nodes = transform(parent_nodes, node_group)
-        self.store.add_nodes(node_group, sub_nodes)
-        LOG.debug(f"building {node_group} nodes: {sub_nodes}")
+        sub_nodes = transform(parent_nodes, group_name)
+        self.store.add_nodes(group_name, sub_nodes)
+        LOG.debug(f"building {group_name} nodes: {sub_nodes}")
 
     def retrieve(self, query, node_group, similarity, index, topk, similarity_kws):
         if index:

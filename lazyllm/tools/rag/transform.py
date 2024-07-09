@@ -48,7 +48,7 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
     return result[1:] if len(result) > 0 and not result[0] else result
 
 
-class NodeParser(ABC):
+class NodeTransform(ABC):
 
     def forward(
         self, documents: Union[DocNode, List[DocNode]], node_group: str, **kwargs
@@ -70,7 +70,7 @@ class NodeParser(ABC):
         return self.forward(nodes, node_group, **kwargs)
 
 
-class SentenceSplitter(NodeParser):
+class SentenceSplitter(NodeTransform):
     def __init__(self, chunk_size: int = 1024, chunk_overlap: int = 200):
         if chunk_overlap > chunk_size:
             raise ValueError(
@@ -238,7 +238,7 @@ class SentenceSplitter(NodeParser):
         return splits, False
 
 
-class FuncNodeParser(NodeParser):
+class FuncNodeTransform(NodeTransform):
     """Used for user defined function.
 
     Wrapped the transform to: List[Docnode] -> List[Docnode]
