@@ -2,16 +2,11 @@ name: LazyLLM ci
 on:
   workflow_dispatch:
   pull_request_target:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - "**.md"
-      - ".git*"
 
 
 env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}'
+  LAZYLLM_MOONSHOTAI_API_KEY: ${{ secrets.LAZYLLM_MOONSHOTAI_API_KEY2 }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -27,6 +22,7 @@ jobs:
       - name: Create custom directory
         run: |
           set -ex
+          echo ${{ env.LAZYLLM_MOONSHOTAI_API_KEY }}
           echo ${{ env.CI_PATH }}
           mkdir -p ${{ env.CI_PATH }}
 
