@@ -4,6 +4,7 @@ from typing import Any, Tuple
 import pickle
 from pydantic import BaseModel as struct
 from .common import package, kwargs, deprecated
+import asyncio
 import base64
 
 class Globals(object):
@@ -11,7 +12,10 @@ class Globals(object):
 
     def __init__(self):
         self.__data = {}
-        self.__sid = threading.local()
+        try:
+            self.__sid = id(asyncio.current_task())
+        except Exception:
+            self.__sid = threading.local()
 
     @property
     def _sid(self) -> str:
@@ -50,6 +54,12 @@ class Globals(object):
 
     def __getattr__(self, __name: str) -> Any:
         return self[__name]
+
+    def clear(self):
+        self.__data.pop(self._sid)
+
+    def _clear_all(self):
+        self.__data.clear()
 
 globals = Globals()
 
