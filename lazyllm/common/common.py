@@ -37,6 +37,24 @@ class ArgsDict(dict):
         string = ' '.join(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"' for k, v in self.items())
         return string
 
+class CaseInsensitiveDict(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        for key, value in dict(*args, **kwargs).items():
+            assert isinstance(key, str)
+            self[key] = value
+
+    def __getitem__(self, key):
+        assert isinstance(key, str)
+        return super().__getitem__(key.lower())
+
+    def __setitem__(self, key, value):
+        assert isinstance(key, str)
+        super().__setitem__(key.lower(), value)
+
+    def __contains__(self, key):
+        assert isinstance(key, str)
+        return super().__contains__(key.lower())
 
 # pack return value of modules used in pipeline / parallel.
 # will unpack when passing it to the next item.

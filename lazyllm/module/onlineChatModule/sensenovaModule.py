@@ -53,36 +53,23 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'chat-completions')
 
-    def _stream_post_process(self, response: str) -> Dict[str, Any]:
+    def _convert_msg_format(self, msg: Dict[str, Any]):
         try:
-            chunk = json.loads(response)["data"]
-            content = chunk['choices'][0]['delta']
-            role = chunk['choices'][0].pop("role")
-            chunk['choices'][0]['delta'] = {"content": content, "role": role}
-            if "tool_calls" in chunk["choices"][0]:
-                tool_calls = chunk["choices"][0].pop("tool_calls")
-                chunk["choices"][0]["delta"]["tool_calls"] = tool_calls
-            chunk["model"] = self._model_name
-            return chunk
-        except ValueError:
-            return chunk
-        except Exception as e:
-            lazyllm.LOG.error(e)
-            return ""
+            resp = msg['data']
+            resp['plugins'] = {} if resp['plugins'] is None else resp['plugins']
+            data = resp['choices'][0]
+            content = data.get('delta', '') if 'delta' in data else data.get('message', '')
+            message = {"role": data.pop("role"), "content": content}
+            data["delta" if "delta" in data else "message"] = message
 
-    def _nonstream_post_process(self, response: str) -> Dict[str, Any]:
-        try:
-            resp = json.loads(response)['data']
-            content = resp['choices'][0].get('message', '')
-            msg = {"role": resp['choices'][0].pop("role"), "content": content}
-            resp["choices"][0]["message"] = msg
-            if "tool_calls" in resp["choices"][0]:
-                tool_calls = resp["choices"][0].pop("tool_calls")
-                resp["choices"][0]["message"]["tool_calls"] = tool_calls
-            resp["model"] = self._model_name
+            if "tool_calls" in data:
+                tool_calls = data.pop('tool_calls')
+                for idx in range(len(tool_calls)):
+                    tool_calls[idx]['index'] = idx
+                data["delta" if "delta" in data else "message"]["tool_calls"] = tool_calls
+            resp['model'] = self._model_name
             return resp
-        except Exception as e:
-            lazyllm.LOG.error(e)
+        except Exception:
             return ""
 
     def _convert_file_format(self, filepath: str) -> None:
