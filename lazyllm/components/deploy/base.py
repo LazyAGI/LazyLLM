@@ -28,7 +28,7 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
         def func():
 
             def impl(x):
-                LOG.info(f'input is {x["inputs"]}, parameters is {x["parameters"]}')
+                print(f'input is {x["inputs"]}, parameters is {x["parameters"]}')
                 return f'reply for {x["inputs"]}, and parameters is {x["parameters"]}'
 
             def impl_stream(x):
@@ -41,7 +41,7 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
 
     def __call__(self, *args):
         url = flows.Pipeline.__call__(self)
-        LOG.info(f'dummy deploy url is : {url}')
+        print(f'dummy deploy url is : {url}')
         return url
 
     def __repr__(self):
@@ -57,8 +57,8 @@ class DummyLongDeploy(DummyDeploy):
         t = random.randint(5, 20)
         time.sleep(t)
         url = flows.Pipeline.__call__(self)
-        LOG.info(f'long dummy call sleep for {t} seconds')
-        LOG.info(f'dummy deploy url is : {url}')
+        print(f'long dummy call sleep for {t} seconds')
+        print(f'dummy deploy url is : {url}')
         return url
 
 
