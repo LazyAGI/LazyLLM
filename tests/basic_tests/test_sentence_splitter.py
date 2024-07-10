@@ -1,6 +1,6 @@
 # flake8: noqa: E501
 
-from lazyllm.tools.rag.parser import SentenceSplitter
+from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import DocNode, MetadataMode
 
 
@@ -14,7 +14,7 @@ class TestSentenceSplitter:
         """
         docs = [DocNode(text=text)]
 
-        result = self.splitter.forward(docs)
+        result = self.splitter.forward(docs, node_group='default')
         result_texts = [n.get_content(metadata_mode=MetadataMode.NONE) for n in result]
         expected_texts = [
             "Before college the two main things I worked on, outside of school, were writing and programming.I didn't write essays.",
