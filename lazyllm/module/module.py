@@ -9,7 +9,7 @@ import functools
 from concurrent.futures import ThreadPoolExecutor
 
 import lazyllm
-from lazyllm import FlatList, LazyLlmResponse, LazyLlmRequest, Option, launchers, LOG
+from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, decode_request, globals
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
@@ -19,7 +19,6 @@ from ..client import get_redis, redis_client
 
 class ModuleBase(object):
     builder_keys = []  # keys in builder support Option by default
-    __enable_request__ = False
 
     def __new__(cls, *args, **kw):
         sig = inspect.signature(cls.__init__)
@@ -79,16 +78,15 @@ class ModuleBase(object):
         raise AttributeError(f'{self.__class__} object has no attribute {key}')
 
     def __call__(self, *args, **kw):
-        if len(args) == 1 and isinstance(args[0], LazyLlmRequest):
-            assert len(kw) == 0, 'Cannot use LazyLlmRequest and kwargs at the same time'
-            args[0].kwargs.update(args[0].global_parameters.get(self._module_id, dict()))
-            if not getattr(self.__class__, '__enable_request__', False):
-                kw = args[0].kwargs
-                args = args[0].input if isinstance(args[0].input, lazyllm.package) else (args[0].input,)
-        r = self.forward(*args, **kw)
-        if self._return_trace:
-            if isinstance(r, LazyLlmResponse): r.trace += f'{str(r)}\n'
-            else: r = LazyLlmResponse(messages=r, trace=f'{str(r)}\n')
+        try:
+            kw.update(globals['global_parameters'].get(self._module_id, dict()))
+            if history := globals['chat_history'].get(self._module_id, None): kw['llm_chat_history'] = history
+            r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
+            if self._return_trace:
+                globals['trace'].append(str(r))
+        except Exception as e:
+            raise RuntimeError(f'\nAn error occured in {self.__class__} with name {self.name}.\n'
+                               f'Args:\n{args}\nKwargs\n{kw}\nError messages:\n{e}\n')
         return r
 
     # interfaces
@@ -216,8 +214,6 @@ class UrlTemplate(object):
 
 
 class UrlModule(ModuleBase, UrlTemplate):
-    __enable_request__ = True
-
     def __init__(self, *, url='', stream=False, return_trace=False):
         super().__init__(return_trace=return_trace)
         self.__url = url
@@ -249,44 +245,35 @@ class UrlModule(ModuleBase, UrlTemplate):
     # Cannot modify or add any attrubute of self
     # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
     # deploy parameters keys are in **kw
-    def forward(self, __input=None, *, llm_chat_history=None, tools=None, **kw):  # noqa C901
+    def forward(self, __input=package(), *, llm_chat_history=None, tools=None, **kw):  # noqa C901
         assert self._url is not None, f'Please start {self.__class__} first'
-        assert len(kw) == 0 or not isinstance(__input, LazyLlmRequest), \
-            'Cannot provide LazyLlmRequest and kw args at the same time.'
 
-        input, kw = (__input.input, __input.kwargs) if isinstance(__input, LazyLlmRequest) else (__input, kw)
-        input = self._prompt.generate_prompt(input, llm_chat_history, tools)
+        __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
+        headers = {'Content-Type': 'application/json'}
 
         if isinstance(self, ServerModule):
-            if isinstance(__input, LazyLlmRequest): __input.input = input
-            else: __input = LazyLlmRequest(input=input, kwargs=kw)
-            data = codecs.encode(pickle.dumps(__input), 'base64').decode('utf-8')
+            assert llm_chat_history is None and tools is None
+            headers['Global-Parameters'] = encode_request(globals._data)
+            data = encode_request((__input, kw))
         elif self.template_message:
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
             assert 'inputs' in self.keys_name_handle
-            data[self.keys_name_handle['inputs']] = input
+            data[self.keys_name_handle['inputs']] = __input
         else:
             if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
-            data = input
-
-        def _callback(text):
-            if isinstance(text, LazyLlmResponse):
-                text = self._prompt.get_response(self._extract_result_func(text.messages))
-            else:
-                text = self._prompt.get_response(self._extract_result_func(text))
-            return text
+            data = __input
 
         # context bug with httpx, so we use requests
         def _impl():
-            with requests.post(self._url, json=data, stream=True) as r:
+            with requests.post(self._url, json=data, stream=True, headers=headers) as r:
                 if r.status_code == 200:
                     for chunk in r.iter_content(None):
                         try:
                             chunk = pickle.loads(codecs.decode(chunk, "base64"))
-                            assert isinstance(chunk, LazyLlmResponse)
                         except Exception:
                             chunk = chunk.decode('utf-8')
-                        yield (_callback(chunk))
+                        yield self._prompt.get_response(self._extract_result_func(chunk))
+                    globals._update(decode_request(r.headers.get('Global-Parameters'), dict()))
                 else:
                     raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         if self._stream:
@@ -327,8 +314,6 @@ class UrlModule(ModuleBase, UrlTemplate):
 
 
 class ActionModule(ModuleBase):
-    __enable_request__ = True
-
     def __init__(self, *action, return_trace=False):
         super().__init__(return_trace=return_trace)
         if len(action) == 1 and isinstance(action, FlowBase): action = action[0]
@@ -461,7 +446,6 @@ class _TrainableModuleImpl(ModuleBase):
 
 class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
-    __enable_request__ = False
 
     def __init__(self, base_model: Option = '', target_path='', *, stream=False, return_trace=False):
         super().__init__(url=None, stream=stream, return_trace=return_trace)

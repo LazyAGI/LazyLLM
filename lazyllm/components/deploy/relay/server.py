@@ -7,8 +7,8 @@ import sys
 import inspect
 import traceback
 from types import GeneratorType
-from lazyllm import LazyLlmResponse, ReqResHelper, LazyLlmRequest
-from lazyllm import FastapiApp
+from lazyllm import kwargs, package
+from lazyllm import FastapiApp, globals, encode_request, decode_request
 import pickle
 import codecs
 
@@ -48,42 +48,36 @@ FastapiApp.update()
 @app.post("/generate")
 async def generate(request: Request): # noqa C901
     try:
-        origin = input = (await request.json())
-        kw = dict()
+        globals._init_sid()
+        globals._update(decode_request(request.headers.get('Global-Parameters')))
+        input, kw = (await request.json()), {}
         try:
-            input = pickle.loads(codecs.decode(input.encode('utf-8'), "base64"))
-            assert isinstance(input, LazyLlmRequest)
-            kw = input.kwargs
-        except Exception: input = origin
-        finally: origin = input
+            input, kw = decode_request(input)
+        except Exception: pass
+        origin = input
 
-        h = ReqResHelper()
-        origin = input = h.make_request(input).input
         if args.before_function:
             assert (callable(before_func)), 'before_func must be callable'
             r = inspect.getfullargspec(before_func)
-            if isinstance(input, dict) and set(r.args[1:] if r.args[0] == 'self' else r.args) == set(input.keys()):
-                assert len(kw) == 0, f'Duplicate kwargs provide, keys are {kw.keys()}'
+            if isinstance(input, kwargs) or (
+                    isinstance(input, dict) and set(r.args[1:] if r.args[0] == 'self' else r.args) == set(input.keys())):
+                assert len(kw) == 0, 'Cannot provide kwargs-input and kwargs at the same time'
                 input = before_func(**input)
             else:
-                input = before_func(input, **kw)
-                kw = dict()
-        if hasattr(func, '__enable_request__'):  # flow or module
-            output = func(h.make_request(input, **kw))
-        else:
-            output = func(input, **kw)
-        output = h.make_request(output).input
+                input = func(*input, **kw) if isinstance(input, package) else before_func(input, **kw)
+                kw = {}
+        output = (func(*input, **kw) if isinstance(input, package) else
+                  func(**input, **kw) if isinstance(input, kwargs) else func(input, **kw))
 
         def impl(o):
-            o = h.make_response(o, force=True)
-            assert isinstance(o, LazyLlmResponse), 'output of func must be LazyLlmResponse'
             return codecs.encode(pickle.dumps(o), 'base64')
 
         if isinstance(output, GeneratorType):
             def generate_stream():
                 for o in output:
                     yield impl(o)
-            return StreamingResponse(generate_stream(), media_type='text_plain')
+            return StreamingResponse(generate_stream(), media_type='text_plain',
+                                     headers={'Global-Parameters': encode_request(globals._get_data(['trace', 'err']))})
         elif args.after_function:
             assert (callable(after_func)), 'after_func must be callable'
             r = inspect.getfullargspec(after_func)
@@ -95,11 +89,15 @@ async def generate(request: Request): # noqa C901
                     after_func(output, **{r.kwonlyargs[0]: origin})
             elif len(new_args) == 2:
                 output = after_func(output, origin)
-        return Response(content=impl(output))
+        return Response(content=impl(output),
+                        headers={'Global-Parameters': encode_request(globals._get_data(['trace', 'err']))})
     except requests.RequestException as e:
         return Response(content=f'{str(e)}', status_code=500)
     except Exception as e:
         return Response(content=f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
+    finally:
+        globals.clear()
+
 
 if '__relay_services__' in dir(func.__class__):
     for (method, path), (name, kw) in func.__class__.__relay_services__.items():
