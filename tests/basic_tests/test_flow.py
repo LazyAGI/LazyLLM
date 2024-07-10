@@ -1,9 +1,7 @@
 from lazyllm import pipeline, parallel, diverter, warp, switch, ifs, loop, barrier, bind
 
 def add_one(x): return x + 1
-def xy2z(x, y, z=0):
-    print(x, y, z)
-    return x + y + 2 * z
+def xy2z(x, y, z=0): return x + y + 2 * z
 def is_1(x): return True if x == 1 else False
 def is_2(x): return True if x == 2 else False
 def is_3(x): return True if x == 3 else False

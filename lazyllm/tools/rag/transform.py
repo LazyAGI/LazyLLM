@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+import requests
 
 from functools import partial
 import re
-from typing import Any, List, Tuple, Union
+from typing import Any, Callable, List, Tuple, Union
 
 import nltk
 import tiktoken
@@ -12,23 +13,25 @@ from .store import DocNode, MetadataMode
 from lazyllm import LOG
 
 
-def build_nodes_from_splits(text_splits: List[str], doc: DocNode) -> List[DocNode]:
+def build_nodes_from_splits(
+    text_splits: List[str], doc: DocNode, node_group: str
+) -> List[DocNode]:
     nodes: List[DocNode] = []
     for text_chunk in text_splits:
-        if isinstance(doc, DocNode):
-            node = DocNode(
-                text=text_chunk,
-                embedding=doc.embedding,
-                metadata=doc.metadata,
-                excluded_embed_metadata_keys=doc.excluded_embed_metadata_keys,
-                excluded_llm_metadata_keys=doc.excluded_llm_metadata_keys,
-                parent=doc,
-            )
-            nodes.append(node)
-        else:
-            raise ValueError(f"Unknown document type: {type(doc)}")
+        if not text_chunk:
+            continue
+        node = DocNode(
+            text=text_chunk,
+            ntype=node_group,
+            embedding=doc.embedding,
+            metadata=doc.metadata,
+            excluded_embed_metadata_keys=doc.excluded_embed_metadata_keys,
+            excluded_llm_metadata_keys=doc.excluded_llm_metadata_keys,
+            parent=doc,
+        )
+        nodes.append(node)
 
-    doc.children = nodes
+    doc.children[node_group] = nodes
     return nodes
 
 
@@ -42,30 +45,33 @@ class _Split:
 def split_text_keep_separator(text: str, separator: str) -> List[str]:
     """Split text and keep the separator."""
     parts = text.split(separator)
-    return [separator + s if i > 0 else s for i, s in enumerate(parts) if s]
+    result = [separator + s if i > 0 else s for i, s in enumerate(parts)]
+    return result[1:] if len(result) > 0 and not result[0] else result
 
 
-class NodeParser(ABC):
+class NodeTransform(ABC):
 
     def forward(
-        self, documents: Union[DocNode, List[DocNode]], **kwargs
+        self, documents: Union[DocNode, List[DocNode]], node_group: str, **kwargs
     ) -> List[DocNode]:
         documents = documents if isinstance(documents, list) else [documents]
         all_nodes: List[DocNode] = []
         for node in documents:
             splits = self.transform(node, **kwargs)
-            all_nodes.extend(build_nodes_from_splits(splits, node))
+            all_nodes.extend(build_nodes_from_splits(splits, node, node_group))
         return all_nodes
 
     @abstractmethod
     def transform(self, document: DocNode, **kwargs) -> List[str]:
         raise NotImplementedError("Not implemented")
 
-    def __call__(self, nodes: List[DocNode], **kwargs: Any) -> List[DocNode]:
-        return self.forward(nodes, **kwargs)
+    def __call__(
+        self, nodes: List[DocNode], node_group: str, **kwargs: Any
+    ) -> List[DocNode]:
+        return self.forward(nodes, node_group, **kwargs)
 
 
-class SentenceSplitter(NodeParser):
+class SentenceSplitter(NodeTransform):
     def __init__(self, chunk_size: int = 1024, chunk_overlap: int = 200):
         if chunk_overlap > chunk_size:
             raise ValueError(
@@ -77,7 +83,19 @@ class SentenceSplitter(NodeParser):
             chunk_size > 0 and chunk_overlap >= 0
         ), "chunk size should > 0 and chunk_overlap should >= 0"
 
-        self._tiktoken_tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        try:
+            self._tiktoken_tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        except requests.exceptions.ConnectionError:
+            LOG.error(
+                "Unable to download the vocabulary file for tiktoken `gpt-3.5-turbo`. "
+                "Please check your internet connection. "
+                "Alternatively, you can manually download the file "
+                "and set the `TIKTOKEN_CACHE_DIR` environment variable."
+            )
+            raise
+        except Exception as e:
+            LOG.error(f"Unable to build tiktoken tokenizer with error `{e}`")
+            raise
         self._punkt_st_tokenizer = nltk.tokenize.PunktSentenceTokenizer()
 
         self._sentence_split_fns = [
@@ -231,3 +249,22 @@ class SentenceSplitter(NodeParser):
                 break
 
         return splits, False
+
+
+class FuncNodeTransform(NodeTransform):
+    """Used for user defined function.
+
+    Wrapped the transform to: List[Docnode] -> List[Docnode]
+
+    This wrapper supports:
+        1. str -> list: transform=lambda t: t.split('\n')
+        2. str -> str: transform=lambda t: t[:3]
+    """
+
+    def __init__(self, func: Callable[[str], List[str]]):
+        self._func = func
+
+    def transform(self, document: DocNode, **kwargs) -> List[str]:
+        result = self._func(document.get_content(metadata_mode=MetadataMode.NONE))
+        text_splits = [result] if isinstance(result, str) else result
+        return text_splits

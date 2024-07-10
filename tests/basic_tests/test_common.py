@@ -3,6 +3,7 @@ from lazyllm.common import ArgsDict
 import random
 import time
 import pytest
+import threading
 
 class TestCommon(object):
 
@@ -56,28 +57,35 @@ class TestCommon(object):
         with pytest.raises(Exception):
             ts[1].get_result()
 
-    def test_common_llmreqreshelper(self):
-
-        h = lazyllm.ReqResHelper()
-        assert h.make_request(1, a=3, b=2)
-        assert h.make_request(1, 2, a=3)
-
-        r1 = lazyllm.LazyLlmResponse(messages=1, trace='t1')
-        r2 = lazyllm.LazyLlmResponse(messages=2, trace='t2')
-        assert h.make_request(r1)
-        assert h.make_request(r2)
-        assert h.trace == 't1t2'
-
-        assert h.make_response('abc')
-        assert h.trace == 't1t2'
-
-        r3 = lazyllm.LazyLlmResponse(messages=3, trace='t3')
-        assert h.make_response(r3)
-        assert h.trace == 't1t2'
-
     def test_common_makerepr(self):
 
         r1 = lazyllm.make_repr('a', 1)
         r2 = lazyllm.make_repr('b', 2)
         rr = lazyllm.make_repr('c', 3, subs=[r1, r2])
         assert rr == '<c type=3>\n |- <a type=1>\n └- <b type=2>\n'
+
+
+class TestCommonGlobals(object):
+
+    def _lazyllm_worker():
+        assert lazyllm.globals['a'] == 1
+        assert lazyllm.globals['chat_history'] == {}
+        assert lazyllm.globals['global_parameters']['key'] == 'value'
+
+    def _normal_worker():
+        assert 'a' not in lazyllm.globals
+        assert lazyllm.globals._sid == f'tid-{hex(threading.get_ident())}'
+        assert lazyllm.globals['chat_history'] == {}
+        assert lazyllm.globals['global_parameters'] == {}
+
+    def test_globals(self):
+        assert lazyllm.globals._sid == f'tid-{hex(threading.get_ident())}'
+        assert lazyllm.globals['chat_history'] == {}
+        assert lazyllm.globals['global_parameters'] == {}
+        lazyllm.globals['global_parameters']['key'] = 'value'
+        t = lazyllm.Thread(target=self._lazyllm_worker)
+        t.start()
+        t.join()
+        t = threading.Thread(target=self._normal_worker)
+        t.start()
+        t.join()
