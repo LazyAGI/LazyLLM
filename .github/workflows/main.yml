@@ -81,12 +81,6 @@ jobs:
   ChargeTests:
     runs-on: tps_sco_nv
     needs: [ Clone ]
-    env:
-      LAZYLLM_MOONSHOTAI_API_KEY: ${{ secrets.LAZYLLM_MOONSHOTAI_API_KEY }}
-      LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
-      LAZYLLM_DASHSCOPE_API_KEY: ${{ secrets.LAZYLLM_DASHSCOPE_API_KEY }}
-      LAZYLLM_SENSENOVA_ACCESS_KEY_ID: ${{ secrets.LAZYLLM_SENSENOVA_ACCESS_KEY_ID }}
-      LAZYLLM_SENSENOVA_ACCESS_KEY_SECRET: ${{ secrets.LAZYLLM_SENSENOVA_ACCESS_KEY_SECRET }}
     steps:
       - name: RunTests
         run: |
