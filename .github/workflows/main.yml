@@ -94,5 +94,5 @@ jobs:
           cd ${{ env.CI_PATH }}
           env | grep '^SCC'
           export PYTHONPATH=$PWD:$PYTHONPATH
-          python -m pytest tests/charge_tests
+          python -m pytest -vx tests/charge_tests
 
