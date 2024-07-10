@@ -44,7 +44,7 @@ class Globals(object):
             return {k: v for k, v in self.__data[self._sid].items() if k in rois}
         return self.__data[self._sid]
 
-    def _update(self, d: Dict) -> None:
+    def _update(self, d: Optional[Dict]) -> None:
         if d:
             self._data.update(d)
 

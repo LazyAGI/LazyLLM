@@ -186,7 +186,7 @@ class WebModule(ModuleBase):
                 for h in self.history:
                     if h not in globals['chat_history']: globals['chat_history'] = dict()
                     globals['chat_history'][h] = history
-            result = self.m(input=input)
+            result = self.m(input)
 
             def get_log_and_message(s):
                 if not self.trace_mode == WebModule.Mode.Appendix:

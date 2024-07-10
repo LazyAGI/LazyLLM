@@ -9,7 +9,7 @@ import functools
 from concurrent.futures import ThreadPoolExecutor
 
 import lazyllm
-from lazyllm import FlatList, Option, launchers, LOG, kwargs, encode_request, decode_request, globals
+from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, decode_request, globals
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
@@ -78,11 +78,15 @@ class ModuleBase(object):
         raise AttributeError(f'{self.__class__} object has no attribute {key}')
 
     def __call__(self, *args, **kw):
-        kw.update(globals['global_parameters'].get(self._module_id, dict()))
-        if history := globals['chat_history'].get(self._module_id, None): kw['llm_chat_history'] = history
-        r = self.forward(**args[0], **kw) if isinstance(args[0], kwargs) else self.forward(*args, **kw)
-        if self._return_trace:
-            globals['trace'].append(str(r))
+        try:
+            kw.update(globals['global_parameters'].get(self._module_id, dict()))
+            if history := globals['chat_history'].get(self._module_id, None): kw['llm_chat_history'] = history
+            r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
+            if self._return_trace:
+                globals['trace'].append(str(r))
+        except Exception as e:
+            raise RuntimeError(f'\nAn error occured in {self.__class__} with name {self.name}.\n'
+                               f'Args:\n{args}\nKwargs\n{kw}\nError messages:\n{e}\n')
         return r
 
     # interfaces
@@ -241,14 +245,16 @@ class UrlModule(ModuleBase, UrlTemplate):
     # Cannot modify or add any attrubute of self
     # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
     # deploy parameters keys are in **kw
-    def forward(self, __input=None, *, llm_chat_history=None, tools=None, **kw):  # noqa C901
+    def forward(self, __input=package(), *, llm_chat_history=None, tools=None, **kw):  # noqa C901
         assert self._url is not None, f'Please start {self.__class__} first'
 
         __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
-        headers = {'Content-Type': 'application/json', 'Global-Parameters': encode_request(globals._data)}
+        headers = {'Content-Type': 'application/json'}
 
         if isinstance(self, ServerModule):
-            data = encode_request(__input)
+            assert llm_chat_history is None and tools is None
+            headers['Global-Parameters'] = encode_request(globals._data)
+            data = encode_request((__input, kw))
         elif self.template_message:
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
             assert 'inputs' in self.keys_name_handle

@@ -7,7 +7,7 @@ import sys
 import inspect
 import traceback
 from types import GeneratorType
-from lazyllm import kwargs
+from lazyllm import kwargs, package
 from lazyllm import FastapiApp, globals, encode_request, decode_request
 import pickle
 import codecs
@@ -49,22 +49,25 @@ FastapiApp.update()
 async def generate(request: Request): # noqa C901
     try:
         globals._init_sid()
-        origin = input = (await request.json())
-        globals._update(decode_request(request.headers['Global-Parameters']))
+        globals._update(decode_request(request.headers.get('Global-Parameters')))
+        input, kw = (await request.json()), {}
         try:
-            input = decode_request(input)
-        except Exception: input = origin
-        finally: origin = input
+            input, kw = decode_request(input)
+        except Exception: pass
+        origin = input
 
         if args.before_function:
             assert (callable(before_func)), 'before_func must be callable'
             r = inspect.getfullargspec(before_func)
             if isinstance(input, kwargs) or (
                     isinstance(input, dict) and set(r.args[1:] if r.args[0] == 'self' else r.args) == set(input.keys())):
+                assert len(kw) == 0, 'Cannot provide kwargs-input and kwargs at the same time'
                 input = before_func(**input)
             else:
-                input = before_func(input)
-        output = func(**input) if isinstance(input, kwargs) else func(input)
+                input = func(*input, **kw) if isinstance(input, package) else before_func(input, **kw)
+                kw = {}
+        output = (func(*input, **kw) if isinstance(input, package) else
+                  func(**input, **kw) if isinstance(input, kwargs) else func(input, **kw))
 
         def impl(o):
             return codecs.encode(pickle.dumps(o), 'base64')
@@ -73,8 +76,8 @@ async def generate(request: Request): # noqa C901
             def generate_stream():
                 for o in output:
                     yield impl(o)
-            r = StreamingResponse(generate_stream(), media_type='text_plain',
-                                  headers={'Global-Parameters': encode_request(globals._get_data(['trace', 'err']))})
+            return StreamingResponse(generate_stream(), media_type='text_plain',
+                                     headers={'Global-Parameters': encode_request(globals._get_data(['trace', 'err']))})
         elif args.after_function:
             assert (callable(after_func)), 'after_func must be callable'
             r = inspect.getfullargspec(after_func)
@@ -86,14 +89,15 @@ async def generate(request: Request): # noqa C901
                     after_func(output, **{r.kwonlyargs[0]: origin})
             elif len(new_args) == 2:
                 output = after_func(output, origin)
-        r = Response(content=impl(output),
-                     headers={'Global-Parameters': encode_request(globals._get_data(['trace', 'err']))})
-        globals.clear()
-        return r
+        return Response(content=impl(output),
+                        headers={'Global-Parameters': encode_request(globals._get_data(['trace', 'err']))})
     except requests.RequestException as e:
         return Response(content=f'{str(e)}', status_code=500)
     except Exception as e:
         return Response(content=f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
+    finally:
+        globals.clear()
+
 
 if '__relay_services__' in dir(func.__class__):
     for (method, path), (name, kw) in func.__class__.__relay_services__.items():
