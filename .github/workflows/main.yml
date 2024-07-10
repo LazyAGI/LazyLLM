@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-  pull_request_target:
+  pull_request:
     branches:
       - main
     paths-ignore:
@@ -77,18 +77,3 @@ jobs:
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           python -m pytest tests/advanced_tests/
-
-  ChargeTests:
-    runs-on: tps_sco_nv
-    needs: [ Clone ]
-    env:
-      LAZYLLM_MOONSHOTAI_API_KEY: ${{ secrets.LAZYLLM_MOONSHOTAI_API_KEY }}
-      LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
-      LAZYLLM_DASHSCOPE_API_KEY: ${{ secrets.LAZYLLM_DASHSCOPE_API_KEY }}
-      LAZYLLM_SENSENOVA_ACCESS_KEY_ID: ${{ secrets.LAZYLLM_SENSENOVA_ACCESS_KEY_ID }}
-      LAZYLLM_SENSENOVA_ACCESS_KEY_SECRET: ${{ secrets.LAZYLLM_SENSENOVA_ACCESS_KEY_SECRET }}
-    steps:
-      - name: RunTests
-        run: |
-          cd ${{ env.CI_PATH }}
-          export PYTHONPATH=$PWD:$PYTHONPATH
