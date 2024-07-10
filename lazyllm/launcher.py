@@ -66,6 +66,7 @@ class Job(object):
 
     def get_executable_cmd(self, *, fixed=False):
         if fixed and hasattr(self, '_fixed_cmd'):
+            LOG.info('Command is fixed!')
             return self._fixed_cmd
         cmd = self._origin_cmd
         if callable(cmd.cmd):

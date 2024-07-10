@@ -4,7 +4,7 @@ import traceback
 import multiprocessing
 from ...module.module import ModuleBase
 import gradio as gr
-from lazyllm import LazyLlmResponse, LazyLlmRequest, LOG
+from lazyllm import LOG, globals
 from lazyllm.flow import Pipeline
 import lazyllm
 from types import GeneratorType
@@ -178,24 +178,21 @@ class WebModule(ModuleBase):
             input = chat_history[-1][0]
             history = chat_history[:-1] if use_context and len(chat_history) > 1 else None
 
-            kwargs = dict()
             for k, v in zip(self.ckeys, args):
-                if k[0] not in kwargs: kwargs[k[0]] = dict()
-                kwargs[k[0]][k[1]] = v
+                if k[0] not in globals['global_parameters']: globals['global_parameters'][k[0]] = dict()
+                globals['global_parameters'][k[0]][k[1]] = v
 
             if use_context:
                 for h in self.history:
-                    if h not in kwargs: kwargs[h] = dict()
-                    kwargs[h]['llm_chat_history'] = history
-            result = self.m(LazyLlmRequest(input=input, global_parameters=kwargs))
+                    if h not in globals['chat_history']: globals['chat_history'] = dict()
+                    globals['chat_history'][h] = history
+            result = self.m(input)
 
             def get_log_and_message(s):
-                if isinstance(s, LazyLlmResponse):
-                    if not self.trace_mode == WebModule.Mode.Appendix:
-                        log_history.clear()
-                    if s.err[0] != 0: log_history.append(s.err[1])
-                    if s.trace: log_history.append(s.trace)
-                    s = s.messages
+                if not self.trace_mode == WebModule.Mode.Appendix:
+                    log_history.clear()
+                if globals['err']: log_history.append(globals['err'][1])
+                if globals['trace']: log_history.extend(globals['trace'])
 
                 if isinstance(s, dict):
                     s = s.get("message", {}).get("content", "")
@@ -216,28 +213,30 @@ class WebModule(ModuleBase):
                 return s, "".join(log_history)
 
             log_history = []
-            if isinstance(result, (LazyLlmResponse, str, dict)):
+            if isinstance(result, (str, dict)):
                 result, log = get_log_and_message(result)
 
             if isinstance(result, str):
                 chat_history[-1][1] = result
             elif isinstance(result, GeneratorType):
+                # TODO(wzh/server): refactor this code
                 chat_history[-1][1] = ''
                 for s in result:
-                    if isinstance(s, (LazyLlmResponse, str)):
+                    if isinstance(s, str):
                         s, log = get_log_and_message(s)
                     chat_history[-1][1] = (chat_history[-1][1] + s) if append_text else s
                     if stream_output: yield chat_history, log
             elif isinstance(result, dict):
                 chat_history[-1][1] = result.get("message", "")
             else:
-                raise TypeError(f'function result should only be LazyLlmResponse or str, but got {type(result)}')
+                raise TypeError(f'function result should only be str, but got {type(result)}')
         except requests.RequestException as e:
             chat_history = None
             log = str(e)
         except Exception as e:
             chat_history = None
             log = f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}'
+            LOG.error(log)
         yield chat_history, log
 
     def _clear_history(self, session):

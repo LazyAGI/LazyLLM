@@ -81,7 +81,7 @@ add_example('ModuleBase.start', '''\
 >>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
 >>> m.start()
 >>> m(1)
-LazyLlmResponse(messages="reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", trace='', err=(0, ''))
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
 ''')
 
 add_chinese_doc('ModuleBase.restart', '''\
@@ -97,7 +97,7 @@ add_example('ModuleBase.restart', '''\
 >>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
 >>> m.restart()
 >>> m(1)
-LazyLlmResponse(messages="reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", trace='', err=(0, ''))
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
 ''')
                 
 add_chinese_doc('ModuleBase.update', '''\

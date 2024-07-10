@@ -1,7 +1,6 @@
 import json
 from typing import Any, List
 
-import lazyllm
 from llama_index.core.embeddings import BaseEmbedding
 from lazyllm import LOG
 
@@ -14,8 +13,6 @@ class LLamaIndexEmbeddingWrapper(BaseEmbedding):
 
     def _query_embedding(self, query):
         embeddings = self.model(query)
-        if isinstance(embeddings, lazyllm.LazyLlmResponse):
-            embeddings = embeddings.messages
 
         if isinstance(embeddings, str):
             embeddings = json.loads(embeddings)
