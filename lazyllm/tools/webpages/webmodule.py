@@ -44,7 +44,6 @@ class WebModule(ModuleBase):
         self.text_mode = text_mode if text_mode else WebModule.Mode.Dynamic
         self.demo = self.init_web(components)
         self.url = None
-        self.frozen_query = None
 
     def init_web(self, component_descs):
         with gr.Blocks(css=css, title=self.title) as demo:
@@ -53,7 +52,8 @@ class WebModule(ModuleBase):
                 'sess_logs': {},
                 'sess_history': {},
                 'sess_num': 1,
-                'curr_sess': ''
+                'curr_sess': '',
+                'frozen_query': '',
             })
             with gr.Row():
                 with gr.Column(scale=3):
@@ -90,7 +90,7 @@ class WebModule(ModuleBase):
                 ).then(lambda: gr.update(interactive=False), None, add_sess_btn, queue=False
                 ).then(lambda: gr.update(interactive=False), None, sess_drpdn, queue=False
                 ).then(lambda: gr.update(interactive=False), None, del_sess_btn, queue=False
-                ).then(self._prepare, [query_box, chatbot], [query_box, chatbot], queue=True
+                ).then(self._prepare, [query_box, chatbot, sess_data], [query_box, chatbot], queue=True
                 ).then(self._respond_stream, [chat_use_context, chatbot, stream_output, text_mode] + components,
                                              [chatbot, dbg_msg], queue=chatbot
                 ).then(lambda: gr.update(interactive=True), None, query_box, queue=False
@@ -110,7 +110,7 @@ class WebModule(ModuleBase):
     def _init_session(self, query, session):
         if session['curr_sess'] != '':  # remain unchanged.
             return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), session
-        self.frozen_query = query
+        session['frozen_query'] = query
 
         session['curr_sess'] = f"({session['sess_num']})  {query}"
         session['sess_num'] += 1
@@ -172,9 +172,9 @@ class WebModule(ModuleBase):
         else:
             return self._change_session(session['sess_titles'][0], None, None, session)
 
-    def _prepare(self, query, chat_history):
+    def _prepare(self, query, chat_history, session):
         if not query:
-            query = self.frozen_query
+            query = session['frozen_query']
         if chat_history is None:
             chat_history = []
         return '', chat_history + [[query, None]]

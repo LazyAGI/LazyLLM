@@ -145,7 +145,7 @@ with pipeline() as ppl:
 print(ppl({'query':'请帮我写一篇关于人工智能在医疗领域应用的文章。'}))
 ```
 
-### 3.3 AI绘画助手
+### 3.4 AI绘画助手
 
 <details>
 <summary>点击获取import和prompt</summary>
