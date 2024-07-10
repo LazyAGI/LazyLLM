@@ -11,7 +11,6 @@ class Thread(threading.Thread):
                  args=(), kwargs=None, *, prehook=None, daemon=None):
         self.q = Queue()
         if not isinstance(prehook, (tuple, list)): prehook = [prehook] if prehook else []
-        print(globals._sid)
         prehook.insert(0, functools.partial(_sid_setter, sid=globals._sid))
         super().__init__(group, self.work, name, (prehook, target, args), kwargs, daemon=daemon)
 
