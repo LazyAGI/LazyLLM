@@ -238,6 +238,7 @@ class WebModule(ModuleBase):
         except Exception as e:
             chat_history = None
             log = f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}'
+            LOG.error(log)
         yield chat_history, log
 
     def _clear_history(self, session):
