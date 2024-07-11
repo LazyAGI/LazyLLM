@@ -3,9 +3,9 @@ import lazyllm
 import docstring_parser
 from lazyllm.module import ModuleBase
 from lazyllm.common import LazyLLMRegisterMetaClass, package
-from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Tuple, Set
+from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Set
 import inspect
-from pydantic import validate_call, create_model, BaseModel, ValidationError
+from pydantic import create_model, BaseModel, ValidationError
 
 
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
@@ -17,16 +17,13 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self._description = self.apply.__doc__ if hasattr(self.apply, "__doc__") and self.apply.__doc__ is not None \
             else (_ for _ in ()).throw(ValueError("Function must has a docstring"))
 
-        self._params_schema = None
-        if self._params_schema is None:
-            self._params_schema = self.load_function_schema(getattr(type(self), "apply"))
+        self._params_schema = self.load_function_schema(self.__class__.apply)
 
     def load_function_schema(self, func: Callable) -> Type[BaseModel]:
         if func.__name__ is None or func.__doc__ is None:
             raise ValueError(f"Function {func} must have a name and docstring.")
         self._name = func.__name__
         self._description = func.__doc__
-        func = validate_call(func)
         signature = inspect.signature(func)
         type_hints = get_type_hints(func, globals(), locals())
 
@@ -69,56 +66,30 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def apply(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError("Implement apply function in subclass")
 
-    def _validate_input(self, tool_input: Union[str, Dict[str, Any]]) -> Union[str, Dict[str, Any]]:
+    def _validate_input(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         input_params = self._params_schema
-        if isinstance(tool_input, str):
+        if isinstance(tool_input, dict):
             if input_params is not None:
-                key_ = next(iter(input_params.model_fields.keys()))
-                try:
-                    input_params.model_validate({key_: tool_input})
-                    return tool_input
-                except ValidationError as e:
-                    lazyllm.LOG.error(f"ValidationError: {e}")
-                    raise
+                ret = input_params.model_validate(tool_input)
+                return {key: getattr(ret, key) for key in ret.model_dump().keys() if key in tool_input}
+            return tool_input
         else:
-            if input_params is not None:
-                try:
-                    ret = input_params.model_validate(tool_input)
-                    return {key: getattr(ret, key) for key in ret.model_dump().keys() if key in tool_input}
-                except ValidationError as e:
-                    lazyllm.LOG.error(f"ValidationError: {e}")
-                    raise
-
-        return tool_input
+            raise TypeError(f"tool_input {tool_input} only supports dict.")
 
     def validate_parameters(self, arguments: Dict[str, Any]) -> bool:
-        sz = len(self.required_args.difference(set(arguments.keys())))
-        if sz == 0:
+        if len(self.required_args.difference(set(arguments.keys()))) == 0:
             # contains all required parameters
             try:
                 self._validate_input(arguments)
                 return True
             except ValidationError:
                 return False
-        else:
-            return False
-
-    def _arguments_spliter(self, tool_input: Union[str, Dict[str, Any]]) -> Tuple[Tuple, Dict[str, Any]]:
-        if isinstance(tool_input, str):
-            return (tool_input,), {}
-        else:
-            return (), tool_input
+        return False
 
     def forward(self, tool_input: Union[str, Dict[str, Any]], verbose: bool = False) -> Any:
-        if not self._verbose and verbose:
-            verbose_ = verbose
-        else:
-            verbose_ = self._verbose
-
         val_input = self._validate_input(tool_input)
-        tool_args, tool_kw = self._arguments_spliter(val_input)
-        ret = self.apply(*tool_args, **tool_kw)
-        if verbose_:
+        ret = self.apply(**val_input)
+        if verbose or self._verbose:
             lazyllm.LOG.info(f"The output of tool {self.name} is {ret}")
 
         return ret
@@ -135,8 +106,8 @@ class ToolManager(ModuleBase):
     def _load_tools(self, tools_str: List[str]):
         _tools = []
         for tool_str in tools_str:
-            tool_all_str = tool_str + "functioncall".capitalize()
-            t = lazyllm.functionCall.get(tool_all_str, None)
+            tool_all_str = tool_str + "tool".capitalize()
+            t = lazyllm.tool.get(tool_all_str, None)
             if t:
                 _tools.append(t())
             else:

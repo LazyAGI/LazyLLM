@@ -58,6 +58,18 @@ class OnlineChatModuleBase(ModuleBase):
         if formatter is not None: new.formatter(formatter)
         return new
 
+    @property
+    def name(self):
+        return self._model_name
+
+    @property
+    def stream(self):
+        return self._stream
+
+    @property
+    def model_type(self):
+        return self._model_type
+
     def _get_system_prompt(self):
         raise NotImplementedError("_get_system_prompt is not implemented.")
 
@@ -66,10 +78,6 @@ class OnlineChatModuleBase(ModuleBase):
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + self._api_key
         }
-
-    @property
-    def model_type(self):
-        return self._model_type
 
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'chat/completions')

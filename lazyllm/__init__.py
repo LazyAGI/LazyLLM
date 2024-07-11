@@ -14,7 +14,7 @@ from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
                      OnlineChatModule, OnlineEmbeddingModule)
 from .client import redis_client
-from .tools import Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, fc_register
+from .tools import Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, FunctionCallAgent, fc_register
 from .docs import add_doc
 
 config.done()
@@ -77,6 +77,7 @@ __all__ = [
     'Reranker',
     'ToolManager',
     'FunctionCall',
+    'FunctionCallAgent',
     'fc_register',
 
     # docs

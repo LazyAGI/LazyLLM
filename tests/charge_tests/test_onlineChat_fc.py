@@ -1,13 +1,13 @@
 import json
 import pytest
 import lazyllm
-from lazyllm import fc_register, pipeline, package, loop
-from lazyllm.tools import FunctionCall
+from lazyllm import fc_register
+from lazyllm.tools import FunctionCall, FunctionCallAgent
 from typing import Literal
 
-fc_register.new_group("functionCall")
+fc_register.new_group("tool")
 
-@fc_register("functionCall")
+@fc_register("tool")
 def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 'fahrenheit'):
     """
     Get the current weather in a given location
@@ -25,7 +25,7 @@ def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 
     else:
         return json.dumps({'location': location, 'temperature': 'unknown'})
 
-@fc_register("functionCall")
+@fc_register("tool")
 def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"] = 'fahrenheit'):
     """
     Get an N-day weather forecast
@@ -117,15 +117,9 @@ def exe_onlineChat_parallel_function_call(request):
     else:
         llm = lazyllm.OnlineChatModule(source=source, stream=stream).field_extractor(".")
 
-    with pipeline() as agent:
-        with loop(stop_condition=lambda x, y, z: x, count=5) as agent.lp:
-            with pipeline() as agent.lp.ppl:
-                agent.lp.ppl.m1 = lambda isFinish, input, history: package(input, history)
-                agent.lp.ppl.m2 = FunctionCall(llm, tools)
-        agent.post_action = lambda isFinish, output, history: output
-
+    agent = FunctionCallAgent(llm, tools)
     print(f"\nStarting test 【{source}】parallel function calling")
-    ret = agent(False, query, [])
+    ret = agent(query, [])
     yield ret
     print(f"\n【{source}】parallel function calling test done.")
 

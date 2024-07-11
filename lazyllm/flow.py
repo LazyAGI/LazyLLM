@@ -206,6 +206,14 @@ class Pipeline(LazyLLMFlowsBase):
     def _stop_condition(self, cond):
         self._stop_condition_var = cond
 
+    @property
+    def _judge_on_input(self):
+        return getattr(self, '_judge_on_input_var', True)
+
+    @_judge_on_input.setter
+    def _judge_on_input(self, judge):
+        self._judge_on_input_var = judge
+
     def _run(self, __input, **kw):
         output = __input
         bind_args_source = dict(input=output, args=dict())
@@ -214,7 +222,12 @@ class Pipeline(LazyLLMFlowsBase):
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
                 kw.clear()
                 bind_args_source['args'][id(it)] = output
-            if callable(self._stop_condition) and self.invoke(self._stop_condition, output): break
+            exp = output
+            if not self._judge_on_input:
+                assert isinstance(output, tuple) and len(output) >= 2
+                exp = output[0]
+                output = output[1:]
+            if callable(self._stop_condition) and self.invoke(self._stop_condition, exp): break
         return output
 
 
@@ -399,8 +412,16 @@ class IFS(LazyLLMFlowsBase):
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
 #      ⬆----------------------------------------|
 class Loop(Pipeline):
-    def __init__(self, *item, stop_condition=None, count=sys.maxsize, post_action=None, auto_capture=False, **kw):
+    def __init__(self,
+                 *item,
+                 stop_condition=None,
+                 count=sys.maxsize,
+                 post_action=None,
+                 auto_capture=False,
+                 judge_on_input=True,
+                 **kw):
         super().__init__(*item, post_action=post_action, auto_capture=auto_capture, **kw)
         assert callable(stop_condition) or stop_condition is None
+        self._judge_on_input = judge_on_input
         self._stop_condition = stop_condition
         self._loop_count = count
