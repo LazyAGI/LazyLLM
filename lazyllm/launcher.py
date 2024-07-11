@@ -421,9 +421,13 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def _get_jobid(self):
             for i in range(5):
                 time.sleep(0.5)  # Wait for cmd to be stably submitted to sco
-                id_str = subprocess.check_output([
-                    'squeue', f'--workspace-id={self.workspace_name}',
-                    '-o', 'jobname,jobid']).decode("utf-8")
+                try:
+                    id_str = subprocess.check_output([
+                        'squeue', f'--workspace-id={self.workspace_name}',
+                        '-o', 'jobname,jobid']).decode("utf-8")
+                except Exception:
+                    LOG.warning(f'Failed to capture job_id, retry the {i}-th time.')
+                    continue
                 pattern = re.compile(rf"{re.escape(self.name)}\s+(\S+)")
                 match = pattern.search(id_str)
                 if match:
