@@ -15,15 +15,16 @@ class DocNode:
         self,
         uid: Optional[str] = None,
         text: Optional[str] = None,
+        ntype: Optional[str] = None,
         embedding: Optional[List[float]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         excluded_embed_metadata_keys: Optional[List[str]] = None,
         excluded_llm_metadata_keys: Optional[List[str]] = None,
         parent: Optional["DocNode"] = None,
-        children: Optional[List["DocNode"]] = None,
     ) -> None:
         self.uid: str = uid if uid else str(uuid.uuid4())
         self.text: Optional[str] = text
+        self.ntype: Optional[str] = ntype
         self.embedding: Optional[List[float]] = embedding
         self.metadata: Dict[str, Any] = metadata if metadata is not None else {}
         # Metadata keys that are excluded from text for the embed model.
@@ -36,13 +37,9 @@ class DocNode:
         self.excluded_llm_metadata_keys: List[str] = (
             excluded_llm_metadata_keys if excluded_llm_metadata_keys is not None else []
         )
-        # A mapping of relationships to other node information.
+        # Relationships to other node.
         self.parent = parent
-        self.children = children if children is not None else []
-
-    @property
-    def node_id(self) -> str:
-        return self.uid
+        self.children: Dict[str, List["DocNode"]] = {}
 
     @property
     def root_node(self) -> Optional["DocNode"]:
@@ -52,9 +49,13 @@ class DocNode:
         return root
 
     def __str__(self) -> str:
+        children_str = {
+            key: [node.uid for node in self.children[key]]
+            for key in self.children.keys()
+        }
         return (
-            f"DocNode(id: {self.node_id}, text: {self.get_content()}) parent: "
-            f"{self.parent.node_id if self.parent else None}, children: {[c.node_id for c in self.children]}"
+            f"DocNode(id: {self.uid}, ntype: {self.ntype}, text: {self.get_content()}) parent: "
+            f"{self.parent.uid if self.parent else None}, children: {children_str}"
         )
 
     def __repr__(self) -> str:
@@ -92,19 +93,33 @@ class DocNode:
     def get_text(self) -> str:
         return self.get_content(metadata_mode=MetadataMode.NONE)
 
-    @property
-    def node_info(self) -> Dict[str, Any]:
-        """Deprecated: Get node info."""
-        return self.get_node_info()
 
-    def get_node_info(self) -> Dict[str, Any]:
-        return {
-            "uid": self.uid,
-            "text": self.text,
-            "embedding": self.embedding,
-            "metadata": self.metadata,
-            "excluded_embed_metadata_keys": self.excluded_embed_metadata_keys,
-            "excluded_llm_metadata_keys": self.excluded_llm_metadata_keys,
-            "parent": self.parent,
-            "children": self.children,
-        }
+# TODO: Have a common Base store class
+class MapStore:
+    def __init__(self):
+        self.store: Dict[str, Dict[str, DocNode]] = {}
+
+    def add_nodes(self, category: str, nodes: List[DocNode]):
+        if category not in self.store:
+            self.store[category] = {}
+
+        for node in nodes:
+            self.store[category][node.uid] = node
+
+    def has_nodes(self, category: str) -> bool:
+        return category in self.store.keys()
+
+    def get_node(self, category: str, node_id: str) -> Optional[DocNode]:
+        return self.store.get(category, {}).get(node_id)
+
+    def delete_node(self, category: str, node_id: str):
+        if category in self.store and node_id in self.store[category]:
+            del self.store[category][node_id]
+        # TODO: delete node's relationship
+
+    def traverse_nodes(self, category: str) -> List[DocNode]:
+        return list(self.store.get(category, {}).values())
+
+
+class ChromadbStore:
+    pass

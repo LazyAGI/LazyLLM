@@ -76,7 +76,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             else:
                 assert len(prompt_keys) == 0
                 return self._instruction_template, input
-        assert isinstance(input, dict)
+        assert isinstance(input, dict), f'expected types are str, int and dict, bug get {type(input)}(`{input})`'
         input = input.copy()
         kwargs = {k: input.pop(k) for k in prompt_keys}
         assert len(input) <= 1, f"Unexpected keys found in input: {list(input.keys())}"

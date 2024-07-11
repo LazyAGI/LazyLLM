@@ -23,11 +23,6 @@ class TestDocNode:
         assert self.node.excluded_embed_metadata_keys == ["author"]
         assert self.node.excluded_llm_metadata_keys == ["date"]
 
-    def test_node_id(self):
-        """Test that node ID is generated if not provided."""
-        assert isinstance(self.node.node_id, str)
-        assert len(self.node.node_id) > 0
-
     def test_get_content(self):
         """Test the get_content method."""
         content = self.node.get_content(metadata_mode=MetadataMode.NONE)

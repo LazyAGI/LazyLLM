@@ -27,6 +27,7 @@ def compare_versions(version1, version2):
         return -1
     else:
         return 0
+
 def check_requirements(frame):
     packages = [line.strip() for line in requirements[frame].split('\n') if line.strip()]
 

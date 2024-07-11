@@ -263,11 +263,10 @@ add_chinese_doc('Pipeline', """\
 Args:
     args (list of callables or single callable): 管道的处理阶段。每个元素可以是一个可调用的函数或 ``LazyLLMFlowsBase.FuncWrap``的实例。如果提供了单个列表或元组，则将其解包为管道的阶段。
     post_action (callable, optional): 在管道的最后一个阶段之后执行的可选操作。默认为None。
-    return_input (bool, optional): 如果设置为 ``True``，原始输入将与输出一起返回。默认为 ``False``。
     kwargs (dict of callables): 管道的命名处理阶段。每个键值对表示一个命名阶段，其中键是名称，值是可调用的阶段。
 
 Returns:
-    管道的最后一个阶段的输出，如果 ``return_input`` 为 ``True``，则可选地与原始输入一起返回。
+    管道的最后一个阶段的输出。
 
 """)
 
@@ -280,11 +279,10 @@ The ``Pipeline`` class is a linear sequence of processing stages, where the outp
 Arguments:
     args (list of callables or single callable): The processing stages of the pipeline. Each element can be a callable function or an instance of ``LazyLLMFlowsBase.FuncWrap``. If a single list or tuple is provided, it is unpacked as the stages of the pipeline.
     post_action (callable, optional): An optional action to perform after the last stage of the pipeline. Defaults to None.
-    return_input (bool, optional): If set to ``True``, the original input along with the output will be returned. Defaults to ``False``.
     kwargs (dict of callables): Named processing stages of the pipeline. Each key-value pair represents a named stage, where the key is the name and the value is the callable stage.
 
 Returns:
-    The output of the last stage of the pipeline, optionally along with the original input if ``return_input`` is ``True``.
+    The output of the last stage of the pipeline.
 """)
 
 add_example('Pipeline', """\
@@ -309,7 +307,6 @@ Args:
     stop_condition (callable, optional): 一个函数，它接受循环中最后一个项目的输出作为输入并返回一个布尔值。如果返回 ``True``，循环将停止。如果为 ``None``，循环将继续直到达到 ``count``。默认为 ``None``。
     count (int, optional): 运行循环的最大迭代次数。如果为 ``None``，循环将无限期地继续或直到 ``stop_condition`` 返回 ``True``。默认为 ``None``。
     post_action (callable, optional): 循环结束后调用的函数。默认为 ``None``。
-    return_input (bool, optional): 如果为 ``True``，最终输出将包括初始输入和最后一次迭代的输出。默认为 ``False``。
 
 抛出:
     AssertionError: 如果同时提供了 ``stop_condition`` 和 ``count``，或者当提供的 ``count``不是一个整数。
@@ -326,7 +323,6 @@ Arguments:
     stop_condition (callable, optional): A function that takes the output of the last item in the loop as input and returns a boolean. If it returns ``True``, the loop will stop. If ``None``, the loop will continue until ``count`` is reached. Defaults to ``None``.
     count (int, optional): The maximum number of iterations to run the loop for. If ``None``, the loop will continue indefinitely or until ``stop_condition`` returns ``True``. Defaults to ``None``.
     post_action (callable, optional): A function to be called with the final output after the loop ends. Defaults to ``None``.
-    return_input (bool, optional): If ``True``, the final output will include both the initial input and the output of the last iteration. Defaults to ``False``.
 
 Raises:
     AssertionError: If both ``stop_condition`` and ``count`` are provided or if ``count`` is not an integer when provided.
@@ -358,10 +354,9 @@ Args:
     tpath (callable): 如果条件为True，则执行的路径。
     fpath (callable): 如果条件为False，则执行的路径。
     post_action (callable, optional): 执行选定路径后执行的可选可调用对象。可以用于进行清理或进一步处理。默认为None。
-    return_input (bool, optional): 如果设置为True，原始输入也将与执行路径的输出一起返回。默认为False。
 
 Returns:
-    执行路径的输出，如果 ``return_input`` 为True，则与原始输入一起返回。
+    执行路径的输出。
 ''')
                 
 add_english_doc('IFS', '''\
@@ -380,11 +375,9 @@ Arguments:
     fpath (callable): The path to be executed if the condition is False.
     post_action (callable, optional): An optional callable that is executed after the selected path.
                                         It can be used to perform cleanup or further processing. Defaults to None.
-    return_input (bool, optional): If set to True, the original input is also returned alongside the output
-                                    of the executed path. Defaults to False.
 
 Returns:
-    The output of the executed path, optionally paired with the original input if ``return_input`` is True.
+    The output of the executed path.
 ''')
 
 add_example('IFS', '''\
@@ -414,7 +407,6 @@ add_chinese_doc('Switch', """\
 Args:
     args: 可变长度参数列表，交替提供条件和对应的流或函数。条件可以是返回布尔值的可调用对象或与输入表达式进行比较的值。
     post_action (callable, optional): 在执行选定流后要调用的函数。默认为 ``None``。
-    return_input (bool, optional): 如果设置为 ``True``，原始输入将与输出一起返回。默认为 ``False``。
     judge_on_input(bool): 如果设置为 ``True`` ， 则通过 ``switch`` 的输入进行条件判断，否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
     kwargs: 代表命名条件和对应流或函数的任意关键字参数。
 
@@ -437,7 +429,6 @@ The ``Switch`` class provides a way to choose between different flows depending 
 Arguments:
     args: A variable length argument list, alternating between conditions and corresponding flows or functions. Conditions are either callables returning a boolean or values to be compared with the input expression.
     post_action (callable, optional): A function to be called on the output after the selected flow is executed. Defaults to ``None``.
-    return_input (bool, optional): If set to ``True``, the original input is returned along with the output. Defaults to ``False``.
     judge_on_input(bool): If set to ``True``, the conditional judgment will be performed through the input of ``switch``, otherwise the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
     kwargs: Arbitrary keyword arguments representing named conditions and corresponding flows or functions.
 

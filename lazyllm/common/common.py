@@ -6,11 +6,7 @@ from contextlib import contextmanager
 import copy
 import threading
 import types
-from queue import Queue
-from pydantic import BaseModel as struct
-from typing import Tuple
-
-import lazyllm
+from ..configs import config
 
 try:
     from typing import final
@@ -156,10 +152,6 @@ class Bind(object):
             return self
 
         def get_input(self, input):
-            if isinstance(input, LazyLlmRequest):
-                input = input.input if input.input else input.kwargs
-            elif isinstance(input, LazyLlmResponse):
-                input = input.messages
             if self._item_key is not Bind.Input.__None: return input[self._item_key]
             elif self._attr_key is not Bind.Input.__None: return getattr(input, self._attr_key)
             return input
@@ -295,29 +287,6 @@ class ReadOnlyWrapper(object):
         return self.obj is None
 
 
-class Thread(threading.Thread):
-    def __init__(self, group=None, target=None, name=None,
-                 args=(), kwargs=None, *, prehook=None, daemon=None):
-        self.q = Queue()
-        super().__init__(group, self.work, name, (prehook, target, args), kwargs, daemon=daemon)
-
-    def work(self, prehook, target, args):
-        if prehook:
-            prehook()
-        try:
-            r = target(*args)
-        except Exception as e:
-            self.q.put(e)
-        else:
-            self.q.put(r)
-
-    def get_result(self):
-        r = self.q.get()
-        if isinstance(r, Exception):
-            raise r
-        return r
-
-
 class Identity():
     def __init__(self, *args, **kw):
         pass
@@ -328,7 +297,7 @@ class Identity():
         return package(*inputs)
 
     def __repr__(self):
-        return lazyllm.make_repr('Module', 'Identity')
+        return make_repr('Module', 'Identity')
 
 
 class ResultCollector(object):
@@ -351,95 +320,6 @@ class ResultCollector(object):
     def __repr__(self): return repr(self._value)
     def keys(self): return self._value.keys()
     def items(self): return self._value.items()
-
-
-class LazyLlmRequest(struct):
-    input: Any = package()
-    kwargs: Any = kwargs()
-    global_parameters: dict = dict()
-
-    def split(self, flag=None):
-        if flag is None:
-            assert len(self.kwargs) == 0 and isinstance(self.input, (tuple, list)), (
-                f'Only tuple input can be split automatically, your input is {self.input} <{type(self.input)}>')
-            return [LazyLlmRequest(input=inp, global_parameters=self.global_parameters) for inp in self.input]
-        elif isinstance(flag, int):
-            assert len(self.kwargs) == 0 and isinstance(self.input, (tuple, list)), (
-                f'Only tuple input can be split automatically, your input is {self.input} <{type(self.input)}>')
-            assert flag == len(self.input), 'input size mismatch with split number'
-            return [LazyLlmRequest(input=inp, global_parameters=self.global_parameters) for inp in self.input]
-        elif isinstance(flag, list):
-            if isinstance(self.input, dict):
-                assert len(self.kwargs) == 0, 'Cannot provived input and kwargs at the same time for split'
-                d = self.input
-            elif isinstance(self.input, (tuple, list)):
-                return self.split(len(flag))
-            else:
-                assert not self.input, 'Cannot provived input and kwargs at the same time for split'
-                d = self.kwargs
-            return [LazyLlmRequest(input=d[key], global_parameters=self.global_parameters) for key in flag]
-        else: raise TypeError(f'invalid flag type {type(flag)} given')
-
-
-class LazyLlmResponse(struct):
-    messages: Any = None
-    trace: str = ''
-    err: Tuple[int, str] = (0, '')
-
-    def __repr__(self): return repr(self.messages)
-    def __str__(self): return str(self.messages)
-
-
-class ReqResHelper(object):
-    def __init__(self):
-        self.trace = ''
-        self.parameters = dict()
-
-    def make_request(self, *args, **kw):
-        if len(args) == 1:
-            input = args[0]
-            if isinstance(input, LazyLlmRequest):
-                if len(input.global_parameters) != 0:
-                    assert len(self.parameters) == 0, 'Cannot set global_parameters twice!'
-                    self.parameters = input.global_parameters
-                kw.update(input.kwargs)
-                input = input.input
-            elif isinstance(input, LazyLlmResponse):
-                assert len(kw) == 0
-                if input.trace: self.trace += input.trace
-                input = input.messages
-            elif isinstance(input, (tuple, list)):
-                for i in input:
-                    if isinstance(i, LazyLlmResponse): self.trace += i.trace
-                    else: assert not isinstance(i, LazyLlmRequest), 'Cannot process list of Requests'
-                input = type(input)(i.messages if isinstance(i, LazyLlmResponse) else i for i in input)
-        else:
-            # bind args for flow
-            _is_req = [isinstance(a, LazyLlmRequest) for a in args]
-            if any(_is_req):
-                assert _is_req.count(True) == 1, f'More than one Request found in args: {args}'
-                idx = _is_req.index(True)
-                req = args[idx]
-                assert not isinstance(req.input, package) or len(req.input) == 1
-                args = list(args)
-                args[idx] = req.input[0] if isinstance(req.input, package) else req.input
-                if not self.parameters: self.parameters = req.global_parameters
-                kw.update(req.kwargs)
-            input = package(args)
-
-        if isinstance(input, kwargs):
-            assert len(kw) == 0, 'kwargs are provided twice.'
-            kw = dict(input)
-            input = tuple()
-        return LazyLlmRequest(input=input, kwargs=kw, global_parameters=self.parameters)
-
-    def make_response(self, res, *, force=False):
-        if isinstance(res, LazyLlmResponse):
-            res.trace = self.trace + res.trace
-            return res
-        else:
-            res = res.input if isinstance(res, LazyLlmRequest) else res
-            return LazyLlmResponse(messages=res, trace=self.trace) if self.trace or force else res
 
 
 class ReprRule(object):
@@ -471,7 +351,7 @@ def make_repr(category, type, *, name=None, subs=[], attrs=dict(), **kw):
     repr = f'<{category} type={type}{name}{attrs}>'
 
     if len(subs) == 1 and ReprRule.check_combine(category, type, subs[0]):
-        if lazyllm.config['repr_ml']:
+        if config['repr_ml']:
             sub_cate = re.split('>| ', subs[0][1:])[0]
             subs = rreplace(subs[0], f'</{sub_cate}>', f'</{category}>', 1)
         else:
@@ -482,7 +362,7 @@ def make_repr(category, type, *, name=None, subs=[], attrs=dict(), **kw):
     sub_repr = []
     for idx, value in enumerate(subs):
         for i, v in enumerate(value.strip().split('\n')):
-            if not lazyllm.config['repr_ml']:
+            if not config['repr_ml']:
                 if idx != len(subs) - 1:
                     sub_repr.append(f' |- {v}' if i == 0 else f' |  {v}')
                 else:
@@ -490,7 +370,7 @@ def make_repr(category, type, *, name=None, subs=[], attrs=dict(), **kw):
             else:
                 sub_repr.append(f'    {v}')
     if len(sub_repr) > 0: repr += ('\n' + '\n'.join(sub_repr) + '\n')
-    if lazyllm.config['repr_ml']: repr += f'</{category}>'
+    if config['repr_ml']: repr += f'</{category}>'
     return repr
 
 
