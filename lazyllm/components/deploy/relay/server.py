@@ -11,6 +11,7 @@ from lazyllm import kwargs, package
 from lazyllm import FastapiApp, globals, encode_request, decode_request
 import pickle
 import codecs
+import asyncio
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response, StreamingResponse
@@ -45,6 +46,11 @@ if args.after_function:
 app = FastAPI()
 FastapiApp.update()
 
+async def async_wrapper(func, *args, **kwargs):
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, func, *args, **kwargs)
+    return result
+
 @app.post("/generate")
 async def generate(request: Request): # noqa C901
     try:
@@ -66,8 +72,12 @@ async def generate(request: Request): # noqa C901
             else:
                 input = func(*input, **kw) if isinstance(input, package) else before_func(input, **kw)
                 kw = {}
-        output = (func(*input, **kw) if isinstance(input, package) else
-                  func(**input, **kw) if isinstance(input, kwargs) else func(input, **kw))
+        if isinstance(input, kwargs):
+            kw.update(input)
+            ags = ()
+        else:
+            ags = input if isinstance(input, package) else (input,)
+        output = await async_wrapper(func, *ags, **kw)
 
         def impl(o):
             return codecs.encode(pickle.dumps(o), 'base64')

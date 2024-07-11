@@ -4,6 +4,7 @@ from ..deploy.base import LazyLLMDeployBase
 from .configure import get_configer
 from .auto_helper import model_map, get_model_name, check_requirements
 from lazyllm.components.embedding.embed import EmbeddingDeploy
+from lazyllm.components.stable_diffusion.stable_diffusion3 import StableDiffusionDeploy
 from ..utils.downloader import ModelManager
 
 class AutoDeploy(LazyLLMDeployBase):
@@ -17,6 +18,8 @@ class AutoDeploy(LazyLLMDeployBase):
         model_name = get_model_name(base_model)
         if type == 'embed' or ModelManager.get_model_type(model_name) == 'embed':
             return EmbeddingDeploy(trust_remote_code, launcher)
+        elif type == 'sd' or ModelManager.get_model_type(model_name) == 'sd':
+            return StableDiffusionDeploy(launcher)
         map_name = model_map(model_name)
         candidates = get_configer().query_deploy(lazyllm.config['gpu_type'], launcher.ngpus,
                                                  map_name, max_token_num)

@@ -150,6 +150,27 @@ with pipeline() as ppl:
 print(ppl({'query': 'Please help me write an article about the application of artificial intelligence in the medical field.'}))
 ```
 
+### AI Painting Assistant
+
+<details>
+<summary>click to look up prompts and imports</summary>
+
+```python
+import lazyllm
+from lazyllm import pipeline
+
+prompt = 'You are a drawing prompt word master who can convert any Chinese content entered by the user into English drawing prompt words. In this task, you need to convert any input content into English drawing prompt words, and you can enrich and expand the prompt word content.'
+```
+</details>
+
+```python
+with pipeline() as ppl:
+    ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt))
+    ppl.sd3 = lazyllm.TrainableModule('stable-diffusion-3-medium')
+lazyllm.WebModule(ppl, port=23466).start().wait()
+```
+
+
 ## What can LazyLLM do
 
 1. **Application Building**: Defines workflows such as pipeline, parallel, diverter, if, switch, and loop. Developers can quickly build multi-agent AI applications based on any functions and modules. Supports one-click deployment for assembled multi-agent applications, and also supports partial or complete updates to the applications.

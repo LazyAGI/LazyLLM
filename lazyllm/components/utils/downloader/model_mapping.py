@@ -282,5 +282,9 @@ model_name_mapping = {
 		"source": {"huggingface": "BAAI/bge-reranker-large", "modelscope": "Xorbits/bge-reranker-large"},
         "type": "embed",
 		},
+    "stable-diffusion-3-medium": {
+        "source": {"huggingface": "stabilityai/stable-diffusion-3-medium", "modelscope": "AI-ModelScope/stable-diffusion-3-medium-diffusers"},
+        "type": "sd",
+	}
 }
 

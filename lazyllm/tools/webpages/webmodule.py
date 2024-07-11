@@ -1,14 +1,19 @@
+import os
+import json
+import base64
 import socket
 import requests
 import traceback
 import multiprocessing
-from ...module.module import ModuleBase
 import gradio as gr
+from PIL import Image
+from io import BytesIO
+from types import GeneratorType
+
+import lazyllm
 from lazyllm import LOG, globals
 from lazyllm.flow import Pipeline
-import lazyllm
-from types import GeneratorType
-import json
+from ...module.module import ModuleBase
 
 
 css = """
@@ -39,8 +44,18 @@ class WebModule(ModuleBase):
         self.history = [h._module_id for h in history]
         self.trace_mode = trace_mode if trace_mode else WebModule.Mode.Refresh
         self.text_mode = text_mode if text_mode else WebModule.Mode.Dynamic
+        self._set_up_caching()
         self.demo = self.init_web(components)
         self.url = None
+
+    def _set_up_caching(self):
+        if 'GRADIO_TEMP_DIR' in os.environ:
+            cach_path = os.environ['GRADIO_TEMP_DIR']
+        else:
+            cach_path = os.path.join(os.getcwd(), '.temp')
+            os.environ['GRADIO_TEMP_DIR'] = cach_path
+        if not os.path.exists(cach_path):
+            os.makedirs(cach_path)
 
     def init_web(self, component_descs):
         with gr.Blocks(css=css, title=self.title) as demo:
@@ -49,7 +64,8 @@ class WebModule(ModuleBase):
                 'sess_logs': {},
                 'sess_history': {},
                 'sess_num': 1,
-                'curr_sess': ''
+                'curr_sess': '',
+                'frozen_query': '',
             })
             with gr.Row():
                 with gr.Column(scale=3):
@@ -86,7 +102,7 @@ class WebModule(ModuleBase):
                 ).then(lambda: gr.update(interactive=False), None, add_sess_btn, queue=False
                 ).then(lambda: gr.update(interactive=False), None, sess_drpdn, queue=False
                 ).then(lambda: gr.update(interactive=False), None, del_sess_btn, queue=False
-                ).then(self._prepare, [query_box, chatbot], [query_box, chatbot], queue=True
+                ).then(self._prepare, [query_box, chatbot, sess_data], [query_box, chatbot], queue=True
                 ).then(self._respond_stream, [chat_use_context, chatbot, stream_output, text_mode] + components,
                                              [chatbot, dbg_msg], queue=chatbot
                 ).then(lambda: gr.update(interactive=True), None, query_box, queue=False
@@ -106,6 +122,7 @@ class WebModule(ModuleBase):
     def _init_session(self, query, session):
         if session['curr_sess'] != '':  # remain unchanged.
             return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), session
+        session['frozen_query'] = query
 
         session['curr_sess'] = f"({session['sess_num']})  {query}"
         session['sess_num'] += 1
@@ -167,7 +184,9 @@ class WebModule(ModuleBase):
         else:
             return self._change_session(session['sess_titles'][0], None, None, session)
 
-    def _prepare(self, query, chat_history):
+    def _prepare(self, query, chat_history, session):
+        if not query:
+            query = session['frozen_query']
         if chat_history is None:
             chat_history = []
         return '', chat_history + [[query, None]]
@@ -199,31 +218,39 @@ class WebModule(ModuleBase):
                 else:
                     try:
                         r = json.loads(s)
-                        if "type" not in r["choices"][0] or (
-                                "type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
-                            delta = r["choices"][0]["delta"]
-                            if "content" in delta:
-                                s = delta["content"]
-                            else:
-                                s = ""
+                        if 'choices' in r:
+                            if "type" not in r["choices"][0] or (
+                                    "type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
+                                delta = r["choices"][0]["delta"]
+                                if "content" in delta:
+                                    s = delta["content"]
+                                else:
+                                    s = ""
+                        elif 'images_base64' in r:
+                            image_data = r.pop('images_base64')[0]
+                            image = Image.open(BytesIO(base64.b64decode(image_data)))
+                            return "The image is: ", "".join(log_history), image
+                        else:
+                            s = s
                     except (ValueError, KeyError, TypeError):
                         s = s
                     except Exception as e:
                         LOG.error(f"Uncaptured error `{e}` when parsing `{s}`, please contact us if you see this.")
-                return s, "".join(log_history)
+                return s, "".join(log_history), None
 
             log_history = []
             if isinstance(result, (str, dict)):
-                result, log = get_log_and_message(result)
-
-            if isinstance(result, str):
+                result, log, image = get_log_and_message(result)
+            if image:
+                chat_history[-1][1] = gr.Image(image)
+            elif isinstance(result, str):
                 chat_history[-1][1] = result
             elif isinstance(result, GeneratorType):
                 # TODO(wzh/server): refactor this code
                 chat_history[-1][1] = ''
                 for s in result:
                     if isinstance(s, str):
-                        s, log = get_log_and_message(s)
+                        s, log, _ = get_log_and_message(s)
                     chat_history[-1][1] = (chat_history[-1][1] + s) if append_text else s
                     if stream_output: yield chat_history, log
             elif isinstance(result, dict):
