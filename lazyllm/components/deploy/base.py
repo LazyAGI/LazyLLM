@@ -28,7 +28,7 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
         def func():
 
             def impl(x):
-                print(f'input is {x["inputs"]}, parameters is {x["parameters"]}')
+                LOG.info(f'input is {x["inputs"]}, parameters is {x["parameters"]}')
                 return f'reply for {x["inputs"]}, and parameters is {x["parameters"]}'
 
             def impl_stream(x):
@@ -41,25 +41,11 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
 
     def __call__(self, *args):
         url = flows.Pipeline.__call__(self)
-        print(f'dummy deploy url is : {url}')
+        LOG.info(f'dummy deploy url is : {url}')
         return url
 
     def __repr__(self):
         return flows.Pipeline.__repr__(self)
-
-
-class DummyLongDeploy(DummyDeploy):
-
-    def __init__(self, launcher=launchers.remote(sync=False), *, stream=False, **kw):
-        super().__init__(launcher=launcher, stream=stream, **kw)
-
-    def __call__(self, *args):
-        t = random.randint(5, 20)
-        time.sleep(t)
-        url = flows.Pipeline.__call__(self)
-        print(f'long dummy call sleep for {t} seconds')
-        print(f'dummy deploy url is : {url}')
-        return url
 
 
 def verify_fastapi_func(job):
