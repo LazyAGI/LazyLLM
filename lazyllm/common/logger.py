@@ -118,6 +118,9 @@ class _Log:
     def close(self):
         logger.remove()
 
+    def __reduce__(self):
+        return (self.__class__, ())
+
 
 LOG = _Log()
 
