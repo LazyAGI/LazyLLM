@@ -2,4 +2,5 @@ mkdocs
 mkdocs-material
 mkdocstrings
 mkdocstrings-python
+mkdocs-static-i18n
 lazynote

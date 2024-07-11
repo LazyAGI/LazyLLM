@@ -4,18 +4,11 @@ build:
   os: "ubuntu-22.04"
   tools:
     python: "3.10"
-  jobs:
-    post_install:
-      - export PYTHONPATH="$(pwd)";echo $PYTHONPATH 
-      - echo $PYTHONPATH  # For debugging purposes
-
 
 python:
   install:
     - requirements: docs/requirements.txt
 
-
-
-sphinx:
-  configuration: docs/source/conf.py
+mkdocs:
+  configuration: mkdocs.yml
 
