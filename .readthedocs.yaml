@@ -6,6 +6,7 @@ build:
     python: "3.10"
   jobs:
     pre_build:
+      - pip install -r requirements.txt
       - pip install -r docs/requirements.txt
       - python docs/add_docstrings.py  # 运行你的脚本
 
