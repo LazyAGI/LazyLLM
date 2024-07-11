@@ -4,6 +4,10 @@ build:
   os: "ubuntu-22.04"
   tools:
     python: "3.10"
+  jobs:
+    pre_build:
+      - pip install -r docs/requirements.txt
+      - python docs/add_docstrings.py  # 运行你的脚本
 
 python:
   install:
