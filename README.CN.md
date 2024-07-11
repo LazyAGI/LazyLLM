@@ -145,6 +145,26 @@ with pipeline() as ppl:
 print(ppl({'query':'请帮我写一篇关于人工智能在医疗领域应用的文章。'}))
 ```
 
+### 3.4 AI绘画助手
+
+<details>
+<summary>点击获取import和prompt</summary>
+
+```python
+import lazyllm
+from lazyllm import pipeline
+
+prompt = 'You are a drawing prompt word master who can convert any Chinese content entered by the user into English drawing prompt words. In this task, you need to convert any input content into English drawing prompt words, and you can enrich and expand the prompt word content.'
+```
+</details>
+
+```python
+with pipeline() as ppl:
+    ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt))
+    ppl.sd3 = lazyllm.TrainableModule('stable-diffusion-3-medium')
+lazyllm.WebModule(ppl, port=23466).start().wait()
+```
+
 ## 四、功能点
 
 1. **应用搭建**：定义了pipeline、parallel、diverter、if、switch、loop等工作流(Flow)，开发者可以基于任意的函数和模块来快速搭建多Agent的AI应用。支持对组装好的多Agent应用进行一键部署，也支持对应用进行部分或者全部的更新。
