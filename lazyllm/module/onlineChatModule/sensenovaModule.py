@@ -18,8 +18,8 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
                  **kwargs):
         OnlineChatModuleBase.__init__(self,
                                       model_type=__class__.__name__,
-                                      api_key=SenseNovaModule.encode_jwt_token(lazyllm.config['sensenova_ak'],
-                                                                               lazyllm.config['sensenova_sk']),
+                                      api_key=SenseNovaModule.encode_jwt_token(lazyllm.config['sensenova_api_key'],
+                                                                               lazyllm.config['sensenova_secret_key']),
                                       base_url=base_url,
                                       model_name=model,
                                       stream=stream,

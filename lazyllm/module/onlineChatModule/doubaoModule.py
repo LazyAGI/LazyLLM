@@ -17,6 +17,8 @@ class DoubaoModule(OnlineChatModuleBase):
                          stream=stream,
                          trainable_models=[],
                          return_trace=return_trace)
+        if not model:
+            raise ValueError("Doubao model must be specified.")
 
     def _get_system_prompt(self):
         return "你是人工智能助手豆包。你的任务是针对用户的问题和要求提供适当的答复和支持。"

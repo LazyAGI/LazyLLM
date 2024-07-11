@@ -1,7 +1,8 @@
+import lazyllm
 from typing import Any, Dict
 from .openaiModule import OpenAIModule
 from .glmModule import GLMModule
-from .moonshotaiModule import MoonshotAIModule
+from .kimiModule import KimiModule
 from .sensenovaModule import SenseNovaModule
 from .qwenModule import QwenModule
 from .doubaoModule import DoubaoModule
@@ -16,6 +17,12 @@ class _ChatModuleMeta(type):
 
 
 class OnlineChatModule(metaclass=_ChatModuleMeta):
+    SOURCES = {'OpenAIModule': OpenAIModule,
+               'SenseNovaModule': SenseNovaModule,
+               'GLMModule': GLMModule,
+               'KimiModule': KimiModule,
+               'QwenModule': QwenModule,
+               'DoubaoModule': DoubaoModule}
 
     @staticmethod
     def _encapsulate_parameters(base_url: str,
@@ -33,7 +40,7 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
         return params
 
     def __new__(self,
-                source: str,
+                source: str = None,
                 base_url: str = None,
                 model: str = None,
                 stream: bool = True,
@@ -41,19 +48,14 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
                 **kwargs):
         params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace, **kwargs)
 
-        if source.lower() == "openai":
-            return OpenAIModule(**params)
-        elif source.lower() == "glm":
-            return GLMModule(**params)
-        elif source.lower() == "kimi":
-            return MoonshotAIModule(**params)
-        elif source.lower() == "sensenova":
-            return SenseNovaModule(**params)
-        elif source.lower() == "qwen":
-            return QwenModule(**params)
-        elif source.lower() == "doubao":
-            if "model" not in params.keys():
-                raise ValueError("Doubao model must be specified")
-            return DoubaoModule(**params)
+        if source is None:
+            for source in ['openai', 'sensenova', 'glm', 'kimi', 'qwen']:
+                if lazyllm.config[f'{source}_api_key']: break
+            else:
+                raise KeyError("No key ...")
+
+        for module_name, module in OnlineChatModule.SOURCES.items():
+            if source in module_name.lower():
+                return module(**params)
         else:
             raise ValueError("Unsupported source: {}".format(source))

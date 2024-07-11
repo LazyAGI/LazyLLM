@@ -31,7 +31,8 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                                       **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
-        self._model_optional_params['incremental_output'] = True
+        if stream:
+            self._model_optional_params['incremental_output'] = True
 
     def _get_system_prompt(self):
         return "你是来自阿里云的大规模语言模型，你叫通义千问，你是一个有用的助手。"
