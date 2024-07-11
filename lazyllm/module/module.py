@@ -452,6 +452,7 @@ class TrainableModule(UrlModule):
         self._impl = _TrainableModuleImpl(base_model, target_path, stream,
                                           None, lazyllm.finetune.auto, lazyllm.deploy.auto)
         self._impl._add_father(self)
+        self.prompt()
 
     base_model = property(lambda self: self._impl._base_model)
     target_path = property(lambda self: self._impl._target_path)

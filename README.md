@@ -75,7 +75,7 @@ prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue 
 </details>
 
 ```python
-documents = Document(dataset_path='/file/to/yourpath', embed=TrainableModule('bge-large-zh-v1.5'))
+documents = Document(dataset_path='/file/to/yourpath', embed=lazyllm.TrainableModule('bge-large-zh-v1.5'))
 with pipeline() as ppl:
     with parallel().sum as ppl.prl:
         prl.retriever1 = Retriever(documents, parser='CoarseChunk', similarity_top_k=6)

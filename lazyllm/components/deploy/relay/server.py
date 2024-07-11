@@ -12,6 +12,7 @@ from lazyllm import FastapiApp, globals, encode_request, decode_request
 import pickle
 import codecs
 import asyncio
+from functools import partial
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response, StreamingResponse
@@ -48,7 +49,8 @@ FastapiApp.update()
 
 async def async_wrapper(func, *args, **kwargs):
     loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(None, func, *args, **kwargs)
+    partial_func = partial(func, *args, **kwargs)
+    result = await loop.run_in_executor(None, partial_func)
     return result
 
 @app.post("/generate")

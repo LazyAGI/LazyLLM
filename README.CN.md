@@ -72,7 +72,7 @@ prompt = '你将扮演一个人工智能问答助手的角色，完成一项对�
 </details>
 
 ```python
-documents = Document(dataset_path='/file/to/yourpath', embed=TrainableModule('bge-large-zh-v1.5'))
+documents = Document(dataset_path='/file/to/yourpath', embed=lazyllm.TrainableModule('bge-large-zh-v1.5'))
 with pipeline() as ppl:
     with parallel().sum as ppl.prl:
         prl.retriever1 = Retriever(documents, parser='CoarseChunk', similarity_top_k=6)
