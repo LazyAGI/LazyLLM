@@ -1,17 +1,19 @@
+import os
+import json
+import base64
 import socket
 import requests
 import traceback
 import multiprocessing
-from ...module.module import ModuleBase
 import gradio as gr
-from lazyllm import LOG, globals
-from lazyllm.flow import Pipeline
-import lazyllm
-from types import GeneratorType
-import json
 from PIL import Image
 from io import BytesIO
-import base64
+from types import GeneratorType
+
+import lazyllm
+from lazyllm import LOG, globals
+from lazyllm.flow import Pipeline
+from ...module.module import ModuleBase
 
 
 css = """
@@ -42,8 +44,18 @@ class WebModule(ModuleBase):
         self.history = [h._module_id for h in history]
         self.trace_mode = trace_mode if trace_mode else WebModule.Mode.Refresh
         self.text_mode = text_mode if text_mode else WebModule.Mode.Dynamic
+        self._set_up_caching()
         self.demo = self.init_web(components)
         self.url = None
+
+    def _set_up_caching(self):
+        if 'GRADIO_TEMP_DIR' in os.environ:
+            cach_path = os.environ['GRADIO_TEMP_DIR']
+        else:
+            cach_path = os.path.join(os.getcwd(), '.temp')
+            os.environ['GRADIO_TEMP_DIR'] = cach_path
+        if not os.path.exists(cach_path):
+            os.makedirs(cach_path)
 
     def init_web(self, component_descs):
         with gr.Blocks(css=css, title=self.title) as demo:
