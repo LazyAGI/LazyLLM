@@ -3,4 +3,7 @@ mkdocs-material
 mkdocstrings
 mkdocstrings-python
 mkdocs-static-i18n
+mkdocs-search
+mkdocs-section-index
+mkdocs-autorefs
 lazynote
