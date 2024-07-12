@@ -76,7 +76,7 @@ class _Log:
         # opt depth for printing correct stack depth information
         call_once(
             self._once_flags[context],
-            getattr(self.opt(depth=1, record=True).bind(name=self._name), level),
+            getattr(self.opt(depth=2, record=True).bind(name=self._name), level),
             message,
         )
 
