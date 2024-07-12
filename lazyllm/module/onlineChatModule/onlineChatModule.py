@@ -53,7 +53,7 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
             for source in OnlineChatModule.MODELS.keys():
                 if lazyllm.config[f'{source}_api_key']: break
             else:
-                raise KeyError(f"No key is configured for any of the models {OnlineChatModule.MODELS.keys()}.")
+                raise KeyError(f"No api_key is configured for any of the models {OnlineChatModule.MODELS.keys()}.")
 
         assert source in OnlineChatModule.MODELS.keys(), f"Unsupported source: {source}"
         return OnlineChatModule.MODELS[source](**params)
