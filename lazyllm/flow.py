@@ -412,14 +412,8 @@ class IFS(LazyLLMFlowsBase):
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
 #      ⬆----------------------------------------|
 class Loop(Pipeline):
-    def __init__(self,
-                 *item,
-                 stop_condition=None,
-                 count=sys.maxsize,
-                 post_action=None,
-                 auto_capture=False,
-                 judge_on_input=True,
-                 **kw):
+    def __init__(self, *item, stop_condition=None, count=sys.maxsize, post_action=None,
+                 auto_capture=False, judge_on_input=True, **kw):
         super().__init__(*item, post_action=post_action, auto_capture=auto_capture, **kw)
         assert callable(stop_condition) or stop_condition is None
         self._judge_on_input = judge_on_input
