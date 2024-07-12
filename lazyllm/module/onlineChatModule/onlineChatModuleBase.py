@@ -30,7 +30,7 @@ class OnlineChatModuleBase(ModuleBase):
         self._base_url = base_url
         self._model_name = model_name
         self._stream = stream
-        self.trainable_mobels = trainable_models
+        self.trainable_models = trainable_models
         self._set_headers()
         self._set_chat_url()
         self.prompt()
@@ -223,8 +223,11 @@ class OnlineChatModuleBase(ModuleBase):
     def _get_train_tasks(self):
         if not self._model_name or not self._train_file:
             raise ValueError("train_model and train_file is required")
-        if self._model_name not in self.trainable_mobels:
-            raise ValueError(f"{self._model_name} is not trainable")
+        if self._model_name not in self.trainable_models:
+            lazyllm.LOG.log_once(f"The current model {self._model_name} is not in the trainable \
+                                  model list {self.trainable_models}. The deadline for this list is June 1, 2024. \
+                                  This model may not be trainable. If your model is a new model, \
+                                  you can ignore this warning.")
 
         def _create_for_finetuning_job():
             """
