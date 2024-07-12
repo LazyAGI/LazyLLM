@@ -16,7 +16,7 @@ def function_call_hook(input: Dict[str, Any], history: List[Dict[str, Any]], too
 class FunctionCall(ModuleBase):
     def __init__(self, llm, tools: List[str], *, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
-        if llm.model_type == "QwenModule" and llm.stream is True:
+        if llm._model_type == "QwenModule" and llm._stream is True:
             raise ValueError("The qwen platform does not currently support stream function calls.")
         self._tools_manager = ToolManager(tools)
         self._prompter = ChatPrompter(instruction="Don't make assumptions about what values to plug into functions.\
@@ -47,10 +47,8 @@ class FunctionCallAgent(ModuleBase):
         super().__init__(return_trace=return_trace)
         assert llm and tools, "llm and tools cannot be empty."
         with pipeline() as self._agent:
-            self._agent.lp = loop(FunctionCall(llm, tools),
-                                  stop_condition=lambda x: x,
-                                  count=iterator_count,
-                                  judge_on_input=False)
+            self._agent.lp = loop(FunctionCall(llm, tools), stop_condition=lambda x: x,
+                                  count=iterator_count, judge_on_input=False)
             self._agent.post_action = lambda output: output[0] if isinstance(output, tuple) else output
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
