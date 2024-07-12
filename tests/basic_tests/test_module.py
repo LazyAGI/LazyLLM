@@ -79,6 +79,14 @@ class TestModule:
         tm3.eval()
         assert tm1.eval_result == tm3.eval_result
 
+        tm4 = tm2.share()
+        # tm2 and tm4 use same: ChatPrompter
+        assert type(tm4._prompt) is lazyllm.ChatPrompter
+        assert tm4._prompt == tm2._prompt
+        tm4.evalset(inputs)
+        tm4.eval()
+        assert tm4.eval_result == tm2.eval_result
+
     def test_WebModule(self):
         def func(x):
             return 'reply ' + x
