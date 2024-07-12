@@ -4,12 +4,12 @@ nav:
   - getting start: index.md
   - Faq: Home/FAQ.md
   - Environment: Home/environment.md
-- Use cases:
-  - Flow: USE CASES/flow.md
-  - Flowapp: USE CASES/flowapp.md
-  - Module: USE CASES/module.md
-  - Prompt: USE CASES/prompt.md
-  - Rag: USE CASES/rag.md
+- Best Practice:
+  - Flow: Best Practice/flow.md
+  - Flowapp: Best Practice/flowapp.md
+  - Module: Best Practice/module.md
+  - Prompt: Best Practice/prompt.md
+  - Rag: Best Practice/rag.md
 - Advanced topics:
   - Contribution: Advanced Topics/contribution.md
 - Api reference:
