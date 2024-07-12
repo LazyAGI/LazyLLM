@@ -21,7 +21,8 @@ class DoubaoModule(OnlineChatModuleBase):
             raise ValueError("Doubao model must be specified.")
 
     def _get_system_prompt(self):
-        return "你是人工智能助手豆包。你的任务是针对用户的问题和要求提供适当的答复和支持。"
+        return "You are Doubao, an AI assistant. Your task is to provide appropriate responses \
+                and support to users' questions and requests."
 
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'chat/completions')

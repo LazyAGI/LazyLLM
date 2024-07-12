@@ -17,12 +17,12 @@ class _ChatModuleMeta(type):
 
 
 class OnlineChatModule(metaclass=_ChatModuleMeta):
-    SOURCES = {'OpenAIModule': OpenAIModule,
-               'SenseNovaModule': SenseNovaModule,
-               'GLMModule': GLMModule,
-               'KimiModule': KimiModule,
-               'QwenModule': QwenModule,
-               'DoubaoModule': DoubaoModule}
+    MODELS = {'openai': OpenAIModule,
+              'sensenova': SenseNovaModule,
+              'glm': GLMModule,
+              'kimi': KimiModule,
+              'qwen': QwenModule,
+              'doubao': DoubaoModule}
 
     @staticmethod
     def _encapsulate_parameters(base_url: str,
@@ -46,16 +46,14 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
                 stream: bool = True,
                 return_trace: bool = False,
                 **kwargs):
+
         params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace, **kwargs)
 
         if source is None:
-            for source in ['openai', 'sensenova', 'glm', 'kimi', 'qwen']:
+            for source in OnlineChatModule.MODELS.keys():
                 if lazyllm.config[f'{source}_api_key']: break
             else:
-                raise KeyError("No key ...")
+                raise KeyError(f"No key is configured for any of the models {OnlineChatModule.MODELS.keys()}.")
 
-        for module_name, module in OnlineChatModule.SOURCES.items():
-            if source in module_name.lower():
-                return module(**params)
-        else:
-            raise ValueError("Unsupported source: {}".format(source))
+        assert source in OnlineChatModule.MODELS.keys(), f"Unsupported source: {source}"
+        return OnlineChatModule.MODELS[source](**params)
