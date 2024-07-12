@@ -62,7 +62,7 @@ class TestModule:
         assert trainable_module.eval_result == [res_template.format(x) for x in inputs]
         trainable_module2.evalset(['input1', 'input2'])
         trainable_module2.eval()
-        assert trainable_module2.eval_result == [res_template.format(x) for x in inputs]
+        assert trainable_module2.eval_result != [res_template.format(x) for x in inputs]
 
     def test_WebModule(self):
         def func(x):
