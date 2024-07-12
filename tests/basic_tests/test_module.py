@@ -87,6 +87,12 @@ class TestModule:
         tm4.eval()
         assert tm4.eval_result == tm2.eval_result
 
+        # tm2 use EmptyPrompter, tm4 use: ChatPrompter
+        tm2.prompt(prompt=None)
+        assert tm2._prompt != tm4._prompt
+        assert type(tm4._prompt) is lazyllm.ChatPrompter
+        assert type(tm2._prompt) is lazyllm.prompter.EmptyPrompter
+
     def test_WebModule(self):
         def func(x):
             return 'reply ' + x
