@@ -239,6 +239,7 @@ class WebModule(ModuleBase):
                 return s, "".join(log_history), None
 
             log_history = []
+            image = None
             if isinstance(result, (str, dict)):
                 result, log, image = get_log_and_message(result)
             if image:
