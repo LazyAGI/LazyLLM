@@ -47,11 +47,11 @@ Register
 
 .. autofunction:: lazyllm.components.register
 
-<!-- ModelManager
+ModelManager
 
 ::: lazyllm.components.ModelManager
     members: 
-    exclude-members: -->
+    exclude-members:
 
 Formatter
 
