@@ -193,54 +193,27 @@ class ToolManager(ModuleBase):
             raise TypeError(f"The tools type should be List instead of {type(self._tools)}")
 
     def forward(self, llm_output: tuple, input: tuple, verbose: bool = False):
-        isFinish = False
-        history = input[1]
-        output = {"history": []}
-        if isinstance(input[0], str):
-            output['history'].append({'role': 'user', 'content': input[0]})
-        elif isinstance(input[0], dict):
-            if "history" in input[0]:
-                input[0].pop("history")
-            assert len(input[0]) <= 1, f"Unexpected keys found in input: {list(input.keys())}"
-            output['history'].append(list(input[0].values())[0])
-        else:
-            raise TypeError(f"The input type only supports str and dict, not {type(input[0])}")
-        output['history'].append(llm_output[0])
+        def process_tool_call(tool_calls):
+            tool_output = []
+            flag_val = [True if self._validate_tool(tool['name'], tool['tool_input']) else False for tool in tool_calls]
+            tool_inputs = [tool_calls[idx]['tool_input'] for idx, val in enumerate(flag_val) if val]
+            tools = [self._tool_call[tool_calls[idx]['name']] for idx, val in enumerate(flag_val) if val]
+            tool_diverter = lazyllm.diverter(tuple(tools))
+            rets = tool_diverter(tuple(tool_inputs))
+            res = iter(rets)
+            rets = [next(res) if ele else None for ele in flag_val]
+            for idx, tool in enumerate(tool_calls):
+                if flag_val[idx]:
+                    ret = rets[idx]
+                    tool.pop("tool_input")
+                    tool['content'] = json.dumps(ret, ensure_ascii=False) if isinstance(ret, dict) else ret
+                    tool['role'] = 'tool'
+                    tool_output.append(tool)
+                else:
+                    tool_output.append(f"{tool} parameters error.")
 
-        tool_calls = llm_output[1]
-        if not tool_calls or len(tool_calls) == 0:
-            output['input'] = f"{tool_calls} is not a valid parameter."
-        elif len(tool_calls) == 1:
-            # single function call
-            tool_call = tool_calls[0]
-            isVal = self._validate_tool(tool_call['name'], tool_call['tool_input'])
-            if isVal:
-                ret = self._tool_call[tool_call['name']](tool_call['tool_input'], verbose)
-                tool_call.pop("tool_input")
-                tool_call['content'] = json.dumps(ret, ensure_ascii=False) if isinstance(ret, dict) else ret
-                tool_call['role'] = 'tool'
-                output['input'] = tool_call
-            else:
-                # Parameter error
-                output['input'] = f"{tool_call} parameters error."
-        else:
-            # multi function call
-            tool_inputs = []
-            tools = []
-            for tool_call in tool_calls:
-                tool_inputs.append(tool_call['tool_input'])
-                tools.append(self._tool_call[tool_call['name']])
-            # Building a concurrent
-            tool_diverter = lazyllm.diverter(*tools)
-            rets = tool_diverter(*tool_inputs)
-            output['input'] = []
-            for idx, tool_call in enumerate(tool_calls):
-                ret = rets[idx]
-                tool_call.pop("tool_input")
-                tool_call['content'] = json.dumps(ret, ensure_ascii=False) if isinstance(ret, dict) else ret
-                tool_call['role'] = 'tool'
-                output['input'].append(tool_call)
+            tool_output = tool_output[0] if len(tool_output) == 1 else tool_output
+            return tool_output
 
-            # raise TypeError("Multiple function calls are not yet implemented.")
-
-        return package(isFinish, output, history)
+        output = process_tool_call(llm_output[1])
+        return package(False, [input[-1] if isinstance(input, list) else input, llm_output[0], output])

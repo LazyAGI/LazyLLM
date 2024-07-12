@@ -2,6 +2,7 @@ from typing import Dict, Union, Any, List, Callable, Optional
 from ...common import LazyLLMRegisterMetaClass
 from lazyllm import LOG
 from functools import reduce
+import copy
 import json
 import re
 
@@ -130,13 +131,12 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
         return system_instruction, user_instruction
 
-    def generate_prompt(self, input: Union[str, Dict[str, str], None] = None,
+    def generate_prompt(self, input: Union[str, List, Dict[str, str], None] = None,
                         history: List[Union[List[str], Dict[str, Any]]] = None,
                         tools: Union[List[Dict[str, Any]], None] = None,
                         label: Union[str, None] = None,
                         *, show: bool = False, return_dict: bool = False) -> Union[str, Dict]:
-        if isinstance(input, dict):
-            input = input.copy()
+        input = copy.deepcopy(input)
         if self._pre_hook:
             input, history, tools, label = self._pre_hook(input, history, tools, label)
         instruction, input = self._get_instruction_and_input(input)
