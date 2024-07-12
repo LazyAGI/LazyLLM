@@ -51,8 +51,8 @@ theme:
   font:
     text: Roboto
     code: Roboto Mono
-  logo: https://img.icons8.com/ios-filled/50/000000/rocket.png
-  favicon: https://img.icons8.com/ios-filled/50/000000/rocket.png
+  logo: https://img.icons8.com/?size=100&id=121346&format=png&color=000000
+  favicon: https://img.icons8.com/?size=100&id=121346&format=png&color=000000
 extra:
   generator: false
   social:
