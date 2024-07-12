@@ -251,7 +251,7 @@ class WebModule(ModuleBase):
             log_history = []
             if isinstance(result, (str, dict)):
                 result, log, image = get_log_and_message(result)
-            if False:
+            if image:
                 chat_history[-1][1] = gr.Image(image)
             elif isinstance(result, str):
                 chat_history[-1][1] = result
