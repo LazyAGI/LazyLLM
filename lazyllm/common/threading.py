@@ -2,7 +2,6 @@ import threading
 from queue import Queue
 import functools
 from .globals import globals
-import contextlib
 
 def _sid_setter(sid):
     globals._init_sid(sid)
