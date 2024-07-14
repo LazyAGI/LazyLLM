@@ -10,6 +10,8 @@ import threading
 import traceback
 import sys
 from typing import Union, Tuple, List, Optional
+import concurrent.futures
+from collections import deque
 
 
 class _FuncWrap(object):
@@ -404,3 +406,77 @@ class Loop(Pipeline):
         assert callable(stop_condition) or stop_condition is None
         self._stop_condition = stop_condition
         self._loop_count = count
+
+
+class Graph(LazyLLMFlowsBase):
+
+    class Node:
+        def __init__(self, func, name):
+            self.func, self.name = func, name
+            self.inputs, self.outputs, self.value = [], [], None
+
+    class Edge:
+        def __init__(self, from_node, to_node):
+            self.from_node = from_node
+            self.to_node = to_node
+
+    def __init__(self, *, post_action=None, auto_capture=False, **kw):
+        super(__class__, self).__init__(post_action=post_action, auto_capture=auto_capture, **kw)
+        self._edge, self._nodes = [], [Graph.Node(f, n) for f, n in zip(self._items, self._item_names)]
+
+    def add_edge(self, from_node, to_node):
+        edge = Graph.Edge(from_node, to_node)
+        from_node.outputs.append(to_node)
+        to_node.inputs.append(from_node)
+        self._edges.append(edge)
+
+    def topological_sort(self):
+        in_degree = {node: 0 for node in self._nodes}
+        for edge in self._edges:
+            in_degree[edge.to_node] += 1
+
+        queue = deque([node for node in self._nodes if in_degree[node] == 0])
+        sorted_nodes = []
+
+        while queue:
+            node = queue.popleft()
+            sorted_nodes.append(node)
+            for output_node in node.outputs:
+                in_degree[output_node] -= 1
+                if in_degree[output_node] == 0:
+                    queue.append(output_node)
+
+        if len(sorted_nodes) != len(self.nodes):
+            raise ValueError("Graph has a cycle")
+
+        return sorted_nodes
+
+    def compute_node(self, node):
+        if not node.inputs:  # This node has no inputs, use initial value
+            return node.value
+        else:  # Compute value based on inputs
+            input_vals = tuple(input_node.value for input_node in node.inputs)
+            return node.func(*input_vals)
+
+    def _run(self, input_values):
+        sorted_nodes = self.topological_sort()
+        intermediate_results = {}
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = {}
+
+            for node in sorted_nodes:
+                if not node.inputs:
+                    node.value = input_values[node.name]
+                    intermediate_results[node.name] = node.value
+                else:
+                    with lazyllm.common.threading.wrap_threading():
+                        future = executor.submit(self.compute_node, node)
+                    futures[future] = node
+
+            for future in concurrent.futures.as_completed(futures):
+                node = futures[future]
+                node.value = future.result()
+                intermediate_results[node.name] = node.value
+
+        return intermediate_results
