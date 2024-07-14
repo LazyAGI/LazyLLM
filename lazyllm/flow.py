@@ -1,6 +1,6 @@
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, bind, root
-from lazyllm import Thread, ReadOnlyWrapper, LOG
+from lazyllm import Thread, ReadOnlyWrapper, LOG, globals
 from .common.common import _MetaBind
 from functools import partial
 from enum import Enum
@@ -416,25 +416,22 @@ class Graph(LazyLLMFlowsBase):
             self.inputs, self.outputs, self.value = [], [], None
 
     class Edge:
-        def __init__(self, from_node, to_node):
-            self.from_node = from_node
-            self.to_node = to_node
+        def __init__(self, from_node_name, to_node_name):
+            self.from_node = from_node_name
+            self.to_node = to_node_name
 
     def __init__(self, *, post_action=None, auto_capture=False, **kw):
         super(__class__, self).__init__(post_action=post_action, auto_capture=auto_capture, **kw)
-        self._edge, self._nodes = [], [Graph.Node(f, n) for f, n in zip(self._items, self._item_names)]
+        self._nodes = {n: Graph.Node(f, n) for f, n in zip(self._items, self._item_names)}
+        self.in_degree = {node: 0 for node in self._nodes}
 
     def add_edge(self, from_node, to_node):
-        edge = Graph.Edge(from_node, to_node)
         from_node.outputs.append(to_node)
         to_node.inputs.append(from_node)
-        self._edges.append(edge)
+        self.in_degree[to_node] += 1
 
     def topological_sort(self):
-        in_degree = {node: 0 for node in self._nodes}
-        for edge in self._edges:
-            in_degree[edge.to_node] += 1
-
+        in_degree = self.in_degree.copy()
         queue = deque([node for node in self._nodes if in_degree[node] == 0])
         sorted_nodes = []
 
@@ -451,7 +448,8 @@ class Graph(LazyLLMFlowsBase):
 
         return sorted_nodes
 
-    def compute_node(self, node):
+    def compute_node(self, node, sid):
+        globals._init_sid(sid)
         if not node.inputs:  # This node has no inputs, use initial value
             return node.value
         else:  # Compute value based on inputs
@@ -471,7 +469,7 @@ class Graph(LazyLLMFlowsBase):
                     intermediate_results[node.name] = node.value
                 else:
                     with lazyllm.common.threading.wrap_threading():
-                        future = executor.submit(self.compute_node, node)
+                        future = executor.submit(self.compute_node, node, globals._sid)
                     futures[future] = node
 
             for future in concurrent.futures.as_completed(futures):
