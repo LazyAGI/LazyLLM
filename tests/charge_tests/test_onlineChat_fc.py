@@ -45,7 +45,7 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
         return json.dumps({'location': location, 'temperature': 'unknown'})
 
 @pytest.fixture()
-def exe_onlineChat_Chat(request):
+def exe_onlinechat_chat(request):
     params = request.param if hasattr(request, 'param') else {}
     source = params.get('source', None)
     model = params.get('model', None)
@@ -69,7 +69,7 @@ def exe_onlineChat_Chat(request):
     print(f"\n【{source}】chat test done.")
 
 @pytest.fixture()
-def exe_onlineChat_single_function_call(request):
+def exe_onlinechat_single_function_call(request):
     params = request.param if hasattr(request, 'param') else {}
     source = params.get('source', None)
     model = params.get('model', None)
@@ -100,7 +100,7 @@ def exe_onlineChat_single_function_call(request):
     print(f"\n【{source}】 function calling test done.")
 
 @pytest.fixture()
-def exe_onlineChat_parallel_function_call(request):
+def exe_onlinechat_parallel_function_call(request):
     params = request.param if hasattr(request, 'param') else {}
     source = params.get('source', None)
     model = params.get('model', None)
@@ -128,27 +128,27 @@ squery = "What's the weather like today in Tokyo."
 mquery = "What's the weather like today in Tokyo and Paris."
 
 class TestOnlineChatFunctionCall(object):
-    @pytest.mark.parametrize("exe_onlineChat_Chat",
+    @pytest.mark.parametrize("exe_onlinechat_chat",
                              [{'source': 'sensenova', 'model': 'SenseChat-Turbo', 'query': squery}],
                              indirect=True)
-    def test_onlineChat_chat(self, exe_onlineChat_Chat):
-        ret = exe_onlineChat_Chat
+    def test_onlinechat_chat(self, exe_onlinechat_chat):
+        ret = exe_onlinechat_chat
         assert len(ret) == 2
         assert ret[0] == 'assistant' and len(ret[1]) > 10
 
-    @pytest.mark.parametrize("exe_onlineChat_single_function_call",
+    @pytest.mark.parametrize("exe_onlinechat_single_function_call",
                              [{'source': 'glm', "model": "GLM-4-Flash", "tools": tools, "query": squery},
                               {'source': 'qwen', "model": "qwen-turbo", "tools": tools, "query": squery}],
                              indirect=True)
-    def test_onlineChat_single_function_call(self, exe_onlineChat_single_function_call):
-        ret = exe_onlineChat_single_function_call
+    def test_onlinechat_single_function_call(self, exe_onlinechat_single_function_call):
+        ret = exe_onlinechat_single_function_call
         assert len(ret) == 5
         assert ret == ('tool', 'get_current_weather', 'Tokyo', '10', 'celsius')
 
-    @pytest.mark.parametrize("exe_onlineChat_parallel_function_call",
+    @pytest.mark.parametrize("exe_onlinechat_parallel_function_call",
                              [{'source': 'kimi', 'tools': tools, 'query': squery}],
                              indirect=True)
-    def test_onlineChat_parallel_function_call(self, exe_onlineChat_parallel_function_call):
-        ret = exe_onlineChat_parallel_function_call
+    def test_onlinechat_parallel_function_call(self, exe_onlinechat_parallel_function_call):
+        ret = exe_onlinechat_parallel_function_call
         print(f"ret: {ret}")
         assert len(ret) > 10 and "Tokyo" in ret and "10" in ret

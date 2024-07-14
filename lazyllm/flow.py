@@ -161,6 +161,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         if isinstance(it, bind):
             if it._has_root:
                 it._args = [a.get_from(self.ancestor) if isinstance(a, type(root)) else a for a in it._args]
+                it._kw = {k: v.get_from(self.ancestor) if isinstance(v, type(root)) else v for k, v in it._kw.items()}
                 it._has_root = False
             if bind_args_source: it = bind(it, _bind_args_source=bind_args_source)
         try:
@@ -207,12 +208,12 @@ class Pipeline(LazyLLMFlowsBase):
         self._stop_condition_var = cond
 
     @property
-    def _judge_on_input(self):
-        return getattr(self, '_judge_on_input_var', True)
+    def _judge_on_full_input(self):
+        return getattr(self, '_judge_on_full_input_var', True)
 
-    @_judge_on_input.setter
-    def _judge_on_input(self, judge):
-        self._judge_on_input_var = judge
+    @_judge_on_full_input.setter
+    def _judge_on_full_input(self, judge):
+        self._judge_on_full_input_var = judge
 
     def _run(self, __input, **kw):
         output = __input
@@ -223,7 +224,7 @@ class Pipeline(LazyLLMFlowsBase):
                 kw.clear()
                 bind_args_source['args'][id(it)] = output
             exp = output
-            if not self._judge_on_input:
+            if not self._judge_on_full_input:
                 assert isinstance(output, tuple) and len(output) >= 2
                 exp = output[0]
                 output = output[1:]
@@ -358,18 +359,18 @@ class Warp(Parallel):
 class Switch(LazyLLMFlowsBase):
     # Switch({cond1: M1, cond2: M2, ..., condN: MN})
     # Switch(cond1, M1, cond2, M2, ..., condN, MN)
-    def __init__(self, *args, post_action=None, judge_on_input=True, **kw):
+    def __init__(self, *args, post_action=None, judge_on_full_input=True, **kw):
         if len(args) == 1 and isinstance(args[0], dict):
             self.conds, items = list(args[0].keys()), list(args[0].values())
         else:
             self.conds, items = list(args[0::2]), args[1::2]
         items = {repr(k): v for k, v in zip(self.conds, items)}
         super().__init__(**items, post_action=post_action, **kw)
-        self._judge_on_input = judge_on_input
+        self._judge_on_full_input = judge_on_full_input
 
     def _run(self, __input, **kw):
         exp = __input
-        if not self._judge_on_input:
+        if not self._judge_on_full_input:
             assert isinstance(__input, tuple) and len(__input) >= 2
             exp = __input[0]
             __input = __input[1:]
@@ -413,9 +414,9 @@ class IFS(LazyLLMFlowsBase):
 #      ⬆----------------------------------------|
 class Loop(Pipeline):
     def __init__(self, *item, stop_condition=None, count=sys.maxsize, post_action=None,
-                 auto_capture=False, judge_on_input=True, **kw):
+                 auto_capture=False, judge_on_full_input=True, **kw):
         super().__init__(*item, post_action=post_action, auto_capture=auto_capture, **kw)
         assert callable(stop_condition) or stop_condition is None
-        self._judge_on_input = judge_on_input
+        self._judge_on_full_input = judge_on_full_input
         self._stop_condition = stop_condition
         self._loop_count = count

@@ -1,7 +1,7 @@
 from lazyllm.module import ModuleBase
 from lazyllm.common import package
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
-from lazyllm import pipeline, switch, loop, globals
+from lazyllm import pipeline, switch, loop, globals, root
 from .toolsManager import ToolManager
 from typing import List, Any, Dict
 
@@ -24,18 +24,11 @@ class FunctionCall(ModuleBase):
                                       tools=self._tools_manager.tools_description)\
             .pre_hook(function_call_hook)
         self._llm = llm.share(prompt=self._prompter, formatter=FunctionCallFormatter())
-        self._impl = self._build_pipeline()
 
-    def _build_pipeline(self):
-        with pipeline() as ppl:
-            ppl.m1 = self._llm
-
-            with switch(judge_on_input=False).bind(input=ppl.input) as ppl.sw:
-                ppl.sw.case[(lambda isFC: not isFC),
-                            (lambda out, input: package(True, out[0]['content']))]
-                ppl.sw.case[(lambda isFC: isFC), self._tools_manager]
-
-        return ppl
+        with switch(judge_on_full_input=False) as sw:
+            sw.case[True, self._tools_manager]
+            sw.case[False, lambda out, input: package(True, out[0]['content'])]
+        self._impl = pipeline(self._llm, sw.bind(input=root.input))
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
         if llm_chat_history is not None and self._llm._module_id not in globals['chat_history']:
@@ -43,13 +36,16 @@ class FunctionCall(ModuleBase):
         return self._impl(input)
 
 class FunctionCallAgent(ModuleBase):
-    def __init__(self, llm, tools: List[str], iterator_count: int = 5, return_trace: bool = False):
+    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
+        self._max_retries = max_retries
         assert llm and tools, "llm and tools cannot be empty."
         with pipeline() as self._agent:
             self._agent.lp = loop(FunctionCall(llm, tools), stop_condition=lambda x: x,
-                                  count=iterator_count, judge_on_input=False)
+                                  count=self._max_retries, judge_on_full_input=False)
             self._agent.post_action = lambda output: output[0] if isinstance(output, tuple) else output
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
-        return self._agent(query, llm_chat_history)
+        ret = self._agent(query, llm_chat_history)
+        return ret if isinstance(ret, str) else (_ for _ in ()).throw(ValueError(f"After retrying \
+            {self._max_retries} times, the function call agent still failed to call successfully."))
