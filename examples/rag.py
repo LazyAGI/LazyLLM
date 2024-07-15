@@ -18,4 +18,6 @@ with pipeline() as ppl:
     ppl.formatter = (lambda ctx, query: dict(context_str=ctx, query_str=query)) | bind(query=ppl.input)
     ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b')\
         .prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str']))
-lazyllm.WebModule(ppl, port=23466).start().wait()
+
+if __name__ == '__main__':
+    lazyllm.WebModule(ppl, port=23466).start().wait()

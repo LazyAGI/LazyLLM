@@ -49,4 +49,6 @@ with pipeline() as ppl:
     ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
     ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
-lazyllm.WebModule(ppl, port=23466).start().wait()
+
+if __name__ == '__main__':
+    lazyllm.WebModule(ppl, port=23466).start().wait()

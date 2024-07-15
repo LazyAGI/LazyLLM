@@ -9,4 +9,6 @@ prompt = ('You are a drawing prompt word master who can convert any Chinese cont
 with pipeline() as ppl:
     ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt))
     ppl.sd3 = lazyllm.TrainableModule('stable-diffusion-3-medium')
-lazyllm.WebModule(ppl, port=23466).start().wait()
+
+if __name__ == '__main__':
+    lazyllm.WebModule(ppl, port=23466).start().wait()

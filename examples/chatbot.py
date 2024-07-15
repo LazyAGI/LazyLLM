@@ -1,4 +1,6 @@
 import lazyllm
 
-t = lazyllm.TrainableModule('internlm2-chat-7b')
-lazyllm.WebModule(t, port=23466).start().wait()
+chat = lazyllm.TrainableModule('internlm2-chat-7b')
+
+if __name__ == '__main__':
+    lazyllm.WebModule(chat, port=23466).start().wait()
