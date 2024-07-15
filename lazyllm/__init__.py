@@ -4,7 +4,7 @@ from .common import *  # noqa F403
 from .launcher import LazyLLMLaunchersBase
 from .flow import (LazyLLMFlowsBase, FlowBase, barrier,
                    Pipeline as pipeline, Parallel as parallel, Diverter as diverter,
-                   Loop as loop, Switch as switch, IFS as ifs, Warp as warp)
+                   Loop as loop, Switch as switch, IFS as ifs, Warp as warp, Graph as graph)
 from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                          LazyLLMValidateBase, register as component_register, Prompter,
                          AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter)
@@ -47,6 +47,7 @@ __all__ = [
     'switch',
     'ifs',
     'warp',
+    'graph',
 
     # launcher
     'LazyLLMLaunchersBase',        # empty, slurm, sco
