@@ -432,6 +432,12 @@ class Graph(LazyLLMFlowsBase):
         self._in_degree = {node: 0 for node in self._nodes.values()}
         self._sorted_nodes = None
 
+    @property
+    def start_node(self): return self._nodes[Graph.start_node_name]
+
+    @property
+    def end_node(self): return self._nodes[Graph.end_node_name]
+
     def add_edge(self, from_node, to_node):
         if isinstance(from_node, str): from_node = self._nodes[from_node]
         if isinstance(to_node, str): to_node = self._nodes[to_node]
@@ -462,9 +468,10 @@ class Graph(LazyLLMFlowsBase):
 
         def get_input(name):
             if name not in intermediate_results['values']:
+                r = futures[name].result()
                 with intermediate_results['lock']:
                     if name not in intermediate_results['values']:
-                        intermediate_results['values'][name] = futures[name].result()
+                        intermediate_results['values'][name] = r
             return intermediate_results['values'][name]
 
         kw = {}

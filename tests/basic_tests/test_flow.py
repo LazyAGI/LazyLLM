@@ -1,5 +1,6 @@
 from lazyllm import pipeline, parallel, diverter, warp, switch, ifs, loop, graph
 from lazyllm import barrier, bind
+import time
 
 def add_one(x): return x + 1
 def xy2z(x, y, z=0): return x + y + 2 * z
@@ -112,7 +113,10 @@ class TestFlow(object):
         assert res[-3:] in ([6, 3, 4], [3, 6, 4], [3, 4, 6])
 
     def test_graph(self):
-        def test1(x): return f'1 get {x};'
+        def test1(x):
+            time.sleep(2)
+            return f'1 get {x};'
+
         def test2(x): return f'2 get {x};'
         def test3(x): return f'3 get {x};'
         def add(x, y): return x + y
