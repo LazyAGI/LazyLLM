@@ -81,7 +81,7 @@ class ModuleBase(object):
     def __call__(self, *args, **kw):
         try:
             kw.update(globals['global_parameters'].get(self._module_id, dict()))
-            if history := globals['chat_history'].get(self._module_id, None): kw['llm_chat_history'] = history
+            if (history := globals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
             r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
             if self._return_trace:
                 globals['trace'].append(str(r))

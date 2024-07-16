@@ -307,6 +307,7 @@ Args:
     stop_condition (callable, optional): 一个函数，它接受循环中最后一个项目的输出作为输入并返回一个布尔值。如果返回 ``True``，循环将停止。如果为 ``None``，循环将继续直到达到 ``count``。默认为 ``None``。
     count (int, optional): 运行循环的最大迭代次数。如果为 ``None``，循环将无限期地继续或直到 ``stop_condition`` 返回 ``True``。默认为 ``None``。
     post_action (callable, optional): 循环结束后调用的函数。默认为 ``None``。
+    judge_on_full_input(bool): 如果设置为 ``True`` ， 则通过 ``stop_condition`` 的输入进行条件判断，否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
 
 抛出:
     AssertionError: 如果同时提供了 ``stop_condition`` 和 ``count``，或者当提供的 ``count``不是一个整数。
@@ -323,6 +324,7 @@ Arguments:
     stop_condition (callable, optional): A function that takes the output of the last item in the loop as input and returns a boolean. If it returns ``True``, the loop will stop. If ``None``, the loop will continue until ``count`` is reached. Defaults to ``None``.
     count (int, optional): The maximum number of iterations to run the loop for. If ``None``, the loop will continue indefinitely or until ``stop_condition`` returns ``True``. Defaults to ``None``.
     post_action (callable, optional): A function to be called with the final output after the loop ends. Defaults to ``None``.
+    judge_on_full_input(bool): If set to ``True``, the conditional judgment will be performed through the input of ``stop_condition``, otherwise the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
 
 Raises:
     AssertionError: If both ``stop_condition`` and ``count`` are provided or if ``count`` is not an integer when provided.
@@ -330,13 +332,13 @@ Raises:
 
 add_example('Loop', '''\
 >>> import lazyllm
->>> loop = lazyllm.loop(lambda x: x * 2, stop_condition=lambda x: x > 10)
+>>> loop = lazyllm.loop(lambda x: x * 2, stop_condition=lambda x: x > 10, judge_on_full_input=True)
 >>> loop(1)
 16
 >>> loop(3)
 12
 >>>
->>> with lazyllm.loop(stop_condition=lambda x: x > 10) as lp:
+>>> with lazyllm.loop(stop_condition=lambda x: x > 10, judge_on_full_input=True) as lp:
 ...    lp.f1 = lambda x: x + 1
 ...    lp.f2 = lambda x: x * 2
 ...
@@ -407,7 +409,7 @@ add_chinese_doc('Switch', """\
 Args:
     args: 可变长度参数列表，交替提供条件和对应的流或函数。条件可以是返回布尔值的可调用对象或与输入表达式进行比较的值。
     post_action (callable, optional): 在执行选定流后要调用的函数。默认为 ``None``。
-    judge_on_input(bool): 如果设置为 ``True`` ， 则通过 ``switch`` 的输入进行条件判断，否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
+    judge_on_full_input(bool): 如果设置为 ``True`` ， 则通过 ``switch`` 的输入进行条件判断，否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
     kwargs: 代表命名条件和对应流或函数的任意关键字参数。
 
 抛出:
@@ -429,7 +431,7 @@ The ``Switch`` class provides a way to choose between different flows depending 
 Arguments:
     args: A variable length argument list, alternating between conditions and corresponding flows or functions. Conditions are either callables returning a boolean or values to be compared with the input expression.
     post_action (callable, optional): A function to be called on the output after the selected flow is executed. Defaults to ``None``.
-    judge_on_input(bool): If set to ``True``, the conditional judgment will be performed through the input of ``switch``, otherwise the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
+    judge_on_full_input(bool): If set to ``True``, the conditional judgment will be performed through the input of ``switch``, otherwise the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
     kwargs: Arbitrary keyword arguments representing named conditions and corresponding flows or functions.
 
 Raises:
@@ -442,7 +444,7 @@ add_example('Switch', """\
 ...
 >>> def is_negative(x): return x < 0
 ...
->>> switch = lazyllm.switch(is_positive, lambda x: 2 * x, is_negative, lambda x : -x, 'default', lambda x : '000', judge_on_input=True)
+>>> switch = lazyllm.switch(is_positive, lambda x: 2 * x, is_negative, lambda x : -x, 'default', lambda x : '000', judge_on_full_input=True)
 >>>
 >>> switch(1)
 2
@@ -463,7 +465,7 @@ add_example('Switch', """\
 ...
 >>> def t3(x): return x
 ...
->>> with lazyllm.switch(judge_on_input=True) as sw:
+>>> with lazyllm.switch(judge_on_full_input=True) as sw:
 ...     sw.case[is_1::t1]
 ...     sw.case(is_2, t2)
 ...     sw.case[is_3, t3]

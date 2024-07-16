@@ -1,7 +1,10 @@
+import atexit
 import os
 import json
 import base64
+import signal
 import socket
+import sys
 import requests
 import traceback
 import multiprocessing
@@ -47,6 +50,13 @@ class WebModule(ModuleBase):
         self.cach_path = self._set_up_caching()
         self.demo = self.init_web(components)
         self.url = None
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+
+    def _signal_handler(self, signum, frame):
+        LOG.info(f"Signal {signum} received, terminating subprocess.")
+        atexit._run_exitfuncs()
+        sys.exit(0)
 
     def _set_up_caching(self):
         if 'GRADIO_TEMP_DIR' in os.environ:
