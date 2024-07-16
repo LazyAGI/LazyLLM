@@ -106,7 +106,6 @@ class TestExamples(object):
                              self.stream_output,
                              self.append_text,
                              api_name="/_respond_stream")
-        print("aaas: ", ans)
         res = ans[0][-1][-1]
         assert type(res) is str
         assert len(res) >= 16
@@ -133,7 +132,6 @@ class TestExamples(object):
                              self.stream_output,
                              self.append_text,
                              api_name="/_respond_stream")
-        print("aaas: ", ans)
         image_path = ans[0][0][-1]['value']
         assert os.path.isfile(image_path)
         client.close()
