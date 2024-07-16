@@ -14,10 +14,10 @@ class Thread(threading.Thread):
         prehook.insert(0, functools.partial(_sid_setter, sid=globals._sid))
         super().__init__(group, self.work, name, (prehook, target, args), kwargs, daemon=daemon)
 
-    def work(self, prehook, target, args):
+    def work(self, prehook, target, args, **kw):
         [p() for p in prehook]
         try:
-            r = target(*args)
+            r = target(*args, **kw)
         except Exception as e:
             self.q.put(e)
         else:
