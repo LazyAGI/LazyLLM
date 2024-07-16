@@ -45,12 +45,12 @@ class TestFlow(object):
 
     def test_switch(self):
 
-        assert switch({is_1: t1, is_2: t2}, judge_on_input=True)(1) == 2
-        assert switch({is_1: t1, is_2: t2}, judge_on_input=True)(2) == 6
-        assert not switch({is_1: t1, is_2: t2}, judge_on_input=True)(3)
-        assert switch({is_1: t1, is_2: t2, 'default': t3}, judge_on_input=True)(3) == 3
+        assert switch({is_1: t1, is_2: t2}, judge_on_full_input=True)(1) == 2
+        assert switch({is_1: t1, is_2: t2}, judge_on_full_input=True)(2) == 6
+        assert not switch({is_1: t1, is_2: t2}, judge_on_full_input=True)(3)
+        assert switch({is_1: t1, is_2: t2, 'default': t3}, judge_on_full_input=True)(3) == 3
 
-        with switch(judge_on_input=True) as sw:
+        with switch(judge_on_full_input=True) as sw:
             sw.case[is_1::t1]
             sw.case(is_2, t2)
             sw.case[is_3, t3]

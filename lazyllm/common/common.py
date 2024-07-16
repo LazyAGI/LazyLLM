@@ -169,6 +169,7 @@ class Bind(object):
         self._args = args
         self._kw = kw
         self._has_root = any([isinstance(a, AttrTree) for a in args])
+        self._has_root = self._has_root or any([isinstance(v, AttrTree) for k, v in kw.items()])
 
     def __ror__(self, __value: Callable):
         if self._f is not Bind.__None: self._args = (self._f,) + self._args

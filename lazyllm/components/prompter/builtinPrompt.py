@@ -2,6 +2,7 @@ from typing import Dict, Union, Any, List, Callable, Optional
 from ...common import LazyLLMRegisterMetaClass
 from lazyllm import LOG
 from functools import reduce
+import copy
 import json
 import re
 
@@ -61,6 +62,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                 elif isinstance(item, dict):
                     content.append(item)
                 else:
+                    LOG.error(f"history: {history}")
                     raise ValueError("history must be a list of list or dict")
             return content
         else:
@@ -77,7 +79,6 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                 assert len(prompt_keys) == 0
                 return self._instruction_template, input
         assert isinstance(input, dict), f'expected types are str, int and dict, bug get {type(input)}(`{input})`'
-        input = input.copy()
         kwargs = {k: input.pop(k) for k in prompt_keys}
         assert len(input) <= 1, f"Unexpected keys found in input: {list(input.keys())}"
         return (reduce(lambda s, kv: s.replace(f"{{{kv[0]}}}", kv[1]),
@@ -101,6 +102,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             history.append({"role": "user", "content": input})
         elif isinstance(input, dict):
             history.append(input)
+        elif isinstance(input, list) and all(isinstance(ele, dict) for ele in input):
+            history.extend(input)
         else:
             raise TypeError("input must be a string or a dict")
 
@@ -128,11 +131,12 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
         return system_instruction, user_instruction
 
-    def generate_prompt(self, input: Union[str, Dict[str, str], None] = None,
+    def generate_prompt(self, input: Union[str, List, Dict[str, str], None] = None,
                         history: List[Union[List[str], Dict[str, Any]]] = None,
                         tools: Union[List[Dict[str, Any]], None] = None,
                         label: Union[str, None] = None,
                         *, show: bool = False, return_dict: bool = False) -> Union[str, Dict]:
+        input = copy.deepcopy(input)
         if self._pre_hook:
             input, history, tools, label = self._pre_hook(input, history, tools, label)
         instruction, input = self._get_instruction_and_input(input)

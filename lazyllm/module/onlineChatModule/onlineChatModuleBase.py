@@ -1,3 +1,4 @@
+import copy
 from itertools import groupby
 import json
 import os
@@ -50,6 +51,13 @@ class OnlineChatModuleBase(ModuleBase):
         self._prompt._set_model_configs(system=self._get_system_prompt())
         return self
 
+    def share(self, prompt: PrompterBase = None, formatter: FormatterBase = None):
+        new = copy.copy(self)
+        new._set_mid()
+        if prompt is not None: new.prompt(prompt)
+        if formatter is not None: new.formatter(formatter)
+        return new
+
     def _get_system_prompt(self):
         raise NotImplementedError("_get_system_prompt is not implemented.")
 
@@ -58,10 +66,6 @@ class OnlineChatModuleBase(ModuleBase):
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + self._api_key
         }
-
-    @property
-    def model_type(self):
-        return self._model_type
 
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'chat/completions')
