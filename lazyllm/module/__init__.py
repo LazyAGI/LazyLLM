@@ -3,6 +3,7 @@ from .module import (ModuleBase, TrainableModule, ActionModule,
 from .trialmodule import TrialModule
 from .onlineChatModule import OnlineChatModule, OnlineChatModuleBase
 from .onlineEmbedding import OnlineEmbeddingModule, OnlineEmbeddingModuleBase
+from .automodel import AutoModel
 
 import lazyllm
 # openai api key
@@ -30,5 +31,6 @@ __all__ = [
     "OnlineChatModule",
     "OnlineChatModuleBase",
     "OnlineEmbeddingModule",
-    "OnlineEmbeddingModuleBase"
+    "OnlineEmbeddingModuleBase",
+    "AutoModel",
 ]

@@ -40,9 +40,9 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
         return params
 
     def __new__(self,
+                model: str = None,
                 source: str = None,
                 base_url: str = None,
-                model: str = None,
                 stream: bool = True,
                 return_trace: bool = False,
                 **kwargs):
