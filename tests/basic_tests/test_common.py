@@ -67,12 +67,12 @@ class TestCommon(object):
 
 class TestCommonGlobals(object):
 
-    def _lazyllm_worker():
+    def _lazyllm_worker(self):
         assert lazyllm.globals['a'] == 1
         assert lazyllm.globals['chat_history'] == {}
         assert lazyllm.globals['global_parameters']['key'] == 'value'
 
-    def _normal_worker():
+    def _normal_worker(self):
         assert 'a' not in lazyllm.globals
         assert lazyllm.globals._sid == f'tid-{hex(threading.get_ident())}'
         assert lazyllm.globals['chat_history'] == {}
