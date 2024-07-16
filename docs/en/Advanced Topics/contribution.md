@@ -1,47 +1,47 @@
-代码贡献指南
+Code Contribution Guide
 
-贡献代码
+Contributing Code
 ---
 
-作为一个在快速发展的开源项目，我们非常欢迎各种形式的贡献，无论是文档的改进、新测例的添加、新工具的添加，亦或者是功能的改进，添加或者基础设施的改进。
+As a rapidly developing open-source project, we warmly welcome all forms of contributions, whether it is documentation improvement, adding new test cases, adding new tools, enhancing or adding new features, or improving the infrastructure.
 
-**修复错误**
+**Bug Fixes**
 
-修复代码实现错误的步骤如下：
+The steps to fix code implementation errors are as follows:
 
-1. 如果提交的代码改动较大，建议先提交 issue，并正确描述 issue 的现象、原因和复现方式，讨论后确认修复方案。
-2. 修复错误并补充相应的单元测试，提交 ``pull request``。
+1. If the submitted code changes are significant, it is recommended to first submit an issue. Properly describe the issue's phenomenon, cause, and reproduction method, and confirm the fix plan after discussion.
+2. Fix the bug and supplement with corresponding unit tests, then submit a ``pull request``.
 
-**新增功能或组件**
+**New Features or Components**
 
-1. 如果新功能或模块涉及较大的代码改动，建议先提交 issue，确认功能的必要性。
-2. 实现新增功能，提交 ``pull request``。
+1. If the new feature or module involves significant code changes, it is recommended to first submit an issue to confirm the necessity of the feature.
+2. Implement the new feature and submit a ``pull request``.
 
-**文档补充**
+**Documentation Supplement**
 
-修复文档可以直接提交 ``pull request``。添加文档或将文档翻译成其他语言步骤如下
+Fixes to documentation can be submitted directly via a ``pull request``. The steps for adding documentation or translating documentation into other languages are as follows:
 
-1. 提交 issue，确认添加文档的必要性。
-2. 添加文档，提交 ``pull request``。
+1. Submit an issue to confirm the necessity of adding the documentation.
+2. Add the documentation and submit a ``pull request``.
 
-贡献流程
+Contribution Process
 ---
 
-如果你对pull request不了解，没关系，接下来的内容将会从零开始，一步一步地指引你如何创建一个 ``pull request`` 。如果你想深入了解 ``pull request`` 的开发模式，可以参考 `github上的教程 <https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-requests>`_
+If you're not familiar with pull requests, don't worry. The following content will guide you step-by-step on how to create a ``pull request`` from scratch. For a deeper understanding of the ``pull request`` development model, you can refer to `GitHub's tutorial <https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-requests>`_
 
-复刻仓库
+Fork the Repository
 
-当你第一次提交pull request时，先复刻仓库原代码库。点击 GitHub 页面右上角的 **Fork** 按钮，复刻后的代码库将会出现在你的 GitHub 个人主页下。
+When you submit a pull request for the first time, start by forking the original repository. Click the Fork button at the top right of the GitHub page. The forked repository will appear under your GitHub personal profile.
 
-将代码克隆到本地
+Clone the Repository Locally
 
 ``git clone git@github.com:{username}/LazyLLM.git``
 
-添加原代码库为上游代码库
+Add the Original Repository as an Upstream Repository
 
 ``git remote add upstream git@github.com:LazyAGI/LazyLLM.git``
 
-检查 remote 是否添加成功，在终端输入 ``git remote -v``
+Check if the remote has been added successfully by typing ``git remote -v`` in the terminal.
 ```
 
     origin	git@github.com:{username}/LazyLLM.git (fetch)
@@ -49,22 +49,21 @@
     upstream	git@github.com:LazyAGI/LazyLLM.git (fetch)
     upstream	git@github.com:LazyAGI/LazyLLM.git (push)
 ```
-这里对 origin 和 upstream 进行一个简单的介绍，当我们使用 git clone 来克隆代码时，会默认创建一个 origin 的 remote，它指向我们克隆的代码库地址，而 upstream 则是我们自己添加的，用来指向原始代码库地址。当然如果你不喜欢他叫 upstream，也可以自己修改，比如叫 LazyLLM。我们通常向 origin 提交代码（即 fork 下来的远程仓库），然后向 upstream 提交一个 pull request。如果提交的代码和最新的代码发生冲突，再从 upstream 拉取最新的代码，和本地分支解决冲突，再提交到 origin。
+Here's a quick introduction to origin and upstream. When we use git clone to clone code, a remote called origin is created by default, which points to the repository we cloned. Upstream is something we add ourselves, and it points to the original repository. Of course, if you don't like the name upstream, you can change it to something else, like LazyLLM. We usually push code to origin (i.e., the forked remote repository), and then submit a pull request to upstream. If the code we submit conflicts with the latest code, we pull the latest code from upstream, resolve the conflict with our local branch, and then push to origin.
 
+Create a Development Branch
 
-创建开发分支
-
-我们需要基于 main 创建开发分支，建议的分支命名规则为 ``username/pr_name``。
+You need to create a development branch based on main. The recommended naming convention for branches is ``username/pr_name``.
 
 ``git checkout -b username/pr_name``
 
-在后续的开发中，如果本地仓库的 main 分支落后于 upstream 的 main 分支，我们需要先拉取 upstream 的代码进行同步，再执行上面的命令
+During development, if the local main branch is behind the upstream main branch, you need to first pull the code from upstream to synchronize, and then execute the command above.
 
 ``git pull upstream main``
 
 
-风格和测试
-提交的代码需要通过单元测试以保证正确性，并保证代码风格无误。可以执行如下命令:
+Style and Testing
+The submitted code needs to pass unit tests to ensure correctness and maintain proper code style. You can execute the following commands:
 
 ```
 
@@ -72,60 +71,58 @@
     python -m flake8
 ```
 
-推送代码到远程
-将代码推送到远程仓库，如果是第一次推送，可以在 ``git push`` 后加上 ``-u`` 参数以关联远程分支
+Push Code to Remote
+Push your code to the remote repository. If it's the first time you're pushing, you can add the ``-u`` parameter after ``git push`` to associate the remote branch.
 
 ```
 
     git push -u origin {branch_name}
 ```
-这样下次就可以直接使用 ``git push`` 命令推送代码了，而无需指定分支和远程仓库。
+Push your code to the remote repository. If it's the first time you're pushing, you can add the -u parameter after ``git push`` to associate the remote branch.
 
 
-提交pull request（PR）
+Submit a Pull Request (PR)
 
-- 在 GitHub 的 Pull request 界面创建pull request <br>
-- 根据指引修改 PR 描述，以便于其他开发者更好地理解你的修改
+- Create a pull request on the GitHub Pull request page
+- Modify the PR description according to the guide, so that other developers can better understand your changes.
 
-> **注意**：
+> **Note**：
 
-    - PR 描述应该包含修改理由、修改内容以及修改后带来的影响，并关联相关 Issue
-    - 所有 reviewer 同意合入 PR 后，我们会尽快将 PR 合并到主分支。
+    - The PR description should include the reason for the changes, the content of the changes, the impact of the changes, and link to related issues.
+    - Once all reviewers agree to merge the PR, we will merge it into the main branch as soon as possible.
 
-解决冲突
+Resolve Conflicts
 
-随着时间的推移，我们的代码库会不断更新，这时候，如果你的 PR 与主分支存在冲突，你需要解决冲突，解决冲突的方式有两种：
-
+Over time, our codebase will continuously update. If your PR conflicts with the main branch, you need to resolve the conflicts. There are two ways to do this:
 ```
 
     git fetch --all --prune
     git rebase upstream/main
 ```
-或者
+or
 
 ```
     git fetch --all --prune
     git merge upstream/main
 ```
-如果你非常善于处理冲突，那么可以使用 rebase 的方式来解决冲突，因为这能够保证你的 commit log 的整洁。如果你不太熟悉 ``rebase`` 的使用，那么可以使用 ``merge`` 的方式来解决冲突。
-
-pull request规范
+If you are very skilled at handling conflicts, you can use the rebase method to resolve conflicts, as this keeps your commit log clean. If you are not familiar with using rebase, you can use the merge method to resolve conflicts.
+Pull Request Guidelines
 ---
-1. 一个 ``pull request`` 对应一个短期分支
+1. One ``pull request`` per Short-Term Branch
 
-2. 粒度要细，一个 ``pull request`` 只做一件事情，避免超大的 ``pull request``
+2. Granularity Should Be Small,Each pull request should focus on a single task, avoiding overly large pull requests.
 
-   - Bad：一个PR里补充多个模型所需的所有算子
-   - Acceptable：一个PR里实现一个或几个相关算子
-   - Good：修复某个算子 input 为空时引发的 bug
+   - Bad：Adding all operators needed for multiple models in one PR.
+   - Acceptable：Implementing one or several related operators in one PR.
+   - Good：Fixing a bug that occurs when the input of an operator is empty.
 
-3. 每次 commit 时需要提供清晰且有意义 commit 信息
+3. Provide Clear and Meaningful Commit Messages
 
-4. 提供清晰且有意义的 ``pull request`` 描述
+4. Provide Clear and Meaningful ``pull pequest`` Descriptions
 
-   - 标题写明白任务名称，一般格式: ``[Prefix] Short description of the pull request (Suffix)``
-   - prefix: 新增功能  ``[Feature]``, 修 bug ``[Fix]``, 文档相关 ``[Docs]``, 开发中 ``[WIP]`` (暂时不会被review)
-   - 描述里介绍 ``pull request``的主要修改内容，结果，以及对其他部分的影响, 参考 ``pull request`` 模板
-   - 关联相关的 ``议题(issue)`` 和其他 ``pull request``
+   - Provide Clear and Meaningful Pull Request Descriptions: ``[Prefix] Short description of the pull request (Suffix)``
+   - prefix: New feature  ``[Feature]``, Bug fix ``[Fix]``, Documentation-related ``[Docs]``,Work in progress ``[WIP]`` (not ready for review)
+   - The description should introduce the main changes, results, and impacts on other parts of the project, following the ``pull request`` template
+   - Link to related ``issues`` and other ``pull requests``
 
-5. 如果引入了其他三方库，或借鉴了三方库的代码，请确认他们的许可证和LazyLLM兼容，并在借鉴的代码上补充 ``This code is inspired from http://``
+5. If introducing third-party libraries or borrowing code from third-party libraries, ensure their licenses are compatible with LazyLLM.Add a note to the borrowed code:  ``This code is inspired from http://``

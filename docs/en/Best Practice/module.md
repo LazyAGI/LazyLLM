@@ -1,26 +1,26 @@
-# 顶层核心概念：模块
+# Top-Level Core Concept: Module
 
-Module是LazyLLM中的顶层组件，也是LazyLLM最核心的概念之一。Module具备训练、部署、推理和评测四项关键能力，每个模块可以选择实现其中的部分或者全部的能力，
-每项能力都可以由一到多个函数、Component或其他Module组成。本章我们会详细介绍Module的使用方式。
+A Module is the top-level component in LazyLLM and one of its core concepts. A Module possesses four key capabilities: training, deployment, inference, and evaluation. Each Module can choose to implement some or all of these capabilities, 
+and each capability can be composed of one or more functions, Components, or other Modules. In this chapter, we will provide a detailed introduction to the usage of Modules.
 
 ## API Reference
 
-Module的API文档可以参考 :ref:`api.module`
+You can refer to the Module's API documentation :ref:`api.module`
 
 .. _bestpractice.module.define:
 
-定义一个模块（ ``Module`` ）
+Defining a Module (``Module`` )
 
-通过继承
+By inheriting
 ---
 
-若想定义一个 ``Module`` ，只需要自定义一个类，继承自 ``lazyllm.module.ModuleBase`` 即可。自定义的模块需要实现下列三个方法之一：
+To define a ``Module``, you simply need to create a custom class that inherits from ``lazyllm.module.ModuleBase``. The custom module needs to implement at least one of the following three methods:
 
-1. ``_get_train_tasks``: 定义训练 / 微调任务，返回一个训练 / 微调任务的 ``pipeline`` ，在调用 ``update`` 方法时执行任务
-2. ``_get_deploy_tasks``: 定义部署任务，返回一个部署任务的 ``pipeline`` ，在调用 ``start`` 方法时执行部署任务；或者在调用 ``update`` 方法时执行完训练任务后执行部署任务
-3. ``forward``: 定义 ``Module`` 的具体执行过程，会被 ``Module.__call__`` 调用。
+1. ``_get_train_tasks``: Defines training/fine-tuning tasks, returns a training/fine-tuning task ``pipeline``, and executes the tasks when the ``update`` method is called.
+2. ``_get_deploy_tasks``: Defines deployment tasks, returns a deployment task ``pipeline``, and executes deployment tasks when the ``start`` method is called; or after executing training tasks when the ``update`` method is called.
+3. ``forward``: Defines the specific execution process of the ``Module``, which will be called by ``Module.__call__.``
 
-下面给出一个例子
+Here is an example:
 
 ```python
 
@@ -53,15 +53,15 @@ Module的API文档可以参考 :ref:`api.module`
     >>> m.update()
     ['[Module example get input: hello]', '[Module example get input: world]']
 ```
-> **注意**：
+> **Note**：
     
-    测试集是通过调用 ``evalset`` 来设置的，不需要显式的重写某个函数。所有的 ``Module`` 均可以设置测试集
+      The test set is set by calling `evalset`, and there is no need to explicitly override any function. All `Modules` can have a test set.
 
 
-通过内置的注册器
+Using the Built-in Registry
 ---
 
-LazyLLM实现了一个 ``Module`` 的注册器，利用它可以很方便的将函数注册成 ``Module`` 。下面给出一个具体的例子：
+LazyLLM implements a registry for ``Modules``, which allows you to easily register functions as ``Modules``. Here is a specific example:
 
 ```python
 
@@ -80,20 +80,20 @@ LazyLLM实现了一个 ``Module`` 的注册器，利用它可以很方便的将�
 ```
 Submodules
 
-Submodules的概念
+Concept of Submodules
 ---+++
 
-与 ``pytorch`` 的 ``Module`` 类似，LazyLLM的 ``Module`` 也有层级的概念，一个 ``Module`` 可以有一个到多个 ``Submodule``。
-当使用 ``update`` 函数更新一个  ``Module`` 时，也会对应对其 ``Submodule`` 进行更新，除非显式设置不更新 ``Submodule`` 。
-类似的，当使用 ``start`` 函数启动一个  ``Module`` 的部署任务时，也会对应对其 ``Submodule`` 进行部署，除非显式设置不部署 ``Submodule`` 。
-下面给出一个例子:
+Similar to the ``Module`` class in ``pytorch``, the ``Module`` in LazyLLM also has a hierarchical concept, where a Module can have one or more ``Submodule``. 
+When using the ``update`` function to update a ``Module``, its ``Submodule`` will also be updated, unless explicitly set not to update the ``Submodule``. 
+Similarly, when using the ``start`` function to start the deployment task of a ``Module``, its ``Submodule`` will also be deployed, unless explicitly set not to deploy the ``Submodule``.
+Here is an example:
 
-如何构建Submodules
+How to Construct Submodules
 ---
 
-您可以通过以下几种方式，让一个 ``Module`` 成为另一个 ``Module`` 的 ``Submodule`` :
+You can make one ``Module`` a ``Submodule`` of another ``Module`` in the following ways:
 
-1. 作为构造参数传入 ``ActionModule`` 或 ``ServerModule`` 等，下面给出一个例子
+1. Pass it as a constructor argument to ``ActionModule`` or ``ServerModule``, as shown in the example below:
 
     ```python
 
@@ -106,9 +106,9 @@ Submodules的概念
         >>> sm.submodules
         [<Module type=MyModule name=m1>]
 ```
-> **注意**：
+> **Note**：
     
-    - 当flow作为 ``ActionModule`` 或 ``ServerModule`` 的构造参数时，若其中的存在 ``Module`` ，也会变成  ``ActionModule`` 或 ``ServerModule`` 的 ``SubModule`` 。下面给出一个例子：
+    - When a flow is passed as a constructor argument to ``ActionModule`` or ``ServerModule``, any ``Module`` within it will also become a ``Submodule`` of the ``ActionModule`` or ``ServerModule``. Here's an example:
 
         ```python
 
@@ -124,7 +124,7 @@ Submodules的概念
             >>> sm.submodules[0].submodules
             [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
         ```
-    - 直接对 ``Module`` 打印 ``repr`` 时，会以层级结构的形式展示其所有的submodule。接上一个例子：
+    - When directly printing the ``repr`` of a ``Module``, it will display its hierarchical structure, including all its ``Submodules``. Continuing from the previous example:
 
         ```python
 
@@ -137,7 +137,7 @@ Submodules的概念
                         |- <Module type=MyModule name=m2>
                         └- <Module type=MyModule name=m3>
 ```
-2. 在一个 ``Module`` 中设置另一个 ``Module`` 为成员变量，即可以让另一个 ``Module`` 变成自己是 ``submodule``，下面给出一个例子
+2. Setting another ``Module`` as a member variable in a ``Module`` can make the other ``Module`` become its ``submodule``. Here is an example:
 
     ```python
 
@@ -153,10 +153,10 @@ Submodules的概念
         >>> m2.submodules
         [<Module type=MyModule name=m1-1>, <Module type=MyModule name=m1-2>]
 ```
-利用Submodules实现应用的联合部署
+Utilizing Submodules for Joint Application Deployment
 ------
 
-当训练/微调或部署一个 ``Module`` 时，会通过深度优先的策略查找其所有的 ``SubModule`` ，并逐一部署。示例如下：
+When training/fine-tuning or deploying a ``Module``, a depth-first strategy will be used to search for all its ``Submodules`` and deploy them one by one. Here is an example:
 
 ```
     >>> class MyModule2(lazyllm.module.ModuleBase):
@@ -194,13 +194,13 @@ Submodules的概念
     Module m2-2 m1-2 deployed!
     Module m2-2 deployed!
 ```
-> **注意**：
+> **Note**：
 
-    可以看出，当更新 ``ActionModule`` 时，会将其所有的 ``SubModule`` 一并进行更新；然后若有部署任务，则会在全部的训练/微调任务执行完毕之后，
-    执行所有的部署任务。因为可能存在父模块对子模块的依赖，因此在部署时，会优先部署子模块，然后部署父模块。
+    It can be seen that when updating the ``ActionModule``, all its ``Submodules`` will be updated together. If there are deployment tasks, they will be executed after all the training/fine-tuning tasks are completed. 
+    Since parent modules may depend on submodules, submodules will be deployed first, followed by parent modules.
 
-> **注意**：
+> **Note**：
 
-    当配置了 ``Redis`` 服务时，便可以利用LazyLLM提供的轻量级网关的机制，实现所有服务的并行部署。
+    When the ``Redis`` service is configured, the lightweight gateway mechanism provided by LazyLLM can be used to achieve parallel deployment of all services.
 
 

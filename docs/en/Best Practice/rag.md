@@ -1,39 +1,39 @@
 RAG
 
-检索增强生成（Retrieval-augmented Generation, RAG）是当前备受关注的大模型前沿技术之一。其工作原理是，当模型需要生成文本或回答问题时，首先会从一个庞大的文档集合中检索出相关的信息。这些检索到的信息随后用于指导生成过程，从而显著提高生成文本的质量和准确性。通过这种方式，RAG能够在处理复杂问题时提供更加精确和有意义的回答，是自然语言处理领域的重要进展之一。这种方法的优越性在于它结合了检索和生成的优势，使得模型不仅能够生成流畅的文本，还能基于真实数据提供有依据的回答。
-本文展示了如何利用LazyLLM搭建自己的RAG应用，并随心所欲的增加召回策略。
+Retrieval-augmented Generation (RAG) is a cutting-edge technology in the realm of large models. Its working principle involves first retrieving relevant information from a vast document collection when the model needs to generate text or answer questions. This retrieved information is then used to guide the generation process, significantly enhancing the quality and accuracy of the generated text. Through this method, RAG can provide more precise and meaningful responses when dealing with complex issues, representing a significant advancement in natural language processing. The superiority of this approach lies in its combination of retrieval and generation advantages, enabling the model to not only generate fluent text but also offer evidence-based answers grounded in real data.本文展示了如何利用LazyLLM搭建自己的RAG应用，并随心所欲的增加召回策略。
+This article demonstrates how to build your own RAG application using LazyLLM and how to flexibly add recall strategies.
 
-RAG的原理简介
+RAG Principle Overview
 
-用LazyLLM搭建你的第一个RAG应用
+Building Your First RAG Application with LazyLLM
 
-基本的RAG
+Basic RAG
 +++++++++++++++++++
 
 
-文档管理服务
+Document Management Service
 +++++++++++++++++++
 
 
-部署本地模型并使用
+Deploying Local Models and Usage
 +++++++++++++++++++
 
 
-多路召回
+Multi-path Recall
 +++++++++++++++++++
 
 
-自定义parser
+Custom Parser
 +++++++++++++++++++
 
 
-微调你的模型
+Fine-tuning Your Model
 +++++++++++++++++++
 
 
-线上模型的微调
+Online Model Fine-tuning
 
-本地模型的微调
+Local Model Fine-tuning
 
 
-LazyLLM中RAG模块的设计思想
+Design Philosophy of RAG Module in LazyLLM

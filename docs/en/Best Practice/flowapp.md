@@ -1,15 +1,15 @@
-复杂应用的构建
+Building Complex Applications
 
-基于内部工具构建应用
+Building Applications Based on Internal Tools
 
-> **注意**：
+> **Note**：
 
-    虽然看起来是由模块组合成数据流，然后统一启动，但我们并不是“静态图”，主要表现为：
+    Although it appears to be composed of modules combined into a data flow and then started uniformly, we are not a "static graph". The main manifestations are:
     
-    - 我们使用了基础的python语法来搭建应用，使用方式非常接近于传统的编程方式。
-    - 你仍然可以利用python强大而灵活的特性，在运行的过程中改变已经搭建好的应用的拓扑结构，而后续的执行依据你修改之后的结构。
-    - 你可以灵活的向模块的连接处，注入你所希望执行的hook函数，这些函数甚至可以是运行时定义的。
+    - We use basic Python syntax to build applications, and the usage is very close to traditional programming methods.
+    - You can still take advantage of Python's powerful and flexible features to change the topology of an already built application during runtime, and subsequent execution will follow the modified structure.
+    - You can flexibly inject hook functions you wish to execute at the connection points of the modules. These functions can even be defined at runtime.
 
-结合开源工具构建应用
+Building Applications with Open Source Tools
 
-典型场景应用
+Typical Scenario Applications

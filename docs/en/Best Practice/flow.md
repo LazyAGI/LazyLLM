@@ -1,15 +1,15 @@
-应用搭建的核心：数据流
+Core of Application Building: Data Flow
 
-LazyLLM中定义了大量的数据流组件，用于让您像搭积木一样，借助LazyLLM中提供的工具和组件，来搭建复杂的大模型应用。本节会详细介绍数据流的使用方法。
+LazyLLM defines a multitude of data flow components that enable you to build complex large model applications using the tools and components provided by LazyLLM, much like building with blocks. This section will provide a detailed introduction to the usage of data flow.
 
-定义和API文档
-数据流的定义和基本使用方法如 :ref:`api.flow` 中所述
+Definitions and API Documentation
+The definitions and basic usage of data flow are described in :ref:api.flow.
 
 pipeline
 
-基本使用
+Basic Usage
 
-Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶段的输入。pipeline支持函数和仿函数（或仿函数的type）。一个典型的pipeline如下所示:
+A Pipeline is a sequential data flow where the output of one stage becomes the input of the next stage. Pipelines support both functions and functors (or the type of functors). A typical pipeline is as follows:
 
 ```python
 
@@ -25,8 +25,8 @@ Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶
     assert pipeline(f1, f2, f3, Functor)(1) == 256
 ```
 
-> **注意**：
-    借助LazyLLM的注册机制 :ref:`api.components.register` 注册的函数，也可以直接被pipeline使用，下面给出一个例子
+> **Note**：
+    Functions registered with LazyLLM's registration mechanism :ref:`api.components.register` can also be used directly by the pipeline. Below is an example:
 
 
 ```python
@@ -45,9 +45,9 @@ Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶
     assert pipeline(lazyllm.g1.test1, lazyllm.g1.test2(launcher=lazyllm.launchers.empty))(1) == 6
 ```
 
-with语句
+with Statement
 
-除了基本的用法之外，pipeline还支持一个更为灵活的用法 ``with pipeline() as p`` 来让代码更加的简洁和清晰，示例如下
+In addition to the basic usage, the pipeline also supports a more flexible usage with the ``with pipeline() as p`` statement to make the code more concise and clear. Here is an example:
 
 ```python
 
@@ -67,16 +67,16 @@ with语句
 
     assert p(1) == 16
 ```
-> **注意**：
-    ``parallel``, ``diverter``, ``switch``, ``loop`` 等也支持with的用法。
+> **Note**：
+    Components such as ``parallel``, ``diverter``, ``switch``, ``loop``  etc., also support the with statement.
 
-参数绑定
+Parameter Binding
 
-很多时候，我们并不希望一成不变的将上级的输出给到下一级作为输入，某一下游环节可以需要很久之前的某环节的输出，甚至是整个pipeline的输入。
-在计算图模式的范式下（例如dify和llamaindex），会把函数作为节点，把数据作为边，通过添加边的方式来实现这一行为。
-但LazyLLM不会让你如此复杂，你仅需要掌握参数绑定，就可以自由的在pipeline中从上游向下游传递参数。
+Often, we do not want to rigidly pass the output of one stage as the input to the next. Sometimes, a downstream stage may require the output from a much earlier stage or even the input of the entire pipeline.
+In computation graph paradigms (like in Dify and LlamaIndex), functions are treated as nodes and data as edges, with behavior implemented by adding edges.
+However, LazyLLM simplifies this process, allowing you to achieve this through parameter binding. This enables the free flow of parameters from upstream to downstream within the pipeline.
 
-假设我们定义了一些函数，本小节会一直使用这些函数，不再重复定义。
+Assume we have defined some functions, which will be used throughout this section without repeating their definitions.
 
 ```python
 
@@ -85,7 +85,7 @@ with语句
     def f3(input): return f'f3-{input}'
     def f4(in1, in2, in3): return f'get [{in1}], [{in2}], [{in3}]'
 ```
-下面给出一个参数绑定的具体例子：
+Here is a specific example of parameter binding:
 
 ```python
 
@@ -97,15 +97,15 @@ with语句
         p.f4 = bind(f4, p.input, _0, p.f2)
     assert p(1) == 'get [1], [f3-5], [5]'
 ```
-上述例子中， ``bind`` 函数用于参数绑定，它的基本使用方法和C++的 ``std::bind`` 一致，其中 ``_0`` 表示新函数的第0个参数在被绑定的函数的参数表中的位置。
-对于上面的案例，整个pipeline的输入会作为f4的第一个参数（此处我们假设从第一个开始计数），f3的输出（即新函数的输入）会作为f4的第二个参数，f2的输出会作为f4的第三个参数。
+In the example above, the ``bind`` function is used for parameter binding. Its basic usage is similar to C++'s ``std::bind``, where ``_0`` indicates the position of the new function's first parameter in the bound function's parameter list.
+For the above case,The entire pipeline's input will be used as the first parameter of f4 (assuming we start counting from the first parameter). The output of f3 (i.e., the input to the new function) will be used as the second parameter of f4, and the output of f2 will be used as the third parameter of f4.
 
-> **注意**：
+> **Note**：
 
-    - 参数绑定仅在一个pipeline中生效（注意，当flow出现嵌套时，在子flow中不生效），仅允许下游函数绑定上游函数的输出作为参数。
-    - 使用参数绑定后，平铺的方式传入的参数中，未被 ``_0``, ``_1`` 等 ``placeholder`` 引用的会被丢弃
+    - Parameter binding is effective only within a single pipeline (note that when flows are nested, it does not apply in the subflow). It only allows downstream functions to bind the output of upstream functions as parameters.
+    - When using parameter binding, any parameters passed in that are not referenced by ``placeholders`` such as ``_0``, ``_1``, etc., will be discarded.
 
-上面的方式已经足够简单和清晰，如果您仍然觉得 ``bind`` 作为函数不够直观，可以尝试使用如下方式，两种方式没有任何区别：
+The above method is already simple and clear enough. If you still find the function ``bind`` not intuitive, you can try the following approach. There is no difference between the two methods:
 
 ```python
 
@@ -117,11 +117,11 @@ with语句
         p.f4 = f4 | bind(p.input, _0, p.f2)
     assert p(1) == 'get [1], [f3-5], [5]'
 ```
-> **注意**：
+> **Note**：
 
-    请小心lambda函数！如果使用了lambda函数，请注意给lambda函数加括号，例如 ``(lambda x, y: pass) | bind(1, _0)``
+    Please be careful with lambda functions! If you use a lambda function, make sure to enclose it in parentheses, for example: ``(lambda x, y: pass) | bind(1, _0)``
 
-除了C++的bind方式之外，作为python，我们额外提供了 ``kwargs`` 的参数绑定， ``kwargs`` 和c++的绑定方式可以混合使用，示例如下:
+In addition to the C++ style bind method, as a Python library, we also provide parameter binding using ``kwargs``. You can mix ``kwargs`` with the C++ style binding method. Here's an example:
 
 ```python
 
@@ -133,11 +133,11 @@ with语句
         p.f4 = f4 | bind(p.input, _0, in3=p.f2)
     assert p(1) == 'get [1], [f3-5], [5]'
 ```
-> **注意**：
+> **Note**：
 
-    通过 ``kwargs`` 绑定的参数的值不能使用 ``_0`` 等
+    The values of parameters bound through ``kwargs`` cannot use ``_0`` and similar placeholders.
 
-如果pipeline的输入比较复杂，可以直接对 ``input`` 做一次简单的解析处理，示例如下:
+If the input to the pipeline is complex, you can directly perform a simple parsing of the ``input``. Here is an example:
 
 ```python
 
@@ -154,11 +154,11 @@ with语句
     
     assert p1([1, 2]) == '[[3 + 2] + 1]'
 ```
-上面的例子比较复杂，我们逐步来解析。首先输入的list经过 ``p1.f1`` 变成 ``dict(a=1, b=2)`` ，则p2的输入也是 ``dict(a=1, b=2)``，经过 ``p2.f2`` 之后输出为 ``3``，
-然后 ``p2.f3`` 绑定了 ``p2`` 的输入的 ``['b']``， 即 ``2``, 因此p2.f3的输出是 ``[3 + 2]``, 回到 ``p1.f3``，它绑定了 ``p1`` 的输入的第 ``0`` 个元素，因此最终的输出是 ``[[3 + 2] + 1]``
+The example is a bit complex, so let's break it down step by step. First, the input list is processed by  ``p1.f1`` which transforms it into a dictionary: ``dict(a=1, b=2)`` .This dictionary becomes the input for p2. After passing through ``p2.f2``, the output is  ``3``,
+Next, ``p2.f3`` is bound to the ``['b']`` value of the ``p2`` input, which is ``2``. Thus, the output of p2.f3 is ``[3 + 2]``. Finally, we return to ``p1.f3``, which is bound to the 0th element of the ``p1`` input. The final output is ``[[3 + 2] + 1]``.
 
 pipeline.bind
-当发生pipeline的嵌套（或pipeline与其他flow的嵌套时），我们有时候需要将外层的输入传递到内层中，此时也可以使用bind，示例如下：
+When nesting pipelines (or pipelines with other flows), sometimes it's necessary to pass the outer layer's input to the inner layer. In such cases, you can use binding. Here's an example:
 
 ```python
 
@@ -172,8 +172,8 @@ pipeline.bind
 
     assert p1([1, 2]) == '[[3 + 1] + 2]'
 ```
-AutoCapture（试验特性）
-为了进一步简化代码的复杂性，我们上线了自动捕获with块内定义的变量的能力，示例如下：
+AutoCapture (Experimental Feature)
+In order to further simplify the complexity of the code, we have introduced the ability to automatically capture variables defined within a with block. Here is an example:
 
 ```python
 
@@ -186,20 +186,20 @@ AutoCapture（试验特性）
 
     assert p(1) == 'get [1], [f3-5], [5]'
 ```
-> **注意**：
-    - 该能力目前还不是很完善，不推荐大家使用，敬请期待
+> **Note**：
+    - This capability is currently not very mature and is not recommended for use. Stay tuned for updates.
 
 parallel
 
-parallel的所有组件共享输入，并将结果合并输出。 ``parallel`` 的定义方法和 ``pipeline`` 类似，也可以直接在定义 ``parallel`` 时初始化其元素，或在with块中初始化其元素。
+All components of ``parallel`` share the input and merge the results for output. The definition method of ``parallel`` is similar to that of ``pipeline``. You can either initialize its elements directly when defining ``parallel`` or initialize its elements within a with block.
 
-> **注意**：
+> **Note**：
     
-    因 ``parallel`` 所有的模块共享输入，因此 ``parallel`` 的输入不支持被参数绑定。
+    Since all modules in ``parallel`` share the input, the input to ``parallel`` does not support parameter binding.
 
-结果后处理
+Result Post-Processing
 
-为了进一步简化流程的复杂性，不引入过多的匿名函数，parallel的结果可以做一个简单的后处理（目前仅支持 ``sum`` 或 ``asdict``），然后传给下一级。下面给出一个例子:
+To further simplify the complexity of the process without introducing too many anonymous functions, the result of parallel can undergo simple post-processing (currently only supporting ``sum`` or ``asdict``) before being passed to the next stage. Here is an example:
 
 ```python
 
@@ -222,13 +222,13 @@ parallel的所有组件共享输入，并将结果合并输出。 ``parallel`` �
         p.f2 = f1
     assert p(1) == 2
 ```
-> **注意**：
+> **Note**：
     
-    如果使用 ``asdict``, 需要为 ``parallel`` 中的元素取名字，返回的 ``dict`` 的 ``key`` 即为元素的名字。
+    If using ``asdict``, you need to name the elements within ``parallel``. The returned ``dict`` will use these names as the ``key``.
 
-顺序执行
+Sequential Execution
 
-``parallel`` 默认是多线程并行执行的，在一些特殊情况下，可以根据需求改成顺序执行。下面给出一个例子：
+By default, ``parallel`` executes in parallel using multiple threads. In some special cases, you can change it to sequential execution as needed. Here is an example:
 
 ```python
 
@@ -241,10 +241,10 @@ parallel的所有组件共享输入，并将结果合并输出。 ``parallel`` �
         p.f2 = f1
     assert p(1) == (1, 1)
 ```
-> **注意**：
+> **Note**：
 
-    ``diverter`` 也可以通过 ``.sequential`` 来实现顺序执行
+    ``diverter`` can also achieve sequential execution through ``.sequential``
 
-小结
+Summary
 
-本篇着重讲解了 ``pipeline`` 和 ``parallel``，相信您对如何利用LazyLLM的flow搭建复杂的应用已经有了初步的认识，其他的数据流组件不做过多赘述，您可以参考 :ref:`api.flow` 来获取他们的使用方式。
+This article focused on ``pipeline`` and ``parallel``. It is hoped that you now have a basic understanding of how to use LazyLLM's flow to build complex applications. Other data flow components are not discussed in detail here; you can refer to :ref:`api.flow` for their usage.

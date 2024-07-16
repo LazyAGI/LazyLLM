@@ -94,7 +94,7 @@ Prompt生成过程解析
         "用户的问题是{{input}}, 现在请你做出回答。### Response:\\n}"
 
 2. 用户的输入为 ``dict(context='背景', input='问题')``
-3. 用户的输入先1中得到的 ``instruction`` 进行拼接 ，得到:
+3. 用户的输入与1中得到的 ``instruction`` 进行拼接 ，得到:
 
     ```python
 

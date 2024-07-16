@@ -23,6 +23,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Check if submodules are updated
+        id: check_submodule
+        run: |
+          git submodule update --init --recursive
+          if [[ $(git diff --submodule) != "" ]]; then
+            echo "submodule_updated=true" >> $GITHUB_ENV
+          else
+            echo "submodule_updated=false" >> $GITHUB_ENV
+          fi
 
       - name: Create custom directory
         run: |
@@ -67,6 +80,7 @@ jobs:
     steps:
       - name: RunTests
         run: |
+          set -ex
           cd ${{ env.CI_PATH }}
           env | grep '^SCC'
           export LAZYLLM_SCO_ENV_NAME=lazyllm
@@ -77,3 +91,40 @@ jobs:
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           python -m pytest tests/advanced_tests/
+
+  Poetry_Test:
+    runs-on: tps_sco_nv
+    needs: [BasicTests,AdvancedTests]
+    if: env.submodule_updated == 'true'
+    steps:
+      - name: Install deps
+        shell: bash
+        run: |
+          set -ex
+          cd ${{ env.CI_PATH }}
+          source deactivate
+          cp LazyLLM-Env/poetry.lock . && poetry install
+      - name: RunTests
+        run: |
+          set -ex
+          cd ${{ env.CI_PATH }}
+          source deactivate
+          poetry shell
+          realpath .
+          env | grep '^SCC'
+          export LAZYLLM_SCO_ENV_NAME=lazyllm
+          export LAZYLLM_DEFAULT_LAUNCHER=sco
+          export LAZYLLM_SLURM_PART=a100
+          export PYTHONPATH=$PWD:$PYTHONPATH
+          export LAZYLLM_SCO_WORKSPACE=expert-services
+          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
+          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+          python -m pytest tests/basic_tests/
+          python -m pytest tests/advanced_tests/
+      - name: Clean_Poetry_env
+        run: |
+          set -ex
+          cd ${{ env.CI_PATH }}
+          source deactivate
+          current_env=$(poetry env list | grep 'Activated' | awk '{print $1}')
+          poetry env remove "$current_env"

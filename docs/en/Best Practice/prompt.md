@@ -1,19 +1,19 @@
 Prompter
 
-为了让您在不同的线上模型和不同的本地模型都能获得一致的使用体验，且在微调和推理中也能获得一致的使用体验，我们定义了Prompter类，用于屏蔽各个模型和推理框架的实现细节。
-Prompter的API文档可以参考 :ref:`api.components.prompter`。 接下来，我将会从一个例子开始，逐步介绍LazyLLM中Prompter的设计思路。
+To ensure a consistent user experience across different online models and various local models, as well as between fine-tuning and inference, we have defined the Prompter class. This class abstracts away the implementation details of different models and inference frameworks. 
+You can refer to the Prompter API documentation at :ref:`api.components.prompter`. Next, I will introduce the design concept of the Prompter in LazyLLM step by step, starting with an example.
 
 .. _bestpractice.prompt.trial:
 
-Prompter牛刀小试
+Prompter Quick Start
 
-假设我们正在设计一个文档问答的应用，需要大模型的输入是用户的问题以及检索到的背景知识，此时我们的Prompt设计为：
+Suppose we are designing a document question-answering application that requires the input to a large model to be the user's question along with the retrieved background knowledge. In this case, our prompt is designed as follows:
 
 .. code-block:: text
 
-    你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{上下文}，用户的问题是{问题}，现在请你做出回答。
+    You are a knowledge question-answering assistant developed by LazyLLM. Your task is to answer the user's question based on the provided contextual information. The contextual information is {context}, and the user's question is {question}. Please provide your answer now.
 
-你可以借助LazyLLM提供的内置Prompter来实现你需要的能力，示例如下：
+You can utilize the built-in Prompter provided by LazyLLM to achieve the required functionality. Here is an example:
 
 ```python
 
@@ -23,7 +23,7 @@ Prompter牛刀小试
     module = lazyllm.OnlineChatModule('openai').prompt(prompter)
     module(dict(context='背景', input='输入'))
 
-上述prompter即可以直接传给大模型去使用。我们可以用如下代码试验Prompter的效果。
+The prompter generated above can be directly fed to a large model for use. We can test the effectiveness of the Prompter with the following code:
 
 ```python
 
@@ -34,57 +34,57 @@ Prompter牛刀小试
     # {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是输入，现在请你做出回答。\n\n'}, {'role': 'user', 'content': ''}]}
     prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=True)
 
-在上面的例子中， ``generate_prompt`` 的输入是一个 ``dict`` ，他会把值依次填入 ``instruction`` 提供的槽位中。
+In the example above, the ``generate_prompt`` function accepts a ``dict`` as input, filling in the slots in the ``instruction`` template with the provided values.
 
-> **注意**：
+> **Note**：
     
-    上面代码中出现了一个值得您关注的参数 ``return_dict`` , 当 ``return_dict`` 为True时，会返回OpenAI格式的dict用于线上模型。
-    一般情况下，您只需要将Prompter设置给 ``TrainableModule`` 或 ``OnlineChatModule`` 即可，而无需关心 ``generate_prompt`` 这一函数。
+    In the code above, there's a parameter ``return_dict`` worth noting. When ``return_dict`` is set to True, it returns a dictionary in the OpenAI format for online models. 
+    Typically, you just need to assign the Prompter to a ``TrainableModule`` or ``OnlineChatModule`` without worrying about the ``generate_prompt`` function.
 
-LazyLLM Prompter的设计思路
+Design Concept of LazyLLM Prompter
 
-基本概念说明
+Basic
 
-**PromptTemplate**: 每个Prompter内置的Template，每个子类均需要实现自己的PrompterTemplate，用于选择启用部分字段，以及约定拼接规则。
+**PromptTemplate**: A built-in template for each Prompter. Each subclass must implement its own PromptTemplate to select certain fields and define concatenation rules.
 
 - PrompterTemplate中可选的字段有：
-    - system: 系统提示，一般会读取模型的归属信息并进行设置，如不设置默认为 ``You are an AI-Agent developed by LazyLLM.`` 。
-    - instruction: 任务指令，由 ``InstructionTemplate`` 拼接用户的输入得到。这个是应用开发者需要着重了解的字段。如果instruction是字符串，则默认是系统指令，如果是字典，且其键值只能是 ``system`` 和 ``user`` 。``system`` 指定的是系统级指令， ``user`` 指定的是用户级指令。
-    - history: 历史对话，由用户的输入得到，格式为 ``[[a, b], [c, d]]`` 或 ``[{"role": "user", "content": ""}, {"role": "assistant", "content": ""}]``
-    - tools: 可以使用的工具，在构造 ``prompter`` 时传入或者由用户使用时传入，当构造 ``prompter`` 时定义了工具之后，将禁止用户使用时再次传入。格式为 ``[{"type": "function",  "function": {"name": "", "description": "", "parameters": {},  "required": []}]``
-    - user: 用户级指令，可选指令，由用户通过instruction指定。
-    - sos: ``start of system`` , 标志着系统提示的开始，该符号由模型填入，开发者和用户均无需考虑
-    - eos: ``end of system`` , 标志着系统提示的结束，该符号由模型填入，开发者和用户均无需考虑
-    - soh: ``start of human`` , 标志着用户输入的开始，常用于多轮对话中作为分隔符。该符号由模型填入，开发者和用户均无需考虑
-    - eoh: ``end of human`` , 标志着用户输入的结束，常用于多轮对话中作为分隔符。该符号由模型填入，开发者和用户均无需考虑
-    - soa: ``start of assistant`` , 标志着模型输出的开始，常用于多轮对话中作为分隔符。该符号由模型填入，开发者和用户均无需考虑
-    - eoa: ``end of assistant`` , 标志着模型输出的结束，常用于多轮对话中作为分隔符。该符号由模型填入，开发者和用户均无需考虑
-- ``TrainableModule`` 所使用的内置的Prompt的拼接规则如下：
+    - system: System prompt typically reads the model's ownership information and sets it accordingly. If not set, it defaults to: ``You are an AI-Agent developed by LazyLLM.`` .
+    - instruction: Task instruction, obtained by concatenating the user's input with the ``InstructionTemplate``. This is an important field for application developers to understand. If the instruction is a string, it is considered a system instruction by default. If it is a dictionary, the keys can only be ``system`` and ``user``. ``system`` specifies system-level instructions, while ``user`` specifies user-level instructions.
+    - history: Historical conversation, derived from user input, formatted as ``[[a, b], [c, d]]`` or ``[{"role": "user", "content": ""}, {"role": "assistant", "content": ""}]``
+    - tools: Tools that can be used, passed in when constructing the ``prompter`` or by the user when using it. Defining tools when constructing the ``prompter`` will prohibit users from passing them in again when using it. The format is  ``[{"type": "function",  "function": {"name": "", "description": "", "parameters": {},  "required": []}]``
+    - user: User-level instructions, optional instructions specified by the user through instruction.
+    - sos: ``start of system``, signifies the beginning of system prompts. This symbol is filled in by the model, and developers and users don't need to consider it.
+    - eos: ``end of system``, signifies the end of system prompts. This symbol is filled in by the model, and developers and users don't need to consider it.
+    - soh: ``start of human``, signifies the beginning of user input, often used as a separator in multi-turn dialogues. This symbol is filled in by the model, and developers and users don't need to consider it.
+    - eoh: ``end of human``, signifies the end of user input, often used as a separator in multi-turn dialogues. This symbol is filled in by the model, and developers and users don't need to consider it.
+    - soa: ``start of assistant``, signifies the beginning of the model's output, often used as a separator in multi-turn dialogues. This symbol is filled in by the model, and developers and users don't need to consider it.
+    - eoa: ``end of assistant``, signifies the end of the model's output, often used as a separator in multi-turn dialogues. This symbol is filled in by the model, and developers and users don't need to consider it.
+- The built-in Prompt concatenation rules used by ``TrainableModule`` are as follows:：
     - AlpacaPrompter: ``{system}\n{instruction}\n{tools}\n{user}### Response:\n``
     - ChatPrompter: ``{sos}{system}{instruction}{tools}{eos}\n\n{history}\n{soh}\n{user}{input}\n{eoh}{soa}\n``
-- ``OnlineChatModule`` 的输出格式为: ``dict(messages=[{"role": "system", "content": ""}, {"role": "user", "content": ""}, ...], tools=[])``
+- The output format of ``OnlineChatModule`` is:``dict(messages=[{"role": "system", "content": ""}, {"role": "user", "content": ""}, ...], tools=[])``
 
-> **注意**：
+> **Note**：
 
-    从上面可以看出， ``AlpacaPrompter`` 相比于 ``ChatPrompter`` ，缺少了 ``history`` ，以及 ``soh`` 等多轮对话分割所需要的标识符。
-    因此我们可以看出， ``AlpacaPrompter`` 不支持多轮对话。
+    From the above, we can see that ``AlpacaPrompter`` lacks the ``history`` field as well as the identifiers like ``soh`` necessary for multi-turn dialogue segmentation compared to ``ChatPrompter``.
+    Therefore, it is evident that ``AlpacaPrompter`` does not support multi-turn dialogue.
 
-**InstructionTemplate**: 每个Prompter内置的，用于结合用户输入的 ``instruction`` ，产生最终的 ``instruction`` 的模板。 ``InstructionTemplate`` 中的用到的2个字段是：
+**InstructionTemplate**: Each Prompter has a built-in template used to combine user input with the ``instruction`` to generate the final ``instruction``. The two fields used in the ``InstructionTemplate`` are:
 
-- ``instruction`` : 由开发者在构造 ``Prompter`` 时传入，可带若干个待填充的槽位，用于填充用户的输入。或者指定系统级指令和用户级指令，当指定用户级指令时，需要使用字典类型，且键值为 ``user`` 和 ``system`` 。
-- ``extro_keys`` : 需要用户调用大模型时额外提供的信息，有开发者在构造 ``Prompter`` 时传入，会自动转换成 ``instruction`` 中的槽位。
+- ``instruction``:Provided by the developer when constructing the ``Prompter``, it may contain several placeholders to be filled with user input. Alternatively, it can specify system-level and user-level instructions. When specifying user-level instructions, a dictionary type must be used with keys ``user`` and ``system``.
+- ``extro_keys`` : Additional information required when the user calls the model, provided by the developer during the construction of the Prompter. These will automatically be converted into placeholders within the ``instruction``.
 
-> **注意**：
+> **Note**：
 
-    在内置的 ``Prompter`` 中， ``Alpaca``的 ``InstructionTemplate`` 额外附带了 ``alpaca`` 格式的标准提示词，即 ``Below is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request``
+    In the built-in ``Prompter``, the ``Alpaca's`` ``InstructionTemplate`` additionally includes the standard prompt in the ``alpaca`` format, which is: ``Below is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request``
 
 .. _bestpractice.prompt.analysis:
 
-Prompt生成过程解析
+Prompt Generation Process Analysis
 
-我们借助 :ref:`bestpractice.prompt.trial` 中使用 ``AlpacaPrompter`` 的文档问答的例子，详细介绍一下Prompt的生成过程。
+Taking the example of a document question and answer task using ``AlpacaPrompter`` from :ref:`bestpractice.prompt.trial`, let's go through the prompt generation process in detail.
 
-1. ``AlpacaPrompter`` 结合构造 ``prompter`` 时传入的 ``instruction`` （及 ``extro_keys``， 如有），结合 ``InstructionTemplate`` ，将 ``instruction`` 设置为:
+1. ``AlpacaPrompter`` combines the ``instruction`` (and ``extra_keys``, if any) provided during the construction of the ``prompter`` with the ``InstructionTemplate``. The ``instruction`` is set as:
     
     ```python
 
@@ -93,8 +93,8 @@ Prompt生成过程解析
         "Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{{context}}，"
         "用户的问题是{{input}}, 现在请你做出回答。### Response:\\n}"
 
-2. 用户的输入为 ``dict(context='背景', input='问题')``
-3. 用户的输入先1中得到的 ``instruction`` 进行拼接 ，得到:
+2. Given the user's input as ``dict(context='背景', input='问题')``
+3. Concatenate the user's input with the instruction obtained in ’1‘ to get:
 
     ```python
 
@@ -103,22 +103,22 @@ Prompt生成过程解析
         "Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，"
         "用户的问题是问题, 现在请你做出回答。### Response:\\n}"
 
-4. ``AlpacaPrompter`` 读取 ``system`` 和 ``tools`` 字段，其中 ``system`` 字段由 ``Module`` 设置，而 ``tools`` 字段则会在后面的 :ref:`bestpractice.prompt.tools` 一节中介绍。
-5. 如果 ``prompter`` 的结果用于线上模型（ ``OnlineChatModule`` ），则不会再进一步拼接 ``PromptTemplate`` ，而是会直接得到一个dict，即 ``{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是输入，现在请你做出回答。\n\n'}, {'role': 'user', 'content': ''}]}``
-6. 如果 ``prompter`` 的结果用于线下模型（ ``TrainableModule`` ），则会通过 ``PromptTemplate`` 得到最终的结果： ``You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是问题，现在请你做出回答。\n\n\n### Response:\n``
+4. ``AlpacaPrompter`` reads the system and ``tools`` fields, where the ``system`` field is set by the ``Module``, and the ``tools`` field will be introduced in the later section :ref:`bestpractice.prompt.tools`.
+5. If the ``prompter`` result is used for the online model (``OnlineChatModule``), the ``PromptTemplate`` will not be concatenated further. Instead, a dict will be directly obtained, namely:``{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\nYou are a knowledge assistant developed by LazyLLM. Your task is to answer the user's question based on the provided context information. The context information is background, and the user's question is question. Please provide an answer.\n\n'}, {'role': 'user', 'content': ''}]}``
+6. If the ``prompter`` result is used for the offline model (``TrainableModule``), the final result will be obtained through the PromptTemplate: ``You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\nYou are a knowledge assistant developed by LazyLLM. Your task is to answer the user's question based on the provided context information. The context information is background, and the user's question is question. Please provide an answer.\n\n\n### Response:\n``
 
-定义和使用Prompter
+Defining and Using a Prompter
 
-定义一个新的Prompter
+Defining a New Prompter
 
-参考API文档： :ref:`api.components.prompter`
+Refer to the API documentation: :ref:`api.components.prompter`
 
-Query为string，而非dict
+Query as a string, not a dict
 
-我们在 :ref:`bestpractice.prompt.trial` 中展示了一个基本的用法，并在随后的小节里解释了 ``prompter`` 的工作原理。
-但在绝大部分情况下，用户的输入往往是一个 ``string`` ，本小节展示了 ``prompter`` 在输入为 ``string`` 时的用法。
+In :ref:`bestpractice.prompt.trial`, we demonstrated a basic usage and explained the working principle of the ``prompter`` in the following sections. 
+However, in most cases, the user's input is often a ``string``. This section demonstrates how to use the ``prompter`` when the input is a ``string``.
 
-当用户的输入为 ``string`` 时，我们最多允许 ``Prompter`` 的 ``instruction`` 中有一个槽位。我们借助“大模型做加法”这一场景，给出一个示例的代码:
+When the user's input is a string, we allow at most one slot in the ``Prompter``'s ``instruction``. Using the scenario of "large models doing arithmetic", we provide an example code:
 
 ```python
     
@@ -128,9 +128,9 @@ Query为string，而非dict
     >>>  p = lazyllm.AlpacaPrompter('请完成加法运算', extro_keys='input')
     'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n请完成加法运算\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\na+b\\n\\n\\n### Response:\\n'
 
-> **注意**：
+> **Note**：
     
-    当使用 ``AlpacaPrompter`` 时，需要定义一个唯一的槽位，可以任意取一个名字， ``string`` 类型的输入会填充进去。
+    When using ``AlpacaPrompter``, you need to define a unique slot that can be given any name, and the input of type ``string`` will be filled into it.
 
 ```python
 
@@ -141,18 +141,18 @@ Query为string，而非dict
     >> p.generate_prompt('a+b')
     '<|start_system|>You are an AI-Agent developed by LazyLLM.请完成加法运算\n\n<|end_system|>\n\n\n<|Human|>:\na+b\n<|Assistant|>
 
-> **注意**：
+> **Note**：
     
-    - 当使用 ``ChatPrompter`` 时，不同于 ``AlpacaPrompter`` ，在 ``instruction`` 中定义槽位不是必须的。
-    - 如果不定义槽位，则输入会放到对话中作为用户的输入，在 ``<soh>`` 和 ``<eoh>`` 之间。
-    - 如果像 ``AlpacaPrompter`` 一样定义了槽位，也可以任意取一个名字，此时输入会放到 ``<system>`` 字段中。
-    - 如果 ``instruction`` 中指定了系统级指令和用户级指令，则在拼接完成后，系统级指令放在prompt_template中的{instruction}位置，用户级指令放在{user}位置。
+    - When using ``ChatPrompter``, unlike ``AlpacaPrompter``, defining a slot in ``instruction`` is not mandatory.
+    - If a slot is not defined, the input will be placed into the conversation as the user's input between ``<soh>`` and ``<eoh>``.
+    - If a slot is defined, similar to ``AlpacaPrompter``, it can be given any name, and the input will be placed in the ``<system>`` field.
+    - If ``instruction`` specifies both system-level and user-level instructions, after concatenation, the system-level instruction will be placed in the {instruction} position of the prompt template, and the user-level instruction will be placed in the {user} position.
 
 .. _bestpractice.prompt.tools:
 
-使用工具
-一般来说，大模型在进行 ``function-call`` 时，需要按照约定的格式定义好一系列工具，然后按照一定的格式传给大模型去使用。工具可以在构造 ``prompter`` 时传入，也可以由用户使用时传入。当构造 ``prompter`` 时定义了工具之后，将禁止用户使用时再次传入。
-工具的格式一般为:
+use the tools
+In general, when using large models for ``function-call``, it is necessary to define a set of tools according to a specific format and pass them to the large model in a certain format. Tools can be passed in when constructing the ``prompter``, or they can be passed in by the user during usage. Once tools are defined when constructing the ``prompter``, it will prevent the user from passing them in again during usage.
+The format of tools is generally as follows:
 
 ```python
 
@@ -176,9 +176,9 @@ Query为string，而非dict
         },
     ]
 
-下面我们借助一个很简单的工具 ``tools=[dict(type='function', function=dict(name='example'))]`` 来演示 ``Prompter`` 是如何使用工具的。
+let's demonstrate how ``Prompter`` uses tools through a simple tool tools=[dict(type='function', function=dict(name='example'))].
 
-1. 应用开发者定义工具
+1. Application Developer Defines the Tool
 
 ```python
 
@@ -192,7 +192,7 @@ Query为string，而非dict
     >>> prompter.generate_prompt('帮我查询一下今天的天气')
     '<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\n帮我查询一下今天的天气\\n<|Assistant|>:\\n'
 
-2. 用户定义工具
+2. User Defines the Tool
 
 ```python
 
@@ -206,11 +206,11 @@ Query为string，而非dict
     >>> prompter.generate_prompt('帮我查询一下今天的天气', tools=tools)
     '<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\n帮我查询一下今天的天气\\n<|Assistant|>:\\n'
 
-工具会在 :ref:`bestpractice.prompt.analysis` 中的步骤4，转换为json后被读取。
+The tool will be read after step 4 in :ref:`bestpractice.prompt.analysis` once it's converted to JSON.
 
-> **注意**：
+> **Note**：
     
-    如果是使用线上模型，工具会变成和 ``messages`` 并列的一个字段，示例如下：
+    If using an online model, the tool will become a field parallel to ``messages``, as shown in the example below:
 
     ```python
 
@@ -221,9 +221,9 @@ Query为string，而非dict
         {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n'}, {'role': 'user', 'content': ''}],
          'tools': [{'type': 'function', 'function': {'name': 'example'}}]}
 
-使用历史对话
+Using conversation history
 
-如果我们想让模型具备多轮对话的能力，就需要将对话上下文拼接到 ``prompt`` 当中。上下文是由用户传入的，但需要以键值对的形式传入。下面给出一个例子：
+If we want the model to have multi-turn conversation capabilities, we need to concatenate the conversation context with the ``prompt``. The context is provided by the user but needs to be passed in as key-value pairs. Here's an example:
 
 ```python
 
@@ -236,17 +236,17 @@ Query为string，而非dict
     >>> prompter.generate_prompt('我们聊会儿天吧', history=[dict(role='user', content='你好'), dict(role='assistant', content='你好，我是一个对话机器人，有什么能为您服务的')], return_dict=True)
     {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\n你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n'}, {'role': 'user', 'content': '你好'}, {'role': 'assistant', 'content': '你好，我是一个对话机器人，有什么能为您服务的'}, {'role': 'user', 'content': '我们聊会儿天吧'}]}
 
-历史对话会在 :ref:`bestpractice.prompt.analysis` 中的步骤4，做简单的格式转换后被读取。
+The conversation history will be read in step 4 of :ref:`bestpractice.prompt.analysis` after a simple format conversion.
 
-> **注意**：
+> **Note**：
 
-    - 只有 ``ChatPrompter`` 支持传入历史对话
-    - 当输入是 ``[[a, b], ...]`` 格式时，同时支持 ``return_dict`` 为 ``True`` 或 ``False`` ， 而当输入为  ``[dict, dict]`` 格式时，仅支持 ``return_dict`` 为 ``True``
+    - Only ``ChatPrompter`` supports passing in conversation history.
+    - When the input is in the format ``[[a, b], ...]``, both ``return_dict`` set to ``True`` or ``False`` are supported, whereas when the input is in the format ``[dict, dict]``, only ``return_dict`` set to ``True`` is supported.
 
-和OnlineChatModule一起使用
+Used with OnlineChatModule
 
-当 ``Prompter`` 和 ``和OnlineChatModule`` 一起使用时， ``和OnlineChatModule.__call__`` 会调用 ``Prompter.generate_prompt`` ，并且将 ``__input``,
-``history`` 和 ``tools`` 传给 ``generate_prompt`` ，此时 ``generate_prompt`` 的 ``return_dict`` 会被设置为 ``True``。下面给出一个例子：
+When the ``Prompter`` is used with the ``OnlineChatModule``, ``OnlineChatModule.__call__`` will call ``Prompter.generate_prompt`` and ``pass __input``,
+``history``, and ``tools`` to ``generate_prompt``. At this time, the ``return_dict`` of ``generate_prompt`` will be set to ``True``. Below is an example:
 
 ```python
 
@@ -256,10 +256,10 @@ Query为string，而非dict
     module = lazyllm.OnlineChatModule('openai').prompt(prompter)
     module(dict(context='背景', input='输入'))
 
-和TrainableModule一起使用
+Used with TrainableModule
 
-当 ``Prompter`` 和 ``TrainableModule`` 一起使用时， ``TrainableModule.__call__`` 会调用 ``Prompter.generate_prompt`` ，并且将 ``__input``,
-``history`` 和 ``tools`` 传给 ``generate_prompt`` ，此时 ``generate_prompt`` 的 ``return_dict`` 会被设置为 ``True``。下面给出一个例子：
+When the ``Prompter`` is used with the ``TrainableModule``, ``TrainableModule.__call__`` will call ``Prompter.generate_prompt`` and ``pass __input``,
+``history``, and ``tools`` to ``generate_prompt``. At this time, the ``return_dict`` of ``generate_prompt`` will be set to ``True``. Below is an example:
 
 ```python
 
@@ -270,9 +270,9 @@ Query为string，而非dict
     module.start()
     module(dict(context='背景', input='输入'))
 
-> **注意**：
+> **Note**：
 
-    - 我们保证了 ``Prompter`` 在 ``TrainableModule`` 和 ``和OnlineChatModule`` 具有一致的使用体验，您可以方便的更换模型以进行效果的尝试。
-    - ``TrainableModule`` 需要手动调用 ``start`` 以启动服务，想了解更多关于 ``TrainableModule`` 的用法，可以参考 :ref:`api.module`
+    - We have ensured that the ``Prompter`` has a consistent usage experience with both ``TrainableModule`` and ``OnlineChatModule``, allowing you to easily switch models for experimentation.
+    - ``TrainableModule`` requires manually calling ``start`` to initiate the service. For more information on how to use ``TrainableModule``, refer to :ref:`api.module`.
 
-LazyLLM中内置的场景Prompt
+Built-in Scenario Prompt in LazyLLM
