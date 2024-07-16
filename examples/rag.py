@@ -7,7 +7,7 @@ from lazyllm import pipeline, parallel, bind, _0, Document, Retriever, Reranker
 prompt = ('You will play the role of an AI Q&A assistant and complete a dialogue task. In this task, '
           'you need to provide your answer based on the given context and question.')
 
-documents = Document(dataset_path='rag_master', embed=lazyllm.TrainableModule('bge-large-zh-v1.5'))
+documents = Document(dataset_path='rag_master', embed=lazyllm.TrainableModule('bge-large-zh-v1.5'), create_ui=False)
 with pipeline() as ppl:
     with parallel().sum as ppl.prl:
         prl.retriever1 = Retriever(documents, parser='CoarseChunk', similarity_top_k=6)

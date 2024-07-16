@@ -63,6 +63,7 @@ class TestExamples(object):
                              self.append_text,
                              api_name="/_respond_stream")
         assert ans[0][-1][-1] == 'Hello world.'
+        client.close()
         web.stop()
 
     def test_story(self):
@@ -85,6 +86,7 @@ class TestExamples(object):
         res = ans[0][-1][-1]
         assert type(res) is str
         assert len(res) >= 1024
+        client.close()
         web.stop()
 
     def test_rag(self):
@@ -108,6 +110,7 @@ class TestExamples(object):
         res = ans[0][-1][-1]
         assert type(res) is str
         assert len(res) >= 16
+        client.close()
         web.stop()
 
     def test_painting(self):
@@ -133,4 +136,5 @@ class TestExamples(object):
         print("aaas: ", ans)
         image_path = ans[0][0][-1]['value']
         assert os.path.isfile(image_path)
+        client.close()
         web.stop()
