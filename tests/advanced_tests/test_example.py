@@ -55,7 +55,7 @@ class TestExamples(object):
         assert res == 'Hello world.'
 
         # test chat warpped in web
-        _, client = self.warp_into_web(chat)
+        web, client = self.warp_into_web(chat)
         chat_history = [[query, None]]
         ans = client.predict(self.use_context,
                              chat_history,
@@ -63,6 +63,7 @@ class TestExamples(object):
                              self.append_text,
                              api_name="/_respond_stream")
         assert ans[0][-1][-1] == 'Hello world.'
+        web.stop()
 
     def test_story(self):
         from examples.story import ppl
@@ -74,7 +75,7 @@ class TestExamples(object):
         assert len(res) >= 1024
 
         # test story warpped in web
-        _, client = self.warp_into_web(story)
+        web, client = self.warp_into_web(story)
         chat_history = [[query, None]]
         ans = client.predict(self.use_context,
                              chat_history,
@@ -84,6 +85,7 @@ class TestExamples(object):
         res = ans[0][-1][-1]
         assert type(res) is str
         assert len(res) >= 1024
+        web.stop()
 
     def test_rag(self):
         from examples.rag import ppl
@@ -95,7 +97,7 @@ class TestExamples(object):
         assert len(res) >= 16
 
         # test rag warpped in web
-        _, client = self.warp_into_web(rag)
+        web, client = self.warp_into_web(rag)
         chat_history = [[query, None]]
         ans = client.predict(self.use_context,
                              chat_history,
@@ -106,6 +108,7 @@ class TestExamples(object):
         res = ans[0][-1][-1]
         assert type(res) is str
         assert len(res) >= 16
+        web.stop()
 
     def test_painting(self):
         from examples.painting import ppl
@@ -120,7 +123,7 @@ class TestExamples(object):
         assert image.size == (1024, 1024)
 
         # test painting warpped in web
-        _, client = self.warp_into_web(painting)
+        web, client = self.warp_into_web(painting)
         chat_history = [[query, None]]
         ans = client.predict(self.use_context,
                              chat_history,
@@ -130,3 +133,4 @@ class TestExamples(object):
         print("aaas: ", ans)
         image_path = ans[0][0][-1]['value']
         assert os.path.isfile(image_path)
+        web.stop()
