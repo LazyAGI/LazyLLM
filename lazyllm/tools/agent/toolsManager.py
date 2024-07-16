@@ -1,3 +1,4 @@
+import copy
 import json
 import lazyllm
 import docstring_parser
@@ -143,14 +144,14 @@ class ToolManager(ModuleBase):
                 try:
                     parsed = docstring_parser.parse(tool.description)
                     tool_args = tool.args
-                    assert len(tool_args) == len(parsed.params), "The parameter description and the actual \
-                                                                  number of input parameters are inconsistent."
+                    assert len(tool_args) == len(parsed.params), ("The parameter description and the actual "
+                                                                  "number of input parameters are inconsistent.")
                     args_description = {}
                     for param in parsed.params:
                         args_description[param.arg_name] = param.description
                     args = {}
                     for k, v in tool_args.items():
-                        val = v.copy()
+                        val = copy.deepcopy(v)
                         if "title" in val.keys():
                             del val["title"]
                         if "default" in val.keys():

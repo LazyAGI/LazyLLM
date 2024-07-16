@@ -19,8 +19,8 @@ class FunctionCall(ModuleBase):
         if llm._model_type == "QwenModule" and llm._stream is True:
             raise ValueError("The qwen platform does not currently support stream function calls.")
         self._tools_manager = ToolManager(tools)
-        self._prompter = ChatPrompter(instruction="Don't make assumptions about what values to plug into functions.\
-                                        Ask for clarification if a user request is ambiguous.\n",
+        self._prompter = ChatPrompter(instruction=("Don't make assumptions about what values to plug into functions."
+                                                   "Ask for clarification if a user request is ambiguous.\n"),
                                       tools=self._tools_manager.tools_description)\
             .pre_hook(function_call_hook)
         self._llm = llm.share(prompt=self._prompter, formatter=FunctionCallFormatter())
@@ -47,5 +47,6 @@ class FunctionCallAgent(ModuleBase):
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
         ret = self._agent(query, llm_chat_history)
-        return ret if isinstance(ret, str) else (_ for _ in ()).throw(ValueError(f"After retrying \
-            {self._max_retries} times, the function call agent still failed to call successfully."))
+        return ret if isinstance(ret, str) else (_ for _ in ()).throw(
+            ValueError(f"After retrying {self._max_retries} times, the function call agent still "
+                       "failed to call successfully."))

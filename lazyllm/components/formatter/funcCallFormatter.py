@@ -5,21 +5,19 @@ from typing import Any, Dict
 
 class FunctionCallFormatter(FormatterBase):
     def _parse_py_data_by_formatter(self, data: Dict[str, Any]):
-        isFC = False
+        is_fc = False
         func_call = []
         if isinstance(data, dict):
             tool_calls = data.get("tool_calls", {})
-            if "function_call" in data:
-                data.pop("function_call")
+            data.pop("function_call", None)
 
             if tool_calls:
-                isFC = True
+                is_fc = True
                 # Triggered the function call
                 for tool_call in tool_calls:
                     tool_call_id = tool_call['id']
                     tool_name = tool_call['function']['name']
-                    if "index" in tool_call:
-                        tool_call.pop("index")
+                    tool_call.pop("index", None)
                     try:
                         if len(tool_call['function']['arguments'].strip()) == 0:
                             # This function call contains no parameters.
@@ -32,7 +30,7 @@ class FunctionCallFormatter(FormatterBase):
 
                     func_call.append({"tool_call_id": tool_call_id, "name": tool_name, "tool_input": tool_input})
 
-            return (isFC, data, func_call)
+            return (is_fc, data, func_call)
 
         else:
             raise TypeError(f"function call formatter does not support type {type(data)}")
