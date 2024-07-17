@@ -144,9 +144,6 @@ class BaseStore(ABC):
     def traverse_nodes(self, group: str) -> List[DocNode]:
         return list(self._store.get(group, {}).values())
 
-    def get_node(self, group: str, node_id: str) -> Optional[DocNode]:
-        return self._store.get(group, {}).get(node_id)
-
     @abstractmethod
     def save_store(self) -> None:
         raise NotImplementedError("Not implemented yet.")
