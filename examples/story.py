@@ -5,6 +5,15 @@ import lazyllm
 from lazyllm import pipeline, warp, bind
 from lazyllm.components.formatter import JsonFormatter
 
+# Three ways to specify the model:
+#   1. Specify the model name (e.g. 'internlm2-chat-7b'):
+#           the model will be automatically downloaded from the Internet;
+#   2. Specify the model name (e.g. 'internlm2-chat-7b') ​​+ set
+#      the environment variable `export LAZYLLM_MODEL_PATH="/path/to/modelzoo"`:
+#           the model will be found in `path/to/modelazoo/internlm2-chat-7b/`
+#   3. Directly pass the absolute path to TrainableModule:
+#           `path/to/modelazoo/internlm2-chat-7b`
+
 toc_prompt = """
 You are now an intelligent assistant. Your task is to understand the user's input and convert the outline into a list of nested dictionaries. Each dictionary contains a `title` and a `describe`, where the `title` should clearly indicate the level using Markdown format, and the `describe` is a description and writing guide for that section.
 

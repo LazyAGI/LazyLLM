@@ -1,3 +1,4 @@
+import os
 import time
 import httpx
 import pytest
@@ -14,10 +15,35 @@ class TestExamples(object):
         self.use_context = False
         self.stream_output = False
         self.append_text = False
+        self.env_vars = [
+            'LAZYLLM_OPENAI_API_KEY',
+            'LAZYLLM_KIMI_API_KEY',
+            'LAZYLLM_QWEN_API_KEY',
+            'LAZYLLM_SENSENOVA_API_KEY',
+        ]
+        self.webs = []
+        self.clients = []
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
+        env_vars = {}
+        for var in self.env_vars:
+            if var in os.environ:
+                env_vars[var] = os.environ[var]
+                del os.environ[var]
+                env_name = var[8:].lower()
+                lazyllm.config.add(env_name.lower(), str, "", env_name)
         yield
+        for var, value in env_vars.items():
+            os.environ[var] = value
+            env_name = var[8:]
+            lazyllm.config.add(env_name.lower(), str, "", env_name)
+        while self.clients:
+            client = self.clients.pop()
+            client.close()
+        while self.webs:
+            web = self.webs.pop()
+            web.stop()
         cleanup()
 
     def warp_into_web(self, module):
@@ -40,12 +66,14 @@ class TestExamples(object):
             except httpx.ConnectError:
                 continue
         assert client, "Unable to create client"
+        self.webs.append(web)
+        self.clients.append(client)
         return web, client
 
     def test_chat(self):
         from examples.chatbot_online import chat
         chat.start()
-        query = "请原样输出：Hello world."
+        query = "不要发挥和扩展，请严格原样输出下面句子：Hello world."
         res = chat(query)
         assert res == 'Hello world.'
 
@@ -58,8 +86,6 @@ class TestExamples(object):
                              self.append_text,
                              api_name="/_respond_stream")
         assert ans[0][-1][-1] == 'Hello world.'
-        client.close()
-        web.stop()
 
     def test_story(self):
         from examples.story_online import ppl
@@ -81,8 +107,6 @@ class TestExamples(object):
         res = ans[0][-1][-1]
         assert type(res) is str
         assert len(res) >= 1024
-        client.close()
-        web.stop()
 
     def test_rag(self):
         from examples.rag_online import ppl
@@ -104,5 +128,3 @@ class TestExamples(object):
         res = ans[0][-1][-1]
         assert type(res) is str
         assert len(res) >= 16
-        client.close()
-        web.stop()

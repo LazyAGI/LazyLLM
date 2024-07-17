@@ -42,19 +42,17 @@ LazyLLM can be used to build common artificial intelligence applications. Here a
 # set environment variable: LAZYLLM_OPENAI_API_KEY=xx 
 # or you can make a config file(~/.lazyllm/config.json) and add openai_api_key=xx
 import lazyllm
-t = lazyllm.OnlineChatModule(source="openai", stream=True)
-w = lazyllm.WebModule(t)
-w.start().wait()
+chat = lazyllm.OnlineChatModule()
+lazyllm.WebModule(chat).start().wait()
 ```
 
 If you want to use a locally deployed model, please ensure you have installed at least one inference framework (lightllm or vllm), and then use the following code
 
 ```python
 import lazyllm
-# Model will be download automatically if you have an internet connection
-t = lazyllm.TrainableModule('internlm2-chat-7b')
-w = lazyllm.WebModule(t)
-w.start().wait()
+# Model will be downloaded automatically if you have an internet connection.
+chat = lazyllm.TrainableModule('internlm2-chat-7b')
+lazyllm.WebModule(chat, port=23466).start().wait()
 ```
 
 ### RAG
@@ -74,6 +72,23 @@ prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue 
 ```
 </details>
 
+Here is an online deployment example:
+
+```python
+documents = Document(dataset_path='rag_master', embed=lazyllm.OnlineEmbeddingModule(), create_ui=False)
+with pipeline() as ppl:
+    with parallel().sum as ppl.prl:
+        prl.retriever1 = Retriever(documents, parser='CoarseChunk', similarity_top_k=6)
+        prl.retriever2 = Retriever(documents, parser='SentenceDivider', similarity='chinese_bm25', similarity_top_k=6)
+    ppl.reranker = Reranker(types='ModuleReranker', model='bge-reranker-large') | bind(ppl.input, _0)
+    ppl.post_processer = lambda nodes: f'《{nodes[0].metadata["file_name"].split(".")[0]}》{nodes[0].get_content()}' if len(nodes) > 0 else 'cannot find.'
+    ppl.formatter = (lambda ctx, query: dict(context_str=ctx, query_str=query)) | bind(query=ppl.input)
+    ppl.llm = lazyllm.OnlineChatModule(stream=False).prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str']))
+lazyllm.WebModule(ppl, port=23466).start().wait()
+```
+
+Here is an example of a local deployment:
+
 ```python
 documents = Document(dataset_path='/file/to/yourpath', embed=lazyllm.TrainableModule('bge-large-zh-v1.5'))
 with pipeline() as ppl:
@@ -84,7 +99,7 @@ with pipeline() as ppl:
     ppl.post_processer = lambda nodes: f'《{nodes[0].metadata["file_name"].split(".")[0]}》{nodes[0].get_content()}' if len(nodes) > 0 else 'cannot find.'
     ppl.formatter = (lambda ctx, query: dict(context_str=ctx, query_str=query)) | bind(query=ppl.input)
     ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])) 
-mweb = lazyllm.WebModule(ppl, port=23456).start().wait()
+lazyllm.WebModule(ppl, port=23456).start().wait()
 ```
 
 https://github.com/LazyAGI/LazyLLM/assets/12124621/77267adc-6e40-47b8-96a8-895df165b0ce
@@ -141,13 +156,24 @@ writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "descr
 ```
 </details>
 
+Here is an online deployment example:
+
 ```python
 with pipeline() as ppl:
-    ppl.outline_writer = lazyllm.OnlineChatModule(source="openai", stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
-    ppl.story_generater = warp(lazyllm.OnlineChatModule(source="openai", stream=False).prompt(writer_prompt))
+    ppl.outline_writer = lazyllm.OnlineChatModule(stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
+    ppl.story_generater = warp(lazyllm.OnlineChatModule(stream=False).prompt(writer_prompt))
     ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+lazyllm.WebModule(ppl, port=23466).start().wait()
+```
 
-print(ppl({'query': 'Please help me write an article about the application of artificial intelligence in the medical field.'}))
+Here is an example of a local deployment:
+
+```python
+with pipeline() as ppl:
+    ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
+    ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+lazyllm.WebModule(ppl, port=23466).start().wait()
 ```
 
 ### AI Painting Assistant

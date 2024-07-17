@@ -5,9 +5,21 @@ import lazyllm
 from lazyllm import pipeline, warp, bind
 from lazyllm.components.formatter import JsonFormatter
 
-# Before running, just set one of the following environment variables: LAZYLLM_OPENAI_API_KEY,
-# LAZYLLM_KIMI_API_KEY, LAZYLLM_GLM_API_KEY, LAZYLLM_QWEN_API_KEY, LAZYLLM_QWEN_API_KEY,
-# LAZYLLM_SENSENOVA_API_KEY, and then `source` can be left unset.
+# Before running, set the environment variable:
+#
+# 1. `export LAZYLLM_GLM_API_KEY=xxxx`: the API key of Zhipu AI, default model "glm-4", `source="glm"`. 
+#     You can apply for the API key at https://open.bigmodel.cn/
+#     Also supports other API keys:
+#       - LAZYLLM_OPENAI_API_KEY: the API key of OpenAI, default model "gpt-3.5-turbo", `source="openai"`.
+#           You can apply for the API key at https://openai.com/index/openai-api/
+#       - LAZYLLM_KIMI_API_KEY: the API key of Moonshot AI, default model "moonshot-v1-8k", `source="kimi"`.
+#           You can apply for the API key at https://platform.moonshot.cn/console
+#       - LAZYLLM_QWEN_API_KEY: the API key of Alibaba Cloud, default model "qwen-plus", `source="qwen"`.
+#           You can apply for the API key at https://home.console.aliyun.com/
+#       - LAZYLLM_SENSENOVA_API_KEY: the API key of SenseTime, default model "SenseChat-5", `source="sensenova"`.
+#                                  You also have to set LAZYLLM_SENSENOVA_SECRET_KEY` togather.
+#           You can apply for the API key at https://platform.sensenova.cn/home
+#     * `source` needs to be specified for multiple API keys, but it does not need to be set for a single API key.
 
 toc_prompt = """
 You are now an intelligent assistant. Your task is to understand the user's input and convert the outline into a list of nested dictionaries. Each dictionary contains a `title` and a `describe`, where the `title` should clearly indicate the level using Markdown format, and the `describe` is a description and writing guide for that section.
@@ -50,8 +62,8 @@ Receive as follows:
 writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "describe": {describe}}'}
 
 with pipeline() as ppl:
-    ppl.outline_writer = lazyllm.OnlineChatModule(source="glm", stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
-    ppl.story_generater = warp(lazyllm.OnlineChatModule(source="glm", stream=False).prompt(writer_prompt))
+    ppl.outline_writer = lazyllm.OnlineChatModule(stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
+    ppl.story_generater = warp(lazyllm.OnlineChatModule(stream=False).prompt(writer_prompt))
     ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
 
 if __name__ == '__main__':

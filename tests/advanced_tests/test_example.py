@@ -19,10 +19,18 @@ class TestExamples(object):
         self.use_context = False
         self.stream_output = False
         self.append_text = False
+        self.webs = []
+        self.clients = []
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
         yield
+        while self.clients:
+            client = self.clients.pop()
+            client.close()
+        while self.webs:
+            web = self.webs.pop()
+            web.stop()
         cleanup()
 
     def warp_into_web(self, module):
@@ -45,6 +53,8 @@ class TestExamples(object):
             except httpx.ConnectError:
                 continue
         assert client, "Unable to create client"
+        self.webs.append(web)
+        self.clients.append(client)
         return web, client
 
     def test_chat(self):
@@ -63,8 +73,6 @@ class TestExamples(object):
                              self.append_text,
                              api_name="/_respond_stream")
         assert ans[0][-1][-1] == 'Hello world.'
-        client.close()
-        web.stop()
 
     def test_story(self):
         from examples.story import ppl
@@ -86,8 +94,6 @@ class TestExamples(object):
         res = ans[0][-1][-1]
         assert type(res) is str
         assert len(res) >= 1024
-        client.close()
-        web.stop()
 
     def test_rag(self):
         from examples.rag import ppl
@@ -109,8 +115,6 @@ class TestExamples(object):
         res = ans[0][-1][-1]
         assert type(res) is str
         assert len(res) >= 16
-        client.close()
-        web.stop()
 
     def test_painting(self):
         from examples.painting import ppl
@@ -134,5 +138,3 @@ class TestExamples(object):
                              api_name="/_respond_stream")
         image_path = ans[0][0][-1]['value']
         assert os.path.isfile(image_path)
-        client.close()
-        web.stop()

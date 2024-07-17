@@ -4,6 +4,15 @@
 import lazyllm
 from lazyllm import pipeline, parallel, bind, _0, Document, Retriever, Reranker
 
+# Three ways to specify the model:
+#   1. Specify the model name (e.g. 'internlm2-chat-7b'):
+#           the model will be automatically downloaded from the Internet;
+#   2. Specify the model name (e.g. 'internlm2-chat-7b') ​​+ set
+#      the environment variable `export LAZYLLM_MODEL_PATH="/path/to/modelzoo"`:
+#           the model will be found in `path/to/modelazoo/internlm2-chat-7b/`
+#   3. Directly pass the absolute path to TrainableModule:
+#           `path/to/modelazoo/internlm2-chat-7b`
+
 prompt = ('You will play the role of an AI Q&A assistant and complete a dialogue task. In this task, '
           'you need to provide your answer based on the given context and question.')
 

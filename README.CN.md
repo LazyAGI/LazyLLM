@@ -39,19 +39,17 @@ LazyLLM可用来构建常用的人工智能应用，下面给出一些例子。
 # set environment variable: LAZYLLM_OPENAI_API_KEY=xx 
 # or you can make a config file(~/.lazyllm/config.json) and add openai_api_key=xx
 import lazyllm
-t = lazyllm.OnlineChatModule(source="openai", stream=True)
-w = lazyllm.WebModule(t)
-w.start().wait()
+chat = lazyllm.OnlineChatModule()
+lazyllm.WebModule(chat).start().wait()
 ```
 
 如果你想使用一个本地部署的模型，请确保自己安装了至少一个推理框架(lightllm或vllm)，然后代码如下：
 
 ```python
 import lazyllm
-# Model will be download automatically if you have an internet connection
-t = lazyllm.TrainableModule('internlm2-chat-7b')
-w = lazyllm.WebModule(t)
-w.start().wait()
+# Model will be downloaded automatically if you have an internet connection.
+chat = lazyllm.TrainableModule('internlm2-chat-7b')
+lazyllm.WebModule(chat, port=23466).start().wait()
 ```
 
 ### 3.2 检索增强生成
@@ -71,6 +69,23 @@ prompt = '你将扮演一个人工智能问答助手的角色，完成一项对�
 ```
 </details>
 
+这是一个在线部署示例：
+
+```python
+documents = Document(dataset_path='rag_master', embed=lazyllm.OnlineEmbeddingModule(), create_ui=False)
+with pipeline() as ppl:
+    with parallel().sum as ppl.prl:
+        prl.retriever1 = Retriever(documents, parser='CoarseChunk', similarity_top_k=6)
+        prl.retriever2 = Retriever(documents, parser='SentenceDivider', similarity='chinese_bm25', similarity_top_k=6)
+    ppl.reranker = Reranker(types='ModuleReranker', model='bge-reranker-large') | bind(ppl.input, _0)
+    ppl.post_processer = lambda nodes: f'《{nodes[0].metadata["file_name"].split(".")[0]}》{nodes[0].get_content()}' if len(nodes) > 0 else '未找到'
+    ppl.formatter = (lambda ctx, query: dict(context_str=ctx, query_str=query)) | bind(query=ppl.input)
+    ppl.llm = lazyllm.OnlineChatModule(stream=False).prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str']))
+lazyllm.WebModule(ppl, port=23466).start().wait()
+```
+
+这是一个本地部署示例：
+
 ```python
 documents = Document(dataset_path='/file/to/yourpath', embed=lazyllm.TrainableModule('bge-large-zh-v1.5'))
 with pipeline() as ppl:
@@ -81,7 +96,7 @@ with pipeline() as ppl:
     ppl.post_processer = lambda nodes: f'《{nodes[0].metadata["file_name"].split(".")[0]}》{nodes[0].get_content()}' if len(nodes) > 0 else '未找到'
     ppl.formatter = (lambda ctx, query: dict(context_str=ctx, query_str=query)) | bind(query=ppl.input)
     ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])) 
-mweb = lazyllm.WebModule(ppl, port=23456).start().wait()
+lazyllm.WebModule(ppl, port=23456).start().wait()
 ```
 
 https://github.com/LazyAGI/LazyLLM/assets/12124621/77267adc-6e40-47b8-96a8-895df165b0ce
@@ -136,13 +151,24 @@ writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "descr
 ```
 </details>
 
+这是一个在线部署示例：
+
 ```python
 with pipeline() as ppl:
-    ppl.outline_writer = lazyllm.OnlineChatModule(source="openai", stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
-    ppl.story_generater = warp(lazyllm.OnlineChatModule(source="openai", stream=False).prompt(writer_prompt))
+    ppl.outline_writer = lazyllm.OnlineChatModule(stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
+    ppl.story_generater = warp(lazyllm.OnlineChatModule(stream=False).prompt(writer_prompt))
     ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+lazyllm.WebModule(ppl, port=23466).start().wait()
+```
 
-print(ppl({'query':'请帮我写一篇关于人工智能在医疗领域应用的文章。'}))
+这是一个本地部署示例：
+
+```python
+with pipeline() as ppl:
+    ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
+    ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+lazyllm.WebModule(ppl, port=23466).start().wait()
 ```
 
 ### 3.4 AI绘画助手
