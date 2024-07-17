@@ -7,12 +7,9 @@ and each capability can be composed of one or more functions, Components, or oth
 
 You can refer to the Module's API documentation :ref:`api.module`
 
-.. _bestpractice.module.define:
-
 Defining a Module (``Module`` )
 
-By inheriting
----
+### By inheriting
 
 To define a ``Module``, you simply need to create a custom class that inherits from ``lazyllm.module.ModuleBase``. The custom module needs to implement at least one of the following three methods:
 
@@ -53,13 +50,11 @@ Here is an example:
     >>> m.update()
     ['[Module example get input: hello]', '[Module example get input: world]']
 ```
-> **Note**：
-    
-      The test set is set by calling `evalset`, and there is no need to explicitly override any function. All `Modules` can have a test set.
 
+> **Note**： 
+    The test set is set by calling `evalset`, and there is no need to explicitly override any function. All `Modules` can have a test set.
 
-Using the Built-in Registry
----
+### Using the Built-in Registry
 
 LazyLLM implements a registry for ``Modules``, which allows you to easily register functions as ``Modules``. Here is a specific example:
 
@@ -78,25 +73,23 @@ LazyLLM implements a registry for ``Modules``, which allows you to easily regist
     >>> m.eval().eval_result
     ['module m get input: 1', 'module m get input: 2', 'module m get input: 3']
 ```
-Submodules
 
-Concept of Submodules
----+++
+### Submodules
+
+#### Concept of Submodules
 
 Similar to the ``Module`` class in ``pytorch``, the ``Module`` in LazyLLM also has a hierarchical concept, where a Module can have one or more ``Submodule``. 
 When using the ``update`` function to update a ``Module``, its ``Submodule`` will also be updated, unless explicitly set not to update the ``Submodule``. 
 Similarly, when using the ``start`` function to start the deployment task of a ``Module``, its ``Submodule`` will also be deployed, unless explicitly set not to deploy the ``Submodule``.
 Here is an example:
 
-How to Construct Submodules
----
+#### How to Construct Submodules
 
 You can make one ``Module`` a ``Submodule`` of another ``Module`` in the following ways:
 
 1. Pass it as a constructor argument to ``ActionModule`` or ``ServerModule``, as shown in the example below:
 
-    ```python
-
+```python
         >>> m1 = MyModule('m1')
         >>> m2 = MyModule('m2')
         >>> am = lazyllm.ActionModule(m1, m2)
@@ -106,40 +99,40 @@ You can make one ``Module`` a ``Submodule`` of another ``Module`` in the followi
         >>> sm.submodules
         [<Module type=MyModule name=m1>]
 ```
+
 > **Note**：
-    
-    - When a flow is passed as a constructor argument to ``ActionModule`` or ``ServerModule``, any ``Module`` within it will also become a ``Submodule`` of the ``ActionModule`` or ``ServerModule``. Here's an example:
+> - When a flow is passed as a constructor argument to ``ActionModule`` or ``ServerModule``, any ``Module`` within it will also become a ``Submodule`` of the ``ActionModule`` or ``ServerModule``. Here's an example:
+> 
+>  ```python
+>           >>> m1 = MyModule('m1')
+>           >>> m2 = MyModule('m2')
+>           >>> m3 = MyModule('m3')
+>           >>> am = lazyllm.ActionModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
+>           >>> am.submodules
+>           [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
+>           >>> sm = lazyllm.ServerModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
+>           >>> sm.submodules
+>           [<Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>]
+>           >>> sm.submodules[0].submodules
+>           [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
+>    ```
+>
+> - When directly printing the ``repr`` of a ``Module``, it will display its hierarchical structure, including all its ``Submodules``. Continuing from the previous example:
+>
+>   ```python
+>            >>> sm
+>            <Module type=Server stream=False return_trace=False>
+>            └- <Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>
+>                └- <Flow type=Pipeline items=[]>
+>                    |- <Module type=MyModule name=m1>
+>                    └- <Flow type=Parallel items=[]>
+>                        |- <Module type=MyModule name=m2>
+>                        └- <Module type=MyModule name=m3>
+>   ```
 
-        ```python
-
-            >>> m1 = MyModule('m1')
-            >>> m2 = MyModule('m2')
-            >>> m3 = MyModule('m3')
-            >>> am = lazyllm.ActionModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
-            >>> am.submodules
-            [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
-            >>> sm = lazyllm.ServerModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
-            >>> sm.submodules
-            [<Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>]
-            >>> sm.submodules[0].submodules
-            [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
-        ```
-    - When directly printing the ``repr`` of a ``Module``, it will display its hierarchical structure, including all its ``Submodules``. Continuing from the previous example:
-
-        ```python
-
-            >>> sm
-            <Module type=Server stream=False return_trace=False>
-            └- <Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>
-                └- <Flow type=Pipeline items=[]>
-                    |- <Module type=MyModule name=m1>
-                    └- <Flow type=Parallel items=[]>
-                        |- <Module type=MyModule name=m2>
-                        └- <Module type=MyModule name=m3>
-```
 2. Setting another ``Module`` as a member variable in a ``Module`` can make the other ``Module`` become its ``submodule``. Here is an example:
 
-    ```python
+```python
 
         >>> class MyModule2(lazyllm.module.ModuleBase):
         ...    
@@ -153,12 +146,12 @@ You can make one ``Module`` a ``Submodule`` of another ``Module`` in the followi
         >>> m2.submodules
         [<Module type=MyModule name=m1-1>, <Module type=MyModule name=m1-2>]
 ```
-Utilizing Submodules for Joint Application Deployment
-------
+
+#### Utilizing Submodules for Joint Application Deployment
 
 When training/fine-tuning or deploying a ``Module``, a depth-first strategy will be used to search for all its ``Submodules`` and deploy them one by one. Here is an example:
 
-```
+```python
     >>> class MyModule2(lazyllm.module.ModuleBase):
     ...    
     ...     def __init__(self, name, return_trace=True):
@@ -194,13 +187,11 @@ When training/fine-tuning or deploying a ``Module``, a depth-first strategy will
     Module m2-2 m1-2 deployed!
     Module m2-2 deployed!
 ```
-> **Note**：
 
-    It can be seen that when updating the ``ActionModule``, all its ``Submodules`` will be updated together. If there are deployment tasks, they will be executed after all the training/fine-tuning tasks are completed. 
-    Since parent modules may depend on submodules, submodules will be deployed first, followed by parent modules.
+> **Note**:
+>
+> It can be seen that when updating the ``ActionModule``, all its ``Submodules`` will be updated together. If there are deployment tasks, they will be executed after all the training/fine-tuning tasks are completed. 
+> Since parent modules may depend on submodules, submodules will be deployed first, followed by parent modules.
 
-> **Note**：
-
+> **Note**:
     When the ``Redis`` service is configured, the lightweight gateway mechanism provided by LazyLLM can be used to achieve parallel deployment of all services.
-
-
