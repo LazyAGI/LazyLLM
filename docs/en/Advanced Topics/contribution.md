@@ -58,7 +58,7 @@ During development, if the local main branch is behind the upstream main branch,
 
 ``git pull upstream main``
 
-Style and Testing
+#### Style and Testing
 The submitted code needs to pass unit tests to ensure correctness and maintain proper code style. You can execute the following commands:
 
 ```
@@ -66,7 +66,7 @@ The submitted code needs to pass unit tests to ensure correctness and maintain p
     python -m flake8
 ```
 
-Push Code to Remote
+#### Push Code to Remote
 Push your code to the remote repository. If it's the first time you're pushing, you can add the ``-u`` parameter after ``git push`` to associate the remote branch.
 
 ```
@@ -83,7 +83,7 @@ Push your code to the remote repository. If it's the first time you're pushing, 
 > - The PR description should include the reason for the changes, the content of the changes, the impact of the changes, and link to related issues.
 > - Once all reviewers agree to merge the PR, we will merge it into the main branch as soon as possible.
 
-Resolve Conflicts
+#### Resolve Conflicts
 
 Over time, our codebase will continuously update. If your PR conflicts with the main branch, you need to resolve the conflicts. There are two ways to do this:
 

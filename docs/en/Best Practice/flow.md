@@ -6,7 +6,7 @@ LazyLLM defines a multitude of data flow components that enable you to build com
 
 The definitions and basic usage of data flow are described in :ref:api.flow.
 
-#### pipeline
+### pipeline
 
 ##### Basic Usage
 
@@ -196,7 +196,7 @@ In order to further simplify the complexity of the code, we have introduced the 
 > **Note**:
     This capability is currently not very mature and is not recommended for use. Stay tuned for updates.
 
-#### parallel
+### parallel
 
 All components of ``parallel`` share the input and merge the results for output. The definition method of ``parallel`` is similar to that of ``pipeline``. You can either initialize its elements directly when defining ``parallel`` or initialize its elements within a with block.
 
