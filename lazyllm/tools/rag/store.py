@@ -1,6 +1,16 @@
+from abc import ABC, abstractmethod
+import ast
+import atexit
 from enum import Enum, auto
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
+import chromadb
+from lazyllm import LOG, config
+from chromadb.api.models.Collection import Collection
+
+LAZY_ROOT_NAME = "lazyllm_root"
+config.add("rag_store", str, "map", "RAG_STORE")  # "map", "chroma"
+config.add("rag_persistent_path", str, "./lazyllm_chroma", "RAG_PERSISTENT_PATH")
 
 
 class MetadataMode(str, Enum):
@@ -17,60 +27,79 @@ class DocNode:
         text: Optional[str] = None,
         ntype: Optional[str] = None,
         embedding: Optional[List[float]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        excluded_embed_metadata_keys: Optional[List[str]] = None,
-        excluded_llm_metadata_keys: Optional[List[str]] = None,
         parent: Optional["DocNode"] = None,
+        children: Optional[Dict[str, List]] = None,
     ) -> None:
         self.uid: str = uid if uid else str(uuid.uuid4())
         self.text: Optional[str] = text
         self.ntype: Optional[str] = ntype
-        self.embedding: Optional[List[float]] = embedding
-        self.metadata: Dict[str, Any] = metadata if metadata is not None else {}
+        self.embedding: List[float] = embedding or [-1]
+        self._metadata: Dict[str, Any] = {}
         # Metadata keys that are excluded from text for the embed model.
-        self.excluded_embed_metadata_keys: List[str] = (
-            excluded_embed_metadata_keys
-            if excluded_embed_metadata_keys is not None
-            else []
-        )
+        self._excluded_embed_metadata_keys: List[str] = []
         # Metadata keys that are excluded from text for the LLM.
-        self.excluded_llm_metadata_keys: List[str] = (
-            excluded_llm_metadata_keys if excluded_llm_metadata_keys is not None else []
-        )
-        # Relationships to other node.
+        self._excluded_llm_metadata_keys: List[str] = []
         self.parent = parent
-        self.children: Dict[str, List["DocNode"]] = {}
+        self.children: Dict[str, List["DocNode"]] = children or {}
+        self.is_saved = False
 
     @property
     def root_node(self) -> Optional["DocNode"]:
         root = self.parent
         while root and root.parent:
             root = root.parent
-        return root
+        return root or self
+
+    @property
+    def metadata(self) -> Dict:
+        return self.root_node._metadata
+
+    @metadata.setter
+    def metadata(self, metadata: Dict) -> None:
+        self._metadata = metadata
+
+    @property
+    def excluded_embed_metadata_keys(self) -> List:
+        return self.root_node._excluded_embed_metadata_keys
+
+    @excluded_embed_metadata_keys.setter
+    def excluded_embed_metadata_keys(self, excluded_embed_metadata_keys: List) -> None:
+        self._excluded_embed_metadata_keys = excluded_embed_metadata_keys
+
+    @property
+    def excluded_llm_metadata_keys(self) -> List:
+        return self.root_node._excluded_llm_metadata_keys
+
+    @excluded_llm_metadata_keys.setter
+    def excluded_llm_metadata_keys(self, excluded_llm_metadata_keys: List) -> None:
+        self._excluded_llm_metadata_keys = excluded_llm_metadata_keys
+
+    def get_children_str(self) -> str:
+        return str(
+            {key: [node.uid for node in nodes] for key, nodes in self.children.items()}
+        )
 
     def __str__(self) -> str:
-        children_str = {
-            key: [node.uid for node in self.children[key]]
-            for key in self.children.keys()
-        }
         return (
             f"DocNode(id: {self.uid}, ntype: {self.ntype}, text: {self.get_content()}) parent: "
-            f"{self.parent.uid if self.parent else None}, children: {children_str}"
+            f"{self.parent.uid if self.parent else None}, children: {self.get_children_str()} "
+            f"is_embed: {self.has_embedding()}"
         )
 
     def __repr__(self) -> str:
         return str(self)
 
-    def get_embedding(self) -> List[float]:
-        if self.embedding is None:
-            raise ValueError("embedding not set.")
-        return self.embedding
+    def has_embedding(self) -> bool:
+        return self.embedding != [-1]
+
+    def do_embedding(self, embed: Callable) -> None:
+        self.embedding = embed(self.text)
+        self.is_saved = False
 
     def get_content(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
         metadata_str = self.get_metadata_str(mode=metadata_mode).strip()
         if not metadata_str:
             return self.text if self.text else ""
-
         return f"{metadata_str}\n\n{self.text}".strip()
 
     def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
@@ -94,32 +123,164 @@ class DocNode:
         return self.get_content(metadata_mode=MetadataMode.NONE)
 
 
-# TODO: Have a common Base store class
-class MapStore:
-    def __init__(self):
-        self.store: Dict[str, Dict[str, DocNode]] = {}
+class BaseStore(ABC):
+    def __init__(self, node_groups: List[str]):
+        self._store: Dict[str, Dict[str, DocNode]] = {
+            group: {} for group in node_groups
+        }
 
-    def add_nodes(self, category: str, nodes: List[DocNode]):
-        if category not in self.store:
-            self.store[category] = {}
-
+    def add_nodes(self, group: str, nodes: List[DocNode]):
+        if group not in self._store:
+            self._store[group] = {}
         for node in nodes:
-            self.store[category][node.uid] = node
+            self._store[group][node.uid] = node
 
-    def has_nodes(self, category: str) -> bool:
-        return category in self.store.keys()
+    def has_nodes(self, group: str) -> bool:
+        return len(self._store[group]) > 0
 
-    def get_node(self, category: str, node_id: str) -> Optional[DocNode]:
-        return self.store.get(category, {}).get(node_id)
+    def get_node(self, group: str, node_id: str) -> Optional[DocNode]:
+        return self._store.get(group, {}).get(node_id)
 
-    def delete_node(self, category: str, node_id: str):
-        if category in self.store and node_id in self.store[category]:
-            del self.store[category][node_id]
-        # TODO: delete node's relationship
+    def traverse_nodes(self, group: str) -> List[DocNode]:
+        return list(self._store.get(group, {}).values())
 
-    def traverse_nodes(self, category: str) -> List[DocNode]:
-        return list(self.store.get(category, {}).values())
+    def get_node(self, group: str, node_id: str) -> Optional[DocNode]:
+        return self._store.get(group, {}).get(node_id)
+
+    @abstractmethod
+    def save_store(self) -> None:
+        raise NotImplementedError("Not implemented yet.")
+
+    @abstractmethod
+    def try_load_store(self) -> None:
+        raise NotImplementedError("Not implemented yet.")
 
 
-class ChromadbStore:
-    pass
+class MapStore(BaseStore):
+    def __init__(self, node_groups: List[str], *args, **kwargs):
+        super().__init__(node_groups, *args, **kwargs)
+
+    def save_store(self) -> None:
+        pass
+
+    def try_load_store(self) -> None:
+        pass
+
+
+class ChromadbStore(BaseStore):
+    def __init__(self, node_groups: List[str], *args, **kwargs) -> None:
+        super().__init__(node_groups, *args, **kwargs)
+        self._db_client = chromadb.PersistentClient(path=config["rag_persistent_path"])
+        LOG.success(f"Initialzed chromadb in path: {config['rag_persistent_path']}")
+        self._collections: Dict[str, Collection] = {
+            group: self._db_client.get_or_create_collection(group)
+            for group in node_groups
+        }
+        self.try_load_store()
+        atexit.register(self.save_store)
+
+    def try_load_store(self) -> None:
+        if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:
+            LOG.info("No persistent data found, skip the rebuilding phrase.")
+            return
+
+        # Restore all nodes
+        for group in self._collections.keys():
+            results = self._peek_all_documents(group)
+            nodes = self._build_node_from_chroma(results)
+            self.add_nodes(group, nodes)
+
+        # Rebuild relationships
+        for group, nodes_dict in self._store.items():
+            for node in nodes_dict.values():
+                # Set parent
+                if node.parent:
+                    parent_uid = node.parent
+                    parent_node = self._find_node_by_uid(parent_uid)
+                    node.parent = parent_node
+
+                # Set children
+                for ntype, child_uids in node.children.items():
+                    child_nodes = []
+                    for child_uid in child_uids:
+                        child_node = self._find_node_by_uid(child_uid)
+                        child_nodes.append(child_node)
+                    node.children[ntype] = child_nodes
+            LOG.debug(f"build {group} nodes from chromadb: {nodes_dict.values()}")
+        LOG.success("Successfully Built nodes from chromadb.")
+
+    def save_store(self) -> None:
+        LOG.warning(
+            "Begin to save nodes to chromadb, please do not exit the program..."
+        )
+        for group_name, collection in self._collections.items():
+            nodes = self.traverse_nodes(group_name)
+            ids, embeddings, metadatas, documents = [], [], [], []
+            insert_all = False
+            coll = collection._client._get_collection(collection.id)
+            if coll["dimension"] is None:
+                # empty collection, no insertion before
+                insert_all = True
+            elif coll["dimension"] == 1:
+                # collection with placeholder embedding
+                if nodes and nodes[0].has_embedding():
+                    # The current group has been embed, clear collection and reinsert
+                    self._db_client.delete_collection(group_name)
+                    collection = self._db_client.create_collection(group_name)
+                    self._collections[group_name] = collection
+                    insert_all = True
+                    LOG.debug(
+                        "Found placeholder embedding is replaced, reupsert from scratch"
+                    )
+
+            for node in nodes:
+                if node.is_saved and not insert_all:
+                    continue
+                ids.append(node.uid)
+                embeddings.append(node.embedding)
+                metadatas.append(self._make_chroma_metadata(node))
+                documents.append(node.get_content(metadata_mode=MetadataMode.NONE))
+            if ids:
+                collection.upsert(
+                    embeddings=embeddings,
+                    ids=ids,
+                    metadatas=metadatas,
+                    documents=documents,
+                )
+                LOG.debug(f"Saved {group_name} nodes {nodes} to chromadb")
+        LOG.success("All nodes saved, exit.")
+
+    def _find_node_by_uid(self, uid: str) -> Optional[DocNode]:
+        for nodes_by_category in self._store.values():
+            if uid in nodes_by_category:
+                return nodes_by_category[uid]
+        raise ValueError(f"UID {uid} not found in store.")
+
+    def _build_node_from_chroma(self, results: Dict[str, List]) -> List[DocNode]:
+        nodes: List[DocNode] = []
+        for i, uid in enumerate(results["ids"]):
+            chroma_metadata = results["metadatas"][i]
+            node = DocNode(
+                uid=uid,
+                text=results["documents"][i],
+                ntype=chroma_metadata["ntype"],
+                embedding=results["embeddings"][i],
+                parent=chroma_metadata["parent"],
+                children=ast.literal_eval(chroma_metadata["children"]),
+            )
+            node.is_saved = True
+            nodes.append(node)
+        return nodes
+
+    def _make_chroma_metadata(self, node: DocNode) -> Dict[str, Any]:
+        metadata = {
+            "ntype": node.ntype,
+            "parent": node.parent.uid if node.parent else "",
+            "children": node.get_children_str(),
+        }
+        return metadata
+
+    def _peek_all_documents(self, group: str) -> Dict[str, List]:
+        assert group in self._collections, f"group {group} not found."
+        collection = self._collections[group]
+        return collection.peek(collection.count())
