@@ -255,7 +255,7 @@ class OnlineChatModuleBase(ModuleBase):
         raise NotImplementedError(f"{self._model_type} not implemented _query_deployment method in subclass")
 
     def _get_deploy_tasks(self):
-        if not self._is_trained: None
+        if not self._is_trained: return None
 
         def _start_for_deployment():
             (deployment_id, status) = self._create_deployment()
