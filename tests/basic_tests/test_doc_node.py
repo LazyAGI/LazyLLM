@@ -12,8 +12,8 @@ class TestDocNode:
             embedding=self.embedding,
         )
         self.node.metadata = self.metadata
-        self.excluded_embed_metadata_keys = ["author"]
-        self.excluded_llm_metadata_keys = ["date"]
+        self.node.excluded_embed_metadata_keys = ["author"]
+        self.node.excluded_llm_metadata_keys = ["date"]
 
     def test_node_creation(self):
         """Test the creation of a DocNode."""
