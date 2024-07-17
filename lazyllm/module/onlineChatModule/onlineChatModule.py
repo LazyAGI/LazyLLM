@@ -13,7 +13,7 @@ class _ChatModuleMeta(type):
     def __instancecheck__(self, __instance: Any) -> bool:
         if isinstance(__instance, OnlineChatModuleBase):
             return True
-        return super().__instatncheck__(self, __instance)
+        return super().__instancecheck__(__instance)
 
 
 class OnlineChatModule(metaclass=_ChatModuleMeta):
