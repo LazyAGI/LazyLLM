@@ -27,7 +27,8 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
         FileHandlerBase.__init__(self)
 
     def _get_system_prompt(self):
-        return "你是人工智能助手智谱清言（ChatGLM），是基于智谱 AI 公司于2023训练的语言模型开发的。你的任务是针对用户的问题和要求提供适当的答复和支持。"
+        return "You are ChatGLM, an AI assistant developed based on a language model trained by Zhipu AI. \
+                Your task is to provide appropriate responses and support for users' questions and requests."
 
     def _get_models_list(self):
         return ["glm-4", "glm-4v", "glm-3-turbo", "chatglm-turbo", "cogview-3", "embedding-2", "text-embedding"]

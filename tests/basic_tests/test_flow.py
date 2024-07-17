@@ -1,4 +1,6 @@
-from lazyllm import pipeline, parallel, diverter, warp, switch, ifs, loop, barrier, bind
+from lazyllm import pipeline, parallel, diverter, warp, switch, ifs, loop, graph
+from lazyllm import barrier, bind
+import time
 
 def add_one(x): return x + 1
 def xy2z(x, y, z=0): return x + y + 2 * z
@@ -43,12 +45,12 @@ class TestFlow(object):
 
     def test_switch(self):
 
-        assert switch({is_1: t1, is_2: t2}, judge_on_input=True)(1) == 2
-        assert switch({is_1: t1, is_2: t2}, judge_on_input=True)(2) == 6
-        assert not switch({is_1: t1, is_2: t2}, judge_on_input=True)(3)
-        assert switch({is_1: t1, is_2: t2, 'default': t3}, judge_on_input=True)(3) == 3
+        assert switch({is_1: t1, is_2: t2}, judge_on_full_input=True)(1) == 2
+        assert switch({is_1: t1, is_2: t2}, judge_on_full_input=True)(2) == 6
+        assert not switch({is_1: t1, is_2: t2}, judge_on_full_input=True)(3)
+        assert switch({is_1: t1, is_2: t2, 'default': t3}, judge_on_full_input=True)(3) == 3
 
-        with switch(judge_on_input=True) as sw:
+        with switch(judge_on_full_input=True) as sw:
             sw.case[is_1::t1]
             sw.case(is_2, t2)
             sw.case[is_3, t3]
@@ -109,3 +111,32 @@ class TestFlow(object):
         assert res[:3] == [0, 1, 1]
         assert res[3:-3] in ([2, 2, 3, 4, 5], [2, 3, 2, 4, 5], [2, 3, 4, 2, 5], [2, 3, 4, 5, 2])
         assert res[-3:] in ([6, 3, 4], [3, 6, 4], [3, 4, 6])
+
+    def test_graph(self):
+        def test1(x):
+            time.sleep(2)
+            return f'1 get {x};'
+
+        def test2(x): return f'2 get {x};'
+        def test3(x): return f'3 get {x};'
+        def add(x, y): return x + y
+        def concat(x, y): return [x, y]
+
+        with graph() as g:
+            g.test1 = test1
+            g.test2 = test2
+            g.test3 = test3
+            g.add = add
+            g.concat = concat
+
+        g.add_edge(g.start_node_name, 'test1')
+        g.add_edge(g.start_node_name, 'test2')
+        g.add_edge(g.start_node_name, 'test3')
+        # TODO: add_edge(['test1', 'test2'], 'add')
+        g.add_edge('test1', 'add')
+        g.add_edge('test2', 'add')
+        g.add_edge('add', 'concat')
+        g.add_edge('test3', 'concat')
+        g.add_edge('concat', g.end_node_name)
+
+        assert g(1) == ['1 get 1;2 get 1;', '3 get 1;']

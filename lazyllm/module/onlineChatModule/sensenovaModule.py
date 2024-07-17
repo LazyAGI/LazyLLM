@@ -18,8 +18,8 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
                  **kwargs):
         OnlineChatModuleBase.__init__(self,
                                       model_type=__class__.__name__,
-                                      api_key=SenseNovaModule.encode_jwt_token(lazyllm.config['sensenova_ak'],
-                                                                               lazyllm.config['sensenova_sk']),
+                                      api_key=SenseNovaModule.encode_jwt_token(lazyllm.config['sensenova_api_key'],
+                                                                               lazyllm.config['sensenova_secret_key']),
                                       base_url=base_url,
                                       model_name=model,
                                       stream=stream,
@@ -30,7 +30,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
         self._deploy_paramters = None
 
     def _get_system_prompt(self):
-        return "You are an AI assistant, developed by SenseTime and released in 2023."
+        return "You are an AI assistant, developed by SenseTime."
 
     @staticmethod
     def encode_jwt_token(ak: str, sk: str) -> str:

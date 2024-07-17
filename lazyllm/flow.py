@@ -1,6 +1,6 @@
 import lazyllm
-from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, bind, root
-from lazyllm import Thread, ReadOnlyWrapper, LOG
+from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root
+from lazyllm import Thread, ReadOnlyWrapper, LOG, globals
 from .common.common import _MetaBind
 from functools import partial
 from enum import Enum
@@ -10,6 +10,8 @@ import threading
 import traceback
 import sys
 from typing import Union, Tuple, List, Optional
+import concurrent.futures
+from collections import deque
 
 
 class _FuncWrap(object):
@@ -40,6 +42,8 @@ class FlowBase(metaclass=_MetaBind):
 
         self._capture = False
 
+    def __post_init__(self): pass
+
     def _add(self, k, v):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
         self._items.append(v() if isinstance(v, type) else _FuncWrap(v) if _is_function(v) else v)
@@ -68,6 +72,7 @@ class FlowBase(metaclass=_MetaBind):
                     self._add(var, val)
         self._capture = False
         self._curr_frame = None
+        self.__post_init__()
         return False
 
     def __setattr__(self, name: str, value):
@@ -161,6 +166,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         if isinstance(it, bind):
             if it._has_root:
                 it._args = [a.get_from(self.ancestor) if isinstance(a, type(root)) else a for a in it._args]
+                it._kw = {k: v.get_from(self.ancestor) if isinstance(v, type(root)) else v for k, v in it._kw.items()}
                 it._has_root = False
             if bind_args_source: it = bind(it, _bind_args_source=bind_args_source)
         try:
@@ -206,6 +212,14 @@ class Pipeline(LazyLLMFlowsBase):
     def _stop_condition(self, cond):
         self._stop_condition_var = cond
 
+    @property
+    def _judge_on_full_input(self):
+        return getattr(self, '_judge_on_full_input_var', True)
+
+    @_judge_on_full_input.setter
+    def _judge_on_full_input(self, judge):
+        self._judge_on_full_input_var = judge
+
     def _run(self, __input, **kw):
         output = __input
         bind_args_source = dict(input=output, args=dict())
@@ -214,7 +228,12 @@ class Pipeline(LazyLLMFlowsBase):
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
                 kw.clear()
                 bind_args_source['args'][id(it)] = output
-            if callable(self._stop_condition) and self.invoke(self._stop_condition, output): break
+            exp = output
+            if not self._judge_on_full_input:
+                assert isinstance(output, tuple) and len(output) >= 2
+                exp = output[0]
+                output = output[1:]
+            if callable(self._stop_condition) and self.invoke(self._stop_condition, exp): break
         return output
 
 
@@ -345,18 +364,18 @@ class Warp(Parallel):
 class Switch(LazyLLMFlowsBase):
     # Switch({cond1: M1, cond2: M2, ..., condN: MN})
     # Switch(cond1, M1, cond2, M2, ..., condN, MN)
-    def __init__(self, *args, post_action=None, judge_on_input=True, **kw):
+    def __init__(self, *args, post_action=None, judge_on_full_input=True, **kw):
         if len(args) == 1 and isinstance(args[0], dict):
             self.conds, items = list(args[0].keys()), list(args[0].values())
         else:
             self.conds, items = list(args[0::2]), args[1::2]
         items = {repr(k): v for k, v in zip(self.conds, items)}
         super().__init__(**items, post_action=post_action, **kw)
-        self._judge_on_input = judge_on_input
+        self._judge_on_full_input = judge_on_full_input
 
     def _run(self, __input, **kw):
         exp = __input
-        if not self._judge_on_input:
+        if not self._judge_on_full_input:
             assert isinstance(__input, tuple) and len(__input) >= 2
             exp = __input[0]
             __input = __input[1:]
@@ -399,8 +418,104 @@ class IFS(LazyLLMFlowsBase):
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
 #      ⬆----------------------------------------|
 class Loop(Pipeline):
-    def __init__(self, *item, stop_condition=None, count=sys.maxsize, post_action=None, auto_capture=False, **kw):
+    def __init__(self, *item, stop_condition=None, count=sys.maxsize, post_action=None,
+                 auto_capture=False, judge_on_full_input=True, **kw):
         super().__init__(*item, post_action=post_action, auto_capture=auto_capture, **kw)
         assert callable(stop_condition) or stop_condition is None
+        self._judge_on_full_input = judge_on_full_input
         self._stop_condition = stop_condition
         self._loop_count = count
+
+
+class Graph(LazyLLMFlowsBase):
+
+    start_node_name, end_node_name = '__start__', '__end__'
+
+    class Node:
+        def __init__(self, func, name):
+            self.func, self.name = func, name
+            self.inputs, self.outputs, self.value = [], [], None
+
+        def __repr__(self): return lazyllm.make_repr('Flow', 'Node', name=self.name)
+
+    def __init__(self, *, post_action=None, auto_capture=False, **kw):
+        super(__class__, self).__init__(post_action=post_action, auto_capture=auto_capture, **kw)
+
+    def __post_init__(self):
+        self._nodes = {n: Graph.Node(f, n) for f, n in zip(self._items, self._item_names)}
+        self._nodes[Graph.start_node_name] = Graph.Node(None, Graph.start_node_name)
+        self._nodes[Graph.end_node_name] = Graph.Node(lambda x: x, Graph.end_node_name)
+        self._in_degree = {node: 0 for node in self._nodes.values()}
+        self._sorted_nodes = None
+
+    @property
+    def start_node(self): return self._nodes[Graph.start_node_name]
+
+    @property
+    def end_node(self): return self._nodes[Graph.end_node_name]
+
+    def add_edge(self, from_node, to_node):
+        if isinstance(from_node, str): from_node = self._nodes[from_node]
+        if isinstance(to_node, str): to_node = self._nodes[to_node]
+        from_node.outputs.append(to_node)
+        to_node.inputs.append(from_node)
+        self._in_degree[to_node] += 1
+
+    def topological_sort(self):
+        in_degree = self._in_degree.copy()
+        queue = deque([node for node in self._nodes.values() if in_degree[node] == 0])
+        sorted_nodes = []
+
+        while queue:
+            node = queue.popleft()
+            sorted_nodes.append(node)
+            for output_node in node.outputs:
+                in_degree[output_node] -= 1
+                if in_degree[output_node] == 0:
+                    queue.append(output_node)
+
+        if len(sorted_nodes) != len(self._nodes):
+            raise ValueError("Graph has a cycle")
+
+        return sorted_nodes
+
+    def compute_node(self, sid, node, intermediate_results, futures):
+        globals._init_sid(sid)
+
+        def get_input(name):
+            if name not in intermediate_results['values']:
+                r = futures[name].result()
+                with intermediate_results['lock']:
+                    if name not in intermediate_results['values']:
+                        intermediate_results['values'][name] = r
+            return intermediate_results['values'][name]
+
+        kw = {}
+        if len(node.inputs) == 1:
+            input = get_input(node.inputs[0].name)
+        else:
+            # TODO(wangzhihong): add complex rules: edge formatter / mixture of package / support kwargs / ...
+            input = package(get_input(input.name) for input in node.inputs)
+            for inp in input:
+                assert not isinstance(inp, (kwargs, package, arguments))
+
+        if isinstance(input, arguments):
+            kw = input.kw
+            input = input.args
+        return self.invoke(node.func, input, **kw)
+
+    def _run(self, __input, **kw):
+        if not self._sorted_nodes: self._sorted_nodes = self.topological_sort()
+        intermediate_results = dict(lock=threading.Lock(), values={})
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = {}
+
+            for node in self._sorted_nodes:
+                if node.name == '__start__':
+                    intermediate_results['values'][node.name] = arguments(__input, kw)
+                else:
+                    future = executor.submit(self.compute_node, globals._sid, node, intermediate_results, futures)
+                    futures[node.name] = future
+
+        return futures[Graph.end_node_name].result()

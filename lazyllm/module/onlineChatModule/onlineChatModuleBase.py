@@ -1,3 +1,4 @@
+import copy
 from itertools import groupby
 import json
 import os
@@ -29,7 +30,7 @@ class OnlineChatModuleBase(ModuleBase):
         self._base_url = base_url
         self._model_name = model_name
         self._stream = stream
-        self.trainable_mobels = trainable_models
+        self.trainable_models = trainable_models
         self._set_headers()
         self._set_chat_url()
         self.prompt()
@@ -50,6 +51,13 @@ class OnlineChatModuleBase(ModuleBase):
         self._prompt._set_model_configs(system=self._get_system_prompt())
         return self
 
+    def share(self, prompt: PrompterBase = None, formatter: FormatterBase = None):
+        new = copy.copy(self)
+        new._set_mid()
+        if prompt is not None: new.prompt(prompt)
+        if formatter is not None: new.formatter(formatter)
+        return new
+
     def _get_system_prompt(self):
         raise NotImplementedError("_get_system_prompt is not implemented.")
 
@@ -58,10 +66,6 @@ class OnlineChatModuleBase(ModuleBase):
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + self._api_key
         }
-
-    @property
-    def model_type(self):
-        return self._model_type
 
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'chat/completions')
@@ -207,8 +211,11 @@ class OnlineChatModuleBase(ModuleBase):
     def _get_train_tasks(self):
         if not self._model_name or not self._train_file:
             raise ValueError("train_model and train_file is required")
-        if self._model_name not in self.trainable_mobels:
-            raise ValueError(f"{self._model_name} is not trainable")
+        if self._model_name not in self.trainable_models:
+            lazyllm.LOG.log_once(f"The current model {self._model_name} is not in the trainable \
+                                  model list {self.trainable_models}. The deadline for this list is June 1, 2024. \
+                                  This model may not be trainable. If your model is a new model, \
+                                  you can ignore this warning.")
 
         def _create_for_finetuning_job():
             """
