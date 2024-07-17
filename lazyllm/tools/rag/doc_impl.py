@@ -1,21 +1,48 @@
-from functools import partial
+import ast
+from functools import partial, wraps
 from typing import Dict, List, Optional, Set
-from lazyllm import ModuleBase, LOG
+from lazyllm import ModuleBase, LOG, config, once_flag, call_once
 from lazyllm.common import LazyLlmRequest
 from .transform import FuncNodeTransform, SentenceSplitter
-from .store import MapStore, DocNode
+from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME
 from .data_loaders import DirectoryReader
 from .index import DefaultIndex
+
+
+def embed_wrapper(func):
+    if not func:
+        return None
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        result = func(*args, **kwargs)
+        return ast.literal_eval(result)
+
+    return wrapper
 
 
 class DocImplV2:
     def __init__(self, embed, doc_files=Optional[List[str]], **kwargs):
         super().__init__()
         self.directory_reader = DirectoryReader(input_files=doc_files)
-        self.node_groups: Dict[str, Dict] = {}
+        self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.create_node_group_default()
-        self.store = MapStore()
-        self.index = DefaultIndex(embed)
+        self.embed = embed_wrapper(embed)
+        self.init_flag = once_flag()
+
+    def _lazy_init(self) -> None:
+        rag_store = config["rag_store"]
+        if rag_store == "map":
+            self.store = MapStore(node_groups=self.node_groups.keys())
+        elif rag_store == "chroma":
+            self.store = ChromadbStore(node_groups=self.node_groups.keys())
+        else:
+            raise NotImplementedError(f"Not implemented store type for {rag_store}")
+        self.index = DefaultIndex(self.embed)
+        if not self.store.has_nodes(LAZY_ROOT_NAME):
+            docs = self.directory_reader.load_data()
+            self.store.add_nodes(LAZY_ROOT_NAME, docs)
+            LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {docs}")
 
     def create_node_group_default(self):
         self.create_node_group(
@@ -38,7 +65,7 @@ class DocImplV2:
         )
 
     def create_node_group(
-        self, name, transform, parent="_lazyllm_root", **kwargs
+        self, name, transform, parent=LAZY_ROOT_NAME, **kwargs
     ) -> None:
         if name in self.node_groups:
             LOG.warning(f"Duplicate group name: {name}")
@@ -67,25 +94,17 @@ class DocImplV2:
         if self.store.has_nodes(group_name):
             return
         transform = self._get_transform(group_name)
-        parent_name = node_group["parent_name"]
-        self._dynamic_create_nodes(parent_name)
-
-        parent_nodes = self.store.traverse_nodes(parent_name)
-
-        sub_nodes = transform(parent_nodes, group_name)
-        self.store.add_nodes(group_name, sub_nodes)
-        LOG.debug(f"building {group_name} nodes: {sub_nodes}")
+        parent_nodes = self._get_nodes(node_group["parent_name"])
+        nodes = transform(parent_nodes, group_name)
+        self.store.add_nodes(group_name, nodes)
+        LOG.debug(f"building {group_name} nodes: {nodes}")
 
     def _get_nodes(self, group_name: str) -> List[DocNode]:
-        # lazy load files, if group isn't set, create the group
-        if not self.store.has_nodes("_lazyllm_root"):
-            docs = self.directory_reader.load_data()
-            self.store.add_nodes("_lazyllm_root", docs)
-            LOG.debug(f"building _lazyllm_root nodes: {docs}")
         self._dynamic_create_nodes(group_name)
         return self.store.traverse_nodes(group_name)
 
     def retrieve(self, query, group_name, similarity, index, topk, similarity_kws):
+        call_once(self.init_flag, self._lazy_init)
         if index:
             assert index == "default", "we only support default index currently"
         if isinstance(query, LazyLlmRequest):

@@ -18,10 +18,10 @@ class DirectoryReader:
             node = DocNode(
                 text=doc.text,
                 ntype=ntype,
-                metadata=doc.metadata,
-                excluded_embed_metadata_keys=doc.excluded_embed_metadata_keys,
-                excluded_llm_metadata_keys=doc.excluded_llm_metadata_keys,
             )
+            node.metadata = doc.metadata
+            node.excluded_embed_metadata_keys = doc.excluded_embed_metadata_keys
+            node.excluded_llm_metadata_keys = doc.excluded_llm_metadata_keys
             nodes.append(node)
         if not nodes:
             LOG.warning(
