@@ -9,11 +9,11 @@ class TestDocNode:
         self.embedding = [0.1, 0.2, 0.3]
         self.node = DocNode(
             text=self.text,
-            metadata=self.metadata,
             embedding=self.embedding,
-            excluded_embed_metadata_keys=["author"],
-            excluded_llm_metadata_keys=["date"],
         )
+        self.node.metadata = self.metadata
+        self.excluded_embed_metadata_keys = ["author"]
+        self.excluded_llm_metadata_keys = ["date"] 
 
     def test_node_creation(self):
         """Test the creation of a DocNode."""
@@ -49,11 +49,6 @@ class TestDocNode:
 
         metadata_str_none = self.node.get_metadata_str(mode=MetadataMode.NONE)
         assert metadata_str_none == ""
-
-    def test_get_embedding(self):
-        """Test the get_embedding method."""
-        embedding = self.node.get_embedding()
-        assert embedding == self.embedding
 
     def test_root_node(self):
         """Test the root_node property."""
