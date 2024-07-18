@@ -30,7 +30,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                                       return_trace=return_trace,
                                       **kwargs)
         FileHandlerBase.__init__(self)
-        self._deploy_paramters = None
+        self._deploy_paramters = dict()
         if stream:
             self._model_optional_params['incremental_output'] = True
 

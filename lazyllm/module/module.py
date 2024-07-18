@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, decode_request, globals
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
+from ..components.formatter import FormatterBase, EmptyFormatter
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
 import uuid
@@ -222,6 +223,7 @@ class UrlModule(ModuleBase, UrlTemplate):
         UrlTemplate.__init__(self)
         self._extract_result_func = lambda x: x
         __class__.prompt(self)
+        __class__.formatter(self)
 
     @property
     def _url(self):
@@ -280,7 +282,7 @@ class UrlModule(ModuleBase, UrlTemplate):
             return _impl()
         else:
             for r in _impl(): pass
-            return r
+            return self._formatter.format(r)
 
     def prompt(self, prompt=None):
         if prompt is None:
@@ -289,6 +291,15 @@ class UrlModule(ModuleBase, UrlTemplate):
             self._prompt = prompt
         elif isinstance(prompt, (str, dict)):
             self._prompt = ChatPrompter(prompt)
+        return self
+
+    def formatter(self, format: FormatterBase = None):
+        if isinstance(format, FormatterBase):
+            self._formatter = format
+        elif format is None:
+            self._formatter = EmptyFormatter()
+        else:
+            raise TypeError("format must be a FormatterBase")
         return self
 
     def _modify_parameters(self, paras, kw):
@@ -477,10 +488,11 @@ class TrainableModule(UrlModule):
             return functools.partial(getattr(self._impl, key), _return_value=self)
         raise AttributeError(f'{__class__} object has no attribute {key}')
 
-    def share(self, prompt=None):
+    def share(self, prompt=None, format=None):
         new = copy.copy(self)
         new._set_mid()
         if prompt is not None: new.prompt(prompt)
+        if format is not None: new.formatter(format)
         new._impl._add_father(new)
         return new
 

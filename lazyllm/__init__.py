@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+# flake8: noqa: F401
+
 from .configs import config
 from .configs import * # noqa F401 of Config
 from .common import *  # noqa F403
@@ -12,7 +15,7 @@ from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeploy
 
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
-                     OnlineChatModule, OnlineEmbeddingModule)
+                     OnlineChatModule, OnlineEmbeddingModule, AutoModel)
 from .client import redis_client
 from .tools import Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, FunctionCallAgent, fc_register
 from .docs import add_doc
@@ -68,6 +71,7 @@ __all__ = [
     'module_register',
     'OnlineChatModule',
     'OnlineEmbeddingModule',
+    'AutoModel'
 
     # client
     'redis_client',
