@@ -434,7 +434,7 @@ class Graph(LazyLLMFlowsBase):
     class Node:
         def __init__(self, func, name):
             self.func, self.name = func, name
-            self.inputs, self.outputs, self.value = [], [], None
+            self.inputs, self.outputs = [], []
 
         def __repr__(self): return lazyllm.make_repr('Flow', 'Node', name=self.name)
 

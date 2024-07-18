@@ -13,6 +13,7 @@ from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      OnlineChatModule, OnlineEmbeddingModule)
 from .client import redis_client
 from .tools import Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, FunctionCallAgent, fc_register
+from .engine import *  # noqa F403
 from .docs import add_doc
 
 config.done()
