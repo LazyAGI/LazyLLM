@@ -155,7 +155,7 @@ class MapStore(BaseStore):
     def __init__(self, node_groups: List[str], *args, **kwargs):
         super().__init__(node_groups, *args, **kwargs)
 
-    def save_nodes(self) -> None:
+    def save_nodes(self, group: str) -> None:
         pass
 
     def try_load_store(self) -> None:
@@ -163,7 +163,9 @@ class MapStore(BaseStore):
 
 
 class ChromadbStore(BaseStore):
-    def __init__(self, node_groups: List[str], embed: Callable, *args, **kwargs) -> None:
+    def __init__(
+        self, node_groups: List[str], embed: Callable, *args, **kwargs
+    ) -> None:
         super().__init__(node_groups, *args, **kwargs)
         self._db_client = chromadb.PersistentClient(path=config["rag_persistent_path"])
         LOG.success(f"Initialzed chromadb in path: {config['rag_persistent_path']}")
