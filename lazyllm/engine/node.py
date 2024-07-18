@@ -24,7 +24,7 @@ all_nodes = dict(
         builder_argument=dict(
             trainset=NodeArgs(str),
             finetune_method=NodeArgs(str, getattr_f=partial(getattr, lazyllm.finetune)),
-            deploy_method=NodeArgs(str, 'vllm', getattr_f=partial(getattr, lazyllm.finetune))),
+            deploy_method=NodeArgs(str, 'vllm', getattr_f=partial(getattr, lazyllm.deploy))),
         other_arguments=dict(
             finetune_method=dict(
                 batch_size=NodeArgs(int, 16),
