@@ -24,4 +24,9 @@ pydantic
 pyyaml 
 sniffio
 tqdm 
-typing-extensions 
+typing-extensions
+docstring_parser
+nltk
+tiktoken
+llama_index
+redis
