@@ -43,7 +43,8 @@ class BaseEditor(cst.CSTTransformer):
                 self.add_class_members_to_dict(module_dict, obj, name, seen_objects)
         return module_dict
 
-    def add_class_members_to_dict(self, module_dict: Dict[str, Any], cls: Any, parent_name: str, seen_objects: Set[Any]) -> None:
+    def add_class_members_to_dict(
+            self, module_dict: Dict[str, Any], cls: Any, parent_name: str, seen_objects: Set[Any]) -> None:
         """
         Adds class members to the module dictionary.
 
@@ -73,7 +74,10 @@ class BaseEditor(cst.CSTTransformer):
         Returns:
             cst.FunctionDef: The updated FunctionDef node with a new docstring.
         """
-        full_name = f"{self.current_class}.{original_node.name.value}" if self.current_class else original_node.name.value
+        full_name = (
+            f"{self.current_class}.{original_node.name.value}"
+            if self.current_class else original_node.name.value
+        )
         obj = self._get_obj_by_name(full_name)
         docstring = obj.__doc__ if obj else None
         return self._update_node_with_new_docstring(original_node, updated_node, docstring)
@@ -128,7 +132,8 @@ class BaseEditor(cst.CSTTransformer):
         """
         return self.module_dict.get(name, None)
 
-    def _update_node_with_new_docstring(self, original_node: cst.CSTNode, updated_node: cst.CSTNode, docstring: Optional[str]) -> cst.CSTNode:
+    def _update_node_with_new_docstring(
+            self, original_node: cst.CSTNode, updated_node: cst.CSTNode, docstring: Optional[str]) -> cst.CSTNode:
         """
         Updates a node with a new docstring.
 
