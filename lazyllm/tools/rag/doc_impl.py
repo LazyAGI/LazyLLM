@@ -35,7 +35,7 @@ class DocImplV2:
         if rag_store == "map":
             self.store = MapStore(node_groups=self.node_groups.keys())
         elif rag_store == "chroma":
-            self.store = ChromadbStore(node_groups=self.node_groups.keys())
+            self.store = ChromadbStore(node_groups=self.node_groups.keys(), embed=self.embed)
         else:
             raise NotImplementedError(f"Not implemented store type for {rag_store}")
         self.index = DefaultIndex(self.embed)
