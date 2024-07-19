@@ -22,15 +22,15 @@ class MetadataMode(str, Enum):
 class DocNode:
     def __init__(
         self,
-        group: str,
         uid: Optional[str] = None,
         text: Optional[str] = None,
+        group: Optional[str] = None,
         embedding: Optional[List[float]] = None,
         parent: Optional["DocNode"] = None,
     ) -> None:
         self.uid: str = uid if uid else str(uuid.uuid4())
         self.text: Optional[str] = text
-        self.group: str = group
+        self.group: Optional[str] = group
         self.embedding: Optional[List[float]] = embedding or None
         self._metadata: Dict[str, Any] = {}
         # Metadata keys that are excluded from text for the embed model.
@@ -190,7 +190,7 @@ class ChromadbStore(BaseStore):
         for group in self._collections.keys():
             results = self._peek_all_documents(group)
             nodes = self._build_nodes_from_chroma(results)
-            self.add_nodes(group, nodes)
+            self._add_nodes(group, nodes)
 
         # Rebuild relationships
         for group, nodes_dict in self._store.items():

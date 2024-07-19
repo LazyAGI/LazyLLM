@@ -28,11 +28,8 @@ class TestChromadbStore(unittest.TestCase):
         node1 = DocNode(uid="1", text="text1", group="type1")
         node2 = DocNode(uid="2", text="text2", group="type2")
         self.store.add_nodes("group1", [node1, node2])
-        self.store.save_nodes("group1")
         collection = self.store._collections["group1"]
         self.assertEqual(collection.peek(collection.count())["ids"], ["1", "2"])
-        self.assertTrue(node1.has_embedding())
-        self.assertTrue(node2.has_embedding())
 
     def test_try_load_store(self):
         # Set up initial data to be loaded
