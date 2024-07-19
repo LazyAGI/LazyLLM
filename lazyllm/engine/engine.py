@@ -19,6 +19,11 @@ class Edge(object):
     formatter: Optional[str] = None
 
 
+class CodeBlock(object):
+    def __init__(self, code):
+        pass
+
+
 class NodeBuilder(object):
     builder_methods = dict()
 
@@ -26,6 +31,7 @@ class NodeBuilder(object):
     def register(cls, name):
         def impl(f):
             cls.builder_methods[name] = f
+            return f
         return impl
 
     def build(self, node):
@@ -59,10 +65,12 @@ class NodeBuilder(object):
 
 _builder = NodeBuilder()
 
+
 # Each session will have a separate engine
 class Engine(object):
     def __init__(self):
-        self._nodes = dict()
+        self._nodes = {'__start__': Node(id='__start__', kind='__start__', name='__start__'),
+                       '__end__': Node(id='__end__', kind='__end__', name='__end__')}
 
     def start(self, nodes=[]):
         raise NotImplementedError
@@ -70,27 +78,39 @@ class Engine(object):
     def update(self, changes=[]):
         raise NotImplementedError
 
-    @staticmethod
-    def make_graph(nodes, edges):
+
+class LightEngine(Engine):
+
+    _instance = None
+
+    def __new__(cls):
+        if not LightEngine._instance:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def make_graph(self, nodes: List[dict], edges: List[dict]):
+        nodes = {n['id']: Node(id=n['id'], kind=n['kind'], name=n['name'], args=n['args']) for n in nodes}
+        edges = [Edge(iid=e['iid'], oid=e['oid'], formatter=e.get('formatter')) for e in edges]
+        for node in nodes.values():
+            node.func = _builder.build(node)
+
         with graph() as g:
             for _, node in nodes.items():
                 setattr(g, node.name, node.func)
+
+        self._nodes.update(nodes)
         for edge in edges:
-            g.add_edge(nodes[edge.iid].name, nodes[edge.oid].name)
+            g.add_edge(self._nodes[edge.iid].name, self._nodes[edge.oid].name)
         return g
 
-
-class LightEngine(Engine):
     def start(self, nodes: List[dict] = [], edges: List[dict] = []):
-        self._nodes = {n['id']: Node(id=n['id'], kind=n['kind'], name=n['name'], args=n['args']) for n in nodes}
-        self._nodes.update({'__start__': Node(id='__start__', kind='__start__', name='__start__'),
-                            '__end__': Node(id='__end__', kind='__end__', name='__end__')})
-        edges = [Edge(iid=e['iid'], oid=e['oid'], formatter=e.get('formatter')) for e in edges]
-        for node in self._nodes.values():
-            node.func = _builder.build(node)
-        self.graph = self.make_graph(self._nodes, edges)
-        self.m = ActionModule(self.graph)
-        self.m.start()
+        self.graph = self.make_graph(nodes, edges)
+        ActionModule(self.graph).start()
 
     def run(self, *args, **kw):
         return self.graph(*args, **kw)
+
+
+@NodeBuilder.register('SubGraph')
+def make_subgraph(nodes: List[dict], edges: List[dict]):
+    return LightEngine().make_graph(nodes, edges)
