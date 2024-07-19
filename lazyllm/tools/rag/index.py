@@ -1,5 +1,5 @@
-from typing import List
-from .store import DocNode
+from typing import List, Callable
+from .store import DocNode, BaseStore
 import numpy as np
 
 
@@ -8,8 +8,9 @@ class DefaultIndex:
 
     registered_similarity = dict()
 
-    def __init__(self, embed, **kwargs):
+    def __init__(self, embed: Callable, store: BaseStore, **kwargs):
         self.embed = embed
+        self.store = store
 
     @classmethod
     def register_similarity(cls, func=None, mode=None, descend=True):
@@ -33,9 +34,13 @@ class DefaultIndex:
             assert self.embed, "Chosen similarity needs embed model."
             assert len(query) > 0, "Query should not be empty."
             query_embedding = self.embed(query)
+            updated_nodes = []
             for node in nodes:
                 if not node.has_embedding():
                     node.do_embedding(self.embed)
+                    updated_nodes.append(node)
+                if updated_nodes:
+                    self.store.save_nodes(updated_nodes[0].group, updated_nodes)
             similarities = [
                 (node, similarity_func(query_embedding, node.embedding, **kwargs))
                 for node in nodes
@@ -54,7 +59,7 @@ class DefaultIndex:
 
 
 @DefaultIndex.register_similarity(mode="text", descend=True)
-def dummy(query, node, **kwargs):
+def dummy(query: str, node, **kwargs):
     return len(node.text)
 
 

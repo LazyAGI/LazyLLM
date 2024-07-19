@@ -22,15 +22,15 @@ class MetadataMode(str, Enum):
 class DocNode:
     def __init__(
         self,
+        group: str,
         uid: Optional[str] = None,
         text: Optional[str] = None,
-        ntype: Optional[str] = None,
         embedding: Optional[List[float]] = None,
         parent: Optional["DocNode"] = None,
     ) -> None:
         self.uid: str = uid if uid else str(uuid.uuid4())
         self.text: Optional[str] = text
-        self.ntype: Optional[str] = ntype
+        self.group: str = group
         self.embedding: Optional[List[float]] = embedding or None
         self._metadata: Dict[str, Any] = {}
         # Metadata keys that are excluded from text for the embed model.
@@ -79,7 +79,7 @@ class DocNode:
 
     def __str__(self) -> str:
         return (
-            f"DocNode(id: {self.uid}, ntype: {self.ntype}, text: {self.get_content()}) parent: "
+            f"DocNode(id: {self.uid}, group: {self.group}, text: {self.get_content()}) parent: "
             f"{self.parent.uid if self.parent else None}, children: {self.get_children_str()} "
             f"is_embed: {self.has_embedding()}"
         )
@@ -88,10 +88,11 @@ class DocNode:
         return str(self)
 
     def has_embedding(self) -> bool:
-        return self.embedding and len(self.embedding) > 0
+        return self.embedding and self.embedding[0] != -1   # placeholder
 
     def do_embedding(self, embed: Callable) -> None:
         self.embedding = embed(self.text)
+        self.is_saved = False
 
     def get_content(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
         metadata_str = self.get_metadata_str(mode=metadata_mode).strip()
@@ -121,17 +122,20 @@ class DocNode:
 
 
 class BaseStore(ABC):
-    def __init__(self, node_groups: List[str]):
+    def __init__(self, node_groups: List[str]) -> None:
         self._store: Dict[str, Dict[str, DocNode]] = {
             group: {} for group in node_groups
         }
-
-    def add_nodes(self, group: str, nodes: List[DocNode]):
+        
+    def _add_nodes(self, group: str, nodes: List[DocNode]) -> None:
         if group not in self._store:
             self._store[group] = {}
         for node in nodes:
             self._store[group][node.uid] = node
-        self.save_nodes(group)
+
+    def add_nodes(self, group: str, nodes: List[DocNode]) -> None:
+        self._add_nodes(group, nodes)
+        self.save_nodes(group, nodes)
 
     def has_nodes(self, group: str) -> bool:
         return len(self._store[group]) > 0
@@ -143,7 +147,7 @@ class BaseStore(ABC):
         return list(self._store.get(group, {}).values())
 
     @abstractmethod
-    def save_nodes(self, group: str) -> None:
+    def save_nodes(self, group: str, nodes: List[DocNode]) -> None:
         raise NotImplementedError("Not implemented yet.")
 
     @abstractmethod
@@ -155,7 +159,7 @@ class MapStore(BaseStore):
     def __init__(self, node_groups: List[str], *args, **kwargs):
         super().__init__(node_groups, *args, **kwargs)
 
-    def save_nodes(self, group: str) -> None:
+    def save_nodes(self, group: str, nodes: List[DocNode]) -> None:
         pass
 
     def try_load_store(self) -> None:
@@ -174,6 +178,7 @@ class ChromadbStore(BaseStore):
             for group in node_groups
         }
         self.embed = embed
+        self.placeholder_length = len(embed("a"))
         self.try_load_store()
 
     def try_load_store(self) -> None:
@@ -194,23 +199,24 @@ class ChromadbStore(BaseStore):
                     parent_uid = node.parent
                     parent_node = self._find_node_by_uid(parent_uid)
                     node.parent = parent_node
-                    parent_node.children[node.ntype].append(node)
+                    parent_node.children[node.group].append(node)
             LOG.debug(f"build {group} nodes from chromadb: {nodes_dict.values()}")
         LOG.success("Successfully Built nodes from chromadb.")
 
-    def save_nodes(self, group: str) -> None:
-        nodes = self.traverse_nodes(group)
+    def save_nodes(self, group: str, nodes: List[DocNode]) -> None:
         ids, embeddings, metadatas, documents = [], [], [], []
         collection = self._collections.get(group)
+        assert collection, f"Group {group} is not found in collections {self._collections}"
         for node in nodes:
             if node.is_saved:
                 continue
             if not node.has_embedding():
-                node.do_embedding(self.embed)
+                node.embedding = [-1] * self.placeholder_length
             ids.append(node.uid)
             embeddings.append(node.embedding)
             metadatas.append(self._make_chroma_metadata(node))
             documents.append(node.get_content(metadata_mode=MetadataMode.NONE))
+            node.is_saved = True
         if ids:
             collection.upsert(
                 embeddings=embeddings,
@@ -218,7 +224,7 @@ class ChromadbStore(BaseStore):
                 metadatas=metadatas,
                 documents=documents,
             )
-            LOG.debug(f"Saved {group} nodes {ids} to chromadb")
+            LOG.debug(f"Saved {group} nodes {ids} to chromadb.")
 
     def _find_node_by_uid(self, uid: str) -> Optional[DocNode]:
         for nodes_by_category in self._store.values():
@@ -233,7 +239,7 @@ class ChromadbStore(BaseStore):
             node = DocNode(
                 uid=uid,
                 text=results["documents"][i],
-                ntype=chroma_metadata["ntype"],
+                group=chroma_metadata["group"],
                 embedding=results["embeddings"][i],
                 parent=chroma_metadata["parent"],
             )
@@ -243,7 +249,7 @@ class ChromadbStore(BaseStore):
 
     def _make_chroma_metadata(self, node: DocNode) -> Dict[str, Any]:
         metadata = {
-            "ntype": node.ntype,
+            "group": node.group,
             "parent": node.parent.uid if node.parent else "",
         }
         return metadata
