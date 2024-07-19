@@ -88,7 +88,7 @@ class DocNode:
         return str(self)
 
     def has_embedding(self) -> bool:
-        return self.embedding and self.embedding[0] != -1   # placeholder
+        return self.embedding and self.embedding[0] != -1  # placeholder
 
     def do_embedding(self, embed: Callable) -> None:
         self.embedding = embed(self.text)
@@ -126,7 +126,7 @@ class BaseStore(ABC):
         self._store: Dict[str, Dict[str, DocNode]] = {
             group: {} for group in node_groups
         }
-        
+
     def _add_nodes(self, group: str, nodes: List[DocNode]) -> None:
         if group not in self._store:
             self._store[group] = {}
@@ -206,7 +206,9 @@ class ChromadbStore(BaseStore):
     def save_nodes(self, group: str, nodes: List[DocNode]) -> None:
         ids, embeddings, metadatas, documents = [], [], [], []
         collection = self._collections.get(group)
-        assert collection, f"Group {group} is not found in collections {self._collections}"
+        assert (
+            collection
+        ), f"Group {group} is not found in collections {self._collections}"
         for node in nodes:
             if node.is_saved:
                 continue
