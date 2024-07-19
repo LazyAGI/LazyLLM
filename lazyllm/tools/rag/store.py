@@ -135,7 +135,7 @@ class BaseStore(ABC):
 
     def add_nodes(self, group: str, nodes: List[DocNode]) -> None:
         self._add_nodes(group, nodes)
-        self.save_nodes(group, nodes)
+        self.try_save_nodes(group, nodes)
 
     def has_nodes(self, group: str) -> bool:
         return len(self._store[group]) > 0
@@ -147,7 +147,7 @@ class BaseStore(ABC):
         return list(self._store.get(group, {}).values())
 
     @abstractmethod
-    def save_nodes(self, group: str, nodes: List[DocNode]) -> None:
+    def try_save_nodes(self, group: str, nodes: List[DocNode]) -> None:
         raise NotImplementedError("Not implemented yet.")
 
     @abstractmethod
@@ -159,7 +159,7 @@ class MapStore(BaseStore):
     def __init__(self, node_groups: List[str], *args, **kwargs):
         super().__init__(node_groups, *args, **kwargs)
 
-    def save_nodes(self, group: str, nodes: List[DocNode]) -> None:
+    def try_save_nodes(self, group: str, nodes: List[DocNode]) -> None:
         pass
 
     def try_load_store(self) -> None:
@@ -177,7 +177,6 @@ class ChromadbStore(BaseStore):
             group: self._db_client.get_or_create_collection(group)
             for group in node_groups
         }
-        self.embed = embed
         self.placeholder_length = len(embed("a"))
         self.try_load_store()
 
@@ -203,7 +202,7 @@ class ChromadbStore(BaseStore):
             LOG.debug(f"build {group} nodes from chromadb: {nodes_dict.values()}")
         LOG.success("Successfully Built nodes from chromadb.")
 
-    def save_nodes(self, group: str, nodes: List[DocNode]) -> None:
+    def try_save_nodes(self, group: str, nodes: List[DocNode]) -> None:
         ids, embeddings, metadatas, documents = [], [], [], []
         collection = self._collections.get(group)
         assert (
