@@ -40,7 +40,7 @@ class DocImplV2:
             )
         else:
             raise NotImplementedError(f"Not implemented store type for {rag_store}")
-        self.index = DefaultIndex(self.embed)
+        self.index = DefaultIndex(self.embed, self.store)
         if not self.store.has_nodes(LAZY_ROOT_NAME):
             docs = self.directory_reader.load_data()
             self.store.add_nodes(LAZY_ROOT_NAME, docs)
@@ -115,10 +115,10 @@ class DocImplV2:
         nodes = self._get_nodes(group_name)
         return self.index.query(query, nodes, similarity, topk, **similarity_kws)
 
-    def _find_parent(self, nodes: List[DocNode], name: str) -> List[DocNode]:
+    def _find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
         def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
             if node.parent:
-                if node.parent.ntype == name:
+                if node.parent.group == group:
                     visited.add(node.parent)
                 recurse_parents(node.parent, visited)
 
@@ -127,18 +127,18 @@ class DocImplV2:
             recurse_parents(node, result)
         if not result:
             LOG.warning(
-                f"We can not find any nodes for name `{name}`, please check your input"
+                f"We can not find any nodes for group `{group}`, please check your input"
             )
-        LOG.debug(f"Found parent node for {name}: {result}")
+        LOG.debug(f"Found parent node for {group}: {result}")
         return list(result)
 
-    def find_parent(self, name: str) -> List[DocNode]:
-        return partial(self._find_parent, name=name)
+    def find_parent(self, group: str) -> List[DocNode]:
+        return partial(self._find_parent, group=group)
 
-    def _find_children(self, nodes: List[DocNode], name: str) -> List[DocNode]:
+    def _find_children(self, nodes: List[DocNode], group: str) -> List[DocNode]:
         def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
-            if name in node.children:
-                visited.update(node.children[name])
+            if group in node.children:
+                visited.update(node.children[group])
                 return True
 
             found_in_any_child = False
@@ -155,11 +155,11 @@ class DocImplV2:
         result = set()
 
         # case when user hasn't used the group before.
-        _ = self._get_nodes(name)
+        _ = self._get_nodes(group)
 
         for node in nodes:
-            if name in node.children:
-                result.update(node.children[name])
+            if group in node.children:
+                result.update(node.children[group])
             else:
                 LOG.log_once(
                     f"Fetching children that are not in direct relationship might be slower. "
@@ -170,21 +170,21 @@ class DocImplV2:
                 # Note: the input nodes are the same type
                 if not recurse_children(node, result):
                     LOG.warning(
-                        f"Node {node} and its children do not contain any nodes with the name `{name}`. "
+                        f"Node {node} and its children do not contain any nodes with the group `{group}`. "
                         "Skipping further search in this branch."
                     )
                     break
 
         if not result:
             LOG.warning(
-                f"We cannot find any nodes for name `{name}`, please check your input."
+                f"We cannot find any nodes for group `{group}`, please check your input."
             )
 
-        LOG.debug(f"Found children nodes for {name}: {result}")
+        LOG.debug(f"Found children nodes for {group}: {result}")
         return list(result)
 
-    def find_children(self, name: str) -> List[DocNode]:
-        return partial(self._find_children, name=name)
+    def find_children(self, group: str) -> List[DocNode]:
+        return partial(self._find_children, group=group)
 
 
 class RetrieverV2(ModuleBase):
