@@ -34,7 +34,6 @@ class LMDeploy(LazyLLMDeployBase):
     auto_map = {}
 
     def __init__(self,
-                 trust_remote_code=True,
                  launcher=launchers.remote(ngpus=1),
                  stream=False,
                  **kw,
@@ -46,7 +45,6 @@ class LMDeploy(LazyLLMDeployBase):
             'tp': 1,
             "max-batch-size": 128,
         })
-        self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
         self.random_port = False if 'server-port' in kw and kw['server-port'] else True
 

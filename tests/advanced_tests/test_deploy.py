@@ -1,6 +1,10 @@
 import os
 import json
+import time
 import pytest
+import httpx
+import random
+from gradio_client import Client
 
 import lazyllm
 from lazyllm import deploy
@@ -11,11 +15,46 @@ class TestDeploy(object):
     def setup_method(self):
         self.model_path = 'internlm2-chat-7b'
         self.inputs = ['介绍一下你自己', '李白和李清照是什么关系', '说个笑话吧']
+        self.use_context = False
+        self.stream_output = False
+        self.append_text = False
+        self.webs = []
+        self.clients = []
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
         yield
+        while self.clients:
+            client = self.clients.pop()
+            client.close()
+        while self.webs:
+            web = self.webs.pop()
+            web.stop()
         cleanup()
+
+    def warp_into_web(self, module):
+        client = None
+        for _ in range(5):
+            try:
+                port = random.randint(10000, 30000)
+                web = lazyllm.WebModule(module, port=port)
+                web._work()
+                time.sleep(2)
+            except AssertionError as e:
+                # Port is occupied
+                if 'occupied' in e:
+                    continue
+                else:
+                    raise e
+            try:
+                client = Client(web.url, download_files=web.cach_path)
+                break
+            except httpx.ConnectError:
+                continue
+        assert client, "Unable to create client"
+        self.webs.append(web)
+        self.clients.append(client)
+        return web, client
 
     def test_deploy_lightllm(self):
         m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.lightllm)
@@ -58,7 +97,20 @@ class TestDeploy(object):
         assert "images_base64" in json.loads(res)
 
     def test_vlm_and_lmdeploy(self):
-        m = lazyllm.TrainableModule('internvl-chat-2b-v1-5').deploy_method(deploy.LMDeploy)
+        chat = lazyllm.TrainableModule('internvl-chat-2b-v1-5').deploy_method(deploy.LMDeploy)
+        m = lazyllm.ServerModule(chat)
         m.update_server()
-        res = m(json.dumps({'text': '这是啥？', 'files': os.path.join(lazyllm.config['data_path'], 'imags/ji.jpg')}))
+        query = '这是啥？'
+        image_path = os.path.join(lazyllm.config['data_path'], 'imags/ji.jpg')
+        res = m('lazyllm_files::' + json.dumps({'text': query, 'files': image_path}))
         assert '鸡' in res
+
+        _, client = self.warp_into_web(m)
+        chat_history = [[query, None]]
+        ans = client.predict(self.use_context,
+                             chat_history,
+                             self.stream_output,
+                             self.append_text,
+                             api_name="/_respond_stream")
+        res = ans[0][-1][-1]
+        assert isinstance(res, str)

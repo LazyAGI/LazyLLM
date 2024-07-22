@@ -252,14 +252,11 @@ class UrlModule(ModuleBase, UrlTemplate):
         assert self._url is not None, f'Please start {self.__class__} first'
 
         files = []
-        if isinstance(__input, str):
-            try:
-                message = json.loads(__input)
-                assert isinstance(message, dict)
-                query = message.get('text', '')
-                files = message.get('files', [])
-            except Exception:
-                query = __input
+        if self.template_message and isinstance(__input, str) and __input.startswith('lazyllm_files::'):
+            message = json.loads(__input[15:])
+            assert isinstance(message, dict)
+            query = message.get('text', '')
+            files = message.get('files', [])
         else:
             query = __input
         __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
