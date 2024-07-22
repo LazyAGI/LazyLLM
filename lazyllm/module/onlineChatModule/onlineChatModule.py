@@ -13,7 +13,7 @@ class _ChatModuleMeta(type):
     def __instancecheck__(self, __instance: Any) -> bool:
         if isinstance(__instance, OnlineChatModuleBase):
             return True
-        return super().__instatncheck__(self, __instance)
+        return super().__instancecheck__(__instance)
 
 
 class OnlineChatModule(metaclass=_ChatModuleMeta):
@@ -40,9 +40,9 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
         return params
 
     def __new__(self,
+                model: str = None,
                 source: str = None,
                 base_url: str = None,
-                model: str = None,
                 stream: bool = True,
                 return_trace: bool = False,
                 **kwargs):

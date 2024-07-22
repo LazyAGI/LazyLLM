@@ -1,4 +1,6 @@
 from typing import Any, Dict
+
+import lazyllm
 from .openaiEmbed import OpenAIEmbedding
 from .glmEmbed import GLMEmbedding
 from .sensenovaEmbed import SenseNovaEmbedding
@@ -14,6 +16,10 @@ class __EmbedModuleMeta(type):
 
 
 class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
+    MODELS = {'openai': OpenAIEmbedding,
+              'sensenova': SenseNovaEmbedding,
+              'glm': GLMEmbedding,
+              'qwen': QwenEmbedding}
 
     @staticmethod
     def _encapsulate_parameters(embed_url: str,
@@ -26,15 +32,16 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
         return params
 
     def __new__(self,
-                source: str,
+                source: str = None,
                 embed_url: str = None,
                 embed_model_name: str = None):
         params = OnlineEmbeddingModule._encapsulate_parameters(embed_url, embed_model_name)
-        if source.lower() == "openai":
-            return OpenAIEmbedding(**params)
-        elif source.lower() == "glm":
-            return GLMEmbedding(**params)
-        elif source.lower() == "sensenova":
-            return SenseNovaEmbedding(**params)
-        elif source.lower() == "qwen":
-            return QwenEmbedding(**params)
+
+        if source is None:
+            for source in OnlineEmbeddingModule.MODELS.keys():
+                if lazyllm.config[f'{source}_api_key']: break
+            else:
+                raise KeyError(f"No api_key is configured for any of the models {OnlineEmbeddingModule.MODELS.keys()}.")
+
+        assert source in OnlineEmbeddingModule.MODELS.keys(), f"Unsupported source: {source}"
+        return OnlineEmbeddingModule.MODELS[source](**params)

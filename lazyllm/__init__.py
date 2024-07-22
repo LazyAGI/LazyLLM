@@ -1,10 +1,11 @@
+# -*- coding: utf-8 -*-
+# flake8: noqa: F401
+
 from .configs import config
 from .configs import * # noqa F401 of Config
 from .common import *  # noqa F403
 from .launcher import LazyLLMLaunchersBase
-from .flow import (LazyLLMFlowsBase, FlowBase, barrier,
-                   Pipeline as pipeline, Parallel as parallel, Diverter as diverter,
-                   Loop as loop, Switch as switch, IFS as ifs, Warp as warp, Graph as graph)
+from .flow import *  # noqa F403
 from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                          LazyLLMValidateBase, register as component_register, Prompter,
                          AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter,
@@ -12,9 +13,10 @@ from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeploy
 
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
-                     OnlineChatModule, OnlineEmbeddingModule)
+                     OnlineChatModule, OnlineEmbeddingModule, AutoModel)
 from .client import redis_client
 from .tools import Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, FunctionCallAgent, fc_register
+from .engine import *  # noqa F403
 from .docs import add_doc
 
 config.done()
@@ -38,19 +40,6 @@ __all__ = [
     'JsonFormatter',
     'FunctionCallFormatter',
 
-    # flow
-    'LazyLLMFlowsBase',            # pipeline, parallel
-    'FlowBase',
-    'barrier',
-    'pipeline',
-    'parallel',
-    'diverter',
-    'loop',
-    'switch',
-    'ifs',
-    'warp',
-    'graph',
-
     # launcher
     'LazyLLMLaunchersBase',        # empty, slurm, sco
 
@@ -68,6 +57,7 @@ __all__ = [
     'module_register',
     'OnlineChatModule',
     'OnlineEmbeddingModule',
+    'AutoModel'
 
     # client
     'redis_client',
@@ -86,3 +76,4 @@ __all__ = [
 ]
 
 __all__ += common.__all__  # noqa F405
+__all__ += flow.__all__  # noqa F405
