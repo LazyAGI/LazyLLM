@@ -260,6 +260,8 @@ class UrlModule(ModuleBase, UrlTemplate):
                 files = message.get('files', [])
             except Exception:
                 query = __input
+        else:
+            query = __input
         __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
         headers = {'Content-Type': 'application/json'}
 
