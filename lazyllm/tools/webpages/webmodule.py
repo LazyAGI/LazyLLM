@@ -215,7 +215,7 @@ class WebModule(ModuleBase):
             # TODO: move context to trainable module
             files = []
             for file in chat_history[::-1]:
-                if file[-1]: break # not current chat
+                if file[-1]: break  # not current chat
                 if isinstance(file[0], (tuple, list)):
                     files.append(file[0][0])
             if isinstance(chat_history[-1][0], str):
@@ -223,8 +223,8 @@ class WebModule(ModuleBase):
             else:
                 string = ''
             if files:
-                input = json.dumps({'text':string, 'files': files})
-            else: 
+                input = json.dumps({'text': string, 'files': files})
+            else:
                 input = string
             history = chat_history[:-1] if use_context and len(chat_history) > 1 else None
 

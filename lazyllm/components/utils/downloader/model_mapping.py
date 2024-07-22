@@ -297,6 +297,10 @@ model_name_mapping = {
     "internvl-chat-2b-v1-5": {
 		"source": {"huggingface": "OpenGVLab/Mini-InternVL-Chat-2B-V1-5", "modelscope": "OpenGVLab/Mini-InternVL-Chat-2B-V1-5"},
         "type": "vlm",
-		},  
+		},
+    "internvl-chat-v1-5": {
+		"source": {"huggingface": "OpenGVLab/InternVL-Chat-V1-5", "modelscope": "OpenGVLab/InternVL-Chat-V1-5"},
+        "type": "vlm",
+		},
 }
 

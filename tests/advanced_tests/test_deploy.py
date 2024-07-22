@@ -1,3 +1,4 @@
+import os
 import json
 import pytest
 
@@ -55,3 +56,9 @@ class TestDeploy(object):
         m.update_server()
         res = m('a little cat')
         assert "images_base64" in json.loads(res)
+
+    def test_vlm_and_lmdeploy(self):
+        m = lazyllm.TrainableModule('internvl-chat-2b-v1-5').deploy_method(deploy.LMDeploy)
+        m.update_server()
+        res = m(json.dumps({'text': '这是啥？', 'files': os.path.join(lazyllm.config['data_path'], 'imags/ji.jpg')}))
+        assert '鸡' in res
