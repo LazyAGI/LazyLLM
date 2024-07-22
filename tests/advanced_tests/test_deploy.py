@@ -106,11 +106,12 @@ class TestDeploy(object):
         assert '鸡' in res
 
         _, client = self.warp_into_web(m)
-        chat_history = [[query, None]]
+        # Add prefix 'lazyllm_img::' for client testing.
+        chat_history = [['lazyllm_img::' + image_path, None], [query, None]]
         ans = client.predict(self.use_context,
                              chat_history,
                              self.stream_output,
                              self.append_text,
                              api_name="/_respond_stream")
         res = ans[0][-1][-1]
-        assert isinstance(res, str)
+        assert '鸡' in res

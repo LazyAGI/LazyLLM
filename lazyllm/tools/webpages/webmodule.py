@@ -218,6 +218,8 @@ class WebModule(ModuleBase):
                 if file[-1]: break  # not current chat
                 if isinstance(file[0], (tuple, list)):
                     files.append(file[0][0])
+                elif isinstance(file[0], str) and file[0].startswith('lazyllm_img::'):  # Just for pytest
+                    files.append(file[0][13:])
             if isinstance(chat_history[-1][0], str):
                 string = chat_history[-1][0]
             else:
