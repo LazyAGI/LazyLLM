@@ -177,7 +177,7 @@ class ChromadbStore(BaseStore):
             group: self._db_client.get_or_create_collection(group)
             for group in node_groups
         }
-        self.placeholder_length = len(embed("a"))
+        self._placeholder = [-1] * len(embed("a"))
         self.try_load_store()
 
     def try_load_store(self) -> None:
@@ -212,7 +212,7 @@ class ChromadbStore(BaseStore):
             if node.is_saved:
                 continue
             if not node.has_embedding():
-                node.embedding = [-1] * self.placeholder_length
+                node.embedding = self._placeholder
             ids.append(node.uid)
             embeddings.append(node.embedding)
             metadatas.append(self._make_chroma_metadata(node))
