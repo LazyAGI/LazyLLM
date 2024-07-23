@@ -47,7 +47,7 @@ class WebModule(ModuleBase):
         self.history = [h._module_id for h in history]
         self.trace_mode = trace_mode if trace_mode else WebModule.Mode.Refresh
         self.text_mode = text_mode if text_mode else WebModule.Mode.Dynamic
-        self._set_up_caching()
+        self.cach_path = self._set_up_caching()
         self.demo = self.init_web(components)
         self.url = None
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -66,6 +66,7 @@ class WebModule(ModuleBase):
             os.environ['GRADIO_TEMP_DIR'] = cach_path
         if not os.path.exists(cach_path):
             os.makedirs(cach_path)
+        return cach_path
 
     def init_web(self, component_descs):
         with gr.Blocks(css=css, title=self.title) as demo:

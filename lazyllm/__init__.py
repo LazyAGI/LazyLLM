@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+# flake8: noqa: F401
+
 from .configs import config
 from .configs import * # noqa F401 of Config
 from .common import *  # noqa F403
@@ -7,12 +10,11 @@ from .flow import (LazyLLMFlowsBase, FlowBase, barrier,
                    Loop as loop, Switch as switch, IFS as ifs, Warp as warp, Graph as graph)
 from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                          LazyLLMValidateBase, register as component_register, Prompter,
-                         AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter,
-                         FunctionCallFormatter)
+                         AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter)
 
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
-                     OnlineChatModule, OnlineEmbeddingModule)
+                     OnlineChatModule, OnlineEmbeddingModule, AutoModel)
 from .client import redis_client
 from .tools import Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, FunctionCallAgent, fc_register
 from .docs import add_doc
@@ -36,7 +38,6 @@ __all__ = [
     'ChatPrompter',
     'FastapiApp',
     'JsonFormatter',
-    'FunctionCallFormatter',
 
     # flow
     'LazyLLMFlowsBase',            # pipeline, parallel
@@ -68,6 +69,7 @@ __all__ = [
     'module_register',
     'OnlineChatModule',
     'OnlineEmbeddingModule',
+    'AutoModel'
 
     # client
     'redis_client',

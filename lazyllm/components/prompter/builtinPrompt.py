@@ -5,6 +5,7 @@ from functools import reduce
 import copy
 import json
 import re
+import uuid
 
 class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     ISA = "<!lazyllm-spliter!>"
@@ -37,10 +38,13 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                            eoh: Union[None, str] = None, eoa: Union[None, str] = None,
                            soe: Union[None, str] = None, eoe: Union[None, str] = None,
                            separator: Union[None, str] = None, plugin: Union[None, str] = None,
-                           interpreter: Union[None, str] = None, stop_words: Union[None, List[str]] = None):
+                           interpreter: Union[None, str] = None, stop_words: Union[None, List[str]] = None,
+                           tool_start_token: Union[None, str] = None, tool_end_token: Union[None, str] = None,
+                           tool_args_token: Union[None, str] = None):
 
         local = locals()
-        for name in ['system', 'sos', 'soh', 'soa', 'eos', 'eoh', 'eoa']:
+        for name in ['system', 'sos', 'soh', 'soa', 'eos', 'eoh', 'eoa', 'soe', 'eoe', 'tool_start_token',
+                     'tool_end_token', 'tool_args_token']:
             if local[name] is not None: setattr(self, f'_{name}', local[name])
 
     def _get_tools(self, tools, *, return_dict):
@@ -50,7 +54,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
         return tools if return_dict else '### Function-call Tools. \n\n' + json.dumps(tools) + '\n\n' if tools else ''
 
-    def _get_histories(self, history, *, return_dict):
+    def _get_histories(self, history, *, return_dict):  # noqa: C901
         if history is None or len(history) == 0: return ''
         if return_dict:
             content = []
@@ -66,9 +70,29 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                     raise ValueError("history must be a list of list or dict")
             return content
         else:
-            if not isinstance(history[0], list):
-                raise NotImplementedError('Cannot transform json history to list now')
-            return ''.join([f'{self._soh}{h}{self._eoh}{self._soa}{a}{self._eoa}' for h, a in history])
+            if isinstance(history[0], list):
+                return ''.join([f'{self._soh}{h}{self._eoh}{self._soa}{a}{self._eoa}' for h, a in history])
+            elif isinstance(history[0], dict):
+                ret = ""
+                for item in history:
+                    if item['role'] == "user":
+                        ret += f'{self._soh}{item["content"]}{self._eoh}'
+                    elif item['role'] == "assistant":
+                        ret += f'{self._soa}'
+                        if len(item.get("content", "")) > 0:
+                            ret += f'{item["content"]}'
+                        if len(item.get("tool_calls", "")) > 0:
+                            for idx in range(len(item['tool_calls'])):
+                                ret += (f'{self._tool_start_token}'
+                                        f'{json.dumps(item["tool_calls"][idx]["function"], ensure_ascii=False)}'
+                                        f'{self._tool_end_token}')
+                        ret += f'{self._eoa}'
+                    elif item['role'] == "tool":
+                        ret += f'{self._soe}{item["content"]}{self._eoe}'
+
+                return ret
+            else:
+                raise NotImplementedError('Cannot transform json history to {type(history[0])} now')
 
     def _get_instruction_and_input(self, input):
         prompt_keys = list(set(re.findall(r'\{(\w+)\}', self._instruction_template)))
@@ -91,6 +115,10 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
     # Used for TrainableModule(local deployed)
     def _generate_prompt_impl(self, instruction, input, user, history, tools, label):
+        if isinstance(input, dict):
+            input = input.get('content', '')
+        elif isinstance(input, list):
+            input = "\n".join([item.get('content', '') for item in input])
         params = dict(system=self._system, instruction=instruction, input=input, user=user, history=history, tools=tools,
                       sos=self._sos, eos=self._eos, soh=self._soh, eoh=self._eoh, soa=self._soa, eoa=self._eoa)
         return self._template.format(**params) + (label if label else '')
@@ -149,12 +177,67 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         if self._show or show: LOG.info(result)
         return result
 
-    def get_response(self, output: str, input: Union[str, None] = None) -> str:
+    def get_response(self, output: str, input: Union[str, None] = None) -> str:   # noqa: C901
         if input and output.startswith(input):
-            return output[len(input):]
-        return output if getattr(self, '_split', None) is None else output.split(self._split)[-1]
+            output = output[len(input):]
+        output = output if getattr(self, '_split', None) is None else output.split(self._split)[-1]
+        # multiple tools appear
+        tool_calls = []
+        if getattr(self, "_tool_start_token", None) and getattr(self, "_tool_args_token", None):
+            segs = output.split(self._tool_start_token)
+            content = segs[0]
+            if len(segs) > 1:
+                for seg in segs[1:]:
+                    items = seg.split(self._tool_args_token)
+                    func_name = items[0]
+                    arguments = (items[1].split(self._tool_end_token)
+                                 if getattr(self, "_tool_end_token", None) else items[1])
+                    tool_calls.append({"name": func_name, "arguments": json.dumps(arguments, ensure_ascii=False)})
+        elif getattr(self, "_tool_start_token", None):
+            segs = output.split(self._tool_start_token)
+            content = segs[0]
+            if len(segs) > 1:
+                for seg in segs[1:]:
+                    items = seg.split(self._tool_end_token)[0] if getattr(self, '_tool_end_token', None) else seg
+                    try:
+                        items = json.loads(items.strip())
+                        tool_calls.append({"name": items['name'],
+                                           "arguments": json.dumps(
+                                               items['parameters'] if "parameters" in items
+                                               else items.get("arguments", {}), ensure_ascii=False)})
+                    except Exception as e:
+                        LOG.error(f"tool calls info parse error: {e}.")
+        else:
+            lines = output.strip().split("\n")
+            content = []
+            tools = {tool['function']['name'] for tool in self._tools} if self._tools else {}
+            for idx, line in enumerate(lines):
+                if line.startswith("{") and idx > 0:
+                    func_name = lines[idx - 1].strip()
+                    arguments = "\n".join(lines[idx:]).strip()
+                    if not content:
+                        content = lines[:idx - 1]
+
+                    if func_name in tools:
+                        tool_calls.append({"name": func_name, "arguments": arguments})
+            if isinstance(content, list):
+                content = "\n".join(content)
+
+        tc = []
+        for tool_call in tool_calls:
+            id = uuid.uuid4().hex
+            tc.append({'id': id, 'type': 'function', 'function': tool_call})
+        tool_calls = tc
+
+        if content and tool_calls:
+            return "<|tool_calls|>".join([content, json.dumps(tool_calls, ensure_ascii=False)])
+        elif not content and tool_calls:
+            return "<|tool_calls|>" + json.dumps(tool_calls, ensure_ascii=False)
+        else:
+            return content
 
 class EmptyPrompter(LazyLLMPrompterBase):
+
     def generate_prompt(self, input, history=None, tools=None, label=None, show=False):
         if self._show or show: LOG.info(input)
         return input

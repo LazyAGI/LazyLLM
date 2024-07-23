@@ -3,7 +3,7 @@ import json
 import lazyllm
 import docstring_parser
 from lazyllm.module import ModuleBase
-from lazyllm.common import LazyLLMRegisterMetaClass, package
+from lazyllm.common import LazyLLMRegisterMetaClass
 from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Set
 import inspect
 from pydantic import create_model, BaseModel, ValidationError
@@ -96,6 +96,8 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return ret
 
 register = lazyllm.Register(ModuleTool, ["apply"])
+if "tool" not in LazyLLMRegisterMetaClass.all_clses:
+    register.new_group("tool")
 
 class ToolManager(ModuleBase):
     def __init__(self, tools: List[str], return_trace: bool = False):
@@ -193,11 +195,13 @@ class ToolManager(ModuleBase):
         else:
             raise TypeError(f"The tools type should be List instead of {type(self._tools)}")
 
-    def forward(self, llm_output: tuple, input: tuple, verbose: bool = False):
+    def forward(self, tools: List[Dict[str, Any]], verbose: bool = False):
         def process_tool_call(tool_calls):
+            tool_calls = [{"name": tool['name'], "arguments": json.loads(tool['arguments'])
+                           if isinstance(tool['arguments'], str) else tool['arguments']} for tool in tool_calls]
             tool_output = []
-            flag_val = [True if self._validate_tool(tool['name'], tool['tool_input']) else False for tool in tool_calls]
-            tool_inputs = [tool_calls[idx]['tool_input'] for idx, val in enumerate(flag_val) if val]
+            flag_val = [True if self._validate_tool(tool['name'], tool['arguments']) else False for tool in tool_calls]
+            tool_inputs = [tool_calls[idx]['arguments'] for idx, val in enumerate(flag_val) if val]
             tools = [self._tool_call[tool_calls[idx]['name']] for idx, val in enumerate(flag_val) if val]
             tool_diverter = lazyllm.diverter(tuple(tools))
             rets = tool_diverter(tuple(tool_inputs))
@@ -206,15 +210,10 @@ class ToolManager(ModuleBase):
             for idx, tool in enumerate(tool_calls):
                 if flag_val[idx]:
                     ret = rets[idx]
-                    tool.pop("tool_input")
-                    tool['content'] = json.dumps(ret, ensure_ascii=False) if isinstance(ret, dict) else ret
-                    tool['role'] = 'tool'
-                    tool_output.append(tool)
+                    tool_output.append(json.dumps(ret, ensure_ascii=False))
                 else:
                     tool_output.append(f"{tool} parameters error.")
 
-            tool_output = tool_output[0] if len(tool_output) == 1 else tool_output
             return tool_output
-
-        output = process_tool_call(llm_output[1])
-        return package(False, [input[-1] if isinstance(input, list) else input, llm_output[0], output])
+        output = process_tool_call(tools)
+        return output

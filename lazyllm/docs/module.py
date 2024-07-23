@@ -499,9 +499,9 @@ add_chinese_doc('OnlineChatModule', '''\
 用来管理创建目前市面上公开的大模型平台访问模块，目前支持openai、sensenova、glm、kimi、qwen、doubao(由于该平台暂时不对个人用户开发，暂时不支持访问)
 
 Args:
+    model (str): 指定要访问的模型，默认为 ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` 
     source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao(暂未支持访问)`` 
     base_url (str): 指定要访问的平台的基础链接，默认是官方链接
-    model (str): 指定要访问的模型，默认为 ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` 
     system_prompt (str): 指定请求的system prompt，默认是官方给的system prompt
     stream (bool): 是否流式请求和输出，默认为流式
     return_trace (bool): 是否将结果记录在trace中，默认为False
@@ -511,9 +511,9 @@ add_english_doc('OnlineChatModule', '''\
 Used to manage and create access modules for large model platforms currently available on the market. Currently, it supports openai, sensenova, glm, kimi, qwen and doubao (since the platform is not currently being developed for individual users, access is not currently supported).
 
 Args:
+    model (str): Specify the model to access, default is ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` .
     source (str): Specify the type of module to create. Options include  ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao (not yet supported)`` .
     base_url (str): Specify the base link of the platform to be accessed. The default is the official link.
-    model (str): Specify the model to access, default is ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` .
     system_prompt (str): Specify the requested system prompt. The default is the official system prompt.
     stream (bool): Whether to request and output in streaming mode, default is streaming.
     return_trace (bool): Whether to record the results in trace, default is False.      

@@ -51,11 +51,11 @@ class OnlineChatModuleBase(ModuleBase):
         self._prompt._set_model_configs(system=self._get_system_prompt())
         return self
 
-    def share(self, prompt: PrompterBase = None, formatter: FormatterBase = None):
+    def share(self, prompt: PrompterBase = None, format: FormatterBase = None):
         new = copy.copy(self)
         new._set_mid()
         if prompt is not None: new.prompt(prompt)
-        if formatter is not None: new.formatter(formatter)
+        if format is not None: new.formatter(format)
         return new
 
     def _get_system_prompt(self):
@@ -123,10 +123,69 @@ class OnlineChatModuleBase(ModuleBase):
         except Exception:
             return ""
 
+    def _get_benchmark_data(self, data: Dict[str, Any]):
+        if "choices" in data and isinstance(data["choices"], list):
+            item = data['choices'][0]
+            return item.get("delta", {}) if "delta" in item else item.get("message", {})
+        else:
+            raise ValueError(f"The response {data} does not contain a 'choices' field.")
+
+    def _extract_and_format(self, data, template):  # noqa: C901
+        # finding placeholders in template and removing rules
+        placeholders = re.findall(r"{(.*?)(?:\|(.*?))?}", template)
+        delimiters = re.findall(r"<\|.*?\|>", template)
+        # extract and format the fields corresponding to the placeholders
+        extracted_data = {}
+        pkeys = []
+        for placeholder, remove_fields in placeholders:
+            placeholder_key = placeholder + "|" + remove_fields if remove_fields else placeholder
+            pkeys.append(placeholder_key)
+            if 'tool_calls' in placeholder:
+                # handling remove_fields
+                remove_fields = remove_fields.split(',') if remove_fields else []
+
+                # extract the tool_calls field
+                keys = placeholder.split('.')
+                value = data
+                try:
+                    for key in (int(key) if key.isdigit() else key for key in keys):
+                        value = value[key]
+
+                    if isinstance(value, list):
+                        for item in value:
+                            [item.pop(field) for field in remove_fields if field in item]
+                    # value = json.dumps(value).replace('\n', '').replace(' ', '')
+                    value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+                    extracted_data[placeholder_key] = value
+                except (KeyError, IndexError, TypeError):
+                    extracted_data[placeholder_key] = ""
+            else:
+                # extracting additional fields
+                keys = placeholder.split('.')
+                value = data
+                try:
+                    for key in (int(key) if key.isdigit() else key for key in keys):
+                        value = value[key]
+                    # convert the extracted value into a JSON string
+                    value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+                    extracted_data[placeholder_key] = value
+                except (KeyError, IndexError, TypeError):
+                    extracted_data[placeholder_key] = ""
+
+        # populate the template with the extracted data
+        assert len(extracted_data) == len(delimiters) + 1, \
+               "The delimiters and the number of extracted fields are inconsistent."
+        result = extracted_data.get(pkeys[0])
+        result += ''.join(delimiters[idx] + extracted_data[key]
+                          for idx, key in enumerate(pkeys[1:]) if extracted_data.get(key))
+        lazyllm.LOG.info(f"result: {result}")
+        return result
+
     def _extract_specified_key_fields(self, response: Dict[str, Any]):
         if len(self._extractor_fields) == 1:
             key = self._extractor_fields[0]
-            return self._parse_output_by_key(key, response) if key else ""
+            return (self._parse_output_by_key(key, response) if "{" not in key else self._extract_and_format(
+                    self._get_benchmark_data(response), key) if key else "")
         elif len(self._extractor_fields) > 1:
             res = {}
             for key in self._extractor_fields:
@@ -255,7 +314,7 @@ class OnlineChatModuleBase(ModuleBase):
         raise NotImplementedError(f"{self._model_type} not implemented _query_deployment method in subclass")
 
     def _get_deploy_tasks(self):
-        if not self._is_trained: None
+        if not self._is_trained: return None
 
         def _start_for_deployment():
             (deployment_id, status) = self._create_deployment()

@@ -25,7 +25,7 @@ model_groups = {
 	},
 	"internlm2": {
 		"prompt_keys": {
-            'sos': '<|im_start|>system\n', 'soh': '<|im_start|>user\n', 'soa': '<|im_start|>assistant\n', 'soe': '<|im_start|>environment\n', 'plugin': '<|plugin|>', 'interpreter': '<|interpreter|>', 'eos': '<|im_end|>\n', 'eoh': '<|im_end|>\n', 'eoa': '<|im_end|>', 'eoe': '<|im_end|>\n', 'separator': '\n', 'stop_words': ['<|im_end|>', '<|action_end|>'],
+            'sos': '<|im_start|>system\n', 'soh': '<|im_start|>user\n', 'soa': '<|im_start|>assistant\n', 'soe': '<|im_start|>environment\n', 'plugin': '<|plugin|>', 'interpreter': '<|interpreter|>', 'eos': '<|im_end|>\n', 'eoh': '<|im_end|>\n', 'eoa': '<|im_end|>', 'eoe': '<|im_end|>\n', 'separator': '\n', 'stop_words': ['<|im_end|>'], 'tool_start_token': '<|action_start|><|plugin|>', 'tool_end_token': '<|action_end|>',
             'system': "You are an AI assistant whose name is InternLM (书生·浦语).\n- InternLM (书生·浦语) is a conversational language model that is developed by Shanghai AI Laboratory (上海人工智能实验室). It is designed to be helpful, honest, and harmless.\n- InternLM (书生·浦语) can understand and communicate fluently in the language chosen by the user such as English and 中文."
             },
 	},

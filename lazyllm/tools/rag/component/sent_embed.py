@@ -1,8 +1,10 @@
 import json
 from typing import Any, List
 
-from llama_index.core.embeddings import BaseEmbedding
+import lazyllm
 from lazyllm import LOG
+from llama_index.core.embeddings import BaseEmbedding
+
 
 class LLamaIndexEmbeddingWrapper(BaseEmbedding):
     model: Any
@@ -27,7 +29,10 @@ class LLamaIndexEmbeddingWrapper(BaseEmbedding):
         return self._query_embedding(query=text)
 
     def _get_text_embeddings(self, texts: List[str]) -> List[List[float]]:
-        return self._query_embedding(query=texts)
+        if isinstance(self.model, lazyllm.OnlineEmbeddingModule):
+            return [self._query_embedding(query=x) for x in texts]
+        else:
+            return self._query_embedding(query=texts)
 
     async def _aget_query_embedding(self, query: str) -> List[float]:
         return self._get_query_embedding(query)
