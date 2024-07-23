@@ -119,7 +119,7 @@ def exe_onlinechat_parallel_function_call(request):
     print(f"\n【{source}】parallel function calling test done.")
 
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
-squery = "What's the weather like today in Tokyo."
+squery = "What's the weather like today in celsius in Tokyo."
 mquery = "What's the weather like today in celsius in Tokyo and Paris."
 
 class TestOnlineChatFunctionCall(object):
