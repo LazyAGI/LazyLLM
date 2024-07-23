@@ -37,7 +37,8 @@ class DefaultIndex:
     ) -> List[DocNode]:
         if similarity_name not in self.registered_similarity:
             raise ValueError(
-                f"{similarity_name} not registered, please check your input. Available options now: {self.registered_similarity.keys()}"
+                f"{similarity_name} not registered, please check your input."
+                f"Available options now: {self.registered_similarity.keys()}"
             )
         similarity_func, mode, descend = self.registered_similarity[similarity_name]
 
