@@ -1,6 +1,7 @@
 import re
 import copy
 from lazyllm.components.http_request.http_executor import HttpExecutor, HttpExecutorResponse
+from lazyllm.engine.status import NodeExecutionStatus
 
 
 class HttpRequestNode():
@@ -48,15 +49,23 @@ class HttpRequestNode():
             http_executor = HttpExecutor(self.method, self.url, self.headers, self.params, self.body)
             response = http_executor.invoke()
         except Exception as e:
-            raise e
+            outputs = {
+                'status': NodeExecutionStatus.FAILED,
+                'error': str(e)
+            }
+            return outputs
 
         _, file_binary = self.extract_files(response)
 
-        outputs = {'status_code': response.status_code,
-                   'content': response.content if len(file_binary) == 0 else None,
-                   'headers': response.headers,
-                   'file': file_binary
-                   }
+        outputs = {
+            'status': NodeExecutionStatus.SUCCEEDED,
+            'output': {
+                'status_code': response.status_code,
+                'content': response.content if len(file_binary) == 0 else None,
+                'headers': response.headers,
+                'file': file_binary
+            }
+        }
         return outputs
 
     def extract_files(self, response: HttpExecutorResponse):
