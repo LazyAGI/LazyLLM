@@ -3,11 +3,9 @@ from . import utils
 import functools
 import lazyllm
 
-
 add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.module)
 add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.module)
 add_example = functools.partial(utils.add_example, module=lazyllm.module)
-
 
 add_chinese_doc('ModuleBase', '''\
 Module是LazyLLM中的顶层组件，具备训练、部署、推理和评测四项关键能力，每个模块可以选择实现其中的部分或者全部的能力，每项能力都可以由一到多个Component组成。
@@ -57,7 +55,7 @@ add_chinese_doc('ModuleBase.forward', '''\
 add_english_doc('ModuleBase.forward', '''\
 Define computation steps executed each time, all subclasses of ModuleBase need to override.
 ''')
-                
+
 add_example('ModuleBase.forward', '''\
 >>> import lazyllm
 >>> class MyModule(lazyllm.module.ModuleBase):
@@ -99,7 +97,7 @@ add_example('ModuleBase.restart', '''\
 >>> m(1)
 "reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
 ''')
-                
+
 add_chinese_doc('ModuleBase.update', '''\
 更新模块（及所有的子模块）。当模块重写了 ``_get_train_tasks`` 方法后，模块会被更新。更新完后会自动进入部署和推理的流程。
 
@@ -144,13 +142,13 @@ Args:
 add_english_doc('ModuleBase.evalset', '''\
 during update or eval, and the results will be stored in the eval_result variable.
 
-.. function:: evalset(evalset, collect_f=lambda x: x) -> None
+evalset(evalset, collect_f=lambda x: x) -> None
 
 Args:
     evalset (list): Evaluation set
     collect_f (Callable): Post-processing method for evaluation results, no post-processing by default
 
-.. function:: evalset(evalset, load_f=None, collect_f=lambda x: x) -> None
+evalset(evalset, load_f=None, collect_f=lambda x: x) -> None
 
 Args:
     evalset (str): Path to the evaluation set
@@ -201,7 +199,7 @@ add_chinese_doc('ModuleBase._get_train_tasks', '''\
 add_english_doc('ModuleBase._get_train_tasks', '''\
 Define a training task. This function returns a training pipeline. Subclasses that override this function can be trained or fine-tuned during the update phase.
 ''')
-                
+
 add_example('ModuleBase._get_train_tasks', '''\
 >>> import lazyllm
 >>> class MyModule(lazyllm.module.ModuleBase):
@@ -211,7 +209,7 @@ add_example('ModuleBase._get_train_tasks', '''\
 >>> MyModule().update()
 1
 ''')
-                
+
 add_chinese_doc('ModuleBase._get_deploy_tasks', '''\
 定义部署任务，该函数返回训练的pipeline，重写了此函数的子类可以在update/start阶段被部署。
 ''')

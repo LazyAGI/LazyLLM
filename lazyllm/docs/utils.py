@@ -59,6 +59,6 @@ def add_example(obj_name, docstr, module=lazyllm):
         all_examples.extend(docstr)
 
     if lazyllm.config['language'].upper() == 'CHINESE':
-        add_doc(obj_name, docstr, module, '\n\nExample::\n')
+        add_doc(obj_name, docstr, module, '\n\nExamples:\n')
     if lazyllm.config['language'].upper() == 'ENGLISH':
-        add_doc(obj_name, docstr, module, '\n\nExample::\n')
+        add_doc(obj_name, docstr, module, '\n\nExamples:\n')

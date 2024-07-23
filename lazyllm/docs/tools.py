@@ -3,7 +3,6 @@ from . import utils
 import functools
 import lazyllm
 
-
 add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tools)
 add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools)
 add_example = functools.partial(utils.add_example, module=lazyllm.tools)
@@ -13,7 +12,7 @@ Initializes a Document module with optional user interface creation.
 
 This constructor initializes a Document module that can work with or without a user interface (UI). If the UI is enabled, it also sets up a server module to manage document operations and a web module for UI interactions. The module relies on an implementation (`DocGroupImpl`) that handles the core functionality such as generating signatures and querying documents based on signatures.
 
-Arguments:
+Args:
     dataset_path (str): The path to the dataset directory. This directory should contain the documents to be managed by the Document module.
     embed: An embedding object or function that is used for generating document embeddings. The exact type and requirements depend on the implementation of `DocGroupImpl`.
     create_ui (bool, optional): A flag indicating whether to create a user interface for the Document module. Defaults to True.
@@ -25,7 +24,7 @@ add_chinese_doc('Document', r"""
 
 此构造函数初始化一个可以有或没有用户界面的文档模块。如果启用了用户界面，它还会提供一个ui界面来管理文档操作接口，并提供一个用于用户界面交互的网页。
 
-Arguments:
+Args:
     dataset_path (str): 数据集目录的路径。此目录应包含要由文档模块管理的文档。
     embed: 用于生成文档embedding的对象。
     create_ui (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 True。
@@ -43,7 +42,7 @@ add_english_doc('Reranker', r"""
 Initializes a Rerank module for postprocessing and reranking of nodes (documents).
 This constructor initializes a Reranker module that configures a reranking process based on a specified reranking type. It allows for the dynamic selection and instantiation of reranking kernels (algorithms) based on the type and provided keyword arguments.
 
-Arguments:
+Args:
     types: The type of reranker to be used for the postprocessing and reranking process. Defaults to 'Reranker'.
     **kwargs: Additional keyword arguments that are passed to the reranker upon its instantiation.
 
@@ -56,7 +55,7 @@ Detailed explanation of reranker types
 add_chinese_doc('Reranker', r"""
 用于创建节点（文档）后处理和重排序的模块。
 
-Arguments:
+Args:
     types: 用于后处理和重排序过程的排序器类型。默认为 'Reranker'。
     **kwargs: 传递给重新排序器实例化的其他关键字参数。
 
@@ -83,7 +82,7 @@ add_english_doc('Retriever', r"""
 Create a Retriever module for document query and retrieval.
 This constructor initializes a Retriever module that configures a document retrieval process based on a specified similarity measure. It generates a signature using the document's generate_signature method, which is then used for querying documents.
 
-Arguments:
+Args:
     doc: The Document module instance that contains the documents and functionalities for generating signatures and querying documents.
     parser: The parser to be used for processing documents during querying.The candidate sets are ["Hierarchy", "CoarseChunk", "MediumChunk", "FineChunk", "SentenceDivider", "TokenDivider", "HtmlExtractor", "JsonExtractor", "MarkDownExtractor"]
     similarity : The name of the similarity function to be used for document retrieval. Defaults to 'defatult'. The candidate sets are ["defatult", "chinese_bm25", "bm25"].
@@ -99,7 +98,7 @@ Detailed explanation of Parser types
   - HtmlExtractor：This node parser uses beautifulsoup to parse raw HTML.By default, it will parse a select subset of HTML tags, but you can override this.The default tags are: ["p", "h1"]
   - JsonExtractor：Splits a document into Nodes using custom JSON splitting logic.
   - MarkDownExtractor：Splits a document into Nodes using custom Markdown splitting logic.
-                
+
 Detailed explanation of similarity types
   - defatult：Search documents using cosine method.
   - chinese_bm25：Search documents using chinese_bm25 method.The primary differences between chinese_bm25 and the standard bm25 stem from the specific adjustments and optimizations made for handling Chinese text. 
@@ -111,7 +110,7 @@ add_chinese_doc('Retriever', r"""
 
 此构造函数初始化一个检索模块，该模块根据指定的相似度度量配置文档检索过程。它使用文档的 generate_signature 方法生成签名，然后用于查询文档。
 
-Arguments:
+Args:
     doc: 文档模块实例。
     parser: 用于设置处理文档的解析器。候选集包括 ["Hierarchy", "CoarseChunk", "MediumChunk", "FineChunk", "SentenceDivider", "TokenDivider", "HtmlExtractor", "JsonExtractor", "MarkDownExtractor"]
     similarity : 用于设置文档检索的相似度函数。默认为 'defatult'。候选集包括 ["defatult", "chinese_bm25", "bm25"]。
@@ -150,11 +149,11 @@ WebModule是LazyLLM为开发者提供的基于Web的交互界面。在初始化�
 模块返回的结果和日志会直接显示在网页的“处理日志”和Chatbot组件上。除此之外，WebModule支持在网页上动态加入Checkbox或Text组件用于向模块发送额外的参数。
 WebModule页面还提供“使用上下文”，“流式输出”和“追加输出”的Checkbox，可以用来改变页面和后台模块的交互方式。
 
-.. function:: WebModule.init_web(component_descs) -> gradio.Blocks
+WebModule.init_web(component_descs) -> gradio.Blocks
 使用gradio库生成演示web页面，初始化session相关数据以便在不同的页面保存各自的对话和日志，然后使用传入的component_descs参数为页面动态添加Checkbox和Text组件，最后设置页面上的按钮和文本框的相应函数
 之后返回整个页面。WebModule的__init__函数调用此方法生成页面。
 
-参数：
+Args：
     component_descs (list): 用于动态向页面添加组件的列表。列表中的每个元素也是一个列表，其中包含5个元素，分别是组件对应的模块ID，模块名，组件名，组件类型（目前仅支持Checkbox和Text），组件默认值。
 ''')
 
@@ -167,14 +166,14 @@ programmatically to the web page for additional parameters to the background mod
 provides Checkboxes of “Use Context,” “Stream Output,” and “Append Output,” which can be used to adjust the
 interaction between the page and the module behind.
 
-.. function:: WebModule.init_web(component_descs) -> gradio.Blocks
+WebModule.init_web(component_descs) -> gradio.Blocks
 
 Generate a demonstration web page based on gradio. The function initializes session-related data to save chat history
 and logs for different pages, then dynamically add Checkbox and Text components to the page according to component_descs
 parameter, and set the corresponding functions for the buttons and text boxes on the page at last.
 WebModule’s __init__ function calls this method to generate the page.
 
-Arguments:
+Args:
     component_descs (list): A list used to add components to the page. Each element in the list is also a list containing 
     5 elements, which are the module ID, the module name, the component name, the component type (currently only
     supports Checkbox and Text), and the default value of the component.

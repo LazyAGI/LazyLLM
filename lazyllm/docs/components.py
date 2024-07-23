@@ -3,7 +3,6 @@ from . import utils
 import functools
 import lazyllm
 
-
 add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.components)
 add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.components)
 add_example = functools.partial(utils.add_example, module=lazyllm.components)
@@ -30,7 +29,7 @@ LazyLLM提供的Component的注册机制，可以将任意函数注册成LazyLLM
 .. function:: register(cls, *, rewrite_func) -> Decorator
 
 函数调用后返回一个装饰器，它会将被装饰的函数包装成一个Component注册到名为cls的组中.
- 
+
 Args:
     cls (str): 函数即将被注册到的组的名字，要求组必须存在，默认的组有 ``finetune`` 、 ``deploy`` ，用户可以调用 ``new_group`` 创建新的组
     rewrite_func (str): 注册后要重写的函数名称，默认为 ``apply`` ，当需要注册一个bash命令时需传入 ``cmd`` 
@@ -116,7 +115,9 @@ Args:
 
 此类的关键字参数及其默认值如下：
 
-Keyword Args: 
+Keyword Args:
+
+Args:                 
     data_path (str): 数据路径，默认为 ``None``；一般在此类对象被调用时候，作为唯一位置参数传入。
     batch_size (int): 批处理大小，默认为 ``64``。
     micro_batch_size (int): 微批处理大小，默认为 ``4``。
@@ -135,7 +136,7 @@ Keyword Args:
     train_on_inputs (bool): 是否在输入上训练，默认为 ``True``。
     show_prompt (bool): 是否显示提示，默认为 ``False``。
     nccl_port (int): NCCL 端口，默认为 ``19081``。
-                
+
 ''')
 
 add_english_doc('finetune.AlpacaloraFinetune', '''\
@@ -153,6 +154,8 @@ Args:
 The keyword arguments and their default values for this class are as follows:
 
 Keyword Args: 
+
+Args:                
     data_path (str): Data path, default to ``None``; generally passed as the only positional argument when this object is called.
     batch_size (int): Batch size, default to ``64``.
     micro_batch_size (int): Micro-batch size, default to ``4``.
@@ -195,6 +198,8 @@ Args:
 此类的关键字参数及其默认值如下：
 
 Keyword Args: 
+
+Args:                
     data_path (str): 数据路径，默认为 ``None``；一般在此类对象被调用时候，作为唯一位置参数传入。
     batch_size (int): 批处理大小，默认为 ``64``。
     micro_batch_size (int): 微批处理大小，默认为 ``4``。
@@ -226,7 +231,9 @@ Args:
 
 The keyword arguments and their default values for this class are as follows:
 
-Keyword Args: 
+Keyword Args:
+
+Args:                 
     data_path (str): Data path, default to ``None``; generally passed as the only positional argument when this object is called.
     batch_size (int): Batch size, default to ``64``.
     micro_batch_size (int): Micro-batch size, default to ``4``.
@@ -266,6 +273,7 @@ Args:
 
 Keyword Args:
 
+Args:
     stage (typing.Literal['pt', 'sft', 'rm', 'ppo', 'dpo', 'kto']): 默认值是：``sft``。将在训练中执行的阶段。
     do_train (bool): 默认值是：``True``。是否运行训练。
     finetuning_type (typing.Literal['lora', 'freeze', 'full']): 默认值是：``lora``。要使用的微调方法。
@@ -293,7 +301,7 @@ Keyword Args:
     per_device_eval_batch_size (int): 默认值是：``1``。每个GPU/TPU/MPS/NPU核心/CPU的验证集批次大小。
     eval_strategy (typing.Union[transformers.trainer_utils.IntervalStrategy, str]): 默认值是：``steps``。要使用的验证评估策略。
     eval_steps (typing.Optional[float]): 默认值是：``500``。每X个步骤运行一次验证评估。应该是整数或范围在`[0,1)`的浮点数。如果小于1，将被解释为总训练步骤的比例。
-                
+
 ''')
 
 add_english_doc('finetune.LlamafactoryFinetune', '''\
@@ -310,6 +318,7 @@ Args:
 
 Keyword Args:
 
+Args:
     stage (typing.Literal['pt', 'sft', 'rm', 'ppo', 'dpo', 'kto']): Default is: ``sft``. Which stage will be performed in training.
     do_train (bool): Default is: ``True``. Whether to run training.
     finetuning_type (typing.Literal['lora', 'freeze', 'full']): Default is: ``lora``. Which fine-tuning method to use.
@@ -350,7 +359,7 @@ add_chinese_doc('auto.AutoFinetune', '''\
 此类是 ``LazyLLMFinetuneBase`` 的子类，可根据输入的参数自动选择合适的微调框架和参数，以对大语言模型进行微调。
 
 具体而言，基于输入的：``base_model`` 的模型参数、``ctx_len``、``batch_size``、``lora_r``、``launcher`` 中GPU的类型以及卡数，该类可以自动选择出合适的微调框架（如: ``AlpacaloraFinetune`` 或 ``CollieFinetune``）及所需的参数。
-                
+
 Args:
     base_model (str): 用于进行微调的基模型。要求是基模型的路径。
     source (lazyllm.config['model_source']): 指定模型的下载源。可通过设置环境变量 ``LAZYLLM_MODEL_SOURCE`` 来配置，目前仅支持 ``huggingface`` 或 ``modelscope`` 。若不设置，lazyllm不会启动自动模型下载。
@@ -402,6 +411,8 @@ Args:
 此类的关键字参数及其默认值如下：
 
 Keyword Args: 
+
+Args:                
     tp (int): 张量并行参数，默认为 ``1``。
     max_total_token_num (int): 最大总token数，默认为 ``64000``。
     eos_id (int): 结束符ID，默认为 ``2``。
@@ -424,7 +435,9 @@ Args:
 
 The keyword arguments and their default values for this class are as follows:
 
-Keyword Args: 
+Keyword Args:
+
+Args:                 
     tp (int): Tensor parallelism parameter, default is ``1``.
     max_total_token_num (int): Maximum total token number, default is ``64000``.
     eos_id (int): End-of-sentence ID, default is ``2``.
@@ -441,7 +454,6 @@ add_example('deploy.Lightllm', '''\
 >>> infer = deploy.lightllm()
 ''')
 
-
 # Deploy-Vllm
 add_chinese_doc('deploy.Vllm', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 `VLLM <https://github.com/vllm-project/vllm>`_ 框架提供的推理能力，用于对大语言模型进行推理。
@@ -454,7 +466,9 @@ Args:
 
 此类的关键字参数及其默认值如下：
 
-Keyword Args: 
+Keyword Args:
+
+Args: 
     tensor-parallel-size (int): 张量并行参数，默认为 ``1``。
     dtype (str): 模型权重和激活值的数据类型，默认为 ``auto``。另外可选项还有： ``half``, ``float16``, ``bfloat16``, ``float``, ``float32``。
     kv-cache-dtype (str): 看kv缓存的存储类型，默认为 ``auto``。另外可选的还有：``fp8``, ``fp8_e5m2``, ``fp8_e4m3``。
@@ -480,6 +494,8 @@ Args:
 The keyword arguments and their default values for this class are as follows:
 
 Keyword Args: 
+
+Args:                
     tensor-parallel-size (int): Tensor parallelism parameter, default is ``1``.
     dtype (str): Data type for model weights and activations, default is ``auto``. Other options include: ``half``, ``float16``, ``bfloat16``, ``float``, ``float32``.
     kv-cache-dtype (str): Data type for the key-value cache storage, default is ``auto``. Other options include: ``fp8``, ``fp8_e5m2``, ``fp8_e4m3``.
@@ -503,7 +519,7 @@ add_chinese_doc('auto.AutoDeploy', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，可根据输入的参数自动选择合适的推理框架和参数，以对大语言模型进行推理。
 
 具体而言，基于输入的：``base_model`` 的模型参数、``max_token_num``、``launcher`` 中GPU的类型以及卡数，该类可以自动选择出合适的推理框架（如: ``Lightllm`` 或 ``Vllm``）及所需的参数。
-                
+
 Args:
     base_model (str): 用于进行微调的基模型，要求是基模型的路径或模型名。用于提供基模型信息。
     source (lazyllm.config['model_source']): 指定模型的下载源。可通过设置环境变量 ``LAZYLLM_MODEL_SOURCE`` 来配置，目前仅支持 ``huggingface`` 或 ``modelscope`` 。若不设置，lazyllm不会启动自动模型下载。
@@ -549,8 +565,10 @@ ModelManager是LazyLLM为开发者提供的自动下载模型的工具类。目�
     - LAZYLLM_MODEL_SOURCE_TOKEN: ``huggingface`` 或 ``modelscope`` 提供的token，用于下载私有模型。
     - LAZYLLM_MODEL_PATH: 冒号 ``:`` 分隔的本地绝对路径列表用于搜索模型。
     - LAZYLLM_MODEL_CACHE_DIR: 下载后的模型在本地的存储目录
-    
-Keyword Args: 
+
+Keyword Args:
+
+Args:                 
     model_source (str, 可选): 模型下载源，目前仅支持 ``huggingface`` 或 ``modelscope`` 。如有必要，ModelManager将从此下载源下载模型数据。如果不提供，默认使用
         LAZYLLM_MODEL_SOURCE环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE，ModelManager将从 ``modelscope`` 下载模型。
     token (str, 可选): ``huggingface`` 或 ``modelscope`` 提供的token。如果token不为空，ModelManager将使用此token下载模型数据。如果不提供，默认使用
@@ -559,7 +577,7 @@ Keyword Args:
         LAZYLLM_MODEL_PATH环境变量中的设置。如果为空或LAZYLLM_MODEL_PATH未设置，ModelManager将跳过从model_path中寻找模型的步骤。
     cache_dir (str, 可选): 一个本地目录的绝对路径。下载后的模型将存放在此目录下，如果不提供，默认使用LAZYLLM_MODEL_CACHE_DIR环境变量中的设置。如果
         LAZYLLM_MODEL_PATH未设置，默认值为~/.lazyllm/model
-        
+
 .. function:: ModelManager.download(model) -> str
 
 用于从model_source下载模型。download函数首先在ModelManager类初始化参数model_path列出的目录中搜索目标模型。如果未找到，会在cache_dir下搜索目标模型。如果仍未找到，
@@ -581,6 +599,8 @@ huggingface or modelscope. Before using ModelManager, the following environment 
     - LAZYLLM_MODEL_CACHE_DIR: Directory for downloaded models.
 
 Keyword Args: 
+
+Args:                
     model_source (str, optional): The source for model downloads, currently only supports ``huggingface`` or ``modelscope`` .
         If necessary, ModelManager downloads model data from the source. If not provided, LAZYLLM_MODEL_SOURCE
         environment variable would be used, and if LAZYLLM_MODEL_SOURCE is not set, ModelManager will not download
@@ -595,7 +615,7 @@ Keyword Args:
     cache_dir (str, optional): An absolute path of a directory to save downloaded models. If not provided,
         LAZYLLM_MODEL_CACHE_DIR environment variable would be used, and if LAZYLLM_MODEL_PATH is not set, the default
         value is ~/.lazyllm/model.
-        
+
 .. function:: ModelManager.download(model) -> str
 
 Download models from model_source. The function first searches for the target model in directories listed in the
@@ -753,7 +773,6 @@ Args:
         input (Option[str]): The input of the large model. If this parameter is specified, any part of the output that includes the input will be completely truncated. Defaults to None.
 ''')
 
-
 add_chinese_doc('AlpacaPrompter', '''\
 Alpaca格式的Prompter，支持工具调用，不支持历史对话。
 
@@ -848,7 +867,7 @@ add_example = functools.partial(utils.add_example, module=lazyllm.launcher)
 # Launcher-EmptyLauncher
 add_chinese_doc('EmptyLauncher', '''\
 此类是 ``LazyLLMLaunchersBase`` 的子类，作为一个本地的启动器。
-                
+
 Args:
     subprocess (bool): 是否使用子进程来启动。默认为 `False`。
     sync (bool): 是否同步执行作业。默认为 `True`，否则为异步执行。
@@ -874,7 +893,7 @@ add_chinese_doc('SlurmLauncher', '''\
 此类是 ``LazyLLMLaunchersBase`` 的子类，作为slurm启动器。
 
 具体而言，它提供了启动和配置 Slurm 作业的方法，包括指定分区、节点数量、进程数量、GPU 数量以及超时时间等参数。
-                
+
 Args:
     partition (str): 要使用的 Slurm 分区。默认为 ``None``，此时将使用 ``lazyllm.config['partition']`` 中的默认分区。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SLURM_PART=a100`` 。
     nnode  (int): 要使用的节点数量。默认为 ``1``。
@@ -889,7 +908,7 @@ add_english_doc('SlurmLauncher', '''\
 This class is a subclass of ``LazyLLMLaunchersBase`` and acts as a Slurm launcher.
 
 Specifically, it provides methods to start and configure Slurm jobs, including specifying parameters such as the partition, number of nodes, number of processes, number of GPUs, and timeout settings.
-                
+
 Args:
     partition (str): The Slurm partition to use. Defaults to ``None``, in which case the default partition in ``lazyllm.config['partition']`` will be used. This configuration can be enabled by setting environment variables, such as ``export LAZYLLM_SLURM_PART=a100``.
     nnode  (int): The number of nodes to use. Defaults to ``1``.
@@ -910,7 +929,7 @@ add_chinese_doc('ScoLauncher', '''\
 此类是 ``LazyLLMLaunchersBase`` 的子类，作为SCO (Sensecore)启动器。
 
 具体而言，它提供了启动和配置 SCO 作业的方法，包括指定分区、工作空间名称、框架类型、节点数量、进程数量、GPU 数量以及是否使用 torchrun 等参数。
-        
+
 Args:
     partition (str): 要使用的分区。默认为 ``None``，此时将使用 ``lazyllm.config['partition']`` 中的默认分区。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SLURM_PART=a100`` 。
     workspace_name (str): SCO 上的工作空间名称。默认为 ``lazyllm.config['sco.workspace']`` 中的配置。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SCO_WORKSPACE=myspace`` 。
@@ -927,7 +946,7 @@ add_english_doc('ScoLauncher', '''\
 This class is a subclass of ``LazyLLMLaunchersBase`` and acts as a SCO launcher.
 
 Specifically, it provides methods to start and configure SCO jobs, including specifying parameters such as the partition, workspace name, framework type, number of nodes, number of processes, number of GPUs, and whether to use torchrun or not.
-                
+
 Args:
     partition (str): The Slurm partition to use. Defaults to ``None``, in which case the default partition in ``lazyllm.config['partition']`` will be used. This configuration can be enabled by setting environment variables, such as ``export LAZYLLM_SLURM_PART=a100``.
     workspace_name (str): The workspace name on SCO. Defaults to the configuration in ``lazyllm.config['sco.workspace']``. This configuration can be enabled by setting environment variables, such as ``export LAZYLLM_SCO_WORKSPACE=myspace``.

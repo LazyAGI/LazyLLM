@@ -1,5 +1,3 @@
-.. _api.module:
-
 lazyllm.Module
 
 ::: lazyllm.module.ModuleBase
