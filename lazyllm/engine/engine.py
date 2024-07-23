@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Optional, Callable, Dict
-from lazyllm import graph, ActionModule
+from lazyllm import graph, ActionModule, switch, pipeline
 from .node import all_nodes
 import re
 import ast
@@ -30,6 +30,9 @@ class CodeBlock(object):
 class NodeBuilder(object):
     builder_methods = dict()
 
+    def __init__(self):
+        self.funcs = dict()
+
     @classmethod
     def register(cls, name):
         def impl(f):
@@ -37,9 +40,12 @@ class NodeBuilder(object):
             return f
         return impl
 
+    # build node recursively
     def build(self, node):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
+        if node.id in self.funcs:
+            return self.funcs[node.id]
         if node.kind in NodeBuilder.builder_methods:
             createf = NodeBuilder.builder_methods[node.kind]
             r = inspect.getfullargspec(createf)
@@ -68,6 +74,7 @@ class NodeBuilder(object):
         module = node_msgs['module'](**init_args)
         for key, value in build_args.items():
             module = getattr(module, key)(value, **other_args.get(key, dict()))
+        self.funcs[node.id] = module
         return module
 
 
@@ -98,18 +105,12 @@ class LightEngine(Engine):
 
     def __init__(self):
         super().__init__()
-        self.funcs = dict()
-
-    def _build(self, node):
-        if node.id not in self.funcs:
-            self.funcs[node.id] = _builder.build(node)
-        return self.funcs[node.id]
 
     def make_graph(self, nodes: List[dict], edges: List[dict]):
         nodes = {n['id']: Node(id=n['id'], kind=n['kind'], name=n['name'], args=n['args']) for n in nodes}
         edges = [Edge(iid=e['iid'], oid=e['oid'], formatter=e.get('formatter')) for e in edges]
         for node in nodes.values():
-            node.func = self._build(node)
+            node.func = _builder.build(node)
 
         with graph() as g:
             for _, node in nodes.items():
@@ -149,5 +150,12 @@ def make_code(code):
 
 
 @NodeBuilder.register('Switch')
-def make_switch(nodes: List[dict], edges: List[dict]):
-    return LightEngine().make_graph(nodes, edges)
+def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
+    with switch(judge_on_full_input=judge_on_full_input) as sw:
+        for cond, nodes in nodes.items():
+            if len(nodes) > 1:
+                node = pipeline([LightEngine()._build(node) for node in nodes])
+            else:
+                node = LightEngine()._build(nodes[cond])
+            sw.case[cond, node]
+    return sw
