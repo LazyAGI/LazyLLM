@@ -80,9 +80,11 @@ def exe_onlinechat_single_function_call(request):
     if source is None or source not in sources:
         raise ValueError(f"The source {source} field must contain the value in the list {sources}")
     if model:
-        llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream).field_extractor("{content}<|tool_calls|>{tool_calls|index}")
+        llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream)\
+            .field_extractor("{content}<|tool_calls|>{tool_calls|index}")
     else:
-        llm = lazyllm.OnlineChatModule(source=source, stream=stream).field_extractor("{content}<|tool_calls|>{tool_calls|index}")
+        llm = lazyllm.OnlineChatModule(source=source, stream=stream)\
+            .field_extractor("{content}<|tool_calls|>{tool_calls|index}")
 
     print(f"\nStarting test 【{source}】 function calling")
     fc = FunctionCall(llm, tools)
@@ -104,9 +106,11 @@ def exe_onlinechat_parallel_function_call(request):
     if source is None or source not in sources:
         raise ValueError(f"The source {source} field must contain the value in the list {sources}")
     if model:
-        llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream).field_extractor("{content}<|tool_calls|>{tool_calls|index}")
+        llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream)\
+            .field_extractor("{content}<|tool_calls|>{tool_calls|index}")
     else:
-        llm = lazyllm.OnlineChatModule(source=source, stream=stream).field_extractor("{content}<|tool_calls|>{tool_calls|index}")
+        llm = lazyllm.OnlineChatModule(source=source, stream=stream)\
+            .field_extractor("{content}<|tool_calls|>{tool_calls|index}")
 
     agent = FunctionCallAgent(llm, tools)
     print(f"\nStarting test 【{source}】parallel function calling")
