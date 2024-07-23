@@ -1,4 +1,5 @@
-import ast
+from typing import List, Callable
+from .store import DocNode, BaseStore
 import numpy as np
 
 
@@ -7,8 +8,9 @@ class DefaultIndex:
 
     registered_similarity = dict()
 
-    def __init__(self, embed, **kwargs):
+    def __init__(self, embed: Callable, store: BaseStore, **kwargs):
         self.embed = embed
+        self.store = store
 
     @classmethod
     def register_similarity(cls, func=None, mode=None, descend=True):
@@ -18,16 +20,24 @@ class DefaultIndex:
 
         return decorator(func) if func else decorator
 
-    def query(self, query, nodes, similarity_name, topk=None, **kwargs):
+    def query(
+        self,
+        query: str,
+        nodes: List[DocNode],
+        similarity_name: str,
+        topk: int,
+        **kwargs,
+    ) -> List[DocNode]:
         similarity_func, mode, descend = self.registered_similarity[similarity_name]
 
         if mode == "embedding":
             assert self.embed, "Chosen similarity needs embed model."
             assert len(query) > 0, "Query should not be empty."
-            query_embedding = ast.literal_eval(self.embed(query))
+            query_embedding = self.embed(query)
             for node in nodes:
-                if not node.embedding:
-                    node.embedding = ast.literal_eval(self.embed(node.text))
+                if not node.has_embedding():
+                    node.do_embedding(self.embed)
+            self.store.try_save_nodes(nodes[0].group, nodes)
             similarities = [
                 (node, similarity_func(query_embedding, node.embedding, **kwargs))
                 for node in nodes
@@ -46,7 +56,7 @@ class DefaultIndex:
 
 
 @DefaultIndex.register_similarity(mode="text", descend=True)
-def dummy(query, node, **kwargs):
+def dummy(query: str, node, **kwargs):
     return len(node.text)
 
 
