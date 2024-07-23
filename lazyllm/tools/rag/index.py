@@ -18,7 +18,7 @@ class DefaultIndex:
         def decorator(f):
             def wrapper(query, nodes, **kwargs):
                 if batch:
-                    # NOTE: the input and output for batch function should be List[DocNode] 
+                    # NOTE: the input and output for batch function should be List[DocNode]
                     return f(query, nodes, **kwargs)
                 else:
                     for node in nodes:

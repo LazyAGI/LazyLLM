@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List
 from ..store import DocNode
 import bm25s
 import Stemmer
