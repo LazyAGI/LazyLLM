@@ -36,12 +36,13 @@ class BM25:
         self.bm25 = bm25s.BM25()
         self.bm25.index(corpus_tokens)
 
-    def retrieve(self, query: str) -> List[Tuple[DocNode, float]]:
+    def retrieve(self, query: str) -> List[DocNode]:
         tokenized_query = bm25s.tokenize(
             self._tokenizer(query), stopwords=self._stopwords, stemmer=self._stemmer
         )
         indexs, scores = self.bm25.retrieve(tokenized_query, k=self.topk)
-        results: List[Tuple[DocNode, float]] = []
+        results = []
         for idx, score in zip(indexs[0], scores[0]):
-            results.append((self.nodes[idx], score))
+            self.nodes[idx].score = score
+            results.append(self.nodes[idx])
         return results

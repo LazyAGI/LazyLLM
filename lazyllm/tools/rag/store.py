@@ -2,10 +2,11 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from enum import Enum, auto
 import uuid
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 import chromadb
 from lazyllm import LOG, config
 from chromadb.api.models.Collection import Collection
+import numpy as np
 
 LAZY_ROOT_NAME = "lazyllm_root"
 config.add("rag_store", str, "map", "RAG_STORE")  # "map", "chroma"
@@ -37,9 +38,10 @@ class DocNode:
         self._excluded_embed_metadata_keys: List[str] = []
         # Metadata keys that are excluded from text for the LLM.
         self._excluded_llm_metadata_keys: List[str] = []
-        self.parent = parent
+        self.parent: Optional["DocNode"] = parent
         self.children: Dict[str, List["DocNode"]] = defaultdict(list)
-        self.is_saved = False
+        self.is_saved: bool = False
+        self.score: Union[float, np.float32] = 0.0
 
     @property
     def root_node(self) -> Optional["DocNode"]:
@@ -81,7 +83,7 @@ class DocNode:
         return (
             f"DocNode(id: {self.uid}, group: {self.group}, text: {self.get_content()}) parent: "
             f"{self.parent.uid if self.parent else None}, children: {self.get_children_str()} "
-            f"is_embed: {self.has_embedding()}"
+            f"is_embed: {self.has_embedding()}, score: {self.score}"
         )
 
     def __repr__(self) -> str:
