@@ -4,7 +4,7 @@ from typing import Any, Optional, List, Callable
 from dataclasses import dataclass
 from functools import partial
 
-from lazyllm.components.http_request.http_request_node import HttpRequestNode
+from lazyllm.tools.http_request.http_request import HttpRequest
 
 @dataclass
 class NodeArgs(object):
@@ -39,7 +39,7 @@ all_nodes = dict(
     ),
 
     HttpTool=dict(
-        module=HttpRequestNode,
+        module=HttpRequest,
         init_arguments=dict(
             method=NodeArgs(str),
             url=NodeArgs(str),

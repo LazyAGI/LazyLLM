@@ -1,11 +1,19 @@
 import re
 import copy
-from lazyllm.components.http_request.http_executor import HttpExecutor, HttpExecutorResponse
-from lazyllm.engine.status import NodeExecutionStatus
+from lazyllm.module.module import ModuleBase
+from lazyllm.tools.http_request.http_executor import HttpExecutor, HttpExecutorResponse
 
+class NodeExecutionStatus():
+    """
+    Workflow Node Execution Status Enum
+    """
+    RUNNING = 'running'
+    SUCCEEDED = 'succeeded'
+    FAILED = 'failed'
 
-class HttpRequestNode():
+class HttpRequest(ModuleBase):
     def __init__(self, method, url, API_Key, headers, params, body):
+        super().__init__()
         self.method = method
         self.url = url
         self.API_Key = API_Key
@@ -18,7 +26,7 @@ class HttpRequestNode():
         if self.API_Key != '':
             self.params['api_key'] = self.API_Key
 
-    def __call__(self, *args, **kwargs):
+    def forward(self, *args, **kwargs):
         def _map_input(target_str):
             # TODO: replacements could be more complex to create.
             replacements = copy.deepcopy(kwargs)
