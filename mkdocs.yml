@@ -12,6 +12,7 @@ nav:
   - Rag: Best Practice/rag.md
 - Advanced topics:
   - Contribution: Advanced Topics/contribution.md
+  - Changelog: Advanced Topics/changelog.md
 - Api reference:
   - Components: API Reference/components.md
   - Configs: API Reference/configs.md
