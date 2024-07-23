@@ -1,7 +1,7 @@
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root
 from lazyllm import Thread, ReadOnlyWrapper, LOG, globals
-from .common.common import _MetaBind
+from ..common.common import _MetaBind
 from functools import partial
 from enum import Enum
 import types
@@ -434,7 +434,7 @@ class Graph(LazyLLMFlowsBase):
     class Node:
         def __init__(self, func, name):
             self.func, self.name = func, name
-            self.inputs, self.outputs, self.value = [], [], None
+            self.inputs, self.outputs = [], []
 
         def __repr__(self): return lazyllm.make_repr('Flow', 'Node', name=self.name)
 
@@ -455,6 +455,12 @@ class Graph(LazyLLMFlowsBase):
     def end_node(self): return self._nodes[Graph.end_node_name]
 
     def add_edge(self, from_node, to_node):
+        if isinstance(from_node, (tuple, list)):
+            for f in from_node: self.add_edge(f, to_node)
+            return
+        if isinstance(to_node, (tuple, list)):
+            for t in to_node: self.add_edge(from_node, t)
+            return
         if isinstance(from_node, str): from_node = self._nodes[from_node]
         if isinstance(to_node, str): to_node = self._nodes[to_node]
         from_node.outputs.append(to_node)

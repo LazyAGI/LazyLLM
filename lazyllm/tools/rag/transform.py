@@ -22,11 +22,7 @@ def build_nodes_from_splits(
             continue
         node = DocNode(
             text=text_chunk,
-            ntype=node_group,
-            embedding=doc.embedding,
-            metadata=doc.metadata,
-            excluded_embed_metadata_keys=doc.excluded_embed_metadata_keys,
-            excluded_llm_metadata_keys=doc.excluded_llm_metadata_keys,
+            group=node_group,
             parent=doc,
         )
         nodes.append(node)

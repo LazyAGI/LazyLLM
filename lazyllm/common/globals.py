@@ -71,6 +71,9 @@ class Globals(object):
     def _clear_all(self):
         self.__data.clear()
 
+    def __contains__(self, item):
+        return item in self._data
+
 globals = Globals()
 
 

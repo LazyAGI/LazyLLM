@@ -129,14 +129,10 @@ class TestFlow(object):
             g.add = add
             g.concat = concat
 
-        g.add_edge(g.start_node_name, 'test1')
-        g.add_edge(g.start_node_name, 'test2')
-        g.add_edge(g.start_node_name, 'test3')
+        g.add_edge(g.start_node_name, ['test1', 'test2', 'test3'])
         # TODO: add_edge(['test1', 'test2'], 'add')
-        g.add_edge('test1', 'add')
-        g.add_edge('test2', 'add')
-        g.add_edge('add', 'concat')
-        g.add_edge('test3', 'concat')
+        g.add_edge(['test1', 'test2'], 'add')
+        g.add_edge(['add', 'test3'], 'concat')
         g.add_edge('concat', g.end_node_name)
 
         assert g(1) == ['1 get 1;2 get 1;', '3 get 1;']

@@ -12,8 +12,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     ISE = "</!lazyllm-spliter!>"
 
     def __init__(self, show=False, tools=None):
-        self._set_model_configs(system='You are an AI-Agent developed by LazyLLM.', sos='<|start_system|>',
-                                soh='<|Human|>:', soa='<|Assistant|>:', eos='<|end_system|>', eoh='', eoa='')
+        self._set_model_configs(system='You are an AI-Agent developed by LazyLLM.', sos='',
+                                soh='', soa='', eos='', eoh='', eoa='')
         self._show = show
         self._tools = tools
         self._pre_hook = None
