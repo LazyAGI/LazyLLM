@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from typing import List, Optional, Callable, Dict
 from lazyllm import graph, ActionModule
 from .node import all_nodes
+import re
+import ast
+import inspect
 
 
 @dataclass
@@ -38,7 +41,12 @@ class NodeBuilder(object):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
         if node.kind in NodeBuilder.builder_methods:
-            return NodeBuilder.builder_methods[node.kind](**node.args)
+            createf = NodeBuilder.builder_methods[node.kind]
+            r = inspect.getfullargspec(createf)
+            if isinstance(node.args, dict) and set(r.args) == set(node.args.keys()):
+                return NodeBuilder.builder_methods[node.kind](**node.args)
+            else:
+                return NodeBuilder.builder_methods[node.kind](node.args)
         node_msgs = all_nodes[node.kind]
         init_args, build_args, other_args = dict(), dict(), dict()
 
@@ -53,7 +61,7 @@ class NodeBuilder(object):
                 builder_key, key = key.split('.')
                 if builder_key not in other_args: other_args[builder_key] = dict()
                 getf = node_msgs['other_arguments'][builder_key][key].getattr_f
-                other_args[builder_key][key] = value
+                other_args[builder_key][key] = getf(value) if getf else value
             else:
                 raise KeyError(f'Invalid key `{key}` found')
 
@@ -88,11 +96,20 @@ class LightEngine(Engine):
             cls._instance = super().__new__(cls)
         return cls._instance
 
+    def __init__(self):
+        super().__init__()
+        self.funcs = dict()
+
+    def _build(self, node):
+        if node.id not in self.funcs:
+            self.funcs[node.id] = _builder.build(node)
+        return self.funcs[node.id]
+
     def make_graph(self, nodes: List[dict], edges: List[dict]):
         nodes = {n['id']: Node(id=n['id'], kind=n['kind'], name=n['name'], args=n['args']) for n in nodes}
         edges = [Edge(iid=e['iid'], oid=e['oid'], formatter=e.get('formatter')) for e in edges]
         for node in nodes.values():
-            node.func = _builder.build(node)
+            node.func = self._build(node)
 
         with graph() as g:
             for _, node in nodes.items():
@@ -111,6 +128,26 @@ class LightEngine(Engine):
         return self.graph(*args, **kw)
 
 
-@NodeBuilder.register('SubGraph')
+@NodeBuilder.register('SubGroup')
 def make_subgraph(nodes: List[dict], edges: List[dict]):
+    return LightEngine().make_graph(nodes, edges)
+
+
+@NodeBuilder.register('App')
+def make_subapp(nodes: List[dict], edges: List[dict]):
+    return LightEngine().make_graph(nodes, edges)
+
+
+@NodeBuilder.register('Code')
+def make_code(code):
+    fname = re.search(r'def\s+(\w+)\s*\(', code).group(1)
+    module = ast.parse(code)
+    code = compile(module, filename="<ast>", mode="exec")
+    local_dict = {}
+    exec(code, {}, local_dict)
+    return local_dict[fname]
+
+
+@NodeBuilder.register('Switch')
+def make_switch(nodes: List[dict], edges: List[dict]):
     return LightEngine().make_graph(nodes, edges)
