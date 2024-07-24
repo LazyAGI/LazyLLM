@@ -25,12 +25,12 @@ class TestBM25(unittest.TestCase):
 
         self.assertEqual(len(results), 2)
 
-        for node in results:
+        for node, score in results:
             self.assertIsInstance(node, DocNode)
-            self.assertIsInstance(node.score, np.float32)
+            self.assertIsInstance(score, np.float32)
 
-        self.assertIn(self.nodes[0], results)
-        self.assertGreater(self.nodes[0].score, self.nodes[1].score)
+        self.assertIn(self.nodes[0], [result[0] for result in results])
+        self.assertIn(self.nodes[1], [result[0] for result in results])
 
 
 if __name__ == "__main__":

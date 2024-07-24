@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 from ..store import DocNode
 import bm25s
 import Stemmer
@@ -36,13 +36,12 @@ class BM25:
         self.bm25 = bm25s.BM25()
         self.bm25.index(corpus_tokens)
 
-    def retrieve(self, query: str) -> List[DocNode]:
+    def retrieve(self, query: str) -> List[Tuple[DocNode, float]]:
         tokenized_query = bm25s.tokenize(
             self._tokenizer(query), stopwords=self._stopwords, stemmer=self._stemmer
         )
         indexs, scores = self.bm25.retrieve(tokenized_query, k=self.topk)
         results = []
         for idx, score in zip(indexs[0], scores[0]):
-            self.nodes[idx].score = score
-            results.append(self.nodes[idx])
+            results.append((self.nodes[idx], score))
         return results

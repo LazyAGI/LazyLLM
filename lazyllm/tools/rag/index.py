@@ -2,6 +2,7 @@ from typing import List, Callable
 from .store import DocNode, BaseStore
 import numpy as np
 from .component.bm25 import BM25
+from lazyllm import LOG
 
 
 class DefaultIndex:
@@ -18,12 +19,9 @@ class DefaultIndex:
         def decorator(f):
             def wrapper(query, nodes, **kwargs):
                 if batch:
-                    # NOTE: the input and output for batch function should be List[DocNode]
                     return f(query, nodes, **kwargs)
                 else:
-                    for node in nodes:
-                        node.score = f(query, node, **kwargs)
-                    return nodes
+                    return [(node, f(query, node, **kwargs)) for node in nodes]
 
             cls.registered_similarity[f.__name__] = (wrapper, mode, descend)
             return wrapper
@@ -55,24 +53,24 @@ class DefaultIndex:
             self.store.try_save_nodes(nodes[0].group, nodes)
             nodes = similarity_func(query_embedding, nodes, topk=topk, **kwargs)
         elif mode == "text":
-            nodes = similarity_func(query, nodes, topk=topk, **kwargs)
+            similarities = similarity_func(query, nodes, topk=topk, **kwargs)
         else:
             raise NotImplementedError(f"Mode {mode} is not supported.")
 
-        nodes.sort(key=lambda node: node.score, reverse=descend)
+        similarities.sort(key=lambda x: x[1], reverse=descend)
         if topk is not None:
-            nodes = nodes[:topk]
-        return nodes
+            similarities = similarities[:topk]
+        return [node for node, _ in similarities]
 
 
 @DefaultIndex.register_similarity(mode="text", batch=True)
-def bm25(query: str, nodes: List[DocNode], **kwargs) -> List[DocNode]:
+def bm25(query: str, nodes: List[DocNode], **kwargs) -> List:
     bm25_retriever = BM25(nodes, language="en", **kwargs)
     return bm25_retriever.retrieve(query)
 
 
 @DefaultIndex.register_similarity(mode="text", batch=True)
-def bm25_chinese(query: str, nodes: List[DocNode], **kwargs) -> List[DocNode]:
+def bm25_chinese(query: str, nodes: List[DocNode], **kwargs) -> List:
     bm25_retriever = BM25(nodes, language="zh", **kwargs)
     return bm25_retriever.retrieve(query)
 

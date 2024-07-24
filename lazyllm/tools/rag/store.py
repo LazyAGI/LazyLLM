@@ -41,7 +41,6 @@ class DocNode:
         self.parent: Optional["DocNode"] = parent
         self.children: Dict[str, List["DocNode"]] = defaultdict(list)
         self.is_saved: bool = False
-        self.score: Union[float, np.float32] = 0.0
 
     @property
     def root_node(self) -> Optional["DocNode"]:
@@ -83,7 +82,7 @@ class DocNode:
         return (
             f"DocNode(id: {self.uid}, group: {self.group}, text: {self.get_content()}) parent: "
             f"{self.parent.uid if self.parent else None}, children: {self.get_children_str()} "
-            f"is_embed: {self.has_embedding()}, score: {self.score}"
+            f"is_embed: {self.has_embedding()}"
         )
 
     def __repr__(self) -> str:
