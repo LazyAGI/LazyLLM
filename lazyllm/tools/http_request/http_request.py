@@ -1,9 +1,9 @@
+from enum import Enum
 import re
-import copy
 from lazyllm.module.module import ModuleBase
-from lazyllm.tools.http_request.http_executor import HttpExecutor, HttpExecutorResponse
+from lazyllm.tools.http_request.http_executor import HttpExecutor
 
-class NodeExecutionStatus():
+class NodeExecutionStatus(Enum):
     """
     Workflow Node Execution Status Enum
     """
@@ -12,26 +12,26 @@ class NodeExecutionStatus():
     FAILED = 'failed'
 
 class HttpRequest(ModuleBase):
-    def __init__(self, method, url, API_Key, headers, params, body):
+    def __init__(self, method, url, api_key, headers, params, body):
         super().__init__()
         self.method = method
         self.url = url
-        self.API_Key = API_Key
+        self.api_key = api_key
         self.headers = headers
         self.params = params
         self.body = body
         self._process_api_key()
 
     def _process_api_key(self):
-        if self.API_Key != '':
-            self.params['api_key'] = self.API_Key
+        if self.api_key != '':
+            self.params['api_key'] = self.api_key
 
     def forward(self, *args, **kwargs):
         def _map_input(target_str):
             # TODO: replacements could be more complex to create.
-            replacements = copy.deepcopy(kwargs)
-            if len(args) > 0 and isinstance(args[0], dict):
-                replacements.update(args[0])
+            replacements = {**kwargs, **(args[0] if args and isinstance(args[0], dict) else {})}
+            if not replacements:
+                return target_str
 
             if len(replacements) == 0:
                 return target_str
@@ -47,23 +47,16 @@ class HttpRequest(ModuleBase):
 
         self.url = _map_input(self.url)
         self.body = _map_input(self.body)
-        for key, value in self.params.items():
-            self.params[key] = _map_input(value)
-
-        for key, value in self.headers.items():
-            self.headers[key] = _map_input(value)
+        self.params = {key: _map_input(value) for key, value in self.params.items()}
+        self.headers = {key: _map_input(value) for key, value in self.headers.items()}
 
         try:
             http_executor = HttpExecutor(self.method, self.url, self.headers, self.params, self.body)
             response = http_executor.invoke()
         except Exception as e:
-            outputs = {
-                'status': NodeExecutionStatus.FAILED,
-                'error': str(e)
-            }
-            return outputs
+            return dict(status=NodeExecutionStatus.FAILED, error=str(e))
 
-        _, file_binary = self.extract_files(response)
+        _, file_binary = response.extract_file()
 
         outputs = {
             'status': NodeExecutionStatus.SUCCEEDED,
@@ -75,6 +68,3 @@ class HttpRequest(ModuleBase):
             }
         }
         return outputs
-
-    def extract_files(self, response: HttpExecutorResponse):
-        return response.extract_file()
