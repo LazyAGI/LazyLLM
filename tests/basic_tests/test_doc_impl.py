@@ -36,7 +36,7 @@ class TestDocImplV2:
         result = self.doc_impl.retrieve(
             query="test query",
             group_name="FineChunk",
-            similarity="dummy",
+            similarity="bm25",
             index=None,
             topk=1,
             similarity_kws={},

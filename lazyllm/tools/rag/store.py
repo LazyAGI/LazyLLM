@@ -7,6 +7,7 @@ import chromadb
 from lazyllm import LOG, config
 from chromadb.api.models.Collection import Collection
 
+
 LAZY_ROOT_NAME = "lazyllm_root"
 config.add("rag_store", str, "map", "RAG_STORE")  # "map", "chroma"
 config.add("rag_persistent_path", str, "./lazyllm_chroma", "RAG_PERSISTENT_PATH")
@@ -37,9 +38,9 @@ class DocNode:
         self._excluded_embed_metadata_keys: List[str] = []
         # Metadata keys that are excluded from text for the LLM.
         self._excluded_llm_metadata_keys: List[str] = []
-        self.parent = parent
+        self.parent: Optional["DocNode"] = parent
         self.children: Dict[str, List["DocNode"]] = defaultdict(list)
-        self.is_saved = False
+        self.is_saved: bool = False
 
     @property
     def root_node(self) -> Optional["DocNode"]:
