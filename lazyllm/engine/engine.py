@@ -94,6 +94,15 @@ class Engine(object):
         raise NotImplementedError
 
 
+def _build_node_and_edges(nodes: List[dict], edges: Optional[List[dict]] = None):
+    if not isinstance(nodes, list): nodes = [nodes]
+    nodes = [Node(id=n['id'], kind=n['kind'], name=n['name'], args=n['args']) for n in nodes]
+    if edges:
+        if not isinstance(edges, list): edges = [nodes]
+        edges = [Edge(iid=e['iid'], oid=e['oid'], formatter=e.get('formatter')) for e in edges]
+    return nodes, edges
+
+
 class LightEngine(Engine):
 
     _instance = None
@@ -107,8 +116,8 @@ class LightEngine(Engine):
         super().__init__()
 
     def make_graph(self, nodes: List[dict], edges: List[dict]):
-        nodes = {n['id']: Node(id=n['id'], kind=n['kind'], name=n['name'], args=n['args']) for n in nodes}
-        edges = [Edge(iid=e['iid'], oid=e['oid'], formatter=e.get('formatter')) for e in edges]
+        nodes, edges = _build_node_and_edges(nodes, edges)
+        nodes = {n.id: n for n in nodes}
         for node in nodes.values():
             node.func = _builder.build(node)
 
@@ -153,9 +162,10 @@ def make_code(code):
 def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     with switch(judge_on_full_input=judge_on_full_input) as sw:
         for cond, nodes in nodes.items():
+            nodes, _ = _build_node_and_edges(nodes)
             if len(nodes) > 1:
-                node = pipeline([LightEngine()._build(node) for node in nodes])
+                func = pipeline([_builder.build(node) for node in nodes])
             else:
-                node = LightEngine()._build(nodes[cond])
-            sw.case[cond, node]
+                func = _builder.build(nodes[0])
+            sw.case[cond, func]
     return sw
