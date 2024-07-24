@@ -183,7 +183,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         def preprocess_output(output: str, input: Union[str, None]) -> str:
             if input and output.startswith(input):
                 output = output[len(input):]
-            output = output if self._split is None else output.split(self._split)[-1]
+            output = output if getattr(self, "_split", None) is None else output.split(self._split)[-1]
             return output
 
         def parse_arguments_with_args_token(output: str) -> (str, str):
