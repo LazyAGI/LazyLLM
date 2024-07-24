@@ -2,11 +2,11 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from enum import Enum, auto
 import uuid
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 import chromadb
 from lazyllm import LOG, config
 from chromadb.api.models.Collection import Collection
-import numpy as np
+
 
 LAZY_ROOT_NAME = "lazyllm_root"
 config.add("rag_store", str, "map", "RAG_STORE")  # "map", "chroma"
