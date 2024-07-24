@@ -18,12 +18,14 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         self._tools = tools
         self._pre_hook = None
 
-    def _init_prompt(self, template: str, instruction_template: str, split: Union[None, str] = None):
+    def _init_prompt(self, template: str, instruction_template: str, split: Union[None, str] = None,
+                     tool_delimiter: str = "<|tool_calls|>"):
         self._template = template
         self._instruction_template = instruction_template
         if split:
             assert not hasattr(self, '_split')
             self._split = split
+        self._tool_delimiter = tool_delimiter
 
     @staticmethod
     def _get_extro_key_template(extro_keys, prefix='Here are some extra messages you can referred to:\n\n'):
@@ -177,64 +179,111 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         if self._show or show: LOG.info(result)
         return result
 
-    def get_response(self, output: str, input: Union[str, None] = None) -> str:   # noqa: C901
-        if input and output.startswith(input):
-            output = output[len(input):]
-        output = output if getattr(self, '_split', None) is None else output.split(self._split)[-1]
-        # multiple tools appear
-        tool_calls = []
-        if getattr(self, "_tool_start_token", None) and getattr(self, "_tool_args_token", None):
+    def get_response(self, output: str, input: Union[str, None] = None) -> str:  # noqa: C901
+        def preprocess_output(output: str, input: Union[str, None]) -> str:
+            if input and output.startswith(input):
+                output = output[len(input):]
+            output = output if self._split is None else output.split(self._split)[-1]
+            return output
+
+        def parse_arguments_with_args_token(output: str) -> (str, str):
+            items = output.split(self._tool_args_token)
+            func_name = items[0]
+            arguments = (items[1].split(self._tool_end_token) if getattr(self, "_tool_end_token", None) else items[1])
+            return func_name, json.dumps(arguments, ensure_ascii=False)
+
+        def parse_arguments_without_args_token(output: str) -> (str, str):
+            items = output.split(self._tool_end_token)[0] if getattr(self, "_tool_end_token", None) else output
+            func_name = ""
+            arguments = {}
+            try:
+                items = json.loads(items.strip())
+                func_name = items.get('name', '')
+                arguments = items.get("parameters", items.get("arguments", {}))
+            except json.JSONDecodeError:
+                LOG.error(f"tool calls info {items} parse error")
+
+            return func_name, json.dumps(arguments, ensure_ascii=False)
+
+        def parse_arguments_with_tools(output: Dict[str, Any], tools: List[str],
+                                       tool_calls: List[Dict[str, str]]) -> bool:
+            func_name = ''
+            arguments = {}
+            is_tc = False
+            if output.get('name', '') in tools:
+                is_tc = True
+                func_name = output.get('name', '')
+                arguments = output.get("parameters", output.get("arguments", {}))
+                tool_calls.append({'name': func_name, 'arguments': json.dumps(arguments, ensure_ascii=False)})
+            return is_tc
+
+        def parse_tool_start_token(output: str) -> (str, List[Dict]):
+            tool_calls = []
             segs = output.split(self._tool_start_token)
             content = segs[0]
-            if len(segs) > 1:
-                for seg in segs[1:]:
-                    items = seg.split(self._tool_args_token)
-                    func_name = items[0]
-                    arguments = (items[1].split(self._tool_end_token)
-                                 if getattr(self, "_tool_end_token", None) else items[1])
-                    tool_calls.append({"name": func_name, "arguments": json.dumps(arguments, ensure_ascii=False)})
-        elif getattr(self, "_tool_start_token", None):
-            segs = output.split(self._tool_start_token)
-            content = segs[0]
-            if len(segs) > 1:
-                for seg in segs[1:]:
-                    items = seg.split(self._tool_end_token)[0] if getattr(self, '_tool_end_token', None) else seg
-                    try:
-                        items = json.loads(items.strip())
-                        tool_calls.append({"name": items['name'],
-                                           "arguments": json.dumps(
-                                               items['parameters'] if "parameters" in items
-                                               else items.get("arguments", {}), ensure_ascii=False)})
-                    except Exception as e:
-                        LOG.error(f"tool calls info parse error: {e}.")
-        else:
+            for seg in segs[1:]:
+                func_name, arguments = parse_arguments_with_args_token(seg) if getattr(self, "_tool_args_token", None)\
+                    else parse_arguments_without_args_token(seg)
+                if func_name:
+                    tool_calls.append({"name": func_name, "arguments": arguments})
+
+            return content, tool_calls
+
+        def parse_tools(output: str) -> (str, List[Dict]):
+            tool_calls = []
+            tools = {tool['function']['name'] for tool in self._tools}
             lines = output.strip().split("\n")
             content = []
-            tools = {tool['function']['name'] for tool in self._tools} if self._tools else {}
+            is_tool_call = False
             for idx, line in enumerate(lines):
                 if line.startswith("{") and idx > 0:
                     func_name = lines[idx - 1].strip()
-                    arguments = "\n".join(lines[idx:]).strip()
-                    if not content:
-                        content = lines[:idx - 1]
-
                     if func_name in tools:
-                        tool_calls.append({"name": func_name, "arguments": arguments})
-            if isinstance(content, list):
-                content = "\n".join(content)
+                        is_tool_call = True
+                        if func_name == content[-1].strip():
+                            content.pop()
+                        arguments = "\n".join(lines[idx:]).strip()
+                        tool_calls.append({'name': func_name, "arguments": arguments})
+                if "{" in line and 'name' in line:
+                    try:
+                        items = json.loads(line.strip())
+                        if isinstance(items, list):
+                            for item in items:
+                                is_tool_call = parse_arguments_with_tools(item, tools, tool_calls)
+                        elif isinstance(items, dict):
+                            is_tool_call = parse_arguments_with_tools(items, tools, tool_calls)
+                    except json.JSONDecodeError:
+                        LOG.error(f"tool calls info {line} parse error")
+                if not is_tool_call:
+                    content.append(line)
+            content = "\n".join(content) if len(content) > 0 else ''
+            return content, tool_calls
 
-        tc = []
-        for tool_call in tool_calls:
-            id = uuid.uuid4().hex
-            tc.append({'id': id, 'type': 'function', 'function': tool_call})
-        tool_calls = tc
+        def extract_tool_calls(output: str) -> (str, List[Dict]):
+            tool_calls = []
+            content = ''
+            if getattr(self, "_tool_start_token", None) and self._tool_start_token in output:
+                content, tool_calls = parse_tool_start_token(output)
+            elif self._tools:
+                content, tool_calls = parse_tools(output)
+            else:
+                content = output
 
-        if content and tool_calls:
-            return "<|tool_calls|>".join([content, json.dumps(tool_calls, ensure_ascii=False)])
-        elif not content and tool_calls:
-            return "<|tool_calls|>" + json.dumps(tool_calls, ensure_ascii=False)
-        else:
-            return content
+            return content, tool_calls
+
+        def build_response(content: str, tool_calls: List[Dict[str, str]]) -> str:
+            tc = [{'id': uuid.uuid4().hex, 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
+            if content and tc:
+                return self._tool_delimiter.join([content, json.dumps(tc, ensure_ascii=False)])
+            elif not content and tc:
+                return self._tool_delimiter + json.dumps(tc, ensure_ascii=False)
+            else:
+                return content
+
+        output = preprocess_output(output, input)
+        LOG.info(f"output: {output}")
+        content, tool_calls = extract_tool_calls(output)
+        return build_response(content, tool_calls)
 
 class EmptyPrompter(LazyLLMPrompterBase):
 
