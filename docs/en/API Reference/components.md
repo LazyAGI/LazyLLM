@@ -41,11 +41,6 @@ Prompter
     members: generate_prompt, get_response
     exclude-members:
 
-.. _api.components.register:
-
-Register
-
-.. autofunction:: lazyllm.components.register
 
 ModelManager
 
