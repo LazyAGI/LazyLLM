@@ -90,6 +90,7 @@ def exe_onlinechat_single_function_call(request):
     fc = FunctionCall(llm, tools)
     ret = fc(query, [])
     input = ret[1][2]
+    assert input['role'] != "error", f"Found error while making function call, error: {input['content']}"
     content = json.loads(input['content'])
     tool_name = input['name']
     loc = content['location']

@@ -211,7 +211,13 @@ class ToolManager(ModuleBase):
                     tool['role'] = 'tool'
                     tool_output.append(tool)
                 else:
-                    tool_output.append(f"{tool} parameters error.")
+                    error_tool = {
+                        'name': tool['name'],
+                        'tool_input': tool['tool_input'],
+                        'content': 'parameters error',
+                        'role': 'error'
+                    }
+                    tool_output.append(error_tool)
 
             tool_output = tool_output[0] if len(tool_output) == 1 else tool_output
             return tool_output
