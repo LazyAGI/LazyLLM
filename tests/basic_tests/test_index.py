@@ -23,7 +23,7 @@ class TestDefaultIndex(unittest.TestCase):
 
     def test_register_similarity(self):
         # Register a custom similarity function
-        @DefaultIndex.register_similarity(mode="embedding", batch=True)
+        @register_similarity(mode="embedding", batch=True)
         def custom_similarity(query, nodes, **kwargs):
             return [(node, 1.0) for node in nodes]
 
@@ -41,7 +41,6 @@ class TestDefaultIndex(unittest.TestCase):
             topk=2,
         )
         self.assertEqual(len(results), 2)
-        print(results)
         self.assertIn(self.doc_node_1, results)
         self.assertIn(self.doc_node_2, results)
 
