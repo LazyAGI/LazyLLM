@@ -1,4 +1,4 @@
-from typing import List, Callable
+from typing import List, Callable, Optional
 from .store import DocNode, BaseStore
 import numpy as np
 from .component.bm25 import BM25
@@ -15,7 +15,13 @@ class DefaultIndex:
         self.store = store
 
     @classmethod
-    def register_similarity(cls, func=None, mode=None, descend=True, batch=False):
+    def register_similarity(
+        cls: "DefaultIndex",
+        func: Optional[Callable] = None,
+        mode: str = "",
+        descend: bool = True,
+        batch: bool = False,
+    ) -> Callable:
         def decorator(f):
             def wrapper(query, nodes, **kwargs):
                 if batch:
@@ -33,6 +39,7 @@ class DefaultIndex:
         query: str,
         nodes: List[DocNode],
         similarity_name: str,
+        similarity_cut_off: float,
         topk: int,
         **kwargs,
     ) -> List[DocNode]:
@@ -51,7 +58,7 @@ class DefaultIndex:
                 if not node.has_embedding():
                     node.do_embedding(self.embed)
             self.store.try_save_nodes(nodes[0].group, nodes)
-            nodes = similarity_func(query_embedding, nodes, topk=topk, **kwargs)
+            similarities = similarity_func(query_embedding, nodes, topk=topk, **kwargs)
         elif mode == "text":
             similarities = similarity_func(query, nodes, topk=topk, **kwargs)
         else:
@@ -61,7 +68,7 @@ class DefaultIndex:
         if topk is not None:
             similarities = similarities[:topk]
         LOG.debug(f"Retrieving query `{query}` and get results: {similarities}")
-        return [node for node, _ in similarities]
+        return [node for node, score in similarities if score > similarity_cut_off]
 
 
 @DefaultIndex.register_similarity(mode="text", batch=True)
@@ -77,12 +84,17 @@ def bm25_chinese(query: str, nodes: List[DocNode], **kwargs) -> List:
 
 
 @DefaultIndex.register_similarity(mode="embedding")
-def cosine(query: List[float], node: DocNode, **kwargs):
+def cosine(query: List[float], node: DocNode, **kwargs) -> float:
     product = np.dot(query, node.embedding)
     norm = np.linalg.norm(query) * np.linalg.norm(node.embedding)
     return product / norm
 
 
 # User-defined similarity decorator
-def register_similarity(func=None, mode=None, descend=True, batch=False):
+def register_similarity(
+    func: Optional[Callable] = None,
+    mode: str = "",
+    descend: bool = True,
+    batch: bool = False,
+) -> Callable:
     return DefaultIndex.register_similarity(func, mode, descend, batch)
