@@ -1,9 +1,8 @@
 from typing import Dict, Union, Any, List, Callable, Optional
 from ...common import LazyLLMRegisterMetaClass
-from lazyllm import LOG
+from lazyllm import LOG, json5 as json
 from functools import reduce
 import copy
-import json
 import re
 import uuid
 
@@ -85,12 +84,19 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                             ret += f'{item["content"]}'
                         if len(item.get("tool_calls", "")) > 0:
                             for idx in range(len(item['tool_calls'])):
-                                ret += (f'{self._tool_start_token}'
-                                        f'{json.dumps(item["tool_calls"][idx]["function"], ensure_ascii=False)}'
-                                        f'{self._tool_end_token}')
+                                tool = item['tool_calls'][idx]['function']
+                                if getattr(self, "_tool_args_token", None):
+                                    tool = tool['name'] + self._tool_args_token + tool['arguments']
+                                ret += (f'{getattr(self, "_tool_start_token", "")}' + '\n'
+                                        f'{tool}'
+                                        f'{getattr(self, "_tool_end_token", "")}' + '\n')
                         ret += f'{self._eoa}'
                     elif item['role'] == "tool":
-                        ret += f'{self._soe}{item["content"]}{self._eoe}'
+                        try:
+                            content = json.loads(item['content'].strip())
+                        except Exception:
+                            content = item['content']
+                        ret += f'{getattr(self, "_soe", "")}{content}{getattr(self, "_eoe", "")}'
 
                 return ret
             else:
@@ -117,12 +123,18 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
     # Used for TrainableModule(local deployed)
     def _generate_prompt_impl(self, instruction, input, user, history, tools, label):
+        is_tool = False
         if isinstance(input, dict):
             input = input.get('content', '')
+            is_tool = input.get('role') == 'tool'
         elif isinstance(input, list):
+            is_tool = any(item.get('role') == 'tool' for item in input)
             input = "\n".join([item.get('content', '') for item in input])
         params = dict(system=self._system, instruction=instruction, input=input, user=user, history=history, tools=tools,
                       sos=self._sos, eos=self._eos, soh=self._soh, eoh=self._eoh, soa=self._soa, eoa=self._eoa)
+        if is_tool:
+            params['soh'] = getattr(self, "_soe", self._soh)
+            params['eoh'] = getattr(self, "_eoe", self._eoh)
         return self._template.format(**params) + (label if label else '')
 
     # Used for OnlineChatModule
@@ -186,13 +198,14 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             output = output if getattr(self, "_split", None) is None else output.split(self._split)[-1]
             return output
 
-        def parse_arguments_with_args_token(output: str) -> (str, str):
+        def parse_arguments_with_args_token(output: str) -> (str, dict):
             items = output.split(self._tool_args_token)
-            func_name = items[0]
-            arguments = (items[1].split(self._tool_end_token) if getattr(self, "_tool_end_token", None) else items[1])
-            return func_name, json.dumps(arguments, ensure_ascii=False)
+            func_name = items[0].strip()
+            arguments = (items[1].strip().split(self._tool_end_token)[0] if getattr(self, "_tool_end_token", None)
+                         else items[1].strip())
+            return func_name, arguments
 
-        def parse_arguments_without_args_token(output: str) -> (str, str):
+        def parse_arguments_without_args_token(output: str) -> (str, dict):
             items = output.split(self._tool_end_token)[0] if getattr(self, "_tool_end_token", None) else output
             func_name = ""
             arguments = {}
@@ -200,10 +213,10 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                 items = json.loads(items.strip())
                 func_name = items.get('name', '')
                 arguments = items.get("parameters", items.get("arguments", {}))
-            except json.JSONDecodeError:
+            except Exception:
                 LOG.error(f"tool calls info {items} parse error")
 
-            return func_name, json.dumps(arguments, ensure_ascii=False)
+            return func_name, arguments
 
         def parse_arguments_with_tools(output: Dict[str, Any], tools: List[str],
                                        tool_calls: List[Dict[str, str]]) -> bool:
@@ -214,7 +227,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                 is_tc = True
                 func_name = output.get('name', '')
                 arguments = output.get("parameters", output.get("arguments", {}))
-                tool_calls.append({'name': func_name, 'arguments': json.dumps(arguments, ensure_ascii=False)})
+                tool_calls.append({'name': func_name, 'arguments': arguments})
             return is_tc
 
         def parse_tool_start_token(output: str) -> (str, List[Dict]):
@@ -222,8 +235,9 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             segs = output.split(self._tool_start_token)
             content = segs[0]
             for seg in segs[1:]:
-                func_name, arguments = parse_arguments_with_args_token(seg) if getattr(self, "_tool_args_token", None)\
-                    else parse_arguments_without_args_token(seg)
+                func_name, arguments = parse_arguments_with_args_token(seg.strip())\
+                    if getattr(self, "_tool_args_token", None)\
+                    else parse_arguments_without_args_token(seg.strip())
                 if func_name:
                     tool_calls.append({"name": func_name, "arguments": arguments})
 
@@ -272,7 +286,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             return content, tool_calls
 
         def build_response(content: str, tool_calls: List[Dict[str, str]]) -> str:
-            tc = [{'id': uuid.uuid4().hex, 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
+            tc = [{'id': str(uuid.uuid4().hex), 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
             if content and tc:
                 return self._tool_delimiter.join([content, json.dumps(tc, ensure_ascii=False)])
             elif not content and tc:

@@ -1,10 +1,9 @@
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
 from .functionCallFormatter import FunctionCallFormatter
-from lazyllm import pipeline, ifs, loop, globals, bind
+from lazyllm import pipeline, ifs, loop, globals, bind, json5 as json
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union
-import json
 
 
 def function_call_hook(input: Dict[str, Any], history: List[Dict[str, Any]], tools: List[Dict[str, Any]], label: Any):
@@ -45,6 +44,8 @@ class FunctionCall(ModuleBase):
         if isinstance(llm_output, list):
             res = []
             for item in llm_output:
+                if isinstance(item, str):
+                    continue
                 arguments = item.get('function', {}).get('arguments', '')
                 arguments = json.loads(arguments) if isinstance(arguments, str) else arguments
                 res.append({"name": item.get('function', {}).get('name', ''), 'arguments': arguments})
@@ -66,7 +67,10 @@ class FunctionCall(ModuleBase):
             else:
                 raise TypeError(f"The input type currently only supports `str` and `list`, "
                                 f"and does not support {type(input)}.")
-            ret.append({"role": "assistant", "content": "", "tool_calls": llm_output})
+
+            content = "".join([item for item in llm_output if isinstance(item, str)])
+            llm_output = [item for item in llm_output if not isinstance(item, str)]
+            ret.append({"role": "assistant", "content": content, "tool_calls": llm_output})
             ret.append([{"role": "tool", "content": out, "tool_call_id": llm_output[idx]["id"],
                          "name": llm_output[idx]["function"]["name"]}
                         for idx, out in enumerate(output)])

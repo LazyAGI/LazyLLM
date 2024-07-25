@@ -13,7 +13,13 @@ model_groups = {
 	},
 	"QWen": {
 		"prompt_keys": {
-            'sos': '<|im_start|>system\n', 'soh': '<|im_start|>user\n', 'soa': '<|im_start|>assistant\n', 'eos': '<|im_end|>\n', 'eoh': '<|im_end|>\n', 'eoa': '<|im_end|>', 'separator': '\n', 'stop_words': ['<|im_end|>'],
+            'sos': '<|im_start|>system\n', 'soh': '<|im_start|>user\n', 'soa': '<|im_start|>assistant\n', 'eos': '<|im_end|>\n', 'eoh': '<|im_end|>\n', 'eoa': '<|im_end|>', 'separator': '\n', 'stop_words': ['<|im_end|>'], 'tool_start_token': '```python\n', 'tool_end_token': ')\n```', 'tool_args_token': "(",
+            'system': "You are a helpful assistant."
+            },
+	},
+	"QWen2": {
+		"prompt_keys": {
+            'sos': '<|im_start|>system\n', 'soh': '<|im_start|>user\n', 'soa': '<|im_start|>assistant\n', 'soe': '✿RESULT✿: ', 'eos': '<|im_end|>\n', 'eoh': '<|im_end|>\n', 'eoa': '<|im_end|>', 'eoe': '<|im_end|>\n', 'separator': '\n', 'stop_words': ['<|im_end|>'], 'tool_start_token': '✿FUNCTION✿: ', 'tool_end_token': '\n', 'tool_args_token': "✿ARGS✿: ",
             'system': "You are a helpful assistant."
             },
 	},
@@ -40,7 +46,10 @@ model_groups = {
 		"prompt_keys": {'soh': '<reserved_106>', 'soa': '<reserved_107>'},
 	},
 	"GLM3": {
-		"prompt_keys": {'sos': '<|system|>\n', 'soh': '<|user|>\n', 'soa': '<|assistant|>\n', 'plugin': '<|observation|>\n', 'stop_words': ['<|user|>', '<|observation|>']},
+		"prompt_keys": {'sos': '<|system|>\n', 'soh': '<|user|>\n', 'soa': '<|assistant|>\n', 'soe': '<|observation|>\n', 'eoe': '\n', 'plugin': '<|observation|>\n', 'stop_words': ['<|user|>', '<|observation|>'], 'tool_start_token': '<|assistant|>', 'tool_args_token': '\n', 'tool_end_token': '\n'},
+	},
+	"GLM4": {
+		"prompt_keys": {'sos': '<|system|>\n', 'soh': '<|user|>\n', 'soa': '<|assistant|>\n', 'soe': '<|observation|>\n', 'eoe': '\n', 'plugin': '<|observation|>\n', 'stop_words': ['<|user|>', '<|observation|>'], 'tool_start_token': '✿FUNCTION✿: ', 'tool_args_token': '✿ARGS✿: ', 'tool_end_token': '\n'},
 	},
 }
 
@@ -95,6 +104,10 @@ model_name_mapping = {
 		"source": {"huggingface": "THUDM/chatglm3-6b-128k", "modelscope": "ZhipuAI/chatglm3-6b-128k"},
 		"prompt_keys": model_groups["GLM3"]["prompt_keys"],
 		},
+    "GLM-4-9B-Chat": {
+		"source": {"huggingface": "THUDM/glm-4-9b-chat", "modelscope": "ZhipuAI/glm-4-9b-chat"},
+		"prompt_keys": model_groups["GLM4"]["prompt_keys"],
+		},
 
     "Qwen-1.8B": {
 		"source": {"huggingface": "Qwen/Qwen-1_8B", "modelscope": "qwen/Qwen-1_8B"},
@@ -135,6 +148,14 @@ model_name_mapping = {
     "Qwen1.5-72B": {
 		"source": {"huggingface": "Qwen/Qwen1.5-72B", "modelscope": "qwen/Qwen1.5-72B"},
 		"prompt_keys": model_groups["QWen"]["prompt_keys"],
+		},
+    "Qwen2-7B-Instruct": {
+		"source": {"huggingface": "Qwen/Qwen2-7B-Instruct", "modelscope": "qwen/Qwen2-7B-Instruct"},
+		"prompt_keys": model_groups["QWen2"]["prompt_keys"],
+		},
+    "Qwen2-72B-Instruct-AWQ": {
+		"source": {"huggingface": "Qwen/Qwen2-72B-Instruct-AWQ", "modelscope": "qwen/Qwen2-72B-Instruct-AWQ"},
+		"prompt_keys": model_groups["QWen2"]["prompt_keys"],
 		},
     "internlm-20b": {
 		"source": {"huggingface": "internlm/internlm-20b", "modelscope": "Shanghai_AI_Laboratory/internlm-20b"},
