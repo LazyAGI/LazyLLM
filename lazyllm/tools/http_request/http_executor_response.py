@@ -29,7 +29,7 @@ class HttpExecutorResponse:
             return self.get_content_type(), self.body
 
         return '', b''
-    
+
     @property
     def body(self) -> bytes:
         if isinstance(self.response, httpx.Response):
