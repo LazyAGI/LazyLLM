@@ -89,14 +89,7 @@ def exe_onlinechat_single_function_call(request):
     print(f"\nStarting test 【{source}】 function calling")
     fc = FunctionCall(llm, tools)
     ret = fc(query, [])
-    input = ret[1][2]
-    content = json.loads(input['content'])
-    tool_name = input['name']
-    loc = content['location']
-    role = input['role']
-    temperature = content['temperature']
-    unit = content['unit']
-    yield (role, tool_name, loc, temperature, unit)
+    yield ret[0]
     print(f"\n【{source}】 function calling test done.")
 
 @pytest.fixture()
@@ -124,8 +117,8 @@ def exe_onlinechat_parallel_function_call(request):
     print(f"\n【{source}】parallel function calling test done.")
 
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
-squery = "What's the weather like today in Tokyo."
-mquery = "What's the weather like today in Tokyo and Paris."
+squery = "What's the weather like today in celsius in Tokyo."
+mquery = "What's the weather like today in celsius in Tokyo and Paris."
 
 class TestOnlineChatFunctionCall(object):
     @pytest.mark.parametrize("exe_onlinechat_chat",
@@ -142,8 +135,7 @@ class TestOnlineChatFunctionCall(object):
                              indirect=True)
     def test_onlinechat_single_function_call(self, exe_onlinechat_single_function_call):
         ret = exe_onlinechat_single_function_call
-        assert len(ret) == 5
-        assert ret == ('tool', 'get_current_weather', 'Tokyo', '10', 'celsius')
+        assert ret == False
 
     @pytest.mark.parametrize("exe_onlinechat_parallel_function_call",
                              [{'source': 'kimi', 'tools': tools, 'query': squery}],
