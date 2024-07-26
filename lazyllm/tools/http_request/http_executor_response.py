@@ -31,6 +31,13 @@ class HttpExecutorResponse:
         return '', b''
 
     @property
+    def content(self) -> str:
+        if isinstance(self.response, httpx.Response):
+            return self.response.text
+        else:
+            raise ValueError(f'Invalid response type {type(self.response)}')
+
+    @property
     def body(self) -> bytes:
         if isinstance(self.response, httpx.Response):
             return self.response.content
