@@ -1,15 +1,8 @@
-from enum import Enum
 import re
-from lazyllm.module.module import ModuleBase
-from lazyllm.tools.http_request.http_executor import HttpExecutor
 
-class NodeExecutionStatus(Enum):
-    """
-    Workflow Node Execution Status Enum
-    """
-    RUNNING = 'running'
-    SUCCEEDED = 'succeeded'
-    FAILED = 'failed'
+import httpx
+from lazyllm.module.module import ModuleBase
+from lazyllm.tools.http_request.http_executor_response import HttpExecutorResponse
 
 class HttpRequest(ModuleBase):
     def __init__(self, method, url, api_key, headers, params, body):
@@ -33,9 +26,6 @@ class HttpRequest(ModuleBase):
             if not replacements:
                 return target_str
 
-            if len(replacements) == 0:
-                return target_str
-
             pattern = r"\{\{([^}]+)\}\}"
             matches = re.findall(pattern, target_str)
             for match in matches:
@@ -50,21 +40,16 @@ class HttpRequest(ModuleBase):
         self.params = {key: _map_input(value) for key, value in self.params.items()}
         self.headers = {key: _map_input(value) for key, value in self.headers.items()}
 
-        try:
-            http_executor = HttpExecutor(self.method, self.url, self.headers, self.params, self.body)
-            response = http_executor.invoke()
-        except Exception as e:
-            return dict(status=NodeExecutionStatus.FAILED, error=str(e))
+        http_response = httpx.request(method=self.method, url=self.url, headers=self.headers,
+                                      params=self.params, data=self.body)
+        response = HttpExecutorResponse(http_response)
 
         _, file_binary = response.extract_file()
 
         outputs = {
-            'status': NodeExecutionStatus.SUCCEEDED,
-            'output': {
-                'status_code': response.status_code,
-                'content': response.content if len(file_binary) == 0 else None,
-                'headers': response.headers,
-                'file': file_binary
-            }
+            'status_code': response.status_code,
+            'content': response.content if len(file_binary) == 0 else None,
+            'headers': response.headers,
+            'file': file_binary
         }
         return outputs
