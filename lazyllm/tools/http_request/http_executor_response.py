@@ -36,3 +36,10 @@ class HttpExecutorResponse:
             return self.response.content
         else:
             raise ValueError(f'Invalid response type {type(self.response)}')
+
+    @property
+    def status_code(self) -> int:
+        if isinstance(self.response, httpx.Response):
+            return self.response.status_code
+        else:
+            raise ValueError(f'Invalid response type {type(self.response)}')
