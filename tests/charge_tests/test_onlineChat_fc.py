@@ -135,7 +135,7 @@ class TestOnlineChatFunctionCall(object):
                              indirect=True)
     def test_onlinechat_single_function_call(self, exe_onlinechat_single_function_call):
         ret = exe_onlinechat_single_function_call
-        assert ret == False
+        assert ret is False
 
     @pytest.mark.parametrize("exe_onlinechat_parallel_function_call",
                              [{'source': 'kimi', 'tools': tools, 'query': squery}],
