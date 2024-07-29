@@ -105,7 +105,16 @@ class DocImplV2:
         self._dynamic_create_nodes(group_name)
         return self.store.traverse_nodes(group_name)
 
-    def retrieve(self, query, group_name, similarity, index, topk, similarity_kws):
+    def retrieve(
+        self,
+        query: str,
+        group_name: str,
+        similarity: str,
+        similarity_cut_off: float,
+        index: str,
+        topk: int,
+        similarity_kws: dict,
+    ) -> List[DocNode]:
         call_once(self.init_flag, self._lazy_init)
         if index:
             assert index == "default", "we only support default index currently"
@@ -113,7 +122,9 @@ class DocImplV2:
             query = query.input
 
         nodes = self._get_nodes(group_name)
-        return self.index.query(query, nodes, similarity, topk, **similarity_kws)
+        return self.index.query(
+            query, nodes, similarity, similarity_cut_off, topk, **similarity_kws
+        )
 
     def _find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
         def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
@@ -195,6 +206,7 @@ class RetrieverV2(ModuleBase):
         doc,
         group_name: str,
         similarity: str = "dummy",
+        similarity_cut_off: float = float("-inf"),
         index: str = "default",
         topk: int = 6,
         **kwargs,
@@ -203,6 +215,7 @@ class RetrieverV2(ModuleBase):
         self.doc = doc
         self.group_name = group_name
         self.similarity = similarity  # similarity function str
+        self.similarity_cut_off = similarity_cut_off
         self.index = index
         self.topk = topk
         self.similarity_kw = kwargs  # kw parameters
@@ -214,6 +227,7 @@ class RetrieverV2(ModuleBase):
             query,
             self.group_name,
             self.similarity,
+            self.similarity_cut_off,
             self.index,
             self.topk,
             self.similarity_kw,
