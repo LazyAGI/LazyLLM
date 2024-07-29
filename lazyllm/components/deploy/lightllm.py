@@ -46,6 +46,7 @@ class Lightllm(LazyLLMDeployBase):
             'nccl_port': None,
             'tokenizer_mode': 'auto',
             "running_max_req_size": 256,
+            "data_type": 'float16',
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)

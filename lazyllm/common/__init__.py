@@ -4,7 +4,6 @@ from .common import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9
 from .common import FlatList, Identity, ResultCollector, ArgsDict, CaseInsensitiveDict
 from .common import ReprRule, make_repr, modify_repr
 from .common import once_flag, call_once, once_wrapper
-from .json5 import json5
 from .option import Option, OptionIter
 from .threading import Thread
 from .multiprocessing import SpawnProcess, ForkProcess
@@ -73,7 +72,4 @@ __all__ = [
 
     # log
     'LOG',
-
-    # json
-    'json5',
 ]

@@ -1,6 +1,7 @@
 from typing import Dict, Union, Any, List, Callable, Optional
 from ...common import LazyLLMRegisterMetaClass
-from lazyllm import LOG, json5 as json
+from lazyllm import LOG
+import json5 as json
 from functools import reduce
 import copy
 import re
@@ -34,6 +35,13 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             return prefix + ''.join([f"### {k}:\n{{{k}}}\n\n" for k in extro_keys])
         return ''
 
+    def _handle_tool_call_instruction(self):
+        tool_dict = {}
+        for key in ["tool_start_token", "tool_args_token", "tool_end_token"]:
+            if getattr(self, f"_{key}", None) and key in self._instruction_template:
+                tool_dict[key] = getattr(self, f"_{key}")
+        return reduce(lambda s, kv: s.replace(f"{{{kv[0]}}}", kv[1]), tool_dict.items(), self._instruction_template)
+
     def _set_model_configs(self, system: str = None, sos: Union[None, str] = None, soh: Union[None, str] = None,
                            soa: Union[None, str] = None, eos: Union[None, str] = None,
                            eoh: Union[None, str] = None, eoa: Union[None, str] = None,
@@ -47,6 +55,9 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         for name in ['system', 'sos', 'soh', 'soa', 'eos', 'eoh', 'eoa', 'soe', 'eoe', 'tool_start_token',
                      'tool_end_token', 'tool_args_token']:
             if local[name] is not None: setattr(self, f'_{name}', local[name])
+
+        if getattr(self, "_instruction_template", None):
+            self._instruction_template = self._handle_tool_call_instruction()
 
     def _get_tools(self, tools, *, return_dict):
         if self._tools:
@@ -200,6 +211,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
         def parse_arguments_with_args_token(output: str) -> (str, dict):
             items = output.split(self._tool_args_token)
+            if len(items) < 2:
+                return "", {}
             func_name = items[0].strip()
             arguments = (items[1].strip().split(self._tool_end_token)[0] if getattr(self, "_tool_end_token", None)
                          else items[1].strip())
@@ -266,7 +279,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                                 is_tool_call = parse_arguments_with_tools(item, tools, tool_calls)
                         elif isinstance(items, dict):
                             is_tool_call = parse_arguments_with_tools(items, tools, tool_calls)
-                    except json.JSONDecodeError:
+                    except Exception:
                         LOG.error(f"tool calls info {line} parse error")
                 if not is_tool_call:
                     content.append(line)

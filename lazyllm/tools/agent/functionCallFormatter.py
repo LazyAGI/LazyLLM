@@ -1,5 +1,5 @@
 from lazyllm.components import JsonFormatter
-from lazyllm import json5 as json
+import json5 as json
 
 class FunctionCallFormatter(JsonFormatter):
     def _load(self, msg: str):

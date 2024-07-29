@@ -1,7 +1,8 @@
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
 from .functionCallFormatter import FunctionCallFormatter
-from lazyllm import pipeline, ifs, loop, globals, bind, json5 as json
+from lazyllm import pipeline, ifs, loop, globals, bind
+import json5 as json
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union
 
@@ -19,17 +20,33 @@ def function_call_hook(input: Dict[str, Any], history: List[Dict[str, Any]], too
         input = {"input": input[-1]} if isinstance(input[-1], (dict, list)) and "input" not in input[-1] else input[-1]
     return input, history, tools, label
 
-FC_PROMPT = ("Don't make assumptions about what values to plug into functions."
-             "Ask for clarification if a user request is ambiguous.\n")
+FC_PROMPT_LOCAL = """# Tools
+
+## You have access to the following tools:
+## When you need to call a tool, please insert the following command in your reply, \
+which can be called zero or multiple times according to your needs:
+
+{tool_start_token}The tool to use, should be one of tools list.
+{tool_args_token}The input of the tool.
+{tool_end_token}End of tool."""
+
+FC_PROMPT_ONLINE = ("Don't make assumptions about what values to plug into functions."
+                    "Ask for clarification if a user request is ambiguous.\n")
 
 class FunctionCall(ModuleBase):
-    def __init__(self, llm, tools: List[str], *, prompt: str = FC_PROMPT, return_trace: bool = False):
+    def __init__(self, llm, tools: List[str], *, prompt: str = None, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         try:
             if llm._model_type == "QwenModule" and llm._stream is True:
                 raise ValueError("The qwen platform does not currently support stream function calls.")
         except Exception:
             pass
+        if prompt is None:
+            try:
+                prompt = FC_PROMPT_ONLINE if llm._model_type else FC_PROMPT_LOCAL
+            except Exception:
+                prompt = FC_PROMPT_LOCAL
+
         self._tools_manager = ToolManager(tools)
         self._prompter = ChatPrompter(instruction=prompt, tools=self._tools_manager.tools_description)\
             .pre_hook(function_call_hook)

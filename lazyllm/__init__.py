@@ -38,9 +38,6 @@ __all__ = [
     'FastapiApp',
     'JsonFormatter',
 
-    # common
-    'json5',
-
     # launcher
     'LazyLLMLaunchersBase',        # empty, slurm, sco
 
