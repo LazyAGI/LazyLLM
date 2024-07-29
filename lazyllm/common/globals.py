@@ -66,7 +66,7 @@ class Globals(object):
         raise AttributeError(f'Attr {__name} not found in globals')
 
     def clear(self):
-        self.__data.pop(self._sid)
+        self.__data.pop(self._sid, None)
 
     def _clear_all(self):
         self.__data.clear()
