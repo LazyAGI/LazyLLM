@@ -34,21 +34,21 @@ FC_PROMPT_ONLINE = ("Don't make assumptions about what values to plug into funct
                     "Ask for clarification if a user request is ambiguous.\n")
 
 class FunctionCall(ModuleBase):
-    def __init__(self, llm, tools: List[str], *, prompt: str = None, return_trace: bool = False):
+    def __init__(self, llm, tools: List[str], *, return_trace: bool = False, _prompt: str = None):
         super().__init__(return_trace=return_trace)
         try:
             if llm._model_type == "QwenModule" and llm._stream is True:
                 raise ValueError("The qwen platform does not currently support stream function calls.")
         except Exception:
             pass
-        if prompt is None:
+        if _prompt is None:
             try:
-                prompt = FC_PROMPT_ONLINE if llm._model_type else FC_PROMPT_LOCAL
+                _prompt = FC_PROMPT_ONLINE if llm._model_type else FC_PROMPT_LOCAL
             except Exception:
-                prompt = FC_PROMPT_LOCAL
+                _prompt = FC_PROMPT_LOCAL
 
         self._tools_manager = ToolManager(tools)
-        self._prompter = ChatPrompter(instruction=prompt, tools=self._tools_manager.tools_description)\
+        self._prompter = ChatPrompter(instruction=_prompt, tools=self._tools_manager.tools_description)\
             .pre_hook(function_call_hook)
         self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter())
         with pipeline() as self._impl:
@@ -104,10 +104,10 @@ class FunctionCall(ModuleBase):
         return self._impl(input)
 
 class FunctionCallAgent(ModuleBase):
-    def __init__(self, llm, tools: List[str], prompt: str = None, max_retries: int = 5, return_trace: bool = False):
+    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
-        self._agent = loop(FunctionCall(llm, tools, **({"prompt": prompt} if prompt else {})),
+        self._agent = loop(FunctionCall(llm, tools),
                            stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
