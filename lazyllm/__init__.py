@@ -14,7 +14,8 @@ from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
                      OnlineChatModule, OnlineEmbeddingModule, AutoModel)
 from .client import redis_client
-from .tools import Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, FunctionCallAgent, fc_register
+from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
+                    FunctionCallAgent, fc_register, ReactAgent)
 from .engine import *  # noqa F403
 from .docs import add_doc
 
@@ -68,6 +69,7 @@ __all__ = [
     'FunctionCall',
     'FunctionCallAgent',
     'fc_register',
+    'ReactAgent',
 
     # docs
     'add_doc',

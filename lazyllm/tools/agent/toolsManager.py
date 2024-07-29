@@ -1,5 +1,5 @@
 import copy
-import json
+import json5 as json
 import lazyllm
 import docstring_parser
 from lazyllm.module import ModuleBase
