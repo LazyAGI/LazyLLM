@@ -1,6 +1,5 @@
 import os
 import json
-import numpy as np
 
 import lazyllm
 from lazyllm import LOG
@@ -12,28 +11,49 @@ class Bark(object):
         source = lazyllm.config['model_source'] if not source else source
         self.base_sd = ModelManager(source).download(base_sd)
         self.trust_remote_code = trust_remote_code
-        self.bark = None
+        self.processor, self.bark = None, None
         self.init_flag = lazyllm.once_flag()
+        self.device = 'cpu'
         if init:
             lazyllm.call_once(self.init_flag, self.load_bark)
 
     def load_bark(self):
-        from transformers import pipeline
-        self.bark = pipeline("text-to-speech", "/home/mnt/lazyllm/models/bark", device=0, voice_preset="v2/en_speaker_3")
+        import torch
+        from transformers import AutoProcessor, BarkModel
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.processor = AutoProcessor.from_pretrained(self.base_sd)
+        self.processor.speaker_embeddings['repo_or_path'] = self.base_sd
+        self.bark = BarkModel.from_pretrained(self.base_sd,
+                                              torch_dtype=torch.float16,
+                                              attn_implementation="flash_attention_2").to(self.device)
 
     def __call__(self, string):
         lazyllm.call_once(self.init_flag, self.load_bark)
-        # print("IIIII: ", string)
-        speech = self.bark(string, forward_params={"do_sample": True})
-        speech['audio'] = (speech['audio'].flatten() * 32767).astype(np.int16).tolist()
-        res = {'sounds': (speech['sampling_rate'], speech['audio'])}
-        # print("OOOO: ", res)
+        if isinstance(string, str):
+            query = string
+            voice_preset = "v2/zh_speaker_9"
+        elif isinstance(string, dict):
+            query = string['inputs']
+            voice_preset = string['voice_preset']
+        else:
+            raise TypeError(f"Not support input type:{type(string)}, requires str or dict.")
+        inputs = self.processor(query, voice_preset=voice_preset).to(self.device)
+        speech = self.bark.generate(**inputs) * 32767
+        res = {'sounds': (
+            self.bark.generation_config.sample_rate,
+            speech.cpu().numpy().squeeze().tolist()
+        )}
         return json.dumps(res)
 
 
 class BarkDeploy(object):
-    message_format = None
-    keys_name_handle = None
+    keys_name_handle = {
+        'inputs': 'inputs',
+    }
+    message_format = {
+        'inputs': 'Who are you ?',
+        'voice_preset': None,
+    }
     default_headers = {'Content-Type': 'application/json'}
 
     def __init__(self, launcher=None):

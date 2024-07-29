@@ -92,8 +92,13 @@ class WebModule(ModuleBase):
                                                 value=(self.text_mode != WebModule.Mode.Refresh), label="追加输出")
                     components = []
                     for _, gname, name, ctype, value in component_descs:
-                        if ctype in ('Checkbox', 'Text'):
-                            components.append(getattr(gr, ctype)(interactive=True, value=value, label=f'{gname}.{name}'))
+                        if ctype in ('Checkbox', 'Text', 'Dropdown'):
+                            if ctype == 'Dropdown':
+                                components.append(getattr(gr, ctype)(interactive=True, choices=value,
+                                                                     label=f'{gname}.{name}'))
+                            else:
+                                components.append(getattr(gr, ctype)(interactive=True, value=value,
+                                                                     label=f'{gname}.{name}'))
                         else:
                             raise KeyError(f'invalid component type: {ctype}')
                     with gr.Row():
@@ -262,7 +267,6 @@ class WebModule(ModuleBase):
                 if 'img' in file:
                     chat_history[-1][1] = gr.Image(file['img'])
                 if 'audio' in file:
-                    print("HHHHH: ", type(file), len(file['audio']), len(file['audio'][-1]))
                     chat_history[-1][1] = gr.Audio(file['audio'])
             elif isinstance(result, str):
                 chat_history[-1][1] = result

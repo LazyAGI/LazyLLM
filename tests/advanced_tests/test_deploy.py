@@ -55,3 +55,9 @@ class TestDeploy(object):
         m.update_server()
         res = m('a little cat')
         assert "images_base64" in json.loads(res)
+
+    def test_bark(self):
+        m = lazyllm.TrainableModule('bark')
+        m.update_server()
+        res = m('你好啊，很高兴认识你。')
+        assert "sounds" in json.loads(res)
