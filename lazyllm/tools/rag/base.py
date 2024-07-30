@@ -254,6 +254,9 @@ class Reranker(ModuleBase):
         elif len(inputs) == 2:
             if type(inputs[0]) is str:
                 return self.kernel.postprocess_nodes(inputs[1], query_str=inputs[0])
+            # NOTE HERE inputs[0] got unexpected tuple type
+            elif isinstance(inputs[0], tuple):
+                return self.kernel.postprocess_nodes(inputs[1], query_str=inputs[0][0])
             else:
                 return self.kernel.postprocess_nodes(inputs[0], query_str=inputs[1])
         else:

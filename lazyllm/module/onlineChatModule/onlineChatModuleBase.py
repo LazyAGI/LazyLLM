@@ -195,8 +195,8 @@ class OnlineChatModuleBase(ModuleBase):
             return self._parse_output_by_key(".", response)
 
     def _merge_stream_result(self, src: List[str | int | list | dict]):
-        assert len(src) > 0 and all(isinstance(ele, type(src[-1])) or ele is None for ele in src), \
-               f"The elements in the list: {src} are of inconsistent types"
+        types = set(type(ele) for ele in src if ele is not None)
+        assert len(src) > 0 and len(types) <= 1, f"The elements in the list: {src} are of inconsistent types"
         if len(src) == 1:
             return src[0]
         if all(isinstance(ele, str) or ele is None for ele in src):
