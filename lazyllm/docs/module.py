@@ -317,7 +317,8 @@ Args:
 add_english_doc('TrainableModule', '''\
 Trainable module, all models (including LLM, Embedding, etc.) are served through TrainableModule
 
-.. function:: TrainableModule(base_model='', target_path='', *, source=lazyllm.config['model_source'], stream=False, return_trace=False)
+### TrainableModule
+                (base_model='', target_path='', *, source=lazyllm.config['model_source'], stream=False, return_trace=False)
 
 Args:
     base_model (str): Name or path of the base model. If the model is not available locally, it will be automatically downloaded from the model source.
@@ -326,53 +327,17 @@ Args:
     stream (bool): Whether to output stream. If the inference engine used does not support streaming, this parameter will be ignored.
     return_trace (bool): Whether to record the results in trace.
 
-.. function:: TrainableModule.trainset(v):
-Set the training set for TrainableModule
-
-Args:
-    v (str): Path to the training/fine-tuning dataset.
-
-.. function:: TrainableModule.train_method(v, **kw):
-Set the training method for TrainableModule. Continued pre-training is not supported yet, expected to be available in the next version.
-
-Args:
-    v (LazyLLMTrainBase): Training method, options include ``train.auto`` etc.
-    kw (**dict): Parameters required by the training method, corresponding to v.
-
-.. function:: TrainableModule.finetune_method(v, **kw):
-Set the fine-tuning method and its parameters for TrainableModule.
-
-Args:
-    v (LazyLLMFinetuneBase): Fine-tuning method, options include ``finetune.auto`` / ``finetune.alpacalora`` / ``finetune.collie`` etc.
-    kw (**dict): Parameters required by the fine-tuning method, corresponding to v.
-
-.. function:: TrainableModule.deploy_method(v, **kw):
-Set the deployment method and its parameters for TrainableModule.
-
-Args:
-    v (LazyLLMDeployBase): Deployment method, options include ``deploy.auto`` / ``deploy.lightllm`` / ``deploy.vllm`` etc.
-    kw (**dict): Parameters required by the deployment method, corresponding to v.
-
-.. function:: TrainableModule.mode(v):
-Set whether to execute training or fine-tuning during update for TrainableModule.
-
-Args:
-    v (str): Sets whether to execute training or fine-tuning during update, options are 'finetune' and 'train', default is 'finetune'.
 ''')
 
-add_example('TrainableModule', ['''\
-''', '''\
+add_example('TrainableModule', '''\
 >>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).trainset('/file/to/path').deploy_method(None).mode('finetune')
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
-''', '''\
-''', '''\
 >>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
-''', '''\
 >>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy).mode('finetune')
 >>> m.evalset([1, 2, 3])
@@ -380,12 +345,11 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 >>> m.eval_result
 ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
-''', '''\
 >>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
-'''])
+''')
 
 add_chinese_doc('UrlModule', '''\
 可以将ServerModule部署得到的Url包装成一个Module，调用 ``__call__`` 时会访问该服务。
