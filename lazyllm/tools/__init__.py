@@ -13,6 +13,6 @@ __all__ = [
     'FunctionCallAgent',
     'fc_register',
     'ReactAgent',
-    'PlanAndSolveAgent'
-    "IntentClassifier"
+    'PlanAndSolveAgent',
+    'IntentClassifier'
 ]
