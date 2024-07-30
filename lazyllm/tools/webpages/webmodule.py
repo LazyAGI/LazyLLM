@@ -92,13 +92,11 @@ class WebModule(ModuleBase):
                                                 value=(self.text_mode != WebModule.Mode.Refresh), label="追加输出")
                     components = []
                     for _, gname, name, ctype, value in component_descs:
-                        if ctype in ('Checkbox', 'Text', 'Dropdown'):
-                            if ctype == 'Dropdown':
-                                components.append(getattr(gr, ctype)(interactive=True, choices=value,
-                                                                     label=f'{gname}.{name}'))
-                            else:
-                                components.append(getattr(gr, ctype)(interactive=True, value=value,
-                                                                     label=f'{gname}.{name}'))
+                        if ctype in ('Checkbox', 'Text'):
+                            components.append(getattr(gr, ctype)(interactive=True, value=value, label=f'{gname}.{name}'))
+                        elif ctype == 'Dropdown':
+                            components.append(getattr(gr, ctype)(interactive=True, choices=value,
+                                                                 label=f'{gname}.{name}'))
                         else:
                             raise KeyError(f'invalid component type: {ctype}')
                     with gr.Row():

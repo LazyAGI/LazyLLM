@@ -3,6 +3,8 @@ import json
 
 import lazyllm
 from lazyllm import LOG
+from lazyllm.thirdparty import torch
+from lazyllm.thirdparty import transformers as tf
 from ..utils.downloader import ModelManager
 
 class Bark(object):
@@ -18,14 +20,12 @@ class Bark(object):
             lazyllm.call_once(self.init_flag, self.load_bark)
 
     def load_bark(self):
-        import torch
-        from transformers import AutoProcessor, BarkModel
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.processor = AutoProcessor.from_pretrained(self.base_sd)
+        self.processor = tf.AutoProcessor.from_pretrained(self.base_sd)
         self.processor.speaker_embeddings['repo_or_path'] = self.base_sd
-        self.bark = BarkModel.from_pretrained(self.base_sd,
-                                              torch_dtype=torch.float16,
-                                              attn_implementation="flash_attention_2").to(self.device)
+        self.bark = tf.BarkModel.from_pretrained(self.base_sd,
+                                                 torch_dtype=torch.float16,
+                                                 attn_implementation="flash_attention_2").to(self.device)
 
     def __call__(self, string):
         lazyllm.call_once(self.init_flag, self.load_bark)
