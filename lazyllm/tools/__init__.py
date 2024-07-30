@@ -1,6 +1,6 @@
 from .rag import Document, Reranker, Retriever
 from .webpages import WebModule
-from .agent import ToolManager, FunctionCall, FunctionCallAgent, register as fc_register, ReactAgent
+from .agent import ToolManager, FunctionCall, FunctionCallAgent, register as fc_register, ReactAgent, PlanAndSolveAgent
 
 __all__ = [
     'Document',
@@ -11,5 +11,6 @@ __all__ = [
     'FunctionCall',
     'FunctionCallAgent',
     'fc_register',
-    'ReactAgent'
+    'ReactAgent',
+    'PlanAndSolveAgent'
 ]

@@ -99,24 +99,16 @@ class FunctionCall(ModuleBase):
                             f" and does not support {type(output)}.")
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
-        if self._llm._module_id not in globals['chat_history']:
-            globals['chat_history'][self._llm._module_id] = llm_chat_history if llm_chat_history else []
+        globals['chat_history'].setdefault(self._llm._module_id, [])
+        if llm_chat_history is not None:
+            globals['chat_history'][self._llm._module_id] = llm_chat_history
         return self._impl(input)
 
 class FunctionCallAgent(ModuleBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
-        self._llm = llm
-        self._tools = tools
-        self._set_prompt()
-        self._build_agent()
-
-    def _set_prompt(self):
-        self._prompt = None
-
-    def _build_agent(self):
-        self._agent = loop(FunctionCall(self._llm, self._tools, _prompt=self._prompt),
+        self._agent = loop(FunctionCall(llm, tools),
                            stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
