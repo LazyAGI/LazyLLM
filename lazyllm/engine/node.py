@@ -35,4 +35,11 @@ all_nodes = dict(
                 lora_alpha=NodeArgs(int, 32),
                 lora_dropout=NodeArgs(float, 0.05)))
     ),
+
+    Formatter=dict(
+        module=lazyllm.Formatter,
+        init_arguments=dict(
+            formatter=NodeArgs(str),
+        )
+    ),
 )
