@@ -38,7 +38,7 @@ class ModuleBase(object):
         return object.__new__(cls)
 
     def __init__(self, *, return_trace=False):
-        self.submodules = []
+        self._submodules = []
         self._evalset = None
         self._return_trace = return_trace
         self.mode_list = ('train', 'server', 'eval')
@@ -49,7 +49,7 @@ class ModuleBase(object):
 
     def __setattr__(self, name: str, value):
         if isinstance(value, ModuleBase):
-            self.submodules.append(value)
+            self._submodules.append(value)
         elif isinstance(value, Option):
             self._options.append(value)
         elif name.endswith('_args') and isinstance(value, dict):
@@ -106,6 +106,9 @@ class ModuleBase(object):
     def name(self): return self._module_name
     @name.setter
     def name(self, name): self._module_name = name
+
+    @property
+    def submodules(self): return self._submodules
 
     def evalset(self, evalset, load_f=None, collect_f=lambda x: x):
         if isinstance(evalset, str) and os.path.exists(evalset):
@@ -331,11 +334,18 @@ class ActionModule(ModuleBase):
         if isinstance(action, (tuple, list)):
             action = Pipeline(*action)
         assert isinstance(action, FlowBase), f'Invalid action type {type(action)}'
-        action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: self.submodules.append(x))
         self.action = action
 
     def forward(self, *args, **kw):
         return self.action(*args, **kw)
+
+    @property
+    def submodules(self):
+        if isinstance(self.action, FlowBase):
+            submodule = []
+            self.action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: submodule.append(x))
+            return submodule
+        return super().submodules
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Action', subs=[repr(self.action)],

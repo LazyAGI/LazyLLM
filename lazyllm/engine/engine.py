@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, List, Optional, Callable, Dict
+from typing import List, Optional, Callable, Dict, Type
 from lazyllm import graph, switch, pipeline
 from .node import all_nodes
 import re
@@ -8,15 +8,12 @@ import inspect
 
 
 @dataclass
-class Node(object):
+class Node():
     id: int
     kind: str
     name: str
     args: Optional[Dict] = None
     func: Optional[Callable] = None
-
-    def __call__(self, *args: Any, **kwds: Any):
-        return self.func(*args, **kwds)
 
 
 class CodeBlock(object):
@@ -38,7 +35,7 @@ class Engine(object):
         return Engine.__default_engine__()
 
     @classmethod
-    def set_default(cls, engine):
+    def set_default(cls, engine: Type):
         cls.__default_engine__ = engine
 
     def start(self, nodes=[]):
@@ -47,7 +44,7 @@ class Engine(object):
     def update(self, changes=[]):
         raise NotImplementedError
 
-    def build_node(self, node):
+    def build_node(self, node) -> Callable:
         return _constructor.build(node)
 
 
@@ -109,10 +106,11 @@ def make_graph(nodes: List[dict], edges: List[dict]):
 
     with graph() as g:
         for node in nodes:
-            setattr(g, node.name, node)
+            setattr(g, node.name, node.func)
 
     for edge in edges:
         g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name)
+
     return g
 
 
@@ -136,8 +134,8 @@ def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     with switch(judge_on_full_input=judge_on_full_input) as sw:
         for cond, nodes in nodes.items():
             if isinstance(nodes, list) and len(nodes) > 1:
-                f = pipeline([Engine().build_node(node) for node in nodes])
+                f = pipeline([Engine().build_node(node).func for node in nodes])
             else:
-                f = Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes)
+                f = Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
             sw.case[cond::f]
     return sw
