@@ -45,6 +45,9 @@ class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
         if isinstance(msg, str): msg = self._load(msg)
         return self._parse_py_data_by_formatter(msg)
 
+    def __call__(self, msg):
+        return self.format(msg)
+
 class EmptyFormatter(LazyLLMFormatterBase):
     def format(self, msg):
         return msg
