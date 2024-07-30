@@ -18,55 +18,6 @@ You only need to reply with the name of the intent. Do not output any additional
 The input text is in JSON format, where "human_input" contains the user's raw input and "intent_list" contains a list of all intent names.
 
 ## Example
-User: {"human_input": "What’s the weather like in Beijing tomorrow?", "intent_list": ["Check Weather", "Search Engine Query", "View Surveillance", "Report Summary", "Chat"]}
-Assistant: Check Weather
-
-## Conversation History
-The chat history between the human and the assistant is stored within the <histories></histories> XML tags below.
-<histories>
-${histories}
-</histories>
-
-Input text is as follows:
-${input_text}
-"""
-
-ch_prompt_classifier_template = """
-## role：意图分类器
-你是一个意图分类引擎，负责根据对话信息分析用户输入文本并确定唯一的意图类别
-
-## Constrains:
-你只需要回复意图的名字即可，不要额外输出其他字段，也不要进行翻译
-
-## 文本格式
-输入文本为JSON格式，"human_input"中内容为用户的原始输入，"intent_list"为所有意图名列表
-
-## 示例
-User: {"human_input": "北京明天天气怎么样？", "intent_list": ["查看天气", "搜索引擎检索", "查看监控", "周报总结", "聊天"]}
-Assistant:  查看天气
-
-## 历史对话
-人类和助手之间的聊天记录存储在下面的 <histories></histories> XML 标记中。
-<histories>
-${histories}
-</histories>
-
-输入文本如下:
-${input_text}
-"""
-
-
-en_prompt_classifier_template = """
-## role：Intent Classifier
-You are an intent classification engine responsible for analyzing user input text based on dialogue information and determining a unique intent category.
-
-## Constrains:
-You only need to reply with the name of the intent. Do not output any additional fields and do not translate it.
-
-## Text Format
-The input text is in JSON format, where "human_input" contains the user's raw input and "intent_list" contains a list of all intent names.
-
-## Example
 User: {{"human_input": "What’s the weather like in Beijing tomorrow?", "intent_list": ["Check Weather", "Search Engine Query", "View Surveillance", "Report Summary", "Chat"]}}
 Assistant: Check Weather
 
