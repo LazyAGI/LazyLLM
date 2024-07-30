@@ -406,7 +406,7 @@ Keyword Args:
     max_total_token_num (int): 最大总token数，默认为 ``64000``。
     eos_id (int): 结束符ID，默认为 ``2``。
     port (int): 服务的端口号，默认为 ``None``。此情况下LazyLLM会自动生成随机端口号。
-    host (int): 服务的IP地址，默认为 ``0.0.0.0``。
+    host (str): 服务的IP地址，默认为 ``0.0.0.0``。
     nccl_port (int): NCCL 端口，默认为 ``None``。此情况下LazyLLM会自动生成随机端口号。
     tokenizer_mode (str): tokenizer的加载模式，默认为 ``auto``。
     running_max_req_size (int): 推理引擎最大的并行请求数， 默认为 ``256``。
@@ -461,7 +461,7 @@ Keyword Args:
     device (str): VLLM所支持的后端硬件类型，默认为 ``auto``。另外可选的还有：``cuda``, ``neuron``, ``cpu``。
     block-size (int): 设置 token块的大小，默认为 ``16``。
     port (int): 服务的端口号，默认为 ``auto``。
-    host (int): 服务的IP地址，默认为 ``0.0.0.0``。
+    host (str): 服务的IP地址，默认为 ``0.0.0.0``。
     seed (int): 随机数种子，默认为 ``0``。
     tokenizer_mode (str): tokenizer的加载模式，默认为 ``auto``。
     max-num-seqs (int): 推理引擎最大的并行请求数， 默认为 ``256``。
@@ -496,6 +496,46 @@ Keyword Args:
 add_example('deploy.Vllm', '''\
 >>> from lazyllm import deploy
 >>> infer = deploy.vllm()
+''')
+
+# Deploy-LMDeploy
+add_chinese_doc('deploy.LMDeploy', '''\
+此类是 ``LazyLLMDeployBase`` 的子类，基于 `LMDeploy <https://github.com/InternLM/lmdeploy>`_ 框架提供的推理能力，用于对大语言模型进行推理。
+
+Args:
+    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
+    stream (bool): 是否为流式响应，默认为 ``False``。
+    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
+
+此类的关键字参数及其默认值如下：
+
+Keyword Args: 
+    tp (int): 张量并行参数，默认为 ``1``。
+    server-name (str): 服务的IP地址，默认为 ``0.0.0.0``。
+    server-port (int): 服务的端口号，默认为 ``None``,此情况下LazyLLM会自动生成随机端口号。
+    max-batch-size (int): 最大batch数， 默认为 ``128``。
+
+''')
+
+add_english_doc('deploy.LMDeploy', '''\
+    This class is a subclass of ``LazyLLMDeployBase``, leveraging the inference capabilities provided by the `LMDeploy <https://github.com/InternLM/lmdeploy>`_ framework for inference on large language models.
+
+    Args:
+        launcher (lazyllm.launcher): The launcher for fine-tuning, defaults to ``launchers.remote(ngpus=1)``.
+        stream (bool): Whether to enable streaming response, defaults to ``False``.
+        kw: Keyword arguments for updating default training parameters. Note that no additional keyword arguments beyond those listed below can be passed.
+
+    Keyword Args: 
+        tp (int): Tensor parallelism parameter, defaults to ``1``.
+        server_name (str): The IP address of the service, defaults to ``0.0.0.0``.
+        server_port (int): The port number of the service, defaults to ``None``. In this case, LazyLLM will automatically generate a random port number.
+        max_batch_size (int): Maximum batch size, defaults to ``128``.
+
+''')
+
+add_example('deploy.Vllm', '''\
+>>> from lazyllm import deploy
+>>> infer = deploy.LMDeploy()
 ''')
 
 # Deploy-Auto

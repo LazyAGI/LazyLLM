@@ -1,6 +1,7 @@
 import os
 import copy
 import time
+import json
 import requests
 import pickle
 import codecs
@@ -253,7 +254,15 @@ class UrlModule(ModuleBase, UrlTemplate):
     def forward(self, __input=package(), *, llm_chat_history=None, tools=None, **kw):  # noqa C901
         assert self._url is not None, f'Please start {self.__class__} first'
 
-        __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
+        files = []
+        if self.template_message and isinstance(__input, str) and __input.startswith('lazyllm_files::'):
+            message = json.loads(__input[15:])
+            assert isinstance(message, dict)
+            query = message.get('text', '')
+            files = message.get('files', [])
+        else:
+            query = __input
+        __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
         headers = {'Content-Type': 'application/json'}
 
         if isinstance(self, ServerModule):
@@ -264,6 +273,8 @@ class UrlModule(ModuleBase, UrlTemplate):
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
             assert 'inputs' in self.keys_name_handle
             data[self.keys_name_handle['inputs']] = __input
+            if 'image' in self.keys_name_handle and files:
+                data[self.keys_name_handle['image']] = files
         else:
             if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
             data = __input
