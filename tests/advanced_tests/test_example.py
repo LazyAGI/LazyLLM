@@ -65,7 +65,7 @@ class TestExamples(object):
         assert res == 'Hello world.'
 
         # test chat warpped in web
-        web, client = self.warp_into_web(chat)
+        _, client = self.warp_into_web(chat)
         chat_history = [[query, None]]
         ans = client.predict(self.use_context,
                              chat_history,
@@ -84,7 +84,7 @@ class TestExamples(object):
         assert len(res) >= 1024
 
         # test story warpped in web
-        web, client = self.warp_into_web(story)
+        _, client = self.warp_into_web(story)
         chat_history = [[query, None]]
         ans = client.predict(self.use_context,
                              chat_history,
@@ -105,7 +105,7 @@ class TestExamples(object):
         assert len(res) >= 16
 
         # test rag warpped in web
-        web, client = self.warp_into_web(rag)
+        _, client = self.warp_into_web(rag)
         chat_history = [[query, None]]
         ans = client.predict(self.use_context,
                              chat_history,
@@ -129,7 +129,7 @@ class TestExamples(object):
         assert image.size == (1024, 1024)
 
         # test painting warpped in web
-        web, client = self.warp_into_web(painting)
+        _, client = self.warp_into_web(painting)
         chat_history = [[query, None]]
         ans = client.predict(self.use_context,
                              chat_history,

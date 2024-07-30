@@ -43,12 +43,19 @@ all_nodes = dict(
         init_arguments=dict(
             method=NodeArgs(str),
             url=NodeArgs(str),
-            API_Key=NodeArgs(str, ''),
+            api_key=NodeArgs(str, ''),
             headers=NodeArgs(dict, {}),
             params=NodeArgs(dict, {}),
             body=NodeArgs(str, ''),
         ),
         builder_argument=dict(),
         other_arguments=dict()
+    ),
+
+    Formatter=dict(
+        module=lazyllm.Formatter,
+        init_arguments=dict(
+            formatter=NodeArgs(str),
+        )
     ),
 )

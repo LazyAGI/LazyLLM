@@ -1,6 +1,7 @@
 import os
 import copy
 import time
+import json
 import requests
 import pickle
 import codecs
@@ -38,7 +39,7 @@ class ModuleBase(object):
         return object.__new__(cls)
 
     def __init__(self, *, return_trace=False):
-        self.submodules = []
+        self._submodules = []
         self._evalset = None
         self._return_trace = return_trace
         self.mode_list = ('train', 'server', 'eval')
@@ -49,7 +50,7 @@ class ModuleBase(object):
 
     def __setattr__(self, name: str, value):
         if isinstance(value, ModuleBase):
-            self.submodules.append(value)
+            self._submodules.append(value)
         elif isinstance(value, Option):
             self._options.append(value)
         elif name.endswith('_args') and isinstance(value, dict):
@@ -106,6 +107,9 @@ class ModuleBase(object):
     def name(self): return self._module_name
     @name.setter
     def name(self, name): self._module_name = name
+
+    @property
+    def submodules(self): return self._submodules
 
     def evalset(self, evalset, load_f=None, collect_f=lambda x: x):
         if isinstance(evalset, str) and os.path.exists(evalset):
@@ -250,7 +254,15 @@ class UrlModule(ModuleBase, UrlTemplate):
     def forward(self, __input=package(), *, llm_chat_history=None, tools=None, **kw):  # noqa C901
         assert self._url is not None, f'Please start {self.__class__} first'
 
-        __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
+        files = []
+        if self.template_message and isinstance(__input, str) and __input.startswith('lazyllm_files::'):
+            message = json.loads(__input[15:])
+            assert isinstance(message, dict)
+            query = message.get('text', '')
+            files = message.get('files', [])
+        else:
+            query = __input
+        __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
         headers = {'Content-Type': 'application/json'}
 
         if isinstance(self, ServerModule):
@@ -261,6 +273,8 @@ class UrlModule(ModuleBase, UrlTemplate):
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
             assert 'inputs' in self.keys_name_handle
             data[self.keys_name_handle['inputs']] = __input
+            if 'image' in self.keys_name_handle and files:
+                data[self.keys_name_handle['image']] = files
         else:
             if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
             data = __input
@@ -331,11 +345,18 @@ class ActionModule(ModuleBase):
         if isinstance(action, (tuple, list)):
             action = Pipeline(*action)
         assert isinstance(action, FlowBase), f'Invalid action type {type(action)}'
-        action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: self.submodules.append(x))
         self.action = action
 
     def forward(self, *args, **kw):
         return self.action(*args, **kw)
+
+    @property
+    def submodules(self):
+        if isinstance(self.action, FlowBase):
+            submodule = []
+            self.action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: submodule.append(x))
+            return submodule
+        return super().submodules
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Action', subs=[repr(self.action)],
