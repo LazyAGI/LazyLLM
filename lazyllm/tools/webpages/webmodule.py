@@ -104,8 +104,8 @@ class WebModule(ModuleBase):
                         add_sess_btn = gr.Button("添加新会话")
                         sess_drpdn = gr.Dropdown(choices=sess_data.value['sess_titles'], label="选择会话：", value='')
                         del_sess_btn = gr.Button("删除当前会话")
-                    chatbot = gr.Chatbot(height=900)
-                    query_box = gr.Textbox(show_label=False, placeholder='输入内容并回车!!!')
+                    chatbot = gr.Chatbot(height=700)
+                    query_box = gr.MultimodalTextbox(show_label=False, placeholder='输入内容并回车!!!', interactive=True)
 
             query_box.submit(self._init_session, [query_box, sess_data],
                                                  [sess_drpdn, chatbot, dbg_msg, sess_data], queue=True
@@ -135,7 +135,11 @@ class WebModule(ModuleBase):
             return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), session
         session['frozen_query'] = query
 
-        session['curr_sess'] = f"({session['sess_num']})  {query}"
+        if "text" in query and query["text"] is not None:
+            id_name = query['text']
+        else:
+            id_name = id(id_name)
+        session['curr_sess'] = f"({session['sess_num']})  {id_name}"
         session['sess_num'] += 1
         session['sess_titles'][0] = session['curr_sess']
 
@@ -146,13 +150,13 @@ class WebModule(ModuleBase):
     def _add_session(self, chat_history, log_history, session):
         if session['curr_sess'] == '':
             LOG.warning('Cannot create new session while current session is empty.')
-            return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), gr.Textbox(), session
+            return gr.Dropdown(), gr.Chatbot(), {}, gr.Textbox(), session
 
         self._save_history(chat_history, log_history, session)
 
         session['curr_sess'] = ''
         session['sess_titles'].insert(0, session['curr_sess'])
-        return gr.update(choices=session['sess_titles'], value=session['curr_sess']), [], '', '', session
+        return gr.update(choices=session['sess_titles'], value=session['curr_sess']), [], {}, '', session
 
     def _save_history(self, chat_history, log_history, session):
         if session['curr_sess'] in session['sess_titles']:
@@ -161,17 +165,17 @@ class WebModule(ModuleBase):
 
     def _change_session(self, session_title, chat_history, log_history, session):
         if session['curr_sess'] == '':  # new session
-            return gr.Dropdown(), [], '', '', session
+            return gr.Dropdown(), [], {}, '', session
 
         if session_title not in session['sess_titles']:
             LOG.warning(f'{session_title} is not an existing session title.')
-            return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), gr.Textbox(), session
+            return gr.Dropdown(), gr.Chatbot(), {}, gr.Textbox(), session
 
         self._save_history(chat_history, log_history, session)
 
         session['curr_sess'] = session_title
         return (gr.update(choices=session['sess_titles'], value=session['curr_sess']),
-                session['sess_history'][session['curr_sess']], '',
+                session['sess_history'][session['curr_sess']], {},
                 session['sess_logs'][session['curr_sess']], session)
 
     def _delete_session(self, session_title, session):
@@ -193,19 +197,37 @@ class WebModule(ModuleBase):
         if len(session['sess_titles']) == 0:
             return self._add_session(None, None, session)
         else:
-            return self._change_session(session['sess_titles'][0], None, None, session)
+            return self._change_session(session['sess_titles'][0], None, {}, session)
 
     def _prepare(self, query, chat_history, session):
-        if not query:
+        if not query.get('text', '') and not query.get('files', []):
             query = session['frozen_query']
         if chat_history is None:
             chat_history = []
-        return '', chat_history + [[query, None]]
+        for x in query["files"]:
+            chat_history.append([[x,], None])
+        if "text" in query and query["text"]:
+            chat_history.append([query['text'], None])
+        return {}, chat_history
 
     def _respond_stream(self, use_context, chat_history, stream_output, append_text, *args):  # noqa C901
         try:
             # TODO: move context to trainable module
-            input = chat_history[-1][0]
+            files = []
+            for file in chat_history[::-1]:
+                if file[-1]: break  # not current chat
+                if isinstance(file[0], (tuple, list)):
+                    files.append(file[0][0])
+                elif isinstance(file[0], str) and file[0].startswith('lazyllm_img::'):  # Just for pytest
+                    files.append(file[0][13:])
+            if isinstance(chat_history[-1][0], str):
+                string = chat_history[-1][0]
+            else:
+                string = ''
+            if files:
+                input = 'lazyllm_files::' + json.dumps({'text': string, 'files': files})
+            else:
+                input = string
             history = chat_history[:-1] if use_context and len(chat_history) > 1 else None
 
             for k, v in zip(self.ckeys, args):
@@ -214,7 +236,7 @@ class WebModule(ModuleBase):
 
             if use_context:
                 for h in self.history:
-                    if h not in globals['chat_history']: globals['chat_history'] = dict()
+                    if h not in globals['chat_history']: globals['chat_history'][h] = dict()
                     globals['chat_history'][h] = history
             result = self.m(input)
 
@@ -281,7 +303,7 @@ class WebModule(ModuleBase):
     def _clear_history(self, session):
         session['sess_history'][session['curr_sess']] = []
         session['sess_logs'][session['curr_sess']] = []
-        return [], '', '', session
+        return [], {}, '', session
 
     def _work(self):
         if isinstance(self.port, (range, tuple, list)):

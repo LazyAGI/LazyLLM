@@ -308,6 +308,22 @@ model_name_mapping = {
     "stable-diffusion-3-medium": {
         "source": {"huggingface": "stabilityai/stable-diffusion-3-medium", "modelscope": "AI-ModelScope/stable-diffusion-3-medium-diffusers"},
         "type": "sd",
-	}
+		},
+    "llava-1.5-7b": {
+		"source": {"huggingface": "llava-hf/llava-1.5-7b-hf", "modelscope": "huangjintao/llava-1.5-7b-hf"},
+        "type": "vlm",
+		},
+    "llava-1.5-13b": {
+		"source": {"huggingface": "llava-hf/llava-1.5-13b-hf", "modelscope": "huangjintao/llava-1.5-13b-hf"},
+        "type": "vlm",
+		},
+    "internvl-chat-2b-v1-5": {
+		"source": {"huggingface": "OpenGVLab/Mini-InternVL-Chat-2B-V1-5", "modelscope": "OpenGVLab/Mini-InternVL-Chat-2B-V1-5"},
+        "type": "vlm",
+		},
+    "internvl-chat-v1-5": {
+		"source": {"huggingface": "OpenGVLab/InternVL-Chat-V1-5", "modelscope": "OpenGVLab/InternVL-Chat-V1-5"},
+        "type": "vlm",
+		},
 }
 
