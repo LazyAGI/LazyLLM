@@ -88,21 +88,21 @@ Args:
     similarity : The name of the similarity function to be used for document retrieval. Defaults to 'defatult'. The candidate sets are ["defatult", "chinese_bm25", "bm25"].
     index: The type of index to be used for document retrieval. Defaults to 'vector'.
 
-Detailed explanation of Parser types
-  - Hierarchy: This node parser will chunk nodes into hierarchical nodes. This means a single input will be chunked into several hierarchies of chunk sizes, with each node containing a reference to it's parent node.
-  - CoarseChunk: Get children of root nodes in given nodes that have given depth 0.
-  - MediumChunk: Get children of root nodes in given nodes that have given depth 1.
-  - FineChunk: Get children of root nodes in given nodes that have given depth 2.
-  - SentenceDivider：This node parser attempts to split text while respecting the boundaries of sentences.
-  - TokenDivider：This node parser attempts to split to a consistent chunk size according to raw token counts.
-  - HtmlExtractor：This node parser uses beautifulsoup to parse raw HTML.By default, it will parse a select subset of HTML tags, but you can override this.The default tags are: ["p", "h1"]
-  - JsonExtractor：Splits a document into Nodes using custom JSON splitting logic.
+Detailed explanation of Parser types\n
+  - Hierarchy: This node parser will chunk nodes into hierarchical nodes. This means a single input will be chunked into several hierarchies of chunk sizes, with each node containing a reference to it's parent node.\n
+  - CoarseChunk: Get children of root nodes in given nodes that have given depth 0.\n
+  - MediumChunk: Get children of root nodes in given nodes that have given depth 1.\n
+  - FineChunk: Get children of root nodes in given nodes that have given depth 2.\n
+  - SentenceDivider：This node parser attempts to split text while respecting the boundaries of sentences.\n
+  - TokenDivider：This node parser attempts to split to a consistent chunk size according to raw token counts.\n
+  - HtmlExtractor：This node parser uses beautifulsoup to parse raw HTML.By default, it will parse a select subset of HTML tags, but you can override this.The default tags are: ["p", "h1"]\n
+  - JsonExtractor：Splits a document into Nodes using custom JSON splitting logic.\n
   - MarkDownExtractor：Splits a document into Nodes using custom Markdown splitting logic.
 
-Detailed explanation of similarity types
-  - defatult：Search documents using cosine method.
-  - chinese_bm25：Search documents using chinese_bm25 method.The primary differences between chinese_bm25 and the standard bm25 stem from the specific adjustments and optimizations made for handling Chinese text. 
-  - bm25：Search documents using bm25 method.
+Detailed explanation of similarity types\n
+  - defatult：Search documents using cosine method.\n
+  - chinese_bm25：Search documents using chinese_bm25 method.The primary differences between chinese_bm25 and the standard bm25 stem from the specific adjustments and optimizations made for handling Chinese text. \n
+  - bm25：Search documents using bm25 method.\n
 """)
 
 add_chinese_doc('Retriever', r"""
@@ -116,21 +116,21 @@ Args:
     similarity : 用于设置文档检索的相似度函数。默认为 'defatult'。候选集包括 ["defatult", "chinese_bm25", "bm25"]。
     index: 用于文档检索的索引类型。默认为 'vector'。
 
-详细解释parser类型
-  - Hierarchy: 此节点解析器将原始文本按照分层算法拆分成节点。这意味着一个输入将被分块成几个层次的块，每个节点包含对其父节点的引用。
-  - CoarseChunk: 获取给定结点中的深度为 0 的子节点。
-  - MediumChunk: 获取给定结点中的深度为 1 的子节点。
-  - FineChunk: 获取给定结点中的深度为 2 的子节点。
-  - SentenceDivider：此节点解析器尝试在尊重句子边界的同时拆分文本。
-  - TokenDivider：此节点解析器尝试将原始文本拆分为一致的块大小。
-  - HtmlExtractor：此节点解析器使用 beautifulsoup 解析原始 HTML。默认情况下，它将解析选定的 HTML 标签，但您可以覆盖此设置。默认标签为: ["p", "h1"]
-  - JsonExtractor：使用自定义 JSON 拆分逻辑将文档拆分为节点。
-  - MarkDownExtractor：使用自定义 Markdown 拆分逻辑将文档拆分为节点。
+详细解释parser类型\n
+  - Hierarchy: 此节点解析器将原始文本按照分层算法拆分成节点。这意味着一个输入将被分块成几个层次的块，每个节点包含对其父节点的引用。\n
+  - CoarseChunk: 获取给定结点中的深度为 0 的子节点。\n
+  - MediumChunk: 获取给定结点中的深度为 1 的子节点。\n
+  - FineChunk: 获取给定结点中的深度为 2 的子节点。\n
+  - SentenceDivider：此节点解析器尝试在尊重句子边界的同时拆分文本。\n
+  - TokenDivider：此节点解析器尝试将原始文本拆分为一致的块大小。\n
+  - HtmlExtractor：此节点解析器使用 beautifulsoup 解析原始 HTML。默认情况下，它将解析选定的 HTML 标签，但您可以覆盖此设置。默认标签为: ["p", "h1"]\n
+  - JsonExtractor：使用自定义 JSON 拆分逻辑将文档拆分为节点。\n
+  - MarkDownExtractor：使用自定义 Markdown 拆分逻辑将文档拆分为节点。\n
 
-详细解释similarity类型
-  - defatult：使用 cosine 算法搜索文档。
-  - chinese_bm25：使用 chinese_bm25 算法搜索文档。chinese_bm25 与标准 bm25 的主要区别在于对中文的特定优化。
-  - bm25：使用 bm25 算法搜索文档。
+详细解释similarity类型\n
+  - defatult：使用 cosine 算法搜索文档。\n
+  - chinese_bm25：使用 chinese_bm25 算法搜索文档。chinese_bm25 与标准 bm25 的主要区别在于对中文的特定优化。\n
+  - bm25：使用 bm25 算法搜索文档。\n
 """)
 
 add_example('Retriever', r"""
