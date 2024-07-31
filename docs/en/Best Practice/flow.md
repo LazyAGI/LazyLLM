@@ -4,7 +4,7 @@ LazyLLM defines a multitude of data flow components that enable you to build com
 
 ### Definitions and API Documentation
 
-The definitions and basic usage of data flow are described in :ref:api.flow.
+The definitions and basic usage of data flow are described in :ref:`api.flow`.
 
 ### pipeline
 

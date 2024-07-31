@@ -102,7 +102,7 @@ PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1
 # ============= Finetune
 # Finetune-AlpacaloraFinetune
 add_chinese_doc('finetune.AlpacaloraFinetune', '''\
-此类是 ``LazyLLMFinetuneBase`` 的子类，基于 `alpaca-lora <https://github.com/tloen/alpaca-lora>`_ 项目提供的LoRA微调能力，用于对大语言模型进行LoRA微调。
+此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [alpaca-lora](https://github.com/tloen/alpaca-lora) 项目提供的LoRA微调能力，用于对大语言模型进行LoRA微调。
 
 Args:
     base_model (str): 用于进行微调的基模型的本地绝对路径。
@@ -140,7 +140,7 @@ Args:
 ''')
 
 add_english_doc('finetune.AlpacaloraFinetune', '''\
-This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the `alpaca-lora <https://github.com/tloen/alpaca-lora>`_ project, used for LoRA fine-tuning of large language models.
+This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the [alpaca-lora](https://github.com/tloen/alpaca-lora) project, used for LoRA fine-tuning of large language models.
 
 Args:
     base_model (str): The base model used for fine-tuning. It is required to be the path of the base model.
@@ -184,7 +184,7 @@ add_example('finetune.AlpacaloraFinetune', '''\
 
 # Finetune-CollieFinetune
 add_chinese_doc('finetune.CollieFinetune', '''\
-此类是 ``LazyLLMFinetuneBase`` 的子类，基于 `Collie <https://github.com/OpenLMLab/collie>`_ 框架提供的LoRA微调能力，用于对大语言模型进行LoRA微调。
+此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [Collie](https://github.com/OpenLMLab/collie) 框架提供的LoRA微调能力，用于对大语言模型进行LoRA微调。
 
 Args:
     base_model (str): 用于进行微调的基模型。要求是基模型的路径。
@@ -218,7 +218,7 @@ Args:
 ''')
 
 add_english_doc('finetune.CollieFinetune', '''\
-This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the `Collie <https://github.com/OpenLMLab/collie>`_ framework, used for LoRA fine-tuning of large language models.
+This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the [Collie](https://github.com/OpenLMLab/collie) framework, used for LoRA fine-tuning of large language models.
 
 Args:
     base_model (str): The base model used for fine-tuning. It is required to be the path of the base model.
@@ -258,7 +258,7 @@ add_example('finetune.CollieFinetune', '''\
 
 # Finetune-LlamafactoryFinetune
 add_chinese_doc('finetune.LlamafactoryFinetune', '''\
-此类是 ``LazyLLMFinetuneBase`` 的子类，基于 `LLaMA-Factory <https://github.com/hiyouga/LLaMA-Factory>`_ 框架提供的训练能力，用于对大语言模型(或视觉语言模型)进行训练。
+此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) 框架提供的训练能力，用于对大语言模型(或视觉语言模型)进行训练。
 
 Args:
     base_model (str): 用于进行训练的基模型。要求是基模型的路径。
@@ -305,7 +305,7 @@ Args:
 ''')
 
 add_english_doc('finetune.LlamafactoryFinetune', '''\
-This class is a subclass of ``LazyLLMFinetuneBase``, based on the training capabilities provided by the `LLaMA-Factory <https://github.com/hiyouga/LLaMA-Factory>`_ framework, used for training large language models(or visual language models).
+This class is a subclass of ``LazyLLMFinetuneBase``, based on the training capabilities provided by the [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) framework, used for training large language models(or visual language models).
 
 Args:
     base_model (str): The base model used for training. It is required to be the path of the base model.
@@ -400,7 +400,7 @@ add_example('auto.AutoFinetune', '''\
 # ============= Deploy
 # Deploy-Lightllm
 add_chinese_doc('deploy.Lightllm', '''\
-此类是 ``LazyLLMDeployBase`` 的子类，基于 `LightLLM <https://github.com/ModelTC/lightllm>`_ 框架提供的推理能力，用于对大语言模型进行推理。
+此类是 ``LazyLLMDeployBase`` 的子类，基于 [LightLLM](https://github.com/ModelTC/lightllm) 框架提供的推理能力，用于对大语言模型进行推理。
 
 Args:
     trust_remote_code (bool): 是否允许加载来自远程服务器的模型代码，默认为 ``True``。
@@ -425,7 +425,7 @@ Args:
 ''')
 
 add_english_doc('deploy.Lightllm', '''\
-This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the `LightLLM <https://github.com/ModelTC/lightllm>`_ framework, used for inference with large language models.
+This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the [LightLLM](https://github.com/ModelTC/lightllm) framework, used for inference with large language models.
 
 Args:
     trust_remote_code (bool): Whether to allow loading of model code from remote servers, default is ``True``.
@@ -456,7 +456,7 @@ add_example('deploy.Lightllm', '''\
 
 # Deploy-Vllm
 add_chinese_doc('deploy.Vllm', '''\
-此类是 ``LazyLLMDeployBase`` 的子类，基于 `VLLM <https://github.com/vllm-project/vllm>`_ 框架提供的推理能力，用于对大语言模型进行推理。
+此类是 ``LazyLLMDeployBase`` 的子类，基于 [VLLM](https://github.com/vllm-project/vllm) 框架提供的推理能力，用于对大语言模型进行推理。
 
 Args:
     trust_remote_code (bool): 是否允许加载来自远程服务器的模型代码，默认为 ``True``。
@@ -483,7 +483,7 @@ Args:
 ''')
 
 add_english_doc('deploy.Vllm', '''\
-This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the `VLLM <https://github.com/vllm-project/vllm>`_ framework, used for inference with large language models.
+This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the [VLLM](https://github.com/vllm-project/vllm) framework, used for inference with large language models.
 
 Args:
     trust_remote_code (bool): Whether to allow loading of model code from remote servers, default is ``True``.
@@ -578,7 +578,7 @@ Args:
     cache_dir (str, 可选): 一个本地目录的绝对路径。下载后的模型将存放在此目录下，如果不提供，默认使用LAZYLLM_MODEL_CACHE_DIR环境变量中的设置。如果
         LAZYLLM_MODEL_PATH未设置，默认值为~/.lazyllm/model
 
-.. function:: ModelManager.download(model) -> str
+ModelManager.download(model) -> str
 
 用于从model_source下载模型。download函数首先在ModelManager类初始化参数model_path列出的目录中搜索目标模型。如果未找到，会在cache_dir下搜索目标模型。如果仍未找到，
 则从model_source上下载模型并存放于cache_dir下。
@@ -616,7 +616,7 @@ Args:
         LAZYLLM_MODEL_CACHE_DIR environment variable would be used, and if LAZYLLM_MODEL_PATH is not set, the default
         value is ~/.lazyllm/model.
 
-.. function:: ModelManager.download(model) -> str
+ModelManager.download(model) -> str
 
 Download models from model_source. The function first searches for the target model in directories listed in the
 model_path parameter of ModelManager class. If not found, it searches under cache_dir. If still not found,

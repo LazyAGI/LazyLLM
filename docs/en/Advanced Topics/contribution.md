@@ -23,7 +23,7 @@ Fixes to documentation can be submitted directly via a ``pull request``. The ste
 
 ### Contribution Process
 
-If you're not familiar with pull requests, don't worry. The following content will guide you step-by-step on how to create a ``pull request`` from scratch. For a deeper understanding of the ``pull request`` development model, you can refer to `GitHub's tutorial <https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-requests>`_
+If you're not familiar with pull requests, don't worry. The following content will guide you step-by-step on how to create a ``pull request`` from scratch. For a deeper understanding of the ``pull request`` development model, you can refer to [GitHub's tutorial](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-requests)
 
 #### Fork the Repository
 

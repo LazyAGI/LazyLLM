@@ -23,7 +23,7 @@
 
 ### 贡献流程
 
-如果你对pull request不了解，没关系，接下来的内容将会从零开始，一步一步地指引你如何创建一个 ``pull request`` 。如果你想深入了解 ``pull request`` 的开发模式，可以参考 `github上的教程 <https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-requests>`
+如果你对pull request不了解，没关系，接下来的内容将会从零开始，一步一步地指引你如何创建一个 ``pull request`` 。如果你想深入了解 ``pull request`` 的开发模式，可以参考 [github上的教程](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-requests)
 
 #### 复刻仓库
 
