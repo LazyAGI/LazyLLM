@@ -1,5 +1,3 @@
-lazyllm.Module
-
 ::: lazyllm.module.ModuleBase
     members: forward, start, restart, update, evalset, eval, _get_train_tasks, _get_deploy_tasks
     exclude-members:

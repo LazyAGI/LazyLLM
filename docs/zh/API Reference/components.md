@@ -1,7 +1,3 @@
-lazyllm.Components
-
-Finetune
-
 ::: lazyllm.components.finetune
     members: 
     exclude-members:
@@ -10,24 +6,19 @@ Finetune
     members: AutoFinetune
     exclude-members:
 
-Deploy
-
 ::: lazyllm.components.deploy
     members: 
     exclude-members:
 
-::: lazyllm.components.auto
-    members: AutoDeploy
-    exclude-members:
-
-Launcher
-
 ::: lazyllm.launcher
-    members: 
-    exclude-members: Status, get_idle_nodes
-
-
-Prompter
+    options:
+      members:
+      - EmptyLauncher
+      - RemoteLauncher
+      - ScoLauncher
+      - SlurmLauncher
+      filters:
+      - '!get_idle_nodes'
 
 ::: lazyllm.components.prompter.LazyLLMPrompterBase
     members: generate_prompt, get_response
@@ -41,19 +32,13 @@ Prompter
     members: generate_prompt, get_response
     exclude-members:
 
-Register
-
 ::: lazyllm.common.Register
     members: 
     exclude-members:
 
-ModelManager
-
 ::: lazyllm.components.ModelManager
     members: 
     exclude-members:
-
-Formatter
 
 ::: lazyllm.components.formatter.LazyLLMFormatterBase
     members:

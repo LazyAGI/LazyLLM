@@ -1,5 +1,3 @@
-lazyllm.Flow
-
 ::: lazyllm.flow.FlowBase
     members: is_root, ancestor, for_each
     exclude-members:

@@ -1,5 +1,3 @@
-lazyllm.Tools
-
 ::: lazyllm.tools.Document
     members: 
     exclude-members:

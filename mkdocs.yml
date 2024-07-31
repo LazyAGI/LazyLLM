@@ -96,6 +96,7 @@ plugins:
           allow_inspection: true
           show_source: true
           show_root_heading: true
+          docstring_section_style: list
 - autorefs:
 markdown_extensions:
   - pymdownx.highlight:

@@ -13,10 +13,10 @@ ModuleBase本身不可以直接实例化，继承并实现 ``forward`` 函数的
 类似pytorch的Moudule，当一个Module A持有了另一个Module B的实例作为成员变量时，会自动加入到submodule中。
 
 如果你需要以下的能力，请让你自定义的类继承自ModuleBase:\n
-    1. 组合训练、部署、推理和评测的部分或全部能力，例如Embedding模型需要训练和推理\n
-    2. 持有的成员变量具备训练、部署和评测的部分或全部能力，并且想通过Module的根节点的 ``start``,  ``update``, ``eval`` 等方法对其持有的成员进行训练、部署和评测时。\n
-    3. 将用户设置的参数从最外层直接传到你自定义的模块中（参考Tools.webpages.WebModule）\n
-    4. 希望能被参数网格搜索模块使用（参考TrialModule）
+1. 组合训练、部署、推理和评测的部分或全部能力，例如Embedding模型需要训练和推理\n
+2. 持有的成员变量具备训练、部署和评测的部分或全部能力，并且想通过Module的根节点的 ``start``,  ``update``, ``eval`` 等方法对其持有的成员进行训练、部署和评测时。\n
+3. 将用户设置的参数从最外层直接传到你自定义的模块中（参考Tools.webpages.WebModule）\n
+4. 希望能被参数网格搜索模块使用（参考TrialModule）
 ''')
 
 add_english_doc('ModuleBase', '''\
@@ -24,10 +24,10 @@ Module is the top-level component in LazyLLM, possessing four key capabilities: 
 ModuleBase itself cannot be instantiated directly; subclasses that inherit and implement the forward function can be used as a functor.
 Similar to PyTorch's Module, when a Module A holds an instance of another Module B as a member variable, B will be automatically added to A's submodules.
 If you need the following capabilities, please have your custom class inherit from ModuleBase:\n
-    1. Combine some or all of the training, deployment, inference, and evaluation capabilities. For example, an Embedding model requires training and inference.\n
-    2. If you want the member variables to possess some or all of the capabilities for training, deployment, and evaluation, and you want to train, deploy, and evaluate these members through the start, update, eval, and other methods of the Module's root node.\n
-    3. Pass user-set parameters directly to your custom module from the outermost layer (refer to WebModule).\n
-    4. The desire for it to be usable by the parameter grid search module (refer to TrialModule).
+1. Combine some or all of the training, deployment, inference, and evaluation capabilities. For example, an Embedding model requires training and inference.\n
+2. If you want the member variables to possess some or all of the capabilities for training, deployment, and evaluation, and you want to train, deploy, and evaluate these members through the start, update, eval, and other methods of the Module's root node.\n
+3. Pass user-set parameters directly to your custom module from the outermost layer (refer to WebModule).\n
+4. The desire for it to be usable by the parameter grid search module (refer to TrialModule).
 ''')
 
 add_example('ModuleBase', '''\
@@ -125,35 +125,10 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 add_chinese_doc('ModuleBase.evalset', '''\
 为Module设置评测集，设置过评测集的Module在 ``update`` 或 ``eval`` 的时候会进行评测，评测结果会存在eval_result变量中。
 
-.. function:: evalset(evalset, collect_f=lambda x: x) -> None
-
-Args:
-    evalset (list): 评测集
-    collect_f (Callable): 评测结果的后处理方式，默认不做后处理
-
-.. function:: evalset(evalset, load_f=None, collect_f=lambda x: x) -> None
-
-Args:
-    evalset (str): 评测集的路径
-    load_f (Callable): 加载评测集的方式，包含解析文件格式和转换成list
-    collect_f (Callable): 评测结果的后处理方式，默认不做后处理
 ''')
 
 add_english_doc('ModuleBase.evalset', '''\
 during update or eval, and the results will be stored in the eval_result variable.
-
-evalset(evalset, collect_f=lambda x: x) -> None
-
-Args:
-    evalset (list): Evaluation set
-    collect_f (Callable): Post-processing method for evaluation results, no post-processing by default
-
-evalset(evalset, load_f=None, collect_f=lambda x: x) -> None
-
-Args:
-    evalset (str): Path to the evaluation set
-    load_f (Callable): Method to load the evaluation set, including parsing file formats and converting to a list
-    collect_f (Callable): Post-processing method for evaluation results, no post-processing by default
 ''')
 
 add_example('ModuleBase.evalset', '''\
@@ -517,21 +492,21 @@ OnlineChatModuleBase是管理开放平台的LLM接口的公共组件，具备训
                 需要子类继承该类，并实现微调相关的上传文件、创建微调任务、查询微调任务以及和部署相关的创建部署服务、查询部署任务等接口。
 
 如果你需要支持新的开放平台的LLM的能力，请让你自定义的类继承自OnlineChatModuleBase：\n
-    1、根据新平台的模型返回参数情况考虑对返回结果进行后处理，如果模型返回的格式和openai一致，可以不用做任何处理\n
-    2、如果新平台支持模型的微调，也需要继承FileHandlerBase类，该类主要是验证文件格式，并在自定义类中把.jsonl格式数据转换为模型支持的数据才能用于后面的模型训练\n
-    3、如果新平台支持模型的微调，则需要实现文件上传、创建微调服务、查询微调服务的接口。即使新平台不用对微调后的模型进行部署，也请实现一个假的创建部署服务和查询部署服务的接口即可\n
-    4、如果新平台支持模型的微调，可以提供一个支持微调的模型列表，有助于在微调服务时进行判断\n
-    5、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
+1、根据新平台的模型返回参数情况考虑对返回结果进行后处理，如果模型返回的格式和openai一致，可以不用做任何处理\n
+2、如果新平台支持模型的微调，也需要继承FileHandlerBase类，该类主要是验证文件格式，并在自定义类中把.jsonl格式数据转换为模型支持的数据才能用于后面的模型训练\n
+3、如果新平台支持模型的微调，则需要实现文件上传、创建微调服务、查询微调服务的接口。即使新平台不用对微调后的模型进行部署，也请实现一个假的创建部署服务和查询部署服务的接口即可\n
+4、如果新平台支持模型的微调，可以提供一个支持微调的模型列表，有助于在微调服务时进行判断\n
+5、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
 ''')
 
 add_english_doc('OnlineChatModuleBase', '''\
 OnlineChatModuleBase is a public component that manages the LLM interface for open platforms, and has key capabilities such as training, deployment, and inference. OnlineChatModuleBase itself does not support direct instantiation; it requires subclasses to inherit from this class and implement interfaces related to fine-tuning, such as uploading files, creating fine-tuning tasks, querying fine-tuning tasks, and deployment-related interfaces, such as creating deployment services and querying deployment tasks.
 If you need to support the capabilities of a new open platform's LLM, please extend your custom class from OnlineChatModuleBase:\n
-    1. Consider post-processing the returned results based on the parameters returned by the new platform's model. If the model's return format is consistent with OpenAI, no processing is necessary.\n
-    2. If the new platform supports model fine-tuning, you must also inherit from the FileHandlerBase class. This class primarily validates file formats and converts .jsonl formatted data into a format supported by the model for subsequent training. \n
-    3. If the new platform supports model fine-tuning, you must implement interfaces for file upload, creating fine-tuning services, and querying fine-tuning services. Even if the new platform does not require deployment of the fine-tuned model, please implement dummy interfaces for creating and querying deployment services.\n
-    4. If the new platform supports model fine-tuning, provide a list of models that support fine-tuning to facilitate judgment during the fine-tuning service process.\n
-    5. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
+1. Consider post-processing the returned results based on the parameters returned by the new platform's model. If the model's return format is consistent with OpenAI, no processing is necessary.\n
+2. If the new platform supports model fine-tuning, you must also inherit from the FileHandlerBase class. This class primarily validates file formats and converts .jsonl formatted data into a format supported by the model for subsequent training. \n
+3. If the new platform supports model fine-tuning, you must implement interfaces for file upload, creating fine-tuning services, and querying fine-tuning services. Even if the new platform does not require deployment of the fine-tuned model, please implement dummy interfaces for creating and querying deployment services.\n
+4. If the new platform supports model fine-tuning, provide a list of models that support fine-tuning to facilitate judgment during the fine-tuning service process.\n
+5. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
 ''')
 
 add_example('OnlineChatModuleBase', '''\
@@ -600,17 +575,17 @@ add_chinese_doc('OnlineEmbeddingModuleBase', '''\
 OnlineEmbeddingModuleBase是管理开放平台的嵌入模型接口的基类，用于请求文本获取嵌入向量。不建议直接对该类进行直接实例化。需要特定平台类继承该类进行实例化。
 
 如果你需要支持新的开放平台的嵌入模型的能力，请让你自定义的类继承自OnlineEmbeddingModuleBase：\n
-    1、如果新平台的嵌入模型的请求和返回数据格式都和openai一样，可以不用做任何处理，只传url和模型即可\n
-    2、如果新平台的嵌入模型的请求或者返回的数据格式和openai不一样，需要重写_encapsulated_data或_parse_response方法。\n
-    3、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
+1、如果新平台的嵌入模型的请求和返回数据格式都和openai一样，可以不用做任何处理，只传url和模型即可\n
+2、如果新平台的嵌入模型的请求或者返回的数据格式和openai不一样，需要重写_encapsulated_data或_parse_response方法。\n
+3、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
 ''')
 
 add_english_doc('OnlineEmbeddingModuleBase', '''
 OnlineEmbeddingModuleBase is the base class for managing embedding model interfaces on open platforms, used for requesting text to obtain embedding vectors. It is not recommended to directly instantiate this class. Specific platform classes should inherit from this class for instantiation.
 If you need to support the capabilities of embedding models on a new open platform, please extend your custom class from OnlineEmbeddingModuleBase:\n
-    1. If the request and response data formats of the new platform's embedding model are the same as OpenAI's, no additional processing is needed; simply pass the URL and model.\n
-    2. If the request or response data formats of the new platform's embedding model differ from OpenAI's, you need to override the _encapsulated_data or _parse_response methods.\n
-    3. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
+1. If the request and response data formats of the new platform's embedding model are the same as OpenAI's, no additional processing is needed; simply pass the URL and model.\n
+2. If the request or response data formats of the new platform's embedding model differ from OpenAI's, you need to override the _encapsulated_data or _parse_response methods.\n
+3. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
 ''')
 
 add_example('OnlineEmbeddingModuleBase', '''\

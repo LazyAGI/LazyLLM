@@ -7,7 +7,7 @@ add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tools)
 add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools)
 add_example = functools.partial(utils.add_example, module=lazyllm.tools)
 
-add_english_doc('Document', r"""
+add_english_doc('Document', '''\
 Initializes a Document module with optional user interface creation.
 
 This constructor initializes a Document module that can work with or without a user interface (UI). If the UI is enabled, it also sets up a server module to manage document operations and a web module for UI interactions. The module relies on an implementation (`DocGroupImpl`) that handles the core functionality such as generating signatures and querying documents based on signatures.
@@ -17,9 +17,9 @@ Args:
     embed: An embedding object or function that is used for generating document embeddings. The exact type and requirements depend on the implementation of `DocGroupImpl`.
     create_ui (bool, optional): A flag indicating whether to create a user interface for the Document module. Defaults to True.
     launcher (optional): An object or function responsible for launching the server module. If not provided, a default launcher from `lazyllm.launchers` with asynchronous behavior (`sync=False`) is used.
-""")
+''')
 
-add_chinese_doc('Document', r"""
+add_chinese_doc('Document', '''\
 初始化一个具有可选用户界面的文档模块。
 
 此构造函数初始化一个可以有或没有用户界面的文档模块。如果启用了用户界面，它还会提供一个ui界面来管理文档操作接口，并提供一个用于用户界面交互的网页。
@@ -29,16 +29,16 @@ Args:
     embed: 用于生成文档embedding的对象。
     create_ui (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 True。
     launcher (optional): 负责启动服务器模块的对象或函数。如果未提供，则使用 `lazyllm.launchers` 中的默认异步启动器 (`sync=False`)。
-""")
+''')
 
-add_example('Document', r"""
+add_example('Document', '''\
 >>> import lazyllm
 >>> from lazyllm.tools.rag.docment import Document
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
-""")
+''')
 
-add_english_doc('Reranker', r"""
+add_english_doc('Reranker', '''\
 Initializes a Rerank module for postprocessing and reranking of nodes (documents).
 This constructor initializes a Reranker module that configures a reranking process based on a specified reranking type. It allows for the dynamic selection and instantiation of reranking kernels (algorithms) based on the type and provided keyword arguments.
 
@@ -46,13 +46,13 @@ Args:
     types: The type of reranker to be used for the postprocessing and reranking process. Defaults to 'Reranker'.
     **kwargs: Additional keyword arguments that are passed to the reranker upon its instantiation.
 
-Detailed explanation of reranker types
-  - Reranker：This registered reranking function instantiates a SentenceTransformerRerank reranker with a specified model and top_n parameter. It is designed to rerank nodes based on sentence transformer embeddings.
-  - SimilarityFilter：This registered reranking function instantiates a SimilarityPostprocessor with a specified similarity threshold. It filters out nodes that do not meet the similarity criteria.
-  - KeywordFilter：This registered reranking function instantiates a KeywordNodePostprocessor with specified required and excluded keywords. It filters nodes based on the presence or absence of these keywords.
-""")
+Detailed explanation of reranker types\n
+- Reranker：This registered reranking function instantiates a SentenceTransformerRerank reranker with a specified model and top_n parameter. It is designed to rerank nodes based on sentence transformer embeddings.\n
+- SimilarityFilter：This registered reranking function instantiates a SimilarityPostprocessor with a specified similarity threshold. It filters out nodes that do not meet the similarity criteria.\n
+- KeywordFilter：This registered reranking function instantiates a KeywordNodePostprocessor with specified required and excluded keywords. It filters nodes based on the presence or absence of these keywords.
+''')
 
-add_chinese_doc('Reranker', r"""
+add_chinese_doc('Reranker', '''\
 用于创建节点（文档）后处理和重排序的模块。
 
 Args:
@@ -63,9 +63,9 @@ Args:
   - Reranker：实例化一个具有指定模型和 top_n 参数的 SentenceTransformerRerank 重排序器。
   - SimilarityFilter：实例化一个具有指定相似度阈值的 SimilarityPostprocessor。它过滤掉不满足相似度标准的节点。
   - KeywordFilter：实例化一个具有指定必需和排除关键字的 KeywordNodePostprocessor。它根据这些关键字的存在或缺失来过滤节点。
-""")
+''')
 
-add_example('Reranker', r"""
+add_example('Reranker', '''\
 >>> import lazyllm
 >>> from lazyllm.tools.rag.base import Reranker, Retriever
 >>> from lazyllm.tools.rag.docment import Document
@@ -76,9 +76,9 @@ add_example('Reranker', r"""
 >>> m = lazyllm.ActionModule(rm, reranker)
 >>> m.start()
 >>> print(m("query"))  
-""")
+''')
 
-add_english_doc('Retriever', r"""
+add_english_doc('Retriever', '''\
 Create a Retriever module for document query and retrieval.
 This constructor initializes a Retriever module that configures a document retrieval process based on a specified similarity measure. It generates a signature using the document's generate_signature method, which is then used for querying documents.
 
@@ -103,9 +103,9 @@ Detailed explanation of similarity types\n
   - defatult：Search documents using cosine method.\n
   - chinese_bm25：Search documents using chinese_bm25 method.The primary differences between chinese_bm25 and the standard bm25 stem from the specific adjustments and optimizations made for handling Chinese text. \n
   - bm25：Search documents using bm25 method.\n
-""")
+''')
 
-add_chinese_doc('Retriever', r"""
+add_chinese_doc('Retriever', '''\
 创建一个用于文档查询和检索的检索模块。
 
 此构造函数初始化一个检索模块，该模块根据指定的相似度度量配置文档检索过程。它使用文档的 generate_signature 方法生成签名，然后用于查询文档。
@@ -131,9 +131,9 @@ Args:
   - defatult：使用 cosine 算法搜索文档。\n
   - chinese_bm25：使用 chinese_bm25 算法搜索文档。chinese_bm25 与标准 bm25 的主要区别在于对中文的特定优化。\n
   - bm25：使用 bm25 算法搜索文档。\n
-""")
+''')
 
-add_example('Retriever', r"""
+add_example('Retriever', '''\
 >>> import lazyllm
 >>> from lazyllm.tools.rag.base import Retriever
 >>> from lazyllm.tools.rag.docment import Document
@@ -142,9 +142,9 @@ add_example('Retriever', r"""
 >>> rm = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
 >>> rm.start()
 >>> print(rm("query"))
-""")
+''')
 
-add_chinese_doc('WebModule', r'''\
+add_chinese_doc('WebModule', '''\
 WebModule是LazyLLM为开发者提供的基于Web的交互界面。在初始化并启动一个WebModule之后，开发者可以从页面上看到WebModule背后的模块结构，并将Chatbot组件的输入传输给自己开发的模块进行处理。
 模块返回的结果和日志会直接显示在网页的“处理日志”和Chatbot组件上。除此之外，WebModule支持在网页上动态加入Checkbox或Text组件用于向模块发送额外的参数。
 WebModule页面还提供“使用上下文”，“流式输出”和“追加输出”的Checkbox，可以用来改变页面和后台模块的交互方式。
@@ -157,7 +157,7 @@ Args：
     component_descs (list): 用于动态向页面添加组件的列表。列表中的每个元素也是一个列表，其中包含5个元素，分别是组件对应的模块ID，模块名，组件名，组件类型（目前仅支持Checkbox和Text），组件默认值。
 ''')
 
-add_english_doc('WebModule', r'''\
+add_english_doc('WebModule', '''\
 WebModule is a web-based interactive interface provided by LazyLLM for developers. After initializing and starting
 a WebModule, developers can see structure of the module they provides behind the WebModule, and transmit the input
 of the Chatbot component to their modules. The results and logs returned by the module will be displayed on the 
@@ -179,7 +179,7 @@ Args:
     supports Checkbox and Text), and the default value of the component.
 ''')
 
-add_example('WebModule', r'''\
+add_example('WebModule', '''\
 >>> import lazyllm
 >>> def func2(in_str, do_sample=True, temperature=0.0, *args, **kwargs):
 ...     return f"func2:{in_str}|do_sample:{str(do_sample)}|temp:{temperature}"
