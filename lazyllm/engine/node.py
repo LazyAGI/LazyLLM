@@ -4,6 +4,8 @@ from typing import Any, Optional, List, Callable
 from dataclasses import dataclass
 from functools import partial
 
+from lazyllm.tools.http_request.http_request import HttpRequest
+
 @dataclass
 class NodeArgs(object):
     type: type
@@ -34,6 +36,20 @@ all_nodes = dict(
                 lora_r=NodeArgs(int, 8),
                 lora_alpha=NodeArgs(int, 32),
                 lora_dropout=NodeArgs(float, 0.05)))
+    ),
+
+    HttpTool=dict(
+        module=HttpRequest,
+        init_arguments=dict(
+            method=NodeArgs(str),
+            url=NodeArgs(str),
+            api_key=NodeArgs(str, ''),
+            headers=NodeArgs(dict, {}),
+            params=NodeArgs(dict, {}),
+            body=NodeArgs(str, ''),
+        ),
+        builder_argument=dict(),
+        other_arguments=dict()
     ),
 
     Formatter=dict(

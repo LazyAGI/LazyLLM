@@ -240,7 +240,7 @@ class WebModule(ModuleBase):
 
             if use_context:
                 for h in self.history:
-                    if h not in globals['chat_history']: globals['chat_history'] = dict()
+                    if h not in globals['chat_history']: globals['chat_history'][h] = dict()
                     globals['chat_history'][h] = history
             result = self.m(input)
 
