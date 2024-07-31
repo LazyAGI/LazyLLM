@@ -78,24 +78,20 @@ In the example above, the ``generate_prompt`` function accepts a ``dict`` as inp
 Taking the example of a document question and answer task using ``AlpacaPrompter`` from :ref:`bestpractice.prompt.trial`, let's go through the prompt generation process in detail.
 
 1. ``AlpacaPrompter`` combines the ``instruction`` (and ``extra_keys``, if any) provided during the construction of the ``prompter`` with the ``InstructionTemplate``. The ``instruction`` is set as:
-    
-    ```python
 
         "Below is an instruction that describes a task, paired with extra messages such as input that provides "
         "further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
         "Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{{context}}，"
         "用户的问题是{{input}}, 现在请你做出回答。### Response:\\n}"
-    ```
    
 2. Given the user's input as ``dict(context='背景', input='问题')``
 3. Concatenate the user's input with the instruction obtained in ’1‘ to get:
 
-    ```python
         "Below is an instruction that describes a task, paired with extra messages such as input that provides "
         "further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
         "Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，"
         "用户的问题是问题, 现在请你做出回答。### Response:\\n}"
-    ```
+
 4. ``AlpacaPrompter`` reads the system and ``tools`` fields, where the ``system`` field is set by the ``Module``, and the ``tools`` field will be introduced in the later section :ref:`bestpractice.prompt.tools`.
 5. If the ``prompter`` result is used for the online model (``OnlineChatModule``), the ``PromptTemplate`` will not be concatenated further. Instead, a dict will be directly obtained, namely:``{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\nYou are a knowledge assistant developed by LazyLLM. Your task is to answer the user's question based on the provided context information. The context information is background, and the user's question is question. Please provide an answer.\n\n'}, {'role': 'user', 'content': ''}]}``
 6. If the ``prompter`` result is used for the offline model (``TrainableModule``), the final result will be obtained through the PromptTemplate: ``You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\nYou are a knowledge assistant developed by LazyLLM. Your task is to answer the user's question based on the provided context information. The context information is background, and the user's question is question. Please provide an answer.\n\n\n### Response:\n``
@@ -202,7 +198,6 @@ The tool will be read after step 4 in :ref:`bestpractice.prompt.analysis` once i
 > **Note**:
 > If using an online model, the tool will become a field parallel to ``messages``, as shown in the example below:
 >
->    ```python
 >
 >        >>> import lazyllm
 >        >>> tools=[dict(type='function', function=dict(name='example'))]
@@ -210,7 +205,6 @@ The tool will be read after step 4 in :ref:`bestpractice.prompt.analysis` once i
 >        >>> prompter.generate_prompt('帮我查询一下今天的天气', return_dict=True)
 >        {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n'}, {'role': 'user', 'content': ''}],
 >         'tools': [{'type': 'function', 'function': {'name': 'example'}}]}
->    ````
 
 #### Using conversation history
 
