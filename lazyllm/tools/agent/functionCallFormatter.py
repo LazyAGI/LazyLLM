@@ -1,12 +1,13 @@
 from lazyllm.components import JsonFormatter
 import json5 as json
+from lazyllm import globals
 
 class FunctionCallFormatter(JsonFormatter):
     def _load(self, msg: str):
         if "{" not in msg:
             return msg
-        if "<|tool_calls|>" in msg:
-            content, msg = msg.split("<|tool_calls|>")
+        if globals['tool_delimiter'] in msg:
+            content, msg = msg.split(globals['tool_delimiter'])
             assert msg.count("{") == msg.count("}"), f"{msg} is not a valid json string."
             try:
                 json_strs = json.loads(msg)

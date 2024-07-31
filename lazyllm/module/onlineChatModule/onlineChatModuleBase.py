@@ -7,6 +7,7 @@ import re
 from typing import Tuple, List, Dict, Union, Any
 import time
 import lazyllm
+from lazyllm import globals
 from lazyllm.components.prompter import PrompterBase, ChatPrompter
 from lazyllm.components.formatter import FormatterBase, EmptyFormatter
 from ..module import ModuleBase, Pipeline
@@ -36,7 +37,7 @@ class OnlineChatModuleBase(ModuleBase):
         self.prompt()
         self._is_trained = False
         self.formatter()
-        self.field_extractor()
+        self._field_extractor()
         self._model_optional_params = {}
 
     def prompt(self, prompt=None):
@@ -98,9 +99,9 @@ class OnlineChatModuleBase(ModuleBase):
 
         return self
 
-    def field_extractor(self, key: Union[str, List[str]] = None):
+    def _field_extractor(self, key: Union[str, List[str]] = None):
         if key is None:
-            self._extractor_fields = ["content"]
+            self._extractor_fields = ["{content}" + globals['tool_delimiter'] + "{tool_calls|index}"]
         elif isinstance(key, str):
             self._extractor_fields = [key]
         elif isinstance(key, list):
@@ -182,17 +183,14 @@ class OnlineChatModuleBase(ModuleBase):
         return result
 
     def _extract_specified_key_fields(self, response: Dict[str, Any]):
-        if len(self._extractor_fields) == 1:
-            key = self._extractor_fields[0]
-            return (self._parse_output_by_key(key, response) if "{" not in key else self._extract_and_format(
-                    self._get_benchmark_data(response), key) if key else "")
-        elif len(self._extractor_fields) > 1:
+        if len(self._extractor_fields) > 0:
             res = {}
             for key in self._extractor_fields:
-                res[key] = self._parse_output_by_key(key, response) if key else ""
-            return res
+                res[key] = (self._parse_output_by_key(key, response) if "{" not in key else self._extract_and_format(
+                    self._get_benchmark_data(response), key) if key else "")
+            return list(res.values())[0] if len(res) == 1 else json.dumps(res, ensure_ascii=False)
         else:
-            return self._parse_output_by_key(".", response)
+            return json.dumps(self._parse_output_by_key(".", response), ensure_ascii=False)
 
     def _merge_stream_result(self, src: List[str | int | list | dict]):
         types = set(type(ele) for ele in src if ele is not None)
