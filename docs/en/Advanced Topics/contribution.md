@@ -104,17 +104,17 @@ If you are very skilled at handling conflicts, you can use the rebase method to 
 
 2. Granularity Should Be Small,Each pull request should focus on a single task, avoiding overly large pull requests.
 
-   - Bad：Adding all operators needed for multiple models in one PR.
-   - Acceptable：Implementing one or several related operators in one PR.
-   - Good：Fixing a bug that occurs when the input of an operator is empty.
+      - Bad：Adding all operators needed for multiple models in one PR.
+      - Acceptable：Implementing one or several related operators in one PR.
+      - Good：Fixing a bug that occurs when the input of an operator is empty.
 
 3. Provide Clear and Meaningful Commit Messages
 
 4. Provide Clear and Meaningful ``pull pequest`` Descriptions
 
-   - Provide Clear and Meaningful Pull Request Descriptions: ``[Prefix] Short description of the pull request (Suffix)``
-   - prefix: New feature  ``[Feature]``, Bug fix ``[Fix]``, Documentation-related ``[Docs]``,Work in progress ``[WIP]`` (not ready for review)
-   - The description should introduce the main changes, results, and impacts on other parts of the project, following the ``pull request`` template
-   - Link to related ``issues`` and other ``pull requests``
+      - Provide Clear and Meaningful Pull Request Descriptions: ``[Prefix] Short description of the pull request (Suffix)``
+      - prefix: New feature  ``[Feature]``, Bug fix ``[Fix]``, Documentation-related ``[Docs]``,Work in progress ``[WIP]`` (not ready for review)
+      - The description should introduce the main changes, results, and impacts on other parts of the project, following the ``pull request`` template
+      - Link to related ``issues`` and other ``pull requests``
 
 5. If introducing third-party libraries or borrowing code from third-party libraries, ensure their licenses are compatible with LazyLLM.Add a note to the borrowed code:  ``This code is inspired from http://``

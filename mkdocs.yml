@@ -1,8 +1,10 @@
 site_name: LazyLLM
+repo_url: https://github.com/LazyAGI/LazyLLM
+repo_name: LazyAGI/LazyLLM
 nav:
 - Home:
-  - getting start: index.md
-  - Faq: Home/FAQ.md
+  - Getting Started: index.md
+  - FAQ: Home/FAQ.md
   - Environment: Home/environment.md
 - Best Practice:
   - Flow: Best Practice/flow.md
@@ -28,6 +30,9 @@ theme:
   - navigation.top
   - search.highlight
   - search.suggest
+  - content.code.select
+  - content.code.copy
+  - content.code.annotate
   palette:
   - accent: white
     primary: white
@@ -52,8 +57,10 @@ theme:
   font:
     text: Roboto
     code: Roboto Mono
-  logo: https://img.icons8.com/?size=100&id=121346&format=png&color=000000
+  logo: assets/logo.png
   favicon: https://img.icons8.com/?size=100&id=121346&format=png&color=000000
+  icon:
+    repo: fontawesome/brands/github
 extra:
   generator: false
   social:
@@ -61,7 +68,7 @@ extra:
     link: https://github.com/nmhjklnm
   alternate:
     - name: English
-      link: /en/ 
+      link: /en/
       lang: en
     - name: 中文
       link: /zh/
@@ -89,5 +96,11 @@ plugins:
           allow_inspection: true
           show_source: true
 - autorefs:
-
-
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences

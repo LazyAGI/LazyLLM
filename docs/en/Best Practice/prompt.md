@@ -78,19 +78,21 @@ In the example above, the ``generate_prompt`` function accepts a ``dict`` as inp
 Taking the example of a document question and answer task using ``AlpacaPrompter`` from :ref:`bestpractice.prompt.trial`, let's go through the prompt generation process in detail.
 
 1. ``AlpacaPrompter`` combines the ``instruction`` (and ``extra_keys``, if any) provided during the construction of the ``prompter`` with the ``InstructionTemplate``. The ``instruction`` is set as:
+```python     
+"Below is an instruction that describes a task, paired with extra messages such as input that provides "
+"further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
+"Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{{context}}，"
+"用户的问题是{{input}}, 现在请你做出回答。### Response:\\n}"
+``` 
 
-        "Below is an instruction that describes a task, paired with extra messages such as input that provides "
-        "further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
-        "Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{{context}}，"
-        "用户的问题是{{input}}, 现在请你做出回答。### Response:\\n}"
-   
 2. Given the user's input as ``dict(context='背景', input='问题')``
 3. Concatenate the user's input with the instruction obtained in ’1‘ to get:
-
-        "Below is an instruction that describes a task, paired with extra messages such as input that provides "
-        "further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
-        "Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，"
-        "用户的问题是问题, 现在请你做出回答。### Response:\\n}"
+```python 
+"Below is an instruction that describes a task, paired with extra messages such as input that provides "
+"further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
+"Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，"
+"用户的问题是问题, 现在请你做出回答。### Response:\\n}"
+```
 
 4. ``AlpacaPrompter`` reads the system and ``tools`` fields, where the ``system`` field is set by the ``Module``, and the ``tools`` field will be introduced in the later section :ref:`bestpractice.prompt.tools`.
 5. If the ``prompter`` result is used for the online model (``OnlineChatModule``), the ``PromptTemplate`` will not be concatenated further. Instead, a dict will be directly obtained, namely:``{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\nYou are a knowledge assistant developed by LazyLLM. Your task is to answer the user's question based on the provided context information. The context information is background, and the user's question is question. Please provide an answer.\n\n'}, {'role': 'user', 'content': ''}]}``

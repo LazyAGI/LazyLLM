@@ -104,17 +104,17 @@ git merge upstream/main
 
 2. 粒度要细，一个 ``pull request`` 只做一件事情，避免超大的 ``pull request``
 
-   - Bad：一个PR里补充多个模型所需的所有算子
-   - Acceptable：一个PR里实现一个或几个相关算子
-   - Good：修复某个算子 input 为空时引发的 bug
+      - Bad：一个PR里补充多个模型所需的所有算子
+      - Acceptable：一个PR里实现一个或几个相关算子
+      - Good：修复某个算子 input 为空时引发的 bug
 
 3. 每次 commit 时需要提供清晰且有意义 commit 信息
 
 4. 提供清晰且有意义的 ``pull request`` 描述
 
-   - 标题写明白任务名称，一般格式: ``[Prefix] Short description of the pull request (Suffix)``
-   - prefix: 新增功能  ``[Feature]``, 修 bug ``[Fix]``, 文档相关 ``[Docs]``, 开发中 ``[WIP]`` (暂时不会被review)
-   - 描述里介绍 ``pull request``的主要修改内容，结果，以及对其他部分的影响, 参考 ``pull request`` 模板
-   - 关联相关的 ``议题(issue)`` 和其他 ``pull request``
+      - 标题写明白任务名称，一般格式: ``[Prefix] Short description of the pull request (Suffix)``
+      - prefix: 新增功能  ``[Feature]``, 修 bug ``[Fix]``, 文档相关 ``[Docs]``, 开发中 ``[WIP]`` (暂时不会被review)
+      - 描述里介绍 ``pull request``的主要修改内容，结果，以及对其他部分的影响, 参考 ``pull request`` 模板
+      - 关联相关的 ``议题(issue)`` 和其他 ``pull request``
 
 5. 如果引入了其他三方库，或借鉴了三方库的代码，请确认他们的许可证和LazyLLM兼容，并在借鉴的代码上补充 ``This code is inspired from http://``

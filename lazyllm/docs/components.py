@@ -113,30 +113,6 @@ Args:
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
     kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
 
-此类的关键字参数及其默认值如下：
-
-Keyword Args:
-
-Args:                 
-    data_path (str): 数据路径，默认为 ``None``；一般在此类对象被调用时候，作为唯一位置参数传入。
-    batch_size (int): 批处理大小，默认为 ``64``。
-    micro_batch_size (int): 微批处理大小，默认为 ``4``。
-    num_epochs (int): 训练轮数，默认为 ``2``。
-    learning_rate (float): 学习率，默认为 ``5.e-4``。
-    cutoff_len (int): 截断长度，默认为 ``1030``；输入数据token超过该长度就会被截断。
-    filter_nums (int): 过滤器数量，默认为 ``1024``；仅保留低于该token长度数值的输入。
-    val_set_size (int): 验证集大小，默认为 ``200``。
-    lora_r (int): LoRA 的秩，默认为 ``8``；该数值决定添加参数的量，数值越小参数量越小。
-    lora_alpha (int): LoRA 的融合因子，默认为 ``32``；该数值决定LoRA参数对基模型参数的影响度，数值越大影响越大。
-    lora_dropout (float): LoRA 的丢弃率，默认为 ``0.05``，一般用于防止过拟合。
-    lora_target_modules (str): LoRA 的目标模块，默认为 ``[wo,wqkv]``，该默认值为 InternLM2 模型的；该配置项不同模型的不一样。
-    modules_to_save (str): 用于全量微调的模块，默认为 ``[tok_embeddings,output]``，该默认值为 InternLM2 模型的；该配置项不同模型的不一样。
-    deepspeed (str): DeepSpeed 配置文件的路径，默认使用 LazyLLM 代码仓库中预制的配置文件： ``ds.json``。
-    prompt_template_name (str): 提示模板的名称，默认为 ``alpaca``，即默认使用 LazyLLM 提供的提示模板。
-    train_on_inputs (bool): 是否在输入上训练，默认为 ``True``。
-    show_prompt (bool): 是否显示提示，默认为 ``False``。
-    nccl_port (int): NCCL 端口，默认为 ``19081``。
-
 ''')
 
 add_english_doc('finetune.AlpacaloraFinetune', '''\
@@ -150,30 +126,6 @@ Args:
     cp_files (str): Specify configuration files to be copied from the base model path, which will be copied to ``merge_path``, default to ``tokeniz*``
     launcher (lazyllm.launcher): The launcher for fine-tuning, default to ``launchers.remote(ngpus=1)``.
     kw: Keyword arguments, used to update the default training parameters. Note that additional keyword arguments cannot be arbitrarily specified.
-
-The keyword arguments and their default values for this class are as follows:
-
-Keyword Args: 
-
-Args:                
-    data_path (str): Data path, default to ``None``; generally passed as the only positional argument when this object is called.
-    batch_size (int): Batch size, default to ``64``.
-    micro_batch_size (int): Micro-batch size, default to ``4``.
-    num_epochs (int): Number of training epochs, default to ``2``.
-    learning_rate (float): Learning rate, default to ``5.e-4``.
-    cutoff_len (int): Cutoff length, default to ``1030``; input data tokens will be truncated if they exceed this length.
-    filter_nums (int): Number of filters, default to ``1024``; only input with token length below this value is preserved.
-    val_set_size (int): Validation set size, default to ``200``.
-    lora_r (int): LoRA rank, default to ``8``; this value determines the amount of parameters added, the smaller the value, the fewer the parameters.
-    lora_alpha (int): LoRA fusion factor, default to ``32``; this value determines the impact of LoRA parameters on the base model parameters, the larger the value, the greater the impact.
-    lora_dropout (float): LoRA dropout rate, default to ``0.05``, generally used to prevent overfitting.
-    lora_target_modules (str): LoRA target modules, default to ``[wo,wqkv]``, which is the default for InternLM2 model; this configuration item varies for different models.
-    modules_to_save (str): Modules for full fine-tuning, default to ``[tok_embeddings,output]``, which is the default for InternLM2 model; this configuration item varies for different models.
-    deepspeed (str): The path of the DeepSpeed configuration file, default to use the pre-made configuration file in the LazyLLM code repository: ``ds.json``.
-    prompt_template_name (str): The name of the prompt template, default to "alpaca", i.e., use the prompt template provided by LazyLLM by default.
-    train_on_inputs (bool): Whether to train on inputs, default to ``True``.
-    show_prompt (bool): Whether to show the prompt, default to ``False``.
-    nccl_port (int): NCCL port, default to ``19081``.
 
 ''')
 
@@ -195,26 +147,6 @@ Args:
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
     kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
 
-此类的关键字参数及其默认值如下：
-
-Keyword Args: 
-
-Args:                
-    data_path (str): 数据路径，默认为 ``None``；一般在此类对象被调用时候，作为唯一位置参数传入。
-    batch_size (int): 批处理大小，默认为 ``64``。
-    micro_batch_size (int): 微批处理大小，默认为 ``4``。
-    num_epochs (int): 训练轮数，默认为 ``2``。
-    learning_rate (float): 学习率，默认为 ``5.e-4``。
-    dp_size (int): 数据并行参数，默认为 ``8``。
-    pp_size (int): 流水线并行参数，默认为 ``1``。
-    tp_size (int): 张量并行参数，默认为 ``1``。
-    lora_r (int): LoRA 的秩，默认为 ``8``；该数值决定添加参数的量，数值越小参数量越小。
-    lora_alpha (int): LoRA 的融合因子，默认为 ``32``；该数值决定LoRA参数对基模型参数的影响度，数值越大影响越大。
-    lora_dropout (float): LoRA 的丢弃率，默认为 ``0.05``，一般用于防止过拟合。
-    lora_target_modules (str): LoRA 的目标模块，默认为 ``[wo,wqkv]``，该默认值为 InternLM2 模型的；该配置项不同模型的不一样。
-    modules_to_save (str): 用于全量微调的模块，默认为 ``[tok_embeddings,output]``，该默认值为 InternLM2 模型的；该配置项不同模型的不一样。
-    prompt_template_name (str): 提示模板的名称，默认为 ``alpaca``，即默认使用 LazyLLM 提供的提示模板。
-
 ''')
 
 add_english_doc('finetune.CollieFinetune', '''\
@@ -228,26 +160,6 @@ Args:
     cp_files (str): Specify configuration files to be copied from the base model path, which will be copied to ``merge_path``, default to "tokeniz*"
     launcher (lazyllm.launcher): The launcher for fine-tuning, default to ``launchers.remote(ngpus=1)``.
     kw: Keyword arguments, used to update the default training parameters. Note that additional keyword arguments cannot be arbitrarily specified.
-
-The keyword arguments and their default values for this class are as follows:
-
-Keyword Args:
-
-Args:                 
-    data_path (str): Data path, default to ``None``; generally passed as the only positional argument when this object is called.
-    batch_size (int): Batch size, default to ``64``.
-    micro_batch_size (int): Micro-batch size, default to ``4``.
-    num_epochs (int): Number of training epochs, default to ``2``.
-    learning_rate (float): Learning rate, default to ``5.e-4``.
-    dp_size (int): Data parallelism parameter, default to `` 8``.
-    pp_size (int): Pipeline parallelism parameter, default to ``1``.
-    tp_size (int): Tensor parallelism parameter, default to ``1``.
-    lora_r (int): LoRA rank, default to ``8``; this value determines the amount of parameters added, the smaller the value, the fewer the parameters.
-    lora_alpha (int): LoRA fusion factor, default to ``32``; this value determines the impact of LoRA parameters on the base model parameters, the larger the value, the greater the impact.
-    lora_dropout (float): LoRA dropout rate, default to ``0.05``, generally used to prevent overfitting.
-    lora_target_modules (str): LoRA target modules, default to ``[wo,wqkv]``, which is the default for InternLM2 model; this configuration item varies for different models.
-    modules_to_save (str): Modules for full fine-tuning, default to ``[tok_embeddings,output]``, which is the default for InternLM2 model; this configuration item varies for different models.
-    prompt_template_name (str): The name of the prompt template, default to ``alpaca``, i.e., use the prompt template provided by LazyLLM by default.
 
 ''')
 
@@ -269,39 +181,6 @@ Args:
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1, sync=True)``。
     kw: 关键字参数，用于更新默认的训练参数。
 
-此类的关键字参数及其默认值如下：
-
-Keyword Args:
-
-Args:
-    stage (typing.Literal['pt', 'sft', 'rm', 'ppo', 'dpo', 'kto']): 默认值是：``sft``。将在训练中执行的阶段。
-    do_train (bool): 默认值是：``True``。是否运行训练。
-    finetuning_type (typing.Literal['lora', 'freeze', 'full']): 默认值是：``lora``。要使用的微调方法。
-    lora_target (str): 默认值是：``all``。要应用LoRA的目标模块的名称。使用逗号分隔多个模块。使用`all`指定所有线性模块。
-    template (typing.Optional[str]): 默认值是：``None``。用于构建训练和推理提示的模板。
-    cutoff_len (int): 默认值是：``1024``。数据集中token化后输入的截止长度。
-    max_samples (typing.Optional[int]): 默认值是：``1000``。出于调试目的，截断每个数据集的示例数量。
-    overwrite_cache (bool): 默认值是：``True``。覆盖缓存的训练和评估集。
-    preprocessing_num_workers (typing.Optional[int]): 默认值是：``16``。用于预处理的进程数。
-    dataset_dir (str): 默认值是：``lazyllm_temp_dir``。包含数据集的文件夹的路径。如果没有明确指定，LazyLLM将在当前工作目录的 ``.temp`` 文件夹中生成一个 ``dataset_info.json`` 文件，供LLaMA-Factory使用。
-    logging_steps (float): 默认值是：``10``。每X个更新步骤记录一次日志。应该是整数或范围在 ``[0,1)`` 的浮点数。如果小于1，将被解释为总训练步骤的比例。
-    save_steps (float): 默认值是：``500``。每X个更新步骤保存一次检查点。应该是整数或范围在 ``[0,1)`` 的浮点数。如果小于1，将被解释为总训练步骤的比例。
-    plot_loss (bool): 默认值是：``True``。是否保存训练损失曲线。
-    overwrite_output_dir (bool): 默认值是：``True``。覆盖输出目录的内容。
-    per_device_train_batch_size (int): 默认值是：``1``。每个GPU/TPU/MPS/NPU核心/CPU的训练批次的大小。
-    gradient_accumulation_steps (int): 默认值是：``8``。在执行反向传播及参数更新前，要累积的更新步骤数。
-    learning_rate (float): 默认值是：``1e-04``。AdamW的初始学习率。
-    num_train_epochs (float): 默认值是：``3.0``。要执行的总训练周期数。
-    lr_scheduler_type (typing.Union[transformers.trainer_utils.SchedulerType, str]): 默认值是：``cosine``。要使用的调度器类型。
-    warmup_ratio (float): 默认值是：``0.1``。在总步骤的 ``warmup_ratio`` 分之一阶段内进行线性预热。
-    fp16 (bool): 默认值是：``True``。是否使用fp16（混合）精度，而不是32位。
-    ddp_timeout (typing.Optional[int]): 默认值是：``180000000``。覆盖分布式训练的默认超时时间（值应以秒为单位给出）。
-    report_to (typing.Union[NoneType, str, typing.List[str]]): 默认值是：``tensorboard``。要将结果和日志报告到的集成列表。
-    val_size (float): 默认值是：``0.1``。验证集的大小，应该是整数或范围在`[0,1)`的浮点数。
-    per_device_eval_batch_size (int): 默认值是：``1``。每个GPU/TPU/MPS/NPU核心/CPU的验证集批次大小。
-    eval_strategy (typing.Union[transformers.trainer_utils.IntervalStrategy, str]): 默认值是：``steps``。要使用的验证评估策略。
-    eval_steps (typing.Optional[float]): 默认值是：``500``。每X个步骤运行一次验证评估。应该是整数或范围在`[0,1)`的浮点数。如果小于1，将被解释为总训练步骤的比例。
-
 ''')
 
 add_english_doc('finetune.LlamafactoryFinetune', '''\
@@ -315,37 +194,6 @@ Args:
     export_config_path (str): The LLaMA-Factory Lora weight merging configuration file (yaml format is required), default is None. If not specified, a configuration file starting with ``merge_`` and ending with ``.yaml`` will be generated inside the ``.temp`` folder in the current working directory.
     launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1, sync=True)``.
     kw: Keyword arguments used to update the default training parameters.
-
-Keyword Args:
-
-Args:
-    stage (typing.Literal['pt', 'sft', 'rm', 'ppo', 'dpo', 'kto']): Default is: ``sft``. Which stage will be performed in training.
-    do_train (bool): Default is: ``True``. Whether to run training.
-    finetuning_type (typing.Literal['lora', 'freeze', 'full']): Default is: ``lora``. Which fine-tuning method to use.
-    lora_target (str): Default is: ``all``. Name(s) of target modules to apply LoRA. Use commas to separate multiple modules. Use `all` to specify all the linear modules.
-    template (typing.Optional[str]): Default is: ``None``. Which template to use for constructing prompts in training and inference.
-    cutoff_len (int): Default is: ``1024``. The cutoff length of the tokenized inputs in the dataset.
-    max_samples (typing.Optional[int]): Default is: ``1000``. For debugging purposes, truncate the number of examples for each dataset.
-    overwrite_cache (bool): Default is: ``True``. Overwrite the cached training and evaluation sets.
-    preprocessing_num_workers (typing.Optional[int]): Default is: ``16``. The number of processes to use for the pre-processing.
-    dataset_dir (str): Default is: ``lazyllm_temp_dir``. Path to the folder containing the datasets. If not explicitly specified, LazyLLM will generate a ``dataset_info.json`` file in the ``.temp`` folder in the current working directory for use by LLaMA-Factory.
-    logging_steps (float): Default is: ``10``. Log every X updates steps. Should be an integer or a float in range ``[0,1)``. If smaller than 1, will be interpreted as ratio of total training steps.
-    save_steps (float): Default is: ``500``. Save checkpoint every X updates steps. Should be an integer or a float in range ``[0,1)``. If smaller than 1, will be interpreted as ratio of total training steps.
-    plot_loss (bool): Default is: ``True``. Whether or not to save the training loss curves.
-    overwrite_output_dir (bool): Default is: ``True``. Overwrite the content of the output directory.
-    per_device_train_batch_size (int): Default is: ``1``. Batch size per GPU/TPU/MPS/NPU core/CPU for training.
-    gradient_accumulation_steps (int): Default is: ``8``. Number of updates steps to accumulate before performing a backward/update pass.
-    learning_rate (float): Default is: ``1e-04``. The initial learning rate for AdamW.
-    num_train_epochs (float): Default is: ``3.0``. Total number of training epochs to perform.
-    lr_scheduler_type (typing.Union[transformers.trainer_utils.SchedulerType, str]): Default is: ``cosine``. The scheduler type to use.
-    warmup_ratio (float): Default is: ``0.1``. Linear warmup over warmup_ratio fraction of total steps.
-    fp16 (bool): Default is: ``True``. Whether to use fp16 (mixed) precision instead of 32-bit.
-    ddp_timeout (typing.Optional[int]): Default is: ``180000000``. Overrides the default timeout for distributed training (value should be given in seconds).
-    report_to (typing.Union[NoneType, str, typing.List[str]]): Default is: ``tensorboard``. The list of integrations to report the results and logs to.
-    val_size (float): Default is: ``0.1``. Size of the development set, should be an integer or a float in range `[0,1)`.
-    per_device_eval_batch_size (int): Default is: ``1``. Batch size per GPU/TPU/MPS/NPU core/CPU for evaluation.
-    eval_strategy (typing.Union[transformers.trainer_utils.IntervalStrategy, str]): Default is: ``steps``. The evaluation strategy to use.
-    eval_steps (typing.Optional[float]): Default is: ``500``. Run an evaluation every X steps. Should be an integer or a float in range `[0,1)`. If smaller than 1, will be interpreted as ratio of total training steps.
 
 ''')
 
@@ -408,20 +256,6 @@ Args:
     stream (bool): 是否为流式响应，默认为 ``False``。
     kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
 
-此类的关键字参数及其默认值如下：
-
-Keyword Args: 
-
-Args:                
-    tp (int): 张量并行参数，默认为 ``1``。
-    max_total_token_num (int): 最大总token数，默认为 ``64000``。
-    eos_id (int): 结束符ID，默认为 ``2``。
-    port (int): 服务的端口号，默认为 ``None``。此情况下LazyLLM会自动生成随机端口号。
-    host (int): 服务的IP地址，默认为 ``0.0.0.0``。
-    nccl_port (int): NCCL 端口，默认为 ``None``。此情况下LazyLLM会自动生成随机端口号。
-    tokenizer_mode (str): tokenizer的加载模式，默认为 ``auto``。
-    running_max_req_size (int): 推理引擎最大的并行请求数， 默认为 ``256``。
-
 ''')
 
 add_english_doc('deploy.Lightllm', '''\
@@ -432,20 +266,6 @@ Args:
     launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1)``.
     stream (bool): Whether the response is streaming, default is ``False``.
     kw: Keyword arguments used to update default training parameters. Note that not any additional keyword arguments can be specified here.
-
-The keyword arguments and their default values for this class are as follows:
-
-Keyword Args:
-
-Args:                 
-    tp (int): Tensor parallelism parameter, default is ``1``.
-    max_total_token_num (int): Maximum total token number, default is ``64000``.
-    eos_id (int): End-of-sentence ID, default is ``2``.
-    port (int): Service port number, default is ``None``, in which case LazyLLM will automatically generate a random port number.
-    host (str): Service IP address, default is ``0.0.0.0``.
-    nccl_port (int): NCCL port, default is ``None``, in which case LazyLLM will automatically generate a random port number.
-    tokenizer_mode (str): Tokenizer loading mode, default is ``auto``.
-    running_max_req_size (int): Maximum number of parallel requests for the inference engine, default is ``256``.
 
 ''')
 
@@ -464,22 +284,6 @@ Args:
     stream (bool): 是否为流式响应，默认为 ``False``。
     kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
 
-此类的关键字参数及其默认值如下：
-
-Keyword Args:
-
-Args: 
-    tensor-parallel-size (int): 张量并行参数，默认为 ``1``。
-    dtype (str): 模型权重和激活值的数据类型，默认为 ``auto``。另外可选项还有： ``half``, ``float16``, ``bfloat16``, ``float``, ``float32``。
-    kv-cache-dtype (str): 看kv缓存的存储类型，默认为 ``auto``。另外可选的还有：``fp8``, ``fp8_e5m2``, ``fp8_e4m3``。
-    device (str): VLLM所支持的后端硬件类型，默认为 ``auto``。另外可选的还有：``cuda``, ``neuron``, ``cpu``。
-    block-size (int): 设置 token块的大小，默认为 ``16``。
-    port (int): 服务的端口号，默认为 ``auto``。
-    host (int): 服务的IP地址，默认为 ``0.0.0.0``。
-    seed (int): 随机数种子，默认为 ``0``。
-    tokenizer_mode (str): tokenizer的加载模式，默认为 ``auto``。
-    max-num-seqs (int): 推理引擎最大的并行请求数， 默认为 ``256``。
-
 ''')
 
 add_english_doc('deploy.Vllm', '''\
@@ -490,22 +294,6 @@ Args:
     launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1)``.
     stream (bool): Whether the response is streaming, default is ``False``.
     kw: Keyword arguments used to update default training parameters. Note that not any additional keyword arguments can be specified here.
-
-The keyword arguments and their default values for this class are as follows:
-
-Keyword Args: 
-
-Args:                
-    tensor-parallel-size (int): Tensor parallelism parameter, default is ``1``.
-    dtype (str): Data type for model weights and activations, default is ``auto``. Other options include: ``half``, ``float16``, ``bfloat16``, ``float``, ``float32``.
-    kv-cache-dtype (str): Data type for the key-value cache storage, default is ``auto``. Other options include: ``fp8``, ``fp8_e5m2``, ``fp8_e4m3``.
-    device (str): Backend hardware type supported by VLLM, default is ``auto``. Other options include: ``cuda``, ``neuron``, ``cpu``.
-    block-size (int): Sets the size of the token block, default is ``16``.
-    port (int): Service port number, default is ``auto``.
-    host (str): Service IP address, default is ``0.0.0.0``.
-    seed (int): Random number seed, default is ``0``.
-    tokenizer_mode (str): Tokenizer loading mode, default is ``auto``.
-    max-num-seqs (int): Maximum number of parallel requests for the inference engine, default is ``256``.
 
 ''')
 
@@ -566,18 +354,6 @@ ModelManager是LazyLLM为开发者提供的自动下载模型的工具类。目�
     - LAZYLLM_MODEL_PATH: 冒号 ``:`` 分隔的本地绝对路径列表用于搜索模型。
     - LAZYLLM_MODEL_CACHE_DIR: 下载后的模型在本地的存储目录
 
-Keyword Args:
-
-Args:                 
-    model_source (str, 可选): 模型下载源，目前仅支持 ``huggingface`` 或 ``modelscope`` 。如有必要，ModelManager将从此下载源下载模型数据。如果不提供，默认使用
-        LAZYLLM_MODEL_SOURCE环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE，ModelManager将从 ``modelscope`` 下载模型。
-    token (str, 可选): ``huggingface`` 或 ``modelscope`` 提供的token。如果token不为空，ModelManager将使用此token下载模型数据。如果不提供，默认使用
-        LAZYLLM_MODEL_SOURCE_TOKEN环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE_TOKEN，ModelManager将不会自动下载私有模型。
-    model_path (str, 可选)：冒号(:)分隔的本地绝对路径列表。在实际下载模型数据之前，ModelManager将在此列表包含的目录中尝试寻找目标模型。如果不提供，默认使用
-        LAZYLLM_MODEL_PATH环境变量中的设置。如果为空或LAZYLLM_MODEL_PATH未设置，ModelManager将跳过从model_path中寻找模型的步骤。
-    cache_dir (str, 可选): 一个本地目录的绝对路径。下载后的模型将存放在此目录下，如果不提供，默认使用LAZYLLM_MODEL_CACHE_DIR环境变量中的设置。如果
-        LAZYLLM_MODEL_PATH未设置，默认值为~/.lazyllm/model
-
 ModelManager.download(model) -> str
 
 用于从model_source下载模型。download函数首先在ModelManager类初始化参数model_path列出的目录中搜索目标模型。如果未找到，会在cache_dir下搜索目标模型。如果仍未找到，
@@ -597,24 +373,6 @@ huggingface or modelscope. Before using ModelManager, the following environment 
     - LAZYLLM_MODEL_SOURCE_TOKEN: The token provided by ``huggingface`` or ``modelscope`` for private model download.
     - LAZYLLM_MODEL_PATH: A colon-separated ``:`` list of local absolute paths for model search.
     - LAZYLLM_MODEL_CACHE_DIR: Directory for downloaded models.
-
-Keyword Args: 
-
-Args:                
-    model_source (str, optional): The source for model downloads, currently only supports ``huggingface`` or ``modelscope`` .
-        If necessary, ModelManager downloads model data from the source. If not provided, LAZYLLM_MODEL_SOURCE
-        environment variable would be used, and if LAZYLLM_MODEL_SOURCE is not set, ModelManager will not download
-        any model.
-    token (str, optional): The token provided by ``huggingface`` or ``modelscope`` . If the token is present, ModelManager uses
-        the token to download model. If not provided, LAZYLLM_MODEL_SOURCE_TOKEN environment variable would be used.
-        and if LAZYLLM_MODEL_SOURCE_TOKEN is not set, ModelManager will not download private models, only public ones.
-    model_path (str, optional): A colon-separated list of absolute paths. Before actually start to download model,
-        ModelManager trys to find the target model in the directories in this list. If not provided,
-        LAZYLLM_MODEL_PATH environment variable would be used, and LAZYLLM_MODEL_PATH is not set, ModelManager skips
-        looking for models from model_path.
-    cache_dir (str, optional): An absolute path of a directory to save downloaded models. If not provided,
-        LAZYLLM_MODEL_CACHE_DIR environment variable would be used, and if LAZYLLM_MODEL_PATH is not set, the default
-        value is ~/.lazyllm/model.
 
 ModelManager.download(model) -> str
 

@@ -78,19 +78,21 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 我们借助 :ref:`bestpractice.prompt.trial` 中使用 ``AlpacaPrompter`` 的文档问答的例子，详细介绍一下Prompt的生成过程。
 
 1. ``AlpacaPrompter`` 结合构造 ``prompter`` 时传入的 ``instruction`` （及 ``extro_keys``， 如有），结合 ``InstructionTemplate`` ，将 ``instruction`` 设置为:
-    
-        "Below is an instruction that describes a task, paired with extra messages such as input that provides "
-        "further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
-        "Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{{context}}，"
-        "用户的问题是{{input}}, 现在请你做出回答。### Response:\\n}"
-    
+```python     
+"Below is an instruction that describes a task, paired with extra messages such as input that provides "
+"further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
+"Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{{context}}，"
+"用户的问题是{{input}}, 现在请你做出回答。### Response:\\n}"
+``` 
+
 2. 用户的输入为 ``dict(context='背景', input='问题')``
 3. 用户的输入与1中得到的 ``instruction`` 进行拼接 ，得到:
-
-        "Below is an instruction that describes a task, paired with extra messages such as input that provides "
-        "further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
-        "Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，"
-        "用户的问题是问题, 现在请你做出回答。### Response:\\n}"
+```python 
+"Below is an instruction that describes a task, paired with extra messages such as input that provides "
+"further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
+"Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，"
+"用户的问题是问题, 现在请你做出回答。### Response:\\n}"
+```
 
 4. ``AlpacaPrompter`` 读取 ``system`` 和 ``tools`` 字段，其中 ``system`` 字段由 ``Module`` 设置，而 ``tools`` 字段则会在后面的 :ref:`bestpractice.prompt.tools` 一节中介绍。
 5. 如果 ``prompter`` 的结果用于线上模型（ ``OnlineChatModule`` ），则不会再进一步拼接 ``PromptTemplate`` ，而是会直接得到一个dict，即 ``{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是输入，现在请你做出回答。\n\n'}, {'role': 'user', 'content': ''}]}``
