@@ -92,7 +92,7 @@ class DocNode:
         return self.embedding and self.embedding[0] != -1  # placeholder
 
     def do_embedding(self, embed: Callable) -> None:
-        self.embedding = embed(self.get_content(MetadataMode.EMBED))
+        self.embedding = embed(self.get_text(MetadataMode.EMBED))
         self.is_saved = False
 
     def get_content(self) -> str:
