@@ -29,7 +29,7 @@ class BM25:
         self.nodes = nodes
 
         corpus_tokens = bm25s.tokenize(
-            [self._tokenizer(node.get_content()) for node in nodes],
+            [self._tokenizer(node.get_text()) for node in nodes],
             stopwords=self._stopwords,
             stemmer=self._stemmer,
         )

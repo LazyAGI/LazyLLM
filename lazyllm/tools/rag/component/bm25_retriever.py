@@ -48,7 +48,7 @@ class ChineseBM25Retriever(BaseRetriever):
         self._nodes = nodes
         self._tokenizer = tokenizer or tokenize_remove_stopwords
         self._similarity_top_k = similarity_top_k
-        self._corpus = [self._tokenizer(node.get_content(MetadataMode.NONE)) for node in self._nodes]
+        self._corpus = [self._tokenizer(node.get_text()) for node in self._nodes]
 
         self.bm25 = BM25Okapi(self._corpus)
         super().__init__(
