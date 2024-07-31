@@ -507,14 +507,17 @@ class TrainableModule(UrlModule):
                 if key in keys: setattr(self, f"_{key}", keys[key])
         return self
 
-    def _parse_arguments_with_args_token(self, output: str) -> (str, dict):
+    def _parse_arguments_with_args_token(self, output: str) -> tuple[str, dict]:
         items = output.split(self._tool_args_token)
         func_name = items[0].strip()
+        if len(items) == 1:
+            return func_name.split(self._tool_end_token)[0].strip() if getattr(self, "_tool_end_token", None)\
+                else func_name, {}
         arguments = (items[1].split(self._tool_end_token)[0].strip() if getattr(self, "_tool_end_token", None)
                      else items[1].strip())
         return func_name, arguments
 
-    def _parse_arguments_without_args_token(self, output: str) -> (str, dict):
+    def _parse_arguments_without_args_token(self, output: str) -> tuple[str, dict]:
         items = output.split(self._tool_end_token)[0] if getattr(self, "_tool_end_token", None) else output
         func_name = ""
         arguments = {}
@@ -540,7 +543,7 @@ class TrainableModule(UrlModule):
             return is_tc, tc
         return is_tc, tc
 
-    def _parse_tool_start_token(self, output: str) -> (str, List[Dict]):
+    def _parse_tool_start_token(self, output: str) -> tuple[str, List[Dict]]:
         tool_calls = []
         segs = output.split(self._tool_start_token)
         content = segs[0]
@@ -553,7 +556,7 @@ class TrainableModule(UrlModule):
 
         return content, tool_calls
 
-    def _parse_tools(self, output: str) -> (str, List[Dict]):
+    def _parse_tools(self, output: str) -> tuple[str, List[Dict]]:
         tool_calls = []
         tools = {tool['function']['name'] for tool in self._tools}
         lines = output.strip().split("\n")
@@ -585,7 +588,7 @@ class TrainableModule(UrlModule):
         content = "\n".join(content) if len(content) > 0 else ''
         return content, tool_calls
 
-    def _extract_tool_calls(self, output: str) -> (str, List[Dict]):
+    def _extract_tool_calls(self, output: str) -> tuple[str, List[Dict]]:
         tool_calls = []
         content = ''
         if getattr(self, "_tool_start_token", None) and self._tool_start_token in output:
