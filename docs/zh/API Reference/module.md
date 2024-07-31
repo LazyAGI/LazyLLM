@@ -31,8 +31,10 @@
     exclude-members:
 
 ::: lazyllm.module.OnlineChatModuleBase
-    members:
-    exclude-members: forward
+    options:
+      members:
+      filters:
+      - '!forward'
 
 ::: lazyllm.module.OnlineEmbeddingModuleBase
     members:
