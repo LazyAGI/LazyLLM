@@ -588,7 +588,7 @@ class TrainableModule(UrlModule):
     def _extract_tool_calls(self, output: str) -> (str, List[Dict]):
         tool_calls = []
         content = ''
-        if getattr(self, "_tool_start_token", None) in output:
+        if getattr(self, "_tool_start_token", None) and self._tool_start_token in output:
             content, tool_calls = self._parse_tool_start_token(output)
         elif self._tools:
             content, tool_calls = self._parse_tools(output)
