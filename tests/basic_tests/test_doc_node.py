@@ -1,3 +1,4 @@
+from unittest.mock import MagicMock
 from lazyllm.tools.rag.store import DocNode, MetadataMode
 
 
@@ -14,6 +15,12 @@ class TestDocNode:
         self.node.metadata = self.metadata
         self.node.excluded_embed_metadata_keys = ["author"]
         self.node.excluded_llm_metadata_keys = ["date"]
+
+    def test_do_embedding(self):
+        """Test that do_embedding passes the correct content to the embed function."""
+        mock_embed = MagicMock(return_value=[0.4, 0.5, 0.6])
+        self.node.do_embedding(mock_embed)
+        mock_embed.assert_called_once_with(self.node.get_content(MetadataMode.EMBED))
 
     def test_node_creation(self):
         """Test the creation of a DocNode."""
