@@ -67,7 +67,7 @@ class DefaultIndex:
         similarities.sort(key=lambda x: x[1], reverse=descend)
         if topk is not None:
             similarities = similarities[:topk]
-        
+
         results = [node for node, score in similarities if score > similarity_cut_off]
         LOG.debug(f"Retrieving query `{query}` and get results: {results}")
         return results

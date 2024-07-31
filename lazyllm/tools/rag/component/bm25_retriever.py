@@ -7,7 +7,7 @@ from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.callbacks import CallbackManager
 from llama_index.core.constants import DEFAULT_SIMILARITY_TOP_K
 from llama_index.core.indices.vector_store.base import VectorStoreIndex
-from llama_index.core.schema import BaseNode, IndexNode, NodeWithScore, QueryBundle, MetadataMode
+from llama_index.core.schema import BaseNode, IndexNode, NodeWithScore, QueryBundle
 from llama_index.core.storage.docstore.types import BaseDocumentStore
 from llama_index.core.utils import globals_helper
 
