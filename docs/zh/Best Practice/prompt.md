@@ -8,28 +8,28 @@ Prompter的API文档可以参考 :ref:`api.components.prompter`。 接下来，�
 假设我们正在设计一个文档问答的应用，需要大模型的输入是用户的问题以及检索到的背景知识，此时我们的Prompt设计为：
 
 ```text
-    你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{上下文}，用户的问题是{问题}，现在请你做出回答。
+你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{上下文}，用户的问题是{问题}，现在请你做出回答。
 ```
 
 你可以借助LazyLLM提供的内置Prompter来实现你需要的能力，示例如下：
 
 ```python
-    import lazyllm
-    instruction = '你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{context}，用户的问题是{input}, 现在请你做出回答。'
-    prompter = lazyllm.AlpacaPrompter(instruction)
-    module = lazyllm.OnlineChatModule('openai').prompt(prompter)
-    module(dict(context='背景', input='输入'))
+import lazyllm
+instruction = '你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{context}，用户的问题是{input}, 现在请你做出回答。'
+prompter = lazyllm.AlpacaPrompter(instruction)
+module = lazyllm.OnlineChatModule('openai').prompt(prompter)
+module(dict(context='背景', input='输入'))
 ```
 
 上述prompter即可以直接传给大模型去使用。我们可以用如下代码试验Prompter的效果。
 
 ```python
-    import lazyllm
-    # 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是输入，现在请你做出回答。\n\n\n### Response:\n'
-    prompter.generate_prompt(dict(context='背景', input='输入'))
+import lazyllm
+# 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是输入，现在请你做出回答。\n\n\n### Response:\n'
+prompter.generate_prompt(dict(context='背景', input='输入'))
 
-    # {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是输入，现在请你做出回答。\n\n'}, {'role': 'user', 'content': ''}]}
-    prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=True)
+# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是输入，现在请你做出回答。\n\n'}, {'role': 'user', 'content': ''}]}
+prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=True)
 ```
 
 在上面的例子中， ``generate_prompt`` 的输入是一个 ``dict`` ，他会把值依次填入 ``instruction`` 提供的槽位中。
@@ -110,23 +110,23 @@ Prompter的API文档可以参考 :ref:`api.components.prompter`。 接下来，�
 当用户的输入为 ``string`` 时，我们最多允许 ``Prompter`` 的 ``instruction`` 中有一个槽位。我们借助“大模型做加法”这一场景，给出一个示例的代码:
 
 ```python
-    >>> p = lazyllm.AlpacaPrompter('请完成加法运算, 输入为{instruction}')
-    >>> p.generate_prompt('a+b')
-    'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n请完成加法运算, 输入为a+b\\n\\n\\n### Response:\\n'
-    >>>  p = lazyllm.AlpacaPrompter('请完成加法运算', extro_keys='input')
-    'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n请完成加法运算\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\na+b\\n\\n\\n### Response:\\n'
+>>> p = lazyllm.AlpacaPrompter('请完成加法运算, 输入为{instruction}')
+>>> p.generate_prompt('a+b')
+'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n请完成加法运算, 输入为a+b\\n\\n\\n### Response:\\n'
+>>>  p = lazyllm.AlpacaPrompter('请完成加法运算', extro_keys='input')
+'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n请完成加法运算\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\na+b\\n\\n\\n### Response:\\n'
 ```
 
 > **注意**： 
     当使用 ``AlpacaPrompter`` 时，需要定义一个唯一的槽位，可以任意取一个名字， ``string`` 类型的输入会填充进去。
 
 ```python
-    >>> p = lazyllm.ChatPrompter('请完成加法运算，输入为{input}')
-    >> p.generate_prompt('a+b')
-    '<|start_system|>You are an AI-Agent developed by LazyLLM.请完成加法运算，输入为a+b\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\n\\n<|Assistant|>:\\n'
-    >>> p = lazyllm.ChatPrompter('请完成加法运算')
-    >> p.generate_prompt('a+b')
-    '<|start_system|>You are an AI-Agent developed by LazyLLM.请完成加法运算\n\n<|end_system|>\n\n\n<|Human|>:\na+b\n<|Assistant|>
+>>> p = lazyllm.ChatPrompter('请完成加法运算，输入为{input}')
+>> p.generate_prompt('a+b')
+'<|start_system|>You are an AI-Agent developed by LazyLLM.请完成加法运算，输入为a+b\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\n\\n<|Assistant|>:\\n'
+>>> p = lazyllm.ChatPrompter('请完成加法运算')
+>> p.generate_prompt('a+b')
+'<|start_system|>You are an AI-Agent developed by LazyLLM.请完成加法运算\n\n<|end_system|>\n\n\n<|Human|>:\na+b\n<|Assistant|>
 ```
 
 > **注意**：
@@ -167,29 +167,29 @@ Prompter的API文档可以参考 :ref:`api.components.prompter`。 接下来，�
 1. 应用开发者定义工具
 
 ```python
-    >>> import lazyllm
-    >>> tools=[dict(type='function', function=dict(name='example'))]
-    >>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extro_keys='input', tools=tools)
-    >>> prompter.generate_prompt('帮我查询一下今天的天气')
-    'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n### Response:\\n'
-    >>>
-    >>> prompter = lazyllm.ChatPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', tools=tools)
-    >>> prompter.generate_prompt('帮我查询一下今天的天气')
-    '<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\n帮我查询一下今天的天气\\n<|Assistant|>:\\n'
+>>> import lazyllm
+>>> tools=[dict(type='function', function=dict(name='example'))]
+>>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extro_keys='input', tools=tools)
+>>> prompter.generate_prompt('帮我查询一下今天的天气')
+'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n### Response:\\n'
+>>>
+>>> prompter = lazyllm.ChatPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', tools=tools)
+>>> prompter.generate_prompt('帮我查询一下今天的天气')
+'<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\n帮我查询一下今天的天气\\n<|Assistant|>:\\n'
 ```
 
 2. 用户定义工具
 
 ```python
-    >>> import lazyllm
-    >>> tools=[dict(type='function', function=dict(name='example'))]
-    >>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extro_keys='input')
-    >>> prompter.generate_prompt('帮我查询一下今天的天气', tools=tools)
-    'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n### Response:\\n'
-    >>>
-    >>> prompter = lazyllm.ChatPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用')
-    >>> prompter.generate_prompt('帮我查询一下今天的天气', tools=tools)
-    '<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\n帮我查询一下今天的天气\\n<|Assistant|>:\\n'
+>>> import lazyllm
+>>> tools=[dict(type='function', function=dict(name='example'))]
+>>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extro_keys='input')
+>>> prompter.generate_prompt('帮我查询一下今天的天气', tools=tools)
+'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n### Response:\\n'
+>>>
+>>> prompter = lazyllm.ChatPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用')
+>>> prompter.generate_prompt('帮我查询一下今天的天气', tools=tools)
+'<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\n帮我查询一下今天的天气\\n<|Assistant|>:\\n'
 ```
 
 工具会在 :ref:`bestpractice.prompt.analysis` 中的步骤4，转换为json后被读取。
@@ -198,12 +198,12 @@ Prompter的API文档可以参考 :ref:`api.components.prompter`。 接下来，�
 >    如果是使用线上模型，工具会变成和 ``messages`` 并列的一个字段，示例如下：
 > 
 >
->        >>> import lazyllm
->        >>> tools=[dict(type='function', function=dict(name='example'))]
->        >>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extro_keys='input', tools=tools)
->        >>> prompter.generate_prompt('帮我查询一下今天的天气', return_dict=True)
->        {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n'}, {'role': 'user', 'content': ''}],
->         'tools': [{'type': 'function', 'function': {'name': 'example'}}]}
+>     >>> import lazyllm
+>     >>> tools=[dict(type='function', function=dict(name='example'))]
+>     >>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extro_keys='input', tools=tools)
+>     >>> prompter.generate_prompt('帮我查询一下今天的天气', return_dict=True)
+>     {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n'}, {'role': 'user', 'content': ''}],
+>     'tools': [{'type': 'function', 'function': {'name': 'example'}}]}
 
 
 #### 使用历史对话
@@ -211,14 +211,14 @@ Prompter的API文档可以参考 :ref:`api.components.prompter`。 接下来，�
 如果我们想让模型具备多轮对话的能力，就需要将对话上下文拼接到 ``prompt`` 当中。上下文是由用户传入的，但需要以键值对的形式传入。下面给出一个例子：
 
 ```python
-    >>> import lazyllm
-    >>> prompter = lazyllm.ChatPrompter('你是一个对话机器人，现在你要和用户进行友好的对话')
-    >>> prompter.generate_prompt('我们聊会儿天吧', history=[['你好', '你好，我是一个对话机器人，有什么能为您服务的']])
-    '<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n<|end_system|>\\n\\n<|Human|>:你好<|Assistant|>:你好，我是一个对话机器人，有什么能为您服务的\\n<|Human|>:\\n我们聊会儿天吧\\n<|Assistant|>:\\n'
-    >>> prompter.generate_prompt('我们聊会儿天吧', history=[['你好', '你好，我是一个对话机器人，有什么能为您服务的']], return_dict=True)
-    {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\n你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n'}, {'role': 'user', 'content': '你好'}, {'role': 'assistant', 'content': '你好，我是一个对话机器人，有什么能为您服务的'}, {'role': 'user', 'content': '我们聊会儿天吧'}]}
-    >>> prompter.generate_prompt('我们聊会儿天吧', history=[dict(role='user', content='你好'), dict(role='assistant', content='你好，我是一个对话机器人，有什么能为您服务的')], return_dict=True)
-    {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\n你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n'}, {'role': 'user', 'content': '你好'}, {'role': 'assistant', 'content': '你好，我是一个对话机器人，有什么能为您服务的'}, {'role': 'user', 'content': '我们聊会儿天吧'}]}
+>>> import lazyllm
+>>> prompter = lazyllm.ChatPrompter('你是一个对话机器人，现在你要和用户进行友好的对话')
+>>> prompter.generate_prompt('我们聊会儿天吧', history=[['你好', '你好，我是一个对话机器人，有什么能为您服务的']])
+'<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n<|end_system|>\\n\\n<|Human|>:你好<|Assistant|>:你好，我是一个对话机器人，有什么能为您服务的\\n<|Human|>:\\n我们聊会儿天吧\\n<|Assistant|>:\\n'
+>>> prompter.generate_prompt('我们聊会儿天吧', history=[['你好', '你好，我是一个对话机器人，有什么能为您服务的']], return_dict=True)
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\n你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n'}, {'role': 'user', 'content': '你好'}, {'role': 'assistant', 'content': '你好，我是一个对话机器人，有什么能为您服务的'}, {'role': 'user', 'content': '我们聊会儿天吧'}]}
+>>> prompter.generate_prompt('我们聊会儿天吧', history=[dict(role='user', content='你好'), dict(role='assistant', content='你好，我是一个对话机器人，有什么能为您服务的')], return_dict=True)
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\n你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n'}, {'role': 'user', 'content': '你好'}, {'role': 'assistant', 'content': '你好，我是一个对话机器人，有什么能为您服务的'}, {'role': 'user', 'content': '我们聊会儿天吧'}]}
 ```
 
 历史对话会在 :ref:`bestpractice.prompt.analysis` 中的步骤4，做简单的格式转换后被读取。
@@ -233,11 +233,11 @@ Prompter的API文档可以参考 :ref:`api.components.prompter`。 接下来，�
 ``history`` 和 ``tools`` 传给 ``generate_prompt`` ，此时 ``generate_prompt`` 的 ``return_dict`` 会被设置为 ``True``。下面给出一个例子：
 
 ```python
-    import lazyllm
-    instruction = '你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{context}，用户的问题是{input}, 现在请你做出回答。'
-    prompter = lazyllm.AlpacaPrompter(instruction)
-    module = lazyllm.OnlineChatModule('openai').prompt(prompter)
-    module(dict(context='背景', input='输入'))
+import lazyllm
+instruction = '你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{context}，用户的问题是{input}, 现在请你做出回答。'
+prompter = lazyllm.AlpacaPrompter(instruction)
+module = lazyllm.OnlineChatModule('openai').prompt(prompter)
+module(dict(context='背景', input='输入'))
 ```
 
 #### 和TrainableModule一起使用
@@ -246,12 +246,12 @@ Prompter的API文档可以参考 :ref:`api.components.prompter`。 接下来，�
 ``history`` 和 ``tools`` 传给 ``generate_prompt`` ，此时 ``generate_prompt`` 的 ``return_dict`` 会被设置为 ``True``。下面给出一个例子：
 
 ```python
-    import lazyllm
-    instruction = '你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{context}，用户的问题是{input}, 现在请你做出回答。'
-    prompter = lazyllm.AlpacaPrompter(instruction)
-    module = lazyllm.TrainableModule('internlm2-chat-7b').prompt(prompter)
-    module.start()
-    module(dict(context='背景', input='输入'))
+import lazyllm
+instruction = '你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{context}，用户的问题是{input}, 现在请你做出回答。'
+prompter = lazyllm.AlpacaPrompter(instruction)
+module = lazyllm.TrainableModule('internlm2-chat-7b').prompt(prompter)
+module.start()
+module(dict(context='背景', input='输入'))
 ```
 
 > **注意**：

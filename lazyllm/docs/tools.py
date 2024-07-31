@@ -32,10 +32,10 @@ Args:
 """)
 
 add_example('Document', r"""
-    >>> import lazyllm
-    >>> from lazyllm.tools.rag.docment import Document
-    >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
-    >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> import lazyllm
+>>> from lazyllm.tools.rag.docment import Document
+>>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+>>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 """)
 
 add_english_doc('Reranker', r"""
@@ -66,16 +66,16 @@ Args:
 """)
 
 add_example('Reranker', r"""
-    >>> import lazyllm
-    >>> from lazyllm.tools.rag.base import Reranker, Retriever
-    >>> from lazyllm.tools.rag.docment import Document
-    >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
-    >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
-    >>> rm = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
-    >>> reranker = Reranker(types='SimilarityFilter', threshold=2.0)
-    >>> m = lazyllm.ActionModule(rm, reranker)
-    >>> m.start()
-    >>> print(m("query"))  
+>>> import lazyllm
+>>> from lazyllm.tools.rag.base import Reranker, Retriever
+>>> from lazyllm.tools.rag.docment import Document
+>>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+>>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> rm = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
+>>> reranker = Reranker(types='SimilarityFilter', threshold=2.0)
+>>> m = lazyllm.ActionModule(rm, reranker)
+>>> m.start()
+>>> print(m("query"))  
 """)
 
 add_english_doc('Retriever', r"""
@@ -134,14 +134,14 @@ Args:
 """)
 
 add_example('Retriever', r"""
-    >>> import lazyllm
-    >>> from lazyllm.tools.rag.base import Retriever
-    >>> from lazyllm.tools.rag.docment import Document
-    >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
-    >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
-    >>> rm = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
-    >>> rm.start()
-    >>> print(rm("query"))
+>>> import lazyllm
+>>> from lazyllm.tools.rag.base import Retriever
+>>> from lazyllm.tools.rag.docment import Document
+>>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+>>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> rm = Retriever(documents, similarity='chinese_bm25', parser='SentenceDivider', similarity_top_k=6)
+>>> rm.start()
+>>> print(rm("query"))
 """)
 
 add_chinese_doc('WebModule', r'''\
@@ -180,15 +180,15 @@ Args:
 ''')
 
 add_example('WebModule', r'''\
-    >>> import lazyllm
-    >>> def func2(in_str, do_sample=True, temperature=0.0, *args, **kwargs):
-    ...     return f"func2:{in_str}|do_sample:{str(do_sample)}|temp:{temperature}"
-    ...
-    >>> m1=lazyllm.ActionModule(func2)
-    >>> m1.name="Module1"
-    >>> w = lazyllm.WebModule(m1, port=[20570, 20571, 20572], components={
-    ...         m1:[('do_sample', 'Checkbox', True), ('temperature', 'Text', 0.1)]},
-    ...                       text_mode=lazyllm.tools.WebModule.Mode.Refresh)
-    >>> w.start()
-    193703: 2024-06-07 10:26:00 lazyllm SUCCESS: ...
+>>> import lazyllm
+>>> def func2(in_str, do_sample=True, temperature=0.0, *args, **kwargs):
+...     return f"func2:{in_str}|do_sample:{str(do_sample)}|temp:{temperature}"
+...
+>>> m1=lazyllm.ActionModule(func2)
+>>> m1.name="Module1"
+>>> w = lazyllm.WebModule(m1, port=[20570, 20571, 20572], components={
+...         m1:[('do_sample', 'Checkbox', True), ('temperature', 'Text', 0.1)]},
+...                       text_mode=lazyllm.tools.WebModule.Mode.Refresh)
+>>> w.start()
+193703: 2024-06-07 10:26:00 lazyllm SUCCESS: ...
 ''')

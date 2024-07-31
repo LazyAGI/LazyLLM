@@ -13,36 +13,34 @@ LazyLLM中定义了大量的数据流组件，用于让您像搭积木一样，�
 Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶段的输入。pipeline支持函数和仿函数（或仿函数的type）。一个典型的pipeline如下所示:
 
 ```python
+from lazyllm import pipeline
 
-    from lazyllm import pipeline
+class Functor(object):
+    def __call__(self, x): return x * x
 
-    class Functor(object):
-        def __call__(self, x): return x * x
+def f1(input): return input + 1
+f2 = lambda x: x * 2
+f3 = Functor()
 
-    def f1(input): return input + 1
-    f2 = lambda x: x * 2
-    f3 = Functor()
-
-    assert pipeline(f1, f2, f3, Functor)(1) == 256
+assert pipeline(f1, f2, f3, Functor)(1) == 256
 ```
 
 > **注意**：
     借助LazyLLM的注册机制 :ref:`api.components.register` 注册的函数，也可以直接被pipeline使用，下面给出一个例子
 
 ```python
+import lazyllm
+from lazyllm import pipeline, component_register
 
-    import lazyllm
-    from lazyllm import pipeline, component_register
+component_register.new_group('g1')
 
-    component_register.new_group('g1')
+@component_register('g1')
+def test1(input): return input + 1
 
-    @component_register('g1')
-    def test1(input): return input + 1
+@component_register('g1')
+def test2(input): return input * 3
 
-    @component_register('g1')
-    def test2(input): return input * 3
-
-    assert pipeline(lazyllm.g1.test1, lazyllm.g1.test2(launcher=lazyllm.launchers.empty))(1) == 6
+assert pipeline(lazyllm.g1.test1, lazyllm.g1.test2(launcher=lazyllm.launchers.empty))(1) == 6
 ```
 
 ##### with语句
@@ -50,22 +48,21 @@ Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶
 除了基本的用法之外，pipeline还支持一个更为灵活的用法 ``with pipeline() as p`` 来让代码更加的简洁和清晰，示例如下
 
 ```python
+from lazyllm import pipeline
 
-    from lazyllm import pipeline
+class Functor(object):
+    def __call__(self, x): return x * x
 
-    class Functor(object):
-        def __call__(self, x): return x * x
+def f1(input): return input + 1
+f2 = lambda x: x * 2
+f3 = Functor()
 
-    def f1(input): return input + 1
-    f2 = lambda x: x * 2
-    f3 = Functor()
+with pipeline() as p:
+    p.f1 = f1
+    p.f2 = f2
+    p.f3 = f3
 
-    with pipeline() as p:
-        p.f1 = f1
-        p.f2 = f2
-        p.f3 = f3
-
-    assert p(1) == 16
+assert p(1) == 16
 ```
 
 > **注意**：
@@ -80,24 +77,22 @@ Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶
 假设我们定义了一些函数，本小节会一直使用这些函数，不再重复定义。
 
 ```python
-
-    def f1(input, input2=0): return input + input2 + 1
-    def f2(input): return input + 3
-    def f3(input): return f'f3-{input}'
-    def f4(in1, in2, in3): return f'get [{in1}], [{in2}], [{in3}]'
+def f1(input, input2=0): return input + input2 + 1
+def f2(input): return input + 3
+def f3(input): return f'f3-{input}'
+def f4(in1, in2, in3): return f'get [{in1}], [{in2}], [{in3}]'
 ```
 
 下面给出一个参数绑定的具体例子：
 
 ```python
-
-    from lazyllm import pipeline, _0
-    with pipeline() as p:
-        p.f1 = f1
-        p.f2 = f2
-        p.f3 = f3
-        p.f4 = bind(f4, p.input, _0, p.f2)
-    assert p(1) == 'get [1], [f3-5], [5]'
+from lazyllm import pipeline, _0
+with pipeline() as p:
+    p.f1 = f1
+    p.f2 = f2
+    p.f3 = f3
+    p.f4 = bind(f4, p.input, _0, p.f2)
+assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
 上述例子中， ``bind`` 函数用于参数绑定，它的基本使用方法和C++的 ``std::bind`` 一致，其中 ``_0`` 表示新函数的第0个参数在被绑定的函数的参数表中的位置。
@@ -110,14 +105,13 @@ Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶
 上面的方式已经足够简单和清晰，如果您仍然觉得 ``bind`` 作为函数不够直观，可以尝试使用如下方式，两种方式没有任何区别：
 
 ```python
-
-    from lazyllm import pipeline, _0
-    with pipeline() as p:
-        p.f1 = f1
-        p.f2 = f2
-        p.f3 = f3
-        p.f4 = f4 | bind(p.input, _0, p.f2)
-    assert p(1) == 'get [1], [f3-5], [5]'
+from lazyllm import pipeline, _0
+with pipeline() as p:
+    p.f1 = f1
+    p.f2 = f2
+    p.f3 = f3
+    p.f4 = f4 | bind(p.input, _0, p.f2)
+assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
 > **注意**：
@@ -126,14 +120,13 @@ Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶
 除了C++的bind方式之外，作为python，我们额外提供了 ``kwargs`` 的参数绑定， ``kwargs`` 和c++的绑定方式可以混合使用，示例如下:
 
 ```python
-
-    from lazyllm import pipeline, _0
-    with pipeline() as p:
-        p.f1 = f1
-        p.f2 = f2
-        p.f3 = f3
-        p.f4 = f4 | bind(p.input, _0, in3=p.f2)
-    assert p(1) == 'get [1], [f3-5], [5]'
+from lazyllm import pipeline, _0
+with pipeline() as p:
+    p.f1 = f1
+    p.f2 = f2
+    p.f3 = f3
+    p.f4 = f4 | bind(p.input, _0, in3=p.f2)
+assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
 > **注意**：
@@ -142,19 +135,18 @@ Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶
 如果pipeline的输入比较复杂，可以直接对 ``input`` 做一次简单的解析处理，示例如下:
 
 ```python
+def f1(input): return dict(a=input[0], b=input[1])
+def f2(input): return input['a'] + input['b']
+def f3(input, extro): return f'[{input} + {extro}]'
 
-    def f1(input): return dict(a=input[0], b=input[1])
-    def f2(input): return input['a'] + input['b']
-    def f3(input, extro): return f'[{input} + {extro}]'
+with pipeline() as p1:
+    p1.f1 = f1
+    with pipeline() as p1.p2:
+        p2.f2 = f2
+        p2.f3 = f3 | bind(extro=p2.input['b'])
+    p1.f3 = f3 | bind(extro=p1.input[0])
 
-    with pipeline() as p1:
-        p1.f1 = f1
-        with pipeline() as p1.p2:
-            p2.f2 = f2
-            p2.f3 = f3 | bind(extro=p2.input['b'])
-        p1.f3 = f3 | bind(extro=p1.input[0])
-    
-    assert p1([1, 2]) == '[[3 + 2] + 1]'
+assert p1([1, 2]) == '[[3 + 2] + 1]'
 ```
 
 上面的例子比较复杂，我们逐步来解析。首先输入的list经过 ``p1.f1`` 变成 ``dict(a=1, b=2)`` ，则p2的输入也是 ``dict(a=1, b=2)``，经过 ``p2.f2`` 之后输出为 ``3``，
@@ -165,16 +157,15 @@ Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶
 当发生pipeline的嵌套（或pipeline与其他flow的嵌套时），我们有时候需要将外层的输入传递到内层中，此时也可以使用bind，示例如下：
 
 ```python
+from lazyllm import pipeline, _0
+with pipeline() as p1:
+    p1.f1 = f1
+    p1.f2 = f2
+    with pipeline().bind(extro=p1.input[0]) as p1.p2:
+        p2.f3 = f3
+    p1.p3 = pipeline(f3) | bind(extro=p1.input[1])
 
-    from lazyllm import pipeline, _0
-    with pipeline() as p1:
-        p1.f1 = f1
-        p1.f2 = f2
-        with pipeline().bind(extro=p1.input[0]) as p1.p2:
-            p2.f3 = f3
-        p1.p3 = pipeline(f3) | bind(extro=p1.input[1])
-
-    assert p1([1, 2]) == '[[3 + 1] + 2]'
+assert p1([1, 2]) == '[[3 + 1] + 2]'
 ```
 
 ##### AutoCapture（试验特性）
@@ -182,15 +173,14 @@ Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶
 为了进一步简化代码的复杂性，我们上线了自动捕获with块内定义的变量的能力，示例如下：
 
 ```python
+from lazyllm import pipeline, _0
+with pipeline(auto_capture=True) as p:
+    p1 = f1
+    p2 = f2
+    p3 = f3
+    p4 = f4 | bind(p.input, _0, in3=p2)
 
-    from lazyllm import pipeline, _0
-    with pipeline(auto_capture=True) as p:
-        p1 = f1
-        p2 = f2
-        p3 = f3
-        p4 = f4 | bind(p.input, _0, in3=p2)
-
-    assert p(1) == 'get [1], [f3-5], [5]'
+assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
 > **注意**：
@@ -208,25 +198,24 @@ parallel的所有组件共享输入，并将结果合并输出。 ``parallel`` �
 为了进一步简化流程的复杂性，不引入过多的匿名函数，parallel的结果可以做一个简单的后处理（目前仅支持 ``sum`` 或 ``asdict``），然后传给下一级。下面给出一个例子:
 
 ```python
+from lazyllm import parallel
 
-    from lazyllm import parallel
+def f1(input): return input
 
-    def f1(input): return input
+with parallel() as p:
+    p.f1 = f1
+    p.f2 = f1
+assert p(1) == (1, 1)
 
-    with parallel() as p:
-        p.f1 = f1
-        p.f2 = f1
-    assert p(1) == (1, 1)
+with parallel().asdict as p:
+    p.f1 = f1
+    p.f2 = f1
+assert p(1) == dict(f1=1, f2=1)
 
-    with parallel().asdict as p:
-        p.f1 = f1
-        p.f2 = f1
-    assert p(1) == dict(f1=1, f2=1)
-
-    with parallel().sum as p:
-        p.f1 = f1
-        p.f2 = f1
-    assert p(1) == 2
+with parallel().sum as p:
+    p.f1 = f1
+    p.f2 = f1
+assert p(1) == 2
 ```
 
 > **注意**：
@@ -237,15 +226,14 @@ parallel的所有组件共享输入，并将结果合并输出。 ``parallel`` �
 ``parallel`` 默认是多线程并行执行的，在一些特殊情况下，可以根据需求改成顺序执行。下面给出一个例子：
 
 ```python
+from lazyllm import parallel
 
-    from lazyllm import parallel
+def f1(input): return input
 
-    def f1(input): return input
-
-    with parallel.sequential() as p:
-        p.f1 = f1
-        p.f2 = f1
-    assert p(1) == (1, 1)
+with parallel.sequential() as p:
+    p.f1 = f1
+    p.f2 = f1
+assert p(1) == (1, 1)
 ```
 
 > **注意**：

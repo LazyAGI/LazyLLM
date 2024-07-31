@@ -129,17 +129,15 @@ add_chinese_doc('Parallel', """\
 可以这样可视化 ``Parallel`` 类：
 
 ```text
-
-    #       /> module11 -> ... -> module1N -> out1 \\\\
-    # input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
-    #       \> module31 -> ... -> module3N -> out3 /
+#       /> module11 -> ... -> module1N -> out1 \\\\
+# input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
+#       \> module31 -> ... -> module3N -> out3 /
 ```        
 
 可以这样可视化 ``Parallel.sequential`` 方法：
 
 ```text
-
-    # input -> module21 -> ... -> module2N -> out2 -> 
+# input -> module21 -> ... -> module2N -> out2 -> 
 ```
 
 Args:
@@ -178,17 +176,15 @@ This class inherits from LazyLLMFlowsBase and provides an interface for running 
 The ``Parallel`` class can be visualized as follows:
 
 ```text
-
-    #       /> module11 -> ... -> module1N -> out1 \\\\
-    # input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
-    #       \> module31 -> ... -> module3N -> out3 /
+#       /> module11 -> ... -> module1N -> out1 \\\\
+# input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
+#       \> module31 -> ... -> module3N -> out3 /
 ```       
 
 The ``Parallel.sequential`` method can be visualized as follows:
 
 ```text
-
-    # input -> module21 -> ... -> module2N -> out2 -> 
+# input -> module21 -> ... -> module2N -> out2 -> 
 ```
 
 Args:
@@ -386,11 +382,10 @@ add_chinese_doc('Switch', """\
  ``Switch``类提供了一种根据表达式的值或条件的真实性选择不同流的方法。它类似于其他编程语言中找到的switch-case语句。
 
 ```text
-
-    # switch(exp):
-    #     case cond1: input -> module11 -> ... -> module1N -> out; break
-    #     case cond2: input -> module21 -> ... -> module2N -> out; break
-    #     case cond3: input -> module31 -> ... -> module3N -> out; break
+# switch(exp):
+#     case cond1: input -> module11 -> ... -> module1N -> out; break
+#     case cond2: input -> module21 -> ... -> module2N -> out; break
+#     case cond3: input -> module31 -> ... -> module3N -> out; break
 ```   
 
 Args:
@@ -409,11 +404,10 @@ A control flow mechanism that selects and executes a flow based on a condition.
 The ``Switch`` class provides a way to choose between different flows depending on the value of an expression or the truthiness of conditions. It is similar to a switch-case statement found in other programming languages.
 
 ```text
-
-    # switch(exp):
-    #     case cond1: input -> module11 -> ... -> module1N -> out; break
-    #     case cond2: input -> module21 -> ... -> module2N -> out; break
-    #     case cond3: input -> module31 -> ... -> module3N -> out; break
+# switch(exp):
+#     case cond1: input -> module11 -> ... -> module1N -> out; break
+#     case cond2: input -> module21 -> ... -> module2N -> out; break
+#     case cond3: input -> module31 -> ... -> module3N -> out; break
 ``` 
 
 Args:
@@ -474,10 +468,9 @@ Diverter类是一种专门的并行处理形式，其中多个输入分别通过
 当您拥有可以并行执行的不同数据处理管道，并希望在单个流构造中管理它们时，此类非常有用。
 
 ```text
-
-    #                 /> in1 -> module11 -> ... -> module1N -> out1 \\\\
-    # (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
-    #                 \> in3 -> module31 -> ... -> module3N -> out3 /
+#                 /> in1 -> module11 -> ... -> module1N -> out1 \\\\
+# (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
+#                 \> in3 -> module31 -> ... -> module3N -> out3 /
 ```                    
 
 Args:
@@ -500,10 +493,9 @@ The Diverter class is a specialized form of parallel processing where multiple i
 This class is useful when you have distinct data processing pipelines that can be executed concurrently, and you want to manage them within a single flow construct.
 
 ```text
-
-    #                 /> in1 -> module11 -> ... -> module1N -> out1 \\\\
-    # (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
-    #                 \> in3 -> module31 -> ... -> module3N -> out3 /
+#                 /> in1 -> module11 -> ... -> module1N -> out1 \\\\
+# (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
+#                 \> in3 -> module31 -> ... -> module3N -> out3 /
 ```                    
 
 Args:
@@ -530,12 +522,11 @@ add_chinese_doc('Warp', """\
 
 Warp类设计用于将同一个处理模块应用于一组输入。它有效地将单个模块“形变”到输入上，使每个输入都并行处理。输出被收集并作为元组返回。需要注意的是，这个类不能用于异步任务，如训练和部署。
 
-.. code-block:: text
-
-    #                 /> in1 \                            /> out1 \\
-    # (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
-    #                 \> in3 /                            \> out3 /
-
+```text
+#                 /> in1 \                            /> out1 \\
+# (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
+#                 \> in3 /                            \> out3 /
+```
 Args:
     args: 可变长度参数列表，代表要应用于所有输入的单个模块。
     kwargs: 未来扩展的任意关键字参数。
@@ -551,10 +542,9 @@ A flow warp that applies a single module to multiple inputs in parallel.
 The Warp class is designed to apply the same processing module to a set of inputs. It effectively 'warps' the single module around the inputs so that each input is processed in parallel. The outputs are collected and returned as a tuple. It is important to note that this class cannot be used for asynchronous tasks, such as training and deployment.
 
 ```text
-
-    #                 /> in1 \                            /> out1 \\\\
-    # (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
-    #                 \> in3 /                            \> out3 /
+#                 /> in1 \                            /> out1 \\\\
+# (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
+#                 \> in3 /                            \> out3 /
 ``` 
 
 Args:

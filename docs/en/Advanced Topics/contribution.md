@@ -40,10 +40,10 @@ Add the Original Repository as an Upstream Repository
 Check if the remote has been added successfully by typing ``git remote -v`` in the terminal.
 
 ```
-    origin	git@github.com:{username}/LazyLLM.git (fetch)
-    origin	git@github.com:{username}/LazyLLM.git (push)
-    upstream	git@github.com:LazyAGI/LazyLLM.git (fetch)
-    upstream	git@github.com:LazyAGI/LazyLLM.git (push)
+origin	git@github.com:{username}/LazyLLM.git (fetch)
+origin	git@github.com:{username}/LazyLLM.git (push)
+upstream	git@github.com:LazyAGI/LazyLLM.git (fetch)
+upstream	git@github.com:LazyAGI/LazyLLM.git (push)
 ```
 
 Here's a quick introduction to origin and upstream. When we use git clone to clone code, a remote called origin is created by default, which points to the repository we cloned. Upstream is something we add ourselves, and it points to the original repository. Of course, if you don't like the name upstream, you can change it to something else, like LazyLLM. We usually push code to origin (i.e., the forked remote repository), and then submit a pull request to upstream. If the code we submit conflicts with the latest code, we pull the latest code from upstream, resolve the conflict with our local branch, and then push to origin.
@@ -62,15 +62,15 @@ During development, if the local main branch is behind the upstream main branch,
 The submitted code needs to pass unit tests to ensure correctness and maintain proper code style. You can execute the following commands:
 
 ```
-    pytest -vxs tests
-    python -m flake8
+pytest -vxs tests
+python -m flake8
 ```
 
 #### Push Code to Remote
 Push your code to the remote repository. If it's the first time you're pushing, you can add the ``-u`` parameter after ``git push`` to associate the remote branch.
 
 ```
-    git push -u origin {branch_name}
+git push -u origin {branch_name}
 ```
 Push your code to the remote repository. If it's the first time you're pushing, you can add the -u parameter after ``git push`` to associate the remote branch.
 
@@ -88,13 +88,13 @@ Push your code to the remote repository. If it's the first time you're pushing, 
 Over time, our codebase will continuously update. If your PR conflicts with the main branch, you need to resolve the conflicts. There are two ways to do this:
 
 ```
-    git fetch --all --prune
-    git rebase upstream/main
+git fetch --all --prune
+git rebase upstream/main
 ```
 or
 ```
-    git fetch --all --prune
-    git merge upstream/main
+git fetch --all --prune
+git merge upstream/main
 ```
 If you are very skilled at handling conflicts, you can use the rebase method to resolve conflicts, as this keeps your commit log clean. If you are not familiar with using rebase, you can use the merge method to resolve conflicts.
 

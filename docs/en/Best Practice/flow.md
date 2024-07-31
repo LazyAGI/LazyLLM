@@ -13,36 +13,34 @@ The definitions and basic usage of data flow are described in :ref:`api.flow`.
 A Pipeline is a sequential data flow where the output of one stage becomes the input of the next stage. Pipelines support both functions and functors (or the type of functors). A typical pipeline is as follows:
 
 ```python
+from lazyllm import pipeline
 
-    from lazyllm import pipeline
+class Functor(object):
+    def __call__(self, x): return x * x
 
-    class Functor(object):
-        def __call__(self, x): return x * x
+def f1(input): return input + 1
+f2 = lambda x: x * 2
+f3 = Functor()
 
-    def f1(input): return input + 1
-    f2 = lambda x: x * 2
-    f3 = Functor()
-
-    assert pipeline(f1, f2, f3, Functor)(1) == 256
+assert pipeline(f1, f2, f3, Functor)(1) == 256
 ```
 
 > **Note**：
     Functions registered with LazyLLM's registration mechanism :ref:`api.components.register` can also be used directly by the pipeline. Below is an example:
 
 ```python
+import lazyllm
+from lazyllm import pipeline, component_register
 
-    import lazyllm
-    from lazyllm import pipeline, component_register
+component_register.new_group('g1')
 
-    component_register.new_group('g1')
+@component_register('g1')
+def test1(input): return input + 1
 
-    @component_register('g1')
-    def test1(input): return input + 1
+@component_register('g1')
+def test2(input): return input * 3
 
-    @component_register('g1')
-    def test2(input): return input * 3
-
-    assert pipeline(lazyllm.g1.test1, lazyllm.g1.test2(launcher=lazyllm.launchers.empty))(1) == 6
+assert pipeline(lazyllm.g1.test1, lazyllm.g1.test2(launcher=lazyllm.launchers.empty))(1) == 6
 ```
 
 ##### with Statement
@@ -50,22 +48,21 @@ A Pipeline is a sequential data flow where the output of one stage becomes the i
 In addition to the basic usage, the pipeline also supports a more flexible usage with the ``with pipeline() as p`` statement to make the code more concise and clear. Here is an example:
 
 ```python
+from lazyllm import pipeline
 
-    from lazyllm import pipeline
+class Functor(object):
+    def __call__(self, x): return x * x
 
-    class Functor(object):
-        def __call__(self, x): return x * x
+def f1(input): return input + 1
+f2 = lambda x: x * 2
+f3 = Functor()
 
-    def f1(input): return input + 1
-    f2 = lambda x: x * 2
-    f3 = Functor()
+with pipeline() as p:
+    p.f1 = f1
+    p.f2 = f2
+    p.f3 = f3
 
-    with pipeline() as p:
-        p.f1 = f1
-        p.f2 = f2
-        p.f3 = f3
-
-    assert p(1) == 16
+assert p(1) == 16
 ```
 
 > **Note**：
@@ -80,24 +77,22 @@ However, LazyLLM simplifies this process, allowing you to achieve this through p
 Assume we have defined some functions, which will be used throughout this section without repeating their definitions.
 
 ```python
-
-    def f1(input, input2=0): return input + input2 + 1
-    def f2(input): return input + 3
-    def f3(input): return f'f3-{input}'
-    def f4(in1, in2, in3): return f'get [{in1}], [{in2}], [{in3}]'
+def f1(input, input2=0): return input + input2 + 1
+def f2(input): return input + 3
+def f3(input): return f'f3-{input}'
+def f4(in1, in2, in3): return f'get [{in1}], [{in2}], [{in3}]'
 ```
 
 Here is a specific example of parameter binding:
 
 ```python
-
-    from lazyllm import pipeline, _0
-    with pipeline() as p:
-        p.f1 = f1
-        p.f2 = f2
-        p.f3 = f3
-        p.f4 = bind(f4, p.input, _0, p.f2)
-    assert p(1) == 'get [1], [f3-5], [5]'
+from lazyllm import pipeline, _0
+with pipeline() as p:
+    p.f1 = f1
+    p.f2 = f2
+    p.f3 = f3
+    p.f4 = bind(f4, p.input, _0, p.f2)
+assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
 In the example above, the ``bind`` function is used for parameter binding. Its basic usage is similar to C++'s ``std::bind``, where ``_0`` indicates the position of the new function's first parameter in the bound function's parameter list.
@@ -110,14 +105,13 @@ For the above case,The entire pipeline's input will be used as the first paramet
 The above method is already simple and clear enough. If you still find the function ``bind`` not intuitive, you can try the following approach. There is no difference between the two methods:
 
 ```python
-
-    from lazyllm import pipeline, _0
-    with pipeline() as p:
-        p.f1 = f1
-        p.f2 = f2
-        p.f3 = f3
-        p.f4 = f4 | bind(p.input, _0, p.f2)
-    assert p(1) == 'get [1], [f3-5], [5]'
+from lazyllm import pipeline, _0
+with pipeline() as p:
+    p.f1 = f1
+    p.f2 = f2
+    p.f3 = f3
+    p.f4 = f4 | bind(p.input, _0, p.f2)
+assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
 > **Note**:
@@ -126,14 +120,13 @@ The above method is already simple and clear enough. If you still find the funct
 In addition to the C++ style bind method, as a Python library, we also provide parameter binding using ``kwargs``. You can mix ``kwargs`` with the C++ style binding method. Here's an example:
 
 ```python
-
-    from lazyllm import pipeline, _0
-    with pipeline() as p:
-        p.f1 = f1
-        p.f2 = f2
-        p.f3 = f3
-        p.f4 = f4 | bind(p.input, _0, in3=p.f2)
-    assert p(1) == 'get [1], [f3-5], [5]'
+from lazyllm import pipeline, _0
+with pipeline() as p:
+    p.f1 = f1
+    p.f2 = f2
+    p.f3 = f3
+    p.f4 = f4 | bind(p.input, _0, in3=p.f2)
+assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
 > **Note**：
@@ -142,19 +135,18 @@ In addition to the C++ style bind method, as a Python library, we also provide p
 If the input to the pipeline is complex, you can directly perform a simple parsing of the ``input``. Here is an example:
 
 ```python
+def f1(input): return dict(a=input[0], b=input[1])
+def f2(input): return input['a'] + input['b']
+def f3(input, extro): return f'[{input} + {extro}]'
 
-    def f1(input): return dict(a=input[0], b=input[1])
-    def f2(input): return input['a'] + input['b']
-    def f3(input, extro): return f'[{input} + {extro}]'
+with pipeline() as p1:
+    p1.f1 = f1
+    with pipeline() as p1.p2:
+        p2.f2 = f2
+        p2.f3 = f3 | bind(extro=p2.input['b'])
+    p1.f3 = f3 | bind(extro=p1.input[0])
 
-    with pipeline() as p1:
-        p1.f1 = f1
-        with pipeline() as p1.p2:
-            p2.f2 = f2
-            p2.f3 = f3 | bind(extro=p2.input['b'])
-        p1.f3 = f3 | bind(extro=p1.input[0])
-    
-    assert p1([1, 2]) == '[[3 + 2] + 1]'
+assert p1([1, 2]) == '[[3 + 2] + 1]'
 ```
 
 The example is a bit complex, so let's break it down step by step. First, the input list is processed by  ``p1.f1`` which transforms it into a dictionary: ``dict(a=1, b=2)`` .This dictionary becomes the input for p2. After passing through ``p2.f2``, the output is  ``3``,
@@ -165,16 +157,15 @@ Next, ``p2.f3`` is bound to the ``['b']`` value of the ``p2`` input, which is ``
 When nesting pipelines (or pipelines with other flows), sometimes it's necessary to pass the outer layer's input to the inner layer. In such cases, you can use binding. Here's an example:
 
 ```python
+from lazyllm import pipeline, _0
+with pipeline() as p1:
+    p1.f1 = f1
+    p1.f2 = f2
+    with pipeline().bind(extro=p1.input[0]) as p1.p2:
+        p2.f3 = f3
+    p1.p3 = pipeline(f3) | bind(extro=p1.input[1])
 
-    from lazyllm import pipeline, _0
-    with pipeline() as p1:
-        p1.f1 = f1
-        p1.f2 = f2
-        with pipeline().bind(extro=p1.input[0]) as p1.p2:
-            p2.f3 = f3
-        p1.p3 = pipeline(f3) | bind(extro=p1.input[1])
-
-    assert p1([1, 2]) == '[[3 + 1] + 2]'
+assert p1([1, 2]) == '[[3 + 1] + 2]'
 ```
 
 ##### AutoCapture (Experimental Feature)
@@ -182,15 +173,14 @@ When nesting pipelines (or pipelines with other flows), sometimes it's necessary
 In order to further simplify the complexity of the code, we have introduced the ability to automatically capture variables defined within a with block. Here is an example:
 
 ```python
+from lazyllm import pipeline, _0
+with pipeline(auto_capture=True) as p:
+    p1 = f1
+    p2 = f2
+    p3 = f3
+    p4 = f4 | bind(p.input, _0, in3=p2)
 
-    from lazyllm import pipeline, _0
-    with pipeline(auto_capture=True) as p:
-        p1 = f1
-        p2 = f2
-        p3 = f3
-        p4 = f4 | bind(p.input, _0, in3=p2)
-
-    assert p(1) == 'get [1], [f3-5], [5]'
+assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
 > **Note**:
@@ -208,25 +198,24 @@ All components of ``parallel`` share the input and merge the results for output.
 To further simplify the complexity of the process without introducing too many anonymous functions, the result of parallel can undergo simple post-processing (currently only supporting ``sum`` or ``asdict``) before being passed to the next stage. Here is an example:
 
 ```python
+from lazyllm import parallel
 
-    from lazyllm import parallel
+def f1(input): return input
 
-    def f1(input): return input
+with parallel() as p:
+    p.f1 = f1
+    p.f2 = f1
+assert p(1) == (1, 1)
 
-    with parallel() as p:
-        p.f1 = f1
-        p.f2 = f1
-    assert p(1) == (1, 1)
+with parallel().asdict as p:
+    p.f1 = f1
+    p.f2 = f1
+assert p(1) == dict(f1=1, f2=1)
 
-    with parallel().asdict as p:
-        p.f1 = f1
-        p.f2 = f1
-    assert p(1) == dict(f1=1, f2=1)
-
-    with parallel().sum as p:
-        p.f1 = f1
-        p.f2 = f1
-    assert p(1) == 2
+with parallel().sum as p:
+    p.f1 = f1
+    p.f2 = f1
+assert p(1) == 2
 ```
 
 > **Note**:
@@ -237,15 +226,14 @@ To further simplify the complexity of the process without introducing too many a
 By default, ``parallel`` executes in parallel using multiple threads. In some special cases, you can change it to sequential execution as needed. Here is an example:
 
 ```python
+from lazyllm import parallel
 
-    from lazyllm import parallel
+def f1(input): return input
 
-    def f1(input): return input
-
-    with parallel.sequential() as p:
-        p.f1 = f1
-        p.f2 = f1
-    assert p(1) == (1, 1)
+with parallel.sequential() as p:
+    p.f1 = f1
+    p.f2 = f1
+assert p(1) == (1, 1)
 ```
 
 > **Note**:

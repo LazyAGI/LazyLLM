@@ -40,10 +40,10 @@
 检查 remote 是否添加成功，在终端输入 ``git remote -v``
 
 ```
-    origin	git@github.com:{username}/LazyLLM.git (fetch)
-    origin	git@github.com:{username}/LazyLLM.git (push)
-    upstream	git@github.com:LazyAGI/LazyLLM.git (fetch)
-    upstream	git@github.com:LazyAGI/LazyLLM.git (push)
+origin	git@github.com:{username}/LazyLLM.git (fetch)
+origin	git@github.com:{username}/LazyLLM.git (push)
+upstream	git@github.com:LazyAGI/LazyLLM.git (fetch)
+upstream	git@github.com:LazyAGI/LazyLLM.git (push)
 ```
 
 这里对 origin 和 upstream 进行一个简单的介绍，当我们使用 git clone 来克隆代码时，会默认创建一个 origin 的 remote，它指向我们克隆的代码库地址，而 upstream 则是我们自己添加的，用来指向原始代码库地址。当然如果你不喜欢他叫 upstream，也可以自己修改，比如叫 LazyLLM。我们通常向 origin 提交代码（即 fork 下来的远程仓库），然后向 upstream 提交一个 pull request。如果提交的代码和最新的代码发生冲突，再从 upstream 拉取最新的代码，和本地分支解决冲突，再提交到 origin。
@@ -62,15 +62,15 @@
 提交的代码需要通过单元测试以保证正确性，并保证代码风格无误。可以执行如下命令:
 
 ```
-    pytest -vxs tests
-    python -m flake8
+pytest -vxs tests
+python -m flake8
 ```
 
 #### 推送代码到远程
 将代码推送到远程仓库，如果是第一次推送，可以在 ``git push`` 后加上 ``-u`` 参数以关联远程分支
 
 ```
-    git push -u origin {branch_name}
+git push -u origin {branch_name}
 ```
 这样下次就可以直接使用 ``git push`` 命令推送代码了，而无需指定分支和远程仓库。
 
@@ -88,13 +88,13 @@
 随着时间的推移，我们的代码库会不断更新，这时候，如果你的 PR 与主分支存在冲突，你需要解决冲突，解决冲突的方式有两种：
 
 ```
-    git fetch --all --prune
-    git rebase upstream/main
+git fetch --all --prune
+git rebase upstream/main
 ```
 或者
 ```
-    git fetch --all --prune
-    git merge upstream/main
+git fetch --all --prune
+git merge upstream/main
 ```
 如果你非常善于处理冲突，那么可以使用 rebase 的方式来解决冲突，因为这能够保证你的 commit log 的整洁。如果你不太熟悉 ``rebase`` 的使用，那么可以使用 ``merge`` 的方式来解决冲突。
 
