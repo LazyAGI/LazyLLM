@@ -23,12 +23,12 @@ class TestDocNode:
         assert self.node.excluded_embed_metadata_keys == ["author"]
         assert self.node.excluded_llm_metadata_keys == ["date"]
 
-    def test_get_content(self):
+    def test_get_text(self):
         """Test the get_content method."""
-        content = self.node.get_content(metadata_mode=MetadataMode.NONE)
+        content = self.node.get_text(metadata_mode=MetadataMode.NONE)
         assert content == self.text
 
-        content_with_metadata = self.node.get_content(metadata_mode=MetadataMode.ALL)
+        content_with_metadata = self.node.get_text(metadata_mode=MetadataMode.ALL)
         expected_content_set = {"author: John Doe", "date: 2023-07-01", self.text}
         for s in expected_content_set:
             assert s in content_with_metadata
