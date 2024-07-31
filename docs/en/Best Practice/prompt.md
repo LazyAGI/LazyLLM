@@ -1,7 +1,7 @@
 ## Prompter
 
 To ensure a consistent user experience across different online models and various local models, as well as between fine-tuning and inference, we have defined the Prompter class. This class abstracts away the implementation details of different models and inference frameworks. 
-You can refer to the Prompter API documentation at :ref:`api.components.prompter`. Next, I will introduce the design concept of the Prompter in LazyLLM step by step, starting with an example.
+You can refer to the Prompter API documentation at [prompter][lazyllm.components.prompter.LazyLLMPrompterBase]. Next, I will introduce the design concept of the Prompter in LazyLLM step by step, starting with an example.
 
 ### Prompter Quick Start
 
@@ -102,7 +102,7 @@ Taking the example of a document question and answer task using ``AlpacaPrompter
 
 #### Defining a New Prompter
 
-Refer to the API documentation: :ref:`api.components.prompter`
+Refer to the API documentation: [prompter][lazyllm.components.prompter.LazyLLMPrompterBase]
 
 #### Query as a string, not a dict
 
@@ -258,6 +258,6 @@ module(dict(context='背景', input='输入'))
 
 > **Note**：
 > - We have ensured that the ``Prompter`` has a consistent usage experience with both ``TrainableModule`` and ``OnlineChatModule``, allowing you to easily switch models for experimentation.
-> - ``TrainableModule`` requires manually calling ``start`` to initiate the service. For more information on how to use ``TrainableModule``, refer to :ref:`api.module`.
+> - ``TrainableModule`` requires manually calling ``start`` to initiate the service. For more information on how to use ``TrainableModule``, refer to [module][lazyllm.module.ModuleBase].
 
 #### Built-in Scenario Prompt in LazyLLM

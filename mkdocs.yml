@@ -95,6 +95,7 @@ plugins:
           find_stubs_package: true
           allow_inspection: true
           show_source: true
+          show_root_heading: true
 - autorefs:
 markdown_extensions:
   - pymdownx.highlight:

@@ -41,6 +41,11 @@ Prompter
     members: generate_prompt, get_response
     exclude-members:
 
+Register
+
+::: lazyllm.common.Register
+    members: 
+    exclude-members:
 
 ModelManager
 

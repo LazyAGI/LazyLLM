@@ -651,7 +651,7 @@ If you need to support the capabilities of embedding models on a new open platfo
     3. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
 ''')
 
-add_example('OnlineEmbeddingModuleBase', '''
+add_example('OnlineEmbeddingModuleBase', '''\
 >>> import lazyllm
 >>> from lazyllm.module import OnlineEmbeddingModuleBase
 >>> class NewPlatformEmbeddingModule(OnlineEmbeddingModuleBase):

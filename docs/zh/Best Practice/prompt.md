@@ -1,7 +1,7 @@
 ## Prompter
 
 为了让您在不同的线上模型和不同的本地模型都能获得一致的使用体验，且在微调和推理中也能获得一致的使用体验，我们定义了Prompter类，用于屏蔽各个模型和推理框架的实现细节。
-Prompter的API文档可以参考 :ref:`api.components.prompter`。 接下来，我将会从一个例子开始，逐步介绍LazyLLM中Prompter的设计思路。
+Prompter的API文档可以参考 [prompter][lazyllm.components.prompter.LazyLLMPrompterBase]。 接下来，我将会从一个例子开始，逐步介绍LazyLLM中Prompter的设计思路。
 
 ### Prompter牛刀小试
 
@@ -102,7 +102,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 
 #### 定义一个新的Prompter
 
-参考API文档： :ref:`api.components.prompter`
+参考API文档： [prompter][lazyllm.components.prompter.LazyLLMPrompterBase]
 
 #### Query为string，而非dict
 
@@ -258,6 +258,6 @@ module(dict(context='背景', input='输入'))
 
 > **注意**：
 > - 我们保证了 ``Prompter`` 在 ``TrainableModule`` 和 ``和OnlineChatModule`` 具有一致的使用体验，您可以方便的更换模型以进行效果的尝试。
-> - ``TrainableModule`` 需要手动调用 ``start`` 以启动服务，想了解更多关于 ``TrainableModule`` 的用法，可以参考 :ref:`api.module`
+> - ``TrainableModule`` 需要手动调用 ``start`` 以启动服务，想了解更多关于 ``TrainableModule`` 的用法，可以参考 : [module][lazyllm.module.ModuleBase]
 
 #### LazyLLM中内置的场景Prompt

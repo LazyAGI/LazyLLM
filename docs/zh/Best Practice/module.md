@@ -5,7 +5,7 @@ Module是LazyLLM中的顶层组件，也是LazyLLM最核心的概念之一。Mod
 
 ## API Reference
 
-Module的API文档可以参考 :ref:`api.module`
+Module的API文档可以参考 [module][lazyllm.module.ModuleBase]
 
 定义一个模块（ ``Module`` ）
 

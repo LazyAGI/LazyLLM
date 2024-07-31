@@ -5,7 +5,7 @@ and each capability can be composed of one or more functions, Components, or oth
 
 ## API Reference
 
-You can refer to the Module's API documentation :ref:`api.module`
+You can refer to the Module's API documentation [module][lazyllm.module.ModuleBase] 
 
 Defining a Module (``Module`` )
 

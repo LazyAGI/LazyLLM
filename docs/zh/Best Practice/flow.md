@@ -4,7 +4,7 @@ LazyLLM中定义了大量的数据流组件，用于让您像搭积木一样，�
 
 ### 定义和API文档
 
-数据流的定义和基本使用方法如 :ref:`api.flow` 中所述
+数据流的定义和基本使用方法如 [flow][lazyllm.flow.FlowBase] 中所述
 
 ### pipeline
 
@@ -26,7 +26,7 @@ assert pipeline(f1, f2, f3, Functor)(1) == 256
 ```
 
 > **注意**：
-    借助LazyLLM的注册机制 :ref:`api.components.register` 注册的函数，也可以直接被pipeline使用，下面给出一个例子
+    借助LazyLLM的注册机制 : [register][lazyllm.common.Register] 注册的函数，也可以直接被pipeline使用，下面给出一个例子
 
 ```python
 import lazyllm
@@ -241,4 +241,4 @@ assert p(1) == (1, 1)
 
 #### 小结
 
-本篇着重讲解了 ``pipeline`` 和 ``parallel``，相信您对如何利用LazyLLM的flow搭建复杂的应用已经有了初步的认识，其他的数据流组件不做过多赘述，您可以参考 :ref:`api.flow` 来获取他们的使用方式。
+本篇着重讲解了 ``pipeline`` 和 ``parallel``，相信您对如何利用LazyLLM的flow搭建复杂的应用已经有了初步的认识，其他的数据流组件不做过多赘述，您可以参考 [flow][lazyllm.flow.FlowBase] 来获取他们的使用方式。

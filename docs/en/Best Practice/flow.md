@@ -4,7 +4,7 @@ LazyLLM defines a multitude of data flow components that enable you to build com
 
 ### Definitions and API Documentation
 
-The definitions and basic usage of data flow are described in :ref:`api.flow`.
+The definitions and basic usage of data flow are described in [flow][lazyllm.flow.FlowBase].
 
 ### pipeline
 
@@ -241,4 +241,4 @@ assert p(1) == (1, 1)
 
 #### Summary
 
-This article focused on ``pipeline`` and ``parallel``. It is hoped that you now have a basic understanding of how to use LazyLLM's flow to build complex applications. Other data flow components are not discussed in detail here; you can refer to :ref:`api.flow` for their usage.
+This article focused on ``pipeline`` and ``parallel``. It is hoped that you now have a basic understanding of how to use LazyLLM's flow to build complex applications. Other data flow components are not discussed in detail here; you can refer to [flow][lazyllm.flow.FlowBase] for their usage.
