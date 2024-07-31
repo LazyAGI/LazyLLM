@@ -26,7 +26,7 @@ assert pipeline(f1, f2, f3, Functor)(1) == 256
 ```
 
 > **Note**：
-    Functions registered with LazyLLM's registration mechanism :ref:`api.components.register` can also be used directly by the pipeline. Below is an example:
+    Functions registered with LazyLLM's registration mechanism :[register][lazyllm.common.Register] can also be used directly by the pipeline. Below is an example:
 
 ```python
 import lazyllm

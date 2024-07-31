@@ -75,7 +75,7 @@ In the example above, the ``generate_prompt`` function accepts a ``dict`` as inp
 
 #### Prompt Generation Process Analysis
 
-Taking the example of a document question and answer task using ``AlpacaPrompter`` from :ref:`bestpractice.prompt.trial`, let's go through the prompt generation process in detail.
+Taking the example of a document question and answer task using ``AlpacaPrompter`` from :[trial](#defining-and-using-a-prompter), let's go through the prompt generation process in detail.
 
 1. ``AlpacaPrompter`` combines the ``instruction`` (and ``extra_keys``, if any) provided during the construction of the ``prompter`` with the ``InstructionTemplate``. The ``instruction`` is set as:
 ```python     
@@ -94,7 +94,7 @@ Taking the example of a document question and answer task using ``AlpacaPrompter
 "用户的问题是问题, 现在请你做出回答。### Response:\\n}"
 ```
 
-4. ``AlpacaPrompter`` reads the system and ``tools`` fields, where the ``system`` field is set by the ``Module``, and the ``tools`` field will be introduced in the later section :ref:`bestpractice.prompt.tools`.
+4. ``AlpacaPrompter`` reads the system and ``tools`` fields, where the ``system`` field is set by the ``Module``, and the ``tools`` field will be introduced in the later section :[tools](#use-the-tools).
 5. If the ``prompter`` result is used for the online model (``OnlineChatModule``), the ``PromptTemplate`` will not be concatenated further. Instead, a dict will be directly obtained, namely:``{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\nYou are a knowledge assistant developed by LazyLLM. Your task is to answer the user's question based on the provided context information. The context information is background, and the user's question is question. Please provide an answer.\n\n'}, {'role': 'user', 'content': ''}]}``
 6. If the ``prompter`` result is used for the offline model (``TrainableModule``), the final result will be obtained through the PromptTemplate: ``You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\nYou are a knowledge assistant developed by LazyLLM. Your task is to answer the user's question based on the provided context information. The context information is background, and the user's question is question. Please provide an answer.\n\n\n### Response:\n``
 
@@ -106,7 +106,7 @@ Refer to the API documentation: [prompter][lazyllm.components.prompter.LazyLLMPr
 
 #### Query as a string, not a dict
 
-In :ref:`bestpractice.prompt.trial`, we demonstrated a basic usage and explained the working principle of the ``prompter`` in the following sections. 
+In :[trial](#defining-and-using-a-prompter), we demonstrated a basic usage and explained the working principle of the ``prompter`` in the following sections. 
 However, in most cases, the user's input is often a ``string``. This section demonstrates how to use the ``prompter`` when the input is a ``string``.
 
 When the user's input is a string, we allow at most one slot in the ``Prompter``'s ``instruction``. Using the scenario of "large models doing arithmetic", we provide an example code:
@@ -195,7 +195,7 @@ let's demonstrate how ``Prompter`` uses tools through a simple tool tools=[dict(
 '<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\n帮我查询一下今天的天气\\n<|Assistant|>:\\n'
 ```
 
-The tool will be read after step 4 in :ref:`bestpractice.prompt.analysis` once it's converted to JSON.
+The tool will be read after step 4 in :[analysis](#prompt-generation-process-analysis) once it's converted to JSON.
 
 > **Note**:
 > If using an online model, the tool will become a field parallel to ``messages``, as shown in the example below:
@@ -223,7 +223,7 @@ If we want the model to have multi-turn conversation capabilities, we need to co
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\n你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n'}, {'role': 'user', 'content': '你好'}, {'role': 'assistant', 'content': '你好，我是一个对话机器人，有什么能为您服务的'}, {'role': 'user', 'content': '我们聊会儿天吧'}]}
 ```
 
-The conversation history will be read in step 4 of :ref:`bestpractice.prompt.analysis` after a simple format conversion.
+The conversation history will be read in step 4 of :[analysis](#prompt-generation-process-analysis) after a simple format conversion.
 
 > **Note**：
 > - Only ``ChatPrompter`` supports passing in conversation history.

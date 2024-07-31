@@ -75,7 +75,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 
 #### Prompt生成过程解析
 
-我们借助 :ref:`bestpractice.prompt.trial` 中使用 ``AlpacaPrompter`` 的文档问答的例子，详细介绍一下Prompt的生成过程。
+我们借助 :[trial](#prompter_2) 中使用 ``AlpacaPrompter`` 的文档问答的例子，详细介绍一下Prompt的生成过程。
 
 1. ``AlpacaPrompter`` 结合构造 ``prompter`` 时传入的 ``instruction`` （及 ``extro_keys``， 如有），结合 ``InstructionTemplate`` ，将 ``instruction`` 设置为:
 ```python     
@@ -94,7 +94,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 "用户的问题是问题, 现在请你做出回答。### Response:\\n}"
 ```
 
-4. ``AlpacaPrompter`` 读取 ``system`` 和 ``tools`` 字段，其中 ``system`` 字段由 ``Module`` 设置，而 ``tools`` 字段则会在后面的 :ref:`bestpractice.prompt.tools` 一节中介绍。
+4. ``AlpacaPrompter`` 读取 ``system`` 和 ``tools`` 字段，其中 ``system`` 字段由 ``Module`` 设置，而 ``tools`` 字段则会在后面的 : [tools](#_2) 一节中介绍。
 5. 如果 ``prompter`` 的结果用于线上模型（ ``OnlineChatModule`` ），则不会再进一步拼接 ``PromptTemplate`` ，而是会直接得到一个dict，即 ``{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是输入，现在请你做出回答。\n\n'}, {'role': 'user', 'content': ''}]}``
 6. 如果 ``prompter`` 的结果用于线下模型（ ``TrainableModule`` ），则会通过 ``PromptTemplate`` 得到最终的结果： ``You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是问题，现在请你做出回答。\n\n\n### Response:\n``
 
@@ -106,7 +106,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 
 #### Query为string，而非dict
 
-我们在 :ref:`bestpractice.prompt.trial` 中展示了一个基本的用法，并在随后的小节里解释了 ``prompter`` 的工作原理。
+我们在 : [trial](#prompter_2) 中展示了一个基本的用法，并在随后的小节里解释了 ``prompter`` 的工作原理。
 但在绝大部分情况下，用户的输入往往是一个 ``string`` ，本小节展示了 ``prompter`` 在输入为 ``string`` 时的用法。
 
 当用户的输入为 ``string`` 时，我们最多允许 ``Prompter`` 的 ``instruction`` 中有一个槽位。我们借助“大模型做加法”这一场景，给出一个示例的代码:
@@ -194,7 +194,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 '<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\n帮我查询一下今天的天气\\n<|Assistant|>:\\n'
 ```
 
-工具会在 :ref:`bestpractice.prompt.analysis` 中的步骤4，转换为json后被读取。
+工具会在 [analysis](#prompt) 中的步骤4，转换为json后被读取。
 
 > **注意**：
 >    如果是使用线上模型，工具会变成和 ``messages`` 并列的一个字段，示例如下：
@@ -223,7 +223,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\n你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n'}, {'role': 'user', 'content': '你好'}, {'role': 'assistant', 'content': '你好，我是一个对话机器人，有什么能为您服务的'}, {'role': 'user', 'content': '我们聊会儿天吧'}]}
 ```
 
-历史对话会在 :ref:`bestpractice.prompt.analysis` 中的步骤4，做简单的格式转换后被读取。
+历史对话会在 :[analysis](#prompt) 中的步骤4，做简单的格式转换后被读取。
 
 > **注意**：
 > - 只有 ``ChatPrompter`` 支持传入历史对话

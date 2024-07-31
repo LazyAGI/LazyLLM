@@ -272,53 +272,15 @@ MyModule3 deployed!
 add_chinese_doc('TrainableModule', '''\
 可训练的模块，所有的模型(包括llm、Embedding等)均通过TrainableModule提供服务
 
-.. function:: TrainableModule(base_model='', target_path='', *, stream=False, return_trace=False)
-
 Args:
     base_model (str): 基模型的名称或者路径，如果本地没有模型，且微调或部署的方法为finetune.auto/deploy.auto, 则会自动尝试下载
     target_path (str): 微调任务的保存路径，如只推理，则可以不填
     stream (bool): 是否流式输出。如果使用的推理引擎不支持流式，则此参数会被忽略
     return_trace (bool): 是否将结果记录在trace中
-
-.. function:: TrainableModule.trainset(v):
-为TrainableModule设置训练集
-
-Args:
-    v (str): 训练/微调的数据集路径
-
-.. function:: TrainableModule.train_method(v, **kw):
-为TrainableModule设置训练方法，暂不支持继续预训练，预计下个版本上线
-
-Args:
-    v (LazyLLMTrainBase): 训练的方法，可选为 ``train.auto`` 等
-    kw (**dict): 训练的方法所需要的参数，和v对应
-
-.. function:: TrainableModule.finetune_method(v, **kw):
-为TrainableModule设置微调方法及其参数
-
-Args:
-    v (LazyLLMFinetuneBase): 微调的方法，可选为 ``finetune.auto`` / ``finetune.alpacalora`` / ``finetune.collie`` 等
-    kw (**dict): 微调的方法所需要的参数，和v对应
-
-.. function:: TrainableModule.deploy_method(v, **kw):
-为TrainableModule设置推理方法及其参数
-
-Args:
-    v (LazyLLMDeployBase): 推理的方法，可选为 ``deploy.auto`` / ``deploy.lightllm`` / ``deploy.vllm`` 等
-    kw (**dict): 推理的方法所需要的参数，和v对应
-
-.. function:: TrainableModule.mode(v):
-为TrainableModule设置update时执行训练还是微调
-
-Args:
-    v (str): 设置update时执行训练还是微调，可选为'finetune'和'train'，默认为'finetune'
 ''')
 
 add_english_doc('TrainableModule', '''\
 Trainable module, all models (including LLM, Embedding, etc.) are served through TrainableModule
-
-### TrainableModule
-                (base_model='', target_path='', *, source=lazyllm.config['model_source'], stream=False, return_trace=False)
 
 Args:
     base_model (str): Name or path of the base model. If the model is not available locally, it will be automatically downloaded from the model source.
