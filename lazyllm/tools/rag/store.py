@@ -95,11 +95,8 @@ class DocNode:
         self.embedding = embed(self.text)
         self.is_saved = False
 
-    def get_content(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
-        metadata_str = self.get_metadata_str(mode=metadata_mode).strip()
-        if not metadata_str:
-            return self.text if self.text else ""
-        return f"{metadata_str}\n\n{self.text}".strip()
+    def get_content(self) -> str:
+        return self.get_text(MetadataMode.LLM)
 
     def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
         """Metadata info string."""
@@ -118,8 +115,11 @@ class DocNode:
 
         return "\n".join([f"{key}: {self.metadata[key]}" for key in metadata_keys])
 
-    def get_text(self) -> str:
-        return self.get_content(metadata_mode=MetadataMode.NONE)
+    def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
+        metadata_str = self.get_metadata_str(metadata_mode).strip()
+        if not metadata_str:
+            return self.text if self.text else ""
+        return f"{metadata_str}\n\n{self.text}".strip()
 
 
 class BaseStore(ABC):
@@ -217,7 +217,7 @@ class ChromadbStore(BaseStore):
             ids.append(node.uid)
             embeddings.append(node.embedding)
             metadatas.append(self._make_chroma_metadata(node))
-            documents.append(node.get_content(metadata_mode=MetadataMode.NONE))
+            documents.append(node.get_text())
             node.is_saved = True
         if ids:
             collection.upsert(
