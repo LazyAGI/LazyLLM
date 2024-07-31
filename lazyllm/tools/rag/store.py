@@ -80,7 +80,7 @@ class DocNode:
 
     def __str__(self) -> str:
         return (
-            f"DocNode(id: {self.uid}, group: {self.group}, text: {self.get_content()}) parent: "
+            f"DocNode(id: {self.uid}, group: {self.group}, text: {self.get_text()}) parent: "
             f"{self.parent.uid if self.parent else None}, children: {self.get_children_str()} "
             f"is_embed: {self.has_embedding()}"
         )
