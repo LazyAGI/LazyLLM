@@ -21,16 +21,6 @@ environment variables, or specify them explicitly. it can export all configurati
 The Config module automatically generates an object named 'config' containing all configurations.
 ''')
 
-add_example('Config', '''\
->>> import lazyllm
->>> from lazyllm.configs import config
->>> config['launcher']
-'empty'
->>> config.get_all_configs()
-{'home': '~/.lazyllm/', 'mode': <Mode.Normal: (1,)>, 'repr_ml': False, 'rag_store': 'None', 'redis_url': 'None', ...}
-''')
-
-
 
 add_chinese_doc('Config.done', r'''\
 用于检查config.json配置文件中是否还有没有通过add方法载入的配置项
@@ -103,4 +93,15 @@ Get all configurations from the config.
 
 Args:
     None.
+    
+''')
+
+
+add_example('Config.get_all_configs', '''\
+>>> import lazyllm
+>>> from lazyllm.configs import config
+>>> config['launcher']
+'empty'
+>>> config.get_all_configs()
+{'home': '~/.lazyllm/', 'mode': <Mode.Normal: (1,)>, 'repr_ml': False, 'rag_store': 'None', 'redis_url': 'None', ...}
 ''')

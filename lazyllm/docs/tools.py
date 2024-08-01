@@ -46,7 +46,7 @@ Args:
     types: The type of reranker to be used for the postprocessing and reranking process. Defaults to 'Reranker'.
     **kwargs: Additional keyword arguments that are passed to the reranker upon its instantiation.
 
-Detailed explanation of reranker types\n
+**Detailed explanation of reranker types**\n
 - Reranker：This registered reranking function instantiates a SentenceTransformerRerank reranker with a specified model and top_n parameter. It is designed to rerank nodes based on sentence transformer embeddings.\n
 - SimilarityFilter：This registered reranking function instantiates a SimilarityPostprocessor with a specified similarity threshold. It filters out nodes that do not meet the similarity criteria.\n
 - KeywordFilter：This registered reranking function instantiates a KeywordNodePostprocessor with specified required and excluded keywords. It filters nodes based on the presence or absence of these keywords.
@@ -88,7 +88,7 @@ Args:
     similarity : The name of the similarity function to be used for document retrieval. Defaults to 'defatult'. The candidate sets are ["defatult", "chinese_bm25", "bm25"].
     index: The type of index to be used for document retrieval. Defaults to 'vector'.
 
-Detailed explanation of Parser types\n
+**Detailed explanation of Parser types**\n
   - Hierarchy: This node parser will chunk nodes into hierarchical nodes. This means a single input will be chunked into several hierarchies of chunk sizes, with each node containing a reference to it's parent node.\n
   - CoarseChunk: Get children of root nodes in given nodes that have given depth 0.\n
   - MediumChunk: Get children of root nodes in given nodes that have given depth 1.\n
@@ -99,7 +99,7 @@ Detailed explanation of Parser types\n
   - JsonExtractor：Splits a document into Nodes using custom JSON splitting logic.\n
   - MarkDownExtractor：Splits a document into Nodes using custom Markdown splitting logic.
 
-Detailed explanation of similarity types\n
+**Detailed explanation of similarity types**\n
   - defatult：Search documents using cosine method.\n
   - chinese_bm25：Search documents using chinese_bm25 method.The primary differences between chinese_bm25 and the standard bm25 stem from the specific adjustments and optimizations made for handling Chinese text. \n
   - bm25：Search documents using bm25 method.\n
@@ -149,7 +149,7 @@ WebModule是LazyLLM为开发者提供的基于Web的交互界面。在初始化�
 模块返回的结果和日志会直接显示在网页的“处理日志”和Chatbot组件上。除此之外，WebModule支持在网页上动态加入Checkbox或Text组件用于向模块发送额外的参数。
 WebModule页面还提供“使用上下文”，“流式输出”和“追加输出”的Checkbox，可以用来改变页面和后台模块的交互方式。
 
-`WebModule.init_web(component_descs) -> gradio.Blocks`
+<span style="font-size: 20px;">&ensp;**`WebModule.init_web(component_descs) -> gradio.Blocks`**</span>
 使用gradio库生成演示web页面，初始化session相关数据以便在不同的页面保存各自的对话和日志，然后使用传入的component_descs参数为页面动态添加Checkbox和Text组件，最后设置页面上的按钮和文本框的相应函数
 之后返回整个页面。WebModule的__init__函数调用此方法生成页面。
 
@@ -166,7 +166,7 @@ programmatically to the web page for additional parameters to the background mod
 provides Checkboxes of “Use Context,” “Stream Output,” and “Append Output,” which can be used to adjust the
 interaction between the page and the module behind.
 
-`WebModule.init_web(component_descs) -> gradio.Blocks`
+<span style="font-size: 20px;">&ensp;**`WebModule.init_web(component_descs) -> gradio.Blocks`**</span>
 
 Generate a demonstration web page based on gradio. The function initializes session-related data to save chat history
 and logs for different pages, then dynamically add Checkbox and Text components to the page according to component_descs
@@ -177,6 +177,7 @@ Args:
     component_descs (list): A list used to add components to the page. Each element in the list is also a list containing 
     5 elements, which are the module ID, the module name, the component name, the component type (currently only
     supports Checkbox and Text), and the default value of the component.
+
 ''')
 
 add_example('WebModule', '''\

@@ -146,23 +146,23 @@ Args:
     args: 基类的可变长度参数列表。
     kwargs: 基类的任意关键字参数。
 
-`asdict property`
+<span style="font-size: 20px;">&ensp;**`asdict property`**</span>
 
 标记Parellel，使得Parallel每次调用时的返回值由package变为dict。当使用 ``asdict`` 时，请务必保证parallel的元素被取了名字，例如:  ``parallel(name=value)`` 。
 
-`tuple property`
+<span style="font-size: 20px;">&ensp;**`tuple property`**</span>
 
 标记Parellel，使得Parallel每次调用时的返回值由package变为tuple。
 
-`list property`
+<span style="font-size: 20px;">&ensp;**`list property`**</span>
 
 标记Parellel，使得Parallel每次调用时的返回值由package变为list。
 
-`sum property`
+<span style="font-size: 20px;">&ensp;**`sum property`**</span>
 
 标记Parellel，使得Parallel每次调用时的返回值做一次累加。
 
-`join(self, string)`
+<span style="font-size: 20px;">&ensp;**`join(self, string)`**</span>
 
 标记Parellel，使得Parallel每次调用时的返回值通过 ``string`` 做一次join。
 """)

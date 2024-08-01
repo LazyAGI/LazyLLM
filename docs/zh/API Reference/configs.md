@@ -1,3 +1,7 @@
 ::: lazyllm.Config
-    members:
-    exclude-members:
+    options:
+      members:
+      - done
+      - getenv
+      - add
+      - get_all_configs
