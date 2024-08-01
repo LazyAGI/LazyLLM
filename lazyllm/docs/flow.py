@@ -31,15 +31,15 @@ Args:
 add_chinese_doc('FlowBase.is_root', """\
 一个属性，指示当前流项目是否是流结构的根。
 
-Returns:
-    bool: 如果当前项目没有父级（ ``_father`` 为None），则为True，否则为False。
+**Returns:**\n
+- bool: 如果当前项目没有父级（ ``_father`` 为None），则为True，否则为False。
 """)
 
 add_english_doc('FlowBase.is_root', """\
 A property that indicates whether the current flow item is the root of the flow structure.
 
-Returns:
-    bool: True if the current item has no parent (`` _father`` is None), otherwise False.
+**Returns:**\n
+- bool: True if the current item has no parent (`` _father`` is None), otherwise False.
 """)
 
 add_example('FlowBase.is_root', '''\
@@ -59,8 +59,8 @@ add_chinese_doc('FlowBase.ancestor', """\
 
 如果当前项目是根，则返回其自身。
 
-Returns:
-    FlowBase: 最顶层的祖先流项目。
+**Returns:**\n
+- FlowBase: 最顶层的祖先流项目。
 """)
 
 add_english_doc('FlowBase.ancestor', """\
@@ -68,8 +68,8 @@ A property that returns the topmost ancestor of the current flow item.
 
 If the current item is the root, it returns itself.
 
-Returns:
-    FlowBase: The topmost ancestor flow item.
+**Returns:**\n
+- FlowBase: The topmost ancestor flow item.
 """)
 
 add_example('FlowBase.ancestor', '''\
@@ -89,8 +89,8 @@ Args:
     filter (callable): 一个接受项目作为输入并返回bool的函数，如果该项目应该应用操作，则返回True。
     action (callable): 一个接受项目作为输入并对其执行某些操作的函数。
 
-Returns:
-    None
+**Returns:**\n
+- None
 """)
 
 add_english_doc('FlowBase.for_each', """\
@@ -102,8 +102,8 @@ Args:
     filter (callable): A function that takes an item as input and returns True if the item should have the action applied.
     action (callable): A function that takes an item as input and performs some operation on it.
 
-Returns:
-    None
+**Returns:**\n
+- None
 """)
 add_example('FlowBase.for_each', """\
 >>> import lazyllm
@@ -146,25 +146,25 @@ Args:
     args: 基类的可变长度参数列表。
     kwargs: 基类的任意关键字参数。
 
-asdict property
+`asdict property`
 
-    标记Parellel，使得Parallel每次调用时的返回值由package变为dict。当使用 ``asdict`` 时，请务必保证parallel的元素被取了名字，例如:  ``parallel(name=value)`` 。
+标记Parellel，使得Parallel每次调用时的返回值由package变为dict。当使用 ``asdict`` 时，请务必保证parallel的元素被取了名字，例如:  ``parallel(name=value)`` 。
 
-tuple property
+`tuple property`
 
-    标记Parellel，使得Parallel每次调用时的返回值由package变为tuple。
+标记Parellel，使得Parallel每次调用时的返回值由package变为tuple。
 
-list property
+`list property`
 
-    标记Parellel，使得Parallel每次调用时的返回值由package变为list。
+标记Parellel，使得Parallel每次调用时的返回值由package变为list。
 
-sum property
+`sum property`
 
-    标记Parellel，使得Parallel每次调用时的返回值做一次累加。
+标记Parellel，使得Parallel每次调用时的返回值做一次累加。
 
-join(self, string)
+`join(self, string)`
 
-    标记Parellel，使得Parallel每次调用时的返回值通过 ``string`` 做一次join。
+标记Parellel，使得Parallel每次调用时的返回值通过 ``string`` 做一次join。
 """)
 
 add_english_doc('Parallel', """\
@@ -193,25 +193,25 @@ Args:
     args: Variable length argument list for the base class.
     kwargs: Arbitrary keyword arguments for the base class.
 
-asdict property
+`asdict property`
 
-    Tag ``Parallel`` so that the return value of each call to ``Parallel`` is changed from a tuple to a dict. When using ``asdict``, make sure that the elements of ``parallel`` are named, for example: ``parallel(name=value)``.
+Tag ``Parallel`` so that the return value of each call to ``Parallel`` is changed from a tuple to a dict. When using ``asdict``, make sure that the elements of ``parallel`` are named, for example: ``parallel(name=value)``.
 
-tuple property
+`tuple property`
 
-    Mark Parallel so that the return value of Parallel changes from package to tuple each time it is called.
+Mark Parallel so that the return value of Parallel changes from package to tuple each time it is called.
 
-list property
+`list property`
 
-    Mark Parallel so that the return value of Parallel changes from package to list each time it is called.
+Mark Parallel so that the return value of Parallel changes from package to list each time it is called.
 
-sum property
+`sum property`
 
-    Mark Parallel so that the return value of Parallel is accumulated each time it is called.
+Mark Parallel so that the return value of Parallel is accumulated each time it is called.
 
-join(self, string)
+`join(self, string)`
 
-    Mark Parallel so that the return value of Parallel is joined by ``string`` each time it is called.
+Mark Parallel so that the return value of Parallel is joined by ``string`` each time it is called.
 """)
 
 add_example('Parallel', '''\
@@ -249,8 +249,8 @@ Args:
     post_action (callable, optional): 在管道的最后一个阶段之后执行的可选操作。默认为None。
     kwargs (dict of callables): 管道的命名处理阶段。每个键值对表示一个命名阶段，其中键是名称，值是可调用的阶段。
 
-Returns:
-    管道的最后一个阶段的输出。
+**Returns:**\n
+- 管道的最后一个阶段的输出。
 
 """)
 
@@ -264,8 +264,8 @@ Args:
     post_action (callable, optional): An optional action to perform after the last stage of the pipeline. Defaults to None.
     kwargs (dict of callables): Named processing stages of the pipeline. Each key-value pair represents a named stage, where the key is the name and the value is the callable stage.
 
-Returns:
-    The output of the last stage of the pipeline.
+**Returns:**\n
+- The output of the last stage of the pipeline.
 """)
 
 add_example('Pipeline', """\
@@ -339,8 +339,8 @@ Args:
     fpath (callable): 如果条件为False，则执行的路径。
     post_action (callable, optional): 执行选定路径后执行的可选可调用对象。可以用于进行清理或进一步处理。默认为None。
 
-Returns:
-    执行路径的输出。
+**Returns:**\n
+- 执行路径的输出。
 ''')
 
 add_english_doc('IFS', '''\
@@ -360,8 +360,8 @@ Args:
     post_action (callable, optional): An optional callable that is executed after the selected path.
                                         It can be used to perform cleanup or further processing. Defaults to None.
 
-Returns:
-    The output of the executed path.
+**Returns:**\n
+- The output of the executed path.
 ''')
 
 add_example('IFS', '''\

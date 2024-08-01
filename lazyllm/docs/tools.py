@@ -149,7 +149,7 @@ WebModule是LazyLLM为开发者提供的基于Web的交互界面。在初始化�
 模块返回的结果和日志会直接显示在网页的“处理日志”和Chatbot组件上。除此之外，WebModule支持在网页上动态加入Checkbox或Text组件用于向模块发送额外的参数。
 WebModule页面还提供“使用上下文”，“流式输出”和“追加输出”的Checkbox，可以用来改变页面和后台模块的交互方式。
 
-WebModule.init_web(component_descs) -> gradio.Blocks
+`WebModule.init_web(component_descs) -> gradio.Blocks`
 使用gradio库生成演示web页面，初始化session相关数据以便在不同的页面保存各自的对话和日志，然后使用传入的component_descs参数为页面动态添加Checkbox和Text组件，最后设置页面上的按钮和文本框的相应函数
 之后返回整个页面。WebModule的__init__函数调用此方法生成页面。
 
@@ -166,7 +166,7 @@ programmatically to the web page for additional parameters to the background mod
 provides Checkboxes of “Use Context,” “Stream Output,” and “Append Output,” which can be used to adjust the
 interaction between the page and the module behind.
 
-WebModule.init_web(component_descs) -> gradio.Blocks
+`WebModule.init_web(component_descs) -> gradio.Blocks`
 
 Generate a demonstration web page based on gradio. The function initializes session-related data to save chat history
 and logs for different pages, then dynamically add Checkbox and Text components to the page according to component_descs

@@ -18,19 +18,21 @@
       - ScoLauncher
       - SlurmLauncher
       filters:
-      - '!get_idle_nodes'
+      - '!get_idle'
+
+## Prompter
 
 ::: lazyllm.components.prompter.LazyLLMPrompterBase
-    members: generate_prompt, get_response
-    exclude-members:
+    options:
+      heading_level: 3
 
 ::: lazyllm.components.AlpacaPrompter
-    members: generate_prompt, get_response
-    exclude-members:
+    options:
+      heading_level: 3
 
 ::: lazyllm.components.ChatPrompter
-    members: generate_prompt, get_response
-    exclude-members:
+    options:
+      heading_level: 3
 
 ::: lazyllm.common.Register
     members: 
@@ -40,14 +42,16 @@
     members: 
     exclude-members:
 
+## Formatter
+
 ::: lazyllm.components.formatter.LazyLLMFormatterBase
-    members:
-    exclude-members:
+    options:
+      heading_level: 3
 
 ::: lazyllm.components.JsonFormatter
-    members:
-    exclude-members:
+    options:
+      heading_level: 3
 
 ::: lazyllm.components.EmptyFormatter
-    members:
-    exclude-members:
+    options:
+      heading_level: 3
