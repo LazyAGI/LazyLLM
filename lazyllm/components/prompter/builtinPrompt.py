@@ -17,14 +17,12 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         self._tools = tools
         self._pre_hook = None
 
-    def _init_prompt(self, template: str, instruction_template: str, tool_delimiter: str,
-                     split: Union[None, str] = None):
+    def _init_prompt(self, template: str, instruction_template: str, split: Union[None, str] = None):
         self._template = template
         self._instruction_template = instruction_template
         if split:
             assert not hasattr(self, '_split')
             self._split = split
-        self._tool_delimiter = tool_delimiter
 
     @staticmethod
     def _get_extro_key_template(extro_keys, prefix='Here are some extra messages you can referred to:\n\n'):
@@ -94,7 +92,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                         for idx in range(len(item.get('tool_calls', []))):
                             tool = item['tool_calls'][idx]['function']
                             if getattr(self, "_tool_args_token", None):
-                                tool = tool['name'] + self._tool_args_token + tool['arguments']
+                                tool = tool['name'] + self._tool_args_token + \
+                                    json.dumps(tool['arguments'], ensure_ascii=False)
                             ret += (f'{getattr(self, "_tool_start_token", "")}' + '\n'
                                     f'{tool}'
                                     f'{getattr(self, "_tool_end_token", "")}' + '\n')

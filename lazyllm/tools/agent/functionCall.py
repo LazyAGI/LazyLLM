@@ -1,4 +1,4 @@
-from lazyllm.module import ModuleBase
+from lazyllm.module import ModuleBase, OnlineChatModule
 from lazyllm.components import ChatPrompter
 from .functionCallFormatter import FunctionCallFormatter
 from lazyllm import pipeline, ifs, loop, globals, bind, LOG
@@ -36,16 +36,10 @@ FC_PROMPT_ONLINE = ("Don't make assumptions about what values to plug into funct
 class FunctionCall(ModuleBase):
     def __init__(self, llm, tools: List[str], *, return_trace: bool = False, _prompt: str = None):
         super().__init__(return_trace=return_trace)
-        try:
-            if llm._model_type == "QwenModule" and llm._stream is True:
-                raise ValueError("The qwen platform does not currently support stream function calls.")
-        except Exception:
-            pass
+        if llm._model_series == "QWEN" and llm._stream is True:
+            raise ValueError("The qwen platform does not currently support stream function calls.")
         if _prompt is None:
-            try:
-                _prompt = FC_PROMPT_ONLINE if llm._model_type else FC_PROMPT_LOCAL
-            except Exception:
-                _prompt = FC_PROMPT_LOCAL
+            _prompt = FC_PROMPT_ONLINE if isinstance(llm, OnlineChatModule) else FC_PROMPT_LOCAL
 
         self._tools_manager = ToolManager(tools)
         self._prompter = ChatPrompter(instruction=_prompt, tools=self._tools_manager.tools_description)\

@@ -60,7 +60,7 @@ def exe_onlinechat_chat(request):
         llm = lazyllm.OnlineChatModule(source=source, stream=stream)
 
     print(f"\nStarting test 【{source}】chat")
-    ret = llm(query, [])
+    ret = llm(query, llm_chat_history=[])
     yield ret
     print(f"\n【{source}】chat test done.")
 

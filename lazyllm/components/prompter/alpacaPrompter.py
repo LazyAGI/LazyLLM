@@ -1,6 +1,5 @@
 from typing import List, Union, Optional, Dict
 from .builtinPrompt import LazyLLMPrompterBase
-from ...common.globals import globals
 
 class AlpacaPrompter(LazyLLMPrompterBase):
     def __init__(self, instruction: Union[None, str, Dict[str, str]] = None,
@@ -15,7 +14,7 @@ class AlpacaPrompter(LazyLLMPrompterBase):
                                 f"appropriately completes the request.\n\n ### Instruction:\n{instruction}"
                                 "\n\n" + LazyLLMPrompterBase._get_extro_key_template(extro_keys))
         self._init_prompt("{system}\n{instruction}\n{tools}\n{user}### Response:\n",
-                          instruction_template, globals['tool_delimiter'],
+                          instruction_template,
                           "### Response:")
 
     def _check_values(self, instruction, input, history, tools):
