@@ -1,5 +1,6 @@
 from typing import List, Union, Optional, Dict
 from .builtinPrompt import LazyLLMPrompterBase
+from ...common.globals import globals
 
 class ChatPrompter(LazyLLMPrompterBase):
     def __init__(self, instruction: Union[None, str, Dict[str, str]] = None,
@@ -12,7 +13,7 @@ class ChatPrompter(LazyLLMPrompterBase):
         instruction_template = f'{instruction}\n{{extro_keys}}\n'.replace(
             '{extro_keys}', LazyLLMPrompterBase._get_extro_key_template(extro_keys))
         self._init_prompt("{sos}{system}{instruction}{tools}{eos}\n\n{history}\n{soh}\n{user}{input}\n{eoh}{soa}\n",
-                          instruction_template)
+                          instruction_template, globals['tool_delimiter'])
 
     @property
     def _split(self): return self._soa if self._soa else None

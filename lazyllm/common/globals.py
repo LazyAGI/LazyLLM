@@ -10,7 +10,7 @@ import asyncio
 import base64
 
 class Globals(object):
-    __global_attrs__ = dict(chat_history={}, global_parameters={}, trace=[], err=None)
+    __global_attrs__ = dict(chat_history={}, global_parameters={}, trace=[], err=None, tool_delimiter="<|tool_calls|>")
 
     def __init__(self):
         self.__data = {}

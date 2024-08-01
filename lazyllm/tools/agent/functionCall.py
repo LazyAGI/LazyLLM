@@ -1,7 +1,7 @@
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
 from .functionCallFormatter import FunctionCallFormatter
-from lazyllm import pipeline, ifs, loop, globals, bind
+from lazyllm import pipeline, ifs, loop, globals, bind, LOG
 import json5 as json
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union
@@ -58,6 +58,7 @@ class FunctionCall(ModuleBase):
             self._impl.m4 = self._tool_post_action | bind(input=self._impl.input, llm_output=self._impl.m1)
 
     def _parser(self, llm_output: Union[str, List[Dict[str, Any]]]):
+        LOG.info(f"llm_output: {llm_output}")
         if isinstance(llm_output, list):
             res = []
             for item in llm_output:
@@ -91,6 +92,7 @@ class FunctionCall(ModuleBase):
             ret.append([{"role": "tool", "content": out, "tool_call_id": llm_output[idx]["id"],
                          "name": llm_output[idx]["function"]["name"]}
                         for idx, out in enumerate(output)])
+            LOG.info(f"functionCall result: {ret}")
             return ret
         elif isinstance(output, str):
             return output
