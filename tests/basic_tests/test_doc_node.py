@@ -20,7 +20,7 @@ class TestDocNode:
         """Test that do_embedding passes the correct content to the embed function."""
         mock_embed = MagicMock(return_value=[0.4, 0.5, 0.6])
         self.node.do_embedding(mock_embed)
-        mock_embed.assert_called_once_with(self.node.get_content(MetadataMode.EMBED))
+        mock_embed.assert_called_once_with(self.node.get_text(MetadataMode.EMBED))
 
     def test_node_creation(self):
         """Test the creation of a DocNode."""
