@@ -239,6 +239,6 @@ assert p(1) == (1, 1)
 > **Note**:
     ``diverter`` can also achieve sequential execution through ``.sequential``
 
-#### Summary
+### Summary
 
 This article focused on ``pipeline`` and ``parallel``. It is hoped that you now have a basic understanding of how to use LazyLLM's flow to build complex applications. Other data flow components are not discussed in detail here; you can refer to [flow][lazyllm.flow.FlowBase] for their usage.
