@@ -2,6 +2,7 @@ from .functionCall import FunctionCall, FunctionCallAgent
 from .toolsManager import register, ToolManager
 from .reactAgent import ReactAgent
 from .planAndSolveAgent import PlanAndSolveAgent
+from .rewooAgent import ReWOOAgent
 
 __all__ = [
     "ToolManager",
@@ -9,5 +10,6 @@ __all__ = [
     "FunctionCallAgent",
     "register",
     "ReactAgent",
-    "PlanAndSolveAgent"
+    "PlanAndSolveAgent",
+    "ReWOOAgent"
 ]
