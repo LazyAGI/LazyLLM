@@ -1,22 +1,41 @@
-::: lazyllm.module.ModuleBase
-    members: forward, start, restart, update, evalset, eval, _get_train_tasks, _get_deploy_tasks
-    exclude-members:
 
+::: lazyllm.module.ModuleBase
+    options:
+      members:
+      - _get_deploy_tasks
+      - _get_train_tasks
+      - eval
+      - evalset
+      - forward
+      - start
+      - restart
+      - update
+        
 ::: lazyllm.module.ActionModule
-    members: evalset
-    exclude-members:
+    options:
+      members:
+      - evalset
 
 ::: lazyllm.module.TrainableModule
-    members: start, restart, update, evalset, eval
-    exclude-members:
+    options:
+      members:
+      - start
+      - restart
+      - update
+      - evalset
+      - eval
 
 ::: lazyllm.module.UrlModule
-    members: 
-    exclude-members:
+    options:
+      members:
+      - forward
 
 ::: lazyllm.module.ServerModule
-    members: start, restart, evalset
-    exclude-members:
+    options:
+      members:
+      - start
+      - restart
+      - evalset
 
 ::: lazyllm.module.TrialModule
     members: start

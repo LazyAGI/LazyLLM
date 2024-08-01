@@ -2,12 +2,12 @@
     members: 
     exclude-members:
 
-::: lazyllm.components.auto
-    members: AutoFinetune
-    exclude-members:
-
 ::: lazyllm.components.deploy
     members: 
+    exclude-members:
+
+::: lazyllm.components.auto
+    members: AutoFinetune
     exclude-members:
 
 ::: lazyllm.launcher

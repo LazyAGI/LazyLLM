@@ -134,7 +134,7 @@ Keyword Args:
     train_on_inputs (bool): 是否在输入上训练，默认为 ``True``。
     show_prompt (bool): 是否显示提示，默认为 ``False``。
     nccl_port (int): NCCL 端口，默认为 ``19081``。
-                
+
 ''')
 
 add_english_doc('finetune.AlpacaloraFinetune', '''\
@@ -291,7 +291,7 @@ Keyword Args:
     per_device_eval_batch_size (int): 默认值是：``1``。每个GPU/TPU/MPS/NPU核心/CPU的验证集批次大小。
     eval_strategy (typing.Union[transformers.trainer_utils.IntervalStrategy, str]): 默认值是：``steps``。要使用的验证评估策略。
     eval_steps (typing.Optional[float]): 默认值是：``500``。每X个步骤运行一次验证评估。应该是整数或范围在`[0,1)`的浮点数。如果小于1，将被解释为总训练步骤的比例。
-                
+
 ''')
 
 add_english_doc('finetune.LlamafactoryFinetune', '''\
@@ -462,7 +462,6 @@ Keyword Args:
     tokenizer_mode (str): tokenizer的加载模式，默认为 ``auto``。
     max-num-seqs (int): 推理引擎最大的并行请求数， 默认为 ``256``。
 
-    
 ''')
 
 add_english_doc('deploy.Vllm', '''\
@@ -591,8 +590,8 @@ Keyword Args:
     cache_dir (str, optional): An absolute path of a directory to save downloaded models. If not provided,
         LAZYLLM_MODEL_CACHE_DIR environment variable would be used, and if LAZYLLM_MODEL_PATH is not set, the default
         value is ~/.lazyllm/model.
-        
-`ModelManager.download(model) -> str`
+
+<span style="font-size: 20px;">&ensp;**`ModelManager.download(model) -> str`**</span>
 
 Download models from model_source. The function first searches for the target model in directories listed in the
 model_path parameter of ModelManager class. If not found, it searches under cache_dir. If still not found,
@@ -762,16 +761,15 @@ Args:
 add_english_doc('AlpacaPrompter', '''\
 Alpaca-style Prompter, supports tool calls, does not support historical dialogue.
 
-Sure! Here is the translation, keeping the original format:
 
 Args:
     instruction (Option[str]): Task instructions for the large model, with at least one fillable slot (e.g. ``{instruction}``). Or use a dictionary to specify the ``system`` and ``user`` instructions.
     extro_keys (Option[List]): Additional fields that will be filled with user input.
     show (bool): Flag indicating whether to print the generated Prompt, default is False.
     tools (Option[list]): Tool-set which is provived for LLMs, default is None.
-''')
 
-add_example('AlpacaPrompter', '''\
+**Examples:**\n
+```python
 >>> from lazyllm import AlpacaPrompter
 >>> p = AlpacaPrompter('hello world {instruction}')
 >>> p.generate_prompt('this is my input')
@@ -790,8 +788,49 @@ add_example('AlpacaPrompter', '''\
 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello word\\\\n\\\\n\\\\n\\\\nthis is user instruction my input### Response:\\\\n'
 >>> p.generate_prompt(dict(input="my input"), return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input'}]}
+```
 
+<span style="font-size: 20px;">**`generate_prompt(input: str | Dict[str, str] | None = None, history: List[List[str] | Dict[str, Any]] | None = None, tools: List[Dict[str, Any]] | None = None, label: str | None = None, *, show: bool = False, return_dict: bool = False)→ str | Dict `**</span>
+
+Based on the user's input, generate the corresponding Prompt.
+
+Args:
+    instruction (Option[str]): Task instructionspecify the ``system`` and ``user`` instructions.\n
+    extro_keys (Option[List]): Additional fields that will be filled with user input.\n
+    show (bool): Flag indicating whether to print the generated Prompt, default is False.\n
+    tools (Option[list]): Tool-set which is provived for LLMs, default is None.\n
+
+
+<span style="font-size: 20px;">**`get_response(output: str, input: str | None = None)→ str`**</span>
+
+Used to truncate the Prompt, only retaining valuable outputs.
+
+Args:
+    output (str) :The output of the large model
+    input (Optional[str]) :The input to the large model. If this parameter is specified, the function will truncate any part of the output that contains the input. Default is None.                
 ''')
+
+# add_example('AlpacaPrompter', '''\
+# >>> from lazyllm import AlpacaPrompter
+# >>> p = AlpacaPrompter('hello world {instruction}')
+# >>> p.generate_prompt('this is my input')
+# 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world this is my input\\\\n\\\\n\\\\n### Response:\\\\n'
+# >>> p.generate_prompt('this is my input', return_dict=True)
+# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world this is my input\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
+# >>>
+# >>> p = AlpacaPrompter('hello world {instruction}, {input}', extro_keys=['knowledge'])
+# >>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'))
+# 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world hello world, my input\\\\n\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nlazyllm\\\\n\\\\n\\\\n### Response:\\\\n'
+# >>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'), return_dict=True)
+# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world hello world, my input\\\\n\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nlazyllm\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
+# >>>
+# >>> p = AlpacaPrompter(dict(system="hello world", user="this is user instruction {input}"))
+# >>> p.generate_prompt(dict(input="my input"))
+# 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello word\\\\n\\\\n\\\\n\\\\nthis is user instruction my input### Response:\\\\n'
+# >>> p.generate_prompt(dict(input="my input"), return_dict=True)
+# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input'}]}
+
+# ''')
 
 add_chinese_doc('ChatPrompter', '''\
 多轮对话的Prompt，支持工具调用和历史对话
@@ -809,9 +848,9 @@ Args:
     instruction (Option[str]): Task instructions for the large model, with 0 to multiple fillable slot, represented by ``{}``. For user instructions, you can pass a dictionary with fields ``user`` and ``system``.
     extro_keys (Option[List]): Additional fields that will be filled with user input.
     show (bool): Flag indicating whether to print the generated Prompt, default is False.
-''')
 
-add_example('ChatPrompter', '''\
+**Examples:**\n
+```python
 >>> from lazyllm import ChatPrompter
 >>> p = ChatPrompter('hello world')
 >>> p.generate_prompt('this is my input')
@@ -832,7 +871,50 @@ add_example('ChatPrompter', '''\
 '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is user instruction my input this is user query\\\\n<|Assistant|>:\\\\n'
 >>> p.generate_prompt(dict(input="my input", query="this is user query"), return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
+```
+<span style="font-size: 20px;">**`generate_prompt(input: str | Dict[str, str] | None = None, history: List[List[str] | Dict[str, Any]] | None = None, tools: List[Dict[str, Any]] | None = None, label: str | None = None, *, show: bool = False, return_dict: bool = False)→ str | Dict `**</span>
+
+Based on the user's input, generate the corresponding Prompt.
+
+Args:
+    instruction (Option[str]): Task instructionspecify the ``system`` and ``user`` instructions.\n
+    extro_keys (Option[List]): Additional fields that will be filled with user input.\n
+    show (bool): Flag indicating whether to print the generated Prompt, default is False.\n
+    tools (Option[list]): Tool-set which is provived for LLMs, default is None.\n
+
+
+<span style="font-size: 20px;">**`get_response(output: str, input: str | None = None)→ str`**</span>
+
+Used to truncate the Prompt, only retaining valuable outputs.
+
+Args:
+    output (str) :The output of the large model
+    input (Optional[str]) :The input to the large model. If this parameter is specified, the function will truncate any part of the output that contains the input. Default is None.                
+
 ''')
+
+# add_example('ChatPrompter', '''\
+# >>> from lazyllm import ChatPrompter
+# >>> p = ChatPrompter('hello world')
+# >>> p.generate_prompt('this is my input')
+# '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is my input\\\\n<|Assistant|>:\\\\n'
+# >>> p.generate_prompt('this is my input', return_dict=True)
+# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is my input'}]}
+# >>>
+# >>> p = ChatPrompter('hello world {instruction}', extro_keys=['knowledge'])
+# >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'))
+# '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is my inp\\\\n<|Assistant|>:\\\\n'
+# >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), return_dict=True)
+# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n'}, {'role': 'user', 'content': 'this is my inp'}]}
+# >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), history=[['s1', 'e1'], ['s2', 'e2']])
+# '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n<|end_system|>\\\\n\\\\n<|Human|>:s1<|Assistant|>:e1<|Human|>:s2<|Assistant|>:e2\\\\n<|Human|>:\\\\nthis is my inp\\\\n<|Assistant|>:\\\\n'
+# >>>
+# >>> p = ChatPrompter(dict(system="hello world", user="this is user instruction {input} "))
+# >>> p.generate_prompt(dict(input="my input", query="this is user query"))
+# '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is user instruction my input this is user query\\\\n<|Assistant|>:\\\\n'
+# >>> p.generate_prompt(dict(input="my input", query="this is user query"), return_dict=True)
+# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
+# ''')
 
 # ============= Launcher
 

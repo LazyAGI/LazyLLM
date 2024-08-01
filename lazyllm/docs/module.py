@@ -124,7 +124,6 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 
 add_chinese_doc('ModuleBase.evalset', '''\
 为Module设置评测集，设置过评测集的Module在 ``update`` 或 ``eval`` 的时候会进行评测，评测结果会存在eval_result变量中。
-
 ''')
 
 add_english_doc('ModuleBase.evalset', '''\
@@ -215,9 +214,9 @@ Used to wrap a Module around functions, modules, flows, Module, and other callab
 
 Args:
     action (Callable|list[Callable]): The object to be wrapped, which is one or a set of callable objects.
-''')
 
-add_example('ActionModule', '''\
+**Examples:**\n
+```python
 >>> import lazyllm
 >>> def myfunc(input): return input + 1
 ... 
@@ -242,7 +241,70 @@ MyModule2 deployed!
 MyModule3 deployed!
 >>> print(m.eval_result)
 ['get 16', 'get 24', 'get 32']
+```
+
+
+<span style="font-size: 20px;">**`evalset(evalset, load_f=None, collect_f=<function ModuleBase.<lambda>>)`**</span>
+
+Set the evaluation set for the Module. Modules that have been set with an evaluation set will be evaluated during ``update`` or ``eval``, and the evaluation results will be stored in the eval_result variable. 
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, collect_f=lambda x: ...)→ None `**</span>
+
+
+Args:
+    evalset (list) :Evaluation set
+    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.\n
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, load_f=None, collect_f=lambda x: ...)→ None`**</span>
+
+
+Args:
+    evalset (str) :Path to the evaluation set
+    load_f (Callable) :Method for loading the evaluation set, including parsing file formats and converting to a list
+    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.
+
+**Examples:**\n
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.evalset([1, 2, 3])
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+>>> m.eval_result
+["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+```
+
+
 ''')
+
+# add_example('ActionModule', '''\
+# >>> import lazyllm
+# >>> def myfunc(input): return input + 1
+# ...
+# >>> class MyModule1(lazyllm.module.ModuleBase):
+# ...     def forward(self, input): return input * 2
+# ...
+# >>> class MyModule2(lazyllm.module.ModuleBase):
+# ...     def _get_deploy_tasks(self): return lazyllm.pipeline(lambda : print('MyModule2 deployed!'))
+# ...     def forward(self, input): return input * 4
+# ...
+# >>> class MyModule3(lazyllm.module.ModuleBase):
+# ...     def _get_deploy_tasks(self): return lazyllm.pipeline(lambda : print('MyModule3 deployed!'))
+# ...     def forward(self, input): return f'get {input}'
+# ...
+# >>> m = lazyllm.ActionModule(myfunc, lazyllm.pipeline(MyModule1(), MyModule2), MyModule3())
+# >>> print(m(1))
+# get 16
+# >>>
+# >>> m.evalset([1, 2, 3])
+# >>> m.update()
+# MyModule2 deployed!
+# MyModule3 deployed!
+# >>> print(m.eval_result)
+# ['get 16', 'get 24', 'get 32']
+# ''')
 
 add_chinese_doc('TrainableModule', '''\
 可训练的模块，所有的模型(包括llm、Embedding等)均通过TrainableModule提供服务
@@ -257,6 +319,9 @@ Args:
 add_english_doc('TrainableModule', '''\
 Trainable module, all models (including LLM, Embedding, etc.) are served through TrainableModule
 
+<span style="font-size: 20px;">**`TrainableModule(base_model='', target_path='', *, stream=False, return_trace=False)`**</span>
+
+
 Args:
     base_model (str): Name or path of the base model. If the model is not available locally, it will be automatically downloaded from the model source.
     target_path (str): Path to save the fine-tuning task. Can be left empty if only performing inference.
@@ -264,17 +329,56 @@ Args:
     stream (bool): Whether to output stream. If the inference engine used does not support streaming, this parameter will be ignored.
     return_trace (bool): Whether to record the results in trace.
 
-''')
+<span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
 
-add_example('TrainableModule', '''\
+Set the training set for TrainableModule
+
+
+Args:
+    v (str): Path to the training/fine-tuning dataset.
+
+**Examples:**\n
+```python
 >>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).trainset('/file/to/path').deploy_method(None).mode('finetune')
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+```
+
+<span style="font-size: 20px;">**`TrainableModule.train_method(v, **kw):`**</span>
+
+Set the training method for TrainableModule. Continued pre-training is not supported yet, expected to be available in the next version.
+
+Args:
+    v (LazyLLMTrainBase): Training method, options include ``train.auto`` etc.
+    kw (**dict): Parameters required by the training method, corresponding to v.
+
+<span style="font-size: 20px;">**`TrainableModule.finetune_method(v, **kw):`**</span>
+
+Set the fine-tuning method and its parameters for TrainableModule.
+
+Args:
+    v (LazyLLMFinetuneBase): Fine-tuning method, options include ``finetune.auto`` / ``finetune.alpacalora`` / ``finetune.collie`` etc.
+    kw (**dict): Parameters required by the fine-tuning method, corresponding to v.
+
+**Examples:**\n            
+```python
 >>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
 >>> m.update()
-INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}                
+```
+
+<span style="font-size: 20px;">**`TrainableModule.deploy_method(v, **kw):`**</span>
+
+Set the deployment method and its parameters for TrainableModule.
+
+Args:
+    v (LazyLLMDeployBase): Deployment method, options include ``deploy.auto`` / ``deploy.lightllm`` / ``deploy.vllm`` etc.
+    kw (**dict): Parameters required by the deployment method, corresponding to v.
+
+**Examples:**\n
+```python
 >>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy).mode('finetune')
 >>> m.evalset([1, 2, 3])
@@ -282,11 +386,110 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 >>> m.eval_result
 ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+```                
+
+
+<span style="font-size: 20px;">**`TrainableModule.mode(v):`**</span>
+
+Set whether to execute training or fine-tuning during update for TrainableModule.
+
+Args:
+    v (str): Sets whether to execute training or fine-tuning during update, options are 'finetune' and 'train', default is 'finetune'.
+
+**Examples:**\n
+```python
 >>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+```    
+
+<span style="font-size: 20px;">**`eval(*, recursive=True)`**</span>
+Evaluate the module (and all its submodules). This function takes effect after the module has set an evaluation set through evalset.
+
+Args:
+    recursive (bool) :Whether to recursively evaluate all submodules, default is True.                         
+
+<span style="font-size: 20px;">**`evalset(evalset, load_f=None, collect_f=<function ModuleBase.<lambda>>)`**</span>
+
+Set the evaluation set for the Module. Modules that have been set with an evaluation set will be evaluated during ``update`` or ``eval``, and the evaluation results will be stored in the eval_result variable. 
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, collect_f=lambda x: ...)→ None `**</span>
+
+
+Args:
+    evalset (list) :Evaluation set
+    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.\n
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, load_f=None, collect_f=lambda x: ...)→ None`**</span>
+
+
+Args:
+    evalset (str) :Path to the evaluation set
+    load_f (Callable) :Method for loading the evaluation set, including parsing file formats and converting to a list
+    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.
+
+**Examples:**\n
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.evalset([1, 2, 3])
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+>>> m.eval_result
+["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+```
+
+<span style="font-size: 20px;">**`restart() `**</span>
+
+Restart the module and all its submodules.
+
+**Examples:**\n
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.restart()
+>>> m(1)
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+```
+
+<span style="font-size: 20px;">**`start() `**</span> 
+
+Deploy the module and all its submodules.
+
+**Examples:**\n
+```python
+import lazyllm
+m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+m.start()
+m(1)
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+```                                  
 ''')
+
+# add_example('TrainableModule', '''\
+# >>> import lazyllm
+# >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).trainset('/file/to/path').deploy_method(None).mode('finetune')
+# >>> m.update()
+# INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+# >>> import lazyllm
+# >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
+# >>> m.update()
+# INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+# >>> import lazyllm
+# >>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy).mode('finetune')
+# >>> m.evalset([1, 2, 3])
+# >>> m.update()
+# INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+# >>> m.eval_result
+# ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+# >>> import lazyllm
+# >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
+# >>> m.update()
+# INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+# ''')
 
 add_chinese_doc('UrlModule', '''\
 可以将ServerModule部署得到的Url包装成一个Module，调用 ``__call__`` 时会访问该服务。
@@ -318,6 +521,25 @@ INFO:     Uvicorn running on http://0.0.0.0:35485
 messages=2 trace='' err=(0, '')
 ''')
 
+add_chinese_doc('UrlModule.forward', '''\
+定义了每次执行的计算步骤，ModuleBase的所有的子类都需要重写这个函数。
+''')
+
+add_english_doc('UrlModule.forward', '''\
+Defines the computation steps to be executed each time. All subclasses of ModuleBase need to override this function.
+
+''')
+
+add_example('UrlModule.forward', '''\
+>>> import lazyllm
+>>> class MyModule(lazyllm.module.ModuleBase):
+...    def forward(self, input):
+...        return input + 1
+...
+>>> MyModule()(1)
+2
+''')
+
 add_chinese_doc('ServerModule', '''\
 借助fastapi，将任意可调用对象包装成api服务，可同时启动一个主服务和多个卫星服务.
 
@@ -340,10 +562,9 @@ Args:
     stream (bool): Whether to request and output in streaming mode, default is non-streaming.
     return_trace (bool): Whether to record the results in trace, default is False.
     launcher (LazyLLMLaunchersBase): Used to select the compute node for service execution, default is ``launchers.remote`` .
-''')
 
-add_example('ServerModule', '''\
->>> import lazyllm
+**Examples:**\n
+```python
 >>> def demo(input): return input * 2
 ... 
 >>> s = lazyllm.ServerModule(demo, launcher=launchers.empty(sync=False))
@@ -351,7 +572,9 @@ add_example('ServerModule', '''\
 INFO:     Uvicorn running on http://0.0.0.0:35485
 >>> print(s(1))
 messages=2 trace='' err=(0, '')
+````
 
+```python
 >>> class MyServe(object):
 ...     def __call__(self, input):
 ...         return 2 * input
@@ -369,8 +592,97 @@ messages=2 trace='' err=(0, '')
 >>> print(m(1))
 INFO:     Uvicorn running on http://0.0.0.0:32028
 >>> print(m(1))
-messages=2 trace='' err=(0, '')
+messages=2 trace='' err=(0, '')   
+```
+
+<span style="font-size: 20px;">**`evalset(evalset, load_f=None, collect_f=<function ModuleBase.<lambda>>)`**</span>
+
+Set the evaluation set for the Module. Modules that have been set with an evaluation set will be evaluated during ``update`` or ``eval``, and the evaluation results will be stored in the eval_result variable. 
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, collect_f=lambda x: ...)→ None `**</span>
+
+
+Args:
+    evalset (list) :Evaluation set
+    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.\n
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, load_f=None, collect_f=lambda x: ...)→ None`**</span>
+
+
+Args:
+    evalset (str) :Path to the evaluation set
+    load_f (Callable) :Method for loading the evaluation set, including parsing file formats and converting to a list
+    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.
+
+**Examples:**\n
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.evalset([1, 2, 3])
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+>>> m.eval_result
+["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+```
+
+<span style="font-size: 20px;">**`restart() `**</span>
+
+Restart the module and all its submodules.
+
+**Examples:**\n
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.restart()
+>>> m(1)
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+```
+
+<span style="font-size: 20px;">**`start() `**</span> 
+
+Deploy the module and all its submodules.
+
+**Examples:**\n
+```python
+import lazyllm
+m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+m.start()
+m(1)
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+```                                                                    
 ''')
+
+# add_example('ServerModule', '''\
+# >>> import lazyllm
+# >>> def demo(input): return input * 2
+# ...
+# >>> s = lazyllm.ServerModule(demo, launcher=launchers.empty(sync=False))
+# >>> s.start()
+# INFO:     Uvicorn running on http://0.0.0.0:35485
+# >>> print(s(1))
+# messages=2 trace='' err=(0, '')
+
+# >>> class MyServe(object):
+# ...     def __call__(self, input):
+# ...         return 2 * input
+# ...
+# ...     @lazyllm.FastapiApp.post
+# ...     def server1(self, input):
+# ...         return f'reply for {input}'
+# ...
+# ...     @lazyllm.FastapiApp.get
+# ...     def server2(self):
+# ...        return f'get method'
+# ...
+# >>> m = lazyllm.ServerModule(MyServe(), launcher=launchers.empty(sync=False))
+# >>> m.start()
+# >>> print(m(1))
+# INFO:     Uvicorn running on http://0.0.0.0:32028
+# >>> print(m(1))
+# messages=2 trace='' err=(0, '')
+# ''')
 
 add_chinese_doc('TrialModule', '''\
 参数网格搜索模块，会遍历其所有的submodule，收集所有的可被搜索的参数，遍历这些参数进行微调、部署和评测
