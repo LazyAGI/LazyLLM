@@ -420,7 +420,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
 
         def _get_jobid(self):
             for i in range(5):
-                time.sleep(0.5)  # Wait for cmd to be stably submitted to sco
+                time.sleep(2)  # Wait for cmd to be stably submitted to sco
                 try:
                     id_str = subprocess.check_output([
                         'squeue', f'--workspace-id={self.workspace_name}',
