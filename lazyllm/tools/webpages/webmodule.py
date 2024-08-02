@@ -239,9 +239,8 @@ class WebModule(ModuleBase):
             else:
                 string = ''
             if files:
-                input = 'lazyllm_files::' + json.dumps({'text': string, 'files': files})
-            else:
-                input = string
+                globals['global_parameters'][self.m._module_id] = {'files': files}
+            input = string
             history = chat_history[:-1] if use_context and len(chat_history) > 1 else None
 
             for k, v in zip(self.ckeys, args):

@@ -7,7 +7,7 @@ import random
 from gradio_client import Client
 
 import lazyllm
-from lazyllm import deploy
+from lazyllm import deploy, globals
 from lazyllm.launcher import cleanup
 
 class TestDeploy(object):
@@ -109,6 +109,12 @@ class TestDeploy(object):
         audio_path = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')
         res = m(audio_path)
         assert '但愿人长久' in res
+        globals['global_parameters'][m._module_id] = {'files': [audio_path]}
+        res = m('Hi')
+        assert '但愿人长久' in res
+        globals['global_parameters'][m._module_id] = {'files': audio_path}
+        res = m('hellow world.')
+        assert '但愿人长久' in res
 
         _, client = self.warp_into_web(m)
         chat_history = [[audio_path, None]]
@@ -127,7 +133,8 @@ class TestDeploy(object):
         m.update_server()
         query = '这是啥？'
         image_path = os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg')
-        res = m('lazyllm_files::' + json.dumps({'text': query, 'files': image_path}))
+        globals['global_parameters'][m._module_id] = {'files': image_path}
+        res = m(query)
         assert '鸡' in res
 
         _, client = self.warp_into_web(m)

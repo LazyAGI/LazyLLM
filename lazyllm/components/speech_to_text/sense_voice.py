@@ -1,5 +1,4 @@
 import os
-import json
 from urllib.parse import urlparse
 
 import lazyllm
@@ -38,10 +37,12 @@ class SenseVoice(object):
 
     def __call__(self, string):
         lazyllm.call_once(self.init_flag, self.load_sd)
+        if isinstance(string, dict):
+            if string['audio']:
+                string = string['audio'][0] if isinstance(string['audio'], list) else string['audio']
+            else:
+                string = string['inputs']
         assert isinstance(string, str)
-        if string.startswith("lazyllm_files::"):
-            files_dict = json.loads(string[15:])
-            string = files_dict['files'][0]
         string = string.strip()
         if not string.endswith(('.mp3', '.wav')):
             return "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported."
@@ -69,8 +70,14 @@ class SenseVoice(object):
         return SenseVoice.rebuild, (self.base_path, )
 
 class SenseVoiceDeploy(object):
-    message_format = None
-    keys_name_handle = None
+    keys_name_handle = {
+        'inputs': 'inputs',
+        'audio': 'audio',
+    }
+    message_format = {
+        'inputs': 'Who are you ?',
+        'audio': None,
+    }
     default_headers = {'Content-Type': 'application/json'}
 
     def __init__(self, launcher=None):
