@@ -66,13 +66,6 @@ extra:
   social:
   - icon: fontawesome/brands/github
     link: https://github.com/LazyAGI/LazyLLM
-  alternate:
-    - name: English
-      link: /en/
-      lang: en
-    - name: 中文
-      link: /zh/
-      lang: zh
 plugins:
 - i18n:
     docs_structure: folder
