@@ -32,18 +32,24 @@ class TestBM25(unittest.TestCase):
         self.assertIn(self.nodes[0], [result[0] for result in results])
         self.assertIn(self.nodes[1], [result[0] for result in results])
 
+
 class TestBM25Chinese(unittest.TestCase):
     def setUp(self):
         self.nodes = [
             DocNode(text="这是一个测试文档。这个文档用于测试BM25。"),
-            DocNode(text="BM25是一种在信息检索中使用的排序函数。信息检索系统通过BM25算法来排序文档和分数。"),
+            DocNode(
+                text="BM25是一种在信息检索中使用的排序函数。信息检索系统通过BM25算法来排序文档和分数。"
+            ),
             DocNode(text="中文文档的测试内容。测试文档中包含多个句子。"),
-            DocNode(text="这个测试是为了验证BM25在中文文档中的表现。我们需要对多个文档进行排序测试。"),
-            DocNode(text="文档的内容可以影响BM25的评分。排序函数的性能对于信息检索非常重要。"),
+            DocNode(
+                text="这个测试是为了验证BM25在中文文档中的表现。我们需要对多个文档进行排序测试。"
+            ),
+            DocNode(
+                text="文档的内容可以影响BM25的评分。排序函数的性能对于信息检索非常重要。"
+            ),
         ]
 
         self.bm25_cn = BM25(self.nodes, language="zh", topk=3)
-
 
     def test_retrieve(self):
         query = "测试文档"
