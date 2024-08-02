@@ -5,15 +5,25 @@ from ..module import ModuleBase
 class OnlineEmbeddingModuleBase(ModuleBase):
 
     def __init__(self,
+                 model_series: str,
                  embed_url: str,
                  api_key: str,
                  embed_model_name: str,
                  return_trace: bool = False):
         super().__init__(return_trace=return_trace)
+        self._model_series = model_series
         self._embed_url = embed_url
         self._api_key = api_key
         self._embed_model_name = embed_model_name
         self._set_headers()
+
+    @property
+    def series(self):
+        return self._model_series
+
+    @property
+    def type(self):
+        return "EMBED"
 
     def _set_headers(self) -> Dict[str, str]:
         self._headers = {

@@ -11,7 +11,7 @@ class KimiModule(OnlineChatModuleBase):
                  return_trace=False,
                  **kwargs):
 
-        super().__init__(model_type=__class__.__name__,
+        super().__init__(model_series="KIMI",
                          api_key=lazyllm.config['kimi_api_key'],
                          base_url=base_url,
                          model_name=model,

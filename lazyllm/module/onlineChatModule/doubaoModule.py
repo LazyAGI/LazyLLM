@@ -10,7 +10,7 @@ class DoubaoModule(OnlineChatModuleBase):
                  base_url: str = "https://ark.cn-beijing.volces.com/api/v3",
                  stream: bool = True,
                  return_trace: bool = False):
-        super().__init__(model_type=self.__class__.__name__,
+        super().__init__(model_series="DOUBAO",
                          api_key=lazyllm.config['doubao_api_key'],
                          base_url=base_url,
                          model_name=model,
