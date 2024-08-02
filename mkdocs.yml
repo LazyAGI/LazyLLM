@@ -65,7 +65,7 @@ extra:
   generator: false
   social:
   - icon: fontawesome/brands/github
-    link: https://github.com/nmhjklnm
+    link: https://github.com/LazyAGI/LazyLLM
   alternate:
     - name: English
       link: /en/
