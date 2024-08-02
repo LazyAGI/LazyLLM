@@ -23,7 +23,7 @@ class TestRerankerV2(unittest.TestCase):
         )
         results = reranker.forward(self.nodes, query=self.query)
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0].get_content(), self.doc1.get_content())
+        self.assertEqual(results[0].get_text(), self.doc1.get_text())
 
     def test_keyword_filter_with_exclude_keys(self):
         required_keys = []
@@ -48,16 +48,16 @@ class TestRerankerV2(unittest.TestCase):
 
         self.assertEqual(len(results), 2)
         self.assertEqual(
-            results[0].get_content(), self.doc3.get_content()
+            results[0].get_text(), self.doc3.get_text()
         )  # highest score
         self.assertEqual(
-            results[1].get_content(), self.doc1.get_content()
+            results[1].get_text(), self.doc1.get_text()
         )  # second highest score
 
     def test_register_reranker_decorator(self):
         @register_reranker
         def CustomReranker(node, **kwargs):
-            if "custom" in node.get_content():
+            if "custom" in node.get_text():
                 return node
             return None
 
@@ -68,7 +68,7 @@ class TestRerankerV2(unittest.TestCase):
         results = reranker.forward(nodes)
 
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0].get_content(), custom_doc.get_content())
+        self.assertEqual(results[0].get_text(), custom_doc.get_text())
 
 
 if __name__ == "__main__":

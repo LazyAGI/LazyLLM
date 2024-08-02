@@ -110,7 +110,7 @@ class SentenceSplitter(NodeTransform):
 
     def transform(self, document: DocNode, **kwargs) -> List[str]:
         return self.split_text(
-            document.get_content(metadata_mode=MetadataMode.NONE),
+            document.get_text(),
             metadata_size=self._get_metadata_size(document),
         )
 
@@ -261,6 +261,6 @@ class FuncNodeTransform(NodeTransform):
         self._func = func
 
     def transform(self, document: DocNode, **kwargs) -> List[str]:
-        result = self._func(document.get_content(metadata_mode=MetadataMode.NONE))
+        result = self._func(document.get_text())
         text_splits = [result] if isinstance(result, str) else result
         return text_splits
