@@ -572,7 +572,9 @@ Args:
 INFO:     Uvicorn running on http://0.0.0.0:35485
 >>> print(s(1))
 messages=2 trace='' err=(0, '')
+```
 
+```python
 >>> class MyServe(object):
 ...     def __call__(self, input):
 ...         return 2 * input
