@@ -40,6 +40,14 @@ class OnlineChatModuleBase(ModuleBase):
         self._field_extractor()
         self._model_optional_params = {}
 
+    @property
+    def series(self):
+        return self._model_series
+
+    @property
+    def type(self):
+        return "LLM"
+
     def prompt(self, prompt=None):
         if prompt is None:
             self._prompt = ChatPrompter()

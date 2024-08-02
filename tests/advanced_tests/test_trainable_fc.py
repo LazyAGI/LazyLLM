@@ -1,10 +1,12 @@
 import json
 import pytest
+import random
+from typing import Literal
+
 import lazyllm
 from lazyllm import fc_register, deploy
 from lazyllm.tools import FunctionCall, FunctionCallAgent
-from typing import Literal
-import random
+from lazyllm.launcher import cleanup
 
 @fc_register("tool")
 def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 'fahrenheit'):
@@ -88,6 +90,11 @@ lightModels = ['internlm2-chat-20b', 'Qwen1.5-14B-Chat']
 vModels = ['GLM-4-9B-Chat', 'Qwen2-7B-Instruct']
 
 class TestOnlineChatFunctionCall(object):
+    @pytest.fixture(autouse=True)
+    def run_around_tests(self):
+        yield
+        cleanup()
+
     @pytest.mark.parametrize("exe_trainable_single_function_call",
                              [{"model": random.choice(vModels), "tools": tools, "query": squery1},
                               {"model": random.choice(vModels), "tools": tools, "query": squery2}],

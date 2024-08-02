@@ -490,11 +490,18 @@ class TrainableModule(UrlModule):
                                           None, lazyllm.finetune.auto, lazyllm.deploy.auto)
         self._impl._add_father(self)
         self.prompt()
-        self._model_series = re.sub(r'\d+$', '', ModelManager.get_model_name(self.base_model).split('-')[0].upper())
 
     base_model = property(lambda self: self._impl._base_model)
     target_path = property(lambda self: self._impl._target_path)
     _url_id = property(lambda self: self._impl._module_id)
+
+    @property
+    def series(self):
+        return re.sub(r'\d+$', '', ModelManager.get_model_name(self.base_model).split('-')[0].upper())
+
+    @property
+    def type(self):
+        return ModelManager.get_model_type(self.base_model).upper()
 
     # modify default value to ''
     def prompt(self, prompt=''):
