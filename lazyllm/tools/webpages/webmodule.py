@@ -12,6 +12,7 @@ import gradio as gr
 from PIL import Image
 from io import BytesIO
 from types import GeneratorType
+import numpy as np
 
 import lazyllm
 from lazyllm import LOG, globals
@@ -93,6 +94,9 @@ class WebModule(ModuleBase):
                     for _, gname, name, ctype, value in component_descs:
                         if ctype in ('Checkbox', 'Text'):
                             components.append(getattr(gr, ctype)(interactive=True, value=value, label=f'{gname}.{name}'))
+                        elif ctype == 'Dropdown':
+                            components.append(getattr(gr, ctype)(interactive=True, choices=value,
+                                                                 label=f'{gname}.{name}'))
                         else:
                             raise KeyError(f'invalid component type: {ctype}')
                     with gr.Row():
@@ -262,7 +266,11 @@ class WebModule(ModuleBase):
                         elif 'images_base64' in r:
                             image_data = r.pop('images_base64')[0]
                             image = Image.open(BytesIO(base64.b64decode(image_data)))
-                            return "The image is: ", "".join(log_history), image
+                            return "The image is: ", "".join(log_history), {'img': image}
+                        elif 'sounds' in r:
+                            sound_data = r.pop('sounds')
+                            sound_data = (sound_data[0], np.array(sound_data[1]).astype(np.int16))
+                            return "The Audio is: ", "".join(log_history), {'audio': sound_data}
                         else:
                             s = s
                     except (ValueError, KeyError, TypeError):
@@ -272,11 +280,14 @@ class WebModule(ModuleBase):
                 return s, "".join(log_history), None
 
             log_history = []
-            image = None
+            file = None
             if isinstance(result, (str, dict)):
-                result, log, image = get_log_and_message(result)
-            if image:
-                chat_history[-1][1] = gr.Image(image)
+                result, log, file = get_log_and_message(result)
+            if file:
+                if 'img' in file:
+                    chat_history[-1][1] = gr.Image(file['img'])
+                if 'audio' in file:
+                    chat_history[-1][1] = gr.Audio(file['audio'])
             elif isinstance(result, str):
                 chat_history[-1][1] = result
             elif isinstance(result, GeneratorType):
