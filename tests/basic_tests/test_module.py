@@ -44,6 +44,16 @@ class TestModule:
         server_module.eval()
         assert server_module.eval_result == ['INPUT1', 'INPUT2']
 
+    def test_ServerModule_with_global(self):
+        lazyllm.globals['a'] = 1
+        server_module = lazyllm.ServerModule(lambda x: x.upper() + lazyllm.globals['a'])
+        server_module.start()
+        assert server_module('hello') == 'HELLO1'
+        lazyllm.globals['a'] = 2
+        server_module.evalset(['input1', 'input2'])
+        server_module.eval()
+        assert server_module.eval_result == ['INPUT12', 'INPUT22']
+
     def test_TrainableModule(self):
         tm1 = lazyllm.TrainableModule(self.base_model, self.target_path)
         tm2 = tm1.share()
