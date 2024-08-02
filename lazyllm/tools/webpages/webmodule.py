@@ -36,7 +36,7 @@ class WebModule(ModuleBase):
         Appendix = 2
 
     def __init__(self, m, *, components=dict(), title='对话演示终端', port=range(20500, 20799),
-                 history=[], text_mode=None, trace_mode=None) -> None:
+                 history=[], text_mode=None, trace_mode=None, audio=False) -> None:
         super().__init__()
         self.m = lazyllm.ActionModule(m) if isinstance(m, lazyllm.FlowBase) else m
         self.title = title
@@ -48,6 +48,7 @@ class WebModule(ModuleBase):
         self.trace_mode = trace_mode if trace_mode else WebModule.Mode.Refresh
         self.text_mode = text_mode if text_mode else WebModule.Mode.Dynamic
         self.cach_path = self._set_up_caching()
+        self.audio = audio
         self.demo = self.init_web(components)
         self.url = None
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -106,9 +107,10 @@ class WebModule(ModuleBase):
                         del_sess_btn = gr.Button("删除当前会话")
                     chatbot = gr.Chatbot(height=700)
                     query_box = gr.MultimodalTextbox(show_label=False, placeholder='输入内容并回车!!!', interactive=True)
+                    recordor = gr.Audio(sources=["microphone"], type="filepath", visible=self.audio)
 
-            query_box.submit(self._init_session, [query_box, sess_data],
-                                                 [sess_drpdn, chatbot, dbg_msg, sess_data], queue=True
+            query_box.submit(self._init_session, [query_box, sess_data, recordor],
+                                                 [sess_drpdn, chatbot, dbg_msg, sess_data, recordor], queue=True
                 ).then(lambda: gr.update(interactive=False), None, query_box, queue=False
                 ).then(lambda: gr.update(interactive=False), None, add_sess_btn, queue=False
                 ).then(lambda: gr.update(interactive=False), None, sess_drpdn, queue=False
@@ -128,12 +130,20 @@ class WebModule(ModuleBase):
                                                   [sess_drpdn, chatbot, query_box, dbg_msg, sess_data])
             del_sess_btn.click(self._delete_session, [sess_drpdn, sess_data],
                                                      [sess_drpdn, chatbot, query_box, dbg_msg, sess_data])
+            recordor.change(self._sub_audio, recordor, query_box)
             return demo
 
-    def _init_session(self, query, session):
-        if session['curr_sess'] != '':  # remain unchanged.
-            return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), session
+    def _sub_audio(self, audio):
+        if audio:
+            return {'text': '', 'files': [audio]}
+        else:
+            return {}
+
+    def _init_session(self, query, session, audio):
+        audio = None
         session['frozen_query'] = query
+        if session['curr_sess'] != '':  # remain unchanged.
+            return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), session, audio
 
         if "text" in query and query["text"] is not None:
             id_name = query['text']
@@ -145,7 +155,7 @@ class WebModule(ModuleBase):
 
         session['sess_logs'][session['curr_sess']] = []
         session['sess_history'][session['curr_sess']] = []
-        return gr.update(choices=session['sess_titles'], value=session['curr_sess']), [], '', session
+        return gr.update(choices=session['sess_titles'], value=session['curr_sess']), [], '', session, audio
 
     def _add_session(self, chat_history, log_history, session):
         if session['curr_sess'] == '':
