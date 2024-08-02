@@ -43,7 +43,6 @@ class SenseVoice(object):
             files_dict = json.loads(string[15:])
             string = files_dict['files'][0]
         string = string.strip()
-        print("HHH: ", string)
         if not string.endswith(('.mp3', '.wav')):
             return "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported."
         if not is_valid_path(string) and not is_valid_url(string):
