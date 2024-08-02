@@ -75,7 +75,7 @@ class DocImplV2:
         self.node_groups[name] = dict(
             transform=transform, transform_kwargs=kwargs, parent_name=parent
         )
-        
+
     def add_files(self, input_files: List[str]) -> None:
         if len(input_files) == 0:
             return
