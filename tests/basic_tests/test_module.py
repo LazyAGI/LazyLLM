@@ -45,11 +45,11 @@ class TestModule:
         assert server_module.eval_result == ['INPUT1', 'INPUT2']
 
     def test_ServerModule_with_global(self):
-        lazyllm.globals['a'] = 1
+        lazyllm.globals['a'] = '1'
         server_module = lazyllm.ServerModule(lambda x: x.upper() + lazyllm.globals['a'])
         server_module.start()
         assert server_module('hello') == 'HELLO1'
-        lazyllm.globals['a'] = 2
+        lazyllm.globals['a'] = '2'
         server_module.evalset(['input1', 'input2'])
         server_module.eval()
         assert server_module.eval_result == ['INPUT12', 'INPUT22']
