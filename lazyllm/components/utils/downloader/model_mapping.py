@@ -285,7 +285,11 @@ model_name_mapping = {
     "stable-diffusion-3-medium": {
         "source": {"huggingface": "stabilityai/stable-diffusion-3-medium", "modelscope": "AI-ModelScope/stable-diffusion-3-medium-diffusers"},
         "type": "sd",
-		},
+	},
+    "bark":{
+        "source": {"huggingface": "suno/bark", "modelscope": "mapjack/bark"},
+        "type": "tts",
+	},
     "llava-1.5-7b": {
 		"source": {"huggingface": "llava-hf/llava-1.5-7b-hf", "modelscope": "huangjintao/llava-1.5-7b-hf"},
         "type": "vlm",

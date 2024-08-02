@@ -62,7 +62,7 @@ def KeywordFilter(
     if exclude_keys:
         exclude_matcher.add("ExcludeKeywords", list(nlp.pipe(exclude_keys)))
 
-    doc = nlp(node.get_content())
+    doc = nlp(node.get_text())
     if required_keys and not required_matcher(doc):
         return None
     if exclude_keys and exclude_matcher(doc):
@@ -84,7 +84,7 @@ def ModuleReranker(
 ):
     cross_encoder = get_cross_encoder_model(model)
     query_pairs = [
-        (query, node.get_content(metadata_mode=MetadataMode.EMBED)) for node in nodes
+        (query, node.get_text(metadata_mode=MetadataMode.EMBED)) for node in nodes
     ]
     scores = cross_encoder.predict(query_pairs)
     sorted_indices = np.argsort(scores)[::-1]  # Descending order
