@@ -13,7 +13,7 @@ prompt = (
 )
 embed_model = lazyllm.TrainableModule("bge-large-zh-v1.5")
 documents = Document(
-    dataset_path="/home/mnt/yewentao/data/rag_master",
+    dataset_path="rag_master",
     embed=embed_model,
     create_ui=False,
 )
