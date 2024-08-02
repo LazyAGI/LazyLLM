@@ -8,7 +8,7 @@ import pickle
 import codecs
 import inspect
 import functools
-from concurrent.futures import ThreadPoolExecutor
+from lazyllm import ThreadPoolExecutor
 from typing import Dict, List, Any, Union
 
 import lazyllm
