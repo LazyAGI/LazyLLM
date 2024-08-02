@@ -3,7 +3,7 @@ from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
 from lazyllm import loop, pipeline, _0, package, bind, LOG
 from .functionCall import FunctionCallAgent
-from typing import List
+from typing import List, Union
 
 PLANNER_PROMPT = (
     "Let's first understand the problem and devise a plan to solve the problem."
@@ -23,36 +23,49 @@ SOLVER_PROMPT = (
 )
 
 class PlanAndSolveAgent(ModuleBase):
-    def __init__(self, plan_llm, solve_llm, tools: List[str], max_retries: int = 5, return_trace: bool = False):
+    def __init__(self, llm, tools: List[str], *, plan_llm: Union[ModuleBase, None] = None,
+                 solve_llm: Union[ModuleBase, None] = None, max_retries: int = 5, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
-        assert plan_llm and solve_llm and tools, "llm and tools cannot be empty."
-        self._plan_llm = plan_llm
-        self._solve_llm = solve_llm
+        assert sum(x is not None for x in [llm, plan_llm, solve_llm]) <= 2, \
+               "llm and plan_llm, solve_llm cannot be set at the same time."
+        assert tools, "tools cannot be empty."
+        if plan_llm is None and solve_llm is None and llm is not None:
+            self._plan_llm = llm.share(prompt=ChatPrompter(instruction=PLANNER_PROMPT))
+            self._solve_llm = llm.share()
+        elif plan_llm is None and solve_llm is not None and llm is not None:
+            self._plan_llm = llm.share(prompt=ChatPrompter(instruction=PLANNER_PROMPT))
+            self._solve_llm = solve_llm.share()
+        elif solve_llm is None and plan_llm is not None and llm is not None:
+            self._plan_llm = plan_llm.share(prompt=ChatPrompter(instruction=PLANNER_PROMPT))
+            self._solve_llm = llm.share()
+        elif plan_llm is not None and solve_llm is not None and llm is None:
+            self._plan_llm = plan_llm.share(prompt=ChatPrompter(instruction=PLANNER_PROMPT))
+            self._solve_llm = solve_llm.share()
+        else:
+            raise ValueError("Either set llm, or set plan_llm and solve_llm, or set llm and one of [plan_llm, "
+                             f"solve_llm]. Other situations are not supported. llm: {llm}, plan_llm: {plan_llm}, "
+                             f"solve_llm: {solve_llm}")
         self._tools = tools
-        self._agent = self._build_pipeline()
+        with pipeline() as self._agent:
+            self._agent.plan = self._plan_llm
+            self._agent.parse = (lambda text, query: package([], '', [v for v in re.split("\n\\s*\\d+\\. ", text)[1:]],
+                                 query)) | bind(query=self._agent.input)
+            with loop(stop_condition=lambda pre, res, steps, query: len(steps) == 0) as self._agent.lp:
+                self._agent.lp.pre_action = lambda pre_steps, response, steps, query: \
+                    package(SOLVER_PROMPT.format(previous_steps="\n".join(pre_steps), current_step=steps[0],
+                            objective=query) + "input: " + response + "\n" + steps[0], [])
+                self._agent.lp.solve = FunctionCallAgent(self._solve_llm, tools=self._tools)
+                self._agent.lp.post_action = self._post_action | bind(self._agent.lp.input[0][0], _0,
+                                                                      self._agent.lp.input[0][2],
+                                                                      self._agent.lp.input[0][3])
+
+            self._agent.post_action = lambda pre, res, steps, query: res
 
     def _post_action(self, pre_steps: List[str], response: str, steps: List[str], query: str):
         LOG.info(f"current step: {steps[0]}, response: {response}")
         pre_steps.append(steps.pop(0))
         return package(pre_steps, response, steps, query)
-
-    def _build_pipeline(self):
-        with pipeline() as ppl:
-            ppl.plan = self._plan_llm.share(prompt=ChatPrompter(instruction=PLANNER_PROMPT))
-            ppl.parse = (lambda text, query: package([], '', [v for v in re.split("\n\\s*\\d+\\. ", text)[1:]],
-                         query)) | bind(query=ppl.input)
-            with loop(stop_condition=lambda pre, res, steps, query: len(steps) == 0) as ppl.lp:
-                ppl.lp.pre_action = lambda pre_steps, response, steps, query: \
-                    package(SOLVER_PROMPT.format(previous_steps="\n".join(pre_steps), current_step=steps[0],
-                            objective=query) + "input: " + response + "\n" + steps[0], [])
-                ppl.lp.solve = FunctionCallAgent(self._solve_llm, tools=self._tools)
-                ppl.lp.post_action = self._post_action | bind(ppl.lp.input[0][0], _0, ppl.lp.input[0][2],
-                                                              ppl.lp.input[0][3])
-
-            ppl.post_action = lambda pre, res, steps, query: res
-
-        return ppl
 
     def forward(self, query: str):
         ans = self._agent(query)

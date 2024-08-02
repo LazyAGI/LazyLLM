@@ -1,7 +1,7 @@
 from lazyllm.module import ModuleBase
 from lazyllm import pipeline, package, LOG, globals, bind
 from .toolsManager import ToolManager
-from typing import List, Dict
+from typing import List, Dict, Union
 import re
 
 P_PROMPT_PREFIX = ("For the following tasks, make plans that can solve the problem step-by-step. "
@@ -31,13 +31,37 @@ S_PROMPT_SUFFIX = ("\nNow begin to solve the task or problem. Respond with "
                    "the answer directly with no extra words.\n\n")
 
 class ReWOOAgent(ModuleBase):
-    def __init__(self, planner_llm, solver_llm, tools: List[str], return_trace: bool = False):
+    def __init__(self, llm, tools: List[str], *, plan_llm: Union[ModuleBase, None] = None,
+                 solve_llm: Union[ModuleBase, None] = None, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
-        self._planner = planner_llm
-        self._solver = solver_llm
+        assert sum(x is not None for x in [llm, plan_llm, solve_llm]) <= 2, \
+               "llm and plan_llm, solve_llm cannot be set at the same time."
+        assert tools, "tools cannot be empty."
+        if plan_llm is None and solve_llm is None and llm is not None:
+            self._planner = llm
+            self._solver = llm
+        elif plan_llm is None and solve_llm is not None and llm is not None:
+            self._planner = llm
+            self._solver = solve_llm
+        elif solve_llm is None and plan_llm is not None and llm is not None:
+            self._planner = plan_llm
+            self._solver = llm
+        elif plan_llm is not None and solve_llm is not None and llm is None:
+            self._planner = plan_llm
+            self._solver = solve_llm
+        else:
+            raise ValueError("Either set llm, or set plan_llm and solve_llm, or set llm and one of [plan_llm, "
+                             f"solve_llm]. Other situations are not supported. llm: {llm}, plan_llm: {plan_llm}, "
+                             f"solve_llm: {solve_llm}")
         self._workers = tools
         self._tools_manager = ToolManager(tools).tools_info
-        self._agent = self._build_pipeline()
+        with pipeline() as self._agent:
+            self._agent.planner_pre_action = self._build_planner_prompt
+            self._agent.planner = self._planner
+            self._agent.parse_plan = self._parse_plan
+            self._agent.woker = self._get_worker_evidences
+            self._agent.solver_pre_action = self._build_solver_prompt | bind(input=self._agent.input)
+            self._agent.solver = self._solver
 
     def _build_planner_prompt(self, input: str):
         prompt = P_PROMPT_PREFIX + "Tools can be one of the following:\n"
@@ -92,17 +116,6 @@ class ReWOOAgent(ModuleBase):
         prompt = S_PROMPT_PREFIX + input + "\n" + worker_log + S_PROMPT_SUFFIX + input + "\n"
         globals['chat_history'][self._solver._module_id] = []
         return prompt
-
-    def _build_pipeline(self):
-        with pipeline() as ppl:
-            ppl.planner_pre_action = self._build_planner_prompt
-            ppl.planner = self._planner
-            ppl.parse_plan = self._parse_plan
-            ppl.woker = self._get_worker_evidences
-            ppl.solver_pre_action = self._build_solver_prompt | bind(input=ppl.input)
-            ppl.solver = self._solver
-
-        return ppl
 
     def forward(self, query: str):
         return self._agent(query)

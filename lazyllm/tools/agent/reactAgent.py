@@ -11,6 +11,11 @@ class ReactFunctionCall(FunctionCall):
 
     def _parser(self, llm_output: Union[str, List[Dict[str, Any]]]):
         LOG.info(f"llm_output: {llm_output}")
+        if isinstance(llm_output, list):
+            for out in llm_output:
+                if isinstance(out, str):
+                    llm_output = out
+                    break
         if isinstance(llm_output, str):
             if "Action" in llm_output:
                 match = re.search(r"Action: ([a-zA-Z0-9_]+).*?\n+Action Input: .*?(\{.*\})", llm_output, re.DOTALL)
@@ -105,7 +110,7 @@ Answer: [your answer here (In the same language as the user's question)]
 
 ## Current Conversation
 
-Below is the current conversation consisting of interleaving human and assistant messages. Don't use tool calls.'"""
+Below is the current conversation consisting of interleaving human and assistant messages."""
 
 class ReactAgent(ModuleBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False):
