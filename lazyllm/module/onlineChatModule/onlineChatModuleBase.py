@@ -15,7 +15,7 @@ from ..module import ModuleBase, Pipeline
 class OnlineChatModuleBase(ModuleBase):
 
     def __init__(self,
-                 model_type: str,
+                 model_series: str,
                  api_key: str,
                  base_url: str,
                  model_name: str,
@@ -24,7 +24,7 @@ class OnlineChatModuleBase(ModuleBase):
                  return_trace: bool = False,
                  **kwargs):
         super().__init__(return_trace=return_trace)
-        self._model_type = model_type
+        self._model_series = model_series
         if not api_key:
             raise ValueError("api_key is required")
         self._api_key = api_key
@@ -39,6 +39,14 @@ class OnlineChatModuleBase(ModuleBase):
         self.formatter()
         self._field_extractor()
         self._model_optional_params = {}
+
+    @property
+    def series(self):
+        return self._model_series
+
+    @property
+    def type(self):
+        return "LLM"
 
     def prompt(self, prompt=None):
         if prompt is None:
@@ -253,13 +261,13 @@ class OnlineChatModuleBase(ModuleBase):
         self.template_headers = template_headers
 
     def _upload_train_file(self, train_file) -> str:
-        raise NotImplementedError(f"{self._model_type} not implemented _upload_train_file method in subclass")
+        raise NotImplementedError(f"{self._model_series} not implemented _upload_train_file method in subclass")
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
-        raise NotImplementedError(f"{self._model_type} not implemented _create_finetuning_job method in subclass")
+        raise NotImplementedError(f"{self._model_series} not implemented _create_finetuning_job method in subclass")
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
-        raise NotImplementedError(f"{self._model_type} not implemented _query_finetuning_job method in subclass")
+        raise NotImplementedError(f"{self._model_series} not implemented _query_finetuning_job method in subclass")
 
     def set_train_tasks(self, train_file, **kw):
         self._train_file = train_file
@@ -306,10 +314,10 @@ class OnlineChatModuleBase(ModuleBase):
         return Pipeline(_create_for_finetuning_job)
 
     def _create_deployment(self) -> Tuple[str, str]:
-        raise NotImplementedError(f"{self._model_type} not implemented _create_deployment method in subclass")
+        raise NotImplementedError(f"{self._model_series} not implemented _create_deployment method in subclass")
 
     def _query_deployment(self, deployment_id) -> str:
-        raise NotImplementedError(f"{self._model_type} not implemented _query_deployment method in subclass")
+        raise NotImplementedError(f"{self._model_series} not implemented _query_deployment method in subclass")
 
     def _get_deploy_tasks(self):
         if not self._is_trained: return None

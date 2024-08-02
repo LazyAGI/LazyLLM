@@ -105,7 +105,7 @@ Answer: [your answer here (In the same language as the user's question)]
 
 ## Current Conversation
 
-Below is the current conversation consisting of interleaving human and assistant messages."""
+Below is the current conversation consisting of interleaving human and assistant messages. Don't use tool calls.'"""
 
 class ReactAgent(ModuleBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False):
@@ -113,11 +113,11 @@ class ReactAgent(ModuleBase):
         self._max_retries = max_retries
         assert llm and tools, "llm and tools cannot be empty."
         self._tools_manager = ToolManager(tools)
-        self._agent = loop(ReactFunctionCall(llm, tools, _prompt=INSTRUCTION.format(tool_desc=tools,
-                                             tool_names=self._tools_manager.tools_description)),
+        self._agent = loop(ReactFunctionCall(llm, tools, _prompt=INSTRUCTION.format(tool_names=tools,
+                                             tool_desc=self._tools_manager.tools_description)),
                            stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
-        ret = self._agent(query, llm_chat_history=[] if llm_chat_history is None else llm_chat_history)
+        ret = self._agent(query, llm_chat_history) if llm_chat_history is not None else self._agent(query)
         return ret if isinstance(ret, str) else (_ for _ in ()).throw(ValueError(f"After retrying \
             {self._max_retries} times, the function call agent still failes to call successfully."))

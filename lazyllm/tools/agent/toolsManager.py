@@ -215,7 +215,7 @@ class ToolManager(ModuleBase):
             for idx, tool in enumerate(tool_calls):
                 if flag_val[idx]:
                     ret = rets[idx]
-                    tool_output.append(json.dumps(ret, ensure_ascii=False))
+                    tool_output.append(json.dumps(ret, ensure_ascii=False) if not isinstance(ret, str) else ret)
                 else:
                     tool_output.append(f"{tool} parameters error.")
 

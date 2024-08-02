@@ -59,7 +59,7 @@ jobs:
           export LAZYLLM_SCO_WORKSPACE=expert-services
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-          python -m pytest tests/basic_tests/
+          python -m pytest -vx tests/basic_tests/
 
   AdvancedTests:
     runs-on: tps_sco_nv
@@ -76,7 +76,7 @@ jobs:
           export LAZYLLM_SCO_WORKSPACE=expert-services
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-          python -m pytest tests/advanced_tests/
+          python -m pytest -vx tests/advanced_tests/
 
   ChargeTests:
     runs-on: tps_sco_nv

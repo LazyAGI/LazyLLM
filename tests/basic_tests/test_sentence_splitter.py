@@ -15,7 +15,7 @@ class TestSentenceSplitter:
         docs = [DocNode(text=text)]
 
         result = self.splitter.forward(docs, node_group='default')
-        result_texts = [n.get_content(metadata_mode=MetadataMode.NONE) for n in result]
+        result_texts = [n.get_text() for n in result]
         expected_texts = [
             "Before college the two main things I worked on, outside of school, were writing and programming.I didn't write essays.",
             "I didn't write essays.I wrote what beginning writers were supposed to write then, and probably still are: short stories.My stories were awful.",

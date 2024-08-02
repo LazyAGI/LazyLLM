@@ -21,7 +21,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                  return_trace: bool = False,
                  **kwargs):
         OnlineChatModuleBase.__init__(self,
-                                      model_type=__class__.__name__,
+                                      model_series="QWEN",
                                       api_key=lazyllm.config['qwen_api_key'],
                                       base_url=base_url,
                                       model_name=model,

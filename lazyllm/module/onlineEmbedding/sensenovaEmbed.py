@@ -7,9 +7,10 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase):
     def __init__(self,
                  embed_url: str = "https://api.sensenova.cn/v1/llm/embeddings",
                  embed_model_name: str = "nova-embedding-stable"):
-        super().__init__(embed_url,
-                         SenseNovaEmbedding.encode_jwt_token(lazyllm.config['sensenova_ak'],
-                                                             lazyllm.config['sensenova_sk']),
+        super().__init__("SENSENOVA",
+                         embed_url,
+                         SenseNovaEmbedding.encode_jwt_token(lazyllm.config['sensenova_api_key'],
+                                                             lazyllm.config['sensenova_secret_key']),
                          embed_model_name)
 
     @staticmethod

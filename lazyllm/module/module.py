@@ -1,14 +1,15 @@
 import os
+import re
 import copy
 import time
-import json
+import json5 as json
 import requests
 import pickle
 import codecs
 import inspect
 import functools
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Union
 
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, decode_request, globals
@@ -494,6 +495,14 @@ class TrainableModule(UrlModule):
     target_path = property(lambda self: self._impl._target_path)
     _url_id = property(lambda self: self._impl._module_id)
 
+    @property
+    def series(self):
+        return re.sub(r'\d+$', '', ModelManager.get_model_name(self.base_model).split('-')[0].upper())
+
+    @property
+    def type(self):
+        return ModelManager.get_model_type(self.base_model).upper()
+
     # modify default value to ''
     def prompt(self, prompt=''):
         if self.base_model != '' and prompt == '' and ModelManager.get_model_type(self.base_model) != 'llm':
@@ -507,39 +516,47 @@ class TrainableModule(UrlModule):
                 if key in keys: setattr(self, f"_{key}", keys[key])
         return self
 
+    def _loads_str(self, text: str) -> Union[str, Dict]:
+        try:
+            ret = json.loads(text)
+            return self._loads_str(ret) if isinstance(ret, str) else ret
+        except Exception:
+            LOG.error(f"{text} is not a valid json string.")
+            return text
+
     def _parse_arguments_with_args_token(self, output: str) -> tuple[str, dict]:
         items = output.split(self._tool_args_token)
         func_name = items[0].strip()
         if len(items) == 1:
             return func_name.split(self._tool_end_token)[0].strip() if getattr(self, "_tool_end_token", None)\
                 else func_name, {}
-        arguments = (items[1].split(self._tool_end_token)[0].strip() if getattr(self, "_tool_end_token", None)
-                     else items[1].strip())
-        return func_name, arguments
+        args = (items[1].split(self._tool_end_token)[0].strip() if getattr(self, "_tool_end_token", None)
+                else items[1].strip())
+        return func_name, self._loads_str(args) if isinstance(args, str) else args
 
     def _parse_arguments_without_args_token(self, output: str) -> tuple[str, dict]:
         items = output.split(self._tool_end_token)[0] if getattr(self, "_tool_end_token", None) else output
         func_name = ""
-        arguments = {}
+        args = {}
         try:
             items = json.loads(items.strip())
             func_name = items.get('name', '')
-            arguments = items.get("parameters", items.get("arguments", {}))
+            args = items.get("parameters", items.get("arguments", {}))
         except Exception:
             LOG.error(f"tool calls info {items} parse error")
 
-        return func_name, arguments
+        return func_name, self._loads_str(args) if isinstance(args, str) else args
 
     def _parse_arguments_with_tools(self, output: Dict[str, Any], tools: List[str]) -> bool:
         func_name = ''
-        arguments = {}
+        args = {}
         is_tc = False
         tc = {}
         if output.get('name', '') in tools:
             is_tc = True
             func_name = output.get('name', '')
-            arguments = output.get("parameters", output.get("arguments", {}))
-            tc = {'name': func_name, 'arguments': arguments}
+            args = output.get("parameters", output.get("arguments", {}))
+            tc = {'name': func_name, 'arguments': self._loads_str(args) if isinstance(args, str) else args}
             return is_tc, tc
         return is_tc, tc
 

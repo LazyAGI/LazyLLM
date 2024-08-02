@@ -94,7 +94,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                         for idx in range(len(item.get('tool_calls', []))):
                             tool = item['tool_calls'][idx]['function']
                             if getattr(self, "_tool_args_token", None):
-                                tool = tool['name'] + self._tool_args_token + tool['arguments']
+                                tool = tool['name'] + self._tool_args_token + \
+                                    json.dumps(tool['arguments'], ensure_ascii=False)
                             ret += (f'{getattr(self, "_tool_start_token", "")}' + '\n'
                                     f'{tool}'
                                     f'{getattr(self, "_tool_end_token", "")}' + '\n')
