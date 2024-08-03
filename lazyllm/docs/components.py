@@ -3,7 +3,6 @@ from . import utils
 import functools
 import lazyllm
 
-
 add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.components)
 add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.components)
 add_example = functools.partial(utils.add_example, module=lazyllm.components)
@@ -30,7 +29,7 @@ LazyLLM提供的Component的注册机制，可以将任意函数注册成LazyLLM
 .. function:: register(cls, *, rewrite_func) -> Decorator
 
 函数调用后返回一个装饰器，它会将被装饰的函数包装成一个Component注册到名为cls的组中.
- 
+
 Args:
     cls (str): 函数即将被注册到的组的名字，要求组必须存在，默认的组有 ``finetune`` 、 ``deploy`` ，用户可以调用 ``new_group`` 创建新的组
     rewrite_func (str): 注册后要重写的函数名称，默认为 ``apply`` ，当需要注册一个bash命令时需传入 ``cmd`` 
@@ -103,7 +102,7 @@ PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1
 # ============= Finetune
 # Finetune-AlpacaloraFinetune
 add_chinese_doc('finetune.AlpacaloraFinetune', '''\
-此类是 ``LazyLLMFinetuneBase`` 的子类，基于 `alpaca-lora <https://github.com/tloen/alpaca-lora>`_ 项目提供的LoRA微调能力，用于对大语言模型进行LoRA微调。
+此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [alpaca-lora](https://github.com/tloen/alpaca-lora) 项目提供的LoRA微调能力，用于对大语言模型进行LoRA微调。
 
 Args:
     base_model (str): 用于进行微调的基模型的本地绝对路径。
@@ -135,11 +134,11 @@ Keyword Args:
     train_on_inputs (bool): 是否在输入上训练，默认为 ``True``。
     show_prompt (bool): 是否显示提示，默认为 ``False``。
     nccl_port (int): NCCL 端口，默认为 ``19081``。
-                
+
 ''')
 
 add_english_doc('finetune.AlpacaloraFinetune', '''\
-This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the `alpaca-lora <https://github.com/tloen/alpaca-lora>`_ project, used for LoRA fine-tuning of large language models.
+This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the [alpaca-lora](https://github.com/tloen/alpaca-lora) project, used for LoRA fine-tuning of large language models.
 
 Args:
     base_model (str): The base model used for fine-tuning. It is required to be the path of the base model.
@@ -181,7 +180,7 @@ add_example('finetune.AlpacaloraFinetune', '''\
 
 # Finetune-CollieFinetune
 add_chinese_doc('finetune.CollieFinetune', '''\
-此类是 ``LazyLLMFinetuneBase`` 的子类，基于 `Collie <https://github.com/OpenLMLab/collie>`_ 框架提供的LoRA微调能力，用于对大语言模型进行LoRA微调。
+此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [Collie](https://github.com/OpenLMLab/collie) 框架提供的LoRA微调能力，用于对大语言模型进行LoRA微调。
 
 Args:
     base_model (str): 用于进行微调的基模型。要求是基模型的路径。
@@ -213,7 +212,7 @@ Keyword Args:
 ''')
 
 add_english_doc('finetune.CollieFinetune', '''\
-This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the `Collie <https://github.com/OpenLMLab/collie>`_ framework, used for LoRA fine-tuning of large language models.
+This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the [Collie](https://github.com/OpenLMLab/collie) framework, used for LoRA fine-tuning of large language models.
 
 Args:
     base_model (str): The base model used for fine-tuning. It is required to be the path of the base model.
@@ -251,7 +250,7 @@ add_example('finetune.CollieFinetune', '''\
 
 # Finetune-LlamafactoryFinetune
 add_chinese_doc('finetune.LlamafactoryFinetune', '''\
-此类是 ``LazyLLMFinetuneBase`` 的子类，基于 `LLaMA-Factory <https://github.com/hiyouga/LLaMA-Factory>`_ 框架提供的训练能力，用于对大语言模型(或视觉语言模型)进行训练。
+此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) 框架提供的训练能力，用于对大语言模型(或视觉语言模型)进行训练。
 
 Args:
     base_model (str): 用于进行训练的基模型。要求是基模型的路径。
@@ -265,7 +264,6 @@ Args:
 此类的关键字参数及其默认值如下：
 
 Keyword Args:
-
     stage (typing.Literal['pt', 'sft', 'rm', 'ppo', 'dpo', 'kto']): 默认值是：``sft``。将在训练中执行的阶段。
     do_train (bool): 默认值是：``True``。是否运行训练。
     finetuning_type (typing.Literal['lora', 'freeze', 'full']): 默认值是：``lora``。要使用的微调方法。
@@ -293,11 +291,11 @@ Keyword Args:
     per_device_eval_batch_size (int): 默认值是：``1``。每个GPU/TPU/MPS/NPU核心/CPU的验证集批次大小。
     eval_strategy (typing.Union[transformers.trainer_utils.IntervalStrategy, str]): 默认值是：``steps``。要使用的验证评估策略。
     eval_steps (typing.Optional[float]): 默认值是：``500``。每X个步骤运行一次验证评估。应该是整数或范围在`[0,1)`的浮点数。如果小于1，将被解释为总训练步骤的比例。
-                
+
 ''')
 
 add_english_doc('finetune.LlamafactoryFinetune', '''\
-This class is a subclass of ``LazyLLMFinetuneBase``, based on the training capabilities provided by the `LLaMA-Factory <https://github.com/hiyouga/LLaMA-Factory>`_ framework, used for training large language models(or visual language models).
+This class is a subclass of ``LazyLLMFinetuneBase``, based on the training capabilities provided by the [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) framework, used for training large language models(or visual language models).
 
 Args:
     base_model (str): The base model used for training. It is required to be the path of the base model.
@@ -309,7 +307,6 @@ Args:
     kw: Keyword arguments used to update the default training parameters.
 
 Keyword Args:
-
     stage (typing.Literal['pt', 'sft', 'rm', 'ppo', 'dpo', 'kto']): Default is: ``sft``. Which stage will be performed in training.
     do_train (bool): Default is: ``True``. Whether to run training.
     finetuning_type (typing.Literal['lora', 'freeze', 'full']): Default is: ``lora``. Which fine-tuning method to use.
@@ -350,7 +347,7 @@ add_chinese_doc('auto.AutoFinetune', '''\
 此类是 ``LazyLLMFinetuneBase`` 的子类，可根据输入的参数自动选择合适的微调框架和参数，以对大语言模型进行微调。
 
 具体而言，基于输入的：``base_model`` 的模型参数、``ctx_len``、``batch_size``、``lora_r``、``launcher`` 中GPU的类型以及卡数，该类可以自动选择出合适的微调框架（如: ``AlpacaloraFinetune`` 或 ``CollieFinetune``）及所需的参数。
-                
+
 Args:
     base_model (str): 用于进行微调的基模型。要求是基模型的路径。
     source (lazyllm.config['model_source']): 指定模型的下载源。可通过设置环境变量 ``LAZYLLM_MODEL_SOURCE`` 来配置，目前仅支持 ``huggingface`` 或 ``modelscope`` 。若不设置，lazyllm不会启动自动模型下载。
@@ -391,7 +388,7 @@ add_example('auto.AutoFinetune', '''\
 # ============= Deploy
 # Deploy-Lightllm
 add_chinese_doc('deploy.Lightllm', '''\
-此类是 ``LazyLLMDeployBase`` 的子类，基于 `LightLLM <https://github.com/ModelTC/lightllm>`_ 框架提供的推理能力，用于对大语言模型进行推理。
+此类是 ``LazyLLMDeployBase`` 的子类，基于 [LightLLM](https://github.com/ModelTC/lightllm) 框架提供的推理能力，用于对大语言模型进行推理。
 
 Args:
     trust_remote_code (bool): 是否允许加载来自远程服务器的模型代码，默认为 ``True``。
@@ -414,7 +411,7 @@ Keyword Args:
 ''')
 
 add_english_doc('deploy.Lightllm', '''\
-This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the `LightLLM <https://github.com/ModelTC/lightllm>`_ framework, used for inference with large language models.
+This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the [LightLLM](https://github.com/ModelTC/lightllm) framework, used for inference with large language models.
 
 Args:
     trust_remote_code (bool): Whether to allow loading of model code from remote servers, default is ``True``.
@@ -441,10 +438,9 @@ add_example('deploy.Lightllm', '''\
 >>> infer = deploy.lightllm()
 ''')
 
-
 # Deploy-Vllm
 add_chinese_doc('deploy.Vllm', '''\
-此类是 ``LazyLLMDeployBase`` 的子类，基于 `VLLM <https://github.com/vllm-project/vllm>`_ 框架提供的推理能力，用于对大语言模型进行推理。
+此类是 ``LazyLLMDeployBase`` 的子类，基于 [VLLM](https://github.com/vllm-project/vllm) 框架提供的推理能力，用于对大语言模型进行推理。
 
 Args:
     trust_remote_code (bool): 是否允许加载来自远程服务器的模型代码，默认为 ``True``。
@@ -469,7 +465,7 @@ Keyword Args:
 ''')
 
 add_english_doc('deploy.Vllm', '''\
-This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the `VLLM <https://github.com/vllm-project/vllm>`_ framework, used for inference with large language models.
+This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the [VLLM](https://github.com/vllm-project/vllm) framework, used for inference with large language models.
 
 Args:
     trust_remote_code (bool): Whether to allow loading of model code from remote servers, default is ``True``.
@@ -543,7 +539,7 @@ add_chinese_doc('auto.AutoDeploy', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，可根据输入的参数自动选择合适的推理框架和参数，以对大语言模型进行推理。
 
 具体而言，基于输入的：``base_model`` 的模型参数、``max_token_num``、``launcher`` 中GPU的类型以及卡数，该类可以自动选择出合适的推理框架（如: ``Lightllm`` 或 ``Vllm``）及所需的参数。
-                
+
 Args:
     base_model (str): 用于进行微调的基模型，要求是基模型的路径或模型名。用于提供基模型信息。
     source (lazyllm.config['model_source']): 指定模型的下载源。可通过设置环境变量 ``LAZYLLM_MODEL_SOURCE`` 来配置，目前仅支持 ``huggingface`` 或 ``modelscope`` 。若不设置，lazyllm不会启动自动模型下载。
@@ -585,11 +581,11 @@ add_chinese_doc('ModelManager', '''\
 ModelManager是LazyLLM为开发者提供的自动下载模型的工具类。目前支持从一个本地目录列表查找指定模型，以及从huggingface或者modelscope自动下载模型数据至指定目录。
 在使用ModelManager之前，需要设置下列环境变量：
 
-    - LAZYLLM_MODEL_SOURCE: 模型下载源，可以设置为 ``huggingface`` 或 ``modelscope`` 。
-    - LAZYLLM_MODEL_SOURCE_TOKEN: ``huggingface`` 或 ``modelscope`` 提供的token，用于下载私有模型。
-    - LAZYLLM_MODEL_PATH: 冒号 ``:`` 分隔的本地绝对路径列表用于搜索模型。
-    - LAZYLLM_MODEL_CACHE_DIR: 下载后的模型在本地的存储目录
-    
+- LAZYLLM_MODEL_SOURCE: 模型下载源，可以设置为 ``huggingface`` 或 ``modelscope`` 。
+- LAZYLLM_MODEL_SOURCE_TOKEN: ``huggingface`` 或 ``modelscope`` 提供的token，用于下载私有模型。
+- LAZYLLM_MODEL_PATH: 冒号 ``:`` 分隔的本地绝对路径列表用于搜索模型。
+- LAZYLLM_MODEL_CACHE_DIR: 下载后的模型在本地的存储目录
+
 Keyword Args: 
     model_source (str, 可选): 模型下载源，目前仅支持 ``huggingface`` 或 ``modelscope`` 。如有必要，ModelManager将从此下载源下载模型数据。如果不提供，默认使用
         LAZYLLM_MODEL_SOURCE环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE，ModelManager将从 ``modelscope`` 下载模型。
@@ -599,8 +595,7 @@ Keyword Args:
         LAZYLLM_MODEL_PATH环境变量中的设置。如果为空或LAZYLLM_MODEL_PATH未设置，ModelManager将跳过从model_path中寻找模型的步骤。
     cache_dir (str, 可选): 一个本地目录的绝对路径。下载后的模型将存放在此目录下，如果不提供，默认使用LAZYLLM_MODEL_CACHE_DIR环境变量中的设置。如果
         LAZYLLM_MODEL_PATH未设置，默认值为~/.lazyllm/model
-        
-.. function:: ModelManager.download(model) -> str
+ModelManager.download(model) -> str
 
 用于从model_source下载模型。download函数首先在ModelManager类初始化参数model_path列出的目录中搜索目标模型。如果未找到，会在cache_dir下搜索目标模型。如果仍未找到，
 则从model_source上下载模型并存放于cache_dir下。
@@ -615,10 +610,10 @@ ModelManager is a utility class provided by LazyLLM for developers to automatica
 Currently, it supports search for models from local directories, as well as automatically downloading model from
 huggingface or modelscope. Before using ModelManager, the following environment variables need to be set:
 
-    - LAZYLLM_MODEL_SOURCE: The source for model downloads, which can be set to ``huggingface`` or ``modelscope`` .
-    - LAZYLLM_MODEL_SOURCE_TOKEN: The token provided by ``huggingface`` or ``modelscope`` for private model download.
-    - LAZYLLM_MODEL_PATH: A colon-separated ``:`` list of local absolute paths for model search.
-    - LAZYLLM_MODEL_CACHE_DIR: Directory for downloaded models.
+- LAZYLLM_MODEL_SOURCE: The source for model downloads, which can be set to ``huggingface`` or ``modelscope`` .
+- LAZYLLM_MODEL_SOURCE_TOKEN: The token provided by ``huggingface`` or ``modelscope`` for private model download.
+- LAZYLLM_MODEL_PATH: A colon-separated ``:`` list of local absolute paths for model search.
+- LAZYLLM_MODEL_CACHE_DIR: Directory for downloaded models.
 
 Keyword Args: 
     model_source (str, optional): The source for model downloads, currently only supports ``huggingface`` or ``modelscope`` .
@@ -635,8 +630,8 @@ Keyword Args:
     cache_dir (str, optional): An absolute path of a directory to save downloaded models. If not provided,
         LAZYLLM_MODEL_CACHE_DIR environment variable would be used, and if LAZYLLM_MODEL_PATH is not set, the default
         value is ~/.lazyllm/model.
-        
-.. function:: ModelManager.download(model) -> str
+
+<span style="font-size: 20px;">&ensp;**`ModelManager.download(model) -> str`**</span>
 
 Download models from model_source. The function first searches for the target model in directories listed in the
 model_path parameter of ModelManager class. If not found, it searches under cache_dir. If still not found,
@@ -695,7 +690,7 @@ This class is a JSON formatter, that is, the user wants the model to output cont
 add_example('JsonFormatter', '''\
 >>> from lazyllm.components import JsonFormatter
 >>> # Assume that the model output without specifying a formatter is as follows:
-"Based on your input, here is the corresponding list of nested dictionaries:\\n\\n```python\\n[\\n    {\\n        \"title\": \"# Introduction\",\\n        \"describe\": \"Provide an overview of the topic and set the stage for the article. Discuss what the reader can expect to learn from this article.\"\\n    },\\n    {\\n        \"title\": \"## What is Artificial Intelligence?\",\\n        \"describe\": \"Define Artificial Intelligence and discuss its importance in various fields, including the medical industry.\"\\n    },\\n    {\\n        \"title\": \"## Applications of AI in Medical Field\",\\n        \"describe\": \"Outline the ways AI is used in the medical field, such as diagnosis, drug discovery, and patient treatment.\"\\n    },\\n    {\\n        \"title\": \"### Medical Image Analysis\",\\n        \"describe\": \"Discuss how AI-powered image analysis tools help in detecting diseases and analyzing medical images, such as X-rays, MRIs, and CT scans.\"\\n    },\\n    {\\n        \"title\": \"### Personalized Medicine\",\\n        \"describe\": \"Explain how AI algorithms can assist in genetic testing and tailor treatment plans based on an individual's genetic makeup.\"\\n    },\\n    {\\n        \"title\": \"### Electronic Health Records (EHRs) and Medical Data Management\",\\n        \"describe\": \"Discuss the role of AI in managing and analyzing large amounts of medical data, such as electronic health records, for improved patient care and population health management.\"\\n    },\\n    {\\n        \"title\": \"## Challenges in AI Adoption\",\\n        \"describe\": \"Highlight potential challenges to AI implementation, including data privacy, ethical concerns, and regulatory issues.\"\\n    },\\n    {\\n        \"title\": \"## Future of AI in Medicine\",\\n        \"describe\": \"Investigate the evolving role of AI in medicine, the anticipated advancements in the field, and their potential impact on medical professionals and patients.\"\\n    },\\n    {\\n        \"title\": \"# Conclusion\",\\n        \"describe\": \"Summarize the key points of the article and emphasize the potential for AI in revolutionizing the medical field.\"\\n    }\\n]\\n```\\n\\nPlease use the provided `title` and `describe` information to write your article, leveraging Markdown format to denote hierarchical levels. Each `title` should reflect its corresponding level in a Markdown format, including \"#\" for level 1, \"##\" for level 2, and \"###\" for level 3. The `describe` text provides a guide for developing each section of the article, ensuring it aligns with the overarching discussion on the application of AI in the medical field."
+"Based on your input, here is the corresponding list of nested dictionaries:\\\\n\\\\n```python\\\\n[\\\\n    {\\\\n        \\\"title\\\": \\\"# Introduction\\\",\\\\n        \\\"describe\\\": \\\"Provide an overview of the topic and set the stage for the article. Discuss what the reader can expect to learn from this article.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"## What is Artificial Intelligence?\\\",\\\\n        \\\"describe\\\": \\\"Define Artificial Intelligence and discuss its importance in various fields, including the medical industry.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"## Applications of AI in Medical Field\\\",\\\\n        \\\"describe\\\": \\\"Outline the ways AI is used in the medical field, such as diagnosis, drug discovery, and patient treatment.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"### Medical Image Analysis\\\",\\\\n        \\\"describe\\\": \\\"Discuss how AI-powered image analysis tools help in detecting diseases and analyzing medical images, such as X-rays, MRIs, and CT scans.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"### Personalized Medicine\\\",\\\\n        \\\"describe\\\": \\\"Explain how AI algorithms can assist in genetic testing and tailor treatment plans based on an individual's genetic makeup.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"### Electronic Health Records (EHRs) and Medical Data Management\\\",\\\\n        \\\"describe\\\": \\\"Discuss the role of AI in managing and analyzing large amounts of medical data, such as electronic health records, for improved patient care and population health management.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"## Challenges in AI Adoption\\\",\\\\n        \\\"describe\\\": \\\"Highlight potential challenges to AI implementation, including data privacy, ethical concerns, and regulatory issues.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"## Future of AI in Medicine\\\",\\\\n        \\\"describe\\\": \\\"Investigate the evolving role of AI in medicine, the anticipated advancements in the field, and their potential impact on medical professionals and patients.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"# Conclusion\\\",\\\\n        \\\"describe\\\": \\\"Summarize the key points of the article and emphasize the potential for AI in revolutionizing the medical field.\\\"\\\\n    }\\\\n]\\\\n```\\\\n\\\\nPlease use the provided `title` and `describe` information to write your article, leveraging Markdown format to denote hierarchical levels. Each `title` should reflect its corresponding level in a Markdown format, including \\\"#\\\" for level 1, \\\"##\\\" for level 2, and \"###\" for level 3. The `describe` text provides a guide for developing each section of the article, ensuring it aligns with the overarching discussion on the application of AI in the medical field."
 >>> jsonFormatter=JsonFormatter("[:, title]")  # ":" represents all elements in a list. "title" represents the "title" field in the json data.
 >>> model.formatter(jsonFormatter)
 >>> # The model output of the specified formatter is as follows
@@ -714,24 +709,24 @@ This type is the system default formatter. When the user does not specify anythi
 add_example('EmptyFormatter', '''\
 >>> from lazyllm.components import EmptyFormatter
 >>> # Assume that the model output without specifying a formatter is as follows:
-"Here's a nested list of dictionaries based on your user input:\\n\\n```json\\n[\\n    {\\n        \"title\": \"# AI in Medical Field\",\\n        \"describe\": \"Please provide a detailed introduction to the use of artificial intelligence in the medical field, emphasizing its potential benefits and challenges.\"\\n    },\\n    {\\n        \"title\": \"## Applications of AI in Medical Diagnosis\",\\n        \"describe\": \"Please discuss the utilization of AI in medical diagnosis, including its advantages over traditional methods and notable achievements.\"\\n    },\\n    {\\n        \"title\": \"### AI-assisted Diagnosis Tools\",\\n        \"describe\": \"Please elaborate on specific AI-assisted diagnostic tools used in medical practice, such as image analysis, predictive analytics, and decision support systems.\"\\n    },\\n    {\\n        \"title\": \"#### Image Analysis Tools\",\\n        \"describe\": \"Please provide a comprehensive overview of AI-powered image analysis tools and their role in enhancing disease detection and treatment planning.\"\\n    },\\n    {\\n        \"title\": \"#### Predictive Analytics\",\\n        \"describe\": \"Please explain how predictive analytics leverages AI to forecast diseases, identify risk factors, and develop personalized treatment protocols.\"\\n    },\\n    {\\n        \"title\": \"#### Decision Support Systems\",\\n        \"describe\": \"Please discuss the role of decision support systems in facilitating clinical decision-making and improving patient outcomes.\"\\n    },\\n    {\\n        \"title\": \"## Advantages and Limitations of AI in Medical Field\",\\n        \"describe\": \"Please identify and elaborate on the key advantages and limitations of employing AI in the medical field, including ethical, legal, and practical considerations.\"\\n    },\\n    {\\n        \"title\": \"## Future Perspectives and Innovations\",\\n        \"describe\": \"Please provide a forward-looking view of the progression of AI in the healthcare sector, predicting future developments, and discussing the potential impact on medical professionals and patients.\"\\n    },\\n    {\\n        \"title\": \"### New AI Technologies\",\\n        \"describe\": \"Please discuss emerging AI technologies that could reshape the medical field, such as machine learning, natural language processing, and robotics.\"\\n    },\\n    {\\n        \"title\": \"#### Machine Learning\",\\n        \"describe\": \"Please explain how machine learning algorithms are being used to enhance medical research, such as in drug discovery, genomics, and epidemiology.\"\\n    },\\n    {\\n        \"title\": \"#### Natural Language Processing\",\\n        \"describe\": \"Please discuss the role of natural language processing in extracting and analyzing medical data from various sources, such as electronic health records and scientific literature.\"\\n    },\\n    {\\n        \"title\": \"#### Robotics\",\\n        \"describe\": \"Please elaborate on the incorporation of AI-driven robots in medical procedures and surgeries, emphasizing their potential to revolutionize patient care and treatment options.\"\\n    },\\n    {\\n        \"title\": \"### Ethical Considerations\",\\n        \"describe\": \"Please address the ethical concerns surrounding AI in healthcare, such as data privacy, transparency, and patient autonomy, and discuss potential methods to mitigate these issues.\"\\n    }\\n]\\n```\\n\\nThis outline provides a comprehensive structure for your article, addressing various aspects of the application of AI in the medical field, from specific AI technologies to ethical considerations. You can start by elaborating on each section, providing detailed descriptions, examples, and relevant information. Be sure to include scientific research, case studies, and expert opinions to support your arguments and provide a comprehensive understanding of the subject."
+"Here's a nested list of dictionaries based on your user input:\\\\n\\\\n```json\\\\n[\\\\n    {\\\\n        \\\"title\\\": \\\"# AI in Medical Field\\\",\\\\n        \\\"describe\\\": \\\"Please provide a detailed introduction to the use of artificial intelligence in the medical field, emphasizing its potential benefits and challenges.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"## Applications of AI in Medical Diagnosis\\\",\\\\n        \\\"describe\\\": \\\"Please discuss the utilization of AI in medical diagnosis, including its advantages over traditional methods and notable achievements.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"### AI-assisted Diagnosis Tools\\\",\\\\n        \\\"describe\\\": \\\"Please elaborate on specific AI-assisted diagnostic tools used in medical practice, such as image analysis, predictive analytics, and decision support systems.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Image Analysis Tools\\\",\\\\n        \\\"describe\\\": \\\"Please provide a comprehensive overview of AI-powered image analysis tools and their role in enhancing disease detection and treatment planning.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Predictive Analytics\\\",\\\\n        \\\"describe\\\": \\\"Please explain how predictive analytics leverages AI to forecast diseases, identify risk factors, and develop personalized treatment protocols.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Decision Support Systems\\\",\\\\n        \\\"describe\\\": \\\"Please discuss the role of decision support systems in facilitating clinical decision-making and improving patient outcomes.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"## Advantages and Limitations of AI in Medical Field\\\",\\\\n        \\\"describe\\\": \\\"Please identify and elaborate on the key advantages and limitations of employing AI in the medical field, including ethical, legal, and practical considerations.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"## Future Perspectives and Innovations\\\",\\\\n        \\\"describe\\\": \\\"Please provide a forward-looking view of the progression of AI in the healthcare sector, predicting future developments, and discussing the potential impact on medical professionals and patients.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"### New AI Technologies\\\",\\\\n        \\\"describe\\\": \\\"Please discuss emerging AI technologies that could reshape the medical field, such as machine learning, natural language processing, and robotics.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Machine Learning\\\",\\\\n        \\\"describe\\\": \\\"Please explain how machine learning algorithms are being used to enhance medical research, such as in drug discovery, genomics, and epidemiology.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Natural Language Processing\\\",\\\\n        \\\"describe\\\": \\\"Please discuss the role of natural language processing in extracting and analyzing medical data from various sources, such as electronic health records and scientific literature.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Robotics\\\",\\\\n        \\\"describe\\\": \\\"Please elaborate on the incorporation of AI-driven robots in medical procedures and surgeries, emphasizing their potential to revolutionize patient care and treatment options.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"### Ethical Considerations\\\",\\\\n        \\\"describe\\\": \\\"Please address the ethical concerns surrounding AI in healthcare, such as data privacy, transparency, and patient autonomy, and discuss potential methods to mitigate these issues.\\\"\\\\n    }\\\\n]\\\\n```\\\\n\\\\nThis outline provides a comprehensive structure for your article, addressing various aspects of the application of AI in the medical field, from specific AI technologies to ethical considerations. You can start by elaborating on each section, providing detailed descriptions, examples, and relevant information. Be sure to include scientific research, case studies, and expert opinions to support your arguments and provide a comprehensive understanding of the subject."
 >>> emptyFormatter = EmptyFormatter()
 >>> model.formatter(emptyFormatter)
 >>> # The model output of the specified formatter is as follows
-"Here's a nested list of dictionaries based on your user input:\\n\\n```json\\n[\\n    {\\n        \"title\": \"# AI in Medical Field\",\\n        \"describe\": \"Please provide a detailed introduction to the use of artificial intelligence in the medical field, emphasizing its potential benefits and challenges.\"\\n    },\\n    {\\n        \"title\": \"## Applications of AI in Medical Diagnosis\",\\n        \"describe\": \"Please discuss the utilization of AI in medical diagnosis, including its advantages over traditional methods and notable achievements.\"\\n    },\\n    {\\n        \"title\": \"### AI-assisted Diagnosis Tools\",\\n        \"describe\": \"Please elaborate on specific AI-assisted diagnostic tools used in medical practice, such as image analysis, predictive analytics, and decision support systems.\"\\n    },\\n    {\\n        \"title\": \"#### Image Analysis Tools\",\\n        \"describe\": \"Please provide a comprehensive overview of AI-powered image analysis tools and their role in enhancing disease detection and treatment planning.\"\\n    },\\n    {\\n        \"title\": \"#### Predictive Analytics\",\\n        \"describe\": \"Please explain how predictive analytics leverages AI to forecast diseases, identify risk factors, and develop personalized treatment protocols.\"\\n    },\\n    {\\n        \"title\": \"#### Decision Support Systems\",\\n        \"describe\": \"Please discuss the role of decision support systems in facilitating clinical decision-making and improving patient outcomes.\"\\n    },\\n    {\\n        \"title\": \"## Advantages and Limitations of AI in Medical Field\",\\n        \"describe\": \"Please identify and elaborate on the key advantages and limitations of employing AI in the medical field, including ethical, legal, and practical considerations.\"\\n    },\\n    {\\n        \"title\": \"## Future Perspectives and Innovations\",\\n        \"describe\": \"Please provide a forward-looking view of the progression of AI in the healthcare sector, predicting future developments, and discussing the potential impact on medical professionals and patients.\"\\n    },\\n    {\\n        \"title\": \"### New AI Technologies\",\\n        \"describe\": \"Please discuss emerging AI technologies that could reshape the medical field, such as machine learning, natural language processing, and robotics.\"\\n    },\\n    {\\n        \"title\": \"#### Machine Learning\",\\n        \"describe\": \"Please explain how machine learning algorithms are being used to enhance medical research, such as in drug discovery, genomics, and epidemiology.\"\\n    },\\n    {\\n        \"title\": \"#### Natural Language Processing\",\\n        \"describe\": \"Please discuss the role of natural language processing in extracting and analyzing medical data from various sources, such as electronic health records and scientific literature.\"\\n    },\\n    {\\n        \"title\": \"#### Robotics\",\\n        \"describe\": \"Please elaborate on the incorporation of AI-driven robots in medical procedures and surgeries, emphasizing their potential to revolutionize patient care and treatment options.\"\\n    },\\n    {\\n        \"title\": \"### Ethical Considerations\",\\n        \"describe\": \"Please address the ethical concerns surrounding AI in healthcare, such as data privacy, transparency, and patient autonomy, and discuss potential methods to mitigate these issues.\"\\n    }\\n]\\n```\\n\\nThis outline provides a comprehensive structure for your article, addressing various aspects of the application of AI in the medical field, from specific AI technologies to ethical considerations. You can start by elaborating on each section, providing detailed descriptions, examples, and relevant information. Be sure to include scientific research, case studies, and expert opinions to support your arguments and provide a comprehensive understanding of the subject."
+"Here's a nested list of dictionaries based on your user input:\\\\n\\\\n```json\\\\n[\\\\n    {\\\\n        \\\"title\\\": \\\"# AI in Medical Field\\\",\\\\n        \\\"describe\\\": \\\"Please provide a detailed introduction to the use of artificial intelligence in the medical field, emphasizing its potential benefits and challenges.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"## Applications of AI in Medical Diagnosis\\\",\\\\n        \\\"describe\\\": \\\"Please discuss the utilization of AI in medical diagnosis, including its advantages over traditional methods and notable achievements.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"### AI-assisted Diagnosis Tools\\\",\\\\n        \\\"describe\\\": \\\"Please elaborate on specific AI-assisted diagnostic tools used in medical practice, such as image analysis, predictive analytics, and decision support systems.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Image Analysis Tools\\\",\\\\n        \\\"describe\\\": \\\"Please provide a comprehensive overview of AI-powered image analysis tools and their role in enhancing disease detection and treatment planning.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Predictive Analytics\\\",\\\\n        \\\"describe\\\": \\\"Please explain how predictive analytics leverages AI to forecast diseases, identify risk factors, and develop personalized treatment protocols.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Decision Support Systems\\\",\\\\n        \\\"describe\\\": \\\"Please discuss the role of decision support systems in facilitating clinical decision-making and improving patient outcomes.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"## Advantages and Limitations of AI in Medical Field\\\",\\\\n        \\\"describe\\\": \\\"Please identify and elaborate on the key advantages and limitations of employing AI in the medical field, including ethical, legal, and practical considerations.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"## Future Perspectives and Innovations\\\",\\\\n        \\\"describe\\\": \\\"Please provide a forward-looking view of the progression of AI in the healthcare sector, predicting future developments, and discussing the potential impact on medical professionals and patients.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"### New AI Technologies\\\",\\\\n        \\\"describe\\\": \\\"Please discuss emerging AI technologies that could reshape the medical field, such as machine learning, natural language processing, and robotics.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Machine Learning\\\",\\\\n        \\\"describe\\\": \\\"Please explain how machine learning algorithms are being used to enhance medical research, such as in drug discovery, genomics, and epidemiology.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Natural Language Processing\\\",\\\\n        \\\"describe\\\": \\\"Please discuss the role of natural language processing in extracting and analyzing medical data from various sources, such as electronic health records and scientific literature.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Robotics\\\",\\\\n        \\\"describe\\\": \\\"Please elaborate on the incorporation of AI-driven robots in medical procedures and surgeries, emphasizing their potential to revolutionize patient care and treatment options.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"### Ethical Considerations\\\",\\\\n        \\\"describe\\\": \\\"Please address the ethical concerns surrounding AI in healthcare, such as data privacy, transparency, and patient autonomy, and discuss potential methods to mitigate these issues.\\\"\\\\n    }\\\\n]\\\\n```\\\\n\\\\nThis outline provides a comprehensive structure for your article, addressing various aspects of the application of AI in the medical field, from specific AI technologies to ethical considerations. You can start by elaborating on each section, providing detailed descriptions, examples, and relevant information. Be sure to include scientific research, case studies, and expert opinions to support your arguments and provide a comprehensive understanding of the subject."
 ''')
 
 # ============= Prompter
 
 add_chinese_doc('prompter.PrompterBase', '''\
-Prompter的基类，自定义的Prompter需要继承此基类，并通过基类提供的 ``_init_prompt`` 函数来设置Prompt模板和Instruction的模板，以及截取结果所使用的字符串。可以查看 :doc:`/best_practice/prompt` 进一步了解Prompt的设计思想和使用方式。
+Prompter的基类，自定义的Prompter需要继承此基类，并通过基类提供的 ``_init_prompt`` 函数来设置Prompt模板和Instruction的模板，以及截取结果所使用的字符串。可以查看 :[prompt](/Best%20Practice/prompt) 进一步了解Prompt的设计思想和使用方式。
 
 Prompt模板和Instruction模板都用 ``{}`` 表示要填充的字段，其中Prompt可包含的字段有 ``system``, ``history``, ``tools``, ``user`` 等，而instruction_template可包含的字段为 ``instruction`` 和 ``extro_keys`` 。
 ``instruction`` 由应用的开发者传入， ``instruction`` 中也可以带有 ``{}`` 用于让定义可填充的字段，方便用户填入额外的信息。如果 ``instruction`` 字段为字符串，则认为是系统instruction；如果是字典，则它包含的key只能是 ``user`` 和 ``system`` 两种选择。 ``user`` 表示用户输入的instruction，在prompt中放在用户输入前面， ``system`` 表示系统instruction，在prompt中凡在system prompt后面。
 ''')
 
 add_english_doc('prompter.PrompterBase', '''\
-The base class of Prompter. A custom Prompter needs to inherit from this base class and set the Prompt template and the Instruction template using the `_init_prompt` function provided by the base class, as well as the string used to capture results. Refer to :doc:`/best_practice/prompt.rst` for further understanding of the design philosophy and usage of Prompts.
+The base class of Prompter. A custom Prompter needs to inherit from this base class and set the Prompt template and the Instruction template using the `_init_prompt` function provided by the base class, as well as the string used to capture results. Refer to  [prompt](/Best%20Practice/prompt) for further understanding of the design philosophy and usage of Prompts.
 
 Both the Prompt template and the Instruction template use ``{}`` to indicate the fields to be filled in. The fields that can be included in the Prompt are `system`, `history`, `tools`, `user` etc., while the fields that can be included in the instruction_template are `instruction` and `extro_keys`. If the ``instruction`` field is a string, it is considered as a system instruction; if it is a dictionary, it can only contain the keys ``user`` and ``system``. ``user`` represents the user input instruction, which is placed before the user input in the prompt, and ``system`` represents the system instruction, which is placed after the system prompt in the prompt.
 ``instruction`` is passed in by the application developer, and the ``instruction`` can also contain ``{}`` to define fillable fields, making it convenient for users to input additional information.
@@ -742,14 +737,14 @@ add_example('prompter.PrompterBase', '''\
 >>> class MyPrompter(PrompterBase):
 ...     def __init__(self, instruction = None, extro_keys = None, show = False):
 ...         super(__class__, self).__init__(show)
-...         instruction_template = f'{instruction}\\n{{extro_keys}}\\n'.replace('{extro_keys}', PrompterBase._get_extro_key_template(extro_keys))
-...         self._init_prompt("<system>{system}</system>\\n</instruction>{instruction}</instruction>{history}\\n{input}\\n, ## Response::", instruction_template, '## Response::')
+...         instruction_template = f'{instruction}\\\\n{{extro_keys}}\\\\n'.replace('{extro_keys}', PrompterBase._get_extro_key_template(extro_keys))
+...         self._init_prompt("<system>{system}</system>\\\\n</instruction>{instruction}</instruction>{history}\\\\n{input}\\\\n, ## Response::", instruction_template, '## Response::')
 ... 
 >>> p = MyPrompter('ins {instruction}')
 >>> p.generate_prompt('hello')
-'<system>You are an AI-Agent developed by LazyLLM.</system>\\n</instruction>ins hello\\n\\n</instruction>\\n\\n, ## Response::'
+'<system>You are an AI-Agent developed by LazyLLM.</system>\\\\n</instruction>ins hello\\\\n\\\\n</instruction>\\\\n\\\\n, ## Response::'
 >>> p.generate_prompt('hello world', return_dict=True)
-{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nins hello world\\n\\n'}, {'role': 'user', 'content': ''}]}
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nins hello world\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
 ''')
 
 add_chinese_doc('prompter.PrompterBase.generate_prompt', '''\
@@ -793,7 +788,6 @@ Args:
         input (Option[str]): The input of the large model. If this parameter is specified, any part of the output that includes the input will be completely truncated. Defaults to None.
 ''')
 
-
 add_chinese_doc('AlpacaPrompter', '''\
 Alpaca格式的Prompter，支持工具调用，不支持历史对话。
 
@@ -807,36 +801,76 @@ Args:
 add_english_doc('AlpacaPrompter', '''\
 Alpaca-style Prompter, supports tool calls, does not support historical dialogue.
 
-Sure! Here is the translation, keeping the original format:
 
 Args:
     instruction (Option[str]): Task instructions for the large model, with at least one fillable slot (e.g. ``{instruction}``). Or use a dictionary to specify the ``system`` and ``user`` instructions.
     extro_keys (Option[List]): Additional fields that will be filled with user input.
     show (bool): Flag indicating whether to print the generated Prompt, default is False.
     tools (Option[list]): Tool-set which is provived for LLMs, default is None.
-''')
 
-add_example('AlpacaPrompter', '''\
+**Examples:**\n
+```python
 >>> from lazyllm import AlpacaPrompter
 >>> p = AlpacaPrompter('hello world {instruction}')
 >>> p.generate_prompt('this is my input')
-'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello world this is my input\\n\\n\\n### Response:\\n'
+'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world this is my input\\\\n\\\\n\\\\n### Response:\\\\n'
 >>> p.generate_prompt('this is my input', return_dict=True)
-{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello world this is my input\\n\\n'}, {'role': 'user', 'content': ''}]}
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world this is my input\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
 >>>
 >>> p = AlpacaPrompter('hello world {instruction}, {input}', extro_keys=['knowledge'])
 >>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'))
-'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello world hello world, my input\\n\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nlazyllm\\n\\n\\n### Response:\\n'
+'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world hello world, my input\\\\n\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nlazyllm\\\\n\\\\n\\\\n### Response:\\\\n'
 >>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'), return_dict=True)
-{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello world hello world, my input\\n\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nlazyllm\\n\\n'}, {'role': 'user', 'content': ''}]}
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world hello world, my input\\\\n\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nlazyllm\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
 >>> 
 >>> p = AlpacaPrompter(dict(system="hello world", user="this is user instruction {input}"))
 >>> p.generate_prompt(dict(input="my input"))
-'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello word\\n\\n\\n\\nthis is user instruction my input### Response:\\n'
+'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello word\\\\n\\\\n\\\\n\\\\nthis is user instruction my input### Response:\\\\n'
 >>> p.generate_prompt(dict(input="my input"), return_dict=True)
-{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input'}]}
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input'}]}
+```
 
+<span style="font-size: 20px;">**`generate_prompt(input: str | Dict[str, str] | None = None, history: List[List[str] | Dict[str, Any]] | None = None, tools: List[Dict[str, Any]] | None = None, label: str | None = None, *, show: bool = False, return_dict: bool = False)→ str | Dict `**</span>
+
+Based on the user's input, generate the corresponding Prompt.
+
+Args:
+    instruction (Option[str]): Task instructionspecify the ``system`` and ``user`` instructions.\n
+    extro_keys (Option[List]): Additional fields that will be filled with user input.\n
+    show (bool): Flag indicating whether to print the generated Prompt, default is False.\n
+    tools (Option[list]): Tool-set which is provived for LLMs, default is None.\n
+
+
+<span style="font-size: 20px;">**`get_response(output: str, input: str | None = None)→ str`**</span>
+
+Used to truncate the Prompt, only retaining valuable outputs.
+
+Args:
+    output (str) :The output of the large model
+    input (Optional[str]) :The input to the large model. If this parameter is specified, the function will truncate any part of the output that contains the input. Default is None.                
 ''')
+
+# add_example('AlpacaPrompter', '''\
+# >>> from lazyllm import AlpacaPrompter
+# >>> p = AlpacaPrompter('hello world {instruction}')
+# >>> p.generate_prompt('this is my input')
+# 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world this is my input\\\\n\\\\n\\\\n### Response:\\\\n'
+# >>> p.generate_prompt('this is my input', return_dict=True)
+# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world this is my input\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
+# >>>
+# >>> p = AlpacaPrompter('hello world {instruction}, {input}', extro_keys=['knowledge'])
+# >>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'))
+# 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world hello world, my input\\\\n\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nlazyllm\\\\n\\\\n\\\\n### Response:\\\\n'
+# >>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'), return_dict=True)
+# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world hello world, my input\\\\n\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nlazyllm\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
+# >>>
+# >>> p = AlpacaPrompter(dict(system="hello world", user="this is user instruction {input}"))
+# >>> p.generate_prompt(dict(input="my input"))
+# 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello word\\\\n\\\\n\\\\n\\\\nthis is user instruction my input### Response:\\\\n'
+# >>> p.generate_prompt(dict(input="my input"), return_dict=True)
+# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input'}]}
+
+# ''')
 
 add_chinese_doc('ChatPrompter', '''\
 多轮对话的Prompt，支持工具调用和历史对话
@@ -854,30 +888,73 @@ Args:
     instruction (Option[str]): Task instructions for the large model, with 0 to multiple fillable slot, represented by ``{}``. For user instructions, you can pass a dictionary with fields ``user`` and ``system``.
     extro_keys (Option[List]): Additional fields that will be filled with user input.
     show (bool): Flag indicating whether to print the generated Prompt, default is False.
-''')
 
-add_example('ChatPrompter', '''\
+**Examples:**\n
+```python
 >>> from lazyllm import ChatPrompter
 >>> p = ChatPrompter('hello world')
 >>> p.generate_prompt('this is my input')
-'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\nthis is my input\\n<|Assistant|>:\\n'
+'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is my input\\\\n<|Assistant|>:\\\\n'
 >>> p.generate_prompt('this is my input', return_dict=True)
-{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nhello world\\n\\n'}, {'role': 'user', 'content': 'this is my input'}]}
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is my input'}]}
 >>>
 >>> p = ChatPrompter('hello world {instruction}', extro_keys=['knowledge'])
 >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'))
-'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nLazyLLM-Knowledge\\n\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\nthis is my inp\\n<|Assistant|>:\\n'
+'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is my inp\\\\n<|Assistant|>:\\\\n'
 >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), return_dict=True)
-{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nhello world this is my ins\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nLazyLLM-Knowledge\\n\\n\\n'}, {'role': 'user', 'content': 'this is my inp'}]}
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n'}, {'role': 'user', 'content': 'this is my inp'}]}
 >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), history=[['s1', 'e1'], ['s2', 'e2']])
-'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nLazyLLM-Knowledge\\n\\n\\n<|end_system|>\\n\\n<|Human|>:s1<|Assistant|>:e1<|Human|>:s2<|Assistant|>:e2\\n<|Human|>:\\nthis is my inp\\n<|Assistant|>:\\n'
+'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n<|end_system|>\\\\n\\\\n<|Human|>:s1<|Assistant|>:e1<|Human|>:s2<|Assistant|>:e2\\\\n<|Human|>:\\\\nthis is my inp\\\\n<|Assistant|>:\\\\n'
 >>>
 >>> p = ChatPrompter(dict(system="hello world", user="this is user instruction {input} "))
 >>> p.generate_prompt(dict(input="my input", query="this is user query"))
-'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\n\\n<|end_system|>\\n\\n\\n<|Human|>:\\nthis is user instruction my input this is user query\\n<|Assistant|>:\\n'
+'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is user instruction my input this is user query\\\\n<|Assistant|>:\\\\n'
 >>> p.generate_prompt(dict(input="my input", query="this is user query"), return_dict=True)
-{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nhello world\\n\\n'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
+```
+<span style="font-size: 20px;">**`generate_prompt(input: str | Dict[str, str] | None = None, history: List[List[str] | Dict[str, Any]] | None = None, tools: List[Dict[str, Any]] | None = None, label: str | None = None, *, show: bool = False, return_dict: bool = False)→ str | Dict `**</span>
+
+Based on the user's input, generate the corresponding Prompt.
+
+Args:
+    instruction (Option[str]): Task instructionspecify the ``system`` and ``user`` instructions.\n
+    extro_keys (Option[List]): Additional fields that will be filled with user input.\n
+    show (bool): Flag indicating whether to print the generated Prompt, default is False.\n
+    tools (Option[list]): Tool-set which is provived for LLMs, default is None.\n
+
+
+<span style="font-size: 20px;">**`get_response(output: str, input: str | None = None)→ str`**</span>
+
+Used to truncate the Prompt, only retaining valuable outputs.
+
+Args:
+    output (str) :The output of the large model
+    input (Optional[str]) :The input to the large model. If this parameter is specified, the function will truncate any part of the output that contains the input. Default is None.                
+
 ''')
+
+# add_example('ChatPrompter', '''\
+# >>> from lazyllm import ChatPrompter
+# >>> p = ChatPrompter('hello world')
+# >>> p.generate_prompt('this is my input')
+# '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is my input\\\\n<|Assistant|>:\\\\n'
+# >>> p.generate_prompt('this is my input', return_dict=True)
+# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is my input'}]}
+# >>>
+# >>> p = ChatPrompter('hello world {instruction}', extro_keys=['knowledge'])
+# >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'))
+# '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is my inp\\\\n<|Assistant|>:\\\\n'
+# >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), return_dict=True)
+# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n'}, {'role': 'user', 'content': 'this is my inp'}]}
+# >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), history=[['s1', 'e1'], ['s2', 'e2']])
+# '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n<|end_system|>\\\\n\\\\n<|Human|>:s1<|Assistant|>:e1<|Human|>:s2<|Assistant|>:e2\\\\n<|Human|>:\\\\nthis is my inp\\\\n<|Assistant|>:\\\\n'
+# >>>
+# >>> p = ChatPrompter(dict(system="hello world", user="this is user instruction {input} "))
+# >>> p.generate_prompt(dict(input="my input", query="this is user query"))
+# '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is user instruction my input this is user query\\\\n<|Assistant|>:\\\\n'
+# >>> p.generate_prompt(dict(input="my input", query="this is user query"), return_dict=True)
+# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
+# ''')
 
 # ============= Launcher
 
@@ -888,7 +965,7 @@ add_example = functools.partial(utils.add_example, module=lazyllm.launcher)
 # Launcher-EmptyLauncher
 add_chinese_doc('EmptyLauncher', '''\
 此类是 ``LazyLLMLaunchersBase`` 的子类，作为一个本地的启动器。
-                
+
 Args:
     subprocess (bool): 是否使用子进程来启动。默认为 `False`。
     sync (bool): 是否同步执行作业。默认为 `True`，否则为异步执行。
@@ -914,7 +991,7 @@ add_chinese_doc('SlurmLauncher', '''\
 此类是 ``LazyLLMLaunchersBase`` 的子类，作为slurm启动器。
 
 具体而言，它提供了启动和配置 Slurm 作业的方法，包括指定分区、节点数量、进程数量、GPU 数量以及超时时间等参数。
-                
+
 Args:
     partition (str): 要使用的 Slurm 分区。默认为 ``None``，此时将使用 ``lazyllm.config['partition']`` 中的默认分区。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SLURM_PART=a100`` 。
     nnode  (int): 要使用的节点数量。默认为 ``1``。
@@ -929,7 +1006,7 @@ add_english_doc('SlurmLauncher', '''\
 This class is a subclass of ``LazyLLMLaunchersBase`` and acts as a Slurm launcher.
 
 Specifically, it provides methods to start and configure Slurm jobs, including specifying parameters such as the partition, number of nodes, number of processes, number of GPUs, and timeout settings.
-                
+
 Args:
     partition (str): The Slurm partition to use. Defaults to ``None``, in which case the default partition in ``lazyllm.config['partition']`` will be used. This configuration can be enabled by setting environment variables, such as ``export LAZYLLM_SLURM_PART=a100``.
     nnode  (int): The number of nodes to use. Defaults to ``1``.
@@ -950,7 +1027,7 @@ add_chinese_doc('ScoLauncher', '''\
 此类是 ``LazyLLMLaunchersBase`` 的子类，作为SCO (Sensecore)启动器。
 
 具体而言，它提供了启动和配置 SCO 作业的方法，包括指定分区、工作空间名称、框架类型、节点数量、进程数量、GPU 数量以及是否使用 torchrun 等参数。
-        
+
 Args:
     partition (str): 要使用的分区。默认为 ``None``，此时将使用 ``lazyllm.config['partition']`` 中的默认分区。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SLURM_PART=a100`` 。
     workspace_name (str): SCO 上的工作空间名称。默认为 ``lazyllm.config['sco.workspace']`` 中的配置。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SCO_WORKSPACE=myspace`` 。
@@ -967,7 +1044,7 @@ add_english_doc('ScoLauncher', '''\
 This class is a subclass of ``LazyLLMLaunchersBase`` and acts as a SCO launcher.
 
 Specifically, it provides methods to start and configure SCO jobs, including specifying parameters such as the partition, workspace name, framework type, number of nodes, number of processes, number of GPUs, and whether to use torchrun or not.
-                
+
 Args:
     partition (str): The Slurm partition to use. Defaults to ``None``, in which case the default partition in ``lazyllm.config['partition']`` will be used. This configuration can be enabled by setting environment variables, such as ``export LAZYLLM_SLURM_PART=a100``.
     workspace_name (str): The workspace name on SCO. Defaults to the configuration in ``lazyllm.config['sco.workspace']``. This configuration can be enabled by setting environment variables, such as ``export LAZYLLM_SCO_WORKSPACE=myspace``.

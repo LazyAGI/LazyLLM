@@ -38,7 +38,7 @@ def get_all_examples():   # Examples are not always exported, so process them in
         result.append("\n".join(example_lines))
     return result
 
-lazyllm.config.add('language', str, 'CHINESE', 'LANGUAGE')
+lazyllm.config.add('language', str, 'ENGLISH', 'LANGUAGE')
 
 def add_doc(obj_name, docstr, module, append=''):
     obj = module
@@ -81,6 +81,6 @@ def add_example(obj_name, docstr, module=lazyllm):
         all_examples.extend(docstr)
 
     if lazyllm.config['language'].upper() == 'CHINESE':
-        add_doc(obj_name, docstr, module, '\n\nExample::\n')
+        add_doc(obj_name, docstr, module, '\n\nExamples:\n')
     if lazyllm.config['language'].upper() == 'ENGLISH':
-        add_doc(obj_name, docstr, module, '\n\nExample::\n')
+        add_doc(obj_name, docstr, module, '\n\nExamples:\n')
