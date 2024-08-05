@@ -81,7 +81,9 @@ def get_cross_encoder_model(model_name: str):
 @RerankerV2.register_reranker(batch=True)
 def ModuleReranker(
     nodes: List[DocNode], model: str, query: str, topk: int = -1, **kwargs
-):
+) -> List[DocNode]:
+    if not nodes:
+        return []
     cross_encoder = get_cross_encoder_model(model)
     query_pairs = [
         (query, node.get_text(metadata_mode=MetadataMode.EMBED)) for node in nodes

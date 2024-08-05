@@ -13,7 +13,7 @@ model_groups = {
 	},
 	"QWen": {
 		"prompt_keys": {
-            'sos': '<|im_start|>system\n', 'soh': '<|im_start|>user\n', 'soa': '<|im_start|>assistant\n', 'eos': '<|im_end|>\n', 'eoh': '<|im_end|>\n', 'eoa': '<|im_end|>', 'separator': '\n', 'stop_words': ['<|im_end|>'],
+            'sos': '<|im_start|>system\n', 'soh': '<|im_start|>user\n', 'soa': '<|im_start|>assistant\n', 'soe': '<|im_start|>environment\n', 'eos': '<|im_end|>\n', 'eoh': '<|im_end|>\n', 'eoa': '<|im_end|>', 'eoe': '<|im_end|>\n', 'separator': '\n', 'stop_words': ['<|im_end|>'], 'tool_start_token': '<|action_start|><|function|>', 'tool_end_token': '<|action_end|>', 'tool_args_token': "<|args|>",
             'system': "You are a helpful assistant."
             },
 	},
@@ -25,7 +25,7 @@ model_groups = {
 	},
 	"internlm2": {
 		"prompt_keys": {
-            'sos': '<|im_start|>system\n', 'soh': '<|im_start|>user\n', 'soa': '<|im_start|>assistant\n', 'soe': '<|im_start|>environment\n', 'plugin': '<|plugin|>', 'interpreter': '<|interpreter|>', 'eos': '<|im_end|>\n', 'eoh': '<|im_end|>\n', 'eoa': '<|im_end|>', 'eoe': '<|im_end|>\n', 'separator': '\n', 'stop_words': ['<|im_end|>', '<|action_end|>'],
+            'sos': '<|im_start|>system\n', 'soh': '<|im_start|>user\n', 'soa': '<|im_start|>assistant\n', 'soe': '<|im_start|>environment\n', 'plugin': '<|plugin|>', 'interpreter': '<|interpreter|>', 'eos': '<|im_end|>\n', 'eoh': '<|im_end|>\n', 'eoa': '<|im_end|>', 'eoe': '<|im_end|>\n', 'separator': '\n', 'stop_words': ['<|im_end|>'], 'tool_start_token': '<|function|>', 'tool_end_token': '<|action_end|>', 'tool_args_token': '<|args|>',
             'system': "You are an AI assistant whose name is InternLM (书生·浦语).\n- InternLM (书生·浦语) is a conversational language model that is developed by Shanghai AI Laboratory (上海人工智能实验室). It is designed to be helpful, honest, and harmless.\n- InternLM (书生·浦语) can understand and communicate fluently in the language chosen by the user such as English and 中文."
             },
 	},
@@ -41,6 +41,9 @@ model_groups = {
 	},
 	"GLM3": {
 		"prompt_keys": {'sos': '<|system|>\n', 'soh': '<|user|>\n', 'soa': '<|assistant|>\n', 'plugin': '<|observation|>\n', 'stop_words': ['<|user|>', '<|observation|>']},
+	},
+	"GLM4": {
+		"prompt_keys": {'sos': '<|system|>\n', 'soh': '<|user|>\n', 'soa': '<|assistant|>\n', 'soe': '<|observation|>\n', 'eoe': '\n', 'plugin': '<|observation|>\n', 'stop_words': ['<|user|>', '<|observation|>'], 'tool_start_token': '✿FUNCTION✿: ', 'tool_args_token': '✿ARGS✿: ', 'tool_end_token': '\n'},
 	},
 }
 
@@ -95,6 +98,10 @@ model_name_mapping = {
 		"source": {"huggingface": "THUDM/chatglm3-6b-128k", "modelscope": "ZhipuAI/chatglm3-6b-128k"},
 		"prompt_keys": model_groups["GLM3"]["prompt_keys"],
 		},
+    "GLM-4-9B-Chat": {
+		"source": {"huggingface": "THUDM/glm-4-9b-chat", "modelscope": "ZhipuAI/glm-4-9b-chat"},
+		"prompt_keys": model_groups["GLM4"]["prompt_keys"],
+		},
 
     "Qwen-1.8B": {
 		"source": {"huggingface": "Qwen/Qwen-1_8B", "modelscope": "qwen/Qwen-1_8B"},
@@ -132,8 +139,24 @@ model_name_mapping = {
 		"source": {"huggingface": "Qwen/Qwen1.5-14B", "modelscope": "qwen/Qwen1.5-14B"},
 		"prompt_keys": model_groups["QWen"]["prompt_keys"],
 		},
+    "Qwen1.5-14B-Chat": {
+		"source": {"huggingface": "Qwen/Qwen1.5-14B-Chat", "modelscope": "qwen/Qwen1.5-14B-Chat"},
+		"prompt_keys": model_groups["QWen"]["prompt_keys"],
+		},
     "Qwen1.5-72B": {
 		"source": {"huggingface": "Qwen/Qwen1.5-72B", "modelscope": "qwen/Qwen1.5-72B"},
+		"prompt_keys": model_groups["QWen"]["prompt_keys"],
+		},
+    "Qwen2-7B-Instruct": {
+		"source": {"huggingface": "Qwen/Qwen2-7B-Instruct", "modelscope": "qwen/Qwen2-7B-Instruct"},
+		"prompt_keys": model_groups["QWen"]["prompt_keys"],
+		},
+    "Qwen2-72B-Instruct-AWQ": {
+		"source": {"huggingface": "Qwen/Qwen2-72B-Instruct-AWQ", "modelscope": "qwen/Qwen2-72B-Instruct-AWQ"},
+		"prompt_keys": model_groups["QWen"]["prompt_keys"],
+		},
+    "Qwen2-72B-Instruct": {
+		"source": {"huggingface": "Qwen/Qwen2-72B-Instruct", "modelscope": "qwen/Qwen2-72B-Instruct"},
 		"prompt_keys": model_groups["QWen"]["prompt_keys"],
 		},
     "internlm-20b": {

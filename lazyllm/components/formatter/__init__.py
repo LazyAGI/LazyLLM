@@ -1,6 +1,5 @@
 from .formatterBase import LazyLLMFormatterBase, LazyLLMFormatterBase as FormatterBase, EmptyFormatter
 from .jsonFormatter import JsonFormatter
-from .funcCallFormatter import FunctionCallFormatter
 
 
 class Formatter(object):
@@ -18,6 +17,5 @@ __all__ = [
     'FormatterBase',
     'Formatter',
     'EmptyFormatter',
-    'JsonFormatter',
-    'FunctionCallFormatter'
+    'JsonFormatter'
 ]

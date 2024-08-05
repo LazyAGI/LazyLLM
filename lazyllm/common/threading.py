@@ -2,6 +2,7 @@ import threading
 from queue import Queue
 import functools
 from .globals import globals
+from concurrent.futures import ThreadPoolExecutor as TPE
 
 def _sid_setter(sid):
     globals._init_sid(sid)
@@ -28,3 +29,12 @@ class Thread(threading.Thread):
         if isinstance(r, Exception):
             raise r
         return r
+
+
+class ThreadPoolExecutor(TPE):
+    def submit(self, fn, /, *args, **kwargs):
+        def impl(sid, *a, **kw):
+            globals._init_sid(sid)
+            return fn(*a, **kw)
+
+        return super(__class__, self).submit(functools.partial(impl, globals._sid), *args, **kwargs)

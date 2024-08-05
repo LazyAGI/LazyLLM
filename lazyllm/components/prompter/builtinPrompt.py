@@ -1,9 +1,9 @@
 from typing import Dict, Union, Any, List, Callable, Optional
 from ...common import LazyLLMRegisterMetaClass
 from lazyllm import LOG
+import json5 as json
 from functools import reduce
 import copy
-import json
 import re
 
 class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
@@ -32,16 +32,29 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             return prefix + ''.join([f"### {k}:\n{{{k}}}\n\n" for k in extro_keys])
         return ''
 
+    def _handle_tool_call_instruction(self):
+        tool_dict = {}
+        for key in ["tool_start_token", "tool_args_token", "tool_end_token"]:
+            if getattr(self, f"_{key}", None) and key in self._instruction_template:
+                tool_dict[key] = getattr(self, f"_{key}")
+        return reduce(lambda s, kv: s.replace(f"{{{kv[0]}}}", kv[1]), tool_dict.items(), self._instruction_template)
+
     def _set_model_configs(self, system: str = None, sos: Union[None, str] = None, soh: Union[None, str] = None,
                            soa: Union[None, str] = None, eos: Union[None, str] = None,
                            eoh: Union[None, str] = None, eoa: Union[None, str] = None,
                            soe: Union[None, str] = None, eoe: Union[None, str] = None,
                            separator: Union[None, str] = None, plugin: Union[None, str] = None,
-                           interpreter: Union[None, str] = None, stop_words: Union[None, List[str]] = None):
+                           interpreter: Union[None, str] = None, stop_words: Union[None, List[str]] = None,
+                           tool_start_token: Union[None, str] = None, tool_end_token: Union[None, str] = None,
+                           tool_args_token: Union[None, str] = None):
 
         local = locals()
-        for name in ['system', 'sos', 'soh', 'soa', 'eos', 'eoh', 'eoa']:
+        for name in ['system', 'sos', 'soh', 'soa', 'eos', 'eoh', 'eoa', 'soe', 'eoe', 'tool_start_token',
+                     'tool_end_token', 'tool_args_token']:
             if local[name] is not None: setattr(self, f'_{name}', local[name])
+
+        if getattr(self, "_instruction_template", None):
+            self._instruction_template = self._handle_tool_call_instruction()
 
     def _get_tools(self, tools, *, return_dict):
         if self._tools:
@@ -50,7 +63,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
         return tools if return_dict else '### Function-call Tools. \n\n' + json.dumps(tools) + '\n\n' if tools else ''
 
-    def _get_histories(self, history, *, return_dict):
+    def _get_histories(self, history, *, return_dict):  # noqa: C901
         if history is None or len(history) == 0: return ''
         if return_dict:
             content = []
@@ -66,9 +79,35 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                     raise ValueError("history must be a list of list or dict")
             return content
         else:
-            if not isinstance(history[0], list):
-                raise NotImplementedError('Cannot transform json history to list now')
-            return ''.join([f'{self._soh}{h}{self._eoh}{self._soa}{a}{self._eoa}' for h, a in history])
+            if isinstance(history[0], list):
+                return ''.join([f'{self._soh}{h}{self._eoh}{self._soa}{a}{self._eoa}' for h, a in history])
+            elif isinstance(history[0], dict):
+                ret = ""
+                for item in history:
+                    if item['role'] == "user":
+                        ret += f'{self._soh}{item["content"]}{self._eoh}'
+                    elif item['role'] == "assistant":
+                        ret += f'{self._soa}'
+                        ret += f'{item.get("content", "")}'
+                        for idx in range(len(item.get('tool_calls', []))):
+                            tool = item['tool_calls'][idx]['function']
+                            if getattr(self, "_tool_args_token", None):
+                                tool = tool['name'] + self._tool_args_token + \
+                                    json.dumps(tool['arguments'], ensure_ascii=False)
+                            ret += (f'{getattr(self, "_tool_start_token", "")}' + '\n'
+                                    f'{tool}'
+                                    f'{getattr(self, "_tool_end_token", "")}' + '\n')
+                        ret += f'{self._eoa}'
+                    elif item['role'] == "tool":
+                        try:
+                            content = json.loads(item['content'].strip())
+                        except Exception:
+                            content = item['content']
+                        ret += f'{getattr(self, "_soe", "")}{content}{getattr(self, "_eoe", "")}'
+
+                return ret
+            else:
+                raise NotImplementedError('Cannot transform json history to {type(history[0])} now')
 
     def _get_instruction_and_input(self, input):
         prompt_keys = list(set(re.findall(r'\{(\w+)\}', self._instruction_template)))
@@ -91,8 +130,18 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
     # Used for TrainableModule(local deployed)
     def _generate_prompt_impl(self, instruction, input, user, history, tools, label):
+        is_tool = False
+        if isinstance(input, dict):
+            input = input.get('content', '')
+            is_tool = input.get('role') == 'tool'
+        elif isinstance(input, list):
+            is_tool = any(item.get('role') == 'tool' for item in input)
+            input = "\n".join([item.get('content', '') for item in input])
         params = dict(system=self._system, instruction=instruction, input=input, user=user, history=history, tools=tools,
                       sos=self._sos, eos=self._eos, soh=self._soh, eoh=self._eoh, soa=self._soa, eoa=self._eoa)
+        if is_tool:
+            params['soh'] = getattr(self, "_soe", self._soh)
+            params['eoh'] = getattr(self, "_eoe", self._eoh)
         return self._template.format(**params) + (label if label else '')
 
     # Used for OnlineChatModule
@@ -155,9 +204,10 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     def get_response(self, output: str, input: Union[str, None] = None) -> str:
         if input and output.startswith(input):
             return output[len(input):]
-        return output if getattr(self, '_split', None) is None else output.split(self._split)[-1]
+        return output if getattr(self, "_split", None) is None else output.split(self._split)[-1]
 
 class EmptyPrompter(LazyLLMPrompterBase):
+
     def generate_prompt(self, input, history=None, tools=None, label=None, show=False):
         if self._show or show: LOG.info(input)
         return input

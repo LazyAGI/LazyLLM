@@ -100,7 +100,7 @@ class SentenceSplitter(NodeTransform):
         ]
 
         self._sub_sentence_split_fns = [
-            partial(re.findall, pattern="[^,.;。？！]+[,.;。？！]?"),
+            lambda t: re.findall(r"[^,.;。？！]+[,.;。？！]?", t),
             partial(split_text_keep_separator, separator=" "),
             list,  # split by character
         ]
@@ -260,7 +260,7 @@ class FuncNodeTransform(NodeTransform):
     def __init__(self, func: Callable[[str], List[str]]):
         self._func = func
 
-    def transform(self, document: DocNode, **kwargs) -> List[str]:
-        result = self._func(document.get_text())
+    def transform(self, node: DocNode, **kwargs) -> List[str]:
+        result = self._func(node.get_text())
         text_splits = [result] if isinstance(result, str) else result
         return text_splits
