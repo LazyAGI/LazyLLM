@@ -117,15 +117,20 @@ class TestDeploy(object):
         assert '但愿人长久' in res
 
         _, client = self.warp_into_web(m)
-        chat_history = [[audio_path, None]]
-        ans = client.predict(self.use_context,
-                             chat_history,
-                             self.stream_output,
-                             self.append_text,
-                             api_name="/_respond_stream")
-        res = ans[0][-1][-1]
+
+        def client_send(content):
+            chat_history = [[content, None]]
+            ans = client.predict(self.use_context,
+                                 chat_history,
+                                 self.stream_output,
+                                 self.append_text,
+                                 api_name="/_respond_stream")
+            return ans
+        res = client_send(audio_path)[0][-1][-1]
         assert type(res) is str
         assert '但愿人长久' in res
+        res = client_send('hi')[0][-1][-1]
+        assert "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported." == res
 
     def test_vlm_and_lmdeploy(self):
         chat = lazyllm.TrainableModule('internvl-chat-2b-v1-5').deploy_method(deploy.LMDeploy)

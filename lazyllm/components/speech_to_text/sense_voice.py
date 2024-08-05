@@ -24,9 +24,9 @@ class SenseVoice(object):
         self.model = None
         self.init_flag = lazyllm.once_flag()
         if init:
-            lazyllm.call_once(self.init_flag, self.load_sd)
+            lazyllm.call_once(self.init_flag, self.load_stt)
 
-    def load_sd(self):
+    def load_stt(self):
         self.model = funasr.AutoModel(
             model=self.base_path,
             trust_remote_code=False,
@@ -36,7 +36,7 @@ class SenseVoice(object):
         )
 
     def __call__(self, string):
-        lazyllm.call_once(self.init_flag, self.load_sd)
+        lazyllm.call_once(self.init_flag, self.load_stt)
         if isinstance(string, dict):
             if string['audio']:
                 string = string['audio'][0] if isinstance(string['audio'], list) else string['audio']
@@ -62,11 +62,10 @@ class SenseVoice(object):
 
     @classmethod
     def rebuild(cls, base_path):
-        assert os.environ['LAZYLLM_ON_CLOUDPICKLE'] == 'OFF'
-        return cls(base_path, init=True)
+        init = True if os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'OFF' else False
+        return cls(base_path, init=init)
 
     def __reduce__(self):
-        assert os.environ['LAZYLLM_ON_CLOUDPICKLE'] == 'ON'
         return SenseVoice.rebuild, (self.base_path, )
 
 class SenseVoiceDeploy(object):
@@ -84,11 +83,12 @@ class SenseVoiceDeploy(object):
         self.launcher = launcher
 
     def __call__(self, finetuned_model=None, base_model=None):
-        if not os.path.exists(finetuned_model) or \
+        if not finetuned_model:
+            finetuned_model = base_model
+        elif not os.path.exists(finetuned_model) or \
             not any(filename.endswith('.pt', '.bin', '.safetensors')
                     for _, _, filename in os.walk(finetuned_model) if filename):
-            if not finetuned_model:
-                LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
-                            f"base_model({base_model}) will be used")
+            LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
+                        f"base_model({base_model}) will be used")
             finetuned_model = base_model
         return lazyllm.deploy.RelayServer(func=SenseVoice(finetuned_model), launcher=self.launcher)()

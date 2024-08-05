@@ -252,6 +252,8 @@ class WebModule(ModuleBase):
                     if h not in globals['chat_history']: globals['chat_history'][h] = dict()
                     globals['chat_history'][h] = history
             result = self.m(input)
+            if files:
+                globals['global_parameters'][self.m._module_id].pop('files', None)
 
             def get_log_and_message(s):
                 if not self.trace_mode == WebModule.Mode.Appendix:

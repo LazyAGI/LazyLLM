@@ -60,11 +60,10 @@ class StableDiffusion3(object):
 
     @classmethod
     def rebuild(cls, base_sd, embed_batch_size):
-        assert os.environ['LAZYLLM_ON_CLOUDPICKLE'] == 'OFF'
-        return cls(base_sd, embed_batch_size, True)
+        init = True if os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'OFF' else False
+        return cls(base_sd, embed_batch_size=embed_batch_size, init=init)
 
     def __reduce__(self):
-        assert os.environ['LAZYLLM_ON_CLOUDPICKLE'] == 'ON'
         return StableDiffusion3.rebuild, (self.base_sd, self.embed_batch_size)
 
 class StableDiffusionDeploy(object):
@@ -76,11 +75,12 @@ class StableDiffusionDeploy(object):
         self.launcher = launcher
 
     def __call__(self, finetuned_model=None, base_model=None):
-        if not os.path.exists(finetuned_model) or \
-            not any(filename.endswith('.bin') or filename.endswith('.safetensors')
+        if not finetuned_model:
+            finetuned_model = base_model
+        elif not os.path.exists(finetuned_model) or \
+            not any(filename.endswith('.bin', '.safetensors')
                     for _, _, filename in os.walk(finetuned_model) if filename):
-            if not finetuned_model:
-                LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
-                            f"base_model({base_model}) will be used")
+            LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
+                        f"base_model({base_model}) will be used")
             finetuned_model = base_model
         return lazyllm.deploy.RelayServer(func=StableDiffusion3(finetuned_model), launcher=self.launcher)()
