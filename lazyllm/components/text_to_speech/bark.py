@@ -46,12 +46,12 @@ class Bark(object):
         return json.dumps(res)
 
     @classmethod
-    def rebuild(cls, base_path):
-        init = True if os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'OFF' else False
+    def rebuild(cls, base_path, init):
         return cls(base_path, init=init)
 
     def __reduce__(self):
-        return Bark.rebuild, (self.base_path, )
+        init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
+        return Bark.rebuild, (self.base_path, init)
 
 class BarkDeploy(object):
     keys_name_handle = {

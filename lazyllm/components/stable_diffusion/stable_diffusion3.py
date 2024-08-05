@@ -59,12 +59,12 @@ class StableDiffusion3(object):
         return json.dumps(res)
 
     @classmethod
-    def rebuild(cls, base_sd, embed_batch_size):
-        init = True if os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'OFF' else False
+    def rebuild(cls, base_sd, embed_batch_size, init):
         return cls(base_sd, embed_batch_size=embed_batch_size, init=init)
 
     def __reduce__(self):
-        return StableDiffusion3.rebuild, (self.base_sd, self.embed_batch_size)
+        init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
+        return StableDiffusion3.rebuild, (self.base_sd, self.embed_batch_size, init)
 
 class StableDiffusionDeploy(object):
     message_format = None

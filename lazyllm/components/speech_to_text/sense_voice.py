@@ -61,12 +61,12 @@ class SenseVoice(object):
         return text
 
     @classmethod
-    def rebuild(cls, base_path):
-        init = True if os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'OFF' else False
+    def rebuild(cls, base_path, init):
         return cls(base_path, init=init)
 
     def __reduce__(self):
-        return SenseVoice.rebuild, (self.base_path, )
+        init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
+        return SenseVoice.rebuild, (self.base_path, init)
 
 class SenseVoiceDeploy(object):
     keys_name_handle = {
