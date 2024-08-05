@@ -270,6 +270,7 @@ class UrlModule(ModuleBase, UrlTemplate):
         if isinstance(self, ServerModule):
             assert llm_chat_history is None and tools is None
             headers['Global-Parameters'] = encode_request(globals._data)
+            headers['Session-ID'] = encode_request(globals._sid)
             data = encode_request((__input, kw))
         elif self.template_message:
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)

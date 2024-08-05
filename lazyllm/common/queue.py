@@ -1,6 +1,7 @@
 import sqlite3
 import threading
 from abc import ABC, abstractmethod
+from .globals import globals
 
 class FileSystemQueue(ABC):
 
@@ -10,20 +11,27 @@ class FileSystemQueue(ABC):
         else:
             return super().__new__(cls, *args, **kw)
 
-    @abstractmethod
-    def enqueue(self, id, message): pass
+    def enqueue(self, message): return self._enqueue(globals._sid, message)
+    def dequeue(self, limit=None): return self._dequeue(globals._sid, limit=limit)
+    def peek(self): return self._peek(globals._sid)
+    def size(self): return self._size(globals._sid)
+    def clear(self): return self._clear(globals._sid)
+    def init(self): self.clear()
 
     @abstractmethod
-    def dequeue(self, id): pass
+    def _enqueue(self, id, message): pass
 
     @abstractmethod
-    def peek(self, id): pass
+    def _dequeue(self, id, limit=None): pass
 
     @abstractmethod
-    def size(self, id): pass
+    def _peek(self, id): pass
 
     @abstractmethod
-    def clear(self, id): pass
+    def _size(self, id): pass
+
+    @abstractmethod
+    def _clear(self, id): pass
 
 
 class SQLiteQueue(FileSystemQueue):
@@ -45,7 +53,7 @@ class SQLiteQueue(FileSystemQueue):
             ''')
             conn.commit()
 
-    def enqueue(self, id, message):
+    def _enqueue(self, id, message):
         with self._lock:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -60,7 +68,7 @@ class SQLiteQueue(FileSystemQueue):
                 ''', (id, next_pos, message))
                 conn.commit()
 
-    def dequeue(self, id, limit=None):
+    def _dequeue(self, id, limit=None):
         """Retrieve and remove all messages from the queue."""
         with self._lock:
             with sqlite3.connect(self.db_path) as conn:
@@ -81,7 +89,7 @@ class SQLiteQueue(FileSystemQueue):
                 conn.commit()
                 return messages
 
-    def peek(self, id):
+    def _peek(self, id):
         with self._lock:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -93,7 +101,7 @@ class SQLiteQueue(FileSystemQueue):
                     return None
                 return row[0]
 
-    def size(self, id):
+    def _size(self, id):
         with self._lock:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -102,7 +110,7 @@ class SQLiteQueue(FileSystemQueue):
                 ''', (id,))
                 return cursor.fetchone()[0]
 
-    def clear(self, id):
+    def _clear(self, id):
         with self._lock:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
