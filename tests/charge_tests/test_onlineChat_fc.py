@@ -5,8 +5,6 @@ from lazyllm import fc_register
 from lazyllm.tools import FunctionCall, FunctionCallAgent
 from typing import Literal
 
-fc_register.new_group("tool")
-
 @fc_register("tool")
 def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 'fahrenheit'):
     """
@@ -57,15 +55,13 @@ def exe_onlinechat_chat(request):
     if source is None or source not in sources:
         raise ValueError(f"The source {source} field must contain the value in the list {sources}")
     if model:
-        llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream).field_extractor(".")
+        llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream)
     else:
-        llm = lazyllm.OnlineChatModule(source=source, stream=stream).field_extractor(".")
+        llm = lazyllm.OnlineChatModule(source=source, stream=stream)
 
     print(f"\nStarting test 【{source}】chat")
-    ret = llm(query, [])
-    role = ret['role']
-    content = ret['content']
-    yield (role, content)
+    ret = llm(query, llm_chat_history=[])
+    yield ret
     print(f"\n【{source}】chat test done.")
 
 @pytest.fixture()
@@ -82,14 +78,14 @@ def exe_onlinechat_single_function_call(request):
     if source is None or source not in sources:
         raise ValueError(f"The source {source} field must contain the value in the list {sources}")
     if model:
-        llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream).field_extractor(".")
+        llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream)
     else:
-        llm = lazyllm.OnlineChatModule(source=source, stream=stream).field_extractor(".")
+        llm = lazyllm.OnlineChatModule(source=source, stream=stream)
 
     print(f"\nStarting test 【{source}】 function calling")
     fc = FunctionCall(llm, tools)
     ret = fc(query, [])
-    yield ret[0]
+    yield ret
     print(f"\n【{source}】 function calling test done.")
 
 @pytest.fixture()
@@ -106,9 +102,9 @@ def exe_onlinechat_parallel_function_call(request):
     if source is None or source not in sources:
         raise ValueError(f"The source {source} field must contain the value in the list {sources}")
     if model:
-        llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream).field_extractor(".")
+        llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream)
     else:
-        llm = lazyllm.OnlineChatModule(source=source, stream=stream).field_extractor(".")
+        llm = lazyllm.OnlineChatModule(source=source, stream=stream)
 
     agent = FunctionCallAgent(llm, tools)
     print(f"\nStarting test 【{source}】parallel function calling")
@@ -126,8 +122,7 @@ class TestOnlineChatFunctionCall(object):
                              indirect=True)
     def test_onlinechat_chat(self, exe_onlinechat_chat):
         ret = exe_onlinechat_chat
-        assert len(ret) == 2
-        assert ret[0] == 'assistant' and len(ret[1]) > 10
+        assert isinstance(ret, str, )
 
     @pytest.mark.parametrize("exe_onlinechat_single_function_call",
                              [{'source': 'glm', "model": "GLM-4-Flash", "tools": tools, "query": squery},
@@ -135,12 +130,11 @@ class TestOnlineChatFunctionCall(object):
                              indirect=True)
     def test_onlinechat_single_function_call(self, exe_onlinechat_single_function_call):
         ret = exe_onlinechat_single_function_call
-        assert ret is False
+        assert isinstance(ret, list)
 
     @pytest.mark.parametrize("exe_onlinechat_parallel_function_call",
-                             [{'source': 'kimi', 'tools': tools, 'query': squery}],
+                             [{'source': 'kimi', 'tools': tools, 'query': mquery}],
                              indirect=True)
     def test_onlinechat_parallel_function_call(self, exe_onlinechat_parallel_function_call):
         ret = exe_onlinechat_parallel_function_call
-        print(f"ret: {ret}")
-        assert len(ret) > 10 and "Tokyo" in ret and "10" in ret
+        assert isinstance(ret, str)

@@ -1,13 +1,15 @@
 import os
+import re
 import copy
 import time
-import json
+import json5 as json
 import requests
 import pickle
 import codecs
 import inspect
 import functools
-from concurrent.futures import ThreadPoolExecutor
+from lazyllm import ThreadPoolExecutor
+from typing import Dict, List, Any, Union
 
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, decode_request, globals
@@ -296,7 +298,7 @@ class UrlModule(ModuleBase, UrlTemplate):
             return _impl()
         else:
             for r in _impl(): pass
-            return self._formatter.format(r)
+            return self._formatter.format(self._extract_and_format(r))
 
     def prompt(self, prompt=None):
         if prompt is None:
@@ -306,6 +308,9 @@ class UrlModule(ModuleBase, UrlTemplate):
         elif isinstance(prompt, (str, dict)):
             self._prompt = ChatPrompter(prompt)
         return self
+
+    def _extract_and_format(self, output: str) -> str:
+        return output
 
     def formatter(self, format: FormatterBase = None):
         if isinstance(format, FormatterBase):
@@ -490,14 +495,148 @@ class TrainableModule(UrlModule):
     target_path = property(lambda self: self._impl._target_path)
     _url_id = property(lambda self: self._impl._module_id)
 
+    @property
+    def series(self):
+        return re.sub(r'\d+$', '', ModelManager.get_model_name(self.base_model).split('-')[0].upper())
+
+    @property
+    def type(self):
+        return ModelManager.get_model_type(self.base_model).upper()
+
     # modify default value to ''
     def prompt(self, prompt=''):
         if self.base_model != '' and prompt == '' and ModelManager.get_model_type(self.base_model) != 'llm':
             prompt = None
         prompt = super(__class__, self).prompt(prompt)._prompt
+        self._tools = getattr(prompt, "_tools", None)
         keys = ModelManager.get_model_prompt_keys(self.base_model)
-        if keys: prompt._set_model_configs(**keys)
+        if keys:
+            prompt._set_model_configs(**keys)
+            for key in ["tool_start_token", "tool_args_token", "tool_end_token"]:
+                if key in keys: setattr(self, f"_{key}", keys[key])
         return self
+
+    def _loads_str(self, text: str) -> Union[str, Dict]:
+        try:
+            ret = json.loads(text)
+            return self._loads_str(ret) if isinstance(ret, str) else ret
+        except Exception:
+            LOG.error(f"{text} is not a valid json string.")
+            return text
+
+    def _parse_arguments_with_args_token(self, output: str) -> tuple[str, dict]:
+        items = output.split(self._tool_args_token)
+        func_name = items[0].strip()
+        if len(items) == 1:
+            return func_name.split(self._tool_end_token)[0].strip() if getattr(self, "_tool_end_token", None)\
+                else func_name, {}
+        args = (items[1].split(self._tool_end_token)[0].strip() if getattr(self, "_tool_end_token", None)
+                else items[1].strip())
+        return func_name, self._loads_str(args) if isinstance(args, str) else args
+
+    def _parse_arguments_without_args_token(self, output: str) -> tuple[str, dict]:
+        items = output.split(self._tool_end_token)[0] if getattr(self, "_tool_end_token", None) else output
+        func_name = ""
+        args = {}
+        try:
+            items = json.loads(items.strip())
+            func_name = items.get('name', '')
+            args = items.get("parameters", items.get("arguments", {}))
+        except Exception:
+            LOG.error(f"tool calls info {items} parse error")
+
+        return func_name, self._loads_str(args) if isinstance(args, str) else args
+
+    def _parse_arguments_with_tools(self, output: Dict[str, Any], tools: List[str]) -> bool:
+        func_name = ''
+        args = {}
+        is_tc = False
+        tc = {}
+        if output.get('name', '') in tools:
+            is_tc = True
+            func_name = output.get('name', '')
+            args = output.get("parameters", output.get("arguments", {}))
+            tc = {'name': func_name, 'arguments': self._loads_str(args) if isinstance(args, str) else args}
+            return is_tc, tc
+        return is_tc, tc
+
+    def _parse_tool_start_token(self, output: str) -> tuple[str, List[Dict]]:
+        tool_calls = []
+        segs = output.split(self._tool_start_token)
+        content = segs[0]
+        for seg in segs[1:]:
+            func_name, arguments = self._parse_arguments_with_args_token(seg.strip())\
+                if getattr(self, "_tool_args_token", None)\
+                else self._parse_arguments_without_args_token(seg.strip())
+            if func_name:
+                tool_calls.append({"name": func_name, "arguments": arguments})
+
+        return content, tool_calls
+
+    def _parse_tools(self, output: str) -> tuple[str, List[Dict]]:
+        tool_calls = []
+        tools = {tool['function']['name'] for tool in self._tools}
+        lines = output.strip().split("\n")
+        content = []
+        is_tool_call = False
+        for idx, line in enumerate(lines):
+            if line.startswith("{") and idx > 0:
+                func_name = lines[idx - 1].strip()
+                if func_name in tools:
+                    is_tool_call = True
+                    if func_name == content[-1].strip():
+                        content.pop()
+                    arguments = "\n".join(lines[idx:]).strip()
+                    tool_calls.append({'name': func_name, "arguments": arguments})
+                    continue
+            if "{" in line and 'name' in line:
+                try:
+                    items = json.loads(line.strip())
+                    items = [items] if isinstance(items, dict) else items
+                    if isinstance(items, list):
+                        for item in items:
+                            is_tool_call, tc = self._parse_arguments_with_tools(item, tools)
+                            if is_tool_call:
+                                tool_calls.append(tc)
+                except Exception:
+                    LOG.error(f"tool calls info {line} parse error")
+            if not is_tool_call:
+                content.append(line)
+        content = "\n".join(content) if len(content) > 0 else ''
+        return content, tool_calls
+
+    def _extract_tool_calls(self, output: str) -> tuple[str, List[Dict]]:
+        tool_calls = []
+        content = ''
+        if getattr(self, "_tool_start_token", None) and self._tool_start_token in output:
+            content, tool_calls = self._parse_tool_start_token(output)
+        elif self._tools:
+            content, tool_calls = self._parse_tools(output)
+        else:
+            content = output
+
+        return content, tool_calls
+
+    def _build_response(self, content: str, tool_calls: List[Dict[str, str]]) -> str:
+        tc = [{'id': str(uuid.uuid4().hex), 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
+        if content and tc:
+            return globals["tool_delimiter"].join([content, json.dumps(tc, ensure_ascii=False)])
+        elif not content and tc:
+            return globals["tool_delimiter"] + json.dumps(tc, ensure_ascii=False)
+        else:
+            return content
+
+    def _extract_and_format(self, output: str) -> str:
+        """
+        1.extract tool calls information;
+            a. If 'tool_start_token' exists, the boundary of tool_calls can be found according to 'tool_start_token',
+               and then the function name and arguments of tool_calls can be extracted according to 'tool_args_token'
+               and 'tool_end_token'.
+            b. If 'tool_start_token' does not exist, the text is segmented using '\n' according to the incoming tools
+               information, and then processed according to the rules.
+        """
+        content, tool_calls = self._extract_tool_calls(output)
+        return self._build_response(content, tool_calls)
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Trainable', mode=self._impl._mode, basemodel=self.base_model,

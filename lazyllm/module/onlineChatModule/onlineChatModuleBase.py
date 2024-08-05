@@ -7,6 +7,7 @@ import re
 from typing import Tuple, List, Dict, Union, Any
 import time
 import lazyllm
+from lazyllm import globals
 from lazyllm.components.prompter import PrompterBase, ChatPrompter
 from lazyllm.components.formatter import FormatterBase, EmptyFormatter
 from ..module import ModuleBase, Pipeline
@@ -14,7 +15,7 @@ from ..module import ModuleBase, Pipeline
 class OnlineChatModuleBase(ModuleBase):
 
     def __init__(self,
-                 model_type: str,
+                 model_series: str,
                  api_key: str,
                  base_url: str,
                  model_name: str,
@@ -23,7 +24,7 @@ class OnlineChatModuleBase(ModuleBase):
                  return_trace: bool = False,
                  **kwargs):
         super().__init__(return_trace=return_trace)
-        self._model_type = model_type
+        self._model_series = model_series
         if not api_key:
             raise ValueError("api_key is required")
         self._api_key = api_key
@@ -36,8 +37,16 @@ class OnlineChatModuleBase(ModuleBase):
         self.prompt()
         self._is_trained = False
         self.formatter()
-        self.field_extractor()
+        self._field_extractor()
         self._model_optional_params = {}
+
+    @property
+    def series(self):
+        return self._model_series
+
+    @property
+    def type(self):
+        return "LLM"
 
     def prompt(self, prompt=None):
         if prompt is None:
@@ -51,11 +60,11 @@ class OnlineChatModuleBase(ModuleBase):
         self._prompt._set_model_configs(system=self._get_system_prompt())
         return self
 
-    def share(self, prompt: PrompterBase = None, formatter: FormatterBase = None):
+    def share(self, prompt: PrompterBase = None, format: FormatterBase = None):
         new = copy.copy(self)
         new._set_mid()
         if prompt is not None: new.prompt(prompt)
-        if formatter is not None: new.formatter(formatter)
+        if format is not None: new.formatter(format)
         return new
 
     def _get_system_prompt(self):
@@ -98,9 +107,9 @@ class OnlineChatModuleBase(ModuleBase):
 
         return self
 
-    def field_extractor(self, key: Union[str, List[str]] = None):
+    def _field_extractor(self, key: Union[str, List[str]] = None):
         if key is None:
-            self._extractor_fields = ["content"]
+            self._extractor_fields = ["{content}" + globals['tool_delimiter'] + "{tool_calls|index}"]
         elif isinstance(key, str):
             self._extractor_fields = [key]
         elif isinstance(key, list):
@@ -123,17 +132,73 @@ class OnlineChatModuleBase(ModuleBase):
         except Exception:
             return ""
 
+    def _get_benchmark_data(self, data: Dict[str, Any]):
+        if "choices" in data and isinstance(data["choices"], list):
+            item = data['choices'][0]
+            return item.get("delta", {}) if "delta" in item else item.get("message", {})
+        else:
+            raise ValueError(f"The response {data} does not contain a 'choices' field.")
+
+    def _extract_and_format(self, data, template):  # noqa: C901
+        # finding placeholders in template and removing rules
+        placeholders = re.findall(r"{(.*?)(?:\|(.*?))?}", template)
+        delimiters = re.findall(r"<\|.*?\|>", template)
+        # extract and format the fields corresponding to the placeholders
+        extracted_data = {}
+        pkeys = []
+        for placeholder, remove_fields in placeholders:
+            placeholder_key = placeholder + "|" + remove_fields if remove_fields else placeholder
+            pkeys.append(placeholder_key)
+            if 'tool_calls' in placeholder:
+                # handling remove_fields
+                remove_fields = remove_fields.split(',') if remove_fields else []
+
+                # extract the tool_calls field
+                keys = placeholder.split('.')
+                value = data
+                try:
+                    for key in (int(key) if key.isdigit() else key for key in keys):
+                        value = value[key]
+
+                    if isinstance(value, list):
+                        for item in value:
+                            [item.pop(field) for field in remove_fields if field in item]
+                    # value = json.dumps(value).replace('\n', '').replace(' ', '')
+                    value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+                    extracted_data[placeholder_key] = value
+                except (KeyError, IndexError, TypeError):
+                    extracted_data[placeholder_key] = ""
+            else:
+                # extracting additional fields
+                keys = placeholder.split('.')
+                value = data
+                try:
+                    for key in (int(key) if key.isdigit() else key for key in keys):
+                        value = value[key]
+                    # convert the extracted value into a JSON string
+                    value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+                    extracted_data[placeholder_key] = value
+                except (KeyError, IndexError, TypeError):
+                    extracted_data[placeholder_key] = ""
+
+        # populate the template with the extracted data
+        assert len(extracted_data) == len(delimiters) + 1, \
+               "The delimiters and the number of extracted fields are inconsistent."
+        result = extracted_data.get(pkeys[0])
+        result += ''.join(delimiters[idx] + extracted_data[key]
+                          for idx, key in enumerate(pkeys[1:]) if extracted_data.get(key))
+        lazyllm.LOG.info(f"result: {result}")
+        return result
+
     def _extract_specified_key_fields(self, response: Dict[str, Any]):
-        if len(self._extractor_fields) == 1:
-            key = self._extractor_fields[0]
-            return self._parse_output_by_key(key, response) if key else ""
-        elif len(self._extractor_fields) > 1:
+        if len(self._extractor_fields) > 0:
             res = {}
             for key in self._extractor_fields:
-                res[key] = self._parse_output_by_key(key, response) if key else ""
-            return res
+                res[key] = (self._parse_output_by_key(key, response) if "{" not in key else self._extract_and_format(
+                    self._get_benchmark_data(response), key) if key else "")
+            return list(res.values())[0] if len(res) == 1 else json.dumps(res, ensure_ascii=False)
         else:
-            return self._parse_output_by_key(".", response)
+            return json.dumps(self._parse_output_by_key(".", response), ensure_ascii=False)
 
     def _merge_stream_result(self, src: List[str | int | list | dict]):
         types = set(type(ele) for ele in src if ele is not None)
@@ -163,7 +228,7 @@ class OnlineChatModuleBase(ModuleBase):
         else:
             raise TypeError(f"The elements in list {src} are of inconsistent types.")
 
-    def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, **kw):  # noqa C901
+    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, **kw):  # noqa C901
         """LLM inference interface"""
         params = {"input": __input, "history": llm_chat_history}
         if tools:
@@ -196,13 +261,13 @@ class OnlineChatModuleBase(ModuleBase):
         self.template_headers = template_headers
 
     def _upload_train_file(self, train_file) -> str:
-        raise NotImplementedError(f"{self._model_type} not implemented _upload_train_file method in subclass")
+        raise NotImplementedError(f"{self._model_series} not implemented _upload_train_file method in subclass")
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
-        raise NotImplementedError(f"{self._model_type} not implemented _create_finetuning_job method in subclass")
+        raise NotImplementedError(f"{self._model_series} not implemented _create_finetuning_job method in subclass")
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
-        raise NotImplementedError(f"{self._model_type} not implemented _query_finetuning_job method in subclass")
+        raise NotImplementedError(f"{self._model_series} not implemented _query_finetuning_job method in subclass")
 
     def set_train_tasks(self, train_file, **kw):
         self._train_file = train_file
@@ -249,10 +314,10 @@ class OnlineChatModuleBase(ModuleBase):
         return Pipeline(_create_for_finetuning_job)
 
     def _create_deployment(self) -> Tuple[str, str]:
-        raise NotImplementedError(f"{self._model_type} not implemented _create_deployment method in subclass")
+        raise NotImplementedError(f"{self._model_series} not implemented _create_deployment method in subclass")
 
     def _query_deployment(self, deployment_id) -> str:
-        raise NotImplementedError(f"{self._model_type} not implemented _query_deployment method in subclass")
+        raise NotImplementedError(f"{self._model_series} not implemented _query_deployment method in subclass")
 
     def _get_deploy_tasks(self):
         if not self._is_trained: return None

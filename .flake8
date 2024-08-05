@@ -1,5 +1,7 @@
 [flake8]
 exclude = tests/legacy,venv
+per-file-ignores =
+    ./docs/add_docstrings.py: E402
 max-line-length = 121
 # E701: multiple statements on one line (colon)
 # E702: multiple statements on one line (semicolon)

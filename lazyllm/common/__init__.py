@@ -5,7 +5,7 @@ from .common import FlatList, Identity, ResultCollector, ArgsDict, CaseInsensiti
 from .common import ReprRule, make_repr, modify_repr
 from .common import once_flag, call_once, once_wrapper
 from .option import Option, OptionIter
-from .threading import Thread
+from .threading import Thread, ThreadPoolExecutor
 from .multiprocessing import SpawnProcess, ForkProcess
 from .logger import LOG
 from .deprecated import deprecated
@@ -51,6 +51,7 @@ __all__ = [
 
     # threading
     'Thread',
+    'ThreadPoolExecutor',
 
     # bind
     'bind', 'root',

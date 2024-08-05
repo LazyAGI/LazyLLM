@@ -17,7 +17,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
                  return_trace=False,
                  **kwargs):
         OnlineChatModuleBase.__init__(self,
-                                      model_type=__class__.__name__,
+                                      model_series="SENSENOVA",
                                       api_key=SenseNovaModule.encode_jwt_token(lazyllm.config['sensenova_api_key'],
                                                                                lazyllm.config['sensenova_secret_key']),
                                       base_url=base_url,
