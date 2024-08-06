@@ -102,6 +102,12 @@ class TestDeploy(object):
         res = m('你好啊，很高兴认识你。')
         assert "sounds" in json.loads(res)
 
+    def test_chattts(self):
+        m = lazyllm.TrainableModule('ChatTTS')
+        m.update_server()
+        res = m('你好啊，很高兴认识你。')
+        assert "sounds" in json.loads(res)
+
     def test_stt_sensevoice(self):
         chat = lazyllm.TrainableModule('SenseVoiceSmall')
         m = lazyllm.ServerModule(chat)

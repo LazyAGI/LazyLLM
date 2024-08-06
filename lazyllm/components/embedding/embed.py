@@ -31,13 +31,12 @@ class LazyHuggingFaceEmbedding(object):
         return json.dumps(res)
 
     @classmethod
-    def rebuild(cls, base_embed, embed_batch_size, trust_remote_code):
-        assert os.environ['LAZYLLM_ON_CLOUDPICKLE'] == 'OFF'
-        return cls(base_embed, embed_batch_size, trust_remote_code, True)
+    def rebuild(cls, base_embed, embed_batch_size, trust_remote_code, init):
+        return cls(base_embed, embed_batch_size, trust_remote_code, init)
 
     def __reduce__(self):
-        assert os.environ['LAZYLLM_ON_CLOUDPICKLE'] == 'ON'
-        return LazyHuggingFaceEmbedding.rebuild, (self.base_embed, self.embed_batch_size, self.trust_remote_code)
+        init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
+        return LazyHuggingFaceEmbedding.rebuild, (self.base_embed, self.embed_batch_size, self.trust_remote_code, init)
 
 
 class EmbeddingDeploy():
