@@ -111,7 +111,7 @@ class Job(object):
             with timeout(3600, msg='Launch failed: No computing resources are available.'):
                 while self.status in (Status.TBSubmitted, Status.InQueue, Status.Pending):
                     time.sleep(2)
-            self.launcher.all_processes[self.launcher._id] = (self.jobid, self)
+            self.launcher.all_processes[self.launcher._id].append((self.jobid, self))
 
     def restart(self, *, fixed=False):
         self.stop()
