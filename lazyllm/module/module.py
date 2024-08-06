@@ -387,7 +387,7 @@ class _ServerModuleImpl(ModuleBase):
         super().__init__()
         self._m = ActionModule(m) if isinstance(m, FlowBase) else m
         self._pre_func, self._post_func = pre, post
-        self._launcher = launcher if launcher else launchers.remote(sync=False)
+        self._launcher = launcher.clone() if launcher else launchers.remote(sync=False)
         self._set_url_f = father._set_url if father else None
 
     @lazyllm.once_wrapper
@@ -397,6 +397,9 @@ class _ServerModuleImpl(ModuleBase):
             lazyllm.deploy.RelayServer(func=self._m, pre_func=self._pre_func,
                                        post_func=self._post_func, launcher=self._launcher),
             self._set_url_f)
+
+    def __del__(self):
+        self._launcher.cleanup()
 
 
 class ServerModule(UrlModule):
@@ -429,6 +432,7 @@ class _TrainableModuleImpl(ModuleBase):
         self._train, self._finetune, self._deploy = train, finetune, deploy
         self._stream = stream
         self._father = []
+        self._launchers = []
 
     def _add_father(self, father):
         if father not in self._father: self._father.append(father)
@@ -438,6 +442,9 @@ class _TrainableModuleImpl(ModuleBase):
         if len(set(args.keys()).intersection(set(disable))) > 0:
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
                              '{arg_cls}_args, please pass them from Module.__init__()')
+        if 'launcher' in args:
+            args['launcher'] = args['launcher'].clone() if args['launcher'] else launchers.remote(sync=False)
+            self._launchers.append(args['launcher'])
         return args
 
     def _get_train_tasks(self):
@@ -480,6 +487,10 @@ class _TrainableModuleImpl(ModuleBase):
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
+
+    def __del__(self):
+        for launcher in self._launchers:
+            launcher.cleanup()
 
 
 class TrainableModule(UrlModule):
