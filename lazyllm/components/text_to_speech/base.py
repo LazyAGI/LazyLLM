@@ -1,6 +1,7 @@
 
 from .bark import BarkDeploy
 from .chattts import ChatTTSDeploy
+from .musicgen import MusicGenDeploy
 
 class TTSDeploy:
 
@@ -9,5 +10,7 @@ class TTSDeploy:
             return BarkDeploy(**kwarg)
         elif name == 'ChatTTS':
             return ChatTTSDeploy(**kwarg)
+        elif name.startswith('musicgen'):
+            return MusicGenDeploy(**kwarg)
         else:
             raise RuntimeError(f"Not support model: {name}")

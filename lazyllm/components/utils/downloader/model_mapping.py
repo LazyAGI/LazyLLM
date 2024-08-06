@@ -337,5 +337,13 @@ model_name_mapping = {
 		"source": {"huggingface": "FunAudioLLM/SenseVoiceSmall", "modelscope": "iic/SenseVoiceSmall"},
         "type": "stt",
 		},
+    "musicgen-small": {
+		"source": {"huggingface": "facebook/musicgen-stereo-small", "modelscope": "AI-ModelScope/musicgen-small"},
+        "type": "tts",
+		},
+    "musicgen-medium": {
+		"source": {"huggingface": "facebook/musicgen-medium", "modelscope": "AI-ModelScope/musicgen-medium"},
+        "type": "tts",
+		},
 }
 

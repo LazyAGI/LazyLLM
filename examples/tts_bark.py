@@ -2,16 +2,24 @@ import lazyllm
 
 # Bark only supports 13-15 seconds of voice, and the Chinese voice is not very authentic.
 
-chat = lazyllm.TrainableModule('bark')
-m = lazyllm.ServerModule(chat) # This is redundant and can actually be removed. It only verifies the validity of parameter passing.
-chat.name = "tts"
+# Three ways to specify the model:
+#   1. Specify the model name (e.g. 'bark'):
+#           the model will be automatically downloaded from the Internet;
+#   2. Specify the model name (e.g. 'bark') ​​+ set
+#      the environment variable `export LAZYLLM_MODEL_PATH="/path/to/modelzoo"`:
+#           the model will be found in `path/to/modelazoo/bark/`
+#   3. Directly pass the absolute path to TrainableModule:
+#           `path/to/modelazoo/bark`
+
+m = lazyllm.TrainableModule('bark')
+m.name = "tts"
 
 if __name__ == '__main__':
-    lazyllm.WebModule(
+    m.WebModule(
         m,
         port=8847,
         components={
-            chat:[('voice_preset', 'Dropdown', [
+            m: [('voice_preset', 'Dropdown', [
                 "v2/zh_speaker_0",
                 "v2/zh_speaker_1",
                 "v2/zh_speaker_2",
