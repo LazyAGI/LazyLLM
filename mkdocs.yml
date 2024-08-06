@@ -1,0 +1,101 @@
+site_name: LazyLLM
+repo_url: https://github.com/LazyAGI/LazyLLM
+repo_name: LazyAGI/LazyLLM
+nav:
+- Home:
+  - Getting Started: index.md
+  - FAQ: Home/FAQ.md
+  - Environment: Home/environment.md
+- Best Practice:
+  - Flow: Best Practice/flow.md
+  - Flowapp: Best Practice/flowapp.md
+  - Module: Best Practice/module.md
+  - Prompt: Best Practice/prompt.md
+  - Rag: Best Practice/rag.md
+- Advanced Topics:
+  - Contribution: Advanced Topics/contribution.md
+  - Changelog: Advanced Topics/changelog.md
+- Api Reference:
+  - Components: API Reference/components.md
+  - Configs: API Reference/configs.md
+  - Flow: API Reference/flow.md
+  - Module: API Reference/module.md
+  - Tools: API Reference/tools.md
+theme:
+  language: en
+  name: material
+  features:
+  - navigation.tabs
+  - navigation.footer
+  - navigation.top
+  - search.highlight
+  - search.suggest
+  - content.code.select
+  - content.code.copy
+  - content.code.annotate
+  palette:
+  - accent: white
+    primary: white
+    scheme: default
+    toggle:
+      icon: material/brightness-auto
+      name: Switch to light mode
+  - accent: white
+    media: '(prefers-color-scheme: light)'
+    primary: white
+    scheme: default
+    toggle:
+      icon: material/brightness-7
+      name: Switch to dark mode
+  - accent: black
+    media: '(prefers-color-scheme: dark)'
+    primary: black
+    scheme: slate
+    toggle:
+      icon: material/brightness-4
+      name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+  logo: assets/logo.png
+  favicon: https://img.icons8.com/?size=100&id=121346&format=png&color=000000
+  icon:
+    repo: fontawesome/brands/github
+extra:
+  generator: false
+  social:
+  - icon: fontawesome/brands/github
+    link: https://github.com/LazyAGI/LazyLLM
+plugins:
+- i18n:
+    docs_structure: folder
+    languages:
+      - locale: en
+        default: true
+        name: English
+        build: true
+      - locale: zh
+        name: 中文
+        build: true
+- search:
+- section-index:
+- mkdocstrings:
+    handlers:
+      python:
+        setup_commands:
+          - "import sys; sys.path.append('.')"
+        options:
+          find_stubs_package: true
+          allow_inspection: true
+          show_source: true
+          show_root_heading: true
+          docstring_section_style: list
+- autorefs:
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
