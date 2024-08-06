@@ -43,7 +43,8 @@ class ChatTTSModule(object):
         elif isinstance(string, dict):
             query = string['inputs']
             params_refine_text = ChatTTS.Chat.RefineTextParams(**string['refinetext'])
-            spk_seed = int(string['infercode']['spk_emb'])
+            spk_seed = string['infercode']['spk_emb']
+            spk_seed = int(spk_seed) if spk_seed else spk_seed
             if isinstance(spk_seed, int) and self.seed != spk_seed:
                 self.seed = spk_seed
                 self.spk = self.set_spk(self.seed)
