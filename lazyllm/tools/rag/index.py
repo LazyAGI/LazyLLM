@@ -4,7 +4,7 @@ from typing import List, Callable, Optional
 from .store import DocNode, BaseStore
 import numpy as np
 from .component.bm25 import BM25
-from lazyllm import LOG, config
+from lazyllm import LOG, config, ThreadPoolExecutor
 
 # min(32, (os.cpu_count() or 1) + 4) is the default number of workers for ThreadPoolExecutor
 config.add(
@@ -45,7 +45,7 @@ class DefaultIndex:
         return decorator(func) if func else decorator
 
     def _parallel_do_embedding(self, nodes: List[DocNode]) -> List[DocNode]:
-        with concurrent.futures.ThreadPoolExecutor(
+        with ThreadPoolExecutor(
             config["max_embedding_workers"]
         ) as executor:
             futures = {
