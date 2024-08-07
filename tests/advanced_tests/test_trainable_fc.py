@@ -89,7 +89,7 @@ mquery2 = "What will the weather be like in fahrenheit in san francisco and beij
 lightModels = ['internlm2-chat-20b', 'Qwen1.5-14B-Chat']
 vModels = ['GLM-4-9B-Chat', 'Qwen2-7B-Instruct']
 
-class TestOnlineChatFunctionCall(object):
+class TestTrainableFunctionCall(object):
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
         yield
