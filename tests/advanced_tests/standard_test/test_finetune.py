@@ -41,12 +41,3 @@ class TestFinetune(object):
         ppl()
         assert self.has_bin_file(os.path.join(self.save_path, 'lora'))
         assert self.has_bin_file(os.path.join(self.save_path, 'merge'))
-
-    def test_finetune_alpacalora(self):
-        pass
-
-    def test_finetune_collie(self):
-        pass
-
-    def test_finetune_auto(self):
-        pass

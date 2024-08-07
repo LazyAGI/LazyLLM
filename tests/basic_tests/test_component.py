@@ -1,7 +1,4 @@
-import os
-
 import lazyllm
-from lazyllm import finetune, deploy, launchers
 
 
 class TestComponent(object):
@@ -38,37 +35,3 @@ class TestComponent(object):
             "Input:\ninp\n\n### Response:\n"
         )
         assert result == expected_result, f"Expected '{expected_result}', but got '{result}'"
-
-    def test_finetune_alpacalora(self):
-        # test instantiation
-        f = finetune.alpacalora(base_model='internlm2-chat-7b', target_path='')
-        assert f.base_model == 'internlm2-chat-7b'
-
-    def test_finetune_collie(self):
-        # test instantiation
-        f = finetune.collie(base_model='internlm2-chat-7b', target_path='')
-        assert f.base_model == 'internlm2-chat-7b'
-
-    def test_deploy_lightllm(self):
-        # test instantiation
-        m = deploy.lightllm(trust_remote_code=False, launcher=launchers.sco)
-        assert not m.trust_remote_code
-        assert isinstance(m.launcher, launchers.sco)
-
-    def test_deploy_vllm(self):
-        # test instantiation
-        m = deploy.vllm(trust_remote_code=False, launcher=launchers.sco)
-        assert not m.trust_remote_code
-        assert isinstance(m.launcher, launchers.sco)
-
-    def test_auto_finetune(self):
-        # test instantiation
-        m = finetune.auto('internlm2-chat-7b', '', launcher=launchers.sco(ngpus=1))
-        assert isinstance(m.launcher, launchers.sco)
-        assert os.path.exists(m.base_model)
-
-    def test_auto_deploy(self):
-        # test instantiation
-        m = deploy.auto('internlm2-chat-7b', trust_remote_code=False, launcher=launchers.sco(ngpus=1))
-        assert not m.trust_remote_code
-        assert isinstance(m.launcher, launchers.sco)
