@@ -1,10 +1,12 @@
 import ast
-from functools import partial, wraps
-from typing import Dict, List, Optional, Set
+from collections import defaultdict
+from functools import wraps
+import os
+from typing import Callable, Dict, List, Optional, Set
 from lazyllm import ModuleBase, LOG, config, once_flag, call_once
 from lazyllm.common import LazyLlmRequest
 from .transform import FuncNodeTransform, SentenceSplitter
-from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME
+from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, BaseStore
 from .data_loaders import DirectoryReader
 from .index import DefaultIndex
 
@@ -24,29 +26,34 @@ def embed_wrapper(func):
 class DocImplV2:
     def __init__(self, embed, doc_files=Optional[List[str]], **kwargs):
         super().__init__()
-        self.directory_reader = DirectoryReader(input_files=doc_files)
+        self.directory_reader = DirectoryReader(doc_files)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
-        self.create_node_group_default()
+        self._create_node_group_default()
         self.embed = embed_wrapper(embed)
         self.init_flag = once_flag()
+        self.store = None
 
     def _lazy_init(self) -> None:
-        rag_store = config["rag_store"]
-        if rag_store == "map":
-            self.store = MapStore(node_groups=self.node_groups.keys())
-        elif rag_store == "chroma":
-            self.store = ChromadbStore(
-                node_groups=self.node_groups.keys(), embed=self.embed
-            )
-        else:
-            raise NotImplementedError(f"Not implemented store type for {rag_store}")
+        self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
         if not self.store.has_nodes(LAZY_ROOT_NAME):
             docs = self.directory_reader.load_data()
             self.store.add_nodes(LAZY_ROOT_NAME, docs)
             LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {docs}")
 
-    def create_node_group_default(self):
+    def _get_store(self) -> BaseStore:
+        rag_store_type = config["rag_store_type"]
+        if rag_store_type == "map":
+            store = MapStore(node_groups=self.node_groups.keys())
+        elif rag_store_type == "chroma":
+            store = ChromadbStore(node_groups=self.node_groups.keys(), embed=self.embed)
+        else:
+            raise NotImplementedError(
+                f"Not implemented store type for {rag_store_type}"
+            )
+        return store
+
+    def _create_node_group_default(self):
         self.create_node_group(
             name="CoarseChunk",
             transform=SentenceSplitter,
@@ -67,7 +74,7 @@ class DocImplV2:
         )
 
     def create_node_group(
-        self, name, transform, parent=LAZY_ROOT_NAME, **kwargs
+        self, name, transform: Callable, parent: str = LAZY_ROOT_NAME, **kwargs
     ) -> None:
         if name in self.node_groups:
             LOG.warning(f"Duplicate group name: {name}")
@@ -77,17 +84,46 @@ class DocImplV2:
         )
 
     def add_files(self, input_files: List[str]) -> None:
+        call_once(self.init_flag, self._lazy_init)
         if len(input_files) == 0:
             return
-        # TODO: support add files
-        pass
+        docs = self.directory_reader.load_data(input_files)
+        temp_store = self._get_store()
+        temp_store.add_nodes(LAZY_ROOT_NAME, docs)
+        active_groups = self.store.active_groups()
+        LOG.info(f"add_files: Trying to merge store with {active_groups}")
+        for group in active_groups:
+            # Duplicate group will be discarded automatically
+            nodes = self._get_nodes(group, temp_store)
+            self.store.add_nodes(group, nodes)
+            LOG.debug(f"Merge {group} with {nodes}")
 
     def delete_files(self, input_files: List[str]) -> None:
-        if len(input_files) == 0:
+        call_once(self.init_flag, self._lazy_init)
+        docs = self.directory_reader.get_nodes_by_files(input_files)
+        LOG.info(f"delete_files: removing documents {input_files} and nodes {docs}")
+        if len(docs) == 0:
             return
+        self._delete_nodes_recursively(docs)
 
-        # TODO: support delete files
-        pass
+    def _delete_nodes_recursively(self, root_nodes: List[DocNode]) -> None:
+        nodes_to_delete = defaultdict(list)
+        nodes_to_delete[LAZY_ROOT_NAME] = [node.uid for node in root_nodes]
+
+        # Gather all nodes to be deleted including their children
+        def gather_children(node: DocNode):
+            for children_group, children_list in node.children.items():
+                for child in children_list:
+                    nodes_to_delete[children_group].append(child.uid)
+                    gather_children(child)
+
+        for node in root_nodes:
+            gather_children(node)
+
+        # Delete nodes in all groups
+        for group, node_uids in nodes_to_delete.items():
+            self.store.remove_nodes(group, node_uids)
+            LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
     def _get_transform(self, name):
         node_group = self.node_groups.get(name)
@@ -104,19 +140,22 @@ class DocImplV2:
             else FuncNodeTransform(transform)
         )
 
-    def _dynamic_create_nodes(self, group_name) -> None:
-        node_group = self.node_groups.get(group_name)
-        if self.store.has_nodes(group_name):
+    def _dynamic_create_nodes(self, group_name: str, store: BaseStore) -> None:
+        if store.has_nodes(group_name):
             return
+        node_group = self.node_groups.get(group_name)
         transform = self._get_transform(group_name)
-        parent_nodes = self._get_nodes(node_group["parent_name"])
+        parent_nodes = self._get_nodes(node_group["parent_name"], store)
         nodes = transform(parent_nodes, group_name)
-        self.store.add_nodes(group_name, nodes)
+        store.add_nodes(group_name, nodes)
         LOG.debug(f"building {group_name} nodes: {nodes}")
 
-    def _get_nodes(self, group_name: str) -> List[DocNode]:
-        self._dynamic_create_nodes(group_name)
-        return self.store.traverse_nodes(group_name)
+    def _get_nodes(
+        self, group_name: str, store: Optional[BaseStore] = None
+    ) -> List[DocNode]:
+        store = self.store if store is None else store
+        self._dynamic_create_nodes(group_name, store)
+        return store.traverse_nodes(group_name)
 
     def retrieve(
         self,
@@ -139,7 +178,7 @@ class DocImplV2:
             query, nodes, similarity, similarity_cut_off, topk, **similarity_kws
         )
 
-    def _find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
+    def find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
         def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
             if node.parent:
                 if node.parent.group == group:
@@ -156,10 +195,13 @@ class DocImplV2:
         LOG.debug(f"Found parent node for {group}: {result}")
         return list(result)
 
-    def find_parent(self, group: str) -> List[DocNode]:
-        return partial(self._find_parent, group=group)
+    def find_children(self, nodes: List[DocNode], group: str) -> List[DocNode]:
+        active_groups = self.store.active_groups()
+        if group not in active_groups:
+            raise ValueError(
+                f"group {group} not found in active groups {active_groups}, please retrieve the group first."
+            )
 
-    def _find_children(self, nodes: List[DocNode], group: str) -> List[DocNode]:
         def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
             if group in node.children:
                 visited.update(node.children[group])
@@ -177,9 +219,6 @@ class DocImplV2:
             return found_in_any_child
 
         result = set()
-
-        # case when user hasn't used the group before.
-        _ = self._get_nodes(group)
 
         for node in nodes:
             if group in node.children:
@@ -207,16 +246,13 @@ class DocImplV2:
         LOG.debug(f"Found children nodes for {group}: {result}")
         return list(result)
 
-    def find_children(self, group: str) -> List[DocNode]:
-        return partial(self._find_children, group=group)
-
 
 class RetrieverV2(ModuleBase):
     __enable_request__ = False
 
     def __init__(
         self,
-        doc,
+        doc: object,
         group_name: str,
         similarity: str = "dummy",
         similarity_cut_off: float = float("-inf"),
@@ -233,15 +269,14 @@ class RetrieverV2(ModuleBase):
         self.topk = topk
         self.similarity_kw = kwargs  # kw parameters
 
-    def forward(self, query):
-        # TODO(ywt): self.doc._impl._impl.retrieve should be updated
-        # if we've developed all of the components
-        return self.doc._impl._impl.retrieve(
-            query,
-            self.group_name,
-            self.similarity,
-            self.similarity_cut_off,
-            self.index,
-            self.topk,
-            self.similarity_kw,
+    def forward(self, query: str) -> List[DocNode]:
+        return self.doc.forward(
+            func_name="retrieve",
+            query=query,
+            group_name=self.group_name,
+            similarity=self.similarity,
+            similarity_cut_off=self.similarity_cut_off,
+            index=self.index,
+            topk=self.topk,
+            similarity_kws=self.similarity_kw,
         )

@@ -9,7 +9,7 @@ from chromadb.api.models.Collection import Collection
 
 
 LAZY_ROOT_NAME = "lazyllm_root"
-config.add("rag_store", str, "map", "RAG_STORE")  # "map", "chroma"
+config.add("rag_store_type", str, "map", "RAG_STORE_TYPE")  # "map", "chroma"
 config.add("rag_persistent_path", str, "./lazyllm_chroma", "RAG_PERSISTENT_PATH")
 
 
@@ -86,7 +86,7 @@ class DocNode:
         )
 
     def __repr__(self) -> str:
-        return str(self)
+        return str(self) if config["debug"] else self.uid
 
     def has_embedding(self) -> bool:
         return self.embedding and self.embedding[0] != -1  # placeholder
@@ -155,6 +155,23 @@ class BaseStore(ABC):
     def try_load_store(self) -> None:
         raise NotImplementedError("Not implemented yet.")
 
+    @abstractmethod
+    def try_remove_nodes(self, group: str, node_ids: List[str]) -> None:
+        raise NotImplementedError("Not implemented yet.")
+
+    def active_groups(self) -> List:
+        return [group for group, nodes in self._store.items() if nodes]
+
+    def _remove_nodes(self, group: str, node_ids: List[str]) -> None:
+        if group not in self._store:
+            return
+        for node_id in node_ids:
+            self._store[group].pop(node_id, None)
+
+    def remove_nodes(self, group: str, node_ids: List[str]) -> None:
+        self._remove_nodes(group, node_ids)
+        self.try_remove_nodes(group, node_ids)
+
 
 class MapStore(BaseStore):
     def __init__(self, node_groups: List[str], *args, **kwargs):
@@ -164,6 +181,9 @@ class MapStore(BaseStore):
         pass
 
     def try_load_store(self) -> None:
+        pass
+
+    def try_remove_nodes(self, group: str, node_ids: List[str]) -> None:
         pass
 
 
@@ -227,6 +247,9 @@ class ChromadbStore(BaseStore):
                 documents=documents,
             )
             LOG.debug(f"Saved {group} nodes {ids} to chromadb.")
+
+    def try_remove_nodes(self, group: str, node_ids: List[str]) -> None:
+        pass
 
     def _find_node_by_uid(self, uid: str) -> Optional[DocNode]:
         for nodes_by_category in self._store.values():
