@@ -1,8 +1,18 @@
+import concurrent
+import os
 from typing import List, Callable, Optional
 from .store import DocNode, BaseStore
 import numpy as np
 from .component.bm25 import BM25
-from lazyllm import LOG
+from lazyllm import LOG, config
+
+# min(32, (os.cpu_count() or 1) + 4) is the default number of workers for ThreadPoolExecutor
+config.add(
+    "max_embedding_workers",
+    int,
+    min(32, (os.cpu_count() or 1) + 4),
+    "MAX_EMBEDDING_WORKERS",
+)
 
 
 class DefaultIndex:
@@ -34,6 +44,19 @@ class DefaultIndex:
 
         return decorator(func) if func else decorator
 
+    def _parallel_do_embedding(self, nodes: List[DocNode]) -> List[DocNode]:
+        with concurrent.futures.ThreadPoolExecutor(
+            config["max_embedding_workers"]
+        ) as executor:
+            futures = {
+                executor.submit(node.do_embedding, self.embed): node
+                for node in nodes
+                if not node.has_embedding()
+            }
+            for future in concurrent.futures.as_completed(futures):
+                future.result()
+        return nodes
+
     def query(
         self,
         query: str,
@@ -54,9 +77,7 @@ class DefaultIndex:
             assert self.embed, "Chosen similarity needs embed model."
             assert len(query) > 0, "Query should not be empty."
             query_embedding = self.embed(query)
-            for node in nodes:
-                if not node.has_embedding():
-                    node.do_embedding(self.embed)
+            nodes = self._parallel_do_embedding(nodes)
             self.store.try_save_nodes(nodes[0].group, nodes)
             similarities = similarity_func(query_embedding, nodes, topk=topk, **kwargs)
         elif mode == "text":
