@@ -313,6 +313,10 @@ model_name_mapping = {
         "source": {"huggingface": "suno/bark", "modelscope": "mapjack/bark"},
         "type": "tts",
 	},
+    "ChatTTS":{
+        "source": {"huggingface": "2Noise/ChatTTS", "modelscope": "AI-ModelScope/ChatTTS"},
+        "type": "tts",
+	},
     "llava-1.5-7b": {
 		"source": {"huggingface": "llava-hf/llava-1.5-7b-hf", "modelscope": "huangjintao/llava-1.5-7b-hf"},
         "type": "vlm",
@@ -332,6 +336,14 @@ model_name_mapping = {
     "SenseVoiceSmall": {
 		"source": {"huggingface": "FunAudioLLM/SenseVoiceSmall", "modelscope": "iic/SenseVoiceSmall"},
         "type": "stt",
+		},
+    "musicgen-small": {
+		"source": {"huggingface": "facebook/musicgen-stereo-small", "modelscope": "AI-ModelScope/musicgen-small"},
+        "type": "tts",
+		},
+    "musicgen-medium": {
+		"source": {"huggingface": "facebook/musicgen-medium", "modelscope": "AI-ModelScope/musicgen-medium"},
+        "type": "tts",
 		},
 }
 

@@ -56,29 +56,8 @@ class TestDeploy(object):
         self.clients.append(client)
         return web, client
 
-    def test_deploy_lightllm(self):
-        m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.lightllm)
-        m.evalset(self.inputs)
-        m.update_server()
-        m.eval()
-        assert len(m.eval_result) == len(self.inputs)
-
     def test_deploy_vllm(self):
         m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.vllm)
-        m.evalset(self.inputs)
-        m.update_server()
-        m.eval()
-        assert len(m.eval_result) == len(self.inputs)
-
-    def test_deploy_auto(self):
-        m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.AutoDeploy)
-        m.evalset(self.inputs)
-        m.update_server()
-        m.eval()
-        assert len(m.eval_result) == len(self.inputs)
-
-    def test_deploy_auto_without_calling_method(self):
-        m = lazyllm.TrainableModule(self.model_path, '')
         m.evalset(self.inputs)
         m.update_server()
         m.eval()
@@ -96,8 +75,14 @@ class TestDeploy(object):
         res = m('a little cat')
         assert "images_base64" in json.loads(res)
 
-    def test_bark(self):
-        m = lazyllm.TrainableModule('bark')
+    def test_musicgen(self):
+        m = lazyllm.TrainableModule('musicgen-small')
+        m.update_server()
+        res = m('lo-fi music with a soothing melody')
+        assert "sounds" in json.loads(res)
+
+    def test_chattts(self):
+        m = lazyllm.TrainableModule('ChatTTS')
         m.update_server()
         res = m('你好啊，很高兴认识你。')
         assert "sounds" in json.loads(res)

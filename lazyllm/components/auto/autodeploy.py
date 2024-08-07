@@ -6,7 +6,7 @@ from .auto_helper import model_map, get_model_name, check_requirements
 from lazyllm.components.embedding.embed import EmbeddingDeploy
 from lazyllm.components.stable_diffusion.stable_diffusion3 import StableDiffusionDeploy
 from lazyllm.components.speech_to_text.sense_voice import SenseVoiceDeploy
-from lazyllm.components.text_to_speech.bark import BarkDeploy
+from lazyllm.components.text_to_speech.base import TTSDeploy
 from ..utils.downloader import ModelManager
 
 class AutoDeploy(LazyLLMDeployBase):
@@ -25,7 +25,7 @@ class AutoDeploy(LazyLLMDeployBase):
         elif type == 'stt' or ModelManager.get_model_type(model_name) == 'stt':
             return SenseVoiceDeploy(launcher)
         elif type == 'tts' or ModelManager.get_model_type(model_name) == 'tts':
-            return BarkDeploy(launcher)
+            return TTSDeploy(model_name, launcher=launcher)
         map_name = model_map(model_name)
         candidates = get_configer().query_deploy(lazyllm.config['gpu_type'], launcher.ngpus,
                                                  map_name, max_token_num)
