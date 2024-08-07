@@ -57,7 +57,7 @@ lazyllm.WebModule(chat, port=23466).start().wait()
 
 ### RAG
 
-![Demo RAG](docs/demo_rag.svg)
+![Demo RAG](docs/assets/demo_rag.svg)
 
 <details>
 <summary>click to look up prompts and imports</summary>
