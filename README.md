@@ -252,7 +252,7 @@ Finally, LazyLLM is a user-centric tool. If you have any ideas or feedback, feel
 
 ## Architecture
 
-![Architecture](docs/Architecture.en.png)
+![Architecture](docs/assets/Architecture.en.png)
 
 ## Basic concept
 

@@ -246,7 +246,7 @@ LazyLLM的设计目标是让算法研究员和开发者能够能够从繁杂的�
 
 ## 七、架构说明
 
-![架构说明](docs/Architecture.png)
+![架构说明](docs/assets/Architecture.png)
 
 ## 八、基本概念
 
