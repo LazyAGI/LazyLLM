@@ -329,5 +329,9 @@ model_name_mapping = {
 		"source": {"huggingface": "OpenGVLab/InternVL-Chat-V1-5", "modelscope": "OpenGVLab/InternVL-Chat-V1-5"},
         "type": "vlm",
 		},
+    "SenseVoiceSmall": {
+		"source": {"huggingface": "FunAudioLLM/SenseVoiceSmall", "modelscope": "iic/SenseVoiceSmall"},
+        "type": "stt",
+		},
 }
 

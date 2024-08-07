@@ -60,7 +60,7 @@ async def async_wrapper(func, *args, **kwargs):
 @app.post("/generate")
 async def generate(request: Request): # noqa C901
     try:
-        globals._init_sid()
+        globals._init_sid(request.headers.get('Session-ID'))
         globals._update(decode_request(request.headers.get('Global-Parameters')))
         input, kw = (await request.json()), {}
         try:
