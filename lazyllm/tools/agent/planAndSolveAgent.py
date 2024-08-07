@@ -23,29 +23,17 @@ SOLVER_PROMPT = (
 )
 
 class PlanAndSolveAgent(ModuleBase):
-    def __init__(self, llm, tools: List[str], *, plan_llm: Union[ModuleBase, None] = None,
-                 solve_llm: Union[ModuleBase, None] = None, max_retries: int = 5, return_trace: bool = False):
+    def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[str] = [], *,
+                 plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
+                 max_retries: int = 5, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
-        assert sum(x is not None for x in [llm, plan_llm, solve_llm]) <= 2, \
-               "llm and plan_llm, solve_llm cannot be set at the same time."
+        assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), 'Either specify only llm \
+               without specify plan and solve, or specify only plan and solve without specifying llm, or specify \
+               both llm and solve. Other situations are not allowed.'
         assert tools, "tools cannot be empty."
-        if plan_llm is None and solve_llm is None and llm is not None:
-            self._plan_llm = llm.share(prompt=ChatPrompter(instruction=PLANNER_PROMPT))
-            self._solve_llm = llm.share()
-        elif plan_llm is None and solve_llm is not None and llm is not None:
-            self._plan_llm = llm.share(prompt=ChatPrompter(instruction=PLANNER_PROMPT))
-            self._solve_llm = solve_llm.share()
-        elif solve_llm is None and plan_llm is not None and llm is not None:
-            self._plan_llm = plan_llm.share(prompt=ChatPrompter(instruction=PLANNER_PROMPT))
-            self._solve_llm = llm.share()
-        elif plan_llm is not None and solve_llm is not None and llm is None:
-            self._plan_llm = plan_llm.share(prompt=ChatPrompter(instruction=PLANNER_PROMPT))
-            self._solve_llm = solve_llm.share()
-        else:
-            raise ValueError("Either set llm, or set plan_llm and solve_llm, or set llm and one of [plan_llm, "
-                             f"solve_llm]. Other situations are not supported. llm: {llm}, plan_llm: {plan_llm}, "
-                             f"solve_llm: {solve_llm}")
+        self._plan_llm = (plan_llm or llm).share(prompt=ChatPrompter(instruction=PLANNER_PROMPT))
+        self._solve_llm = (solve_llm or llm).share()
         self._tools = tools
         with pipeline() as self._agent:
             self._agent.plan = self._plan_llm
@@ -68,5 +56,4 @@ class PlanAndSolveAgent(ModuleBase):
         return package(pre_steps, response, steps, query)
 
     def forward(self, query: str):
-        ans = self._agent(query)
-        return ans
+        return self._agent(query)

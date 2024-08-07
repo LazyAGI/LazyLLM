@@ -31,28 +31,16 @@ S_PROMPT_SUFFIX = ("\nNow begin to solve the task or problem. Respond with "
                    "the answer directly with no extra words.\n\n")
 
 class ReWOOAgent(ModuleBase):
-    def __init__(self, llm, tools: List[str], *, plan_llm: Union[ModuleBase, None] = None,
-                 solve_llm: Union[ModuleBase, None] = None, return_trace: bool = False):
+    def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[str] = [], *,
+                 plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
+                 return_trace: bool = False):
         super().__init__(return_trace=return_trace)
-        assert sum(x is not None for x in [llm, plan_llm, solve_llm]) <= 2, \
-               "llm and plan_llm, solve_llm cannot be set at the same time."
+        assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), 'Either specify only llm \
+               without specify plan and solve, or specify only plan and solve without specifying llm, or specify \
+               both llm and solve. Other situations are not allowed.'
         assert tools, "tools cannot be empty."
-        if plan_llm is None and solve_llm is None and llm is not None:
-            self._planner = llm
-            self._solver = llm
-        elif plan_llm is None and solve_llm is not None and llm is not None:
-            self._planner = llm
-            self._solver = solve_llm
-        elif solve_llm is None and plan_llm is not None and llm is not None:
-            self._planner = plan_llm
-            self._solver = llm
-        elif plan_llm is not None and solve_llm is not None and llm is None:
-            self._planner = plan_llm
-            self._solver = solve_llm
-        else:
-            raise ValueError("Either set llm, or set plan_llm and solve_llm, or set llm and one of [plan_llm, "
-                             f"solve_llm]. Other situations are not supported. llm: {llm}, plan_llm: {plan_llm}, "
-                             f"solve_llm: {solve_llm}")
+        self._planner = plan_llm or llm
+        self._solver = solve_llm or llm
         self._workers = tools
         self._tools_manager = ToolManager(tools).tools_info
         with pipeline() as self._agent:

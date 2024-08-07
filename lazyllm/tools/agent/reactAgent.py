@@ -20,7 +20,7 @@ You have access to the following tools:
 Please answer in the same language as the question and use the following format:
 
 Thought: The current language of the user is: (user's language). I need to use a tool to help answer the question.
-{MODEL_TYPE}
+{TOKENIZED_PROMPT}
 
 Please ALWAYS start with a Thought and Only ONE Thought at a time.
 
@@ -32,19 +32,20 @@ Answer: your answer here (In the same language as the user's question)
 ## Current Conversation
 
 Below is the current conversation consisting of interleaving human and assistant messages. Think step by step."""
-LOCAL_MODEL = """{tool_start_token}tool name (one of {tool_names}) if using a tool.
+WITH_TOKEN_PROMPT = """{tool_start_token}tool name (one of {tool_names}) if using a tool.
 {tool_args_token}the input to the tool, in a JSON format representing the kwargs (e.g. {{"input": "hello world", \
 "num_beams": 5}})
 {tool_end_token}end of tool."""
-ONLINE_MODEL = """Answering questions should include Thought regardless of whether or not you need to call a tool.\
-(Thought is required, tool_calls is optional.)"""
+WITHOUT_TOKEN_PROMPT = """Answering questions should include Thought regardless of whether or not you need to \
+call a tool.(Thought is required, tool_calls is optional.)"""
 
 class ReactAgent(ModuleBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
         assert llm and tools, "llm and tools cannot be empty."
-        prompt = INSTRUCTION.replace("{MODEL_TYPE}", ONLINE_MODEL if isinstance(llm, OnlineChatModule) else LOCAL_MODEL)
+        prompt = INSTRUCTION.replace("{TOKENIZED_PROMPT}", WITHOUT_TOKEN_PROMPT if isinstance(llm, OnlineChatModule)
+                                     else WITH_TOKEN_PROMPT)
         self._agent = loop(FunctionCall(llm, tools,
                                         _prompt=prompt.replace("{tool_names}", json.dumps(tools, ensure_ascii=False))),
                            stop_condition=lambda x: isinstance(x, str), count=self._max_retries)

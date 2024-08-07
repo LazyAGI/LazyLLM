@@ -79,6 +79,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
                 key = next(iter(input_params.model_fields.keys()))
                 input_params.model_validate({key: tool_input})
                 return {key: tool_input}
+            return tool_input
         else:
             raise TypeError(f"tool_input {tool_input} only supports dict and str.")
 
