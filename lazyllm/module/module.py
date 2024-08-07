@@ -257,13 +257,9 @@ class UrlModule(ModuleBase, UrlTemplate):
         assert self._url is not None, f'Please start {self.__class__} first'
 
         files = []
-        if self.template_message and isinstance(__input, str) and __input.startswith('lazyllm_files::'):
-            message = json.loads(__input[15:])
-            assert isinstance(message, dict)
-            query = message.get('text', '')
-            files = message.get('files', [])
-        else:
-            query = __input
+        if self.template_message and 'files' in kw:
+            files = kw.pop('files', [])
+        query = __input
         __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
         headers = {'Content-Type': 'application/json'}
 
@@ -277,6 +273,8 @@ class UrlModule(ModuleBase, UrlTemplate):
             data[self.keys_name_handle['inputs']] = __input
             if 'image' in self.keys_name_handle and files:
                 data[self.keys_name_handle['image']] = files
+            elif 'audio' in self.keys_name_handle and files:
+                data[self.keys_name_handle['audio']] = files
         else:
             if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
             data = __input

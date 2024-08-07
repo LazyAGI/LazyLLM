@@ -7,7 +7,7 @@ import random
 from gradio_client import Client
 
 import lazyllm
-from lazyllm import deploy
+from lazyllm import deploy, globals
 from lazyllm.launcher import cleanup
 
 class TestDeploy(object):
@@ -102,13 +102,44 @@ class TestDeploy(object):
         res = m('你好啊，很高兴认识你。')
         assert "sounds" in json.loads(res)
 
+    def test_stt_sensevoice(self):
+        chat = lazyllm.TrainableModule('SenseVoiceSmall')
+        m = lazyllm.ServerModule(chat)
+        m.update_server()
+        audio_path = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')
+        res = m(audio_path)
+        assert '但愿人长久' in res
+        globals['global_parameters'][m._module_id] = {'files': [audio_path]}
+        res = m('Hi')
+        assert '但愿人长久' in res
+        globals['global_parameters'][m._module_id] = {'files': audio_path}
+        res = m('hellow world.')
+        assert '但愿人长久' in res
+
+        _, client = self.warp_into_web(m)
+
+        def client_send(content):
+            chat_history = [[content, None]]
+            ans = client.predict(self.use_context,
+                                 chat_history,
+                                 self.stream_output,
+                                 self.append_text,
+                                 api_name="/_respond_stream")
+            return ans
+        res = client_send(audio_path)[0][-1][-1]
+        assert type(res) is str
+        assert '但愿人长久' in res
+        res = client_send('hi')[0][-1][-1]
+        assert "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported." == res
+
     def test_vlm_and_lmdeploy(self):
         chat = lazyllm.TrainableModule('internvl-chat-2b-v1-5').deploy_method(deploy.LMDeploy)
         m = lazyllm.ServerModule(chat)
         m.update_server()
         query = '这是啥？'
-        image_path = os.path.join(lazyllm.config['data_path'], 'imags/ji.jpg')
-        res = m('lazyllm_files::' + json.dumps({'text': query, 'files': image_path}))
+        image_path = os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg')
+        globals['global_parameters'][m._module_id] = {'files': image_path}
+        res = m(query)
         assert '鸡' in res
 
         _, client = self.warp_into_web(m)
