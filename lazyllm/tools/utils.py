@@ -11,7 +11,7 @@ def chat_history_to_str(history: List[Union[List[str], Dict[str, Any]]] = [], us
                 assert len(chat_msg) == 2
                 history_info += f"human: {chat_msg[0]}\nassistant: {chat_msg[1]}\n"
         elif isinstance(history[0], dict):
-            for chat_msg in history[-2 * MAX_HISTORY_LEN :]:
+            for chat_msg in history[-2 * MAX_HISTORY_LEN:]:
                 cur_role = chat_msg.get("role", "")
                 if cur_role not in MAP_ROLE:
                     continue
