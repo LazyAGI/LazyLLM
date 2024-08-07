@@ -369,7 +369,7 @@ class Switch(LazyLLMFlowsBase):
             self.conds, items = list(args[0].keys()), list(args[0].values())
         else:
             self.conds, items = list(args[0::2]), args[1::2]
-        items = {repr(k): v for k, v in zip(self.conds, items)}
+        items = {f"{repr(k)}-{id(k)}": v for k, v in zip(self.conds, items)}
         super().__init__(**items, post_action=post_action, **kw)
         self._judge_on_full_input = judge_on_full_input
 
