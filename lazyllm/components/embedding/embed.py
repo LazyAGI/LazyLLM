@@ -38,7 +38,6 @@ class LazyHuggingFaceEmbedding(object):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
         return LazyHuggingFaceEmbedding.rebuild, (self.base_embed, self.embed_batch_size, self.trust_remote_code, init)
 
-
 class EmbeddingDeploy():
     message_format = None
     keys_name_handle = None

@@ -10,6 +10,7 @@ from .multiprocessing import SpawnProcess, ForkProcess
 from .logger import LOG
 from .deprecated import deprecated
 from .globals import globals, LazyLlmResponse, LazyLlmRequest, encode_request, decode_request
+from .queue import FileSystemQueue
 
 __all__ = [
     # registry
@@ -73,4 +74,7 @@ __all__ = [
 
     # log
     'LOG',
+
+    # file-system queue
+    'FileSystemQueue',
 ]
