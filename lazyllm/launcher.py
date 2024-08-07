@@ -10,6 +10,9 @@ from enum import Enum
 from queue import Queue
 from datetime import datetime
 from multiprocessing.util import register_after_fork
+from collections import defaultdict
+import uuid
+import copy
 
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final, timeout, LOG
@@ -27,12 +30,24 @@ class Status(Enum):
 class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
     def __init__(self) -> None:
         self.status = Status.TBSubmitted
+        self._id = str(uuid.uuid4().hex)
 
     def makejob(self, cmd):
         raise NotImplementedError
 
     def launch(self, *args, **kw):
         raise NotImplementedError
+
+    def cleanup(self):
+        for k, v in self.all_processes[self._id]:
+            v.stop()
+            LOG.info(f"killed job:{k}")
+        self.all_processes.pop(self._id)
+
+    def clone(self):
+        new = copy.deepcopy(self)
+        new._id = str(uuid.uuid4().hex)
+        return new
 
 
 lazyllm.launchers['Status'] = Status
@@ -96,7 +111,7 @@ class Job(object):
             with timeout(3600, msg='Launch failed: No computing resources are available.'):
                 while self.status in (Status.TBSubmitted, Status.InQueue, Status.Pending):
                     time.sleep(2)
-            self.launcher.all_processes[self.jobid] = self
+            self.launcher.all_processes[self.launcher._id].append((self.jobid, self))
 
     def restart(self, *, fixed=False):
         self.stop()
@@ -145,7 +160,7 @@ class Job(object):
 
 @final
 class EmptyLauncher(LazyLLMLaunchersBase):
-    all_processes = dict()
+    all_processes = defaultdict(list)
 
     @final
     class Job(Job):
@@ -200,7 +215,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
 class SlurmLauncher(LazyLLMLaunchersBase):
     # In order to obtain the jobid to monitor and terminate the job more
     # conveniently, only one srun command is allowed in one Job
-    all_processes = dict()
+    all_processes = defaultdict(list)
     count = 0
 
     @final
@@ -367,7 +382,7 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
 @final
 class ScoLauncher(LazyLLMLaunchersBase):
-    all_processes = dict()
+    all_processes = defaultdict(list)
 
     @final
     class Job(Job):
@@ -520,20 +535,11 @@ class RemoteLauncher(LazyLLMLaunchersBase):
 
 def cleanup():
     # empty
-    for k, v in EmptyLauncher.all_processes.items():
-        v.stop()
-        LOG.info(f"killed job:{k}")
-
-    # slurm
-    for k, v in SlurmLauncher.all_processes.items():
-        v.stop()
-        LOG.info(f"killed job:{k}")
-
-    # sco
-    for k, v in ScoLauncher.all_processes.items():
-        v.stop()
-        LOG.info(f"killed job:{k}")
-
+    for m in (EmptyLauncher, SlurmLauncher, ScoLauncher):
+        for vs in m.all_processes.values():
+            for k, v in vs:
+                v.stop()
+                LOG.info(f"killed job:{k}")
     LOG.close()
 
 atexit.register(cleanup)
