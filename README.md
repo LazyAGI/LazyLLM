@@ -57,7 +57,7 @@ lazyllm.WebModule(chat, port=23466).start().wait()
 
 ### RAG
 
-![Demo RAG](docs/demo_rag.svg)
+![Demo RAG](docs/assets/demo_rag.svg)
 
 <details>
 <summary>click to look up prompts and imports</summary>
@@ -252,7 +252,7 @@ Finally, LazyLLM is a user-centric tool. If you have any ideas or feedback, feel
 
 ## Architecture
 
-![Architecture](docs/Architecture.en.png)
+![Architecture](docs/assets/Architecture.en.png)
 
 ## Basic concept
 
