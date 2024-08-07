@@ -6,11 +6,13 @@ import unittest
 
 
 class TestDocImplV2(unittest.TestCase):
-    
+
     def setUp(self):
         self.mock_embed = MagicMock()
         self.mock_directory_reader = MagicMock()
-        self.mock_directory_reader.load_data.return_value = [DocNode(uid="1", text="dummy text")]
+        self.mock_directory_reader.load_data.return_value = [
+            DocNode(uid="1", text="dummy text")
+        ]
 
         self.doc_impl = DocImplV2(embed=self.mock_embed, doc_files=["dummy_file.txt"])
         self.doc_impl.directory_reader = self.mock_directory_reader
@@ -53,16 +55,18 @@ class TestDocImplV2(unittest.TestCase):
         self.mock_directory_reader.load_data.return_value = new_docs
         self.doc_impl.add_files(["new_file.txt"])
         assert self.doc_impl.store.has_nodes(LAZY_ROOT_NAME)
-        assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME))==1
+        assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME)) == 1
 
     def test_delete_files(self):
         nodes_to_delete = [DocNode(uid="1")]
         self.mock_directory_reader.get_nodes_by_files.return_value = nodes_to_delete
         self.doc_impl.delete_files(["dummy_file.txt"])
 
-        self.mock_directory_reader.get_nodes_by_files.assert_called_once_with(["dummy_file.txt"])
-        assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME))==0
-        
-        
+        self.mock_directory_reader.get_nodes_by_files.assert_called_once_with(
+            ["dummy_file.txt"]
+        )
+        assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME)) == 0
+
+
 if __name__ == "__main__":
     unittest.main()

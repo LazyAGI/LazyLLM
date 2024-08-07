@@ -1,7 +1,6 @@
 import ast
 from collections import defaultdict
 from functools import wraps
-import os
 from typing import Callable, Dict, List, Optional, Set
 from lazyllm import ModuleBase, LOG, config, once_flag, call_once
 from lazyllm.common import LazyLlmRequest
