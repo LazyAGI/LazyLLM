@@ -25,7 +25,7 @@ def embed_wrapper(func):
 class DocImplV2:
     def __init__(self, embed, doc_files=Optional[List[str]], **kwargs):
         super().__init__()
-        self.doc_files = doc_files
+        self.directory_reader = DirectoryReader(doc_files)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self._create_node_group_default()
         self.embed = embed_wrapper(embed)
@@ -33,7 +33,6 @@ class DocImplV2:
         self.store = None
 
     def _lazy_init(self) -> None:
-        self.directory_reader = DirectoryReader(self.doc_files)
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
         if not self.store.has_nodes(LAZY_ROOT_NAME):

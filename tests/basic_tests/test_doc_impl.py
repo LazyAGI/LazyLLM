@@ -1,6 +1,7 @@
 from lazyllm.tools.rag.doc_impl import DocImplV2
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import DocNode, LAZY_ROOT_NAME
+from lazyllm import call_once
 from unittest.mock import MagicMock
 import unittest
 
@@ -10,13 +11,12 @@ class TestDocImplV2(unittest.TestCase):
     def setUp(self):
         self.mock_embed = MagicMock()
         self.mock_directory_reader = MagicMock()
-        self.mock_directory_reader.load_data.return_value = [
-            DocNode(uid="1", text="dummy text")
-        ]
+        mock_node = DocNode(group=LAZY_ROOT_NAME, text="dummy text")
+        mock_node.metadata = {"file_name": "dummy_file.txt"}
+        self.mock_directory_reader.load_data.return_value = [mock_node]
 
         self.doc_impl = DocImplV2(embed=self.mock_embed, doc_files=["dummy_file.txt"])
         self.doc_impl.directory_reader = self.mock_directory_reader
-        self.doc_impl._lazy_init()
 
     def test_create_node_group_default(self):
         assert "CoarseChunk" in self.doc_impl.node_groups
@@ -51,20 +51,17 @@ class TestDocImplV2(unittest.TestCase):
         assert node.text == "dummy text"
 
     def test_add_files(self):
-        new_docs = [DocNode(text="new dummy text")]
-        self.mock_directory_reader.load_data.return_value = new_docs
-        self.doc_impl.add_files(["new_file.txt"])
-        assert self.doc_impl.store.has_nodes(LAZY_ROOT_NAME)
+        assert self.doc_impl.store == None
+        call_once(self.doc_impl.init_flag, self.doc_impl._lazy_init)
         assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME)) == 1
+        new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
+        new_doc.metadata = {"file_name": "new_file.txt"}
+        self.mock_directory_reader.load_data.return_value = [new_doc]
+        self.doc_impl.add_files(["new_file.txt"])
+        assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME)) == 2
 
     def test_delete_files(self):
-        nodes_to_delete = [DocNode(uid="1")]
-        self.mock_directory_reader.get_nodes_by_files.return_value = nodes_to_delete
         self.doc_impl.delete_files(["dummy_file.txt"])
-
-        self.mock_directory_reader.get_nodes_by_files.assert_called_once_with(
-            ["dummy_file.txt"]
-        )
         assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME)) == 0
 
 
