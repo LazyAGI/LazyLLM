@@ -6,7 +6,6 @@ from lazyllm import LOG
 class DirectoryReader:
     def __init__(self, input_files: List[str]) -> None:
         self._input_files = input_files
-        self._file_doc_map = {}
 
     def load_data(self, input_files: Optional[List[str]] = None) -> List[DocNode]:
         input_files = input_files or self._input_files
@@ -24,16 +23,8 @@ class DirectoryReader:
             node.excluded_embed_metadata_keys = doc.excluded_embed_metadata_keys
             node.excluded_llm_metadata_keys = doc.excluded_llm_metadata_keys
             nodes.append(node)
-            self._file_doc_map[node.metadata["file_name"]] = node
         if not nodes:
             LOG.warning(
                 f"No nodes load from path {self.input_files}, please check your data path."
             )
-        return nodes
-
-    def get_nodes_by_files(self, files: List[str]) -> List[DocNode]:
-        nodes = []
-        for file in files:
-            if file in self._file_doc_map:
-                nodes.append(self._file_doc_map[file])
         return nodes

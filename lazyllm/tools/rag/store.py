@@ -127,16 +127,17 @@ class BaseStore(ABC):
         self._store: Dict[str, Dict[str, DocNode]] = {
             group: {} for group in node_groups
         }
+        self._file_node_map = {}
 
-    def _add_nodes(self, group: str, nodes: List[DocNode]) -> None:
-        if group not in self._store:
-            self._store[group] = {}
+    def _add_nodes(self, nodes: List[DocNode]) -> None:
         for node in nodes:
-            self._store[group][node.uid] = node
+            if node.group == LAZY_ROOT_NAME:
+                self._file_node_map[node.metadata["file_name"]] = node
+            self._store[node.group][node.uid] = node
 
-    def add_nodes(self, group: str, nodes: List[DocNode]) -> None:
-        self._add_nodes(group, nodes)
-        self.try_save_nodes(group, nodes)
+    def add_nodes(self, nodes: List[DocNode]) -> None:
+        self._add_nodes(nodes)
+        self.try_save_nodes(nodes)
 
     def has_nodes(self, group: str) -> bool:
         return len(self._store[group]) > 0
@@ -148,42 +149,51 @@ class BaseStore(ABC):
         return list(self._store.get(group, {}).values())
 
     @abstractmethod
-    def try_save_nodes(self, group: str, nodes: List[DocNode]) -> None:
+    def try_save_nodes(self, nodes: List[DocNode]) -> None:
+        # try save nodes to persistent source
         raise NotImplementedError("Not implemented yet.")
 
     @abstractmethod
     def try_load_store(self) -> None:
+        # try load nodes from persistent source
         raise NotImplementedError("Not implemented yet.")
 
     @abstractmethod
-    def try_remove_nodes(self, group: str, node_ids: List[str]) -> None:
+    def try_remove_nodes(self, nodes: List[DocNode]) -> None:
+        # try remove nodes in persistent source
         raise NotImplementedError("Not implemented yet.")
 
     def active_groups(self) -> List:
         return [group for group, nodes in self._store.items() if nodes]
 
-    def _remove_nodes(self, group: str, node_ids: List[str]) -> None:
-        if group not in self._store:
-            return
-        for node_id in node_ids:
-            self._store[group].pop(node_id, None)
+    def _remove_nodes(self, nodes: List[DocNode]) -> None:
+        for node in nodes:
+            assert node.group in self._store, f"Unexpected node group {node.group}"
+            self._store[node.group].pop(node.uid, None)
 
-    def remove_nodes(self, group: str, node_ids: List[str]) -> None:
-        self._remove_nodes(group, node_ids)
-        self.try_remove_nodes(group, node_ids)
+    def remove_nodes(self, nodes: List[DocNode]) -> None:
+        self._remove_nodes(nodes)
+        self.try_remove_nodes(nodes)
+
+    def get_nodes_by_files(self, files: List[str]) -> List[DocNode]:
+        nodes = []
+        for file in files:
+            if file in self._file_node_map:
+                nodes.append(self._file_node_map[file])
+        return nodes
 
 
 class MapStore(BaseStore):
     def __init__(self, node_groups: List[str], *args, **kwargs):
         super().__init__(node_groups, *args, **kwargs)
 
-    def try_save_nodes(self, group: str, nodes: List[DocNode]) -> None:
+    def try_save_nodes(self, nodes: List[DocNode]) -> None:
         pass
 
     def try_load_store(self) -> None:
         pass
 
-    def try_remove_nodes(self, group: str, node_ids: List[str]) -> None:
+    def try_remove_nodes(self, nodes: List[DocNode]) -> None:
         pass
 
 
@@ -199,7 +209,6 @@ class ChromadbStore(BaseStore):
             for group in node_groups
         }
         self._placeholder = [-1] * len(embed("a"))
-        self.try_load_store()
 
     def try_load_store(self) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:
@@ -210,7 +219,7 @@ class ChromadbStore(BaseStore):
         for group in self._collections.keys():
             results = self._peek_all_documents(group)
             nodes = self._build_nodes_from_chroma(results)
-            self._add_nodes(group, nodes)
+            self._add_nodes(nodes)
 
         # Rebuild relationships
         for group, nodes_dict in self._store.items():
@@ -223,7 +232,11 @@ class ChromadbStore(BaseStore):
             LOG.debug(f"build {group} nodes from chromadb: {nodes_dict.values()}")
         LOG.success("Successfully Built nodes from chromadb.")
 
-    def try_save_nodes(self, group: str, nodes: List[DocNode]) -> None:
+    def try_save_nodes(self, nodes: List[DocNode]) -> None:
+        if not nodes:
+            return
+        # Note: It's caller's duty to make sure this batch of nodes has the same group.
+        group = nodes[0].group
         ids, embeddings, metadatas, documents = [], [], [], []
         collection = self._collections.get(group)
         assert (
@@ -248,7 +261,7 @@ class ChromadbStore(BaseStore):
             )
             LOG.debug(f"Saved {group} nodes {ids} to chromadb.")
 
-    def try_remove_nodes(self, group: str, node_ids: List[str]) -> None:
+    def try_remove_nodes(self, nodes: List[DocNode]) -> None:
         pass
 
     def _find_node_by_uid(self, uid: str) -> Optional[DocNode]:

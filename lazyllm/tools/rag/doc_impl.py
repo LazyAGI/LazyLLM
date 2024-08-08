@@ -25,7 +25,7 @@ def embed_wrapper(func):
 class DocImplV2:
     def __init__(self, embed, doc_files=Optional[List[str]], **kwargs):
         super().__init__()
-        self.directory_reader = DirectoryReader(doc_files)
+        self.doc_files = doc_files
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self._create_node_group_default()
         self.embed = embed_wrapper(embed)
@@ -33,12 +33,13 @@ class DocImplV2:
         self.store = None
 
     def _lazy_init(self) -> None:
+        self.directory_reader = DirectoryReader(self.doc_files)
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
         if not self.store.has_nodes(LAZY_ROOT_NAME):
-            docs = self.directory_reader.load_data()
-            self.store.add_nodes(LAZY_ROOT_NAME, docs)
-            LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {docs}")
+            root_nodes = self.directory_reader.load_data()
+            self.store.add_nodes(root_nodes)
+            LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
 
     def _get_store(self) -> BaseStore:
         rag_store_type = config["rag_store_type"]
@@ -46,6 +47,7 @@ class DocImplV2:
             store = MapStore(node_groups=self.node_groups.keys())
         elif rag_store_type == "chroma":
             store = ChromadbStore(node_groups=self.node_groups.keys(), embed=self.embed)
+            store.try_load_store()
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {rag_store_type}"
@@ -86,20 +88,20 @@ class DocImplV2:
         call_once(self.init_flag, self._lazy_init)
         if len(input_files) == 0:
             return
-        docs = self.directory_reader.load_data(input_files)
+        root_nodes = self.directory_reader.load_data(input_files)
         temp_store = self._get_store()
-        temp_store.add_nodes(LAZY_ROOT_NAME, docs)
+        temp_store.add_nodes(root_nodes)
         active_groups = self.store.active_groups()
         LOG.info(f"add_files: Trying to merge store with {active_groups}")
         for group in active_groups:
             # Duplicate group will be discarded automatically
             nodes = self._get_nodes(group, temp_store)
-            self.store.add_nodes(group, nodes)
+            self.store.add_nodes(nodes)
             LOG.debug(f"Merge {group} with {nodes}")
 
     def delete_files(self, input_files: List[str]) -> None:
         call_once(self.init_flag, self._lazy_init)
-        docs = self.directory_reader.get_nodes_by_files(input_files)
+        docs = self.store.get_nodes_by_files(input_files)
         LOG.info(f"delete_files: removing documents {input_files} and nodes {docs}")
         if len(docs) == 0:
             return
@@ -107,13 +109,13 @@ class DocImplV2:
 
     def _delete_nodes_recursively(self, root_nodes: List[DocNode]) -> None:
         nodes_to_delete = defaultdict(list)
-        nodes_to_delete[LAZY_ROOT_NAME] = [node.uid for node in root_nodes]
+        nodes_to_delete[LAZY_ROOT_NAME] = root_nodes
 
         # Gather all nodes to be deleted including their children
         def gather_children(node: DocNode):
             for children_group, children_list in node.children.items():
                 for child in children_list:
-                    nodes_to_delete[children_group].append(child.uid)
+                    nodes_to_delete[children_group].append(child)
                     gather_children(child)
 
         for node in root_nodes:
@@ -121,7 +123,7 @@ class DocImplV2:
 
         # Delete nodes in all groups
         for group, node_uids in nodes_to_delete.items():
-            self.store.remove_nodes(group, node_uids)
+            self.store.remove_nodes(node_uids)
             LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
     def _get_transform(self, name):
@@ -146,7 +148,7 @@ class DocImplV2:
         transform = self._get_transform(group_name)
         parent_nodes = self._get_nodes(node_group["parent_name"], store)
         nodes = transform(parent_nodes, group_name)
-        store.add_nodes(group_name, nodes)
+        store.add_nodes(nodes)
         LOG.debug(f"building {group_name} nodes: {nodes}")
 
     def _get_nodes(
