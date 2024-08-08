@@ -131,7 +131,7 @@ class BaseStore(ABC):
 
     def _add_nodes(self, nodes: List[DocNode]) -> None:
         for node in nodes:
-            if node.group == LAZY_ROOT_NAME:
+            if node.group == LAZY_ROOT_NAME and "file_name" in node.metadata:
                 self._file_node_map[node.metadata["file_name"]] = node
             self._store[node.group][node.uid] = node
 
