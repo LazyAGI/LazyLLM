@@ -1,4 +1,5 @@
 from lazyllm import LightEngine
+from lazyllm.flow import Graph
 
 class TestEngine(object):
 
@@ -40,3 +41,13 @@ class TestEngine(object):
         assert engine.run(1) == 2
         assert engine.run(2) == 6
         assert engine.run(3) == 9
+
+    def test_engine_callable(self):
+        c = dict(id='1', kind='Callable', name='sum', args=lambda x, y: x + y)
+        nodes = [c]
+        edges = [dict(iid=Graph.start_node_name, oid='1'), dict(iid='1', oid=Graph.end_node_name)]
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        assert engine.run(3, 4) == 7
+        assert engine.run(6, 8) == 14
+        assert engine.run(-1, 1) == 0

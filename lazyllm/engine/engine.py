@@ -129,6 +129,11 @@ def make_code(code):
     return local_dict[fname]
 
 
+@NodeConstructor.register('Callable')
+def make_callable(f):
+    return f
+
+
 @NodeConstructor.register('Switch')
 def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     with switch(judge_on_full_input=judge_on_full_input) as sw:
