@@ -15,7 +15,10 @@
 LazyLLM是一款低代码构建**多Agent**大模型应用的开发工具，协助开发者用极低的成本构建复杂的AI应用，并可以持续的迭代优化效果。LazyLLM提供了便捷的搭建应用的workflow，并且为应用开发过程中的各个环节提供了大量的标准流程和工具。<br>
 基于LazyLLM的AI应用构建流程是**原型搭建 -> 数据回流 -> 迭代优化**，即您可以先基于LazyLLM快速跑通应用的原型，再结合场景任务数据进行bad-case分析，然后对应用中的关键环节进行算法迭代和模型微调，进而逐步提升整个应用的效果。<br>
 **用户文档**： https://lazyllm.readthedocs.io/ <br>
-**近期计划**：[v0.2 PRD](https://aicarrier.feishu.cn/wiki/BeFfwBFv8iXq7vkVGyrcv1kGnIh?from=from_copylink)
+**近期计划**：[v0.2 PRD](https://aicarrier.feishu.cn/wiki/BeFfwBFv8iXq7vkVGyrcv1kGnIh?from=from_copylink) <br>
+
+微信扫描下方二维码加入交流群<br>
+<img src="https://github.com/user-attachments/assets/8ad8fd14-b218-48b3-80a4-7334b2a32c5a" width=250/> <br>
 
 ## 二、特性
 
@@ -35,6 +38,8 @@ LazyLLM可用来构建常用的人工智能应用，下面给出一些例子。
 
 ### 3.1 对话机器人
 
+这是一个简单的对话机器人示例。
+
 ```python
 # set environment variable: LAZYLLM_OPENAI_API_KEY=xx 
 # or you can make a config file(~/.lazyllm/config.json) and add openai_api_key=xx
@@ -50,6 +55,43 @@ import lazyllm
 # Model will be downloaded automatically if you have an internet connection.
 chat = lazyllm.TrainableModule('internlm2-chat-7b')
 lazyllm.WebModule(chat, port=23466).start().wait()
+```
+
+这是一个带多模态和意图识别的高级机器人示例。
+
+![Demo Multimodal bot](docs/assets/multimodal-bot.svg)
+
+<details>
+<summary>点击获取import和prompt</summary>
+
+```python
+from lazyllm import TrainableModule, WebModule, deploy, pipeline, switch, _0
+
+chatflow_intent_list = ["聊天", "语音识别", "图片问答", "画图", "生成音乐", "文字转语音"]
+agent_prompt = f"""
+现在你是一个意图分类引擎，负责根据对话信息分析用户输入文本并确定唯一的意图类别。\n你只需要回复意图的名字即可，不要额外输出其他字段，也不要进行翻译。"intent_list"为所有意图名列表。\n
+如果输入中带有attachments，根据attachments的后缀类型以最高优先级确定意图：如果是图像后缀如.jpg、.png等，则输出：图片问答；如果是音频后缀如.mp3、.wav等，则输出：语音识别。
+## intent_list:\n{chatflow_intent_list}\n\n## 示例\nUser: 你好啊\nAssistant:  聊天\n
+"""
+painter_prompt = '现在你是一位绘图提示词大师，能够将用户输入的任意中文内容转换成英文绘图提示词，在本任务中你需要将任意输入内容转换成英文绘图提示词，并且你可以丰富和扩充提示词内容。'
+musician_prompt = '现在你是一位作曲提示词大师，能够将用户输入的任意中文内容转换成英文作曲提示词，在本任务中你需要将任意输入内容转换成英文作曲提示词，并且你可以丰富和扩充提示词内容。'
+```
+</details>
+
+```python
+base = TrainableModule('internlm2-chat-7b').prompt(agent_prompt)
+chat = base.share().prompt()
+with pipeline() as ppl:
+    ppl.cls = base
+    ppl.cls_normalizer = lambda x: x if x in chatflow_intent_list else chatflow_intent_list[0]
+    with switch(judge_on_full_input=False).bind(_0, ppl.input) as ppl.sw:
+        ppl.sw.case[chatflow_intent_list[0], chat]
+        ppl.sw.case[chatflow_intent_list[1], TrainableModule('SenseVoiceSmall')]
+        ppl.sw.case[chatflow_intent_list[2], TrainableModule('internvl-chat-2b-v1-5').deploy_method(deploy.LMDeploy)]
+        ppl.sw.case[chatflow_intent_list[3], pipeline(base.share().prompt(painter_prompt), TrainableModule('stable-diffusion-3-medium'))]
+        ppl.sw.case[chatflow_intent_list[4], pipeline(base.share().prompt(musician_prompt), TrainableModule('musicgen-small'))]
+        ppl.sw.case[chatflow_intent_list[5], TrainableModule('ChatTTS')]
+WebModule(ppl, history=[chat], audio=True, port=8847).start().wait()
 ```
 
 ### 3.2 检索增强生成
@@ -269,9 +311,9 @@ def test(input):
 def test_cmd(input):
     return f'echo input is {input}'
 
-# >>> demo.test()(1)
+# >>> lazyllm.demo.test()(1)
 # 'input is 1'
-# >>> demo.test_cmd(launcher=launchers.slurm)(2)
+# >>> lazyllm.demo.test_cmd(launcher=launchers.slurm)(2)
 # Command: srun -p pat_rd -N 1 --job-name=xf488db3 -n1 bash -c 'echo input is 2'
 ```
 

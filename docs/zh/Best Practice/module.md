@@ -23,20 +23,20 @@ Module的API文档可以参考 [module][lazyllm.module.ModuleBase]
 >>> import lazyllm
 
 >>> class MyModule(lazyllm.module.ModuleBase):
-...    
+...
 ...     def __init__(self, name, return_trace=True):
 ...         super(__class__, self).__init__(return_trace=return_trace)
 ...         self.name = name
-... 
+...
 ...     def _get_train_tasks(self):
 ...         return lazyllm.pipeline(lambda : print(f'Module {self.name} trained!'))
-... 
+...
 ...     def _get_deploy_tasks(self):
 ...         return lazyllm.pipeline(lambda : print(f'Module {self.name} deployed!'))
-... 
+...
 ...     def forward(self, input):
 ...         return f'[Module {self.name} get input: {input}]'
-... 
+...
 >>> m = MyModule('example')
 >>> m('hello world')
 '[Module example get input: hello world]'
@@ -44,14 +44,13 @@ Module的API文档可以参考 [module][lazyllm.module.ModuleBase]
 Module example trained!
 Module example deployed!
 >>> m.start()
-Module example deployed! 
+Module example deployed!
 >>> m.evalset(['hello', 'world'])
 >>> m.update()
 ['[Module example get input: hello]', '[Module example get input: world]']
 ```
 
-> **注意**： 
-    测试集是通过调用 ``evalset`` 来设置的，不需要显式的重写某个函数。所有的 ``Module`` 均可以设置测试集
+> **注意**：测试集是通过调用 ``evalset`` 来设置的，不需要显式的重写某个函数。所有的 ``Module`` 均可以设置测试集
 
 ### 通过内置的注册器
 
@@ -63,7 +62,7 @@ LazyLLM实现了一个 ``Module`` 的注册器，利用它可以很方便的将�
 >>> @lazyllm.module_register('mymodules')
 ... def m(input):
 ...     return f'module m get input: {input}'
-... 
+...
 >>> lazyllm.mymodules.m()(1)
 'module m get input: 1'
 >>> m = lazyllm.mymodules.m()
@@ -97,6 +96,7 @@ LazyLLM实现了一个 ``Module`` 的注册器，利用它可以很方便的将�
         [<Module type=MyModule name=m1>]
 
     > **注意**：
+    >
     > - 当flow作为 ``ActionModule`` 或 ``ServerModule`` 的构造参数时，若其中的存在 ``Module`` ，也会变成  ``ActionModule`` 或 ``ServerModule`` 的 ``SubModule`` 。下面给出一个例子：
     >
     >       >>> m1 = MyModule('m1')
@@ -124,7 +124,7 @@ LazyLLM实现了一个 ``Module`` 的注册器，利用它可以很方便的将�
 2. 在一个 ``Module`` 中设置另一个 ``Module`` 为成员变量，即可以让另一个 ``Module`` 变成自己是 ``submodule``，下面给出一个例子
 
         >>> class MyModule2(lazyllm.module.ModuleBase):
-        ...    
+        ...
         ...     def __init__(self, name, return_trace=True):
         ...         super(__class__, self).__init__(return_trace=return_trace)
         ...         self.name = name
@@ -141,7 +141,7 @@ LazyLLM实现了一个 ``Module`` 的注册器，利用它可以很方便的将�
 
 ```python
 >>> class MyModule2(lazyllm.module.ModuleBase):
-...    
+...
 ...     def __init__(self, name, return_trace=True):
 ...         super(__class__, self).__init__(return_trace=return_trace)
 ...         self.name = name
@@ -177,9 +177,8 @@ Module m2-2 deployed!
 ```
 
 > **注意**：
-> 
+>
 > 可以看出，当更新 ``ActionModule`` 时，会将其所有的 ``SubModule`` 一并进行更新；然后若有部署任务，则会在全部的训练/微调任务执行完毕之后，
 > 执行所有的部署任务。因为可能存在父模块对子模块的依赖，因此在部署时，会优先部署子模块，然后部署父模块。
 
-> **注意**：
-    当配置了 ``Redis`` 服务时，便可以利用LazyLLM提供的轻量级网关的机制，实现所有服务的并行部署。
+> **注意**：当配置了 ``Redis`` 服务时，便可以利用LazyLLM提供的轻量级网关的机制，实现所有服务的并行部署。

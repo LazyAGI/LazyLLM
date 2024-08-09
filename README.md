@@ -17,7 +17,9 @@ LazyLLM is a low-code development tool for building multi-agent LLMs(large langu
 The AI application development process based on LazyLLM follows the **prototype building -> data feedback -> iterative optimization** workflow. This means you can quickly build a prototype application using LazyLLM, then analyze bad cases using task-specific data, and subsequently iterate on algorithms and fine-tune models at critical stages of the application to gradually enhance the overall performance.<br>
 
 **Tutorials**： https://lazyllm.readthedocs.io/<br>
-**Recent Plans**: [v0.2 PRD](https://aicarrier.feishu.cn/wiki/H8bIwORVtiAKv2kwRRJcyfwZnAo?from=from_copylink)
+**Recent Plans**: [v0.2 PRD](https://aicarrier.feishu.cn/wiki/H8bIwORVtiAKv2kwRRJcyfwZnAo?from=from_copylink)<br>
+Scan the QR code below with WeChat to join the group chat<br>
+<img src="https://github.com/user-attachments/assets/8ad8fd14-b218-48b3-80a4-7334b2a32c5a" width=250/> <br>
 
 ## Features
 
@@ -38,6 +40,8 @@ LazyLLM can be used to build common artificial intelligence applications. Here a
 
 ### ChatBots
 
+This is a simple example of a chat bot.
+
 ```python
 # set environment variable: LAZYLLM_OPENAI_API_KEY=xx 
 # or you can make a config file(~/.lazyllm/config.json) and add openai_api_key=xx
@@ -53,6 +57,43 @@ import lazyllm
 # Model will be downloaded automatically if you have an internet connection.
 chat = lazyllm.TrainableModule('internlm2-chat-7b')
 lazyllm.WebModule(chat, port=23466).start().wait()
+```
+
+This is an advanced bot example with multimodality and intent recognition.
+
+![Demo Multimodal bot](docs/assets/multimodal-bot.svg)
+
+<details>
+<summary>click to look up prompts and imports</summary>
+
+```python
+from lazyllm import TrainableModule, WebModule, deploy, pipeline, switch, _0
+
+chatflow_intent_list = ["Chat", "Speech Recognition", "Image QA", "Drawing", "Generate Music", "Text to Speech"]
+agent_prompt = f"""
+You are now an intent classification engine, responsible for analyzing user input text based on dialogue information and determining a unique intent category.\nOnly reply with the name of the intent, do not output any additional fields, and do not translate. "intent_list" is the list of all intent names.\n
+If the input contains attachments, determine the intent based on the attachment file extension with the highest priority: if it is an image extension like .jpg, .png, etc., then output: Image QA; if it is an audio extension like .mp3, .wav, etc., then output: Speech Recognition.
+## intent_list:\n{chatflow_intent_list}\n\n## Example\nUser: Hello\nAssistant: Chat
+"""
+painter_prompt = 'Now you are a master of drawing prompts, capable of converting any Chinese content entered by the user into English drawing prompts. In this task, you need to convert any input content into English drawing prompts, and you can enrich and expand the prompt content.'
+musician_prompt = 'Now you are a master of music composition prompts, capable of converting any Chinese content entered by the user into English music composition prompts. In this task, you need to convert any input content into English music composition prompts, and you can enrich and expand the prompt content.'
+```
+</details>
+
+```python
+base = TrainableModule('internlm2-chat-7b').prompt(agent_prompt)
+chat = base.share().prompt()
+with pipeline() as ppl:
+    ppl.cls = base
+    ppl.cls_normalizer = lambda x: x if x in chatflow_intent_list else chatflow_intent_list[0]
+    with switch(judge_on_full_input=False).bind(_0, ppl.input) as ppl.sw:
+        ppl.sw.case[chatflow_intent_list[0], chat]
+        ppl.sw.case[chatflow_intent_list[1], TrainableModule('SenseVoiceSmall')]
+        ppl.sw.case[chatflow_intent_list[2], TrainableModule('internvl-chat-2b-v1-5').deploy_method(deploy.LMDeploy)]
+        ppl.sw.case[chatflow_intent_list[3], pipeline(base.share().prompt(painter_prompt), TrainableModule('stable-diffusion-3-medium'))]
+        ppl.sw.case[chatflow_intent_list[4], pipeline(base.share().prompt(musician_prompt), TrainableModule('musicgen-small'))]
+        ppl.sw.case[chatflow_intent_list[5], TrainableModule('ChatTTS')]
+WebModule(ppl, history=[chat], audio=True, port=8847).start().wait()
 ```
 
 ### RAG
@@ -276,9 +317,9 @@ def test(input):
 def test_cmd(input):
     return f'echo input is {input}'
 
-# >>> demo.test()(1)
+# >>> lazyllm.demo.test()(1)
 # 'input is 1'
-# >>> demo.test_cmd(launcher=launchers.slurm)(2)
+# >>> lazyllm.demo.test_cmd(launcher=launchers.slurm)(2)
 # Command: srun -p pat_rd -N 1 --job-name=xf488db3 -n1 bash -c 'echo input is 2'
 ```
 
