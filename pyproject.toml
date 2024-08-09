@@ -70,22 +70,18 @@ flash-attn = {version = "^2.6.3", optional = true}
 
 [tool.poetry.extras]
 light = [
-    "chromadb",
     "bm25s",
     "pystemmer",
     "nltk",
     "jieba",
-    "pyjwt",
-    "tiktoken"
+    "pyjwt"
 ]
 standard = [
-    "chromadb",
     "bm25s",
     "pystemmer",
     "nltk",
     "jieba",
     "pyjwt",
-    "tiktoken",
     "datasets",
     "deepspeed",
     "faiss-cpu",
@@ -104,7 +100,6 @@ standard = [
     "transformers",
     "vllm",
     "wandb",
-    "spacy",
     "chattts",
     "funasr",
     "lmdeploy",
@@ -112,13 +107,11 @@ standard = [
     "diffusers"
 ]
 full = [
-    "chromadb",
     "bm25s",
     "pystemmer",
     "nltk",
     "jieba",
     "pyjwt",
-    "tiktoken",
     "datasets",
     "deepspeed",
     "faiss-cpu",
@@ -137,7 +130,6 @@ full = [
     "transformers",
     "vllm",
     "wandb",
-    "spacy",
     "chattts",
     "funasr",
     "lmdeploy",
