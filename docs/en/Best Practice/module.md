@@ -1,11 +1,11 @@
 # Top-Level Core Concept: Module
 
-A Module is the top-level component in LazyLLM and one of its core concepts. A Module possesses four key capabilities: training, deployment, inference, and evaluation. Each Module can choose to implement some or all of these capabilities, 
+A Module is the top-level component in LazyLLM and one of its core concepts. A Module possesses four key capabilities: training, deployment, inference, and evaluation. Each Module can choose to implement some or all of these capabilities,
 and each capability can be composed of one or more functions, Components, or other Modules. In this chapter, we will provide a detailed introduction to the usage of Modules.
 
 ## API Reference
 
-You can refer to the Module's API documentation [module][lazyllm.module.ModuleBase] 
+You can refer to the Module's API documentation [module][lazyllm.module.ModuleBase]
 
 Defining a Module (``Module`` )
 
@@ -23,20 +23,20 @@ Here is an example:
 >>> import lazyllm
 
 >>> class MyModule(lazyllm.module.ModuleBase):
-...    
+...
 ...     def __init__(self, name, return_trace=True):
 ...         super(__class__, self).__init__(return_trace=return_trace)
 ...         self.name = name
-... 
+...
 ...     def _get_train_tasks(self):
 ...         return lazyllm.pipeline(lambda : print(f'Module {self.name} trained!'))
-... 
+...
 ...     def _get_deploy_tasks(self):
 ...         return lazyllm.pipeline(lambda : print(f'Module {self.name} deployed!'))
-... 
+...
 ...     def forward(self, input):
 ...         return f'[Module {self.name} get input: {input}]'
-... 
+...
 >>> m = MyModule('example')
 >>> m('hello world')
 '[Module example get input: hello world]'
@@ -44,14 +44,13 @@ Here is an example:
 Module example trained!
 Module example deployed!
 >>> m.start()
-Module example deployed! 
+Module example deployed!
 >>> m.evalset(['hello', 'world'])
 >>> m.update()
 ['[Module example get input: hello]', '[Module example get input: world]']
 ```
 
-> **Note**： 
-    The test set is set by calling `evalset`, and there is no need to explicitly override any function. All `Modules` can have a test set.
+> **Note**: The test set is set by calling `evalset`, and there is no need to explicitly override any function. All `Modules` can have a test set.
 
 ### Using the Built-in Registry
 
@@ -63,7 +62,7 @@ LazyLLM implements a registry for ``Modules``, which allows you to easily regist
 >>> @lazyllm.module_register('mymodules')
 ... def m(input):
 ...     return f'module m get input: {input}'
-... 
+...
 >>> lazyllm.mymodules.m()(1)
 'module m get input: 1'
 >>> m = lazyllm.mymodules.m()
@@ -76,8 +75,8 @@ LazyLLM implements a registry for ``Modules``, which allows you to easily regist
 
 #### Concept of Submodules
 
-Similar to the ``Module`` class in ``pytorch``, the ``Module`` in LazyLLM also has a hierarchical concept, where a Module can have one or more ``Submodule``. 
-When using the ``update`` function to update a ``Module``, its ``Submodule`` will also be updated, unless explicitly set not to update the ``Submodule``. 
+Similar to the ``Module`` class in ``pytorch``, the ``Module`` in LazyLLM also has a hierarchical concept, where a Module can have one or more ``Submodule``.
+When using the ``update`` function to update a ``Module``, its ``Submodule`` will also be updated, unless explicitly set not to update the ``Submodule``.
 Similarly, when using the ``start`` function to start the deployment task of a ``Module``, its ``Submodule`` will also be deployed, unless explicitly set not to deploy the ``Submodule``.
 Here is an example:
 
@@ -96,9 +95,10 @@ You can make one ``Module`` a ``Submodule`` of another ``Module`` in the followi
         >>> sm.submodules
         [<Module type=MyModule name=m1>]
 
-    > **Note**：
+    > **Note**:
+    >
     > - When a flow is passed as a constructor argument to ``ActionModule`` or ``ServerModule``, any ``Module`` within it will also become a ``Submodule`` of the ``ActionModule`` or ``ServerModule``. Here's an example:
-    > 
+    >
     >       >>> m1 = MyModule('m1')
     >       >>> m2 = MyModule('m2')
     >       >>> m3 = MyModule('m3')
@@ -124,7 +124,7 @@ You can make one ``Module`` a ``Submodule`` of another ``Module`` in the followi
 2. Setting another ``Module`` as a member variable in a ``Module`` can make the other ``Module`` become its ``submodule``. Here is an example:
 
         >>> class MyModule2(lazyllm.module.ModuleBase):
-        ...    
+        ...
         ...     def __init__(self, name, return_trace=True):
         ...         super(__class__, self).__init__(return_trace=return_trace)
         ...         self.name = name
@@ -141,7 +141,7 @@ When training/fine-tuning or deploying a ``Module``, a depth-first strategy will
 
 ```python
 >>> class MyModule2(lazyllm.module.ModuleBase):
-...    
+...
 ...     def __init__(self, name, return_trace=True):
 ...         super(__class__, self).__init__(return_trace=return_trace)
 ...         self.name = name
@@ -178,8 +178,7 @@ Module m2-2 deployed!
 
 > **Note**:
 >
-> It can be seen that when updating the ``ActionModule``, all its ``Submodules`` will be updated together. If there are deployment tasks, they will be executed after all the training/fine-tuning tasks are completed. 
+> It can be seen that when updating the ``ActionModule``, all its ``Submodules`` will be updated together. If there are deployment tasks, they will be executed after all the training/fine-tuning tasks are completed.
 > Since parent modules may depend on submodules, submodules will be deployed first, followed by parent modules.
 
-> **Note**:
-    When the ``Redis`` service is configured, the lightweight gateway mechanism provided by LazyLLM can be used to achieve parallel deployment of all services.
+> **Note**: When the ``Redis`` service is configured, the lightweight gateway mechanism provided by LazyLLM can be used to achieve parallel deployment of all services.
