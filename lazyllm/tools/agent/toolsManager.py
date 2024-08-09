@@ -1,5 +1,5 @@
 import copy
-import json
+import json5 as json
 import lazyllm
 import docstring_parser
 from lazyllm.module import ModuleBase
@@ -74,8 +74,14 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
                 ret = input_params.model_validate(tool_input)
                 return {key: getattr(ret, key) for key in ret.model_dump().keys() if key in tool_input}
             return tool_input
+        elif isinstance(tool_input, str):
+            if input_params is not None:
+                key = next(iter(input_params.model_fields.keys()))
+                input_params.model_validate({key: tool_input})
+                return {key: tool_input}
+            return tool_input
         else:
-            raise TypeError(f"tool_input {tool_input} only supports dict.")
+            raise TypeError(f"tool_input {tool_input} only supports dict and str.")
 
     def validate_parameters(self, arguments: Dict[str, Any]) -> bool:
         if len(self.required_args.difference(set(arguments.keys()))) == 0:

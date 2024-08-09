@@ -35,8 +35,8 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             self._model_optional_params['incremental_output'] = True
 
     def _get_system_prompt(self):
-        return "You are a large-scale language model from Alibaba Cloud, your name is Tongyi Qianwen, \
-                and you are a useful assistant."
+        return ("You are a large-scale language model from Alibaba Cloud, "
+                "your name is Tongyi Qianwen, and you are a useful assistant.")
 
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'compatible-mode/v1/chat/completions')

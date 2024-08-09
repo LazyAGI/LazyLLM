@@ -311,9 +311,9 @@ def test(input):
 def test_cmd(input):
     return f'echo input is {input}'
 
-# >>> demo.test()(1)
+# >>> lazyllm.demo.test()(1)
 # 'input is 1'
-# >>> demo.test_cmd(launcher=launchers.slurm)(2)
+# >>> lazyllm.demo.test_cmd(launcher=launchers.slurm)(2)
 # Command: srun -p pat_rd -N 1 --job-name=xf488db3 -n1 bash -c 'echo input is 2'
 ```
 
