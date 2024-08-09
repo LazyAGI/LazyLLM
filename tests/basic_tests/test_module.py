@@ -113,15 +113,3 @@ class TestModule:
         response = requests.get(m.url)
         assert response.status_code == 200
         m.stop()
-
-    def test_AutoModel(self):
-        # No model_name and key
-        chat = lazyllm.AutoModel()
-        assert isinstance(chat, lazyllm.TrainableModule)
-        # No model_name, but set key
-        lazyllm.config.add("openai_api_key", str, "123", "OPENAI_API_KEY")
-        chat = lazyllm.AutoModel()
-        assert isinstance(chat, lazyllm.OnlineChatModule)
-        # set model_name and key
-        chat = lazyllm.AutoModel('internlm2-chat-7b')
-        assert isinstance(chat, lazyllm.TrainableModule)

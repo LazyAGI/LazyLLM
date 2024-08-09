@@ -15,7 +15,10 @@
 LazyLLM是一款低代码构建**多Agent**大模型应用的开发工具，协助开发者用极低的成本构建复杂的AI应用，并可以持续的迭代优化效果。LazyLLM提供了便捷的搭建应用的workflow，并且为应用开发过程中的各个环节提供了大量的标准流程和工具。<br>
 基于LazyLLM的AI应用构建流程是**原型搭建 -> 数据回流 -> 迭代优化**，即您可以先基于LazyLLM快速跑通应用的原型，再结合场景任务数据进行bad-case分析，然后对应用中的关键环节进行算法迭代和模型微调，进而逐步提升整个应用的效果。<br>
 **用户文档**： https://lazyllm.readthedocs.io/ <br>
-**近期计划**：[v0.2 PRD](https://aicarrier.feishu.cn/wiki/BeFfwBFv8iXq7vkVGyrcv1kGnIh?from=from_copylink)
+**近期计划**：[v0.2 PRD](https://aicarrier.feishu.cn/wiki/BeFfwBFv8iXq7vkVGyrcv1kGnIh?from=from_copylink) <br>
+
+微信扫描下方二维码加入交流群<br>
+<img src="https://github.com/user-attachments/assets/8ad8fd14-b218-48b3-80a4-7334b2a32c5a" width=250/> <br>
 
 ## 二、特性
 
@@ -54,7 +57,7 @@ lazyllm.WebModule(chat, port=23466).start().wait()
 
 ### 3.2 检索增强生成
 
-![Demo RAG](docs/demo_rag.svg)
+![Demo RAG](docs/assets/demo_rag.svg)
 
 <details>
 <summary>点击获取import和prompt</summary>
@@ -246,7 +249,7 @@ LazyLLM的设计目标是让算法研究员和开发者能够能够从繁杂的�
 
 ## 七、架构说明
 
-![架构说明](docs/Architecture.png)
+![架构说明](docs/assets/Architecture.png)
 
 ## 八、基本概念
 
