@@ -14,13 +14,18 @@ fastapi = ">=0.111.0"
 loguru = ">=0.7.2"
 pydantic = ">=2.5.0"
 requests = ">=2.32.2"
-uvicorn = ">=0.28.0"
+uvicorn = "<0.29.0"
 cloudpickle = ">=3.0.0"
 flake8 = ">=7.0.0"
 gradio = ">=3.48.0"
 gradio-client = ">=0.6.1"
 protobuf = ">=3.20.1"
-setuptools = "^70.0.0"
+setuptools = "<70.0.0"
+docstring-parser = "^0.16"
+json5 = "^0.9.25"
+tiktoken = "^0.7.0"
+spacy = "^3.7.5"
+chromadb = "^0.5.5"
 redis = { version = ">=5.0.4", optional = true }
 huggingface-hub = { version = ">=0.23.1", optional = true }
 jieba = { version = ">=0.42.1", optional = true }
@@ -50,45 +55,107 @@ scikit-learn = { version = ">=1.5.0", optional = true }
 tensorboard = { version = ">=2.16.2", optional = true }
 tensorboard-data-server = { version = ">=0.7.2", optional = true }
 torchvision = { version = ">=0.16.2", optional = true }
-vllm = { version = ">=0.4.0", optional = true }
+vllm = {version = "==0.5.0", optional = true}
 wandb = { version = ">=0.17.0", optional = true }
-docstring-parser = "^0.16"
-json5 = "^0.9.25"
-chromadb = "^0.5.5"
+bm25s = {version = "^0.1.10", optional = true}
+nltk = {version = "^3.8.1", optional = true}
+pystemmer = {version = "^2.2.0.1", optional = true}
+chattts = {version = "^0.1.1", optional = true}
+funasr = {version = "^1.1.4", optional = true}
+lmdeploy = {version = "^0.5.3", optional = true}
+timm = {version = "^1.0.8", optional = true}
+diffusers = {version = "^0.30.0", optional = true}
+sortedcontainers = {version = "^2.4.0", optional = true}
+flash-attn = {version = "^2.6.3", optional = true}
 
 [tool.poetry.extras]
-full = [
-    "redis",
-    "huggingface-hub",
+light = [
+    "chromadb",
+    "bm25s",
+    "pystemmer",
+    "nltk",
     "jieba",
-    "llama-index",
-    "modelscope",
-    "pandas",
     "pyjwt",
-    "rank-bm25",
-    "redisvl",
+    "tiktoken"
+]
+standard = [
+    "chromadb",
+    "bm25s",
+    "pystemmer",
+    "nltk",
+    "jieba",
+    "pyjwt",
+    "tiktoken",
     "datasets",
     "deepspeed",
-    "fire",
-    "numpy",
-    "peft",
-    "torch",
-    "transformers",
-    "collie-lm",
     "faiss-cpu",
+    "fire",
     "google",
+    "llama-index",
     "llama-index-embeddings-huggingface",
+    "modelscope",
+    "numpy",
+    "pandas",
+    "peft",
+    "rank-bm25",
+    "scikit-learn",
+    "torch",
+    "torchvision",
+    "transformers",
+    "vllm",
+    "wandb",
+    "spacy",
+    "chattts",
+    "funasr",
+    "lmdeploy",
+    "timm",
+    "diffusers"
+]
+full = [
+    "chromadb",
+    "bm25s",
+    "pystemmer",
+    "nltk",
+    "jieba",
+    "pyjwt",
+    "tiktoken",
+    "datasets",
+    "deepspeed",
+    "faiss-cpu",
+    "fire",
+    "google",
+    "llama-index",
+    "llama-index-embeddings-huggingface",
+    "modelscope",
+    "numpy",
+    "pandas",
+    "peft",
+    "rank-bm25",
+    "scikit-learn",
+    "torch",
+    "torchvision",
+    "transformers",
+    "vllm",
+    "wandb",
+    "spacy",
+    "chattts",
+    "funasr",
+    "lmdeploy",
+    "timm",
+    "diffusers",
+    "redis",
+    "huggingface-hub",
+    "redisvl",
+    "collie-lm",
     "llama-index-storage-docstore-redis",
     "llama-index-storage-index-store-redis",
     "llama-index-storage-kvstore-redis",
     "llama-index-vector-stores-redis",
     "llama-index-retrievers-bm25",
-    "scikit-learn",
     "tensorboard",
     "tensorboard-data-server",
-    "torchvision",
-    "vllm",
-    "wandb"
+    "sortedcontainers",
+    "flash-attn"
 ]
 
 [build-system]
