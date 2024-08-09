@@ -2,6 +2,7 @@
 from lazyllm.module import ModuleBase
 from lazyllm.components import AlpacaPrompter
 from lazyllm import pipeline, globals
+from lazyllm.tools.utils import chat_history_to_str
 from typing import Dict, Union, Any, List
 import string
 import json
@@ -57,9 +58,7 @@ ${input}
 
 
 class IntentClassifier(ModuleBase):
-    def __init__(
-        self, llm, intent_list: list, return_trace: bool = False
-    ) -> None:
+    def __init__(self, llm, intent_list: list, return_trace: bool = False) -> None:
         super().__init__(return_trace=return_trace)
 
         def choose_prompt():
@@ -83,29 +82,13 @@ class IntentClassifier(ModuleBase):
         tools: Union[List[Dict[str, Any]], None] = None,
         label: Union[str, None] = None,
     ):
-        MAX_HISTORY_LEN = 20
-
         input_json = {}
         if isinstance(input, str):
             input_json = {"human_input": input, "intent_list": self._intent_list}
         else:
             raise ValueError(f"Unexpected type for input: {type(input)}")
 
-        history_info = ""
-        MAP_ROLE = {"user": "human", "assitant": "assitant"}
-        if history:
-            if isinstance(history[0], list):
-                for chat_msg in history[-MAX_HISTORY_LEN:]:
-                    assert len(chat_msg) == 2
-                    history_info += f"human: {chat_msg[0]}\nassistant: {chat_msg[1]}\n"
-            elif isinstance(history[0], dict):
-                for chat_msg in history[-2 * MAX_HISTORY_LEN:]:
-                    cur_role = chat_msg.get("role", "")
-                    if cur_role not in MAP_ROLE:
-                        continue
-                    history_info += f"{MAP_ROLE[cur_role]}\n"
-            else:
-                raise ValueError(f"Unexpected type for history: {type(history[0])}")
+        history_info = chat_history_to_str(history)
         history = []
         input_text = json.dumps(input_json, ensure_ascii=False)
         return dict(history_info=history_info, input=input_text), history, tools, label
