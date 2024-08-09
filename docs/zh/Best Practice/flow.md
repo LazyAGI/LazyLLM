@@ -15,12 +15,7 @@ Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶
 ```python
 from lazyllm import pipeline
 
-class Functor(ob
-
-
-
-
-ject):
+class Functor(object):
     def __call__(self, x): return x * x
 
 def f1(input): return input + 1
