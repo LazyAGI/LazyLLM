@@ -43,7 +43,7 @@ class DocManager(lazyllm.ModuleBase):
             override=override
         )
 
-        self._impl.delete_files(overwritten_files, is_del_source=False)
+        self._impl.delete_files(group_name, overwritten_files, is_del_source=False)
         self._impl.add_files(group_name, new_add_files + overwritten_files)
         return BaseResponse(data={
             'already_exist_files': already_exist_files,

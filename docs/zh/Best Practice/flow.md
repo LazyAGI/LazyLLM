@@ -15,12 +15,7 @@ Pipeline是顺次执行的数据流，上一个阶段的输出成为下一个阶
 ```python
 from lazyllm import pipeline
 
-class Functor(ob
-
-
-
-
-ject):
+class Functor(object):
     def __call__(self, x): return x * x
 
 def f1(input): return input + 1
@@ -30,8 +25,7 @@ f3 = Functor()
 assert pipeline(f1, f2, f3, Functor)(1) == 256
 ```
 
-> **注意**：
-    借助LazyLLM的注册机制 : [register][lazyllm.common.Register] 注册的函数，也可以直接被pipeline使用，下面给出一个例子
+> **注意**：借助LazyLLM的注册机制 : [register][lazyllm.common.Register] 注册的函数，也可以直接被pipeline使用，下面给出一个例子
 
 ```python
 import lazyllm
@@ -70,8 +64,7 @@ with pipeline() as p:
 assert p(1) == 16
 ```
 
-> **注意**：
-    ``parallel``, ``diverter``, ``switch``, ``loop`` 等也支持with的用法。
+> **注意**：``parallel``, ``diverter``, ``switch``, ``loop`` 等也支持with的用法。
 
 ##### 参数绑定
 
@@ -104,6 +97,7 @@ assert p(1) == 'get [1], [f3-5], [5]'
 对于上面的案例，整个pipeline的输入会作为f4的第一个参数（此处我们假设从第一个开始计数），f3的输出（即新函数的输入）会作为f4的第二个参数，f2的输出会作为f4的第三个参数。
 
 > **注意**：
+>
 > - 参数绑定仅在一个pipeline中生效（注意，当flow出现嵌套时，在子flow中不生效），仅允许下游函数绑定上游函数的输出作为参数。
 > - 使用参数绑定后，平铺的方式传入的参数中，未被 ``_0``, ``_1`` 等 ``placeholder`` 引用的会被丢弃
 
@@ -119,8 +113,7 @@ with pipeline() as p:
 assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
-> **注意**：
-    请小心lambda函数！如果使用了lambda函数，请注意给lambda函数加括号，例如 ``(lambda x, y: pass) | bind(1, _0)``
+> **注意**：请小心lambda函数！如果使用了lambda函数，请注意给lambda函数加括号，例如 ``(lambda x, y: pass) | bind(1, _0)``
 
 除了C++的bind方式之外，作为python，我们额外提供了 ``kwargs`` 的参数绑定， ``kwargs`` 和c++的绑定方式可以混合使用，示例如下:
 
@@ -134,8 +127,7 @@ with pipeline() as p:
 assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
-> **注意**：
-    通过 ``kwargs`` 绑定的参数的值不能使用 ``_0`` 等
+> **注意**：通过 ``kwargs`` 绑定的参数的值不能使用 ``_0`` 等
 
 如果pipeline的输入比较复杂，可以直接对 ``input`` 做一次简单的解析处理，示例如下:
 
@@ -188,15 +180,13 @@ with pipeline(auto_capture=True) as p:
 assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
-> **注意**：
-    该能力目前还不是很完善，不推荐大家使用，敬请期待
+> **注意**：该能力目前还不是很完善，不推荐大家使用，敬请期待
 
 ### parallel
 
 parallel的所有组件共享输入，并将结果合并输出。 ``parallel`` 的定义方法和 ``pipeline`` 类似，也可以直接在定义 ``parallel`` 时初始化其元素，或在with块中初始化其元素。
 
-> **注意**：
-    因 ``parallel`` 所有的模块共享输入，因此 ``parallel`` 的输入不支持被参数绑定。
+> **注意**：因 ``parallel`` 所有的模块共享输入，因此 ``parallel`` 的输入不支持被参数绑定。
 
 ##### 结果后处理
 
@@ -223,8 +213,7 @@ with parallel().sum as p:
 assert p(1) == 2
 ```
 
-> **注意**：
-    如果使用 ``asdict``, 需要为 ``parallel`` 中的元素取名字，返回的 ``dict`` 的 ``key`` 即为元素的名字。
+> **注意**：如果使用 ``asdict``, 需要为 ``parallel`` 中的元素取名字，返回的 ``dict`` 的 ``key`` 即为元素的名字。
 
 ##### 顺序执行
 
@@ -241,8 +230,7 @@ with parallel.sequential() as p:
 assert p(1) == (1, 1)
 ```
 
-> **注意**：
-    ``diverter`` 也可以通过 ``.sequential`` 来实现顺序执行
+> **注意**：``diverter`` 也可以通过 ``.sequential`` 来实现顺序执行
 
 ### 小结
 
