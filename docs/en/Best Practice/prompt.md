@@ -1,6 +1,6 @@
 ## Prompter
 
-To ensure a consistent user experience across different online models and various local models, as well as between fine-tuning and inference, we have defined the Prompter class. This class abstracts away the implementation details of different models and inference frameworks. 
+To ensure a consistent user experience across different online models and various local models, as well as between fine-tuning and inference, we have defined the Prompter class. This class abstracts away the implementation details of different models and inference frameworks.
 You can refer to the Prompter API documentation at [prompter][lazyllm.components.prompter.LazyLLMPrompterBase]. Next, I will introduce the design concept of the Prompter in LazyLLM step by step, starting with an example.
 
 ### Prompter Quick Start
@@ -34,8 +34,9 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 
 In the example above, the ``generate_prompt`` function accepts a ``dict`` as input, filling in the slots in the ``instruction`` template with the provided values.
 
-> **Note**：
-> - In the code above, there's a parameter ``return_dict`` worth noting. When ``return_dict`` is set to True, it returns a dictionary in the OpenAI format for online models. 
+> **Note**:
+>
+> - In the code above, there's a parameter ``return_dict`` worth noting. When ``return_dict`` is set to True, it returns a dictionary in the OpenAI format for online models.
 > - Typically, you just need to assign the Prompter to a ``TrainableModule`` or ``OnlineChatModule`` without worrying about the ``generate_prompt`` function.
 
 ### Design Concept of LazyLLM Prompter
@@ -44,7 +45,7 @@ In the example above, the ``generate_prompt`` function accepts a ``dict`` as inp
 
 **PromptTemplate**: A built-in template for each Prompter. Each subclass must implement its own PromptTemplate to select certain fields and define concatenation rules.
 
-- The optional fields in PrompterTemplate include:：
+- The optional fields in PrompterTemplate include::
     - system: System prompt typically reads the model's ownership information and sets it accordingly. If not set, it defaults to: ``You are an AI-Agent developed by LazyLLM.`` .
     - instruction: Task instruction, obtained by concatenating the user's input with the ``InstructionTemplate``. This is an important field for application developers to understand. If the instruction is a string, it is considered a system instruction by default. If it is a dictionary, the keys can only be ``system`` and ``user``. ``system`` specifies system-level instructions, while ``user`` specifies user-level instructions.
     - history: Historical conversation, derived from user input, formatted as ``[[a, b], [c, d]]`` or ``[{"role": "user", "content": ""}, {"role": "assistant", "content": ""}]``
@@ -56,12 +57,13 @@ In the example above, the ``generate_prompt`` function accepts a ``dict`` as inp
     - eoh: ``end of human``, signifies the end of user input, often used as a separator in multi-turn dialogues. This symbol is filled in by the model, and developers and users don't need to consider it.
     - soa: ``start of assistant``, signifies the beginning of the model's output, often used as a separator in multi-turn dialogues. This symbol is filled in by the model, and developers and users don't need to consider it.
     - eoa: ``end of assistant``, signifies the end of the model's output, often used as a separator in multi-turn dialogues. This symbol is filled in by the model, and developers and users don't need to consider it.
-- The built-in Prompt concatenation rules used by ``TrainableModule`` are as follows:：
+- The built-in Prompt concatenation rules used by ``TrainableModule`` are as follows::
     - AlpacaPrompter: ``{system}\n{instruction}\n{tools}\n{user}### Response:\n``
     - ChatPrompter: ``{sos}{system}{instruction}{tools}{eos}\n\n{history}\n{soh}\n{user}{input}\n{eoh}{soa}\n``
 - The output format of ``OnlineChatModule`` is:``dict(messages=[{"role": "system", "content": ""}, {"role": "user", "content": ""}, ...], tools=[])``
 
-> **Note**： 
+> **Note**:
+>
 > - From the above, we can see that ``AlpacaPrompter`` lacks the ``history`` field as well as the identifiers like ``soh`` necessary for multi-turn dialogue segmentation compared to ``ChatPrompter``.
 > - Therefore, it is evident that ``AlpacaPrompter`` does not support multi-turn dialogue.
 
@@ -70,24 +72,23 @@ In the example above, the ``generate_prompt`` function accepts a ``dict`` as inp
 - ``instruction``:Provided by the developer when constructing the ``Prompter``, it may contain several placeholders to be filled with user input. Alternatively, it can specify system-level and user-level instructions. When specifying user-level instructions, a dictionary type must be used with keys ``user`` and ``system``.
 - ``extro_keys`` : Additional information required when the user calls the model, provided by the developer during the construction of the Prompter. These will automatically be converted into placeholders within the ``instruction``.
 
-> **Note**：
-    In the built-in ``Prompter``, the ``Alpaca's`` ``InstructionTemplate`` additionally includes the standard prompt in the ``alpaca`` format, which is: ``Below is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request``
+> **Note**: In the built-in ``Prompter``, the ``Alpaca's`` ``InstructionTemplate`` additionally includes the standard prompt in the ``alpaca`` format, which is: ``Below is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request``
 
 #### Prompt Generation Process Analysis
 
 Taking the example of a document question and answer task using ``AlpacaPrompter`` from :[trial](#defining-and-using-a-prompter), let's go through the prompt generation process in detail.
 
 1. ``AlpacaPrompter`` combines the ``instruction`` (and ``extra_keys``, if any) provided during the construction of the ``prompter`` with the ``InstructionTemplate``. The ``instruction`` is set as:
-```python     
+```python
 "Below is an instruction that describes a task, paired with extra messages such as input that provides "
 "further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
 "Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{{context}}，"
 "用户的问题是{{input}}, 现在请你做出回答。### Response:\\n}"
-``` 
+```
 
 2. Given the user's input as ``dict(context='背景', input='问题')``
 3. Concatenate the user's input with the instruction obtained in ’1‘ to get:
-```python 
+```python
 "Below is an instruction that describes a task, paired with extra messages such as input that provides "
 "further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
 "Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，"
@@ -106,7 +107,7 @@ Refer to the API documentation: [prompter][lazyllm.components.prompter.LazyLLMPr
 
 #### Query as a string, not a dict
 
-In :[trial](#defining-and-using-a-prompter), we demonstrated a basic usage and explained the working principle of the ``prompter`` in the following sections. 
+In :[trial](#defining-and-using-a-prompter), we demonstrated a basic usage and explained the working principle of the ``prompter`` in the following sections.
 However, in most cases, the user's input is often a ``string``. This section demonstrates how to use the ``prompter`` when the input is a ``string``.
 
 When the user's input is a string, we allow at most one slot in the ``Prompter``'s ``instruction``. Using the scenario of "large models doing arithmetic", we provide an example code:
@@ -119,8 +120,7 @@ When the user's input is a string, we allow at most one slot in the ``Prompter``
 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n请完成加法运算\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\na+b\\n\\n\\n### Response:\\n'
 ```
 
-> **Note**：
-    When using ``AlpacaPrompter``, you need to define a unique slot that can be given any name, and the input of type ``string`` will be filled into it.
+> **Note**: When using ``AlpacaPrompter``, you need to define a unique slot that can be given any name, and the input of type ``string`` will be filled into it.
 
 ```python
 >>> p = lazyllm.ChatPrompter('请完成加法运算，输入为{input}')
@@ -131,7 +131,8 @@ When the user's input is a string, we allow at most one slot in the ``Prompter``
 '<|start_system|>You are an AI-Agent developed by LazyLLM.请完成加法运算\n\n<|end_system|>\n\n\n<|Human|>:\na+b\n<|Assistant|>
 ```
 
-> **Note**： 
+> **Note**:
+>
 > - When using ``ChatPrompter``, unlike ``AlpacaPrompter``, defining a slot in ``instruction`` is not mandatory.
 > - If a slot is not defined, the input will be placed into the conversation as the user's input between ``<soh>`` and ``<eoh>``.
 > - If a slot is defined, similar to ``AlpacaPrompter``, it can be given any name, and the input will be placed in the ``<system>`` field.
@@ -146,7 +147,7 @@ The format of tools is generally as follows:
 
     [
         {
-            "type": "function", 
+            "type": "function",
             "function": {
                 "name": "",
                 "description": "",
@@ -198,6 +199,7 @@ let's demonstrate how ``Prompter`` uses tools through a simple tool tools=[dict(
 The tool will be read after step 4 in :[analysis](#prompt-generation-process-analysis) once it's converted to JSON.
 
 > **Note**:
+>
 > If using an online model, the tool will become a field parallel to ``messages``, as shown in the example below:
 >
 >
@@ -225,7 +227,8 @@ If we want the model to have multi-turn conversation capabilities, we need to co
 
 The conversation history will be read in step 4 of :[analysis](#prompt-generation-process-analysis) after a simple format conversion.
 
-> **Note**：
+> **Note**:
+>
 > - Only ``ChatPrompter`` supports passing in conversation history.
 > - When the input is in the format ``[[a, b], ...]``, both ``return_dict`` set to ``True`` or ``False`` are supported, whereas when the input is in the format ``[dict, dict]``, only ``return_dict`` set to ``True`` is supported.
 
@@ -256,7 +259,8 @@ module.start()
 module(dict(context='背景', input='输入'))
 ```
 
-> **Note**：
+> **Note**:
+>
 > - We have ensured that the ``Prompter`` has a consistent usage experience with both ``TrainableModule`` and ``OnlineChatModule``, allowing you to easily switch models for experimentation.
 > - ``TrainableModule`` requires manually calling ``start`` to initiate the service. For more information on how to use ``TrainableModule``, refer to [module][lazyllm.module.ModuleBase].
 
