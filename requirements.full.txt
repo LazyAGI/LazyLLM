@@ -56,6 +56,6 @@ lmdeploy
 timm
 diffusers
 sortedcontainers
-flash-attn>=2.5.8
+#flash-attn>=2.5.8
 git+https://github.com/ModelTC/lightllm@e6452fd#egg=lightllm
 git+https://github.com/hiyouga/LLaMA-Factory.git@9dcff3a#egg=llamafactory
