@@ -359,3 +359,169 @@ add_example('FunctionCallAgent', """\
 >>> print(res)
 'Hello! How can I assist you today?'
 """)
+
+add_chinese_doc('ReactAgent', '''\
+ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
+
+Args:
+    llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    tools (List[str]): LLM 使用的工具名称列表。
+    max_retries (int): 工具调用迭代的最大次数。默认值为5。
+''')
+
+add_english_doc('ReactAgent', '''\
+ReactAgent follows the process of `Thought->Action->Observation->Thought...->Finish` step by step through LLM and tool calls to display the steps to solve user questions and the final answer to the user.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
+    tools (List[str]): A list of tool names for LLM to use.
+    max_retries (int): The maximum number of tool call iterations. The default value is 5.
+''')
+
+add_example('ReactAgent', """\
+>>> @fc_register("tool")
+>>> def multiply_tool(a: int, b: int) -> int:
+...     '''
+...     Multiply two integers and return the result integer
+... 
+...     Args:
+...         a (int): multiplier
+...         b (int): multiplier
+...     '''
+...     return a * b
+...
+>>> @fc_register("tool")
+>>> def add_tool(a: int, b: int):
+...     '''
+...     Add two integers and returns the result integer
+... 
+...     Args:
+...         a (int): addend
+...         b (int): addend
+...     '''
+...     return a + b
+...
+>>> tools = ["multiply_tool", "add_tool"]
+>>> llm = lazyllm.Trainable("internlm2-chat-20b").start()   # or llm = lazyllm.OnlineChatModule(source="sensenova")
+>>> agent = ReactAgent(llm, tools)
+>>> query = "What is 20+(2*4)? Calculate step by step."
+>>> res = agent(query)
+>>> print(res)
+'Answer: The result of 20+(2*4) is 28.'
+""")
+
+add_chinese_doc('PlanAndSolveAgent', '''\
+PlanAndSolveAgent由两个组件组成，首先，由planner将整个任务分解为更小的子任务，然后由solver根据计划执行这些子任务，其中可能会涉及到工具调用，最后将答案返回给用户。
+
+Args:
+    llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。和plan_llm、solve_llm互斥，要么设置llm(planner和solver公用一个LLM)，要么设置plan_llm和solve_llm，或者只指定llm(用来设置planner)和solve_llm，其它情况均认为是无效的。
+    tools (List[str]): LLM使用的工具名称列表。
+    plan_llm (ModuleBase): planner要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    solve_llm (ModuleBase): solver要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    max_retries (int): 工具调用迭代的最大次数。默认值为5。
+''')
+
+add_english_doc('PlanAndSolveAgent', '''\
+PlanAndSolveAgent consists of two components. First, the planner breaks down the entire task into smaller subtasks, then the solver executes these subtasks according to the plan, which may involve tool calls, and finally returns the answer to the user.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be TrainableModule or OnlineChatModule. It is mutually exclusive with plan_llm and solve_llm. Either set llm(the planner and sovler share the same LLM), or set plan_llm and solve_llm,or only specify llm(to set the planner) and solve_llm. Other cases are considered invalid.
+    tools (List[str]): A list of tool names for LLM to use.
+    plan_llm (ModuleBase): The LLM to be used by the planner, which can be either TrainableModule or OnlineChatModule.
+    solve_llm (ModuleBase): The LLM to be used by the solver, which can be either TrainableModule or OnlineChatModule.
+    max_retries (int): The maximum number of tool call iterations. The default value is 5.
+''')
+
+add_example('PlanAndSolveAgent', """\
+>>> @fc_register("tool")
+>>> def multiply(a: int, b: int) -> int:
+...     '''
+...     Multiply two integers and return the result integer
+... 
+...     Args:
+...         a (int): multiplier
+...         b (int): multiplier
+...     '''
+...     return a * b
+... 
+>>> @fc_register("tool")
+>>> def add(a: int, b: int):
+...     '''
+...     Add two integers and returns the result integer
+... 
+...     Args:
+...         a (int): addend
+...         b (int): addend
+...     '''
+...     return a + b
+...
+>>> tools = ["multiply", "add"]
+>>> llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
+>>> agent = PlanAndSolveAgent(llm, tools)
+>>> query = "What is 20+(2*4)? Calculate step by step."
+>>> res = agent(query)
+>>> print(res)
+'The final answer is 28.'
+""")
+
+add_chinese_doc('ReWOOAgent', '''\
+ReWOOAgent包含三个部分：Planner、Worker和Solver。其中，Planner使用可预见推理能力为复杂任务创建解决方案蓝图；Worker通过工具调用来与环境交互，并将实际证据或观察结果填充到指令中；Solver处理所有计划和证据以制定原始任务或问题的解决方案。
+
+Args:
+    llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。和plan_llm、solve_llm互斥，要么设置llm(planner和solver公用一个LLM)，要么设置plan_llm和solve_llm，或者只指定llm(用来设置planner)和solve_llm，其它情况均认为是无效的。
+    tools (List[str]): LLM使用的工具名称列表。
+    plan_llm (ModuleBase): planner要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    solve_llm (ModuleBase): solver要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    max_retries (int): 工具调用迭代的最大次数。默认值为5。
+''')
+
+add_english_doc('ReWOOAgent', '''\
+ReWOOAgent consists of three parts: Planer, Worker and Solver. The Planner uses predictive reasoning capabilities to create a solution blueprint for a complex task; the Worker interacts with the environment through tool calls and fills in actual evidence or observations into instructions; the Solver processes all plans and evidence to develop a solution to the original task or problem.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be TrainableModule or OnlineChatModule. It is mutually exclusive with plan_llm and solve_llm. Either set llm(the planner and sovler share the same LLM), or set plan_llm and solve_llm,or only specify llm(to set the planner) and solve_llm. Other cases are considered invalid.
+    tools (List[str]): A list of tool names for LLM to use.
+    plan_llm (ModuleBase): The LLM to be used by the planner, which can be either TrainableModule or OnlineChatModule.
+    solve_llm (ModuleBase): The LLM to be used by the solver, which can be either TrainableModule or OnlineChatModule.
+    max_retries (int): The maximum number of tool call iterations. The default value is 5.
+''')
+
+add_example('ReWOOAgent', """\
+>>> @fc_register("tool")
+>>> def WikipediaWorker(input: str):
+...     '''
+...     Worker that search for similar page contents from Wikipedia. Useful when you need to get holistic knowledge about people, places, companies, historical events, or other subjects. The response are long and might contain some irrelevant information. Input should be a search query.
+... 
+...     Args:
+...         input (str): search query.
+...     '''
+...     docstore = DocstoreExplorer(Wikipedia())
+...     tool = Tool(name="Search", func=docstore.search, description="useful for when you need to ask with search")
+...     LOG.info(f"wikipedia input: {input}")
+...     evidence = tool.run(input)
+...     LOG.info(f"wikipedia output: {evidence}")
+...     return evidence
+... 
+>>> @fc_register("tool")
+>>> def LLMWorker(input: str):
+...     '''
+...     A pretrained LLM like yourself. Useful when you need to act with general world knowledge and common sense. Prioritize it when you are confident in solving the problem yourself. Input can be any instruction.
+... 
+...     Args:
+...         input (str): instruction
+...     '''
+...     llm = lazyllm.OnlineChatModule(source="openai")
+...     query = f"Respond in short directly with no extra words.\n\n{input}"
+...     LOG.info(f"llm query: {query}, input: {input}")
+...     response = llm(query, llm_chat_history=[])
+...     LOG.info(f"llm res: {response}")
+...     return response
+...
+>>> tools = ["WikipediaWorker", "LLMWorker"]
+>>> llm = lazyllm.TrainableModule("GLM-4-9B-Chat").deploy_method(deploy.vllm).start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
+>>> agent = ReWOOAgent(llm, tools)
+>>> query = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
+>>> res = agent(query)
+>>> print(res)
+'\nHennessy '
+""")

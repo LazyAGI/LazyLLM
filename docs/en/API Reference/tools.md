@@ -25,3 +25,15 @@
 ::: lazyllm.tools.FunctionCallAgent
     members: 
     exclude-members: forward
+
+::: lazyllm.tools.ReactAgent
+    members: 
+    exclude-members: forward
+
+::: lazyllm.tools.PlanAndSolveAgent
+    members: 
+    exclude-members: forward
+
+::: lazyllm.tools.ReWOOAgent
+    members: 
+    exclude-members: forward
