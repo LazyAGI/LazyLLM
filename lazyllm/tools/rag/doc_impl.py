@@ -2,7 +2,7 @@ import ast
 from collections import defaultdict
 from functools import wraps
 from typing import Callable, Dict, List, Optional, Set
-from lazyllm import ModuleBase, LOG, config, once_flag, call_once
+from lazyllm import LOG, config, once_flag, call_once
 from lazyllm.common import LazyLlmRequest
 from .transform import FuncNodeTransform, SentenceSplitter
 from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, BaseStore
@@ -22,7 +22,7 @@ def embed_wrapper(func):
     return wrapper
 
 
-class DocImplV2:
+class DocImpl:
     def __init__(self, embed, doc_files=Optional[List[str]], **kwargs):
         super().__init__()
         self.directory_reader = DirectoryReader(doc_files)
@@ -245,38 +245,3 @@ class DocImplV2:
 
         LOG.debug(f"Found children nodes for {group}: {result}")
         return list(result)
-
-
-class RetrieverV2(ModuleBase):
-    __enable_request__ = False
-
-    def __init__(
-        self,
-        doc: object,
-        group_name: str,
-        similarity: str = "dummy",
-        similarity_cut_off: float = float("-inf"),
-        index: str = "default",
-        topk: int = 6,
-        **kwargs,
-    ):
-        super().__init__()
-        self.doc = doc
-        self.group_name = group_name
-        self.similarity = similarity  # similarity function str
-        self.similarity_cut_off = similarity_cut_off
-        self.index = index
-        self.topk = topk
-        self.similarity_kw = kwargs  # kw parameters
-
-    def forward(self, query: str) -> List[DocNode]:
-        return self.doc.forward(
-            func_name="retrieve",
-            query=query,
-            group_name=self.group_name,
-            similarity=self.similarity,
-            similarity_cut_off=self.similarity_cut_off,
-            index=self.index,
-            topk=self.topk,
-            similarity_kws=self.similarity_kw,
-        )

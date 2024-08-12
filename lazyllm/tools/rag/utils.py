@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import lazyllm
 
+
 class BaseResponse(BaseModel):
     code: int = pydantic.Field(200, description="API status code")
     msg: str = pydantic.Field("success", description="API status message")
@@ -22,9 +23,10 @@ class BaseResponse(BaseModel):
             }
         }
 
+
 def run_in_thread_pool(
-        func: Callable,
-        params: List[Dict] = [],
+    func: Callable,
+    params: List[Dict] = [],
 ) -> Generator:
     tasks = []
     with ThreadPoolExecutor() as pool:
@@ -35,25 +37,34 @@ def run_in_thread_pool(
         for obj in as_completed(tasks):
             yield obj.result()
 
+
 Default_Suport_File_Types = [".docx", ".pdf", ".txt", ".json"]
+
+
 def _save_file(_file: UploadFile, _file_path: str):
     file_content = _file.file.read()
     with open(_file_path, "wb") as f:
         f.write(file_content)
 
+
 def _convert_path_to_underscores(file_path: str) -> str:
     return file_path.replace("/", "_").replace("\\", "_")
 
-def _save_file_to_cache(file: UploadFile, cache_dir: str, suport_file_types: List[str]) -> list:
+
+def _save_file_to_cache(
+    file: UploadFile, cache_dir: str, suport_file_types: List[str]
+) -> list:
     to_file_path = os.path.join(cache_dir, file.filename)
 
     sub_result_list_real_name = []
     if file.filename.endswith(".tar"):
+
         def unpack_archive(tar_file_path: str, extract_folder_path: str):
             import tarfile
+
             out_file_names = []
             try:
-                with tarfile.open(tar_file_path, 'r') as tar:
+                with tarfile.open(tar_file_path, "r") as tar:
                     file_info_list = tar.getmembers()
                     for file_info in list(file_info_list):
                         file_extension = os.path.splitext(file_info.name)[-1]
@@ -61,7 +72,7 @@ def _save_file_to_cache(file: UploadFile, cache_dir: str, suport_file_types: Lis
                             tar.extract(file_info.name, path=extract_folder_path)
                             out_file_names.append(file_info.name)
             except tarfile.TarError as e:
-                lazyllm.LOG.error(f'untar error: {e}')
+                lazyllm.LOG.error(f"untar error: {e}")
                 raise e
 
             return out_file_names
@@ -78,11 +89,12 @@ def _save_file_to_cache(file: UploadFile, cache_dir: str, suport_file_types: Lis
             sub_result_list_real_name.append(file.filename)
     return sub_result_list_real_name
 
+
 def save_files_in_threads(
     files: List[UploadFile],
     override: bool,
     source_path,
-    suport_file_types: List[str] = Default_Suport_File_Types
+    suport_file_types: List[str] = Default_Suport_File_Types,
 ):
     real_dir = source_path
     cache_dir = os.path.join(source_path, "cache")
@@ -94,7 +106,10 @@ def save_files_in_threads(
         if not os.path.exists(dir):
             os.makedirs(dir)
 
-    param_list = [{"file": file, "cache_dir": cache_dir, "suport_file_types": suport_file_types} for file in files]
+    param_list = [
+        {"file": file, "cache_dir": cache_dir, "suport_file_types": suport_file_types}
+        for file in files
+    ]
 
     result_list = []
     for result in run_in_thread_pool(_save_file_to_cache, params=param_list):
@@ -121,6 +136,7 @@ def save_files_in_threads(
     if os.path.exists(cache_dir):
         shutil.rmtree(cache_dir)
     return (already_exist_files, new_add_files, overwritten_files)
+
 
 def rename_file(source, target):
     try:

@@ -1,13 +1,13 @@
-
 import os
 import shutil
-from typing import List
-
+from typing import Callable, List
+from .doc_impl import DocImpl
 import lazyllm
-from .base import DocImpl
+from .store import LAZY_ROOT_NAME
 
 DATA_DIR = "__data"
 DEFAULT_DIR = "default"
+
 
 class DocGroupImpl(lazyllm.ModuleBase):
     def __init__(self, dataset_path, embed) -> None:
@@ -21,7 +21,9 @@ class DocGroupImpl(lazyllm.ModuleBase):
         self._move_file_to_default()
 
         file_paths = self._list_all_files(self.dataset_path, lambda x: DATA_DIR in x)
-        self._impl: DocImpl = DocImpl(doc_files=file_paths, embed=self._embed, doc_name="lazyllm_doc")
+        self._impl: DocImpl = DocImpl(
+            doc_files=file_paths, embed=self._embed, doc_name="lazyllm_doc"
+        )
 
     @property
     def dataset_path(self):
@@ -42,12 +44,14 @@ class DocGroupImpl(lazyllm.ModuleBase):
 
     def new_group(self, group_name: str):
         if os.path.exists(self.get_group_path(group_name=group_name)):
-            raise Exception(f"{group_name} already exists[{self.get_group_path(group_name=group_name)}]")
+            raise Exception(
+                f"{group_name} already exists[{self.get_group_path(group_name=group_name)}]"
+            )
 
         for path in [
             self.get_group_path(group_name),
             self.get_gropu_data_path(group_name),
-            self.get_group_source_path(group_name)
+            self.get_group_source_path(group_name),
         ]:
             os.makedirs(path)
 
@@ -57,30 +61,39 @@ class DocGroupImpl(lazyllm.ModuleBase):
             list_files = self.list_files(group_name)
             self._impl.delete_files(list_files)
         except Exception as e:
-            raise Exception(f"{self.get_group_path(group_name)} delete error, exception:{e}")
+            raise Exception(
+                f"{self.get_group_path(group_name)} delete error, exception:{e}"
+            )
 
         return f"delete {group_name} success"
 
     def list_groups(self):
-        groups = self._list_all_subdirectories(self.dataset_path, lambda x: DATA_DIR not in x)
-        return [dir[len(self.dataset_path) + 1:] for dir in groups]
+        groups = self._list_all_subdirectories(
+            self.dataset_path, lambda x: DATA_DIR not in x
+        )
+        return [dir[len(self.dataset_path) + 1 :] for dir in groups]
 
     def add_files(self, group_name: str, files: List[str]):
         source_path = self.get_group_source_path(group_name)
         files = [os.path.join(source_path, file_path) for file_path in files]
         self._impl.add_files(files)
 
-    def delete_files(self, group_name: str, files: List[str], is_del_source: bool = True):
+    def delete_files(
+        self, group_name: str, files: List[str], is_del_source: bool = True
+    ):
         self._impl.delete_files(files)
 
-        if not is_del_source: return
+        if not is_del_source:
+            return
 
         source_path = self.get_group_source_path(group_name)
         for file_path in [os.path.join(source_path, file_path) for file_path in files]:
             os.remove(file_path)
 
     def list_files(self, group_name: str) -> List[str]:
-        file_paths = self._list_all_files(self.get_group_source_path(group_name=group_name), lambda x: DATA_DIR in x)
+        file_paths = self._list_all_files(
+            self.get_group_source_path(group_name=group_name), lambda x: DATA_DIR in x
+        )
         return [os.path.basename(file_path) for file_path in file_paths]
 
     def get_group_path(self, group_name: str):
@@ -117,7 +130,9 @@ class DocGroupImpl(lazyllm.ModuleBase):
 
             for root, dirs, files in os.walk(directory):
                 files = [os.path.join(root, file_path) for file_path in files]
-                filtered_files = list(filter(filter_func, files)) if filter_func else files
+                filtered_files = (
+                    list(filter(filter_func, files)) if filter_func else files
+                )
                 files_list.extend(filtered_files)
 
             return files_list
@@ -125,11 +140,19 @@ class DocGroupImpl(lazyllm.ModuleBase):
             lazyllm.LOG.error(f"Error while listing files in {directory}: {e}")
             return []
 
-    def generate_signature(self, similarity, similarity_kw, parser):
-        return self._impl.generate_signature(similarity, similarity_kw, parser)
+    def find_parent(self, *args, **kwargs):
+        return self._impl.find_parent(*args, **kwargs)
 
-    def query_with_sig(self, string, signature, parser):
-        return self._impl._query_with_sig(string, signature, parser)
+    def find_children(self, *args, **kwargs):
+        return self._impl.find_children(*args, **kwargs)
+
+    def retrieve(self, *args, **kwargs):
+        return self._impl.retrieve(*args, **kwargs)
 
     def __repr__(self):
-        return lazyllm.make_repr('Module', 'DocGroupImpl')
+        return lazyllm.make_repr("Module", "DocGroupImpl")
+
+    def create_node_group(
+        self, name: str, transform: Callable, parent: str = LAZY_ROOT_NAME, **kwargs
+    ) -> None:
+        self._impl.create_node_group(name, transform, parent, **kwargs)
