@@ -15,9 +15,9 @@ def embed_wrapper(func):
         return None
 
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args, **kwargs) -> List[float]:
         result = func(*args, **kwargs)
-        return ast.literal_eval(result)
+        return ast.literal_eval(result) if isinstance(result, str) else result
 
     return wrapper
 
