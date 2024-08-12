@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+# flake8: noqa: F821
+
 import lazyllm
 from lazyllm import (
     pipeline,
