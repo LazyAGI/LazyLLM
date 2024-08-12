@@ -226,7 +226,7 @@ class WebModule(ModuleBase):
             chat_history.append([query['text'], None])
         return {}, chat_history
 
-    def _respond_stream(self, use_context, chat_history, stream_output, append_text, *args):  # noqa C901
+    async def _respond_stream(self, use_context, chat_history, stream_output, append_text, *args):  # noqa C901
         try:
             # TODO: move context to trainable module
             files = []

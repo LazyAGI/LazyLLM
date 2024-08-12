@@ -290,7 +290,7 @@ class UrlModule(ModuleBase, UrlTemplate):
                     except Exception:
                         chunk = chunk.decode('utf-8')
                     chunk = self._prompt.get_response(self._extract_result_func(chunk))
-                    if self._stream: FileSystemQueue.enqueue(chunk)
+                    if self._stream: FileSystemQueue().enqueue(chunk)
                     messages += chunk
                 globals._update(decode_request(r.headers.get('Global-Parameters'), dict()))
             else:
