@@ -25,10 +25,8 @@ pyyaml
 sniffio
 tqdm 
 typing-extensions
-nltk
 llama_index
 redis
 funasr
 transformers
 ChatTTS
-bm25s
