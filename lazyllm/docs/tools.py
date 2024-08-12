@@ -193,3 +193,169 @@ add_example('WebModule', '''\
 >>> w.start()
 193703: 2024-06-07 10:26:00 lazyllm SUCCESS: ...
 ''')
+
+add_chinese_doc('ToolManager', '''\
+ToolManager是一个工具管理类，用于提供工具信息和工具调用给function call。
+
+此管理类构造时需要传入工具名字符串列表。此处工具名可以是LazyLLM提供的，也可以是用户自定义的，如果是用户自定义的，首先需要注册进LazyLLM中才可以使用。在注册时直接使用 `fc_register` 注册器，该注册器已经建立 `tool` group，所以使用该工具管理类时，所有函数都统一注册进 `tool` 分组即可。待注册的函数需要对函数参数进行注解，并且需要对函数增加功能描述，以及参数类型和作用描述。以方便工具管理类能对函数解析传给LLM使用。
+
+Args:
+    tools (List[str]): 工具名称字符串列表。
+''')
+
+add_english_doc('ToolManager', '''\
+ToolManager is a tool management class used to provide tool information and tool calls to function call.
+
+When constructing this management class, you need to pass in a list of tool name strings. The tool name here can be provided by LazyLLM or user-defined. If it is user-defined, it must first be registered in LazyLLM before it can be used. When registering, directly use the `fc_register` registrar, which has established the `tool` group, so when using the tool management class, all functions can be uniformly registered in the `tool` group. The function to be registered needs to annotate the function parameters, and add a functional description to the function, as well as the parameter type and function description. This is to facilitate the tool management class to parse the function and pass it to LLM for use.
+
+Args:
+    tools (List[str]): A list of tool name strings.
+''')
+
+add_example('ToolManager', """\
+>>> tools = ["get_current_weather", "get_n_day_weather_forecast"]
+>>> tm = ToolManager(tools)
+>>> tm([{'name': 'get_n_day_weather_forecast', 'arguments': {'location': 'Beijing', 'num_days': 3}}])
+'{"location": "Beijing", "temperature": "85", "unit": "fahrenheit", "num_days": 3}'
+""")
+
+add_chinese_doc('FunctionCall', '''\
+FunctionCall是单轮工具调用类，如果LLM中的信息不足以回答用户的问题，必需结合外部知识来回答用户问题，则调用该类。如果LLM输出需要工具调用，则进行工具调用，并输出工具调用结果，输出结果为List类型，包含当前轮的输入、模型输出、工具输出。如果不需要工具调用，则直接输出LLM结果，输出结果为string类型。
+
+Args:
+    llm (ModuleBase): 要使用的LLM可以是TrainableModule或OnlineChatModule。
+    tools (List[str]): LLM使用的工具名称列表。
+''')
+
+add_english_doc('FunctionCall', '''\
+FunctionCall is a single-round tool call class. If the information in LLM is not enough to answer the uesr's question, it is necessary to combine external knowledge to answer the user's question. If the LLM output required a tool call, the tool call is performed and the tool call result is output. The output result is of List type, including the input, model output, and tool output of the current round. If a tool call is not required, the LLM result is directly output, and the output result is of string type.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
+    tools (List[str]): A list of tool names for LLM to use.
+''')
+
+add_example('FunctionCall', """\
+>>> @fc_register("tool")
+>>> def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 'fahrenheit'):
+...     '''
+...     Get the current weather in a given location
+...
+...     Args:
+...         location (str): The city and state, e.g. San Francisco, CA.
+...         unit (str): The temperature unit to use. Infer this from the users location.
+...     '''
+...     if 'tokyo' in location.lower():
+...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
+...     elif 'san francisco' in location.lower():
+...         return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit'})
+...     elif 'paris' in location.lower():
+...         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
+...     else:
+...         return json.dumps({'location': location, 'temperature': 'unknown'})
+...
+>>> @fc_register("tool")
+>>> def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"] = 'fahrenheit'):
+...     '''
+...     Get an N-day weather forecast
+...
+...     Args:
+...         location (str): The city and state, e.g. San Francisco, CA.
+...         num_days (int): The number of days to forecast.
+...         unit (Literal['celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+...     '''
+...     if 'tokyo' in location.lower():
+...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
+...     elif 'san francisco' in location.lower():
+...         return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit', "num_days": num_days})
+...     elif 'paris' in location.lower():
+...         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius', "num_days": num_days})
+...     else:
+...         return json.dumps({'location': location, 'temperature': 'unknown'})
+...
+>>> tools=["get_current_weather", "get_n_day_weather_forecast"]
+>>> llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule("openai", stream=False)
+>>> query = "What's the weather like today in celsius in Tokyo."
+>>> fc = FunctionCall(llm, tools)
+>>> ret = fc(query)
+>>> print(ret)
+["What's the weather like today in celsius in Tokyo.", {'role': 'assistant', 'content': '
+', 'tool_calls': [{'id': 'da19cddac0584869879deb1315356d2a', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': {'location': 'Tokyo', 'unit': 'celsius'}}}]}, [{'role': 'tool', 'content': '{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', 'tool_call_id': 'da19cddac0584869879deb1315356d2a', 'name': 'get_current_weather'}]]
+>>> query = "Hello"
+>>> ret = fc(query)
+>>> print(ret)
+'Hello! How can I assist you today?'
+""")
+
+add_chinese_doc('FunctionCallAgent', '''\
+FunctionCallAgent是一个使用工具调用方式进行完整工具调用的代理，即回答用户问题时，LLM如果需要通过工具获取外部知识，就会调用工具，并将工具的返回结果反馈给LLM，最后由LLM进行汇总输出。
+
+Args:
+    llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    tools (List[str]): LLM 使用的工具名称列表。
+    max_retries (int): 工具调用迭代的最大次数。默认值为5。
+''')
+
+add_english_doc('FunctionCallAgent', '''\
+FunctionCallAgent is an agent that uses the tool calling method to perform complete tool calls. That is, when answering uesr questions, if LLM needs to obtain external knowledge through the tool, it will call the tool and feed back the return results of the tool to LLM, which will finally summarize and output them.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
+    tools (List[str]): A list of tool names for LLM to use.
+    max_retries (int): The maximum number of tool call iterations. The default value is 5.
+''')
+
+add_example('FunctionCallAgent', """\
+>>> @fc_register("tool")
+>>> def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]='fahrenheit'):
+...     '''
+...     Get the current weather in a given location
+... 
+...     Args:
+...         location (str): The city and state, e.g. San Francisco, CA.
+...         unit (str): The temperature unit to use. Infer this from the users location.
+...     '''
+...     if 'tokyo' in location.lower():
+...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
+...     elif 'san francisco' in location.lower():
+...         return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit'})
+...     elif 'paris' in location.lower():
+...         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
+...     elif 'beijing' in location.lower():
+...         return json.dumps({'location': 'Beijing', 'temperature': '90', 'unit': 'Fahrenheit'})
+...     else:
+...         return json.dumps({'location': location, 'temperature': 'unknown'})
+...
+>>> @fc_register("tool")
+>>> def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"]='fahrenheit'):
+...     '''
+...     Get an N-day weather forecast
+... 
+...     Args:
+...         location (str): The city and state, e.g. San Francisco, CA.
+...         num_days (int): The number of days to forecast.
+...         unit (Literal['celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+...     '''
+...     if 'tokyo' in location.lower():
+...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
+...     elif 'san francisco' in location.lower():
+...         return json.dumps({'location': 'San Francisco', 'temperature': '75', 'unit': 'fahrenheit', "num_days": num_days})
+...     elif 'paris' in location.lower():
+...         return json.dumps({'location': 'Paris', 'temperature': '25', 'unit': 'celsius', "num_days": num_days})
+...     elif 'beijing' in location.lower():
+...         return json.dumps({'location': 'Beijing', 'temperature': '85', 'unit': 'fahrenheit', "num_days": num_days})
+...     else:
+...         return json.dumps({'location': location, 'temperature': 'unknown'}) 
+...
+>>> tools = ['get_current_weather', 'get_n_day_weather_forecast']
+>>> llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
+>>> agent = FunctionCallAgent(llm, tools) 
+>>> query = "What's the weather like today in celsius in Tokyo and Paris."
+>>> res = agent(query)
+>>> print(res)
+'The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.'
+>>> query = "Hello"
+>>> res = agent(query)
+>>> print(res)
+'Hello! How can I assist you today?'
+""")
