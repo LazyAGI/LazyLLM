@@ -102,6 +102,7 @@ class TestExamples(object):
         query = "何为天道？"
         res = rag(query)
         assert type(res) is str
+        assert "天道" in res
         assert len(res) >= 16
 
         # test rag warpped in web
@@ -114,6 +115,7 @@ class TestExamples(object):
                              api_name="/_respond_stream")
         res = ans[0][-1][-1]
         assert type(res) is str
+        assert "天道" in res
         assert len(res) >= 16
 
     def test_painting(self):
