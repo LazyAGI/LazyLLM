@@ -1,4 +1,4 @@
-from lazyllm.tools.rag.doc_impl import DocImplV2
+from lazyllm.tools.rag.doc_impl import DocImpl
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import DocNode, LAZY_ROOT_NAME
 from lazyllm import call_once
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import unittest
 
 
-class TestDocImplV2(unittest.TestCase):
+class TestDocImpl(unittest.TestCase):
 
     def setUp(self):
         self.mock_embed = MagicMock()
@@ -15,7 +15,7 @@ class TestDocImplV2(unittest.TestCase):
         mock_node.metadata = {"file_name": "dummy_file.txt"}
         self.mock_directory_reader.load_data.return_value = [mock_node]
 
-        self.doc_impl = DocImplV2(embed=self.mock_embed, doc_files=["dummy_file.txt"])
+        self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=["dummy_file.txt"])
         self.doc_impl.directory_reader = self.mock_directory_reader
 
     def test_create_node_group_default(self):

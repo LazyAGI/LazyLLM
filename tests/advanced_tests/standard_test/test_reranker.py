@@ -1,10 +1,10 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from lazyllm.tools.rag.store import DocNode
-from lazyllm.tools.rag.rerank import RerankerV2, register_reranker
+from lazyllm.tools.rag.rerank import Reranker, register_reranker
 
 
-class TestRerankerV2(unittest.TestCase):
+class TestReranker(unittest.TestCase):
 
     def setUp(self):
         self.doc1 = DocNode(text="This is a test document with the keyword apple.")
@@ -18,7 +18,7 @@ class TestRerankerV2(unittest.TestCase):
     def test_keyword_filter_with_required_keys(self):
         required_keys = ["apple"]
         exclude_keys = []
-        reranker = RerankerV2(
+        reranker = Reranker(
             name="KeywordFilter", required_keys=required_keys, exclude_keys=exclude_keys
         )
         results = reranker.forward(self.nodes, query=self.query)
@@ -28,7 +28,7 @@ class TestRerankerV2(unittest.TestCase):
     def test_keyword_filter_with_exclude_keys(self):
         required_keys = []
         exclude_keys = ["banana"]
-        reranker = RerankerV2(
+        reranker = Reranker(
             name="KeywordFilter", required_keys=required_keys, exclude_keys=exclude_keys
         )
         results = reranker.forward(self.nodes, query=self.query)
@@ -43,7 +43,7 @@ class TestRerankerV2(unittest.TestCase):
         MockCrossEncoder.return_value = mock_model
         mock_model.predict.return_value = [0.8, 0.6, 0.9]
 
-        reranker = RerankerV2(name="ModuleReranker", model="dummy-model", topk=2)
+        reranker = Reranker(name="ModuleReranker", model="dummy-model", topk=2)
         results = reranker.forward(self.nodes, query=self.query)
 
         self.assertEqual(len(results), 2)
@@ -64,7 +64,7 @@ class TestRerankerV2(unittest.TestCase):
         custom_doc = DocNode(text="This document contains custom keyword.")
         nodes = [self.doc1, self.doc2, self.doc3, custom_doc]
 
-        reranker = RerankerV2(name="CustomReranker")
+        reranker = Reranker(name="CustomReranker")
         results = reranker.forward(nodes)
 
         self.assertEqual(len(results), 1)
