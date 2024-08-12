@@ -19,7 +19,9 @@ class LLamaIndexEmbeddingWrapper(BaseEmbedding):
         if isinstance(embeddings, str):
             embeddings = json.loads(embeddings)
 
-        LOG.debug(f"_query_embedding, len:{len(query) if isinstance(query, list) else 1}")
+        LOG.debug(
+            f"_query_embedding, len:{len(query) if isinstance(query, list) else 1}"
+        )
         return embeddings
 
     def _get_query_embedding(self, query: str) -> List[float]:

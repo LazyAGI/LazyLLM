@@ -8,7 +8,7 @@ import pickle
 import codecs
 import inspect
 import functools
-from concurrent.futures import ThreadPoolExecutor
+from lazyllm import ThreadPoolExecutor
 from typing import Dict, List, Any, Union
 
 import lazyllm
@@ -257,19 +257,16 @@ class UrlModule(ModuleBase, UrlTemplate):
         assert self._url is not None, f'Please start {self.__class__} first'
 
         files = []
-        if self.template_message and isinstance(__input, str) and __input.startswith('lazyllm_files::'):
-            message = json.loads(__input[15:])
-            assert isinstance(message, dict)
-            query = message.get('text', '')
-            files = message.get('files', [])
-        else:
-            query = __input
+        if self.template_message and globals['global_parameters'].get("lazyllm-files"):
+            files = globals['global_parameters']["lazyllm-files"]['files']
+        query = __input
         __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
         headers = {'Content-Type': 'application/json'}
 
         if isinstance(self, ServerModule):
             assert llm_chat_history is None and tools is None
             headers['Global-Parameters'] = encode_request(globals._data)
+            headers['Session-ID'] = encode_request(globals._sid)
             data = encode_request((__input, kw))
         elif self.template_message:
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
@@ -277,6 +274,8 @@ class UrlModule(ModuleBase, UrlTemplate):
             data[self.keys_name_handle['inputs']] = __input
             if 'image' in self.keys_name_handle and files:
                 data[self.keys_name_handle['image']] = files
+            elif 'audio' in self.keys_name_handle and files:
+                data[self.keys_name_handle['audio']] = files
         else:
             if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
             data = __input
@@ -386,7 +385,7 @@ class _ServerModuleImpl(ModuleBase):
         super().__init__()
         self._m = ActionModule(m) if isinstance(m, FlowBase) else m
         self._pre_func, self._post_func = pre, post
-        self._launcher = launcher if launcher else launchers.remote(sync=False)
+        self._launcher = launcher.clone() if launcher else launchers.remote(sync=False)
         self._set_url_f = father._set_url if father else None
 
     @lazyllm.once_wrapper
@@ -396,6 +395,9 @@ class _ServerModuleImpl(ModuleBase):
             lazyllm.deploy.RelayServer(func=self._m, pre_func=self._pre_func,
                                        post_func=self._post_func, launcher=self._launcher),
             self._set_url_f)
+
+    def __del__(self):
+        self._launcher.cleanup()
 
 
 class ServerModule(UrlModule):
@@ -428,6 +430,7 @@ class _TrainableModuleImpl(ModuleBase):
         self._train, self._finetune, self._deploy = train, finetune, deploy
         self._stream = stream
         self._father = []
+        self._launchers = []
 
     def _add_father(self, father):
         if father not in self._father: self._father.append(father)
@@ -437,6 +440,9 @@ class _TrainableModuleImpl(ModuleBase):
         if len(set(args.keys()).intersection(set(disable))) > 0:
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
                              '{arg_cls}_args, please pass them from Module.__init__()')
+        if 'launcher' in args:
+            args['launcher'] = args['launcher'].clone() if args['launcher'] else launchers.remote(sync=False)
+            self._launchers.append(args['launcher'])
         return args
 
     def _get_train_tasks(self):
@@ -479,6 +485,10 @@ class _TrainableModuleImpl(ModuleBase):
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
+
+    def __del__(self):
+        for launcher in self._launchers:
+            launcher.cleanup()
 
 
 class TrainableModule(UrlModule):

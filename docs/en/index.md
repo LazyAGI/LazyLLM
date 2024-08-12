@@ -1,0 +1,142 @@
+# Getting Started
+
+Welcome to **LazyLLM**!
+
+`LazyLLM` is an all-in-one development tool for building and optimizing multi-Agent applications. It provides a wealth of tools for all stages of application development (including application construction, data preparation, model deployment, model fine-tuning, evaluation, etc.), helping developers to build AI applications at a very low cost and continuously iterate and optimize the effects.
+
+## Environment Preparation
+
+### Manual Environment Configuration
+
+`LazyLLM` is developed in Python, and we need to ensure that `Python`, `Pip`, and `Git` are already installed on our system.
+
+First, prepare and activate a virtual environment named `lazyllm-venv`:
+
+```bash
+python3 -m venv lazyllm-venv
+source lazyllm-venv/bin/activate
+```
+
+If everything runs normally, you should see the prompt `(lazyllm-venv)` at the beginning of the command line. All our subsequent operations will be conducted within this virtual environment.
+
+Download the code for `LazyLLM` from GitHub:
+
+```bash
+git clone https://github.com/LazyAGI/LazyLLM.git
+```
+
+And switch to the downloaded code directory:
+
+```bash
+cd LazyLLM
+```
+
+Install the basic dependencies:
+
+```bash
+pip3 install -r requirement.txt
+pip3 install docstring_parser pyjwt httpx==0.19.0 # Dependencies required to run the example
+```
+
+Add `LazyLLM` to the module search path:
+
+```bash
+export PYTHONPATH=$PWD:$PYTHONPATH
+```
+
+So that we can find it from any directory.
+
+Once the environment preparation is complete, we can start using LazyLLM.
+
+## Hello, world!
+
+To give you a basic understanding of `LazyLLM`, we will use it to create a chatbot based on the conversation capabilities provided by the [Sensetime Nova Platform](https://platform.sensenova.cn/home).
+
+First, you need to register an account on the platform, and according to the first step in the [API Introduction](https://console.sensecore.cn/help/docs/ApiDoc/synopsis), obtain the api key and secret key required for access and set the corresponding environment variables:
+
+```bash
+export LAZYLLM_SENSENOVA_API_KEY=<your obtained api key>
+export LAZYLLM_SENSENOVA_SECRET_KEY=<your obtained secret key>
+```
+
+Next, open an editor and enter the following code, save it as `chat.py`:
+
+```python
+import lazyllm                                          #(1)
+
+chat = lazyllm.OnlineChatModule()                       #(2)
+while True:
+    query = input("query(enter 'quit' to exit): ")      #(3)
+    if query == "quit":                                 #(4)
+        break
+    res = chat.forward(query)                           #(5)
+    print(f"answer: {str(res)}\n")                      #(6)
+```
+
+Finally, run our demo:
+
+```bash
+python3 chat.py
+```
+
+Once the input prompt appears, type your question and press Enter, and you should see the answer after a short wait.
+
+Let’s briefly introduce the functionality of this code.
+
+First, statement 1 imports the `lazyllm` module, and in statement 2, an instance of the online chat service named `chat` is created. We then enter an infinite loop that will only exit when the string “quit” is received (statement 4). Statement 3 prints the input prompt and saves the user’s input in the variable `query`. Statement 5 passes the user’s input to the chat module, which sends a request to the Nova model’s online service and saves the reply returned by Nova in the variable `res`. Statement 6 prints the received reply on the screen.
+
+`LazyLLM` has built-in support for the following platforms:
+
+| Platform | API Key Acquisition URL              | Environment Variables to Set                            |
+|:---------|:-------------------------------------|:--------------------------------------------------------|
+| Nova     | https://platform.sensenova.cn/       | LAZYLLM_SENSENOVA_API_KEY, LAZYLLM_SENSENOVA_SECRET_KEY |
+| Zhipu    | https://open.bigmodel.cn/            | LAZYLLM_GLM_API_KEY                                     |
+| OpenAI   | https://openai.com/index/openai-api/ | LAZYLLM_OPENAI_API_KEY                                  |
+| Kimi     | https://platform.moonshot.cn/        | LAZYLLM_KIMI_API_KEY                                    |
+| Qwen     | https://home.console.aliyun.com/     | LAZYLLM_QWEN_API_KEY                                    |
+
+You can use the corresponding platform by setting different environment variables.
+
+## Going Further: Multi-turn Dialogue
+
+The example above demonstrates a question-and-answer format where each question starts a new dialogue and does not continue from the previous answer. Let’s modify it slightly to enable the robot to support multi-turn dialogue:
+
+```python
+import lazyllm                                           #(1)
+
+chat = lazyllm.OnlineChatModule()                        #(2)
+
+# history has the form of [[query1, answer1], [quer2, answer2], ...]
+history = []                                             #(7)
+
+while True:
+    query = input("query(enter 'quit' to exit): ")       #(3)
+if query == "quit":                                      #(4)
+        break
+    res = chat(query, llm_chat_history=history)          #(5')
+    print(f"answer: {str(res)}\n")                       #(6)
+    history.append([query, res])                         #(8)
+```
+
+The corresponding statements with numbers are the same as in the previous question-and-answer version, and the running method is the same. The main differences in the code are as follows:
+
+* Statement 7 adds a `history` field to keep track of the conversation history;
+* Statement 5' passes the current `query` and the `history` to the remote server;
+* Statement 8 appends the current dialogue's question and answer to the `history` field.
+
+## Using the Web Interface
+
+`LazyLLM` comes with a built-in web interface module `WebModule`, which facilitates the quick setup of various common applications:
+
+```python
+import lazyllm
+
+chat = lazyllm.OnlineChatModule()
+lazyllm.WebModule(chat, port=23333).start().wait()
+```
+
+The `WebModule` accepts two parameters: the chat module for conversation and the port number for the web server to listen on. After calling the member function `start()` to successfully start, call `wait()` to block and wait for user operations on the web interface. You can access `http://localhost:23333` with your browser to interact with the chatbot component on the page, which will call the large model service in the background. `LazyLLM` will display the model’s return results on the page.
+
+> Note: If there is an error starting up or accessing the web page, please check the error information in the terminal window to see if the port is occupied by another application, or if a proxy is enabled, or if it is blocked by a firewall.
+
+This concludes the introductory section of `LazyLLM`. The following chapters will explore the powerful features of `LazyLLM` from different aspects.

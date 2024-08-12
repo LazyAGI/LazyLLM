@@ -85,8 +85,8 @@ class PackageWrapper(object):
 
 modules = ['redis', 'huggingface_hub', 'jieba', 'llama_index', 'modelscope', 'pandas', 'jwt', 'rank_bm25',
            'redisvl', 'datasets', 'deepspeed', 'fire', 'numpy', 'peft', 'torch', 'transformers', 'collie',
-           'faiss', 'flash_attn', 'google', 'lightllm', 'llama_index.embeddings.huggingface', 'vllm'
-           'llama_index.storage.docstore.redis', 'llama_index.storage.index.store.redis', 'wandb',
+           'faiss', 'flash_attn', 'google', 'lightllm', 'llama_index.embeddings.huggingface', 'vllm', 'ChatTTS',
+           'llama_index.storage.docstore.redis', 'llama_index.storage.index.store.redis', 'wandb', 'funasr',
            'llama_index.storage.kvstore.redis', 'llama_index.retrievers.bm25', 'sklearn', 'torchvision']
 for m in modules:
     vars()[m] = PackageWrapper(m)

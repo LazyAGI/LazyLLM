@@ -49,14 +49,18 @@ FastapiApp.update()
 
 async def async_wrapper(func, *args, **kwargs):
     loop = asyncio.get_running_loop()
-    partial_func = partial(func, *args, **kwargs)
-    result = await loop.run_in_executor(None, partial_func)
+
+    def impl(func, sid, *args, **kw):
+        globals._init_sid(sid)
+        return func(*args, **kw)
+
+    result = await loop.run_in_executor(None, partial(impl, func, globals._sid, *args, **kwargs))
     return result
 
 @app.post("/generate")
 async def generate(request: Request): # noqa C901
     try:
-        globals._init_sid()
+        globals._init_sid(request.headers.get('Session-ID'))
         globals._update(decode_request(request.headers.get('Global-Parameters')))
         input, kw = (await request.json()), {}
         try:

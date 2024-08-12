@@ -5,17 +5,15 @@ build:
   tools:
     python: "3.10"
   jobs:
-    post_install:
-      - export PYTHONPATH="$(pwd)";echo $PYTHONPATH 
-      - echo $PYTHONPATH  # For debugging purposes
-
+    pre_build:
+      - pip install -r requirements.txt
+      - pip install -r docs/requirements.txt
+      - python docs/add_docstrings.py 
 
 python:
   install:
     - requirements: docs/requirements.txt
 
-
-
-sphinx:
-  configuration: docs/source/conf.py
+mkdocs:
+  configuration: mkdocs.yml
 

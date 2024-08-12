@@ -95,8 +95,9 @@ class FunctionCall(ModuleBase):
                             f" and does not support {type(output)}.")
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
-        if self._llm._module_id not in globals['chat_history']:
-            globals['chat_history'][self._llm._module_id] = llm_chat_history if llm_chat_history else []
+        globals['chat_history'].setdefault(self._llm._module_id, [])
+        if llm_chat_history is not None:
+            globals['chat_history'][self._llm._module_id] = llm_chat_history
         return self._impl(input)
 
 class FunctionCallAgent(ModuleBase):
