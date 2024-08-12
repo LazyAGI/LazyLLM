@@ -71,7 +71,7 @@ class DocGroupImpl(lazyllm.ModuleBase):
         groups = self._list_all_subdirectories(
             self.dataset_path, lambda x: DATA_DIR not in x
         )
-        return [dir[len(self.dataset_path) + 1 :] for dir in groups]
+        return [dir[len(self.dataset_path) + 1:] for dir in groups]
 
     def add_files(self, group_name: str, files: List[str]):
         source_path = self.get_group_source_path(group_name)
