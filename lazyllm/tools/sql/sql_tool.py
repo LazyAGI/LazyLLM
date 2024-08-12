@@ -4,7 +4,7 @@ import sqlite3
 import lazyllm
 from lazyllm.components import ChatPrompter, AlpacaPrompter
 from lazyllm.tools.utils import chat_history_to_str
-from lazyllm import pipeline, ifs, loop, globals, bind, LOG, _0, switch
+from lazyllm import pipeline, globals, bind, LOG, _0, switch
 import json5 as json
 from typing import List, Any, Dict, Union
 from pathlib import Path
@@ -39,10 +39,11 @@ class SqlTool(ABC):
 
 
 class SQLiteTool(SqlTool):
-    def __init__(self, db_file):
+    def __init__(self, db_file, return_trace=False):
         super().__init__()
         self.db_type = ""
         assert Path(db_file).is_file()
+        self._return_trace = return_trace
         self.conn = sqlite3.connect(db_file, check_same_thread=False)
 
     def __del__(self):
@@ -113,28 +114,34 @@ class SQLiteTool(SqlTool):
             return str_tables
         except Exception as e:
             cursor.close()
+            if self._return_trace:
+                globals["trace"].append(f"SQLiteTool Exception: {str(e)}. sql_script: {sql_script}")
             LOG.warning(str(e))
             return ""
 
     def get_query_result_in_json(self, sql_script):
         cursor = self.conn.cursor()
-        cursor.execute(sql_script)
-        columns = [description[0] for description in cursor.description]
-        rows = cursor.fetchall()
-        cursor.close()
-
-        # change result to json
-        results = [dict(zip(columns, row)) for row in rows]
-        return json.dumps(results, ensure_ascii=False)
+        str_result = ""
+        try:
+            cursor.execute(sql_script)
+            columns = [description[0] for description in cursor.description]
+            rows = cursor.fetchall()
+            # change result to json
+            results = [dict(zip(columns, row)) for row in rows]
+            str_result = json.dumps(results, ensure_ascii=False)
+        except sqlite3.Error as e:
+            lazyllm.LOG.warning(f"SQLite error: {str(e)}")
+            if self._return_trace:
+                globals["trace"].append(f"SQLiteTool Exception: {str(e)}. sql_script: {sql_script}")
+        finally:
+            cursor.close()
+        return str_result
 
     def sql_update(self, sql_script):
         """Execute insert and update script
 
         Args:
-            sql_script (_type_):
-
-        Returns:
-            result(list), err_msg(str):
+            sql_script (str): The SQL query to be executed.
         """
         cursor = self.conn.cursor()
         try:
@@ -144,6 +151,8 @@ class SQLiteTool(SqlTool):
             cursor.close()
         except sqlite3.Error as e:
             lazyllm.LOG.warning(f"SQLite error: {str(e)}")
+            if self._return_trace:
+                globals["trace"].append(f"SQLiteTool Exception: {str(e)}. sql_script: {sql_script}")
         finally:
             cursor.close()
 
@@ -186,7 +195,6 @@ class SqlModule(ModuleBase):
         self._llm_answer = llm.share(prompt=self._answer_prompter)
         self._pattern = re.compile(r"```sql(.+?)```", re.DOTALL)
         with pipeline() as sql_execute_ppl:
-            sql_execute_ppl.pre_func = lambda x: x[0]
             sql_execute_ppl.exec = self._sql_tool.get_query_result_in_json
             if not only_output_raw:
                 sql_execute_ppl.concate = (lambda q, r: [q, r]) | bind(sql_execute_ppl.pre_func, _0)
@@ -195,7 +203,7 @@ class SqlModule(ModuleBase):
             ppl.llm_query = self._llm_query
             ppl.sql_extractor = self.extract_sql_from_response
             with switch(judge_on_full_input=False) as ppl.sw:
-                ppl.sw.case[False, lambda x: x[0]]
+                ppl.sw.case[False, lambda x: x]
                 ppl.sw.case[True, sql_execute_ppl]
         self._impl = ppl
 

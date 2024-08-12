@@ -1,3 +1,6 @@
+new
+
+
 # flake8: noqa E501
 from . import utils
 import functools
@@ -193,3 +196,235 @@ add_example('WebModule', r'''\
     >>> w.start()
     193703: 2024-06-07 10:26:00 lazyllm SUCCESS: ...
 ''')
+
+add_chinese_doc(
+    "SQLiteTool",
+    r"""\
+SQLiteTool是与SQLite数据库进行交互的专用工具。它扩展了SqlTool类，提供了创建表、执行查询和对SQLite数据库进行更新的方法。
+
+Arguments:
+    db_file (str): SQLite 文件数据库的路径
+
+
+.. function:: 
+    __del__(self)
+    
+    当实例被销毁时，自动关闭SQLite连接。
+
+.. function:: 
+    create_tables(self, tables_info: dict)
+    
+    根据描述表结构的JSON字典在SQLite数据库中创建表。
+    
+    Parameters:
+        tables_info (dict): 描述要创建的表的字典，包括字段名称、类型和注释。
+
+.. function:: 
+    close_connection(self)
+    
+    关闭SQLite数据库的连接。该方法在实例销毁时自动被调用。
+
+.. function:: 
+    get_all_tables(self) -> str
+    
+    检索并返回SQLite数据库中所有表的字符串表示形式。
+
+.. function:: 
+    get_query_result_in_json(self, sql_script) -> str
+    
+    执行SQL查询并返回JSON格式的结果。
+
+    Parameters:
+        sql_script (str): 在SQLite数据库上执行SQL插入或更新脚本。
+
+.. function:: 
+    sql_update(self, sql_script) -> str
+    
+    在SQLite数据库上执行SQL插入或更新脚本。
+
+    Parameters:
+        sql_script (str): 要执行的插入或更新操作的SQL查询。
+
+""",
+)
+
+add_english_doc(
+    "SQLiteTool",
+    r"""\
+SQLiteTool is a specialized tool for interacting with SQLite databases.
+It extends the SqlTool class and provides methods for creating tables, executing queries, and performing updates on SQLite databases.
+
+
+Arguments:
+    db_file (str): The path to the SQLite database file.
+
+
+.. function:: 
+    __del__(self)
+    
+    Automatically closes the SQLite connection when the instance is destroyed.
+
+.. function:: 
+    create_tables(self, tables_info: dict)
+    
+    Creates tables in the SQLite database according to a JSON-like dictionary that describes the table structure.
+    
+    Parameters:
+        tables_info (dict): A dictionary describing the tables to be created, including field names, types, and comments.
+
+.. function:: 
+    close_connection(self)
+    
+    Closes the connection to the SQLite database. This method is automatic called when the instance is destroyed.
+
+.. function:: 
+    get_all_tables(self) -> str
+    
+    Retrieves and returns a string representation of all the tables in the SQLite database.
+
+.. function:: 
+    get_query_result_in_json(self, sql_script) -> str
+    
+    Executes a SQL query and returns the result in JSON format.
+
+    Parameters:
+        sql_script (str): The SQL query to be executed.
+
+.. function:: 
+    sql_update(self, sql_script) -> str
+    
+    Executes an SQL insert or update script on the SQLite database.
+
+    Parameters:
+        sql_script (str): The SQL query to be executed for insert or update operations.
+
+""",
+)
+
+add_example(
+    "SQLiteTool",
+    r"""\
+    >>> from lazyllm.tools import SQLiteTool
+    >>> sql_tool = SQLliteTool("personal.db")
+    >>> tables_info = {
+    ...     "User": {
+    ...         "fields": {
+    ...             "id": {
+    ...                 "type": "integer",
+    ...                 "comment": "user id"
+    ...             },
+    ...             "name": {
+    ...                 "type": "text",
+    ...                 "comment": "user name"
+    ...             },
+    ...             "email": {
+    ...                 "type": "text",
+    ...                 "comment": "user email"
+    ...             }
+    ...         }
+    ...     }
+    ... }
+    >>> sql_tool.create_tables(tables_info)
+    >>> sql_tool.sql_update("INSERT INTO User (id, name, email) VALUES (1, 'Alice', 'alice@example.com')")
+    >>> table_info = sql_tool.get_all_tables()
+    >>> print(table_info)
+    >>> result_json = sql_tool.get_query_result_in_json("SELECT * from User")
+    >>> print(result_json)
+""",
+)
+
+add_chinese_doc(
+    "IntentClassifier",
+    r"""\
+IntentClassifier 是一个基于语言模型的意图识别器，用于根据用户提供的输入文本及对话上下文识别预定义的意图。
+它可以处理中文和英文的意图列表，并通过预处理和后处理步骤确保准确识别意图。
+
+Arguments:
+    llm: 用于意图识别的语言模型对象，OnlineChatModule或TrainableModule类型
+    intent_list (list)：包含所有可能意图的字符串列表。可以包含中文或英文的意图。
+    return_trace (bool, 可选)：如果设置为 True，则将结果记录在trace中。默认为 False。
+""",
+)
+
+add_english_doc(
+    "IntentClassifier",
+    r"""\
+IntentClassifier is an intent recognizer based on a language model that identifies predefined intents based on user-provided input text and conversational context.
+It can handle both Chinese and English intent lists and ensures accurate intent recognition through preprocessing and postprocessing steps.
+
+Arguments:
+    llm: A language model object used for intent recognition, which can be of type OnlineChatModule or TrainableModule.
+    intent_list (list): A list of strings containing all possible intents. This list can include intents in either Chinese or English.
+    return_trace (bool, optional): If set to True, the results will be recorded in the trace. Defaults to False.
+
+.. Destructor:: 
+    __del__(self)
+
+    Automatically closes the SQLite connection when the instance is destroyed.
+
+.. function:: 
+    create_tables(self, tables_info: dict)
+    
+    Creates tables in the SQLite database according to a JSON-like dictionary that describes the table structure.
+    Parameters:
+        tables_info (dict): A dictionary describing the tables to be created, including field names, types, and comments.
+
+.. function:: 
+    close_connection(self)
+
+    Closes the connection to the SQLite database. 
+    It will be automatically called by the destructor
+""",
+)
+
+add_example(
+    "IntentClassifier",
+    r"""\
+    >>> import lazyllm
+    >>> classifier_llm = lazyllm.OnlineChatModule(model=MODEL_ID, source="openai", base_url=BASE_URL)
+    >>> chatflow_intent_list = ["闲聊", "金融知识问答", "销售业绩查询", "员工信息查询"]
+    >>> classifier = IntentClassifier(classifier_llm, intent_list=chatflow_intent_list)
+    >>> classifier.start()
+    >>> print(classifier(QUERY))  
+""",
+)
+
+add_chinese_doc(
+    "SqlModule",
+    r"""\
+SqlModule 是一个扩展自 ModuleBase 的类,提供了使用语言模型(LLM)生成和执行 SQL 查询的接口。
+它设计用于与 SQL 数据库交互,从语言模型的响应中提取 SQL 查询,执行这些查询,并返回结果或解释。
+
+Arguments:
+    llm: 用于生成和解释 SQL 查询及解释的大语言模型。
+    sql_tool (SqlTool)：一个 SqlTool 实例，用于处理与 SQL 数据库的交互。
+    only_output_raw (bool, 可选): 如果设置为True,管道只会输出原始的SQL结果而不进行进一步处理。默认值为False。
+    return_trace (bool, 可选): 如果设置为 True,则将结果记录在trace中。默认为 False。
+""",
+)
+
+add_english_doc(
+    "SqlModule",
+    r"""\
+SqlModule is a class that extends ModuleBase and provides an interface for generating and executing SQL queries using a language model (LLM). 
+It is designed to interact with a SQL database, extract SQL queries from LLM responses, execute those queries, and return results or explanations.
+
+Arguments:
+    llm: A language model to be used for generating and interpreting SQL queries and explanations.
+    sql_tool (SqlTool): An instance of SqlTool that handles interaction with the SQL database.
+    only_output_raw (bool, optional): If set to True, the pipeline will only output raw SQL results without further processing. Default is False.
+    return_trace (bool, optional): If set to True, the results will be recorded in the trace. Defaults to False.  
+""",
+)
+
+add_example(
+    "SqlModule",
+    r"""\
+    >>> import lazyllm
+    >>> from lazyllm.tools import SQLiteTool, SqlModule
+    >>> sql_tool = SQLiteTool("personal.db")
+    >>> sql_llm = lazyllm.OnlineChatModule(model="gpt-4o", source="openai", base_url="***")
+    >>> sql_module = SqlModule(sql_llm, sql_tool, only_output_raw=False)
+    >>> print(sql_module("员工Alice的邮箱地址是什么?"))
+""",
+)

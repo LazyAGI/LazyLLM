@@ -378,7 +378,7 @@ class Switch(LazyLLMFlowsBase):
         if not self._judge_on_full_input:
             assert isinstance(__input, tuple) and len(__input) >= 2
             exp = __input[0]
-            __input = __input[1:]
+            __input = __input[1] if len(__input) == 2 else __input[1:]
         for idx, cond in enumerate(self.conds):
             if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or cond == 'default':
                 return self.invoke(self._items[idx], __input, **kw)
