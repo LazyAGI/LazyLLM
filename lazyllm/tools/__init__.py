@@ -1,6 +1,7 @@
 from .rag import Document, Reranker, Retriever
 from .webpages import WebModule
-from .agent import ToolManager, FunctionCall, FunctionCallAgent, register as fc_register
+from .agent import (ToolManager, FunctionCall, FunctionCallAgent, register as fc_register, ReactAgent,
+                    PlanAndSolveAgent, ReWOOAgent)
 from .classifier import IntentClassifier
 
 __all__ = [
@@ -12,5 +13,8 @@ __all__ = [
     'FunctionCall',
     'FunctionCallAgent',
     'fc_register',
-    "IntentClassifier"
+    'ReactAgent',
+    'PlanAndSolveAgent',
+    'ReWOOAgent',
+    'IntentClassifier'
 ]

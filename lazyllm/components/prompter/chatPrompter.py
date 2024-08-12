@@ -10,7 +10,7 @@ class ChatPrompter(LazyLLMPrompterBase):
                 ChatPrompter.ISA + instruction.get("user", "") + ChatPrompter.ISE
             instruction = splice_instruction
         instruction_template = f'{instruction}\n{{extro_keys}}\n'.replace(
-            '{extro_keys}', LazyLLMPrompterBase._get_extro_key_template(extro_keys))
+            '{extro_keys}', LazyLLMPrompterBase._get_extro_key_template(extro_keys)) if instruction else ""
         self._init_prompt("{sos}{system}{instruction}{tools}{eos}\n\n{history}\n{soh}\n{user}{input}\n{eoh}{soa}\n",
                           instruction_template)
 
