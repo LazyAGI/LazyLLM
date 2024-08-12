@@ -53,27 +53,8 @@ class SQLiteTool(SqlTool):
         """Create tables According to tables json dict.
 
         Args:
-            tables_info (dict): json dict which describes several tables
-
-            egs:
-            {
-                "User": {
-                    "fields": {
-                        "id": {
-                            "type": "integer",
-                            "comment": "user id"
-                        },
-                        "name": {
-                            "type": "text",
-                            "comment": "user name"
-                        },
-                        "email": {
-                            "type": "text",
-                            "comment": "user email"
-                        }
-                    }
-                }
-            }
+            tables_info (dict): json dict which describes several tables. The dict format shoule be as follows
+                {TABLE_NAME:{"fields":{COLUMN_NAME:{"type":("REAL"/"TEXT"/"INT"), "comment":"..."} } } }
         """
         cursor = self.conn.cursor()
         for table_name, table_info in tables_info.items():
@@ -87,7 +68,7 @@ class SQLiteTool(SqlTool):
                 comment = field_info["comment"]
 
                 # Add field definition
-                fields.append(f"{field_name} {field_type} -- {comment}")
+                fields.append(f"{field_name} {field_type} comment '{comment}'")
 
             # Join fields and complete SQL statement
             create_table_sql += ", ".join(fields) + ");"
@@ -102,6 +83,11 @@ class SQLiteTool(SqlTool):
             self.conn.close()
 
     def get_all_tables(self) -> str:
+        """Retrieves and returns a string representation of all the tables in the SQLite database.
+
+        Returns:
+            str: string representation of all the tables in the SQLite database.
+        """
         sql_script = "SELECT sql FROM sqlite_master WHERE type='table'"
         cursor = self.conn.cursor()
         try:
@@ -120,6 +106,14 @@ class SQLiteTool(SqlTool):
             return ""
 
     def get_query_result_in_json(self, sql_script):
+        """Executes a SQL query and returns the result in JSON format.
+
+        Args:
+            sql_script (str): The SQL query to be executed.
+
+        Returns:
+            str: the sql execution result in JSON format.
+        """
         cursor = self.conn.cursor()
         str_result = ""
         try:
@@ -179,7 +173,6 @@ the sql result is
 ```
 {sql_result}
 ```
-Tell the user based on the sql execution results, making sure to keep the language consistent with the user's input and don't translate original result.
 """
 
 
@@ -189,7 +182,7 @@ class SqlModule(ModuleBase):
         self._sql_tool = sql_tool
         self._query_prompter = ChatPrompter(instruction=sql_query_instruct_template).pre_hook(self.sql_query_promt_hook)
         self._llm_query = llm.share(prompt=self._query_prompter)
-        self._answer_prompter = AlpacaPrompter(instruction=sql_explain_instruct_template).pre_hook(
+        self._answer_prompter = ChatPrompter(instruction=sql_explain_instruct_template).pre_hook(
             self.sql_explain_prompt_hook
         )
         self._llm_answer = llm.share(prompt=self._answer_prompter)
@@ -197,7 +190,7 @@ class SqlModule(ModuleBase):
         with pipeline() as sql_execute_ppl:
             sql_execute_ppl.exec = self._sql_tool.get_query_result_in_json
             if not only_output_raw:
-                sql_execute_ppl.concate = (lambda q, r: [q, r]) | bind(sql_execute_ppl.pre_func, _0)
+                sql_execute_ppl.concate = (lambda q, r: [q, r]) | bind(sql_execute_ppl.input, _0)
                 sql_execute_ppl.llm_answer = self._llm_answer
         with pipeline() as ppl:
             ppl.llm_query = self._llm_query
@@ -234,6 +227,8 @@ class SqlModule(ModuleBase):
         tools: Union[List[Dict[str, Any]], None] = None,
         label: Union[str, None] = None,
     ):
+        explain_query = "Tell the user based on the sql execution results, making sure to keep the language consistent \
+            with the user's input and don't translate original result."
         if not isinstance(input, list) and len(input) != 2:
             raise ValueError(f"Unexpected type for input: {type(input)}")
         assert "root_input" in globals and self._llm_answer._module_id in globals["root_input"]
@@ -241,7 +236,7 @@ class SqlModule(ModuleBase):
         globals._data.pop("root_input")
         history_info = chat_history_to_str(history, user_query)
         return (
-            dict(history_info=history_info, sql_query=input[0], sql_result=input[1]),
+            dict(history_info=history_info, sql_query=input[0], sql_result=input[1], explain_query=explain_query),
             history,
             tools,
             label,
