@@ -35,6 +35,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 在上面的例子中， ``generate_prompt`` 的输入是一个 ``dict`` ，他会把值依次填入 ``instruction`` 提供的槽位中。
 
 > **注意**：
+>
 > - 上面代码中出现了一个值得您关注的参数 ``return_dict`` , 当 ``return_dict`` 为True时，会返回OpenAI格式的dict用于线上模型。
 > - 一般情况下，您只需要将Prompter设置给 ``TrainableModule`` 或 ``OnlineChatModule`` 即可，而无需关心 ``generate_prompt`` 这一函数。
 
@@ -62,6 +63,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 - ``OnlineChatModule`` 的输出格式为: ``dict(messages=[{"role": "system", "content": ""}, {"role": "user", "content": ""}, ...], tools=[])``
 
 > **注意**：
+>
 > - 从上面可以看出， ``AlpacaPrompter`` 相比于 ``ChatPrompter`` ，缺少了 ``history`` ，以及 ``soh`` 等多轮对话分割所需要的标识符。
 > - 因此我们可以看出， ``AlpacaPrompter`` 不支持多轮对话。
 
@@ -70,24 +72,23 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 - ``instruction`` : 由开发者在构造 ``Prompter`` 时传入，可带若干个待填充的槽位，用于填充用户的输入。或者指定系统级指令和用户级指令，当指定用户级指令时，需要使用字典类型，且键值为 ``user`` 和 ``system`` 。
 - ``extro_keys`` : 需要用户调用大模型时额外提供的信息，有开发者在构造 ``Prompter`` 时传入，会自动转换成 ``instruction`` 中的槽位。
 
-> **注意**：
-    在内置的 ``Prompter`` 中， ``Alpaca``的 ``InstructionTemplate`` 额外附带了 ``alpaca`` 格式的标准提示词，即 ``Below is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request``
+> **注意**：在内置的 ``Prompter`` 中， ``Alpaca``的 ``InstructionTemplate`` 额外附带了 ``alpaca`` 格式的标准提示词，即 ``Below is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request``
 
 #### Prompt生成过程解析
 
 我们借助 :[trial](#prompter_2) 中使用 ``AlpacaPrompter`` 的文档问答的例子，详细介绍一下Prompt的生成过程。
 
 1. ``AlpacaPrompter`` 结合构造 ``prompter`` 时传入的 ``instruction`` （及 ``extro_keys``， 如有），结合 ``InstructionTemplate`` ，将 ``instruction`` 设置为:
-```python     
+```python
 "Below is an instruction that describes a task, paired with extra messages such as input that provides "
 "further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
 "Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{{context}}，"
 "用户的问题是{{input}}, 现在请你做出回答。### Response:\\n}"
-``` 
+```
 
 2. 用户的输入为 ``dict(context='背景', input='问题')``
 3. 用户的输入与1中得到的 ``instruction`` 进行拼接 ，得到:
-```python 
+```python
 "Below is an instruction that describes a task, paired with extra messages such as input that provides "
 "further context if possible. Write a response that appropriately completes the request.\\n\\n ### "
 "Instruction:\\n 你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，"
@@ -119,8 +120,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n请完成加法运算\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\na+b\\n\\n\\n### Response:\\n'
 ```
 
-> **注意**： 
-    当使用 ``AlpacaPrompter`` 时，需要定义一个唯一的槽位，可以任意取一个名字， ``string`` 类型的输入会填充进去。
+> **注意**：当使用 ``AlpacaPrompter`` 时，需要定义一个唯一的槽位，可以任意取一个名字， ``string`` 类型的输入会填充进去。
 
 ```python
 >>> p = lazyllm.ChatPrompter('请完成加法运算，输入为{input}')
@@ -132,6 +132,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 ```
 
 > **注意**：
+>
 >    - 当使用 ``ChatPrompter`` 时，不同于 ``AlpacaPrompter`` ，在 ``instruction`` 中定义槽位不是必须的。
 >    - 如果不定义槽位，则输入会放到对话中作为用户的输入，在 ``<soh>`` 和 ``<eoh>`` 之间。
 >    - 如果像 ``AlpacaPrompter`` 一样定义了槽位，也可以任意取一个名字，此时输入会放到 ``<system>`` 字段中。
@@ -145,7 +146,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 ```python
     [
         {
-            "type": "function", 
+            "type": "function",
             "function": {
                 "name": "",
                 "description": "",
@@ -197,8 +198,9 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 工具会在 [analysis](#prompt) 中的步骤4，转换为json后被读取。
 
 > **注意**：
+>
 >    如果是使用线上模型，工具会变成和 ``messages`` 并列的一个字段，示例如下：
-> 
+>
 >
 >     >>> import lazyllm
 >     >>> tools=[dict(type='function', function=dict(name='example'))]
@@ -226,6 +228,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 历史对话会在 :[analysis](#prompt) 中的步骤4，做简单的格式转换后被读取。
 
 > **注意**：
+>
 > - 只有 ``ChatPrompter`` 支持传入历史对话
 > - 当输入是 ``[[a, b], ...]`` 格式时，同时支持 ``return_dict`` 为 ``True`` 或 ``False`` ， 而当输入为  ``[dict, dict]`` 格式时，仅支持 ``return_dict`` 为 ``True``
 
@@ -257,6 +260,7 @@ module(dict(context='背景', input='输入'))
 ```
 
 > **注意**：
+>
 > - 我们保证了 ``Prompter`` 在 ``TrainableModule`` 和 ``和OnlineChatModule`` 具有一致的使用体验，您可以方便的更换模型以进行效果的尝试。
 > - ``TrainableModule`` 需要手动调用 ``start`` 以启动服务，想了解更多关于 ``TrainableModule`` 的用法，可以参考 : [module][lazyllm.module.ModuleBase]
 

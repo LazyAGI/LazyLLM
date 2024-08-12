@@ -23,6 +23,7 @@ def simple_extract_keywords(
     keywords = value_counts.index.tolist()[:max_keywords]
     return set(keywords)
 
+
 def tokenize_remove_stopwords(text: str) -> List[str]:
     text = text.lower()
     words = list(simple_extract_keywords(text))
@@ -60,13 +61,14 @@ class ChineseBM25Retriever(BaseRetriever):
 
     @classmethod
     def from_defaults(
-            cls,
-            index: Optional[VectorStoreIndex] = None,
-            nodes: Optional[List[BaseNode]] = None,
-            docstore: Optional[BaseDocumentStore] = None,
-            tokenizer: Optional[Callable[[str], List[str]]] = None,
-            similarity_top_k: int = DEFAULT_SIMILARITY_TOP_K,
-            verbose: bool = False):
+        cls,
+        index: Optional[VectorStoreIndex] = None,
+        nodes: Optional[List[BaseNode]] = None,
+        docstore: Optional[BaseDocumentStore] = None,
+        tokenizer: Optional[Callable[[str], List[str]]] = None,
+        similarity_top_k: int = DEFAULT_SIMILARITY_TOP_K,
+        verbose: bool = False,
+    ):
         # ensure only one of index, nodes, or docstore is passed
         if sum(bool(val) for val in [index, nodes, docstore]) != 1:
             raise ValueError("Please pass exactly one of index, nodes, or docstore.")

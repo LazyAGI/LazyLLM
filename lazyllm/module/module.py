@@ -257,8 +257,8 @@ class UrlModule(ModuleBase, UrlTemplate):
         assert self._url is not None, f'Please start {self.__class__} first'
 
         files = []
-        if self.template_message and 'files' in kw:
-            files = kw.pop('files', [])
+        if self.template_message and globals['global_parameters'].get("lazyllm-files"):
+            files = globals['global_parameters']["lazyllm-files"]['files']
         query = __input
         __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
         headers = {'Content-Type': 'application/json'}

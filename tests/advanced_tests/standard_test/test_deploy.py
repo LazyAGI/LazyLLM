@@ -94,10 +94,10 @@ class TestDeploy(object):
         audio_path = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')
         res = m(audio_path)
         assert '但愿人长久' in res
-        globals['global_parameters'][m._module_id] = {'files': [audio_path]}
+        globals['global_parameters']["lazyllm-files"] = {'files': [audio_path]}
         res = m('Hi')
         assert '但愿人长久' in res
-        globals['global_parameters'][m._module_id] = {'files': audio_path}
+        globals['global_parameters']["lazyllm-files"] = {'files': audio_path}
         res = m('hellow world.')
         assert '但愿人长久' in res
 
@@ -123,7 +123,7 @@ class TestDeploy(object):
         m.update_server()
         query = '这是啥？'
         image_path = os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg')
-        globals['global_parameters'][m._module_id] = {'files': image_path}
+        globals['global_parameters']["lazyllm-files"] = {'files': image_path}
         res = m(query)
         assert '鸡' in res
 

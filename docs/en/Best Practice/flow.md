@@ -25,8 +25,7 @@ f3 = Functor()
 assert pipeline(f1, f2, f3, Functor)(1) == 256
 ```
 
-> **Note**：
-    Functions registered with LazyLLM's registration mechanism :[register][lazyllm.common.Register] can also be used directly by the pipeline. Below is an example:
+> **Note**: Functions registered with LazyLLM's registration mechanism :[register][lazyllm.common.Register] can also be used directly by the pipeline. Below is an example:
 
 ```python
 import lazyllm
@@ -65,8 +64,7 @@ with pipeline() as p:
 assert p(1) == 16
 ```
 
-> **Note**：
-    Components such as ``parallel``, ``diverter``, ``switch``, ``loop``  etc., also support the with statement.
+> **Note**: Components such as ``parallel``, ``diverter``, ``switch``, ``loop``  etc., also support the with statement.
 
 ##### Parameter Binding
 
@@ -99,6 +97,7 @@ In the example above, the ``bind`` function is used for parameter binding. Its b
 For the above case,The entire pipeline's input will be used as the first parameter of f4 (assuming we start counting from the first parameter). The output of f3 (i.e., the input to the new function) will be used as the second parameter of f4, and the output of f2 will be used as the third parameter of f4.
 
 > **Note**:
+>
 > - Parameter binding is effective only within a single pipeline (note that when flows are nested, it does not apply in the subflow). It only allows downstream functions to bind the output of upstream functions as parameters.
 > - When using parameter binding, any parameters passed in that are not referenced by ``placeholders`` such as ``_0``, ``_1``, etc., will be discarded.
 
@@ -114,8 +113,7 @@ with pipeline() as p:
 assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
-> **Note**:
-    Please be careful with lambda functions! If you use a lambda function, make sure to enclose it in parentheses, for example: ``(lambda x, y: pass) | bind(1, _0)``
+> **Note**: Please be careful with lambda functions! If you use a lambda function, make sure to enclose it in parentheses, for example: ``(lambda x, y: pass) | bind(1, _0)``
 
 In addition to the C++ style bind method, as a Python library, we also provide parameter binding using ``kwargs``. You can mix ``kwargs`` with the C++ style binding method. Here's an example:
 
@@ -129,8 +127,7 @@ with pipeline() as p:
 assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
-> **Note**：
-    The values of parameters bound through ``kwargs`` cannot use ``_0`` and similar placeholders.
+> **Note**: The values of parameters bound through ``kwargs`` cannot use ``_0`` and similar placeholders.
 
 If the input to the pipeline is complex, you can directly perform a simple parsing of the ``input``. Here is an example:
 
@@ -183,15 +180,13 @@ with pipeline(auto_capture=True) as p:
 assert p(1) == 'get [1], [f3-5], [5]'
 ```
 
-> **Note**:
-    This capability is currently not very mature and is not recommended for use. Stay tuned for updates.
+> **Note**: This capability is currently not very mature and is not recommended for use. Stay tuned for updates.
 
 ### parallel
 
 All components of ``parallel`` share the input and merge the results for output. The definition method of ``parallel`` is similar to that of ``pipeline``. You can either initialize its elements directly when defining ``parallel`` or initialize its elements within a with block.
 
-> **Note**:
-    Since all modules in ``parallel`` share the input, the input to ``parallel`` does not support parameter binding.
+> **Note**: Since all modules in ``parallel`` share the input, the input to ``parallel`` does not support parameter binding.
 
 ##### Result Post-Processing
 
@@ -218,8 +213,7 @@ with parallel().sum as p:
 assert p(1) == 2
 ```
 
-> **Note**:
-    If using ``asdict``, you need to name the elements within ``parallel``. The returned ``dict`` will use these names as the ``key``.
+> **Note**: If using ``asdict``, you need to name the elements within ``parallel``. The returned ``dict`` will use these names as the ``key``.
 
 ##### Sequential Execution
 
@@ -236,8 +230,7 @@ with parallel.sequential() as p:
 assert p(1) == (1, 1)
 ```
 
-> **Note**:
-    ``diverter`` can also achieve sequential execution through ``.sequential``
+> **Note**: ``diverter`` can also achieve sequential execution through ``.sequential``
 
 ### Summary
 

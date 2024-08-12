@@ -21,10 +21,11 @@ class KimiModule(OnlineChatModuleBase):
                          **kwargs)
 
     def _get_system_prompt(self):
-        return "You are Kimi, an AI assistant provided by Moonshot AI. You are better at speaking \
-                Chinese and English. You will provide users with safe, helpful, and accurate answers. \
-                At the same time, you will reject all answers involving terrorism, racial discrimination, \
-                pornographic violence, etc. Moonshot AI is a proper noun and cannot be translated into other languages."
+        return ("You are Kimi, an AI assistant provided by Moonshot AI. You are better at speaking "
+                "Chinese and English. You will provide users with safe, helpful, and accurate answers. "
+                "At the same time, you will reject all answers involving terrorism, racial discrimination, "
+                "pornographic violence, etc. Moonshot AI is a proper noun and cannot be translated "
+                "into other languages.")
 
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'v1/chat/completions')

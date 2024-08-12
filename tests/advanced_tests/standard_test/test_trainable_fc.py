@@ -73,7 +73,7 @@ def exe_trainable_parallel_function_call(request):
     query = params.get("query", "")
     if not query or not tools:
         raise ValueError(f"query: {query} and tools: {tools} cannot be empty.")
-    llm = lazyllm.TrainableModule(model).deploy_method(deploy.lightllm).start()
+    llm = lazyllm.TrainableModule(model).deploy_method(deploy.vllm).start()
 
     agent = FunctionCallAgent(llm, tools)
     print(f"\nStarting test 【{model}】parallel function calling")
@@ -86,10 +86,9 @@ squery1 = "What's the weather like today in celsius in Tokyo."
 squery2 = "What will the weather be like in celsius in Paris tomorrow?"
 mquery1 = "What's the weather like today in celsius in Tokyo and Paris."
 mquery2 = "What will the weather be like in fahrenheit in san francisco and beijing tomorrow?"
-lightModels = ['internlm2-chat-20b', 'Qwen1.5-14B-Chat']
 vModels = ['GLM-4-9B-Chat', 'Qwen2-7B-Instruct']
 
-class TestOnlineChatFunctionCall(object):
+class TestTrainableFunctionCall(object):
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
         yield
@@ -104,8 +103,8 @@ class TestOnlineChatFunctionCall(object):
         assert isinstance(ret, list)
 
     @pytest.mark.parametrize("exe_trainable_parallel_function_call",
-                             [{"model": random.choice(lightModels), 'tools': tools, 'query': mquery1},
-                              {"model": random.choice(lightModels), 'tools': tools, 'query': mquery2}],
+                             [{"model": random.choice(vModels), 'tools': tools, 'query': mquery1},
+                              {"model": random.choice(vModels), 'tools': tools, 'query': mquery2}],
                              indirect=True)
     def test_trainable_parallel_function_call(self, exe_trainable_parallel_function_call):
         ret = exe_trainable_parallel_function_call

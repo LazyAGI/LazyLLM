@@ -239,9 +239,11 @@ class WebModule(ModuleBase):
             else:
                 string = ''
             if files:
-                globals['global_parameters'][self.m._module_id] = {'files': files}
+                globals['global_parameters']["lazyllm-files"] = {'files': files}
+                if files[0]:
+                    string += f' ## Get attachments: {os.path.basename(files[0])}'
             input = string
-            history = chat_history[:-1] if use_context and len(chat_history) > 1 else None
+            history = chat_history[:-1] if use_context and len(chat_history) > 1 else list()
 
             for k, v in zip(self.ckeys, args):
                 if k[0] not in globals['global_parameters']: globals['global_parameters'][k[0]] = dict()
@@ -249,11 +251,11 @@ class WebModule(ModuleBase):
 
             if use_context:
                 for h in self.history:
-                    if h not in globals['chat_history']: globals['chat_history'][h] = dict()
+                    if h not in globals['chat_history']: globals['chat_history'][h] = list()
                     globals['chat_history'][h] = history
             result = self.m(input)
             if files:
-                globals['global_parameters'][self.m._module_id].pop('files', None)
+                globals['global_parameters']["lazyllm-files"].pop('files', None)
 
             def get_log_and_message(s):
                 if not self.trace_mode == WebModule.Mode.Appendix:
