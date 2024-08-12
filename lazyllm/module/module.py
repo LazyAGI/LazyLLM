@@ -8,7 +8,7 @@ import pickle
 import codecs
 import inspect
 import functools
-from lazyllm import ThreadPoolExecutor
+from lazyllm import ThreadPoolExecutor, FileSystemQueue
 from typing import Dict, List, Any, Union
 
 import lazyllm
@@ -281,23 +281,21 @@ class UrlModule(ModuleBase, UrlTemplate):
             data = __input
 
         # context bug with httpx, so we use requests
-        def _impl():
-            with requests.post(self._url, json=data, stream=True, headers=headers) as r:
-                if r.status_code == 200:
-                    for chunk in r.iter_content(None):
-                        try:
-                            chunk = pickle.loads(codecs.decode(chunk, "base64"))
-                        except Exception:
-                            chunk = chunk.decode('utf-8')
-                        yield self._prompt.get_response(self._extract_result_func(chunk))
-                    globals._update(decode_request(r.headers.get('Global-Parameters'), dict()))
-                else:
-                    raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
-        if self._stream:
-            return _impl()
-        else:
-            for r in _impl(): pass
-            return self._formatter.format(self._extract_and_format(r))
+        with requests.post(self._url, json=data, stream=True, headers=headers) as r:
+            if r.status_code == 200:
+                messages = ''
+                for chunk in r.iter_content(None):
+                    try:
+                        chunk = pickle.loads(codecs.decode(chunk, "base64"))
+                    except Exception:
+                        chunk = chunk.decode('utf-8')
+                    chunk = self._prompt.get_response(self._extract_result_func(chunk))
+                    if self._stream: FileSystemQueue.enqueue(chunk)
+                    messages += chunk
+                globals._update(decode_request(r.headers.get('Global-Parameters'), dict()))
+            else:
+                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+            return self._formatter.format(self._extract_and_format(messages))
 
     def prompt(self, prompt=None):
         if prompt is None:
