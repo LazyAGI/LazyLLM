@@ -520,7 +520,6 @@ add_example('deploy.LMDeploy', '''\
 >>> infer = deploy.LMDeploy()
 >>>
 >>> # MultiModal:
->>> import os
 >>> import lazyllm
 >>> from lazyllm import deploy, globals
 >>> chat = lazyllm.TrainableModule('internvl-chat-2b-v1-5').deploy_method(deploy.LMDeploy)

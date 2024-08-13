@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+# flake8: noqa: F401
+
 from .core import register
 from .prompter import Prompter, AlpacaPrompter, ChatPrompter
 from .data import LazyLLMDataprocBase
