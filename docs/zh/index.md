@@ -48,6 +48,25 @@ export PYTHONPATH=$PWD:$PYHONPATH
 
 以上环境准备完成后，我们就可以开始使用 `LazyLLM` 了。
 
+### 环境扩展
+lazyllm支持pip直接安装,下面三种安装方式分别对应不同功能的使用
+
+```bash
+pip3 install lazyllm
+```
+
+```bash
+pip3 install lazyllm[standard]
+pip3 install git+https://github.com/hiyouga/LLaMA-Factory.git@9dcff3a#egg=llamafactory
+```
+
+```bash
+pip3 install lazyllm[full]
+pip3 install git+https://github.com/hiyouga/LLaMA-Factory.git@9dcff3a#egg=llamafactory
+pip3 install git+https://github.com/ModelTC/lightllm@e6452fd#egg=lightllm
+pip3 install 'flash-attn>=2.5.8'
+```
+
 ## Hello, world!
 
 为了让大家对 `LazyLLM` 有个初步的认识，我们基于 [商汤日日新开放平台](https://platform.sensenova.cn/home) 提供的对话功能，使用 `LazyLLM` 来实现一个聊天机器人。
