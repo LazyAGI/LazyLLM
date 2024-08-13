@@ -260,8 +260,8 @@ class WebModule(ModuleBase):
             func_future = self.pool.submit(self.m, input)
             while True:
                 if value := FileSystemQueue().dequeue():
-                    chat_history[-1][1] = chat_history[-1][1] + ''.join(value)
-                    yield chat_history, ''
+                    chat_history[-1][1] = chat_history[-1][1] + ''.join(value) if append_text else ''.join(value)
+                    if stream_output: yield chat_history, ''
                 elif func_future.done(): break
                 time.sleep(0.01)
             result = func_future.result()
