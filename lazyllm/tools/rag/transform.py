@@ -1,16 +1,17 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+import json
 import requests
 
 from functools import partial
 import re
-from typing import Any, Callable, List, Tuple, Union
-
+from typing import Any, Callable, Dict, List, Tuple, Union
+from lazyllm.components import AlpacaPrompter
 import nltk
 import tiktoken
 
 from .store import DocNode, MetadataMode
-from lazyllm import LOG
+from lazyllm import LOG, TrainableModule
 
 
 def build_nodes_from_splits(
@@ -108,10 +109,10 @@ class SentenceSplitter(NodeTransform):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
-    def transform(self, document: DocNode, **kwargs) -> List[str]:
+    def transform(self, node: DocNode, **kwargs) -> List[str]:
         return self.split_text(
-            document.get_text(),
-            metadata_size=self._get_metadata_size(document),
+            node.get_text(),
+            metadata_size=self._get_metadata_size(node),
         )
 
     def _get_metadata_size(self, node: DocNode) -> int:
@@ -264,3 +265,92 @@ class FuncNodeTransform(NodeTransform):
         result = self._func(node.get_text())
         text_splits = [result] if isinstance(result, str) else result
         return text_splits
+
+
+en_prompt_template = """
+## Role: Text Summarizer/Keyword Extractor
+You are a text summarization and keyword extraction engine responsible for analyzing user input text and providing a concise summary or extracting relevant keywords based on the requested task.
+
+## Constraints:
+- Respond only with the requested output: either a brief summary or a list of keywords, as specified by the task type.
+- Do not add any extra fields, explanations, or translations.
+
+## Task Types:
+- "summary": Provide a concise summary of the input text.
+- "keywords": Extract and list relevant keywords from the input text.
+
+## Text Format:
+The input is in JSON format, where "input" contains the user's raw input text, and "task_type" specifies whether a summary or keywords are requested.
+
+## Example:
+User: {{"input": "Hello, I am an AI robot developed by SenseTime, named LazyLLM. My mission is to assist you in building the most powerful large-scale model applications with minimal cost.", "task_type": "summary"}}
+Assistant: Introduction of AI robot LazyLLM
+
+User: {{"input": "Hello, I am an AI robot developed by SenseTime, named LazyLLM. My mission is to assist you in building the most powerful large-scale model applications with minimal cost.", "task_type": "keywords"}}
+Assistant: LazyLLM, SenseTime, AI robot, large-scale model applications
+
+Input text is as follows:
+{input}
+"""
+
+ch_prompt_template = """
+## 角色：文本摘要/关键词提取器
+你是一个文本摘要和关键词提取引擎，负责分析用户输入的文本，并根据请求任务提供简洁的摘要或提取相关关键词。
+
+## 约束条件:
+- 仅回复请求的输出内容：根据任务类型提供简短摘要或关键词列表。
+- 不要添加额外字段、解释或翻译。
+
+## 任务类型:
+- "summary"：提供输入文本的简短摘要。
+- "keywords"：提取并列出输入文本中的相关关键词。
+
+## 文本格式:
+输入文本为JSON格式，其中“input”包含用户的原始输入文本，“task_type”指定请求的是摘要还是关键词。
+
+## 示例:
+User: {{"input": "你好，我是由商汤开发的人工智能机器人，我叫LazyLLM。我的使命是协助您，用最低的成本，构建最强大的大模型应用。", "task_type": "summary"}}
+Assistant: 人工智能机器人LazyLLM的简介
+
+User: {{"input": "你好，我是由商汤开发的人工智能机器人，我叫LazyLLM。我的使命是协助您，用最低的成本，构建最强大的大模型应用。", "task_type": "keywords"}}
+Assistant: LazyLLM, 商汤, 人工智能机器人, 大模型应用
+
+输入文本如下:
+${input}
+"""
+
+
+class LLMParser(NodeTransform):
+    def __init__(self, llm: TrainableModule, language: str, task_type: str) -> None:
+        assert language in ["en", "zh"], f"Not supported language {language}"
+        assert task_type in [
+            "summary",
+            "keywords",
+        ], f"Not supported task_type {task_type}"
+        prompt = en_prompt_template if language == "en" else ch_prompt_template
+        self._llm = llm.share(
+            prompt=AlpacaPrompter(prompt).pre_hook(self.prompt_pre_hook)
+        )
+        self._task_type = task_type
+
+    def prompt_pre_hook(
+        self,
+        input: Union[str, List, Dict[str, str], None] = None,
+        history: List[Union[List[str], Dict[str, Any]]] = [],
+        tools: Union[List[Dict[str, Any]], None] = None,
+        label: Union[str, None] = None,
+    ):
+        input_json = {}
+        if isinstance(input, str):
+            input_json = {"input": input, "task_type": self._task_type}
+        else:
+            raise ValueError(f"Unexpected type for input: {type(input)}")
+
+        input_text = json.dumps(input_json, ensure_ascii=False)
+        return dict(input=input_text), history, tools, label
+
+    def transform(self, node: DocNode, **kwargs) -> List[str]:
+        result = self._llm(node.get_text())
+        results = [result] if isinstance(result, str) else result
+        LOG.debug(f"LLMParser({self._task_type}) with input: {node.get_text()}")
+        return results
