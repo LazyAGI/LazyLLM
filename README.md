@@ -107,7 +107,7 @@ WebModule(ppl, history=[chat], audio=True, port=8847).start().wait()
 
 import os
 import lazyllm
-from lazyllm import pipeline, parallel, bind, _0, Document, Retriever, Reranker
+from lazyllm import pipeline, parallel, bind, SentenceSplitter, Document, Retriever, Reranker
 
 prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task. In this task, you need to provide your answer based on the given context and question.'
 ```
@@ -116,15 +116,17 @@ prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue 
 Here is an online deployment example:
 
 ```python
-documents = Document(dataset_path='rag_master', embed=lazyllm.OnlineEmbeddingModule(), create_ui=False)
+documents = Document(dataset_path="your data path", embed=lazyllm.OnlineEmbeddingModule(), create_ui=False)
+documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 with pipeline() as ppl:
     with parallel().sum as ppl.prl:
-        prl.retriever1 = Retriever(documents, parser='CoarseChunk', similarity_top_k=6)
-        prl.retriever2 = Retriever(documents, parser='SentenceDivider', similarity='chinese_bm25', similarity_top_k=6)
-    ppl.reranker = Reranker(types='ModuleReranker', model='bge-reranker-large') | bind(ppl.input, _0)
-    ppl.post_processer = lambda nodes: f'《{nodes[0].metadata["file_name"].split(".")[0]}》{nodes[0].get_content()}' if len(nodes) > 0 else 'cannot find.'
-    ppl.formatter = (lambda ctx, query: dict(context_str=ctx, query_str=query)) | bind(query=ppl.input)
-    ppl.llm = lazyllm.OnlineChatModule(stream=False).prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str']))
+        prl.retriever1 = Retriever(documents, group_name="sentences", similarity="cosine", topk=3)
+        prl.retriever2 = Retriever(documents, "CoarseChunk", "bm25_chinese", 0.003, topk=3)
+
+    ppl.reranker = Reranker("ModuleReranker", model="bge-reranker-large", topk=1) | bind(query=ppl.input)
+    ppl.formatter = (lambda nodes, query: dict(context_str="".join([node.get_content() for node in nodes]), query=query)) | bind(query=ppl.input)
+    ppl.llm = lazyllm.OnlineChatModule(stream=False).prompt(lazyllm.ChatPrompter(prompt, extro_keys=["context_str"]))
+
 lazyllm.WebModule(ppl, port=23466).start().wait()
 ```
 
@@ -132,14 +134,17 @@ Here is an example of a local deployment:
 
 ```python
 documents = Document(dataset_path='/file/to/yourpath', embed=lazyllm.TrainableModule('bge-large-zh-v1.5'))
+documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+
 with pipeline() as ppl:
     with parallel().sum as ppl.prl:
-        prl.retriever1 = Retriever(documents, parser='CoarseChunk', similarity_top_k=6)
-        prl.retriever2 = Retriever(documents, parser='SentenceDivider', similarity='chinese_bm25', similarity_top_k=6)
-    ppl.reranker = Reranker(types='ModuleReranker', model='bge-reranker-large') | bind(ppl.input, _0)
-    ppl.post_processer = lambda nodes: f'《{nodes[0].metadata["file_name"].split(".")[0]}》{nodes[0].get_content()}' if len(nodes) > 0 else 'cannot find.'
-    ppl.formatter = (lambda ctx, query: dict(context_str=ctx, query_str=query)) | bind(query=ppl.input)
-    ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt, extro_keys=['context_str'])) 
+        prl.retriever1 = Retriever(documents, group_name="sentences", similarity="cosine", topk=3)
+        prl.retriever2 = Retriever(documents, "CoarseChunk", "bm25_chinese", 0.003, topk=3)
+
+    ppl.reranker = Reranker("ModuleReranker", model="bge-reranker-large", topk=1) | bind(query=ppl.input)
+    ppl.formatter = (lambda nodes, query: dict(context_str="".join([node.get_content() for node in nodes]), query=query)) | bind(query=ppl.input)
+    ppl.llm = lazyllm.TrainableModule("internlm2-chat-7b").prompt(lazyllm.ChatPrompter(prompt, extro_keys=["context_str"]))
+
 lazyllm.WebModule(ppl, port=23456).start().wait()
 ```
 
