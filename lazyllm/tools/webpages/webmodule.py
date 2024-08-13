@@ -6,7 +6,6 @@ import signal
 import socket
 import sys
 import requests
-import asyncio
 import traceback
 import multiprocessing
 import gradio as gr
@@ -41,6 +40,7 @@ class WebModule(ModuleBase):
                  history=[], text_mode=None, trace_mode=None, audio=False) -> None:
         super().__init__()
         self.m = lazyllm.ActionModule(m) if isinstance(m, lazyllm.FlowBase) else m
+        self.pool = lazyllm.ThreadPoolExecutor(max_workers=50)
         self.title = title
         self.port = port
         components = sum([[([k._module_id, k._module_name] + list(v)) for v in vs]
@@ -226,7 +226,7 @@ class WebModule(ModuleBase):
             chat_history.append([query['text'], None])
         return {}, chat_history
 
-    async def _respond_stream(self, use_context, chat_history, stream_output, append_text, *args):  # noqa C901
+    def _respond_stream(self, use_context, chat_history, stream_output, append_text, *args):  # noqa C901
         try:
             # TODO: move context to trainable module
             files = []
@@ -257,8 +257,7 @@ class WebModule(ModuleBase):
                     if h not in globals['chat_history']: globals['chat_history'][h] = list()
                     globals['chat_history'][h] = history
 
-            loop = asyncio.get_event_loop()
-            func_future = loop.run_in_executor(None, self.m, input)
+            func_future = self.pool.submit(self.m, input)
             while True:
                 if value := FileSystemQueue().dequeue():
                     chat_history[-1][1] = chat_history[-1][1] + ''.join(value)
