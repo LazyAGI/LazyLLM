@@ -16,3 +16,9 @@ docstring-parser
 tiktoken
 spacy
 chromadb
+bm25s
+pystemmer
+nltk
+jieba>=0.42.1
+pyjwt>=2.8.0
+llama-index-core
