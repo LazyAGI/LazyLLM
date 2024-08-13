@@ -27,7 +27,7 @@ class ReadWriteLock(object):
             with self.rw_lock._read_ready:
                 self.rw_lock._readers -= 1
                 if self.rw_lock._readers == 0:
-                    self.rw_lock._read_ready.notifyAll()
+                    self.rw_lock._read_ready.notify_all()
 
     class WriteLock:
         def __init__(self, rw_lock):
