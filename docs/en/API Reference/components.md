@@ -1,24 +1,64 @@
-::: lazyllm.components.finetune
-    members: 
-    exclude-members:
+## Finetune
 
-::: lazyllm.components.deploy
-    members: 
-    exclude-members:
-
-::: lazyllm.components.auto
-    members: AutoFinetune
-    exclude-members:
-
-::: lazyllm.launcher
+::: lazyllm.components.finetune.AlpacaloraFinetune
     options:
-      members:
-      - EmptyLauncher
-      - RemoteLauncher
-      - ScoLauncher
-      - SlurmLauncher
+      heading_level: 3
+
+::: lazyllm.components.finetune.CollieFinetune
+    options:
+      heading_level: 3
+
+::: lazyllm.components.finetune.LlamafactoryFinetune
+    options:
+      heading_level: 3
+
+::: lazyllm.components.auto.AutoFinetune
+    options:
+      heading_level: 3
+
+---
+
+## Deploy
+
+::: lazyllm.components.deploy.Lightllm
+    options:
+      heading_level: 3
+
+::: lazyllm.components.deploy.Vllm
+    options:
+      heading_level: 3
+
+::: lazyllm.components.deploy.LMDeploy
+    options:
+      heading_level: 3
+
+::: lazyllm.components.auto.AutoDeploy
+    options:
+      heading_level: 3
+
+---
+
+## Launcher
+
+::: lazyllm.launcher.EmptyLauncher
+    options:
+      heading_level: 3
+
+::: lazyllm.launcher.RemoteLauncher
+    options:
+      heading_level: 3
+
+::: lazyllm.launcher.SlurmLauncher
+    options:
+      heading_level: 3
       filters:
       - '!get_idle'
+
+::: lazyllm.launcher.ScoLauncher
+    options:
+      heading_level: 3
+
+---
 
 ## Prompter
 
@@ -34,13 +74,23 @@
     options:
       heading_level: 3
 
+---
+
+## Register
+
 ::: lazyllm.common.Register
-    members: 
-    exclude-members:
+    options:
+      heading_level: 3
+
+---
+
+## ModelManager
 
 ::: lazyllm.components.ModelManager
-    members: 
-    exclude-members:
+    options:
+      heading_level: 3
+
+---
 
 ## Formatter
 
@@ -55,3 +105,41 @@
 ::: lazyllm.components.EmptyFormatter
     options:
       heading_level: 3
+
+---
+
+## MultiModal
+
+### Text to Image
+
+::: lazyllm.components.StableDiffusionDeploy
+    options:
+      heading_level: 4
+
+### Visual Question Answering
+
+Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Visual Question Answering model.
+
+### Text to Sound
+
+::: lazyllm.components.TTSDeploy
+    options:
+      heading_level: 4
+
+::: lazyllm.components.ChatTTSDeploy
+    options:
+      heading_level: 4
+
+::: lazyllm.components.BarkDeploy
+    options:
+      heading_level: 4
+
+::: lazyllm.components.MusicGenDeploy
+    options:
+      heading_level: 4
+
+### Speech to Text
+
+::: lazyllm.components.SenseVoiceDeploy
+    options:
+      heading_level: 4
