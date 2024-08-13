@@ -269,7 +269,8 @@ class FuncNodeTransform(NodeTransform):
 
 en_prompt_template = """
 ## Role: Text Summarizer/Keyword Extractor
-You are a text summarization and keyword extraction engine responsible for analyzing user input text and providing a concise summary or extracting relevant keywords based on the requested task.
+You are a text summarization and keyword extraction engine responsible for analyzing user input text
+and providing a concise summary or extracting relevant keywords based on the requested task.
 
 ## Constraints:
 - Respond only with the requested output: either a brief summary or a list of keywords, as specified by the task type.
@@ -280,13 +281,18 @@ You are a text summarization and keyword extraction engine responsible for analy
 - "keywords": Extract and list relevant keywords from the input text.
 
 ## Text Format:
-The input is in JSON format, where "input" contains the user's raw input text, and "task_type" specifies whether a summary or keywords are requested.
+The input is in JSON format, where "input" contains the user's raw input text
+and "task_type" specifies whether a summary or keywords are requested.
 
 ## Example:
-User: {{"input": "Hello, I am an AI robot developed by SenseTime, named LazyLLM. My mission is to assist you in building the most powerful large-scale model applications with minimal cost.", "task_type": "summary"}}
+User: {{"input": "Hello, I am an AI robot developed by SenseTime, named LazyLLM.
+My mission is to assist you in building the most powerful large-scale model applications with minimal cost.",
+"task_type": "summary"}}
 Assistant: Introduction of AI robot LazyLLM
 
-User: {{"input": "Hello, I am an AI robot developed by SenseTime, named LazyLLM. My mission is to assist you in building the most powerful large-scale model applications with minimal cost.", "task_type": "keywords"}}
+User: {{"input": "Hello, I am an AI robot developed by SenseTime, named LazyLLM.
+My mission is to assist you in building the most powerful large-scale model applications with minimal cost.",
+"task_type": "keywords"}}
 Assistant: LazyLLM, SenseTime, AI robot, large-scale model applications
 
 Input text is as follows:
