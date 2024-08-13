@@ -2,6 +2,8 @@ import sqlite3
 import threading
 from abc import ABC, abstractmethod
 from .globals import globals
+from ..configs import config
+import os
 
 class FileSystemQueue(ABC):
 
@@ -57,7 +59,7 @@ class FileSystemQueue(ABC):
 class SQLiteQueue(FileSystemQueue):
     def __init__(self, klass='__default__'):
         super(__class__, self).__init__(klass=klass)
-        self.db_path = '.lazyllm_filesystem_queue.db'
+        self.db_path = os.path.expanduser(os.path.join(config['home'], '.lazyllm_filesystem_queue.db'))
         self._lock = threading.Lock()
         self._initialize_db()
 
