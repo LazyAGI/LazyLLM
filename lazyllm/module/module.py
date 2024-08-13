@@ -12,7 +12,7 @@ from lazyllm import ThreadPoolExecutor, FileSystemQueue
 from typing import Dict, List, Any, Union
 
 import lazyllm
-from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, decode_request, globals
+from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.formatter import FormatterBase, EmptyFormatter
 from ..components.utils import ModelManager
@@ -87,7 +87,7 @@ class ModuleBase(object):
             if (history := globals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
             r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
             if self._return_trace:
-                globals['trace'].append(str(r))
+                lazyllm.FileSystemQueue('lazy_trace').enqueue(str(r))
         except Exception as e:
             raise RuntimeError(f'\nAn error occured in {self.__class__} with name {self.name}.\n'
                                f'Args:\n{args}\nKwargs\n{kw}\nError messages:\n{e}\n')
@@ -292,7 +292,6 @@ class UrlModule(ModuleBase, UrlTemplate):
                     chunk = self._prompt.get_response(self._extract_result_func(chunk))
                     if self._stream: FileSystemQueue().enqueue(chunk)
                     messages += chunk
-                globals._update(decode_request(r.headers.get('Global-Parameters'), dict()))
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
             return self._formatter.format(self._extract_and_format(messages))

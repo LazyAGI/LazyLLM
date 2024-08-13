@@ -262,6 +262,10 @@ class WebModule(ModuleBase):
                 if value := FileSystemQueue().dequeue():
                     chat_history[-1][1] = chat_history[-1][1] + ''.join(value) if append_text else ''.join(value)
                     if stream_output: yield chat_history, ''
+                elif value := FileSystemQueue('lazy_error').dequeue():
+                    log_history.append(''.join(value))
+                elif value := FileSystemQueue('lazy_trace').dequeue():
+                    log_history.append(''.join(value))
                 elif func_future.done(): break
                 time.sleep(0.01)
             result = func_future.result()
@@ -269,9 +273,6 @@ class WebModule(ModuleBase):
                 globals['global_parameters']["lazyllm-files"].pop('files', None)
 
             def get_log_and_message(s):
-                if globals['err']: log_history.append(globals['err'][1])
-                if globals['trace']: log_history.extend(globals['trace'])
-
                 if isinstance(s, dict):
                     s = s.get("message", {}).get("content", "")
                 else:

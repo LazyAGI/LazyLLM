@@ -122,7 +122,7 @@ class ThreadSafeDict(dict):
 
 class Globals(object):
     __global_attrs__ = ThreadSafeDict(chat_history={}, global_parameters={},
-                                      trace=[], err=None, tool_delimiter="<|tool_calls|>")
+                                      tool_delimiter="<|tool_calls|>")
 
     def __init__(self):
         self.__data = ThreadSafeDict()
