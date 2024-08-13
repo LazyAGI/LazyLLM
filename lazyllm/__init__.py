@@ -15,7 +15,8 @@ from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      OnlineChatModule, OnlineEmbeddingModule, AutoModel)
 from .client import redis_client
 from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
-                    FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent)
+                    FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
+                    LLMParser)
 from .engine import *  # noqa F403
 from .docs import add_doc
 
@@ -70,9 +71,11 @@ __all__ = [
     'FunctionCall',
     'FunctionCallAgent',
     'fc_register',
+    "LLMParser",
     'ReactAgent',
     'PlanAndSolveAgent',
     'ReWOOAgent',
+    'SentenceSplitter',
 
     # docs
     'add_doc',
