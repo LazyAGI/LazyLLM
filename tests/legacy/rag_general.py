@@ -4,7 +4,7 @@ os.environ['LAZYLLM_DEBUG'] = "1"
 
 import lazyllm
 from lazyllm import pipeline, Document
-from lazyllm.tools.rag.doc_impl import RetrieverV2
+from lazyllm.tools.rag.doc_impl import Retriever
 from lazyllm.tools.rag.rerank import register_reranker
 from lazyllm.tools.rag.index import register_similarity
 
@@ -32,7 +32,7 @@ documents.create_node_group(name='sentence-label', transform=lambda t: t[-2:], p
 
 
 with pipeline() as ppl:
-    ppl.retriever1 = RetrieverV2(documents, group_name='sentence', similarity='bm25_chinese', topk=100)
+    ppl.retriever1 = Retriever(documents, group_name='sentence', similarity='bm25_chinese', topk=100)
     # In this general test, we don't use llm, just print the nodes
     ppl.to_str = lambda nodes: str([str(node) for node in nodes])
     

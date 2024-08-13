@@ -30,17 +30,6 @@ class Document(ModuleBase):
         else:
             self._impl = DocGroupImpl(dataset_path=dataset_path, embed=embed)
 
-    def generate_signature(self, similarity, similarity_kw, parser):
-        return self._impl.generate_signature(similarity, similarity_kw, parser)
-
-    def _query_with_sig(self, string, signature, parser):
-        if self._create_ui:
-            return self.doc_server(string, parser=parser, signature=signature)
-        else:
-            return self._impl.query_with_sig(
-                string=string, signature=signature, parser=parser
-            )
-
     def forward(self, func_name: str, *args, **kwargs):
         if self._create_ui:
             kwargs["func_name"] = func_name

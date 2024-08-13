@@ -1,8 +1,12 @@
 from .document import Document
-from .base import Reranker, Retriever
+from .retriever import Retriever
+from .rerank import Reranker
+from .transform import SentenceSplitter
+
 
 __all__ = [
     "Document",
     "Reranker",
     "Retriever",
+    "SentenceSplitter",
 ]
