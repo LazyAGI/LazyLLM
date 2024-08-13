@@ -21,7 +21,7 @@ class FileSystemQueue(ABC):
         return __class__.__queue_pool__[klass]
 
     @classmethod
-    def create(cls, klass):
+    def get_instance(cls, klass):
         assert isinstance(klass, str) and klass != '__default__'
         return cls(klass=klass)
 
@@ -55,9 +55,9 @@ class FileSystemQueue(ABC):
 
 
 class SQLiteQueue(FileSystemQueue):
-    def __init__(self, db_path='.lazyllm_filesystem_queue.db', *, klass='__default__'):
+    def __init__(self, klass='__default__'):
         super(__class__, self).__init__(klass=klass)
-        self.db_path = db_path
+        self.db_path = '.lazyllm_filesystem_queue.db'
         self._lock = threading.Lock()
         self._initialize_db()
 

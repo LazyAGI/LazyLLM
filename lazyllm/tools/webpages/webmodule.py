@@ -262,9 +262,9 @@ class WebModule(ModuleBase):
                 if value := FileSystemQueue().dequeue():
                     chat_history[-1][1] = chat_history[-1][1] + ''.join(value) if append_text else ''.join(value)
                     if stream_output: yield chat_history, ''
-                elif value := FileSystemQueue('lazy_error').dequeue():
+                elif value := FileSystemQueue.get_instance('lazy_error').dequeue():
                     log_history.append(''.join(value))
-                elif value := FileSystemQueue('lazy_trace').dequeue():
+                elif value := FileSystemQueue.get_instance('lazy_trace').dequeue():
                     log_history.append(''.join(value))
                 elif func_future.done(): break
                 time.sleep(0.01)

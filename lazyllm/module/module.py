@@ -87,7 +87,7 @@ class ModuleBase(object):
             if (history := globals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
             r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
             if self._return_trace:
-                lazyllm.FileSystemQueue('lazy_trace').enqueue(str(r))
+                lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))
         except Exception as e:
             raise RuntimeError(f'\nAn error occured in {self.__class__} with name {self.name}.\n'
                                f'Args:\n{args}\nKwargs\n{kw}\nError messages:\n{e}\n')
