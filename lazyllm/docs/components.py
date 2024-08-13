@@ -7,21 +7,6 @@ add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.compon
 add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.components)
 add_example = functools.partial(utils.add_example, module=lazyllm.components)
 
-# Prompter
-add_chinese_doc('Prompter', '''\
-这是Prompter的文档
-''')
-add_english_doc('Prompter', '''\
-This is doc for Prompter
-''')
-add_example('Prompter', '''\
-def test_prompter():
-    pass
-''')
-
-add_english_doc('Prompter.is_empty', '''\
-This is doc for Prompter.is_empty
-''')
 
 add_chinese_doc('register', '''\
 LazyLLM提供的Component的注册机制，可以将任意函数注册成LazyLLM的Component。被注册的函数无需显式的import，即可通过注册器提供的分组机制，在任一位置被索引到。
@@ -496,7 +481,7 @@ add_example('deploy.Vllm', '''\
 
 # Deploy-LMDeploy
 add_chinese_doc('deploy.LMDeploy', '''\
-此类是 ``LazyLLMDeployBase`` 的子类，基于 `LMDeploy <https://github.com/InternLM/lmdeploy>`_ 框架提供的推理能力，用于对大语言模型进行推理。
+此类是 ``LazyLLMDeployBase`` 的子类，基于 [LMDeploy](https://github.com/InternLM/lmdeploy) 框架提供的推理能力，用于对大语言模型进行推理。
 
 Args:
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
@@ -514,24 +499,34 @@ Keyword Args:
 ''')
 
 add_english_doc('deploy.LMDeploy', '''\
-    This class is a subclass of ``LazyLLMDeployBase``, leveraging the inference capabilities provided by the `LMDeploy <https://github.com/InternLM/lmdeploy>`_ framework for inference on large language models.
+    This class is a subclass of ``LazyLLMDeployBase``, leveraging the inference capabilities provided by the [LMDeploy](https://github.com/InternLM/lmdeploy) framework for inference on large language models.
 
-    Args:
-        launcher (lazyllm.launcher): The launcher for fine-tuning, defaults to ``launchers.remote(ngpus=1)``.
-        stream (bool): Whether to enable streaming response, defaults to ``False``.
-        kw: Keyword arguments for updating default training parameters. Note that no additional keyword arguments beyond those listed below can be passed.
+Args:
+    launcher (lazyllm.launcher): The launcher for fine-tuning, defaults to ``launchers.remote(ngpus=1)``.
+    stream (bool): Whether to enable streaming response, defaults to ``False``.
+    kw: Keyword arguments for updating default training parameters. Note that no additional keyword arguments beyond those listed below can be passed.
 
-    Keyword Args: 
-        tp (int): Tensor parallelism parameter, defaults to ``1``.
-        server_name (str): The IP address of the service, defaults to ``0.0.0.0``.
-        server_port (int): The port number of the service, defaults to ``None``. In this case, LazyLLM will automatically generate a random port number.
-        max_batch_size (int): Maximum batch size, defaults to ``128``.
+Keyword Args: 
+    tp (int): Tensor parallelism parameter, defaults to ``1``.
+    server_name (str): The IP address of the service, defaults to ``0.0.0.0``.
+    server_port (int): The port number of the service, defaults to ``None``. In this case, LazyLLM will automatically generate a random port number.
+    max_batch_size (int): Maximum batch size, defaults to ``128``.
 
 ''')
 
-add_example('deploy.Vllm', '''\
+add_example('deploy.LMDeploy', '''\
+>>> # Basic use:
 >>> from lazyllm import deploy
 >>> infer = deploy.LMDeploy()
+>>>
+>>> # MultiModal:
+>>> import os
+>>> import lazyllm
+>>> from lazyllm import deploy, globals
+>>> chat = lazyllm.TrainableModule('internvl-chat-2b-v1-5').deploy_method(deploy.LMDeploy)
+>>> chat.update_server()
+>>> globals['global_parameters']["lazyllm-files"] = {'files': 'path/to/image'}
+>>> res = chat('What is it?')
 ''')
 
 # Deploy-Auto
@@ -955,6 +950,338 @@ Args:
 # >>> p.generate_prompt(dict(input="my input", query="this is user query"), return_dict=True)
 # {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
 # ''')
+
+# ============= MultiModal
+
+add_english_doc('StableDiffusionDeploy', '''\
+Stable Diffusion Model Deployment Class. This class is used to deploy the stable diffusion model to a specified server for network invocation.
+
+`__init__(self, launcher=None)`
+Constructor, initializes the deployment class.
+
+Args:
+    launcher (lazyllm.launcher): An instance of the launcher used to start the remote service.
+
+`__call__(self, finetuned_model=None, base_model=None)`
+Deploys the model and returns the remote service address.
+
+Args:
+    finetuned_model (str): If provided, this model will be used for deployment; if not provided or the path is invalid, `base_model` will be used.
+    base_model (str): The default model, which will be used for deployment if `finetuned_model` is invalid.
+    Return (str): The URL address of the remote service.
+
+Notes: 
+    - Input for infer: `str`. A description of the image to be generated.
+    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “images_base64”, corresponding to a list whose elements are images encoded in base64.
+    - Supported models: [stable-diffusion-3-medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
+''')
+
+add_chinese_doc('StableDiffusionDeploy', '''\
+Stable Diffusion 模型部署类。该类用于将SD模型部署到指定服务器上，以便可以通过网络进行调用。
+
+`__init__(self, launcher=None)`
+构造函数，初始化部署类。
+
+Args:
+    launcher(lazyllm.launcher): 用于启动远程服务的启动器实例。
+
+`__call__(self, finetuned_model=None, base_model=None)`
+部署模型，并返回远程服务地址。
+
+Args: 
+    finetuned_model (str): 如果提供，则使用该模型进行部署；如果未提供或路径无效，则使用 `base_model`。
+    base_model (str): 默认模型，如果 `finetuned_model` 无效，则使用该模型进行部署。
+    返回值 (str): 远程服务的URL地址。
+
+Notes:
+    - 推理的输入：字符串。待生成图像的描述。
+    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"images_base64", 对应值为一个列表，其中的元素是被base64编码的图像。
+    - 支持的模型为：[stable-diffusion-3-medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
+''')
+
+add_example('StableDiffusionDeploy', ['''\
+>>> from lazyllm import launchers, UrlModule
+>>> from lazyllm.components import StableDiffusionDeploy
+>>> deployer = StableDiffusionDeploy(launchers.remote())
+>>> url = deployer(base_model='stable-diffusion-3-medium')
+>>> model = UrlModule(url=url)
+>>> res = model('a tiny cat.')
+>>> print(len(res), res[:50])
+... 1384335 {"images_base64": ["iVBORw0KGgoAAAANSUhEUgAABAAAAA
+'''])
+
+add_english_doc('ChatTTSDeploy', '''\
+ChatTTS Model Deployment Class. This class is used to deploy the ChatTTS model to a specified server for network invocation.
+
+`__init__(self, launcher=None)`
+Constructor, initializes the deployment class.
+
+Args:
+    launcher (lazyllm.launcher): An instance of the launcher used to start the remote service.
+
+`__call__(self, finetuned_model=None, base_model=None)`
+Deploys the model and returns the remote service address.
+
+Args:
+    finetuned_model (str): If provided, this model will be used for deployment; if not provided or the path is invalid, `base_model` will be used.
+    base_model (str): The default model, which will be used for deployment if `finetuned_model` is invalid.
+    Return (str): The URL address of the remote service.
+
+Notes:
+    - Input for infer: `str`.  The text corresponding to the audio to be generated.
+    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
+    - Supported models: [ChatTTS](https://huggingface.co/2Noise/ChatTTS)
+''')
+
+add_chinese_doc('ChatTTSDeploy', '''\
+ChatTTS 模型部署类。该类用于将ChatTTS模型部署到指定服务器上，以便可以通过网络进行调用。
+
+`__init__(self, launcher=None)`
+构造函数，初始化部署类。
+
+Args:
+    launcher(lazyllm.launcher): 用于启动远程服务的启动器实例。
+
+`__call__(self, finetuned_model=None, base_model=None)`
+部署模型，并返回远程服务地址。
+
+Args: 
+    finetuned_model (str): 如果提供，则使用该模型进行部署；如果未提供或路径无效，则使用 `base_model`。
+    base_model (str): 默认模型，如果 `finetuned_model` 无效，则使用该模型进行部署。
+    返回值 (str): 远程服务的URL地址。
+
+Notes:
+    - 推理的输入：字符串。待生成音频的对应文字。
+    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
+    - 支持的模型为：[ChatTTS](https://huggingface.co/2Noise/ChatTTS)
+''')
+
+add_example('ChatTTSDeploy', ['''\
+>>> from lazyllm import launchers, UrlModule
+>>> from lazyllm.components import ChatTTSDeploy
+>>> deployer = ChatTTSDeploy(launchers.remote())
+>>> url = deployer(base_model='ChatTTS')
+>>> model = UrlModule(url=url)
+>>> res = model('Hello World!')
+>>> print(len(res), res[:50])
+... {"sounds": [24000, [-0.006741484627127647, 0.00795
+'''])
+
+add_english_doc('BarkDeploy', '''\
+Bark Model Deployment Class. This class is used to deploy the Bark model to a specified server for network invocation.
+
+`__init__(self, launcher=None)`
+Constructor, initializes the deployment class.
+
+Args:
+    launcher (lazyllm.launcher): An instance of the launcher used to start the remote service.
+
+`__call__(self, finetuned_model=None, base_model=None)`
+Deploys the model and returns the remote service address.
+
+Args:
+    finetuned_model (str): If provided, this model will be used for deployment; if not provided or the path is invalid, `base_model` will be used.
+    base_model (str): The default model, which will be used for deployment if `finetuned_model` is invalid.
+    Return (str): The URL address of the remote service.
+
+Notes:
+    - Input for infer: `str`.  The text corresponding to the audio to be generated.
+    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
+    - Supported models: [bark](https://huggingface.co/suno/bark)
+''')
+
+add_chinese_doc('BarkDeploy', '''\
+Bark 模型部署类。该类用于将Bark模型部署到指定服务器上，以便可以通过网络进行调用。
+
+`__init__(self, launcher=None)`
+构造函数，初始化部署类。
+
+Args:
+    launcher(lazyllm.launcher): 用于启动远程服务的启动器实例。
+
+`__call__(self, finetuned_model=None, base_model=None)`
+部署模型，并返回远程服务地址。
+
+Args: 
+    finetuned_model (str): 如果提供，则使用该模型进行部署；如果未提供或路径无效，则使用 `base_model`。
+    base_model (str): 默认模型，如果 `finetuned_model` 无效，则使用该模型进行部署。
+    返回值 (str): 远程服务的URL地址。
+
+Notes:
+    - 推理的输入：字符串。待生成音频的对应文字。
+    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
+    - 支持的模型为：[bark](https://huggingface.co/suno/bark)
+''')
+
+add_example('BarkDeploy', ['''\
+>>> from lazyllm import launchers, UrlModule
+>>> from lazyllm.components import BarkDeploy
+>>> deployer = BarkDeploy(launchers.remote())
+>>> url = deployer(base_model='bark')
+>>> model = UrlModule(url=url)
+>>> res = model('Hello World!')
+>>> print(len(res), res[:50])
+... 373843 {"sounds": [24000, [-66.9375, -62.0625, -60.5, -60
+'''])
+
+add_english_doc('MusicGenDeploy', '''\
+MusicGen Model Deployment Class. This class is used to deploy the MusicGen model to a specified server for network invocation.
+
+`__init__(self, launcher=None)`
+Constructor, initializes the deployment class.
+
+Args:
+    launcher (lazyllm.launcher): An instance of the launcher used to start the remote service.
+
+`__call__(self, finetuned_model=None, base_model=None)`
+Deploys the model and returns the remote service address.
+
+Args:
+    finetuned_model (str): If provided, this model will be used for deployment; if not provided or the path is invalid, `base_model` will be used.
+    base_model (str): The default model, which will be used for deployment if `finetuned_model` is invalid.
+    Return (str): The URL address of the remote service.
+
+Notes:
+    - Input for infer: `str`.  The text corresponding to the audio to be generated.
+    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
+    - Supported models: [musicgen-small](https://huggingface.co/facebook/musicgen-small)
+''')
+
+add_chinese_doc('MusicGenDeploy', '''\
+MusicGen 模型部署类。该类用于将MusicGen模型部署到指定服务器上，以便可以通过网络进行调用。
+
+`__init__(self, launcher=None)`
+构造函数，初始化部署类。
+
+Args:
+    launcher(lazyllm.launcher): 用于启动远程服务的启动器实例。
+
+`__call__(self, finetuned_model=None, base_model=None)`
+部署模型，并返回远程服务地址。
+
+Args: 
+    finetuned_model (str): 如果提供，则使用该模型进行部署；如果未提供或路径无效，则使用 `base_model`。
+    base_model (str): 默认模型，如果 `finetuned_model` 无效，则使用该模型进行部署。
+    返回值 (str): 远程服务的URL地址。
+
+Notes:
+    - 推理的输入：字符串。待生成音频的对应文字。
+    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
+    - 支持的模型为：[musicgen-small](https://huggingface.co/facebook/musicgen-small)
+''')
+
+add_example('MusicGenDeploy', ['''\
+>>> from lazyllm import launchers, UrlModule
+>>> from lazyllm.components import MusicGenDeploy
+>>> deployer = MusicGenDeploy(launchers.remote())
+>>> url = deployer(base_model='musicgen-small')
+>>> model = UrlModule(url=url)
+>>> res = model('Symphony with flute as the main melody')
+... 4981065 {"sounds": [32000, [-931, -1206, -1170, -1078, -10
+'''])
+
+add_english_doc('SenseVoiceDeploy', '''\
+SenseVoice Model Deployment Class. This class is used to deploy the SenseVoice model to a specified server for network invocation.
+
+`__init__(self, launcher=None)`
+Constructor, initializes the deployment class.
+
+Args:
+    launcher (lazyllm.launcher): An instance of the launcher used to start the remote service.
+
+`__call__(self, finetuned_model=None, base_model=None)`
+Deploys the model and returns the remote service address.
+
+Args:
+    finetuned_model (str): If provided, this model will be used for deployment; if not provided or the path is invalid, `base_model` will be used.
+    base_model (str): The default model, which will be used for deployment if `finetuned_model` is invalid.
+    Return (str): The URL address of the remote service.
+
+Notes:
+    - Input for infer: `str`. The audio path or link.
+    - Return of infer: `str`. The recognized content.
+    - Supported models: [SenseVoiceSmall](https://huggingface.co/FunAudioLLM/SenseVoiceSmall)
+''')
+
+add_chinese_doc('SenseVoiceDeploy', '''\
+SenseVoice 模型部署类。该类用于将SenseVoice模型部署到指定服务器上，以便可以通过网络进行调用。
+
+`__init__(self, launcher=None)`
+构造函数，初始化部署类。
+
+Args:
+    launcher(lazyllm.launcher): 用于启动远程服务的启动器实例。
+
+`__call__(self, finetuned_model=None, base_model=None)`
+部署模型，并返回远程服务地址。
+
+Args: 
+    finetuned_model (str): 如果提供，则使用该模型进行部署；如果未提供或路径无效，则使用 `base_model`。
+    base_model (str): 默认模型，如果 `finetuned_model` 无效，则使用该模型进行部署。
+    返回值 (str): 远程服务的URL地址。
+Notes:
+    - 推理的输入：字符串。音频路径或者链接。
+    - 推理的返回值：字符串。识别出的内容。
+    - 支持的模型为：[SenseVoiceSmall](https://huggingface.co/FunAudioLLM/SenseVoiceSmall)
+''')
+
+add_example('SenseVoiceDeploy', ['''\
+>>> import os
+>>> import lazyllm
+>>> from lazyllm import launchers, UrlModule
+>>> from lazyllm.components import SenseVoiceDeploy
+>>> deployer = SenseVoiceDeploy(launchers.remote())
+>>> url = deployer(base_model='SenseVoiceSmall')
+>>> model = UrlModule(url=url)
+>>> model('path/to/audio') # support format: .mp3, .wav
+... xxxxxxxxxxxxxxxx
+'''])
+
+add_english_doc('TTSDeploy', '''\
+TTSDeploy is a factory class for creating instances of different Text-to-Speech (TTS) deployment types based on the specified name.
+
+`__new__(cls, name, **kwarg)`
+The constructor dynamically creates and returns the corresponding deployment instance based on the provided name argument.
+
+Args: 
+    name: A string specifying the type of deployment instance to be created.
+    **kwarg: Keyword arguments to be passed to the constructor of the corresponding deployment instance.
+                
+Returns:
+    If the name argument is 'bark', an instance of [BarkDeploy][lazyllm.components.BarkDeploy] is returned.
+    If the name argument is 'ChatTTS', an instance of [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] is returned.
+    If the name argument starts with 'musicgen', an instance of [MusicGenDeploy][lazyllm.components.MusicGenDeploy] is returned.
+    If the name argument does not match any of the above cases, a RuntimeError exception is raised, indicating the unsupported model.            
+''')
+
+add_chinese_doc('TTSDeploy', '''\
+TTSDeploy 是一个用于根据指定的名称创建不同类型文本到语音(TTS)部署实例的工厂类。
+
+`__new__(cls, name, **kwarg)`
+构造函数，根据提供的名称参数动态创建并返回相应的部署实例。
+
+Args: 
+    name：字符串，用于指定要创建的部署实例的类型。
+    **kwarg：关键字参数，用于传递给对应部署实例的构造函数。
+                
+Returns:
+    - 如果 name 参数为 ‘bark’，则返回一个 [BarkDeploy][lazyllm.components.BarkDeploy] 实例。
+    - 如果 name 参数为 ‘ChatTTS’，则返回一个 [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] 实例。
+    - 如果 name 参数以 ‘musicgen’ 开头，则返回一个 [MusicGenDeploy][lazyllm.components.MusicGenDeploy] 实例。
+    - 如果 name 参数不匹配以上任何情况，抛出 RuntimeError 异常，说明不支持的模型。            
+''')
+
+add_example('TTSDeploy', ['''\
+>>> from lazyllm import launchers, UrlModule
+>>> from lazyllm.components import TTSDeploy
+>>> model_name = 'bark'
+>>> deployer = TTSDeploy(model_name, launcher=launchers.remote())
+>>> url = deployer(base_model=model_name)
+>>> model = UrlModule(url=url)
+>>> res = model('Hello World!')
+>>> print(len(res), res[:50])
+... 387355 {"sounds": [24000, [-111.9375, -106.4375, -106.875
+'''])
 
 # ============= Launcher
 

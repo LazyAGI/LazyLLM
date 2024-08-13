@@ -7,6 +7,9 @@ from .validate import LazyLLMValidateBase
 from .auto import AutoDeploy, AutoFinetune
 from .utils import ModelManager
 from .formatter import FormatterBase, Formatter, EmptyFormatter, JsonFormatter
+from .stable_diffusion import StableDiffusionDeploy
+from .text_to_speech import TTSDeploy, BarkDeploy, ChatTTSDeploy, MusicGenDeploy
+from .speech_to_text import SenseVoiceDeploy
 
 __all__ = [
     'register',
@@ -24,5 +27,11 @@ __all__ = [
     'Formatter',
     'FormatterBase',
     'EmptyFormatter',
-    'JsonFormatter'
+    'JsonFormatter',
+    'StableDiffusionDeploy'
+    'TTSDeploy'
+    'BarkDeploy',
+    'ChatTTSDeploy',
+    'MusicGenDeploy',
+    'SenseVoiceDeploy',
 ]
