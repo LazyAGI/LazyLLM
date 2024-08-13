@@ -103,6 +103,14 @@ class TestModule:
         assert type(tm4._prompt) is lazyllm.ChatPrompter
         assert type(tm2._prompt) is lazyllm.prompter.EmptyPrompter
 
+    def test_TrainableModule_stream(self):
+        tm = lazyllm.TrainableModule(self.base_model, self.target_path, stream=True).deploy_method(lazyllm.deploy.dummy)
+        tm.start()
+
+        _ = tm('input')
+        re = ''.join(lazyllm.FileSystemQueue().dequeue())
+        re == "reply for input, and parameters is {{'do_sample': False, 'temperature': 0.1}}"
+
     def test_WebModule(self):
         def func(x):
             return 'reply ' + x

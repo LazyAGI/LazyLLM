@@ -35,7 +35,7 @@ class FileSystemQueue(ABC):
 
 
 class SQLiteQueue(FileSystemQueue):
-    def __init__(self, db_path='queue.db'):
+    def __init__(self, db_path='.lazyllm_filesystem_queue.db'):
         self.db_path = db_path
         self._lock = threading.Lock()
         self._initialize_db()
