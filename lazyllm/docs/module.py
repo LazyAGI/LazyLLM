@@ -518,7 +518,7 @@ add_example('UrlModule', '''\
 INFO:     Uvicorn running on http://0.0.0.0:35485
 >>> u = lazyllm.UrlModule(url=s._url)
 >>> print(u(1))
-messages=2 trace='' err=(0, '')
+2
 ''')
 
 add_chinese_doc('UrlModule.forward', '''\
@@ -571,7 +571,7 @@ Args:
 >>> s.start()
 INFO:     Uvicorn running on http://0.0.0.0:35485
 >>> print(s(1))
-messages=2 trace='' err=(0, '')
+2
 ```
 
 ```python
@@ -592,7 +592,7 @@ messages=2 trace='' err=(0, '')
 >>> print(m(1))
 INFO:     Uvicorn running on http://0.0.0.0:32028
 >>> print(m(1))
-messages=2 trace='' err=(0, '')   
+2  
 ```
 
 <span style="font-size: 20px;">**`evalset(evalset, load_f=None, collect_f=<function ModuleBase.<lambda>>)`**</span>
@@ -662,7 +662,7 @@ m(1)
 # >>> s.start()
 # INFO:     Uvicorn running on http://0.0.0.0:35485
 # >>> print(s(1))
-# messages=2 trace='' err=(0, '')
+# 2
 
 # >>> class MyServe(object):
 # ...     def __call__(self, input):
@@ -681,7 +681,7 @@ m(1)
 # >>> print(m(1))
 # INFO:     Uvicorn running on http://0.0.0.0:32028
 # >>> print(m(1))
-# messages=2 trace='' err=(0, '')
+# 2
 # ''')
 
 add_chinese_doc('TrialModule', '''\
