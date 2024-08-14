@@ -9,7 +9,7 @@ class TestRewriteReport(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         filepath = str(Path(tempfile.gettempdir()) / "temp.db")
-        with open(filepath, "w") as file:
+        with open(filepath, "w") as _:
             pass
         sql_tool = SQLiteTool(filepath)
         tables_info = {
