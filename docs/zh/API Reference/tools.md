@@ -1,17 +1,25 @@
 ::: lazyllm.tools.Document
-    members: 
+    members:
     exclude-members:
 
 ::: lazyllm.tools.Reranker
-    members: 
+    members:
     exclude-members: forward
 
 ::: lazyllm.tools.Retriever
-    members: 
+    members:
     exclude-members: forward
 
+::: lazyllm.tools.SentenceSplitter
+    members:
+    exclude-members:
+
+::: lazyllm.tools.LLMParser
+    members:
+    exclude-members:
+
 ::: lazyllm.tools.WebModule
-    members: 
+    members:
     exclude-members: forward
 
 ::: lazyllm.tools.SQLiteTool

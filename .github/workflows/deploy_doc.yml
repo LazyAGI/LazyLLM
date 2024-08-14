@@ -31,6 +31,8 @@ jobs:
           set -e
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
+          cp -r docs/assets docs/zh
+          cp -r docs/assets docs/en
           python docs/add_docstrings.py
 
       - name: Start MkDocs server
