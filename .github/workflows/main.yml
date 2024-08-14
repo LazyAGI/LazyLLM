@@ -68,6 +68,7 @@ jobs:
       - name: RunTests
         run: |
           cd ${{ env.CI_PATH }}
+          pip install -r tests/requirements.txt
           env | grep '^SCC'
           export LAZYLLM_SCO_ENV_NAME=lazyllm
           export LAZYLLM_DEFAULT_LAUNCHER=sco
@@ -103,6 +104,7 @@ jobs:
       - name: RunTests
         run: |
           cd ${{ env.CI_PATH }}
+          pip install -r tests/requirements.txt
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models

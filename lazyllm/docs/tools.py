@@ -355,6 +355,337 @@ add_example('WebModule', '''\
 193703: 2024-06-07 10:26:00 lazyllm SUCCESS: ...
 ''')
 
+add_chinese_doc('ToolManager', '''\
+ToolManager是一个工具管理类，用于提供工具信息和工具调用给function call。
+
+此管理类构造时需要传入工具名字符串列表。此处工具名可以是LazyLLM提供的，也可以是用户自定义的，如果是用户自定义的，首先需要注册进LazyLLM中才可以使用。在注册时直接使用 `fc_register` 注册器，该注册器已经建立 `tool` group，所以使用该工具管理类时，所有函数都统一注册进 `tool` 分组即可。待注册的函数需要对函数参数进行注解，并且需要对函数增加功能描述，以及参数类型和作用描述。以方便工具管理类能对函数解析传给LLM使用。
+
+Args:
+    tools (List[str]): 工具名称字符串列表。
+''')
+
+add_english_doc('ToolManager', '''\
+ToolManager is a tool management class used to provide tool information and tool calls to function call.
+
+When constructing this management class, you need to pass in a list of tool name strings. The tool name here can be provided by LazyLLM or user-defined. If it is user-defined, it must first be registered in LazyLLM before it can be used. When registering, directly use the `fc_register` registrar, which has established the `tool` group, so when using the tool management class, all functions can be uniformly registered in the `tool` group. The function to be registered needs to annotate the function parameters, and add a functional description to the function, as well as the parameter type and function description. This is to facilitate the tool management class to parse the function and pass it to LLM for use.
+
+Args:
+    tools (List[str]): A list of tool name strings.
+''')
+
+add_example('ToolManager', """\
+>>> tools = ["get_current_weather", "get_n_day_weather_forecast"]
+>>> tm = ToolManager(tools)
+>>> tm([{'name': 'get_n_day_weather_forecast', 'arguments': {'location': 'Beijing', 'num_days': 3}}])
+'{"location": "Beijing", "temperature": "85", "unit": "fahrenheit", "num_days": 3}'
+""")
+
+add_chinese_doc('FunctionCall', '''\
+FunctionCall是单轮工具调用类，如果LLM中的信息不足以回答用户的问题，必需结合外部知识来回答用户问题，则调用该类。如果LLM输出需要工具调用，则进行工具调用，并输出工具调用结果，输出结果为List类型，包含当前轮的输入、模型输出、工具输出。如果不需要工具调用，则直接输出LLM结果，输出结果为string类型。
+
+Args:
+    llm (ModuleBase): 要使用的LLM可以是TrainableModule或OnlineChatModule。
+    tools (List[str]): LLM使用的工具名称列表。
+''')
+
+add_english_doc('FunctionCall', '''\
+FunctionCall is a single-round tool call class. If the information in LLM is not enough to answer the uesr's question, it is necessary to combine external knowledge to answer the user's question. If the LLM output required a tool call, the tool call is performed and the tool call result is output. The output result is of List type, including the input, model output, and tool output of the current round. If a tool call is not required, the LLM result is directly output, and the output result is of string type.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
+    tools (List[str]): A list of tool names for LLM to use.
+''')
+
+add_example('FunctionCall', """\
+>>> @fc_register("tool")
+>>> def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 'fahrenheit'):
+...     '''
+...     Get the current weather in a given location
+...
+...     Args:
+...         location (str): The city and state, e.g. San Francisco, CA.
+...         unit (str): The temperature unit to use. Infer this from the users location.
+...     '''
+...     if 'tokyo' in location.lower():
+...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
+...     elif 'san francisco' in location.lower():
+...         return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit'})
+...     elif 'paris' in location.lower():
+...         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
+...     else:
+...         return json.dumps({'location': location, 'temperature': 'unknown'})
+...
+>>> @fc_register("tool")
+>>> def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"] = 'fahrenheit'):
+...     '''
+...     Get an N-day weather forecast
+...
+...     Args:
+...         location (str): The city and state, e.g. San Francisco, CA.
+...         num_days (int): The number of days to forecast.
+...         unit (Literal['celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+...     '''
+...     if 'tokyo' in location.lower():
+...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
+...     elif 'san francisco' in location.lower():
+...         return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit', "num_days": num_days})
+...     elif 'paris' in location.lower():
+...         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius', "num_days": num_days})
+...     else:
+...         return json.dumps({'location': location, 'temperature': 'unknown'})
+...
+>>> tools=["get_current_weather", "get_n_day_weather_forecast"]
+>>> llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule("openai", stream=False)
+>>> query = "What's the weather like today in celsius in Tokyo."
+>>> fc = FunctionCall(llm, tools)
+>>> ret = fc(query)
+>>> print(ret)
+["What's the weather like today in celsius in Tokyo.", {'role': 'assistant', 'content': '
+', 'tool_calls': [{'id': 'da19cddac0584869879deb1315356d2a', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': {'location': 'Tokyo', 'unit': 'celsius'}}}]}, [{'role': 'tool', 'content': '{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', 'tool_call_id': 'da19cddac0584869879deb1315356d2a', 'name': 'get_current_weather'}]]
+>>> query = "Hello"
+>>> ret = fc(query)
+>>> print(ret)
+'Hello! How can I assist you today?'
+""")
+
+add_chinese_doc('FunctionCallAgent', '''\
+FunctionCallAgent是一个使用工具调用方式进行完整工具调用的代理，即回答用户问题时，LLM如果需要通过工具获取外部知识，就会调用工具，并将工具的返回结果反馈给LLM，最后由LLM进行汇总输出。
+
+Args:
+    llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    tools (List[str]): LLM 使用的工具名称列表。
+    max_retries (int): 工具调用迭代的最大次数。默认值为5。
+''')
+
+add_english_doc('FunctionCallAgent', '''\
+FunctionCallAgent is an agent that uses the tool calling method to perform complete tool calls. That is, when answering uesr questions, if LLM needs to obtain external knowledge through the tool, it will call the tool and feed back the return results of the tool to LLM, which will finally summarize and output them.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
+    tools (List[str]): A list of tool names for LLM to use.
+    max_retries (int): The maximum number of tool call iterations. The default value is 5.
+''')
+
+add_example('FunctionCallAgent', """\
+>>> @fc_register("tool")
+>>> def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]='fahrenheit'):
+...     '''
+...     Get the current weather in a given location
+... 
+...     Args:
+...         location (str): The city and state, e.g. San Francisco, CA.
+...         unit (str): The temperature unit to use. Infer this from the users location.
+...     '''
+...     if 'tokyo' in location.lower():
+...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
+...     elif 'san francisco' in location.lower():
+...         return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit'})
+...     elif 'paris' in location.lower():
+...         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
+...     elif 'beijing' in location.lower():
+...         return json.dumps({'location': 'Beijing', 'temperature': '90', 'unit': 'Fahrenheit'})
+...     else:
+...         return json.dumps({'location': location, 'temperature': 'unknown'})
+...
+>>> @fc_register("tool")
+>>> def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"]='fahrenheit'):
+...     '''
+...     Get an N-day weather forecast
+... 
+...     Args:
+...         location (str): The city and state, e.g. San Francisco, CA.
+...         num_days (int): The number of days to forecast.
+...         unit (Literal['celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+...     '''
+...     if 'tokyo' in location.lower():
+...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
+...     elif 'san francisco' in location.lower():
+...         return json.dumps({'location': 'San Francisco', 'temperature': '75', 'unit': 'fahrenheit', "num_days": num_days})
+...     elif 'paris' in location.lower():
+...         return json.dumps({'location': 'Paris', 'temperature': '25', 'unit': 'celsius', "num_days": num_days})
+...     elif 'beijing' in location.lower():
+...         return json.dumps({'location': 'Beijing', 'temperature': '85', 'unit': 'fahrenheit', "num_days": num_days})
+...     else:
+...         return json.dumps({'location': location, 'temperature': 'unknown'}) 
+...
+>>> tools = ['get_current_weather', 'get_n_day_weather_forecast']
+>>> llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
+>>> agent = FunctionCallAgent(llm, tools) 
+>>> query = "What's the weather like today in celsius in Tokyo and Paris."
+>>> res = agent(query)
+>>> print(res)
+'The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.'
+>>> query = "Hello"
+>>> res = agent(query)
+>>> print(res)
+'Hello! How can I assist you today?'
+""")
+
+add_chinese_doc('ReactAgent', '''\
+ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
+
+Args:
+    llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    tools (List[str]): LLM 使用的工具名称列表。
+    max_retries (int): 工具调用迭代的最大次数。默认值为5。
+''')
+
+add_english_doc('ReactAgent', '''\
+ReactAgent follows the process of `Thought->Action->Observation->Thought...->Finish` step by step through LLM and tool calls to display the steps to solve user questions and the final answer to the user.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
+    tools (List[str]): A list of tool names for LLM to use.
+    max_retries (int): The maximum number of tool call iterations. The default value is 5.
+''')
+
+add_example('ReactAgent', """\
+>>> @fc_register("tool")
+>>> def multiply_tool(a: int, b: int) -> int:
+...     '''
+...     Multiply two integers and return the result integer
+... 
+...     Args:
+...         a (int): multiplier
+...         b (int): multiplier
+...     '''
+...     return a * b
+...
+>>> @fc_register("tool")
+>>> def add_tool(a: int, b: int):
+...     '''
+...     Add two integers and returns the result integer
+... 
+...     Args:
+...         a (int): addend
+...         b (int): addend
+...     '''
+...     return a + b
+...
+>>> tools = ["multiply_tool", "add_tool"]
+>>> llm = lazyllm.Trainable("internlm2-chat-20b").start()   # or llm = lazyllm.OnlineChatModule(source="sensenova")
+>>> agent = ReactAgent(llm, tools)
+>>> query = "What is 20+(2*4)? Calculate step by step."
+>>> res = agent(query)
+>>> print(res)
+'Answer: The result of 20+(2*4) is 28.'
+""")
+
+add_chinese_doc('PlanAndSolveAgent', '''\
+PlanAndSolveAgent由两个组件组成，首先，由planner将整个任务分解为更小的子任务，然后由solver根据计划执行这些子任务，其中可能会涉及到工具调用，最后将答案返回给用户。
+
+Args:
+    llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。和plan_llm、solve_llm互斥，要么设置llm(planner和solver公用一个LLM)，要么设置plan_llm和solve_llm，或者只指定llm(用来设置planner)和solve_llm，其它情况均认为是无效的。
+    tools (List[str]): LLM使用的工具名称列表。
+    plan_llm (ModuleBase): planner要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    solve_llm (ModuleBase): solver要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    max_retries (int): 工具调用迭代的最大次数。默认值为5。
+''')
+
+add_english_doc('PlanAndSolveAgent', '''\
+PlanAndSolveAgent consists of two components. First, the planner breaks down the entire task into smaller subtasks, then the solver executes these subtasks according to the plan, which may involve tool calls, and finally returns the answer to the user.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be TrainableModule or OnlineChatModule. It is mutually exclusive with plan_llm and solve_llm. Either set llm(the planner and sovler share the same LLM), or set plan_llm and solve_llm,or only specify llm(to set the planner) and solve_llm. Other cases are considered invalid.
+    tools (List[str]): A list of tool names for LLM to use.
+    plan_llm (ModuleBase): The LLM to be used by the planner, which can be either TrainableModule or OnlineChatModule.
+    solve_llm (ModuleBase): The LLM to be used by the solver, which can be either TrainableModule or OnlineChatModule.
+    max_retries (int): The maximum number of tool call iterations. The default value is 5.
+''')
+
+add_example('PlanAndSolveAgent', """\
+>>> @fc_register("tool")
+>>> def multiply(a: int, b: int) -> int:
+...     '''
+...     Multiply two integers and return the result integer
+... 
+...     Args:
+...         a (int): multiplier
+...         b (int): multiplier
+...     '''
+...     return a * b
+... 
+>>> @fc_register("tool")
+>>> def add(a: int, b: int):
+...     '''
+...     Add two integers and returns the result integer
+... 
+...     Args:
+...         a (int): addend
+...         b (int): addend
+...     '''
+...     return a + b
+...
+>>> tools = ["multiply", "add"]
+>>> llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
+>>> agent = PlanAndSolveAgent(llm, tools)
+>>> query = "What is 20+(2*4)? Calculate step by step."
+>>> res = agent(query)
+>>> print(res)
+'The final answer is 28.'
+""")
+
+add_chinese_doc('ReWOOAgent', '''\
+ReWOOAgent包含三个部分：Planner、Worker和Solver。其中，Planner使用可预见推理能力为复杂任务创建解决方案蓝图；Worker通过工具调用来与环境交互，并将实际证据或观察结果填充到指令中；Solver处理所有计划和证据以制定原始任务或问题的解决方案。
+
+Args:
+    llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。和plan_llm、solve_llm互斥，要么设置llm(planner和solver公用一个LLM)，要么设置plan_llm和solve_llm，或者只指定llm(用来设置planner)和solve_llm，其它情况均认为是无效的。
+    tools (List[str]): LLM使用的工具名称列表。
+    plan_llm (ModuleBase): planner要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    solve_llm (ModuleBase): solver要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    max_retries (int): 工具调用迭代的最大次数。默认值为5。
+''')
+
+add_english_doc('ReWOOAgent', '''\
+ReWOOAgent consists of three parts: Planer, Worker and Solver. The Planner uses predictive reasoning capabilities to create a solution blueprint for a complex task; the Worker interacts with the environment through tool calls and fills in actual evidence or observations into instructions; the Solver processes all plans and evidence to develop a solution to the original task or problem.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be TrainableModule or OnlineChatModule. It is mutually exclusive with plan_llm and solve_llm. Either set llm(the planner and sovler share the same LLM), or set plan_llm and solve_llm,or only specify llm(to set the planner) and solve_llm. Other cases are considered invalid.
+    tools (List[str]): A list of tool names for LLM to use.
+    plan_llm (ModuleBase): The LLM to be used by the planner, which can be either TrainableModule or OnlineChatModule.
+    solve_llm (ModuleBase): The LLM to be used by the solver, which can be either TrainableModule or OnlineChatModule.
+    max_retries (int): The maximum number of tool call iterations. The default value is 5.
+''')
+
+add_example('ReWOOAgent', """\
+>>> @fc_register("tool")
+>>> def WikipediaWorker(input: str):
+...     '''
+...     Worker that search for similar page contents from Wikipedia. Useful when you need to get holistic knowledge about people, places, companies, historical events, or other subjects. The response are long and might contain some irrelevant information. Input should be a search query.
+... 
+...     Args:
+...         input (str): search query.
+...     '''
+...     docstore = DocstoreExplorer(Wikipedia())
+...     tool = Tool(name="Search", func=docstore.search, description="useful for when you need to ask with search")
+...     LOG.info(f"wikipedia input: {input}")
+...     evidence = tool.run(input)
+...     LOG.info(f"wikipedia output: {evidence}")
+...     return evidence
+... 
+>>> @fc_register("tool")
+>>> def LLMWorker(input: str):
+...     '''
+...     A pretrained LLM like yourself. Useful when you need to act with general world knowledge and common sense. Prioritize it when you are confident in solving the problem yourself. Input can be any instruction.
+... 
+...     Args:
+...         input (str): instruction
+...     '''
+...     llm = lazyllm.OnlineChatModule(source="openai")
+...     query = f"Respond in short directly with no extra words.\n\n{input}"
+...     LOG.info(f"llm query: {query}, input: {input}")
+...     response = llm(query, llm_chat_history=[])
+...     LOG.info(f"llm res: {response}")
+...     return response
+...
+>>> tools = ["WikipediaWorker", "LLMWorker"]
+>>> llm = lazyllm.TrainableModule("GLM-4-9B-Chat").deploy_method(deploy.vllm).start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
+>>> agent = ReWOOAgent(llm, tools)
+>>> query = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
+>>> res = agent(query)
+>>> print(res)
+'\nHennessy '
+""")
 add_chinese_doc(
     "SQLiteTool",
     """\
