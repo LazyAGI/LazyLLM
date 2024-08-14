@@ -9,11 +9,123 @@ from .deprecated import deprecated
 import asyncio
 import base64
 
+
+class ReadWriteLock(object):
+    def __init__(self):
+        self._read_ready = threading.Condition(threading.Lock())
+        self._readers = 0
+
+    class ReadLock:
+        def __init__(self, rw_lock):
+            self.rw_lock = rw_lock
+
+        def __enter__(self):
+            with self.rw_lock._read_ready:
+                self.rw_lock._readers += 1
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            with self.rw_lock._read_ready:
+                self.rw_lock._readers -= 1
+                if self.rw_lock._readers == 0:
+                    self.rw_lock._read_ready.notify_all()
+
+    class WriteLock:
+        def __init__(self, rw_lock):
+            self.rw_lock = rw_lock
+
+        def __enter__(self):
+            self.rw_lock._read_ready.acquire()
+            while self.rw_lock._readers > 0:
+                self.rw_lock._read_ready.wait()
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            self.rw_lock._read_ready.release()
+
+    def read_lock(self):
+        return self.ReadLock(self)
+
+    def write_lock(self):
+        return self.WriteLock(self)
+
+    def __deepcopy__(self, *args, **kw):
+        return ReadWriteLock()
+
+    def __reduce__(self):
+        return ReadWriteLock, ()
+
+
+class ThreadSafeDict(dict):
+    def __init__(self, *args, **kw):
+        super(__class__, self).__init__(*args, **kw)
+        self._lock = ReadWriteLock()
+
+    def __getitem__(self, key):
+        with self._lock.read_lock():
+            return super(__class__, self).__getitem__(key)
+
+    def __setitem__(self, key, value):
+        with self._lock.write_lock():
+            return super(__class__, self).__setitem__(key, value)
+
+    def __delitem__(self, key):
+        with self._lock.read_lock():
+            return super(__class__, self).__delitem__(key)
+
+    def __contains__(self, key):
+        with self._lock.read_lock():
+            return super(__class__, self).__contains__(key)
+
+    def get(self, key, __default=None):
+        with self._lock.read_lock():
+            return super(__class__, self).get(key, __default)
+
+    def keys(self):
+        with self._lock.read_lock():
+            return super(__class__, self).keys()
+
+    def values(self):
+        with self._lock.read_lock():
+            return super(__class__, self).values()
+
+    def items(self):
+        with self._lock.read_lock():
+            return super(__class__, self).items()
+
+    def update(self, *args, **kwargs):
+        with self._lock.write_lock():
+            return super(__class__, self).update(*args, **kwargs)
+
+    def clear(self):
+        with self._lock.write_lock():
+            return super(__class__, self).clear()
+
+    def pop(self, key, __default=None):
+        with self._lock.write_lock():
+            return super(__class__, self).pop(key, __default)
+
+    def __len__(self):
+        with self._lock.read_lock():
+            return super(__class__, self).__len__()
+
+    def __str__(self):
+        with self._lock.read_lock():
+            return super(__class__, self).__str__()
+
+    def __repr__(self):
+        with self._lock.read_lock():
+            return super(__class__, self).__repr__()
+
+    def __reduce__(self):
+        with self._lock.read_lock():
+            return (self.__class__, (dict(self),))
+
+
 class Globals(object):
-    __global_attrs__ = dict(chat_history={}, global_parameters={}, trace=[], err=None, tool_delimiter="<|tool_calls|>")
+    __global_attrs__ = ThreadSafeDict(chat_history={}, global_parameters={},
+                                      tool_delimiter="<|tool_calls|>")
 
     def __init__(self):
-        self.__data = {}
+        self.__data = ThreadSafeDict()
         self.__sid = contextvars.ContextVar('local_var')
         self._init_sid()
 
@@ -52,7 +164,10 @@ class Globals(object):
         self._data[__key] = __value
 
     def __getitem__(self, __key: str):
-        return self._data[__key]
+        try:
+            return self._data[__key]
+        except KeyError:
+            raise KeyError(f'Cannot find key {__key}, current session-id is {self._sid}')
 
     def __setattr__(self, __name: str, __value: Any):
         if __name in __class__.__global_attrs__:

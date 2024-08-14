@@ -14,6 +14,7 @@ class Config(object):
         self.prefix = prefix
         self.impl, self.cfgs = dict(), dict()
         self.add('home', str, home, 'HOME')
+        os.system(f'mkdir -p {home}')
         self.cgf_path = os.path.join(self['home'], 'config.json')
         if os.path.exists(self.cgf_path):
             with open(self.cgf_path, 'r+') as f:

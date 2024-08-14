@@ -2,21 +2,43 @@ import sqlite3
 import threading
 from abc import ABC, abstractmethod
 from .globals import globals
+from ..configs import config
+import os
 
 class FileSystemQueue(ABC):
 
-    def __new__(cls, *args, **kw):
-        if cls is __class__:
-            return SQLiteQueue()
-        else:
-            return super().__new__(cls, *args, **kw)
+    __queue_pool__ = dict()
 
-    def enqueue(self, message): return self._enqueue(globals._sid, message)
-    def dequeue(self, limit=None): return self._dequeue(globals._sid, limit=limit)
-    def peek(self): return self._peek(globals._sid)
-    def size(self): return self._size(globals._sid)
-    def clear(self): return self._clear(globals._sid)
+    def __init__(self, *, klass='__default__'):
+        super().__init__()
+        self._class = klass
+
+    def __new__(cls, *args, **kw):
+        klass = kw.get('klass', '__default__')
+        if klass not in __class__.__queue_pool__:
+            if cls is __class__:
+                __class__.__queue_pool__[klass] = SQLiteQueue(*args, **kw)
+            else:
+                __class__.__queue_pool__[klass] = super().__new__(cls)
+        return __class__.__queue_pool__[klass]
+
+    @classmethod
+    def get_instance(cls, klass):
+        assert isinstance(klass, str) and klass != '__default__'
+        return cls(klass=klass)
+
+    @property
+    def sid(self):
+        return f'{globals._sid}-{self._class}'
+
+    def enqueue(self, message): return self._enqueue(self.sid, message)
+    def dequeue(self, limit=None): return self._dequeue(self.sid, limit=limit)
+    def peek(self): return self._peek(self.sid)
+    def size(self): return self._size(self.sid)
     def init(self): self.clear()
+
+    def clear(self):
+        self._clear(self.sid)
 
     @abstractmethod
     def _enqueue(self, id, message): pass
@@ -35,8 +57,9 @@ class FileSystemQueue(ABC):
 
 
 class SQLiteQueue(FileSystemQueue):
-    def __init__(self, db_path='queue.db'):
-        self.db_path = db_path
+    def __init__(self, klass='__default__'):
+        super(__class__, self).__init__(klass=klass)
+        self.db_path = os.path.expanduser(os.path.join(config['home'], '.lazyllm_filesystem_queue.db'))
         self._lock = threading.Lock()
         self._initialize_db()
 
