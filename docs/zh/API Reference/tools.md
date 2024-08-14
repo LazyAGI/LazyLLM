@@ -26,10 +26,6 @@
     members: 
     exclude-members: forward
 
-::: lazyllm.tools.ToolManager
-    members: 
-    exclude-members: forward
-
 ::: lazyllm.tools.FunctionCall
     members: 
     exclude-members: forward
