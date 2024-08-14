@@ -193,3 +193,264 @@ add_example('WebModule', '''\
 >>> w.start()
 193703: 2024-06-07 10:26:00 lazyllm SUCCESS: ...
 ''')
+
+add_chinese_doc(
+    "SQLiteTool",
+    """\
+SQLiteTool是与SQLite数据库进行交互的专用工具。它扩展了SqlTool类，提供了创建表、执行查询和对SQLite数据库进行更新的方法。
+
+Arguments:
+    db_file (str): SQLite 文件数据库的路径
+""",
+)
+
+add_english_doc(
+    "SQLiteTool",
+    """\
+SQLiteTool is a specialized tool for interacting with SQLite databases.
+It extends the SqlTool class and provides methods for creating tables, executing queries, and performing updates on SQLite databases.
+
+
+Arguments:
+    db_file (str): The path to the SQLite database file.
+""",
+)
+
+add_example(
+    "SQLiteTool",
+    """\
+    >>> from lazyllm.tools import SQLiteTool
+    >>> sql_tool = SQLiteTool("personal.db")
+    >>> tables_info = {
+    ...     "User": {
+    ...         "fields": {
+    ...             "id": {
+    ...                 "type": "integer",
+    ...                 "comment": "user id"
+    ...             },
+    ...             "name": {
+    ...                 "type": "text",
+    ...                 "comment": "user name"
+    ...             },
+    ...             "email": {
+    ...                 "type": "text",
+    ...                 "comment": "user email"
+    ...             }
+    ...         }
+    ...     }
+    ... }
+    >>> sql_tool.create_tables(tables_info)
+    >>> sql_tool.sql_update("INSERT INTO User (id, name, email) VALUES (1, 'Alice', 'alice@example.com')")
+    >>> table_info = sql_tool.get_all_tables()
+    >>> print(table_info)
+    >>> result_json = sql_tool.get_query_result_in_json("SELECT * from User")
+    >>> print(result_json)
+""",
+)
+
+add_chinese_doc(
+    "SQLiteTool.create_tables",
+    """\
+根据描述表结构的JSON字典在SQLite数据库中创建表。
+JSON格式形如：{$TABLE_NAME:{"fields":{$COLUMN_NAME:{"type":("REAL"/"TEXT"/"INT"), "comment":"..."} } } }
+""",
+)
+
+add_english_doc(
+    "SQLiteTool.create_tables",
+    """\
+Create tables According to tables json dict.
+THis JSON format should be as：{$TABLE_NAME:{"fields":{$COLUMN_NAME:{"type":("REAL"/"TEXT"/"INT"), "comment":"..."} } } }
+""",
+)
+
+add_example(
+    "SQLiteTool.create_tables",
+    """\
+>>> from lazyllm.tools import SQLiteTool
+>>> sql_tool = SQLiteTool("personal.db")
+>>> tables_info = {
+...     "User": {
+...         "fields": {
+...             "id": {
+...                 "type": "integer",
+...                 "comment": "user id"
+...             },
+...             "name": {
+...                 "type": "text",
+...                 "comment": "user name"
+...             },
+...             "email": {
+...                 "type": "text",
+...                 "comment": "user email"
+...             }
+...         }
+...     }
+... }
+>>> sql_tool.create_tables(tables_info)
+""",
+)
+
+add_chinese_doc(
+    "SQLiteTool.get_all_tables",
+    """\
+检索并返回SQLite数据库中所有表的字符串表示形式。
+""",
+)
+
+add_english_doc(
+    "SQLiteTool.get_all_tables",
+    """\
+Retrieves and returns a string representation of all the tables in the SQLite database.
+""",
+)
+
+add_example(
+    "SQLiteTool.get_all_tables",
+    """\
+>>> from lazyllm.tools import SQLiteTool
+>>> sql_tool = SQLiteTool("personal.db")
+>>> tables_info = sql_tool.get_all_tables()
+>>> print(tables_info)
+CREATE TABLE employee
+(
+    employee_id INT comment '工号',
+    first_name TEXT comment '姓',
+    last_name TEXT comment '名',
+    department TEXT comment '部门'
+)
+CREATE TABLE sales
+(
+    employee_id INT comment '工号',
+    q1_2023 REAL comment '2023年第1季度销售额',
+    q2_2023 REAL comment '2023年第2季度销售额',
+    q3_2023 REAL comment '2023年第3季度销售额',
+    q4_2023 REAL comment '2023年第4季度销售额'
+)
+""",
+)
+
+add_chinese_doc(
+    "SQLiteTool.get_query_result_in_json",
+    """\
+执行SQL查询并返回JSON格式的结果。
+""",
+)
+
+add_english_doc(
+    "SQLiteTool.get_query_result_in_json",
+    """\
+Executes a SQL query and returns the result in JSON format.
+""",
+)
+
+add_example(
+    "SQLiteTool.get_query_result_in_json",
+    """\
+>>> from lazyllm.tools import SQLiteTool
+>>> sql_tool = SQLiteTool("personal.db")
+>>> result_json = sql_tool.get_query_result_in_json("SELECT * from sales limit 1")
+>>> print(result_json)
+[{employee_id: 8, q1_2023: 3471.41, q2_2023: 14789.25, q3_2023: 3478.34, q4_2023: 1254.23}]
+""",
+)
+
+add_chinese_doc(
+    "SQLiteTool.sql_update",
+    """\
+在SQLite数据库上执行SQL插入或更新脚本。
+""",
+)
+
+add_english_doc(
+    "SQLiteTool.sql_update",
+    """\
+Execute insert or update script.
+""",
+)
+
+add_example(
+    "SQLiteTool.sql_update",
+    """\
+>>> from lazyllm.tools import SQLiteTool
+>>> sql_tool = SQLiteTool("personal.db")
+>>> sql_tool.sql_update("INSERT INTO sales VALUES (1, 8715.55, 8465.65, 24747.82, 3514.36);")
+""",
+)
+
+add_chinese_doc(
+    "IntentClassifier",
+    """\
+IntentClassifier 是一个基于语言模型的意图识别器，用于根据用户提供的输入文本及对话上下文识别预定义的意图，并通过预处理和后处理步骤确保准确识别意图。
+
+Arguments:
+    llm: 用于意图识别的语言模型对象，OnlineChatModule或TrainableModule类型
+    intent_list (list)：包含所有可能意图的字符串列表。可以包含中文或英文的意图。
+    return_trace (bool, 可选)：如果设置为 True，则将结果记录在trace中。默认为 False。
+""",
+)
+
+add_english_doc(
+    "IntentClassifier",
+    """\
+IntentClassifier is an intent recognizer based on a language model that identifies predefined intents based on user-provided input text and conversational context.
+It can handle intent lists and ensures accurate intent recognition through preprocessing and postprocessing steps.
+
+Arguments:
+    llm: A language model object used for intent recognition, which can be of type OnlineChatModule or TrainableModule.
+    intent_list (list): A list of strings containing all possible intents. This list can include intents in either Chinese or English.
+    return_trace (bool, optional): If set to True, the results will be recorded in the trace. Defaults to False.
+""",
+)
+
+add_example(
+    "IntentClassifier",
+    """\
+    >>> import lazyllm
+    >>> classifier_llm = lazyllm.OnlineChatModule(model=MODEL_ID, source="openai", base_url=BASE_URL)
+    >>> chatflow_intent_list = ["闲聊", "金融知识问答", "销售业绩查询", "员工信息查询"]
+    >>> classifier = IntentClassifier(classifier_llm, intent_list=chatflow_intent_list)
+    >>> classifier.start()
+    >>> print(classifier(QUERY))  
+""",
+)
+
+add_chinese_doc(
+    "SqlModule",
+    """\
+SqlModule 是一个扩展自 ModuleBase 的类,提供了使用语言模型(LLM)生成和执行 SQL 查询的接口。
+它设计用于与 SQL 数据库交互,从语言模型的响应中提取 SQL 查询,执行这些查询,并返回结果或解释。
+
+Arguments:
+    llm: 用于生成和解释 SQL 查询及解释的大语言模型。
+    sql_tool (SqlTool)：一个 SqlTool 实例，用于处理与 SQL 数据库的交互。
+    use_llm_for_sql_result (bool, 可选): 默认值为True。如果设置为False, 则只输出JSON格式表示的sql执行结果；True则会使用LLM对sql执行结果进行解读并返回自然语言结果。
+    return_trace (bool, 可选): 如果设置为 True,则将结果记录在trace中。默认为 False。
+""",
+)
+
+add_english_doc(
+    "SqlModule",
+    """\
+SqlModule is a class that extends ModuleBase and provides an interface for generating and executing SQL queries using a language model (LLM). 
+It is designed to interact with a SQL database, extract SQL queries from LLM responses, execute those queries, and return results or explanations.
+
+Arguments:
+    llm: A language model to be used for generating and interpreting SQL queries and explanations.
+    sql_tool (SqlTool): An instance of SqlTool that handles interaction with the SQL database.
+    use_llm_for_sql_result (bool, optional): Default is True. If set to False, the module will only output raw SQL results in JSON without further processing.
+    return_trace (bool, optional): If set to True, the results will be recorded in the trace. Defaults to False.  
+""",
+)
+
+add_example(
+    "SqlModule",
+    """\
+    >>> import lazyllm
+    >>> from lazyllm.tools import SQLiteTool, SqlModule
+    >>> sql_tool = SQLiteTool("personal.db")
+    >>> sql_llm = lazyllm.OnlineChatModule(model="gpt-4o", source="openai", base_url="***")
+    >>> sql_module = SqlModule(sql_llm, sql_tool, use_llm_for_sql_result=True)
+    >>> print(sql_module("员工Alice的邮箱地址是什么?"))
+""",
+)
