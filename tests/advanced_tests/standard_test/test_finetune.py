@@ -10,7 +10,7 @@ class TestFinetune(object):
 
     def setup_method(self):
         self.data = 'alpaca/alpaca_data_zh_128.json'
-        self.model_path = 'Qwen1.5-0.5B-Chat'
+        self.model_path = 'qwen1.5-0.5b-chat'
         self.save_path = os.path.join(os.getcwd(), '.temp')
 
     @pytest.fixture(autouse=True)
@@ -34,7 +34,7 @@ class TestFinetune(object):
         ppl = lazyllm.pipeline(
             lambda: 'alpaca/alpaca_data_zh_128.json',
             finetune.llamafactory(
-                base_model='Qwen1.5-0.5B-Chat',
+                base_model='qwen1.5-0.5b-chat',
                 target_path=self.save_path,
             )
         )

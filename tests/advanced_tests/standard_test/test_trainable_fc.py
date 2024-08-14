@@ -172,7 +172,7 @@ squery1 = "What's the weather like today in celsius in Tokyo."
 squery2 = "What will the weather be like in celsius in Paris tomorrow?"
 mquery1 = "What's the weather like today in celsius in Tokyo and Paris."
 mquery2 = "What will the weather be like in fahrenheit in san francisco and beijing tomorrow?"
-vModels = ['GLM-4-9B-Chat', 'Qwen2-7B-Instruct']
+vModels = ['glm-4-9b-chat', 'qwen2-7b-instruct']
 agentQuery = "What is 20+(2*4)? Calculate step by step."
 rewooquery = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
 
