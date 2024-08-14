@@ -37,3 +37,14 @@
 ::: lazyllm.tools.ReWOOAgent
     members: 
     exclude-members: forward
+::: lazyllm.tools.SQLiteTool
+    members: 
+    exclude-members: 
+
+::: lazyllm.tools.SqlModule
+    members: 
+    exclude-members:
+
+::: lazyllm.tools.IntentClassifier
+    members: 
+    exclude-members:
