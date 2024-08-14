@@ -25,7 +25,7 @@ The Config module automatically generates an object named 'config' containing al
 add_chinese_doc('Config.done', r'''\
 用于检查config.json配置文件中是否还有没有通过add方法载入的配置项
 ''')
-add_chinese_doc('Config.gen_env', r'''\
+add_chinese_doc('Config.getenv', r'''\
 用于检查config.json配置文件中是否还有没有通过add方法载入的配置项
 Config.getenv(name, type, default): -> str\n
 获取LazyLLM相关环境变量的值

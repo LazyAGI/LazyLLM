@@ -1,6 +1,7 @@
 site_name: LazyLLM
 repo_url: https://github.com/LazyAGI/LazyLLM
 repo_name: LazyAGI/LazyLLM
+docs_dir: docs/{doc_dir}
 nav:
 - Home:
   - Getting Started: index.md
@@ -14,6 +15,7 @@ nav:
   - Module: Best Practice/module.md
   - Prompt: Best Practice/prompt.md
   - Rag: Best Practice/rag.md
+  - FunctionCall: Best Practice/functionCall.md
 - Advanced Topics:
   - Contribution: Advanced Topics/contribution.md
   - Changelog: Advanced Topics/changelog.md
@@ -65,20 +67,17 @@ theme:
     repo: fontawesome/brands/github
 extra:
   generator: false
+  alternate:
+    - name: English
+      link: /en/ 
+      lang: en
+    - name: Chinese
+      link: /zh-cn/
+      lang: zh
   social:
   - icon: fontawesome/brands/github
     link: https://github.com/LazyAGI/LazyLLM
 plugins:
-- i18n:
-    docs_structure: folder
-    languages:
-      - locale: en
-        default: true
-        name: English
-        build: true
-      - locale: zh
-        name: 中文
-        build: true
 - search:
 - section-index:
 - mkdocstrings:
