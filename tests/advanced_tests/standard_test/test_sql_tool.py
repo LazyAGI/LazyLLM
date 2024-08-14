@@ -5,10 +5,11 @@ import tempfile
 from pathlib import Path
 
 
-class TestRewriteReport(unittest.TestCase):
+class TestSqlTool(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         filepath = str(Path(tempfile.gettempdir()) / "temp.db")
+        cls.db_filepath = filepath
         with open(filepath, "w") as _:
             pass
         sql_tool = SQLiteTool(filepath)
@@ -61,8 +62,14 @@ class TestRewriteReport(unittest.TestCase):
         sql_tool.sql_update("INSERT INTO sales VALUES (2, 4989.23, 5103.22, 4897.98, 5322.05);")
         cls.sql_tool: SQLiteTool = sql_tool
         # Recommend to use sensenova, gpt-4o, qwen online model
-        sql_llm = lazyllm.OnlineChatModule()
+        sql_llm = lazyllm.OnlineChatModule(source="sensenova")
         cls.sql_module: SqlModule = SqlModule(sql_llm, sql_tool, output_in_json=False)
+
+    @classmethod
+    def tearDownClass(cls):
+        db_path = Path(cls.db_filepath)
+        if db_path.is_file():
+            db_path.unlink()
 
     def test_get_talbes(self):
         str_result = self.sql_tool.get_all_tables()
