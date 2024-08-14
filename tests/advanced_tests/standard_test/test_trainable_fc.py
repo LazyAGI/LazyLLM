@@ -1,3 +1,4 @@
+import os
 import json
 import pytest
 import random
@@ -170,6 +171,16 @@ agentQuery = "What is 20+(2*4)? Calculate step by step."
 rewooquery = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
 
 class TestTrainableFunctionCall(object):
+    def setup_class(self):
+        self.https_proxy_bak = os.environ.get("https_proxy", '')
+        self.http_proxy_bak = os.environ.get("http_proxy", '')
+        os.environ['https_proxy'] = "http://wangzhihong:4b2ffc8c@10.54.0.93:3128"
+        os.environ['http_proxy'] = "http://wangzhihong:4b2ffc8c@10.54.0.93:3128"
+
+    def teardown_class(self):
+        os.environ['https_proxy'] = self.https_proxy_bak
+        os.environ['http_proxy'] = self.http_proxy_bak
+
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
         yield

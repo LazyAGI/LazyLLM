@@ -1,3 +1,4 @@
+import os
 import json
 import pytest
 import lazyllm
@@ -211,6 +212,16 @@ models = ["kimi", "glm", "qwen", "sensenova"]
 rewooquery = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
 
 class TestOnlineChatFunctionCall(object):
+    def setup_class(self):
+        self.https_proxy_bak = os.environ.get("https_proxy", '')
+        self.http_proxy_bak = os.environ.get("http_proxy", '')
+        os.environ['https_proxy'] = "http://wangzhihong:4b2ffc8c@10.54.0.93:3128"
+        os.environ['http_proxy'] = "http://wangzhihong:4b2ffc8c@10.54.0.93:3128"
+
+    def teardown_class(self):
+        os.environ['https_proxy'] = self.https_proxy_bak
+        os.environ['http_proxy'] = self.http_proxy_bak
+
     @pytest.mark.parametrize("exe_onlinechat_chat",
                              [{'source': 'sensenova', 'model': 'SenseChat-Turbo', 'query': squery}],
                              indirect=True)
