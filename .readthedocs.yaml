@@ -18,5 +18,5 @@ python:
     - requirements: docs/requirements.txt
 
 mkdocs:
-  configuration: docs/mkdocs.yml
+  configuration: mkdocs.yml
 
