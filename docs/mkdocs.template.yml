@@ -73,10 +73,11 @@ plugins:
     docs_structure: folder
     languages:
       - locale: en
-        default: true
+        default: {en_default}
         name: English
         build: true
       - locale: zh
+        default: {zh_default}
         name: 中文
         build: true
 - search:
