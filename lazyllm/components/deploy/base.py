@@ -32,8 +32,9 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
                 return f'reply for {x["inputs"]}, and parameters is {x["parameters"]}'
 
             def impl_stream(x):
-                for i in range(10):
-                    yield f'reply-{i} for {x["inputs"]}, and parameters is {x["parameters"]}\n'
+                for s in ['reply', ' for', f' {x["inputs"]}', ', and',
+                          ' parameters', ' is', f' {x["parameters"]}']:
+                    yield s
                     time.sleep(0.2)
             return impl_stream if stream else impl
         flows.Pipeline.__init__(self, func,

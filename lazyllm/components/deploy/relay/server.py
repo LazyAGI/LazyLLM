@@ -8,7 +8,7 @@ import inspect
 import traceback
 from types import GeneratorType
 from lazyllm import kwargs, package
-from lazyllm import FastapiApp, globals, encode_request, decode_request
+from lazyllm import FastapiApp, globals, decode_request
 import pickle
 import codecs
 import asyncio
@@ -50,17 +50,18 @@ FastapiApp.update()
 async def async_wrapper(func, *args, **kwargs):
     loop = asyncio.get_running_loop()
 
-    def impl(func, sid, *args, **kw):
+    def impl(func, sid, global_data, *args, **kw):
         globals._init_sid(sid)
+        globals._update(global_data)
         return func(*args, **kw)
 
-    result = await loop.run_in_executor(None, partial(impl, func, globals._sid, *args, **kwargs))
+    result = await loop.run_in_executor(None, partial(impl, func, globals._sid, globals._data, *args, **kwargs))
     return result
 
 @app.post("/generate")
 async def generate(request: Request): # noqa C901
     try:
-        globals._init_sid(request.headers.get('Session-ID'))
+        globals._init_sid(decode_request(request.headers.get('Session-ID')))
         globals._update(decode_request(request.headers.get('Global-Parameters')))
         input, kw = (await request.json()), {}
         try:
@@ -92,8 +93,7 @@ async def generate(request: Request): # noqa C901
             def generate_stream():
                 for o in output:
                     yield impl(o)
-            return StreamingResponse(generate_stream(), media_type='text_plain',
-                                     headers={'Global-Parameters': encode_request(globals._get_data(['trace', 'err']))})
+            return StreamingResponse(generate_stream(), media_type='text_plain')
         elif args.after_function:
             assert (callable(after_func)), 'after_func must be callable'
             r = inspect.getfullargspec(after_func)
@@ -105,8 +105,7 @@ async def generate(request: Request): # noqa C901
                     after_func(output, **{r.kwonlyargs[0]: origin})
             elif len(new_args) == 2:
                 output = after_func(output, origin)
-        return Response(content=impl(output),
-                        headers={'Global-Parameters': encode_request(globals._get_data(['trace', 'err']))})
+        return Response(content=impl(output))
     except requests.RequestException as e:
         return Response(content=f'{str(e)}', status_code=500)
     except Exception as e:
