@@ -62,7 +62,7 @@ class TestRewriteReport(unittest.TestCase):
         cls.sql_tool: SQLiteTool = sql_tool
         # Recommend to use sensenova, gpt-4o, qwen online model
         sql_llm = lazyllm.OnlineChatModule()
-        cls.sql_module: SqlModule = SqlModule(sql_llm, sql_tool, only_output_raw=False)
+        cls.sql_module: SqlModule = SqlModule(sql_llm, sql_tool, output_in_json=False)
 
     def test_get_talbes(self):
         str_result = self.sql_tool.get_all_tables()

@@ -50,12 +50,6 @@ class SQLiteTool(SqlTool):
         self.close_connection()
 
     def create_tables(self, tables_info: dict):
-        """Create tables According to tables json dict.
-
-        Args:
-            tables_info (dict): json dict which describes several tables. The dict format shoule be as follows
-                {TABLE_NAME:{"fields":{COLUMN_NAME:{"type":("REAL"/"TEXT"/"INT"), "comment":"..."} } } }
-        """
         cursor = self.conn.cursor()
         for table_name, table_info in tables_info.items():
             # Start building the SQL for creating the table
@@ -83,11 +77,6 @@ class SQLiteTool(SqlTool):
             self.conn.close()
 
     def get_all_tables(self) -> str:
-        """Retrieves and returns a string representation of all the tables in the SQLite database.
-
-        Returns:
-            str: string representation of all the tables in the SQLite database.
-        """
         sql_script = "SELECT sql FROM sqlite_master WHERE type='table'"
         cursor = self.conn.cursor()
         try:
@@ -106,14 +95,6 @@ class SQLiteTool(SqlTool):
             return ""
 
     def get_query_result_in_json(self, sql_script):
-        """Executes a SQL query and returns the result in JSON format.
-
-        Args:
-            sql_script (str): The SQL query to be executed.
-
-        Returns:
-            str: the sql execution result in JSON format.
-        """
         cursor = self.conn.cursor()
         str_result = ""
         try:
@@ -132,11 +113,6 @@ class SQLiteTool(SqlTool):
         return str_result
 
     def sql_update(self, sql_script):
-        """Execute insert and update script
-
-        Args:
-            sql_script (str): The SQL query to be executed.
-        """
         cursor = self.conn.cursor()
         try:
             cursor.execute(sql_script)
@@ -177,7 +153,7 @@ the sql result is
 
 
 class SqlModule(ModuleBase):
-    def __init__(self, llm, sql_tool: SqlTool, only_output_raw=False, return_trace: bool = False) -> None:
+    def __init__(self, llm, sql_tool: SqlTool, output_in_json=False, return_trace: bool = False) -> None:
         super().__init__(return_trace=return_trace)
         self._sql_tool = sql_tool
         self._query_prompter = ChatPrompter(instruction=sql_query_instruct_template).pre_hook(self.sql_query_promt_hook)
@@ -189,7 +165,7 @@ class SqlModule(ModuleBase):
         self._pattern = re.compile(r"```sql(.+?)```", re.DOTALL)
         with pipeline() as sql_execute_ppl:
             sql_execute_ppl.exec = self._sql_tool.get_query_result_in_json
-            if not only_output_raw:
+            if not output_in_json:
                 sql_execute_ppl.concate = (lambda q, r: [q, r]) | bind(sql_execute_ppl.input, _0)
                 sql_execute_ppl.llm_answer = self._llm_answer
         with pipeline() as ppl:
