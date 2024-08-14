@@ -424,7 +424,7 @@ SqlModule 是一个扩展自 ModuleBase 的类,提供了使用语言模型(LLM)�
 Arguments:
     llm: 用于生成和解释 SQL 查询及解释的大语言模型。
     sql_tool (SqlTool)：一个 SqlTool 实例，用于处理与 SQL 数据库的交互。
-    output_in_json (bool, 可选): 如果设置为True,管道只会输出原始的SQL结果而不进行进一步处理。默认值为False。
+    use_llm_for_sql_result (bool, 可选): 默认值为True。如果设置为False, 则只输出JSON格式表示的sql执行结果；True则会使用LLM对sql执行结果进行解读并返回自然语言结果。
     return_trace (bool, 可选): 如果设置为 True,则将结果记录在trace中。默认为 False。
 """,
 )
@@ -438,7 +438,7 @@ It is designed to interact with a SQL database, extract SQL queries from LLM res
 Arguments:
     llm: A language model to be used for generating and interpreting SQL queries and explanations.
     sql_tool (SqlTool): An instance of SqlTool that handles interaction with the SQL database.
-    output_in_json (bool, optional): If set to True, the pipeline will only output raw SQL results without further processing. Default is False.
+    use_llm_for_sql_result (bool, optional): Default is True. If set to False, the module will only output raw SQL results in JSON without further processing.
     return_trace (bool, optional): If set to True, the results will be recorded in the trace. Defaults to False.  
 """,
 )
@@ -450,7 +450,7 @@ add_example(
     >>> from lazyllm.tools import SQLiteTool, SqlModule
     >>> sql_tool = SQLiteTool("personal.db")
     >>> sql_llm = lazyllm.OnlineChatModule(model="gpt-4o", source="openai", base_url="***")
-    >>> sql_module = SqlModule(sql_llm, sql_tool, output_in_json=False)
+    >>> sql_module = SqlModule(sql_llm, sql_tool, use_llm_for_sql_result=True)
     >>> print(sql_module("员工Alice的邮箱地址是什么?"))
 """,
 )

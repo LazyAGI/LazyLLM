@@ -153,7 +153,7 @@ the sql result is
 
 
 class SqlModule(ModuleBase):
-    def __init__(self, llm, sql_tool: SqlTool, output_in_json=False, return_trace: bool = False) -> None:
+    def __init__(self, llm, sql_tool: SqlTool, use_llm_for_sql_result=True, return_trace: bool = False) -> None:
         super().__init__(return_trace=return_trace)
         self._sql_tool = sql_tool
         self._query_prompter = ChatPrompter(instruction=sql_query_instruct_template).pre_hook(self.sql_query_promt_hook)
@@ -165,7 +165,7 @@ class SqlModule(ModuleBase):
         self._pattern = re.compile(r"```sql(.+?)```", re.DOTALL)
         with pipeline() as sql_execute_ppl:
             sql_execute_ppl.exec = self._sql_tool.get_query_result_in_json
-            if not output_in_json:
+            if not use_llm_for_sql_result:
                 sql_execute_ppl.concate = (lambda q, r: [q, r]) | bind(sql_execute_ppl.input, _0)
                 sql_execute_ppl.llm_answer = self._llm_answer
         with pipeline() as ppl:

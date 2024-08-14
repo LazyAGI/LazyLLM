@@ -3,12 +3,13 @@ from lazyllm.tools import SQLiteTool, SqlModule
 import lazyllm
 import tempfile
 from pathlib import Path
+import uuid
 
 
 class TestSqlTool(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        filepath = str(Path(tempfile.gettempdir()) / "temp.db")
+        filepath = str(Path(tempfile.gettempdir()) / f"{str(uuid.uuid4().hex)}.db")
         cls.db_filepath = filepath
         with open(filepath, "w") as _:
             pass
@@ -63,7 +64,7 @@ class TestSqlTool(unittest.TestCase):
         cls.sql_tool: SQLiteTool = sql_tool
         # Recommend to use sensenova, gpt-4o, qwen online model
         sql_llm = lazyllm.OnlineChatModule(source="sensenova")
-        cls.sql_module: SqlModule = SqlModule(sql_llm, sql_tool, output_in_json=False)
+        cls.sql_module: SqlModule = SqlModule(sql_llm, sql_tool, use_llm_for_sql_result=True)
 
     @classmethod
     def tearDownClass(cls):
