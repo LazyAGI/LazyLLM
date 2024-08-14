@@ -6,7 +6,9 @@
 
 ## 环境准备
 
-### 手动配置环境
+可以用以下任一方式搭建 `LazyLLM` 开发环境。
+
+### 手动配置
 
 `LazyLLM` 基于 Python 开发，我们需要保证系统中已经安装好了 `Python`， `Pip` 和 `Git`。
 
@@ -46,7 +48,41 @@ export PYTHONPATH=$PWD:$PYHONPATH
 
 这样我们在任意目录下都可以找到它。
 
-以上环境准备完成后，我们就可以开始使用 `LazyLLM` 了。
+### 拉取 Docker 镜像
+
+我们提供了包含最新版本的 `LazyLLM` 的 docker 镜像，开箱即用：
+
+```bash
+docker pull lazyllm/lazyllm
+```
+
+也可以从 [https://hub.docker.com/r/lazyllm/lazyllm/tags](https://hub.docker.com/r/lazyllm/lazyllm/tags) 查看并拉取需要的版本。
+
+### 从 Pip 安装
+
+`LazyLLM` 支持用 `pip` 直接安装,下面三种安装方式分别对应不同功能的使用
+
+1. 安装 `LazyLLM` 基础功能的最小依赖包。可以支持线上各类模型的微调和推理。
+
+    ```bash
+    pip3 install lazyllm
+    ```
+
+2. 安装 `LazyLLM` 的所有功能最小依赖包。不仅支持线上模型的微调和推理，而且支持离线模型的微调（主要依赖 `LLaMA-Factory`）和推理（主要依赖 `vLLM`）。
+
+    ```bash
+    pip3 install lazyllm[standard]
+    pip3 install git+https://github.com/hiyouga/LLaMA-Factory.git@9dcff3a#egg=llamafactory
+    ```
+
+3. 安装 `LazyLLM` 的所有依赖包，所有功能以及高级功能都支持，比如自动框架选择（`AutoFinetune`、`AutoDeploy` 等）、更多的离线推理工具（如增加 `LightLLM` 等工具）、更多的离线训练工具（如增加 `AlpacaloraFinetune`、`CollieFinetune` 等工具）。
+
+    ```bash
+    pip3 install lazyllm[full]
+    pip3 install git+https://github.com/hiyouga/LLaMA-Factory.git@9dcff3a#egg=llamafactory
+    pip3 install git+https://github.com/ModelTC/lightllm@e6452fd#egg=lightllm
+    pip3 install 'flash-attn>=2.5.8'
+    ```
 
 ## Hello, world!
 

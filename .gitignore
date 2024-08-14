@@ -5,3 +5,5 @@ tmp/
 .vscode
 build
 *.lock
+*.db
+mkdocs.yml
