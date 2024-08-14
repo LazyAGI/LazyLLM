@@ -14,6 +14,7 @@ nav:
   - Module: Best Practice/module.md
   - Prompt: Best Practice/prompt.md
   - Rag: Best Practice/rag.md
+  - FunctionCall: Best Practice/functionCall.md
 - Advanced Topics:
   - Contribution: Advanced Topics/contribution.md
   - Changelog: Advanced Topics/changelog.md
