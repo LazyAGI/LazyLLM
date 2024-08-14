@@ -1,7 +1,7 @@
 import os
 import shutil
 import lazyllm
-from .model_mapping import model_name_mapping
+from .model_mapping import model_name_mapping, model_provider
 
 lazyllm.config.add('model_source', str, 'modelscope', 'MODEL_SOURCE')
 lazyllm.config.add('model_cache_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'model'),
@@ -49,8 +49,8 @@ class ModelManager():
     @classmethod
     def get_model_prompt_keys(cls, model) -> dict:
         model_name = cls.get_model_name(model)
-        if model_name and "prompt_keys" in model_name_mapping[model_name]:
-            return model_name_mapping[model_name]["prompt_keys"]
+        if model_name and "prompt_keys" in model_name_mapping[model_name.lower()]:
+            return model_name_mapping[model_name.lower()]["prompt_keys"]
         else:
             return dict()
 
@@ -65,7 +65,8 @@ class ModelManager():
             print("[WARNING] model automatic downloads only support Huggingface and Modelscope currently.")
             return model
 
-        if model in model_name_mapping.keys() and self.model_source in model_name_mapping[model]['source'].keys():
+        if model.lower() in model_name_mapping.keys() and \
+                self.model_source in model_name_mapping[model.lower()]['source'].keys():
             full_model_dir = os.path.join(self.cache_dir, model)
             if self._is_model_valid(full_model_dir):
                 print(f"[INFO] model link found at {full_model_dir}")
@@ -73,14 +74,21 @@ class ModelManager():
             else:
                 self._unlink_or_remove_model(full_model_dir)
 
-            mapped_model_name = model_name_mapping[model]['source'][self.model_source]
+            mapped_model_name = model_name_mapping[model.lower()]['source'][self.model_source]
             model_save_dir = self._do_download(mapped_model_name)
             if model_save_dir:
                 os.symlink(model_save_dir, full_model_dir, target_is_directory=True)
                 return full_model_dir
             return model  # failed to download model, keep model as it is
         else:
-            model_save_dir = self._do_download(model)
+            model_name_for_download = model
+
+            # Try to figure out a possible model provider
+            matched_model_prefix = next((key for key in model_provider if model.lower().startswith(key)), None)
+            if matched_model_prefix and self.model_source in model_provider[matched_model_prefix]:
+                model_name_for_download = model_provider[matched_model_prefix][self.model_source] + '/' + model
+
+            model_save_dir = self._do_download(model_name_for_download)
             return model_save_dir if model_save_dir else model
 
     def _model_exists_at_path(self, model_name):
@@ -89,10 +97,10 @@ class ModelManager():
         model_dirs = []
 
         # For short model name, get all possible names from the mapping.
-        if model_name in model_name_mapping.keys():
+        if model_name.lower() in model_name_mapping.keys():
             for source in ('huggingface', 'modelscope'):
-                if source in model_name_mapping[model_name]['source'].keys():
-                    model_dirs.append(model_name_mapping[model_name]['source'][source].replace('/', os.sep))
+                if source in model_name_mapping[model_name.lower()]['source'].keys():
+                    model_dirs.append(model_name_mapping[model_name.lower()]['source'][source].replace('/', os.sep))
         model_dirs.append(model_name.replace('/', os.sep))
 
         for model_path in self.model_pathes:
