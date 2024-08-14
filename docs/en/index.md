@@ -48,6 +48,28 @@ So that we can find it from any directory.
 
 Once the environment preparation is complete, we can start using LazyLLM.
 
+### Environment expansion
+LazyLLM supports direct installation via pip, the following three installation methods correspond to the use of different features:
+
+1.Install the minimum dependency package for the basic functionality of LazyLLM. This can support the fine-tuning and inference of various online models.
+```bash
+pip3 install lazyllm
+```
+
+2.Install the minimum dependency package for all features of LazyLLM. Not only does it support the fine-tuning and inference of online models, but it also supports the fine-tuning (mainly dependent on LLaMA-Factory) and inference (mainly dependent on vLLM) of offline models.
+```bash
+pip3 install lazyllm[standard]
+pip3 install git+https://github.com/hiyouga/LLaMA-Factory.git@9dcff3a#egg=llamafactory
+```
+
+3.Install all dependency packages of LazyLLM, all features as well as advanced features are supported, such as automatic framework selection (AutoFinetune, AutoDeploy, etc.), more offline inference tools (such as LightLLM), and more offline training tools (such as AlpacaloraFinetune, CollieFinetune, etc.).
+```bash
+pip3 install lazyllm[full]
+pip3 install git+https://github.com/hiyouga/LLaMA-Factory.git@9dcff3a#egg=llamafactory
+pip3 install git+https://github.com/ModelTC/lightllm@e6452fd#egg=lightllm
+pip3 install 'flash-attn>=2.5.8'
+```
+
 ## Hello, world!
 
 To give you a basic understanding of `LazyLLM`, we will use it to create a chatbot based on the conversation capabilities provided by the [Sensetime Nova Platform](https://platform.sensenova.cn/home).

@@ -9,13 +9,13 @@ import requests
 import traceback
 import multiprocessing
 import gradio as gr
+import time
 from PIL import Image
 from io import BytesIO
-from types import GeneratorType
 import numpy as np
 
 import lazyllm
-from lazyllm import LOG, globals
+from lazyllm import LOG, globals, FileSystemQueue
 from lazyllm.flow import Pipeline
 from ...module.module import ModuleBase
 
@@ -40,13 +40,15 @@ class WebModule(ModuleBase):
                  history=[], text_mode=None, trace_mode=None, audio=False) -> None:
         super().__init__()
         self.m = lazyllm.ActionModule(m) if isinstance(m, lazyllm.FlowBase) else m
+        self.pool = lazyllm.ThreadPoolExecutor(max_workers=50)
         self.title = title
         self.port = port
         components = sum([[([k._module_id, k._module_name] + list(v)) for v in vs]
                          for k, vs in components.items()], [])
         self.ckeys = [[c[0], c[2]] for c in components]
         self.history = [h._module_id for h in history]
-        self.trace_mode = trace_mode if trace_mode else WebModule.Mode.Refresh
+        if trace_mode:
+            LOG.warn('trace_mode is deprecated')
         self.text_mode = text_mode if text_mode else WebModule.Mode.Dynamic
         self.cach_path = self._set_up_caching()
         self.audio = audio
@@ -228,6 +230,7 @@ class WebModule(ModuleBase):
         try:
             # TODO: move context to trainable module
             files = []
+            chat_history[-1][1], log_history = '', []
             for file in chat_history[::-1]:
                 if file[-1]: break  # not current chat
                 if isinstance(file[0], (tuple, list)):
@@ -253,16 +256,23 @@ class WebModule(ModuleBase):
                 for h in self.history:
                     if h not in globals['chat_history']: globals['chat_history'][h] = list()
                     globals['chat_history'][h] = history
-            result = self.m(input)
+
+            func_future = self.pool.submit(self.m, input)
+            while True:
+                if value := FileSystemQueue().dequeue():
+                    chat_history[-1][1] = chat_history[-1][1] + ''.join(value) if append_text else ''.join(value)
+                    if stream_output: yield chat_history, ''
+                elif value := FileSystemQueue.get_instance('lazy_error').dequeue():
+                    log_history.append(''.join(value))
+                elif value := FileSystemQueue.get_instance('lazy_trace').dequeue():
+                    log_history.append(''.join(value))
+                elif func_future.done(): break
+                time.sleep(0.01)
+            result = func_future.result()
             if files:
                 globals['global_parameters']["lazyllm-files"].pop('files', None)
 
             def get_log_and_message(s):
-                if not self.trace_mode == WebModule.Mode.Appendix:
-                    log_history.clear()
-                if globals['err']: log_history.append(globals['err'][1])
-                if globals['trace']: log_history.extend(globals['trace'])
-
                 if isinstance(s, dict):
                     s = s.get("message", {}).get("content", "")
                 else:
@@ -292,7 +302,6 @@ class WebModule(ModuleBase):
                         LOG.error(f"Uncaptured error `{e}` when parsing `{s}`, please contact us if you see this.")
                 return s, "".join(log_history), None
 
-            log_history = []
             file = None
             if isinstance(result, (str, dict)):
                 result, log, file = get_log_and_message(result)
@@ -303,14 +312,6 @@ class WebModule(ModuleBase):
                     chat_history[-1][1] = gr.Audio(file['audio'])
             elif isinstance(result, str):
                 chat_history[-1][1] = result
-            elif isinstance(result, GeneratorType):
-                # TODO(wzh/server): refactor this code
-                chat_history[-1][1] = ''
-                for s in result:
-                    if isinstance(s, str):
-                        s, log, _ = get_log_and_message(s)
-                    chat_history[-1][1] = (chat_history[-1][1] + s) if append_text else s
-                    if stream_output: yield chat_history, log
             elif isinstance(result, dict):
                 chat_history[-1][1] = result.get("message", "")
             else:

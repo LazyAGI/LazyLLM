@@ -45,9 +45,7 @@ class DefaultIndex:
         return decorator(func) if func else decorator
 
     def _parallel_do_embedding(self, nodes: List[DocNode]) -> List[DocNode]:
-        with ThreadPoolExecutor(
-            config["max_embedding_workers"]
-        ) as executor:
+        with ThreadPoolExecutor(config["max_embedding_workers"]) as executor:
             futures = {
                 executor.submit(node.do_embedding, self.embed): node
                 for node in nodes
@@ -78,7 +76,7 @@ class DefaultIndex:
             assert len(query) > 0, "Query should not be empty."
             query_embedding = self.embed(query)
             nodes = self._parallel_do_embedding(nodes)
-            self.store.try_save_nodes(nodes[0].group, nodes)
+            self.store.try_save_nodes(nodes)
             similarities = similarity_func(query_embedding, nodes, topk=topk, **kwargs)
         elif mode == "text":
             similarities = similarity_func(query, nodes, topk=topk, **kwargs)

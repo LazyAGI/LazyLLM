@@ -6,7 +6,7 @@ from lazyllm.components.utils.downloader import ModelManager
 import numpy as np
 
 
-class RerankerV2(ModuleBase):
+class Reranker(ModuleBase):
     registered_reranker = dict()
 
     def __init__(self, name: str = "ModuleReranker", **kwargs) -> None:
@@ -21,7 +21,7 @@ class RerankerV2(ModuleBase):
 
     @classmethod
     def register_reranker(
-        cls: "RerankerV2", func: Optional[Callable] = None, batch: bool = False
+        cls: "Reranker", func: Optional[Callable] = None, batch: bool = False
     ):
         def decorator(f):
             def wrapper(nodes, **kwargs):
@@ -48,7 +48,7 @@ def get_nlp_and_matchers(language):
     return nlp, required_matcher, exclude_matcher
 
 
-@RerankerV2.register_reranker
+@Reranker.register_reranker
 def KeywordFilter(
     node: DocNode,
     required_keys: List[str],
@@ -78,7 +78,7 @@ def get_cross_encoder_model(model_name: str):
     return CrossEncoder(model)
 
 
-@RerankerV2.register_reranker(batch=True)
+@Reranker.register_reranker(batch=True)
 def ModuleReranker(
     nodes: List[DocNode], model: str, query: str, topk: int = -1, **kwargs
 ) -> List[DocNode]:
@@ -98,4 +98,4 @@ def ModuleReranker(
 
 # User-defined similarity decorator
 def register_reranker(func=None, batch=False):
-    return RerankerV2.register_reranker(func, batch)
+    return Reranker.register_reranker(func, batch)
