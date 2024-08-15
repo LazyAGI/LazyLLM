@@ -88,7 +88,7 @@ class TestDeploy(object):
         assert "sounds" in json.loads(res)
 
     def test_stt_sensevoice(self):
-        chat = lazyllm.TrainableModule('SenseVoiceSmall')
+        chat = lazyllm.TrainableModule('sensevoicesmall')
         m = lazyllm.ServerModule(chat)
         m.update_server()
         audio_path = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')
