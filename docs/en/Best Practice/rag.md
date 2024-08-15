@@ -121,14 +121,13 @@ Initially, we specify a prompter for this application, which helps guide the AI 
 
 Next, we convert the content of local documents into vectors, primarily done by the [Document][lazyllm.tools.Document] class. It traverses the specified directory, parses documents according to specified rules, and then uses the embedding module to convert them into vectors and save them.
 
-Then, we create a node group named sentences, specifying SentenceSplitter as the conversion rule, which splits documents into chunks of a specified size with some overlap between adjacent chunks. For the usage of SentenceSplitter, you can refer to [SentenceSplitter][lazyllm.tools.SentenceSplitter].
+Then, we create a node group named `sentences`, specifying `SentenceSplitter` as the conversion rule, which splits documents into chunks of a specified size with some overlap between adjacent chunks. For the usage of SentenceSplitter, you can refer to [SentenceSplitter][lazyllm.tools.SentenceSplitter].
 
 The history field is used to save the context content.
 
 Moving on to Part 2, which mainly involves creating a pipeline for the entire processing process. The relationship between the modules in the example is as follows:
 
 ![Demo RAG](../assets/rag-demo.png)
-
 
 * 2.1 Adds retriever1, which uses SentenceSplitter to split documents with a chunk_size of 1024 and a chunk_overlap of 100, and uses bm25_chinese to sort documents by similarity, discarding documents with a similarity less than 0.003, and finally takes the top 3 most similar documents; retriever2 uses the custom sentences group, calculates similarity using cosine, and takes the top 3 most similar documents. For the interface usage of Retriever, you can refer to [Retriever][lazyllm.tools.Retriever].
 
