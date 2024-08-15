@@ -71,14 +71,14 @@ docker pull lazyllm/lazyllm
 2. 安装 `LazyLLM` 的所有功能最小依赖包。不仅支持线上模型的微调和推理，而且支持离线模型的微调（主要依赖 `LLaMA-Factory`）和推理（主要依赖 `vLLM`）。
 
     ```bash
-    pip3 install lazyllm[standard]
+    pip3 install 'lazyllm[standard]'
     pip3 install git+https://github.com/hiyouga/LLaMA-Factory.git@9dcff3a#egg=llamafactory
     ```
 
 3. 安装 `LazyLLM` 的所有依赖包，所有功能以及高级功能都支持，比如自动框架选择（`AutoFinetune`、`AutoDeploy` 等）、更多的离线推理工具（如增加 `LightLLM` 等工具）、更多的离线训练工具（如增加 `AlpacaloraFinetune`、`CollieFinetune` 等工具）。
 
     ```bash
-    pip3 install lazyllm[full]
+    pip3 install 'lazyllm[full]'
     pip3 install git+https://github.com/hiyouga/LLaMA-Factory.git@9dcff3a#egg=llamafactory
     pip3 install git+https://github.com/ModelTC/lightllm@e6452fd#egg=lightllm
     pip3 install 'flash-attn>=2.5.8'
