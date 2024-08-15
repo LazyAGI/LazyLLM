@@ -2,7 +2,7 @@
 
 检索增强生成（Retrieval-augmented Generation, RAG）是当前备受关注的大模型前沿技术之一。其工作原理是，当模型需要生成文本或回答问题时，首先会从一个庞大的文档集合中检索出相关的信息。这些检索到的信息随后用于指导生成过程，从而显著提高生成文本的质量和准确性。通过这种方式，RAG能够在处理复杂问题时提供更加精确和有意义的回答，是自然语言处理领域的重要进展之一。这种方法的优越性在于它结合了检索和生成的优势，使得模型不仅能够生成流畅的文本，还能基于真实数据提供有依据的回答。
 
-![RAG intro](../../../docs/assets/rag-intro.png)
+![RAG intro](../assets/rag-intro.png)
 
 本文展示了如何利用LazyLLM搭建自己的RAG应用。
 
@@ -121,13 +121,13 @@ python3 rag.py
 
 接着将本地文档的内容转化为向量，主要由 [Document][lazyllm.tools.Document] 这个类来完成。它会遍历指定的目录，将文档按照指定的规则解析，然后通过 embedding 模块将其转化为向量保存起来。
 
-接着创建一个名为 `sentences` 的 node group，指定了 `SentenceSplitter` 作为转换规则，将文档按照拆分成指定大小的块，并且相邻两个块之间有部分内容重合。关于 `SentenceSplitter` 的用法可以参考 [SentenceSplitter][lazyllm.tools.SentenceSplitter]。
+接着创建一个名为 `sentences` 的 node group，指定了 `SentenceSplitter` 作为转换规则，将文档按照指定的规则拆分成指定大小的块，并且相邻两个块之间有部分内容重合。关于 `SentenceSplitter` 的用法可以参考 [SentenceSplitter][lazyllm.tools.SentenceSplitter]。
 
 `history` 字段用于保存上下文内容。
 
 第 2 部分，主要是创建整个处理过程的 pipeline。例子中的各个模块关系是这样的：
 
-![Demo RAG](docs/assets/rag-demo.png)
+![Demo RAG](../assets/rag-demo.png)
 
 * 2.1 添加了 retriever1，使用 `SentenceSplitter` 按照 chunk_size 为 1024，chunk_overlap 为 100 分割文档，并使用 `bm25_chinese` 来对文档进行相似度排序，丢弃相似度小于 0.003 的文档，最后取最相似的前 3 篇文档；retriever2 使用自定义的 `sentences` group，采用 `cosine` 计算相似度，取最相似的前 3 篇文档。关于 `Retriever` 的接口使用说明可以参考 [Retriever][lazyllm.tools.Retriever]。
 
