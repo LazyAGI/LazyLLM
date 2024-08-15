@@ -6,3 +6,4 @@ tmp/
 build
 *.lock
 *.db
+mkdocs.yml
