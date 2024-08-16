@@ -2,7 +2,7 @@
 
 检索增强生成（Retrieval-augmented Generation, RAG）是当前备受关注的大模型前沿技术之一。其工作原理是，当模型需要生成文本或回答问题时，首先会从一个庞大的文档集合中检索出相关的信息。这些检索到的信息随后用于指导生成过程，从而显著提高生成文本的质量和准确性。通过这种方式，RAG能够在处理复杂问题时提供更加精确和有意义的回答，是自然语言处理领域的重要进展之一。这种方法的优越性在于它结合了检索和生成的优势，使得模型不仅能够生成流畅的文本，还能基于真实数据提供有依据的回答。
 
-![RAG intro](../../../docs/assets/rag-intro.png)
+![RAG intro](../assets/rag-intro.png)
 
 本文展示了如何利用LazyLLM搭建自己的RAG应用。
 
@@ -92,7 +92,7 @@ while True:
     history.append([query, res])
 ```
 
-要把这个例子跑起来，首先要按照 [快速入门](/) 的 “环境准备” 小节中的说明配置好环境，然后设置我们申请到的日日新平台的变量：
+要把这个例子跑起来，首先要按照 [快速入门](../index.md) 的 “环境准备” 小节中的说明配置好环境，然后设置我们申请到的日日新平台的变量：
 
 ```bash
 export LAZYLLM_SENSENOVA_API_KEY=<申请到的api key>
@@ -127,7 +127,7 @@ python3 rag.py
 
 第 2 部分，主要是创建整个处理过程的 pipeline。例子中的各个模块关系是这样的：
 
-![Demo RAG](docs/assets/rag-demo.png)
+![Demo RAG](../assets/rag-demo.png)
 
 * 2.1 添加了 retriever1，使用 `SentenceSplitter` 按照 chunk_size 为 1024，chunk_overlap 为 100 分割文档，并使用 `bm25_chinese` 来对文档进行相似度排序，丢弃相似度小于 0.003 的文档，最后取最相似的前 3 篇文档；retriever2 使用自定义的 `sentences` group，采用 `cosine` 计算相似度，取最相似的前 3 篇文档。关于 `Retriever` 的接口使用说明可以参考 [Retriever][lazyllm.tools.Retriever]。
 
@@ -137,4 +137,4 @@ python3 rag.py
 
 * 2.4 收到了来自用户指定的参考数据，再结合上下文（通过 `bind()` 把 `history` 传给我们的大模型）得到结果。
 
-第 3 部分中，由于 `Pipeline` 不能直接执行，我们使用 `ActionModule` 将其转换成可执行的模块，然后后续的流程和 [快速入门](/) 中类似，这里不再重复。
+第 3 部分中，由于 `Pipeline` 不能直接执行，我们使用 `ActionModule` 将其转换成可执行的模块，然后后续的流程和 [快速入门](../index.md) 中类似，这里不再重复。

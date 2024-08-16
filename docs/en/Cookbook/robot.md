@@ -5,7 +5,7 @@ Let's begin our journey into LazyLLM with a classic chatbot.
 
 > By the end of this section, you will have learned the following key points about LazyLLM:
 >
-> - The use of `TrainableModule` and `WebModule` for model deployment and client publishing;
+> - The use of [TrainableModule][lazyllm.module.TrainableModule] and [WebModule][lazyllm.tools.WebModule] for model deployment and client publishing;
 > - How to specify a model;
 > - How to set up history.
 
@@ -20,7 +20,7 @@ Answer: Three steps!
 3. Start the client.
 
 Here's the effect:
-![First Chat bot](../../assets/1_first_chat_bot_demo.png)
+![First Chat bot](../assets/1_first_chat_bot_demo.png)
 
 Yes, it's that simple! Below are the three lines of code to build the chatbot:
 
@@ -38,7 +38,7 @@ Let's delve into the details.
 chat = lazyllm.TrainableModule('internlm2-chat-7b')
 ```
 
-- `TrainableModule` is a core module of LazyLLM, which is very powerful and capable of pre-training, fine-tuning, and model deployment. Here we are only concerned with its deployment capabilities. At least one model name must be specified when using it.
+- [TrainableModule][lazyllm.module.TrainableModule] is a core module of LazyLLM, which is very powerful and capable of pre-training, fine-tuning, and model deployment. Here we are only concerned with its deployment capabilities. At least one model name must be specified when using it.
 - `internlm2-chat-7b` is the model we are using in this example. There are three ways to specify a model in LazyLLM:
     - Specify the exact model name (e.g., 'internlm2-chat-7b' here): LazyLLM will automatically download the model from the internet;
     - Specify the exact model name (e.g., 'internlm2-chat-7b') + set the environment variable `export LAZYLLM_MODEL_PATH="/path/to/modelzoo"`: LazyLLM will then find the model at `path/to/modelazoo/internlm2-chat-7b/`;
@@ -50,11 +50,10 @@ chat = lazyllm.TrainableModule('internlm2-chat-7b')
 lazyllm.WebModule(chat, port=23466).start().wait()
 ```
 
-- `WebModule` is another core module of LazyLLM, which can wrap any callable into a client.
+- [WebModule][lazyllm.tools.WebModule] is another core module of LazyLLM, which can wrap any callable into a client.
 The wrapping effect is as shown at the beginning. The callable is passed as the first argument, here we are wrapping our deployable model chat with a client shell.
 - `port` is used to specify the port for client publishing. The `port` can be omitted; if not specified, LazyLLM will find an unused port between 20500 and 20799 to use. We can also specify a range of available ports.
-- `start` is crucial in LazyLLM, which means to initiate. Once `start` is executed, it will run the entire application's training, deployment, and even evaluation tasks if specified.
-Here, since no tasks are specified in `TrainableModule` and `WebModule`, it defaults to only the deployment task, which is to deploy an `internlm2-chat-7b` model and start a Web client.
+- `start` is crucial in LazyLLM, which means to initiate. If `start` is executed, it will run the deployment of all modules throughout the entire application. Here, [TrainableModule][lazyllm.module.TrainableModule] and [WebModule][lazyllm.tools.WebModule] will deploy an `internlm2-chat-7b` model and start a web client.
 - `wait` is used to keep the client running after it starts without shutting down.
 
 After deployment and client startup, LazyLLM will print the accessible URL in the terminal.
@@ -65,7 +64,7 @@ Astute readers may have noticed that the chatbot in the demo image above has mem
 
 ### Specifying history
 
-Modify the `WebModule` by specifying the `history` parameter as follows:
+Modify the [WebModule][lazyllm.tools.WebModule] by specifying the `history` parameter as follows:
 
 ```python
 import lazyllm
@@ -73,12 +72,12 @@ chat = lazyllm.TrainableModule('internlm2-chat-7b')
 lazyllm.WebModule(chat, port=23466, history=[chat]).start().wait()
 ```
 
-`history` is a memory list that specifies the modules for which context needs to be saved. Here we only need to remember the chat module, so we specify it. In a multi-robot setup, you can specify as needed.
+`history` is a memory list that specifies to whom the context is passed. Here, it is passed to `chat`.
 
 ### Enabling Context Usage
 
 Specifying `history` is the first step to enabling context. To ensure the memory function is activated, you must also enable the context feature when using the client, as shown below:
 
-![First Chat bot](../../assets/1_first_chat_bot_demo2.png)
+![First Chat bot](../assets/1_first_chat_bot_demo2.png)
 
 And there you have it, our first chatbot is created! Let's start chatting with it!

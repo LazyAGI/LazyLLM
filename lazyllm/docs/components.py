@@ -1264,10 +1264,10 @@ Args:
     **kwarg：关键字参数，用于传递给对应部署实例的构造函数。
                 
 Returns:
-    - 如果 name 参数为 ‘bark’，则返回一个 [BarkDeploy][lazyllm.components.BarkDeploy] 实例。
-    - 如果 name 参数为 ‘ChatTTS’，则返回一个 [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] 实例。
-    - 如果 name 参数以 ‘musicgen’ 开头，则返回一个 [MusicGenDeploy][lazyllm.components.MusicGenDeploy] 实例。
-    - 如果 name 参数不匹配以上任何情况，抛出 RuntimeError 异常，说明不支持的模型。            
+    如果 name 参数为 ‘bark’，则返回一个 [BarkDeploy][lazyllm.components.BarkDeploy] 实例。
+    如果 name 参数为 ‘ChatTTS’，则返回一个 [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] 实例。
+    如果 name 参数以 ‘musicgen’ 开头，则返回一个 [MusicGenDeploy][lazyllm.components.MusicGenDeploy] 实例。
+    如果 name 参数不匹配以上任何情况，抛出 RuntimeError 异常，说明不支持的模型。            
 ''')
 
 add_example('TTSDeploy', ['''\

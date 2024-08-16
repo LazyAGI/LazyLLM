@@ -92,7 +92,7 @@ while True:
     history.append([query, res])
 ```
 
-To run this example, you first need to set up the environment according to the "Environment Preparation" section in the [Getting Started](/). Then, configure the variables for the DaliyNew platform that we applied for:
+To run this example, you first need to set up the environment according to the "Environment Preparation" section in the [Getting Started](../index.md). Then, configure the variables for the DaliyNew platform that we applied for:
 
 ```bash
 export LAZYLLM_SENSENOVA_API_KEY=<your api key>
@@ -138,4 +138,4 @@ Moving on to Part 2, which mainly involves creating a pipeline for the entire pr
 
 * 2.4 Receives reference data specified by the user and, combined with the context (passed to our large model through bind() with history), obtains the result.
 
-In Part 3, since the Pipeline cannot be executed directly, we use ActionModule to convert it into an executable module. The subsequent process is similar to that in the [Getting Started](/), so it will not be repeated here.
+In Part 3, since the Pipeline cannot be executed directly, we use ActionModule to convert it into an executable module. The subsequent process is similar to that in the [Getting Started](../index.md), so it will not be repeated here.

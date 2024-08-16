@@ -8,9 +8,9 @@ nav:
   - FAQ: Home/FAQ.md
   - Environment: Home/environment.md
 - Cookbook:
-  - Robot: Cookbook/robot.md
+  - Chatbot: Cookbook/robot.md
   - Painting Master: Cookbook/painting_master.md
-  - Multimodal Robot: Cookbook/multimodal_robot.md
+  - Multimodal Chatbot: Cookbook/multimodal_robot.md
   - Great Writer: Cookbook/great_writer.md
   - RAG: Cookbook/rag.md
 - Best Practice:
@@ -106,3 +106,4 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences
+  - attr_list
