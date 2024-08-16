@@ -1,13 +1,13 @@
-# Multimodal Robot
+# Multimodal Chatbot
 
-We will further enhance our robots! Based on the previous section [Painting Master](painting_master.md), we introduce more models to transform it into a multimodal robot! Let's get started!
+We will further enhance our chatbot! Based on the previous section [Painting Master](painting_master.md), we introduce more models to transform it into a multimodal robot! Let's get started!
 
 > Through this section, you will learn the following key points of LazyLLM:
 >
 > - How to set different prompt words for the same model;
-> - How to implement routing based on `switch` control flow, we will combine it with LLM to create a simple intent recognition robot;
-> - How to specify the deployment framework for `TrainableModule`;
-> - How to use `bind` on the control flow to pass in parameters;
+> - How to implement routing based on [Switch][lazyllm.flow.Switch] control flow, we will combine it with LLM to create a simple intent recognition robot;
+> - How to specify the deployment framework for [TrainableModule][lazyllm.module.TrainableModule];
+> - How to use [bind](../Best Practice/flow.md#use-bind) on the control flow to pass in parameters;
 
 ## Design Concept
 
@@ -25,7 +25,7 @@ Furthermore, because we are introducing a large number of models, we need an int
 
 Considering the above, we proceed with the following design:
 
-![Multimodal bot](../../assets/3_multimodal-bot3.svg)
+![Multimodal bot](../assets/3_multimodal-bot3.svg)
 
 Here, the intent recognition robot is the core, routing user needs to one of the six functional robots.
 
@@ -33,7 +33,7 @@ Here, the intent recognition robot is the core, routing user needs to one of the
 
 Let's implement the above design concept based on LazyLLM.
 
-### Designing Prompt Words
+### Designing Prompt
 
 We need to design three prompt words for the intent recognition robot, painting generation robot, and music generation robot.
 
@@ -75,7 +75,9 @@ Then, for our chatbot, the prompt here is set to empty:
 chat = base.share().prompt()
 ```
 
-Here, we make use of the `share` functionality of `TrainableModule`. It allows setting different templates on top of the original robot. The object it returns is also a `TrainableModule`, but shares the model with the original.
+[](){#use_share}
+
+Here, we make use of the `share` functionality of `TrainableModule`. It allows setting different templates on top of the original robot. The object it returns is also a [TrainableModule][lazyllm.module.TrainableModule], but shares the model with the original.
 
 Next are the painting and music generation robots, which also use the `share` functionality to achieve robots with different functions:
 
@@ -84,7 +86,9 @@ painter = pipeline(base.share().prompt(painter_prompt), TrainableModule('stable-
 musician = pipeline(base.share().prompt(musician_prompt), TrainableModule('musicgen-small'))
 ```
 
-Here, we use the non-context manager usage of `pipeline` (for context manager usage, see: [Painting Master](painting_master.md)). This is essentially an extension of the code from the previous section [Painting Master](painting_master.md).
+Here, we use the non-context manager usage of `pipeline` 
+(This section essentially follows the code from the previous section [Painting Master](painting_master.md), which uses the [Pipeline][lazyllm.flow.Pipeline] context manager.
+
 
 For the remaining multimodal models, we can simply call them by specifying their names:
 
@@ -123,11 +127,11 @@ with switch(judge_on_full_input=False).bind(_0, ppl.input) as ppl.sw:
 
 Regarding this line of code:
 
-- We first focus on `bind(_0, ppl.input)`, where `_0` is the first argument of the output from the previous step, which is an intent from the intent list. `ppl.input` is the user's input (corresponding to the red line in the design diagram). So this line of code sets two parameters for the `switch` control flow, the first being the intent and the second being the user's input.
+- We first focus on `bind(_0, ppl.input)`, where `_0` is the first argument of the output from the previous step, which is an intent from the intent list. `ppl.input` is the user's input (corresponding to the red line in the design diagram). So this line of code sets two parameters for the `switch` control flow, the first being the intent and the second being the user's input. The usage introduction of bind can be found in detail at: [Parameter Binding](../Best Practice/flow.md#use-bind)
 
 - Then `judge_on_full_input=False`, which allows the input to be divided into two parts: the first part as the condition for judgment, and the remaining part as the input for the branch. Otherwise, if `True`, the entire input will be used as both the condition for judgment and the branch input.
 
-- Finally, we add the instantiated `switch` to `ppl`: `ppl.sw`.
+- Finally, we add the instantiated `switch` to `ppl`: `ppl.sw`. For more information, see: [Switch][lazyllm.flow.Switch].
 
 The rest of the code follows a similar pattern, setting conditions and corresponding routing branches. Taking the following code as an example:
 
@@ -183,4 +187,4 @@ WebModule(ppl, history=[chat], audio=True, port=8847).start().wait()
 
 The effect is as follows:
 
-![Multimodal Robot](../../assets/3_multimodal-bot2.png)
+![Multimodal Robot](../assets/3_multimodal-bot2.png)
