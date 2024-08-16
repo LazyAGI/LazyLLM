@@ -31,7 +31,7 @@ pystemmer = "^2.2.0.1"
 nltk = "^3.8.1"
 jieba = ">=0.42.1"
 pyjwt = ">=2.8.0"
-llama-index-core = "^0.10.64"
+llama-index-core = "<=0.10.44"
 redis = { version = ">=5.0.4", optional = true }
 huggingface-hub = { version = ">=0.23.1", optional = true }
 llama-index = { version = ">=0.10.25", optional = true }
