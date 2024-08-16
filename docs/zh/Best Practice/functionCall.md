@@ -426,7 +426,7 @@ def LLMWorker(input: str):
     Args:
         input (str): instruction
     """
-    llm = lazyllm.OnlineChatModule(source="openai", stream=False)
+    llm = lazyllm.OnlineChatModule(source="openai", base_url="https://api2.chatweb.plus/v1", stream=False)
     query = f"Respond in short directly with no extra words.\n\n{input}"
     response = llm(query, llm_chat_history=[])
     return response
