@@ -5,7 +5,7 @@
 > 通过本节您将学习到 LazyLLM 的以下要点：
 >
 > - 如何给模型设置提示词；
-> - 如何基于 `pipline` 控制流来组装应用；
+> - 如何基于 [Pipeline][lazyllm.flow.Pipeline] 控制流来组装应用；
 > - 如何使用 LazyLLM 中的非 LLM 类模型；
 
 ## 设计思路
@@ -18,7 +18,7 @@
 
 所以设计是这样子的：
 
-![Painting Master](../../assets/2_painting_master1.svg)
+![Painting Master](../assets/2_painting_master1.svg)
 
 ## 代码实现
 
@@ -36,6 +36,8 @@ prompt = 'You are a drawing prompt word master who can convert any Chinese conte
 
 接下来我们基于上一节的 [构建你的第一个聊天机器人](robot.md)，并把刚刚写好的提示词设置给它。
 
+[](){#use-prompt}
+
 ```python
 llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt))
 ```
@@ -46,11 +48,11 @@ llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(p
 sd3 = lazyllm.TrainableModule('stable-diffusion-3-medium')
 ```
 
-这里SD3模型是一个非 LLM 模型，但使用方式与 LLM 模型一致——直接在 `TrainableModule` 中指定模型名即可。
+这里SD3模型是一个非 LLM 模型，但使用方式与 LLM 模型一致——直接在 [TrainableModule][lazyllm.module.TrainableModule] 中指定模型名即可。
 
 ### 组装应用
 
-LazyLLM 中有很多类型的控制流，控制流一般就是用于控制数据的流向。通过控制流将模块组装起来，以构成我们的绘画大师。这里我们选择使用 `pipleline` 来实现顺序执行：先大模型生成提示词，再将提示词喂给SD3模型来获取图像。
+LazyLLM 中有很多类型的控制流，控制流一般就是用于控制数据的流向。通过控制流将模块组装起来，以构成我们的绘画大师。这里我们选择使用 [Pipeline][lazyllm.flow.Pipeline] 来实现顺序执行：先大模型生成提示词，再将提示词喂给SD3模型来获取图像。
 
 ```python
 with pipeline() as ppl:
@@ -59,6 +61,8 @@ with pipeline() as ppl:
 ```
 
 在上面的代码片段中，我们使用 `pipeline` 上下文管理器来构建一个 LazyLLM 的控制流程。
+
+[](){#use-pipeline}
 
 ```python
 with pipeline() as ppl:
@@ -100,4 +104,4 @@ lazyllm.WebModule(ppl, port=23466).start().wait()
 
 效果如下：
 
-![Painting Master](../../assets/2_painting_master2.png)
+![Painting Master](../assets/2_painting_master2.png)

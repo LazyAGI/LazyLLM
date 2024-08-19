@@ -4,9 +4,9 @@ In this article, we will implement a writing robot application.
 
 > Through this section, you will learn the following key points of LazyLLM:
 >
-> - How to set a `formatter` for the model;
-> - How to implement multi-input concurrency based on `warp` control flow;
-> - How to use `bind` on functions to pass in parameters;
+> - How to set a [formatter][lazyllm.components.formatter.LazyLLMFormatterBase] for the model;
+> - How to implement multi-input concurrency based on [Warp][lazyllm.flow.Warp] control flow;
+> - How to use [bind](../Best Practice/flow.md#use-bind) on functions to pass in parameters;
 
 ## Design Concept
 
@@ -14,7 +14,7 @@ In order to achieve longer text content generation, we plan to use two robots fo
 
 Integrating the above ideas, we proceed with the following design:
 
-![Great Writer](../../assets/4_great_writer.svg)
+![Great Writer](../assets/4_great_writer.svg)
 
 UI-Web receives requests from users and sends them to the table of contents outline generation robot, which generates titles and their descriptions. Next, each title and its description are sent to the second robot, which generates the corresponding content. The synthesis stage will merge the titles and their content and return it to the client.
 
@@ -22,7 +22,7 @@ UI-Web receives requests from users and sends them to the table of contents outl
 
 Let's implement the above design concept based on LazyLLM.
 
-### Design Prompt Words
+### Designing Prompt
 
 According to the design, we need one model for drafting the outline and its description, and another model to write each outline based on the provided information. So we need to design two prompt words.
 
@@ -74,7 +74,7 @@ Receive as follows:
 writer_prompt = {"system": completion_prompt, "user": '{"title": "{title}", "describe": "{describe}"}'}
 ```
 
-### Setting the Model
+### Setting up the Model
 
 First is the outline robot:
 
@@ -82,9 +82,9 @@ First is the outline robot:
 outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
 ```
 
-Here we continue to use the `internlm2-chat-7b` model and set the prompt word. The prompt word can refer to: [Master Painter](painting_master.md)
+Here we continue to use the `internlm2-chat-7b` model and set the prompt word. Similar applications can be found at: [Master Painter](painting_master.md#use-prompt)
 
-It is worth noting that the `formatter` is set here, specifying the use of `JsonFormatter`, which can extract json from the model's output string.
+It is worth noting that the `formatter` is set here, specifying the use of [JsonFormatter][lazyllm.components.JsonFormatter], which can extract json from the model's output string.
 
 Since we designed the prompt word to require the outline robot to output a json-formatted string, it is necessary to parse the output here.
 
@@ -94,10 +94,10 @@ Then is the content generation robot:
 story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
 ```
 
-Here we use `TrainableModule`'s `share`, for more details see: [Multimodal Robot](multimodal_robot.md),
+Here we use [TrainableModule][lazyllm.module.TrainableModule]'s `share`, Similar applications can be found at: [Multimodal Robot](multimodal_robot.md#use_share),
 It allows the same model to be used as different robots with different prompt word templates.
 
-### Assemble the Application
+### Assembling the Application
 
 Let's assemble the above modules with control flow.
 
@@ -108,24 +108,26 @@ with pipeline() as ppl:
     ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
 ```
 
-In the above code, in addition to the commonly used `pipeline` control flow (for details see: [Master Painter](painting_master.md)),
-It is necessary to pay attention to the use of `warp` this control flow (the red line in the design diagram).
+In the above code, in addition to the commonly used [Pipeline][lazyllm.flow.Pipeline] control flow (Similar applications can be found at: [Master Painter](painting_master.md#use-pipeline)),
+It is necessary to pay attention to the use of [Warp][lazyllm.flow.Warp] this control flow (the red line in the design diagram).
 
 ```python
 warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
 ```
 
 It accepts any number of inputs and then sends them in parallel to the same branch. Since the number of json entries (i.e., the number of chapters) input by the outline robot in the previous step is uncertain,
-And it is generally multiple different outputs. As the next level of content generation robot, each input needs to be processed, so using `warp` is very appropriate.
+And it is generally multiple different outputs. As the next level of content generation robot, each input needs to be processed, so using [Warp][lazyllm.flow.Warp] is very appropriate.
 
 ```python
 ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
 ```
 
-Let's first focus on `bind` in this code (corresponding to the blue line in the design diagram). Here, `bind` is to send the outline output by the outline robot to `outlines` in the anonymous function.
-At the same time, the content output in the previous step is packed into a tuple by `*storys`. The final synthesized content is the title + content of each chapter.
+[](){#use-bind}
 
-### Start the Application
+Let's first focus on `bind` in this code (corresponding to the blue line in the design diagram). Here, `bind` is to send the outline output by the outline robot to `outlines` in the anonymous function.
+At the same time, the content output in the previous step is packed into a tuple by `*storys`. The final synthesized content is the title + content of each chapter. The usage introduction of bind can be found in detail at: [Parameter Binding](../Best Practice/flow.md#use-bind).
+
+### Starting the Application
 
 Finally, we will wrap the control flow `ppl` in a client and start deployment ( `start()` ), and keep the client open after deployment ( `wait()` ).
 

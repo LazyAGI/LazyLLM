@@ -68,6 +68,8 @@ assert p(1) == 16
 
 ##### Parameter Binding
 
+[](){#use-bind}
+
 Often, we do not want to rigidly pass the output of one stage as the input to the next. Sometimes, a downstream stage may require the output from a much earlier stage or even the input of the entire pipeline.
 In computation graph paradigms (like in Dify and LlamaIndex), functions are treated as nodes and data as edges, with behavior implemented by adding edges.
 However, LazyLLM simplifies this process, allowing you to achieve this through parameter binding. This enables the free flow of parameters from upstream to downstream within the pipeline.

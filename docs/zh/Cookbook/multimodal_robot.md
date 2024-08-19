@@ -1,13 +1,13 @@
-# 多模态机器人
+# 多模态聊天机器人
 
 我们将进一步增强我们的机器人！在上一节的 [绘画大师](painting_master.md) 的基础上，引入更多模型使它成为一个多模态机器人！让我们开始吧！
 
 > 通过本节您将学习到 LazyLLM 的以下要点：
 >
 > - 如何给同一个模型设置不同的提示词；
-> - 如何基于 `switch` 控制流来实现路由，我们将基于它结合 LLM 实现一个简单的意图识别机器人；
-> - 如何给 `TrainableModule` 指定部署的框架；
-> - 如何在控制流上使用 `bind` 来传入参数；
+> - 如何基于 [Switch][lazyllm.flow.Switch] 控制流来实现路由，我们将基于它结合 LLM 实现一个简单的意图识别机器人；
+> - 如何给 [TrainableModule][lazyllm.module.TrainableModule] 指定部署的框架；
+> - 如何在控制流上使用 [bind](../Best Practice/flow.md#use-bind) 来传入参数；
 
 ## 设计思路
 
@@ -26,7 +26,7 @@
 
 综合以上考虑，我们进行如下设计：
 
-![Multimodal bot](../../assets/3_multimodal-bot3.svg)
+![Multimodal bot](../assets/3_multimodal-bot3.svg)
 
 这里意图识别机器人为核心，通过它将用户的需求路由到六个功能机器人之一上。
 
@@ -78,7 +78,9 @@ base = TrainableModule('internlm2-chat-7b').prompt(agent_prompt)
 chat = base.share().prompt()
 ```
 
-这里我们用到了 `TrainableModule` 的 `share` 功能。它可以在原来机器人基础上设置不同的模板，它返回的对象也是 `TrainableModule`，但和原来的共享模型。
+[](){#use_share}
+
+这里我们用到了 `TrainableModule` 的 `share` 功能。它可以在原来机器人基础上设置不同的模板，它返回的对象也是 [TrainableModule][lazyllm.module.TrainableModule] 的，但和原来的共享模型。
 
 
 接下来是绘画和音乐生成机器人，也用 `share` 功能来实现不同功能的机器人：
@@ -88,8 +90,7 @@ painter = pipeline(base.share().prompt(painter_prompt), TrainableModule('stable-
 musician = pipeline(base.share().prompt(musician_prompt), TrainableModule('musicgen-small'))
 ```
 
-这里我们用到了 `pipeline` 的非上下文管理器用法（上下文管理器用法见：[绘画大师](painting_master.md)）。
-这里相当于沿用了上一节 [绘画大师](painting_master.md) 的代码。
+这里我们用到了 `pipeline` 的非上下文管理器用法（这里相当于沿用了上一节 [绘画大师](painting_master.md) 的代码，其使用的是 [Pipeline][lazyllm.flow.Pipeline] 上下文管理器用法。
 
 对于剩下的多模态模型，我们都只用指定它的名字即可调用：
 
@@ -128,13 +129,13 @@ with switch(judge_on_full_input=False).bind(_0, ppl.input) as ppl.sw:
 
 对于这行代码：
 
-- 我们首先关注 `bind(_0, ppl.input)`, 其中 `_0` 是上一步输出的结果第0个参数，即意图列表中的一个意图。`ppl.input`是用户的输入（对应设计图中红色线条）。所以这行代码是给`switch`控制流设置了两个参数，第一个参数是意图，第二个参数是用户的输入。
+- 我们首先关注 `bind(_0, ppl.input)`, 其中 `_0` 是上一步输出的结果第0个参数，即意图列表中的一个意图。`ppl.input`是用户的输入（对应设计图中红色线条）。所以这行代码是给 `switch` 控制流设置了两个参数，第一个参数是意图，第二个参数是用户的输入。更多 `bind` 使用方法参见：[参数绑定](../Best Practice/flow.md#use-bind)
 
 - 然后`judge_on_full_input=False`，可以将输入分为两部分，第一部分是作为判断条件，剩下部分作为分支的输入，否则如果为 `True` 就会把整个输入作为判断条件和分支输入。
 
-- 最后我们将实例化后的 `switch` 也添加到了 `ppl` 上：`ppl.sw`。
+- 最后我们将实例化后的 `switch` 也添加到了 `ppl` 上：`ppl.sw`。更多参见：[Switch][lazyllm.flow.Switch]。
 
-剩下代码路基本一致，都是设置条件和对应路由分支，以下面代码为例：
+剩下代码基本一致，都是设置条件和对应路由分支，以下面代码为例：
 
 ```python
 ppl.sw.case[chatflow_intent_list[0], chat]
@@ -189,4 +190,4 @@ WebModule(ppl, history=[chat], audio=True, port=8847).start().wait()
 ```
 效果如下：
 
-![Multimodal Robot](../../assets/3_multimodal-bot2.png)
+![Multimodal Robot](../assets/3_multimodal-bot2.png)

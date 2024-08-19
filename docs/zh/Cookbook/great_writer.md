@@ -4,9 +4,9 @@
 
 > 通过本节您将学习到 LazyLLM 的以下要点：
 >
-> - 如何给模型设置 `formatter`；
-> - 如何基于 `warp` 控制流来实现多输入并发；
-> - 如何在函数上使用 `bind` 来传入参数；
+> - 如何给模型设置 [formatter][lazyllm.components.formatter.LazyLLMFormatterBase]；
+> - 如何基于 [Warp][lazyllm.flow.Warp] 控制流来实现多输入并发；
+> - 如何在函数上使用 [bind](../Best Practice/flow.md#use-bind) 来传入参数；
 
 ## 设计思路
 
@@ -14,7 +14,7 @@
 
 综合以上想法，我们进行如下设计：
 
-![Great Writer](../../assets/4_great_writer.svg)
+![Great Writer](../assets/4_great_writer.svg)
 
 UI-Web 接收来自用户的请求发送给目录大纲生成机器人，该机器人生成标题及其描述。接下来每个标题及其描述被发给第二个机器人，第二个机器人生成对应的内容。合成阶段会融合标题及其内容返回给客户端。
 
@@ -80,9 +80,9 @@ writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "descr
 outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
 ```
 
-这里继续使用了 `internlm2-chat-7b` 模型，并且设置了提示词。提示词可参考：[绘画大师](painting_master.md)
+这里继续使用了 `internlm2-chat-7b` 模型，并且设置了提示词。类似应用可参见：[绘画大师](painting_master.md#use-prompt)
 
-值得注意的是，这里进行了 `formatter` 的设置，指定了使用 `JsonFormatter`， 他可以从模型输出的字符串中提取出 json。
+值得注意的是，这里进行了 `formatter` 的设置，指定了使用 [JsonFormatter][lazyllm.components.JsonFormatter]， 他可以从模型输出的字符串中提取出 json。
 
 由于我们在提示词设计的时候要求大纲机器人输出的就是 json 格式的字符串，所以在这里就需要对输出进行解析。
 
@@ -92,7 +92,7 @@ outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonForm
 story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
 ```
 
-这里使用了 `TrainableModule` 的 `share`，详细介绍可见：[多模态机器人](multimodal_robot.md)，
+这里使用了 [TrainableModule][lazyllm.module.TrainableModule] 的 `share`，类似应用可见：[多模态机器人](multimodal_robot.md#use_share)，
 它可以让同一个模型用不同的提示词模板来作为不同的机器人。
 
 ### 组装应用
@@ -106,22 +106,24 @@ with pipeline() as ppl:
     ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
 ```
 
-上面代码中，除了常用的 `pipeline` 控制流(详见：[绘画大师](painting_master.md))，
-需要关注的是使用了 `warp` 这个控制流（设计图中的红色线条）。
+上面代码中，除了常用的 [Pipeline][lazyllm.flow.Pipeline] 控制流(类似应用见：[绘画大师](painting_master.md#use-pipeline))，
+需要关注的是使用了 [Warp][lazyllm.flow.Warp] 这个控制流（设计图中的红色线条）。
 
 ```python
 warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
 ```
 
 它接受任意多个输入，然后并行地送入到同一个分支上。由于上一步骤大纲机器人输入的 json 对数（即章节的个数）是不确定的，
-而且一般是多个不同的输出。作为下一级的内容生成机器人，每个输入都需要进行处理，所以用 `warp` 就再合适不过了。
+而且一般是多个不同的输出。作为下一级的内容生成机器人，每个输入都需要进行处理，所以用 [Warp][lazyllm.flow.Warp] 就再合适不过了。
 
 ```python
 ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
 ```
 
+[](){#use-bind}
+
 这个代码我们先来关注 `bind`（对应设计图中的蓝色线条）。这里的 `bind` 是将大纲机器人输出的大纲送入给匿名函数中的 `outlines` 上。
-与此同时，上一步输出的每段内容被 `*storys` 打包为一个元组。最终合成的内容就是每一章的小标题+内容。
+与此同时，上一步输出的每段内容被 `*storys` 打包为一个元组。最终合成的内容就是每一章的小标题+内容。 `bind` 用法介绍详见：[参数绑定](../Best Practice/flow.md#use-bind)
 
 ### 启动应用
 
