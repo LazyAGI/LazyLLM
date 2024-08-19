@@ -142,7 +142,7 @@ import lazyllm                                           #(1)
 
 chat = lazyllm.OnlineChatModule()                        #(2)
 
-# history has the form of [[query1, answer1], [quer2, answer2], ...]
+# history has the form of [[query1, answer1], [query2, answer2], ...]
 history = []                                             #(7)
 
 while True:
