@@ -43,7 +43,7 @@ pip3 install docstring_parser pyjwt httpx==0.19.0 # 运行示例所需的依赖
 把 `LazyLLM` 加入到模块搜索路径中：
 
 ```bash
-export PYTHONPATH=$PWD:$PYHONPATH
+export PYTHONPATH=$PWD:$PYTHONPATH
 ```
 
 这样我们在任意目录下都可以找到它。
