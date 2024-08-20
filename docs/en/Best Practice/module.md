@@ -98,18 +98,19 @@ You can make one ``Module`` a ``Submodule`` of another ``Module`` in the followi
     > **Note**:
     >
     > - When a flow is passed as a constructor argument to ``ActionModule`` or ``ServerModule``, any ``Module`` within it will also become a ``Submodule`` of the ``ActionModule`` or ``ServerModule``. Here's an example:
+    > 
+    >          >>> m1 = MyModule('m1')
+    >          >>> m2 = MyModule('m2')
+    >          >>> m3 = MyModule('m3')
+    >          >>> am = lazyllm.ActionModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
+    >          >>> am.submodules
+    >          [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
+    >          >>> sm = lazyllm.ServerModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
+    >          >>> sm.submodules
+    >          [<Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>]
+    >          >>> sm.submodules[0].submodules
+    >          [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
     >
-    >       >>> m1 = MyModule('m1')
-    >       >>> m2 = MyModule('m2')
-    >       >>> m3 = MyModule('m3')
-    >       >>> am = lazyllm.ActionModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
-    >       >>> am.submodules
-    >       [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
-    >       >>> sm = lazyllm.ServerModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
-    >       >>> sm.submodules
-    >       [<Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>]
-    >       >>> sm.submodules[0].submodules
-    >       [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
     > - When directly printing the ``repr`` of a ``Module``, it will display its hierarchical structure, including all its ``Submodules``. Continuing from the previous example:
     >
     >           >>> sm
