@@ -99,17 +99,18 @@ LazyLLM实现了一个 ``Module`` 的注册器，利用它可以很方便的将�
     >
     > - 当flow作为 ``ActionModule`` 或 ``ServerModule`` 的构造参数时，若其中的存在 ``Module`` ，也会变成  ``ActionModule`` 或 ``ServerModule`` 的 ``SubModule`` 。下面给出一个例子：
     >
-    >       >>> m1 = MyModule('m1')
-    >       >>> m2 = MyModule('m2')
-    >       >>> m3 = MyModule('m3')
-    >       >>> am = lazyllm.ActionModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
-    >       >>> am.submodules
-    >       [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
-    >       >>> sm = lazyllm.ServerModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
-    >       >>> sm.submodules
-    >       [<Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>]
-    >       >>> sm.submodules[0].submodules
-    >       [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
+    >          >>> m1 = MyModule('m1')
+    >          >>> m2 = MyModule('m2')
+    >          >>> m3 = MyModule('m3')
+    >          >>> am = lazyllm.ActionModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
+    >          >>> am.submodules
+    >          [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
+    >          >>> sm = lazyllm.ServerModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
+    >          >>> sm.submodules
+    >          [<Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>]
+    >          >>> sm.submodules[0].submodules
+    >          [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
+    >
     > - 直接对 ``Module`` 打印 ``repr`` 时，会以层级结构的形式展示其所有的submodule。接上一个例子：
     >
     >           >>> sm
