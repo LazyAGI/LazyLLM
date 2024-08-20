@@ -1,7 +1,7 @@
 import os
 import shutil
 import lazyllm
-from .model_mapping import model_name_mapping, model_provider
+from .model_mapping import model_name_mapping, model_provider, model_groups
 
 lazyllm.config.add('model_source', str, 'modelscope', 'MODEL_SOURCE')
 lazyllm.config.add('model_cache_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'model'),
@@ -54,8 +54,22 @@ class ModelManager():
         else:
             return dict()
 
+    def _try_add_mapping(self, model):
+        if model.lower() in model_name_mapping.keys():
+            return
+        matched_model_prefix = next((key for key in model_provider if model.lower().startswith(key)), None)
+        if matched_model_prefix and self.model_source in model_provider[matched_model_prefix]:
+            matching_keys = [key for key in model_groups.keys() if key in model]
+            if matching_keys:
+                matched_groups = max(matching_keys, key=len)
+                model_name_mapping[model] = {
+                    "prompt_keys": model_groups[matched_groups]["prompt_keys"],
+                    "source": {k: v + '/' + model for k, v in model_provider[matched_model_prefix].items()}
+                }
+
     def download(self, model=''):
         assert isinstance(model, str), "model name should be a string."
+        self._try_add_mapping(model)
         if len(model) == 0 or model[0] in (os.sep, '.', '~'): return model  # Dummy or local model.
 
         model_at_path = self._model_exists_at_path(model)
