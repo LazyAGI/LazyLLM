@@ -129,7 +129,6 @@ Moving on to Part 2, which mainly involves creating a pipeline for the entire pr
 
 ![Demo RAG](../assets/rag-demo.png)
 
-
 * 2.1 Adds retriever1, which uses SentenceSplitter to split documents with a chunk_size of 1024 and a chunk_overlap of 100, and uses bm25_chinese to sort documents by similarity, discarding documents with a similarity less than 0.003, and finally takes the top 3 most similar documents; retriever2 uses the custom sentences group, calculates similarity using cosine, and takes the top 3 most similar documents. For the interface usage of Retriever, you can refer to [Retriever][lazyllm.tools.Retriever].
 
 * 2.2 The Reranker module combines and sorts the results from the two Retriever modules in 2.1, taking the best-ranked document to pass to the large model as a reference for answering. Note that the user's input is also passed in for the Reranker to consider through the bind() function. The interface for Reranker can be referenced at [Reranker][lazyllm.tools.Reranker].
