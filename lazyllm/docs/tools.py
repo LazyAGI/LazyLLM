@@ -56,10 +56,10 @@ add_chinese_doc('Document.create_node_group', '''
 创建一个由指定规则生成的 node group。
 
 Args:
-    name (str)：node group 的名称。
-    transform (Callable)：将 node 转换成 node group 的转换规则，函数原型是 `(DocNode, group_name, **kwargs) -> List[DocNode]`。目前内置的有 [SentenceSplitter][lazyllm.tools.SentenceSplitter]。用户也可以自定义转换规则。
-    parent (str)：需要进一步转换的节点。转换之后得到的一系列新的节点将会作为该父节点的子节点。如果不指定则从根节点开始转换。
-    kwargs：和具体实现相关的参数。
+    name (str): node group 的名称。
+    transform (Callable): 将 node 转换成 node group 的转换规则，函数原型是 `(DocNode, group_name, **kwargs) -> List[DocNode]`。目前内置的有 [SentenceSplitter][lazyllm.tools.SentenceSplitter]。用户也可以自定义转换规则。
+    parent (str): 需要进一步转换的节点。转换之后得到的一系列新的节点将会作为该父节点的子节点。如果不指定则从根节点开始转换。
+    kwargs: 和具体实现相关的参数。
 ''')
 
 add_example('Document.create_node_group', '''
@@ -81,7 +81,7 @@ add_chinese_doc('Document.find_parent', '''
 查找指定节点的父节点。
 
 Args:
-    group (str)：需要查找的节点名称
+    group (str): 需要查找的节点名称
 ''')
 
 add_example('Document.find_parent', '''
@@ -105,7 +105,7 @@ add_chinese_doc('Document.find_children', '''
 查找指定节点的子节点。
 
 Args:
-    group (str)：需要查找的名称
+    group (str): 需要查找的名称
 ''')
 
 add_example('Document.find_children', '''
@@ -132,8 +132,8 @@ Args:
 
 **Detailed explanation of reranker types**
 
-    Reranker: This registered reranking function instantiates a SentenceTransformerRerank reranker with a specified model and top_n parameter. It is designed to rerank nodes based on sentence transformer embeddings.\n
-    KeywordFilter: This registered reranking function instantiates a KeywordNodePostprocessor with specified required and excluded keywords. It filters nodes based on the presence or absence of these keywords.
+  - Reranker: This registered reranking function instantiates a SentenceTransformerRerank reranker with a specified model and top_n parameter. It is designed to rerank nodes based on sentence transformer embeddings.\n
+  - KeywordFilter: This registered reranking function instantiates a KeywordNodePostprocessor with specified required and excluded keywords. It filters nodes based on the presence or absence of these keywords.
 ''')
 
 add_chinese_doc('Reranker', '''\
@@ -145,8 +145,8 @@ Args:
 
 详细解释排序器类型
 
-  - Reranker：实例化一个具有指定模型和 top_n 参数的 SentenceTransformerRerank 重排序器。
-  - KeywordFilter：实例化一个具有指定必需和排除关键字的 KeywordNodePostprocessor。它根据这些关键字的存在或缺失来过滤节点。
+  - Reranker: 实例化一个具有指定模型和 top_n 参数的 SentenceTransformerRerank 重排序器。
+  - KeywordFilter: 实例化一个具有指定必需和排除关键字的 KeywordNodePostprocessor。它根据这些关键字的存在或缺失来过滤节点。
 ''')
 
 add_example('Reranker', '''
@@ -231,8 +231,8 @@ add_chinese_doc('SentenceSplitter', '''
 将句子拆分成指定大小的块。可以指定相邻块之间重合部分的大小。
 
 Args:
-    chunk_size (int):拆分之后的块大小
-    chunk_overlap (int):相邻两个块之间重合的内容长度
+    chunk_size (int): 拆分之后的块大小
+    chunk_overlap (int): 相邻两个块之间重合的内容长度
 ''')
 
 add_example('SentenceSplitter', '''
@@ -256,9 +256,9 @@ add_chinese_doc('LLMParser', '''
 一个文本摘要和关键词提取器，负责分析用户输入的文本，并根据请求任务提供简洁的摘要或提取相关关键词。
 
 Args:
-    llm (TrainableModule):可训练的模块
-    language (str):语言种类，目前只支持中文（zh）和英文（en）
-    task_type (str):目前支持两种任务：摘要（summary）和关键词抽取（keywords）。
+    llm (TrainableModule): 可训练的模块
+    language (str): 语言种类，目前只支持中文（zh）和英文（en）
+    task_type (str): 目前支持两种任务：摘要（summary）和关键词抽取（keywords）。
 ''')
 
 add_example('LLMParser', '''
@@ -279,7 +279,7 @@ add_chinese_doc('LLMParser.transform', '''
 在指定的文档上执行设定的任务。
 
 Args:
-    node (DocNode):需要执行抽取任务的文档。
+    node (DocNode): 需要执行抽取任务的文档。
 ''')
 
 add_example('LLMParser.transform', '''
@@ -744,7 +744,7 @@ add_english_doc(
     "SQLiteTool.create_tables",
     """\
 Create tables According to tables json dict.
-THis JSON format should be as:{$TABLE_NAME:{"fields":{$COLUMN_NAME:{"type":("REAL"/"TEXT"/"INT"), "comment":"..."} } } }
+THis JSON format should be as: {$TABLE_NAME:{"fields":{$COLUMN_NAME:{"type":("REAL"/"TEXT"/"INT"), "comment":"..."} } } }
 """,
 )
 
