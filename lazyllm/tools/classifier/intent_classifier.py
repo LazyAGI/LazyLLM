@@ -1,7 +1,7 @@
 # flake8: noqa E501
 from lazyllm.module import ModuleBase
 from lazyllm.components import AlpacaPrompter
-from lazyllm import pipeline, globals
+from lazyllm import pipeline, globals, switch
 from lazyllm.tools.utils import chat_history_to_str
 from typing import Dict, Union, Any, List
 import string
@@ -58,21 +58,25 @@ ${input}
 
 
 class IntentClassifier(ModuleBase):
-    def __init__(self, llm, intent_list: list, return_trace: bool = False) -> None:
+    def __init__(self, llm, intent_list: list = None, return_trace: bool = False) -> None:
         super().__init__(return_trace=return_trace)
+        self._intent_list = intent_list or []
+        self._llm = llm
+        if self._intent_list:
+            self._init()
 
+    def _init(self):
         def choose_prompt():
             # Use chinese prompt if intent elements have chinese character, otherwise use english version
-            for ele in intent_list:
+            for ele in self._intent_list:
                 for ch in ele:
                     # chinese unicode range
                     if "\u4e00" <= ch <= "\u9fff":
                         return ch_prompt_classifier_template
             return en_prompt_classifier_template
 
-        self._intent_list = intent_list
         self._prompter = AlpacaPrompter(choose_prompt()).pre_hook(self.intent_promt_hook)
-        self._llm = llm.share(prompt=self._prompter)
+        self._llm = self._llm.share(prompt=self._prompter)
         self._impl = pipeline(self._llm, self.post_process_result)
 
     def intent_promt_hook(
@@ -100,3 +104,22 @@ class IntentClassifier(ModuleBase):
         if llm_chat_history is not None and self._llm._module_id not in globals["chat_history"]:
             globals["chat_history"][self._llm._module_id] = llm_chat_history
         return self._impl(input)
+
+    def __enter__(self):
+        assert not self._intent_list, 'Intent list is already set'
+        self._sw = switch()
+        self._sw.__enter__(self)
+
+    @property
+    def case(self):
+        return switch.Case(self)
+
+    # used by switch.Case
+    def _add_case(self, cond, func):
+        assert isinstance(cond, str), 'intent must be string'
+        self._intent_list.append(cond)
+        self._sw.case[cond, func]
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._sw.__exit__(exc_type, exc_val, exc_tb)
+        self._impl = pipeline(self._impl, self._sw)
