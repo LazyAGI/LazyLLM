@@ -92,7 +92,7 @@ print(f"ret: {ret}")
 # The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.
 ```
 
-在上面的例子中，如果输入的query触发了 function call，则 [FunctionCall][lazyllm.tools.agent.FunctionCall] 会返回一个列表对象，而 [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] 会迭代执行模型调用和工具调用，直到模型认为信息足够给出一个结论，或者超出了迭代次数，迭代次数通过 max_retries 设置，默认值为5。
+在上面的例子中，如果输入的 query 触发了 function call，则 [FunctionCall][lazyllm.tools.agent.FunctionCall] 会返回一个列表对象，而 [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] 会迭代执行模型调用和工具调用，直到模型认为信息足够给出一个结论，或者超出了迭代次数，迭代次数通过 max_retries 设置，默认值为5。
 
 > **注意**：
 >
