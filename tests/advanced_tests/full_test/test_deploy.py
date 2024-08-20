@@ -1,13 +1,44 @@
+import os
 import json
 import time
 import pytest
 import httpx
 import random
+from functools import wraps
 from gradio_client import Client
 
 import lazyllm
 from lazyllm import deploy
 from lazyllm.launcher import cleanup
+
+def reset_env(func):
+
+    env_vars_to_reset = [
+        "LAZYLLM_OPENAI_API_KEY",
+        "LAZYLLM_KIMI_API_KEY",
+        "LAZYLLM_GLM_API_KEY",
+        "LAZYLLM_QWEN_API_KEY",
+        "LAZYLLM_SENSENOVA_API_KEY",
+        "LAZYLLM_SENSENOVA_SECRET_KEY",
+    ]
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        original_values = {var: os.environ.get(var, None) for var in env_vars_to_reset}
+        for var in env_vars_to_reset:
+            os.environ.pop(var, None)
+            base_name = var[8:]
+            lazyllm.config.add(base_name.lower(), str, '', base_name)
+        result = func(*args, **kwargs)
+        for var, value in original_values.items():
+            if value is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = value
+                base_name = var[8:]
+                lazyllm.config.add(base_name.lower(), str, '', base_name)
+        return result
+    return wrapper
 
 class TestDeploy(object):
 
@@ -82,6 +113,7 @@ class TestDeploy(object):
         res = m('你好啊，很高兴认识你。')
         assert "sounds" in json.loads(res)
 
+    @reset_env
     def test_AutoModel(self):
         # No model_name and key
         chat = lazyllm.AutoModel()
