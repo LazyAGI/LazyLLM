@@ -121,7 +121,7 @@ Initially, we specify a prompter for this application, which helps guide the AI 
 
 Next, we convert the content of local documents into vectors, primarily done by the [Document][lazyllm.tools.Document] class. It traverses the specified directory, parses documents according to specified rules, and then uses the embedding module to convert them into vectors and save them.
 
-Then, we create a node group named sentences, specifying SentenceSplitter as the conversion rule, which splits documents into chunks of a specified size with some overlap between adjacent chunks. For the usage of SentenceSplitter, you can refer to [SentenceSplitter][lazyllm.tools.SentenceSplitter].
+Then, we create a node group named `sentences`, specifying `SentenceSplitter` as the conversion rule, which splits documents into chunks of a specified size with some overlap between adjacent chunks. For the usage of SentenceSplitter, you can refer to [SentenceSplitter][lazyllm.tools.SentenceSplitter].
 
 The history field is used to save the context content.
 
