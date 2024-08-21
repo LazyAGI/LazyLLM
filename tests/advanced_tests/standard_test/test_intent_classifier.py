@@ -15,6 +15,16 @@ class TestIntentClassifier(object):
         assert ic('What is the difference between stocks and funds') == 'Financial Knowledge Q&A'
         assert ic('Check the work location of Macro in the Technology Department') == 'Employee Information Query'
 
+    def test_intent_classifier_example(self):
+        intent_list = ["Chat", "Financial Knowledge Q&A", "Employee Information Query", "Weather Query"]
+        ic = IntentClassifier(self._llm, intent_list, examples=[
+            ['Who are you', 'Chat'], ['What is the weather today', 'Weather Query']])
+        ic.start()
+        assert ic('What is the weather today') == 'Weather Query'
+        assert ic('Who are you') == 'Chat'
+        assert ic('What is the difference between stocks and funds') == 'Financial Knowledge Q&A'
+        assert ic('Check the work location of Macro in the Technology Department') == 'Employee Information Query'
+
     def test_intent_classifier_enter(self):
         with IntentClassifier(self._llm) as ic:
             ic.case['Weather Query', lambda x: '38.5°C']
