@@ -1,7 +1,7 @@
 # flake8: noqa E501
 from lazyllm.module import ModuleBase
 from lazyllm.components import AlpacaPrompter
-from lazyllm import pipeline, globals, switch
+from lazyllm import pipeline, globals, switch, _0, root
 from lazyllm.tools.utils import chat_history_to_str
 from typing import Dict, Union, Any, List
 import string
@@ -122,4 +122,5 @@ class IntentClassifier(ModuleBase):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._sw.__exit__(exc_type, exc_val, exc_tb)
-        self._impl = pipeline(self._impl, self._sw)
+        self._init()
+        self._impl = pipeline(self._impl, self._sw.bind(_0, root.input))
