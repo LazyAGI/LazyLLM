@@ -357,21 +357,24 @@ class Warp(Parallel):
     @property
     def asdict(self): raise NotImplementedError
 
-# switch(exp):
+# switch(conversion(input)):
 #     case cond1: input -> module11 -> ... -> module1N -> out; break
 #     case cond2: input -> module21 -> ... -> module2N -> out; break
 #     case cond3: input -> module31 -> ... -> module3N -> out; break
 class Switch(LazyLLMFlowsBase):
     # Switch({cond1: M1, cond2: M2, ..., condN: MN})
     # Switch(cond1, M1, cond2, M2, ..., condN, MN)
-    def __init__(self, *args, post_action=None, judge_on_full_input=True, **kw):
+    def __init__(self, *args, conversion=None, post_action=None, judge_on_full_input=True):
         if len(args) == 1 and isinstance(args[0], dict):
             self.conds, items = list(args[0].keys()), list(args[0].values())
         else:
             self.conds, items = list(args[0::2]), args[1::2]
-        items = {repr(k): v for k, v in zip(self.conds, items)}
-        super().__init__(**items, post_action=post_action, **kw)
+        super().__init__(*items, post_action=post_action)
         self._judge_on_full_input = judge_on_full_input
+        self._set_conversion(conversion)
+
+    def _set_conversion(self, conversion):
+        self._conversion = conversion
 
     def _run(self, __input, **kw):
         exp = __input
@@ -379,6 +382,8 @@ class Switch(LazyLLMFlowsBase):
             assert isinstance(__input, tuple) and len(__input) >= 2
             exp = __input[0]
             __input = __input[1] if len(__input) == 2 else __input[1:]
+        if self._conversion: exp = self._conversion(exp)
+
         for idx, cond in enumerate(self.conds):
             if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or cond == 'default':
                 return self.invoke(self._items[idx], __input, **kw)
@@ -389,13 +394,14 @@ class Switch(LazyLLMFlowsBase):
 
         def __getitem__(self, key):
             if isinstance(key, slice):
-                assert key.start and callable(key.step) and key.stop is None, \
-                    f'Only [cond::func] is allowed in case, but you give {key}'
-                self._m._add_case(key.start, key.step)
-            else:
-                assert isinstance(key, tuple) and len(key) == 2, \
-                    f'Only [cond, func] is allowed in case, but you give {key}'
-                self._m._add_case(key[0], key[1])
+                if key.start:
+                    if (callable(key.step) and key.stop is None):
+                        return self._m._add_case(key.start, key.step)
+                    elif (key.step is None and callable(key.stop)):
+                        return self._m._add_case(key.start, key.stop)
+            elif isinstance(key, tuple) and len(key) == 2 and callable(key[1]):
+                return self._m._add_case(key[0], key[1])
+            raise RuntimeError(f'Only [cond::func], [cond:func] or [cond, func] is allowed in case, but you give {key}')
 
     @property
     def case(self): return Switch.Case(self)

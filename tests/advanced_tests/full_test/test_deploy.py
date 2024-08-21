@@ -27,16 +27,14 @@ def reset_env(func):
         original_values = {var: os.environ.get(var, None) for var in env_vars_to_reset}
         for var in env_vars_to_reset:
             os.environ.pop(var, None)
-            base_name = var[8:]
-            lazyllm.config.add(base_name.lower(), str, '', base_name)
+            lazyllm.config.refresh(var)
         result = func(*args, **kwargs)
         for var, value in original_values.items():
             if value is None:
                 os.environ.pop(var, None)
             else:
                 os.environ[var] = value
-                base_name = var[8:]
-                lazyllm.config.add(base_name.lower(), str, '', base_name)
+                lazyllm.config.refresh(var)
         return result
     return wrapper
 

@@ -1,9 +1,9 @@
-## FunctionCall
+# FunctionCall
 
-In order to increase the capabilities of the model so that it can not only generate text, but also perform specific tasks, query databases, interact with external system, etc. We define the FunctionCall class to implement the tool calling capabilities of the model.
-You can refer to the FunctionCall API documentation as [functionCall][lazyllm.tools.agent.FunctionCall]. Next, i will start with a simple example to introduce the design ideas of FunctionCall in LazyLLM.
+In order to increase the capabilities of the model so that it can not only generate text, but also perform specific tasks, query databases, interact with external system, etc. We define the [FunctionCall][lazyllm.tools.agent.FunctionCall] class to implement the tool calling capabilities of the model.
+You can refer to the API documentation as [FunctionCall][lazyllm.tools.agent.FunctionCall]. Next, i will start with a simple example to introduce the design ideas of [FunctionCall][lazyllm.tools.agent.FunctionCall] in LazyLLM.
 
-### FunctionCall Quick Start
+## FunctionCall Quick Start
 
 Suppose we are developing an application for querying the weather. Since weather information is time-sensitive, it is impossible to generate specific weather information simply by relying on a large model. This requires the model to call an external weather query tool to obtain realtime weather information. Now we define two weather query functions as follows:
 
@@ -24,7 +24,7 @@ def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]="f
     elif 'paris' in location.lower():
         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
     elif 'beijing' in location.lower():
-        return json.dumps({'location': 'Beijing', 'temperature': '90', 'unit': 'Fahrenheit'})
+        return json.dumps({'location': 'Beijing', 'temperature': '90', 'unit': 'fahrenheit'})
     else:
         return json.dumps({'location': location, 'temperature': 'unknown'})
 
@@ -64,48 +64,49 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 ```
 
 The registration method is very simple. After importing `fc_register`, you can add it directly on the defined function name as a decorator. It should be noted here that the default group `tool` should be specified when adding.
-Then we can define the model and use FunctionCall, as shown below:
+Then we can define the model and use [FunctionCall][lazyllm.tools.agent.FunctionCall], as shown below:
 
 ```python
 import lazyllm
 from lazyllm.tools import FunctionCall
 llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source="openai")
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
-fc = FuncationCall(llm, tools)
+fc = FunctionCall(llm, tools)
 query = "What's the weather like today in celsius in Tokyo and Paris."
 ret = fc(query)
 print(f"ret: {ret}")
 # ["What's the weather like today in celsius in Tokyo and Paris.", {'role': 'assistant', 'content': '', 'tool_calls': [{'id': '93d7e8e8721b4d22b1cb9aa14234ad70', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': {'location': 'Tokyo', 'unit': 'celsius'}}}]}, [{'role': 'tool', 'content': '{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', 'tool_call_id': '93d7e8e8721b4d22b1cb9aa14234ad70', 'name': 'get_current_weather'}]]
 ```
 
-The result is output as a list, the first element is the current input, the second element is the output of the model, and the third element is the output of the tool. Because FunctionCall is a single-round tool call process, the returned result includes not only the tool's return result, but also the current round's input and model results. If the tool call is not triggered, a string is returned directly. If you want to execute a complete function call, you need to use FunctionCallAgent, as shown below:
+The result is output as a list, the first element is the current input, the second element is the output of the model, and the third element is the output of the tool. Because [FunctionCall][lazyllm.tools.agent.FunctionCall] is a single-round tool call process, the returned result includes not only the tool's return result, but also the current round's input and model results. If the tool call is not triggered, a string is returned directly. If you want to execute a complete function call, you need to use [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent], as shown below:
 
 ```python
 import lazyllm
 from lazyllm.tools import FunctionCallAgent
 llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source="openai")
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
-agent = FuncationCallAgent(llm, tools)
+agent = FunctionCallAgent(llm, tools)
 query = "What's the weather like today in celsius in Tokyo and Paris."
 ret = agent(query)
 print(f"ret: {ret}")
 # The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.
 ```
 
-In the above example, if the input query triggers a function call, FunctionCall will return a list object, and FunctionCallAgent will iteratively execute the model call and tool call until the model considers that the information is sufficient to make a conclusion, or the number of iterations is exceeded. The number of iterations is set by max_retries, and the default value is 5.
+In the above example, if the input query triggers a function call, [FunctionCall][lazyllm.tools.agent.FunctionCall] will return a list object, and [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] will iteratively execute the model call and tool call until the model considers that the information is sufficient to make a conclusion, or the number of iterations is exceeded. The number of iterations is set by max_retries, and the default value is 5.
 
 > Note:
 >
 > - When registering a function or tool, you must specify the default group `tool`, otherwise the model will not be able to use the corresponding tool.
-> - When using the model, thers is no need to distinguish between TrainableModule and OnlineChatModule, because the output types of TrainableModule and OnlineChatModule are designed to the same.
+> - When using the model, thers is no need to distinguish between [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule], because the output types of [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] are designed to the same.
 
-### Design Concept of FunctionCall
+## Design Concept of FunctionCall
+The design process of [FunctionCall][lazyllm.tools.agent.FunctionCall] is carried out in a bottom-up manner. First, since [FunctionCall][lazyllm.tools.agent.FunctionCall] must call LLM, the output format of the model must be consistent. Therefore, the outputs of [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] are aligned. Then a single round of [FunctionCall][lazyllm.tools.agent.FunctionCall] is implemented, that is, LLM and tools are called once. Finally, the complete [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] is implemented, that is, [FunctionCall][lazyllm.tools.agent.FunctionCall] is iterated multiple times until the model iteration is completed or the maximum number of iterations is exceeded.
 
-#### TrainableModule and OnlineChatModule output alignment
+### TrainableModule and OnlineChatModule output alignment
 
-1. Since the output of TrainableModule is of string type, and the output of OnlineChatModule is in json format, in order to make FunctionCall unaware of the model type when using the model, the output formats of the two models need to be unified.
+1. Since the output of [TrainableModule][lazyllm.module.TrainableModule] is of string type, and the output of [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] is in json format, in order to make [FunctionCall][lazyllm.tools.agent.FunctionCall] unaware of the model type when using the model, the output formats of the two models need to be unified.
 
-2. First, for TrainableModule, specify the format of the model output tool_calls through prompt, and then parse the model output to obtain only the part generated by the model, that is, the real output of the model. For example:
+2. First, for [TrainableModule][lazyllm.module.TrainableModule], specify the format of the model output tool_calls through prompt, and then parse the model output to obtain only the part generated by the model, that is, the real output of the model. For example:
 ```text
 '\nI need to use the "get_current_weather" function to get the current weather in Tokyo and Paris. I will call the function twice, once for Tokyo and once for Paris.<|action_start|><|plugin|>\n{"name": "get_current_weather", "parameters": {"location": "Tokyo"}}<|action_end|><|im_end|>'
 ```
@@ -118,7 +119,7 @@ content<|tool_calls|>tool_calls
 ```text
 '[{"id": "xxxx", "type": "function", "function": {"name": "func_name", "arguments": {"param1": "val1", "param2": "val2"}}}]'
 ```
-> - Because there is no `id` field here is a unique random number generated to align with the OnlineChatModule.
+> - Because there is no `id` field here is a unique random number generated to align with the [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule].
 >
 > - If no tool call is triggered, that is, there is no tool_cals and separator in the output, only content. If the tool call is triggered, but there is no content, the output does not contain content, only <|tool_calls>tool_calls.
 
@@ -127,7 +128,7 @@ content<|tool_calls|>tool_calls
 	'I need to use the "get_current_weather" function to get the current weather in Tokyo and Paris. I will call the function twice, once for Tokyo and once for Paris.<|tool_calls|>[{"id": "bd75399403224eb8972640eabedd0d46", "type": "function", "function":{"name": "get_current_weather", "arguments": "{\"location\": \"Tokyo\"}"}}]'
 	```
 
-4. Secondly, for OnlineChatModule, since the online model supports streaming and non-streaming output, and whether FunctionCall is triggered can only be known after receiving all the information, for the streaming output of OnlineChatModule, it is necessary to convert stream to non-streaming first, that is, if the model is streaming output, then wait until all the messages are received before doing subsequent processing. For example:
+4. Secondly, for [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule], since the online model supports streaming and non-streaming output, and whether [FunctionCall][lazyllm.tools.agent.FunctionCall] is triggered can only be known after receiving all the information, for the streaming output of [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule], it is necessary to convert stream to non-streaming first, that is, if the model is streaming output, then wait until all the messages are received before doing subsequent processing. For example:
 ```text
 {
   "id": "chatcmpl-bbc37506f904440da85a9bad1a21494e",
@@ -168,7 +169,7 @@ content<|tool_calls|>tool_calls
 '<|tool_calls|>[{"id": "get_current_weather:0","type":"function","function":{"name":"get_current_weather","arguments":"{\n\"location\":\"Tokyo\",\n\"unit\":\"celsius\"\n}"}}]'
 ```
 
-6. This ensures that the use of TrainableModule and OnlineChatModule is consistent. In order to adapt to the application of FunctionCall, the output of the model is passed through FunctionCallFormatter. The function of FunctionCallFormatter is to parse the output of the model and obtain content and tool_calls information. For example:
+6. This ensures that the use of [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] is consistent. In order to adapt to the application of [FunctionCall][lazyllm.tools.agent.FunctionCall], the output of the model is passed through FunctionCallFormatter. The function of FunctionCallFormatter is to parse the output of the model and obtain content and tool_calls information. For example:
 ```text
 [{"id": "bd75399403224eb8972640eabedd0d46", "type": "function", "function":{"name": "get_current_weather", "arguments": {"location": "Tokyo"}}}]或者
 [{"id": "get_current_weather:0","type":"function","function":{"name":"get_current_weather","arguments":{"location":"Tokyo","unit":"celsius"}}},{"id": "get_current_weather:1","type":"function","function":{"name":"get_current_weather","arguments":{"location":"Paris","unit":"celsius"}}}]
@@ -185,9 +186,9 @@ If the tool is not called, the output is of type str, which is the output of the
 > - The tool call information contains the tool's `name` and `arguments` fields as well as the `id`, `type` and `function` fields.
 
 
-#### FunctionCall Output Flow
+### FunctionCall Output Flow
 
-FuncationCall is a tool call that processes a single round.
+[FunctionCall][lazyllm.tools.agent.FunctionCall] is a tool call that processes a single round.
 
 > - Non-function call request
 ```text
@@ -218,7 +219,7 @@ Hello! How can I assist you today?
 [{"name": "get_current_weather", "arguments": {"location": "Tokyo"}}]
 ```
 
-3. Determine whether the parsed output is a tool call. If it is a tool call, call the corresponding tool through the ToolManager tool management calss.
+3. Determine whether the parsed output is a tool call. If it is a tool call, call the corresponding tool through the [ToolManager][lazyllm.tools.agent.ToolManager] tool management calss.
 > - function call request
 ```text
 '{"location": "Tokyo", "temperature": "10", "unit": "celsius"}'
@@ -234,15 +235,15 @@ Hello! How can I assist you today?
 [{'tool_call_id': 'bd75399403224eb8972640eabedd0d46', 'name': 'get_current_weather', 'content': '{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', 'role': 'tool'}]
 ```
 
-#### Function Call Agent Output Process
+### Function Call Agent Output Process
 
-FunctionCallAgent is the process that handles the complete tool call.
+[FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] is the process that handles the complete tool call.
 > - Agent Input
 ```text
 What's the weather like today in Tokyo.
 ```
 
-1. Input comes in and calls the FunctionCall module directly.
+1. Input comes in and calls the [FunctionCall][lazyllm.tools.agent.FunctionCall] module directly.
 > - FunctionCall output results
 ```text
 [{'tool_call_id': 'get_current_weather:0', 'name': 'get_current_weather', 'content': '{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', 'role': 'tool'}]
@@ -252,7 +253,7 @@ What's the weather like today in Tokyo.
 今天的东京天气温度是10度 Celsius。
 ```
 
-2. Determine whether the result of FunctionCall is a tool call or the maximum number of iterations has been reached. If it is a tool call, return to step 1. If it is not a tool call or the maximum number of iterations has been reached, continue to move on.
+2. Determine whether the result of [FunctionCall][lazyllm.tools.agent.FunctionCall] is a tool call or the maximum number of iterations has been reached. If it is a tool call, return to step 1. If it is not a tool call or the maximum number of iterations has been reached, continue to move on.
 
 3. If the maximum number of iterations is reached, an exception is thrown. If the model generates results normally, the results are output directly.
 > - Throws an exception after reaching the maximum number of iterations.
@@ -264,13 +265,18 @@ ValueError: After retrying 5 times, the function call agent still failed to call
 今天的东京天气温度是10度 Celsius。
 ```
 
-### Advanced Agent
+## Advanced Agent
+An agent is an artificial entity that can use sensors to sense the surrounding environment, make decisions autonomously, and then use actuators to perform corresponding actions. It has autonomy (can run independently without human intervention), responsiveness (can sense environmental changes and respond), sociality (multiple agents can coordinate with each other to complete tasks together), and adaptability (can continuously improve its own performance to better complete tasks).
 
-#### React
+[FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] is the most basic agent. It generates tool call parameters through the big model, then calls the tool and feeds the tool return results back to the big model. This is repeated until the model generates the final answer or the maximum number of iterations is exceeded. There are also some problems in this process. For example, the process of generating a big model is a black box, and people do not know the specific reasoning process, or when faced with complex problems, the big model cannot directly give answers, etc. In response to these problems, researchers have proposed various solutions and formed various advanced agents. Below we introduce the implementation of several advanced agents is LazyLLM.
 
-Idea: React agent handles problems according to the process of "Thought->Action->Observation->Thought...->Finish". Thought shows how the model solves problems step by step. Action represents the information of tool calls. Observation is the result returned by the tool. Finish is the final answer to the problem.
+### React
 
-The execution process of this agent is the same as that of FuncitonCallAgent. The Only difference is the prompt, and the React agent must have a thought output at each step, while the ordinary FunctionCallAgent may only output the tool call information without content. The example is as follows:
+[paper](https://arxiv.org/abs/2210.03629)
+
+Idea: [ReactAgent][lazyllm.tools.agent.ReactAgent] handles problems according to the process of "Thought->Action->Observation->Thought...->Finish". Thought shows how the model solves problems step by step. Action represents the information of tool calls. Observation is the result returned by the tool. Finish is the final answer to the problem.
+
+The execution process of this agent is the same as that of [FuncitonCallAgent][lazyllm.tools.agent.FunctionCallAgent]. The Only difference is the prompt, and the [ReactAgent][lazyllm.tools.agent.ReactAgent] must have a thought output at each step, while the ordinary [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] may only output the tool call information without content. The example is as follows:
 ```python
 import lazyllm
 from lazyllm.tools import fc_register, ReactAgent
@@ -304,9 +310,11 @@ print(res)
 # 'Answer: The result of 20+(2*4) is 28.'
 ```
 
-#### PlanAndSolve
+### PlanAndSolve
 
-Idea: PlanAndSolve agent consists of two components: first, decomposing the whole task into smaller subtasks, and second, executing these subtasks according to the plan. Finally, the results are output as answers.
+[paper](https://arxiv.org/abs/2305.04091)
+
+Idea: [PlanAndSolveAgent][lazyllm.tools.agent.PlanAndSolveAgent] consists of two components: first, decomposing the whole task into smaller subtasks, and second, executing these subtasks according to the plan. Finally, the results are output as answers.
 
 1、After the input comes in, it first passes through the planner model to generate a solution plan for the problem.
 ```text
@@ -315,7 +323,7 @@ Plan:\n1. Identify the given expression: 20 + (2 * 4)\n2. Perform the multiplica
 
 2、Parse the generated plan so that the solver model can be executed according to the plan.
 
-3、FunctionCallAgent is called for each step of the plan, and the final result is returned as final answer.
+3、[FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] is called for each step of the plan, and the final result is returned as final answer.
 ```text
 The final answer is 28.
 ```
@@ -356,9 +364,11 @@ print(ret)
 # The final answer is 28.
 ```
 
-#### ReWOO
+### ReWOO (Reasoning WithOut Observation)
 
-Idea: ReWOO agent consists of three parts: Planner, Worker and Solver. Among them, Planner uses predictable reasoning ability to create a solution blueprint for complex tasks; Woker interacts with the environment through tool calls and fills actual evidence or observations into instructions; Solver processes all plans and evidence to develop solutions to the original tasks or problems.
+[paper](https://arxiv.org/abs/2305.18323)
+
+Idea: [ReWOOAgent][lazyllm.tools.agent.ReWOOAgent] consists of three parts: Planner, Worker and Solver. Among them, Planner uses predictable reasoning ability to create a solution blueprint for complex tasks; Woker interacts with the environment through tool calls and fills actual evidence or observations into instructions; Solver processes all plans and evidence to develop solutions to the original tasks or problems.
 
 1. The input first calls the planner model to generate a blueprint for solving the problem.
 ```text
