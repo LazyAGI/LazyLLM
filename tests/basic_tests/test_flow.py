@@ -56,6 +56,18 @@ class TestFlow(object):
             sw.case[is_3, t3]
         assert sw(1) == 2 and sw(2) == 6 and sw(3) == 3
 
+        with switch(conversion=lambda x: x / 10, judge_on_full_input=True) as sw:
+            sw.case[is_1:t1]
+            sw.case(is_2, t2)
+            sw.case[is_3, t3]
+        assert sw(10) == 20 and sw(20) == 60 and sw(30) == 30
+
+        with switch(judge_on_full_input=False) as sw:
+            sw.case[is_1:t1]
+            sw.case(is_2, t2)
+            sw.case[is_3, t3]
+        assert sw(1, 30) == 60 and sw(2, 10) == 30 and sw(3, 5) == 5
+
     def test_ifs(self):
 
         assert ifs(is_1, t3, t1)(1) == 1
