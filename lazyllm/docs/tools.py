@@ -870,7 +870,9 @@ IntentClassifier 是一个基于语言模型的意图识别器，用于根据用
 Arguments:
     llm: 用于意图识别的语言模型对象，OnlineChatModule或TrainableModule类型
     intent_list (list): 包含所有可能意图的字符串列表。可以包含中文或英文的意图。
-    examples (list[list]): 额外的示例，格式为 `[[query, intent], [query, intent], ...]`
+    prompt (str): 用户附加的提示词。
+    constrain (str): 用户附加的限制。
+    examples (list[list]): 额外的示例，格式为 `[[query, intent], [query, intent], ...]` 。
     return_trace (bool, 可选): 如果设置为 True，则将结果记录在trace中。默认为 False。
 """,
 )
@@ -884,7 +886,9 @@ It can handle intent lists and ensures accurate intent recognition through prepr
 Arguments:
     llm: A language model object used for intent recognition, which can be of type OnlineChatModule or TrainableModule.
     intent_list (list): A list of strings containing all possible intents. This list can include intents in either Chinese or English.
-    examples (list[list]): extro examples，format is `[[query, intent], [query, intent], ...]`
+    prompt (str): User-attached prompt words.
+    constrain (str): User-attached constrain words.
+    examples (list[list]): extro examples，format is `[[query, intent], [query, intent], ...]`.
     return_trace (bool, optional): If set to True, the results will be recorded in the trace. Defaults to False.
 """,
 )
@@ -893,14 +897,14 @@ add_example(
     "IntentClassifier",
     """\
     >>> import lazyllm
-    >>> classifier_llm = lazyllm.OnlineChatModule(model=MODEL_ID, source="openai", base_url=BASE_URL)
+    >>> classifier_llm = lazyllm.OnlineChatModule(source="openai")
     >>> chatflow_intent_list = ["Chat", "Financial Knowledge Q&A", "Employee Information Query", "Weather Query"]
     >>> classifier = IntentClassifier(classifier_llm, intent_list=chatflow_intent_list)
     >>> classifier.start()
     >>> print(classifier('What is the weather today'))
     Weather Query
     >>>
-    >>> with IntentClassifier(self._llm) as ic:
+    >>> with IntentClassifier(classifier_llm) as ic:
     >>>     ic.case['Weather Query', lambda x: '38.5°C']
     >>>     ic.case['Chat', lambda x: 'permission denied']
     >>>     ic.case['Financial Knowledge Q&A', lambda x: 'Calling Financial RAG']

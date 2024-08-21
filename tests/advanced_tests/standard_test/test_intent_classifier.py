@@ -25,6 +25,21 @@ class TestIntentClassifier(object):
         assert ic('What is the difference between stocks and funds') == 'Financial Knowledge Q&A'
         assert ic('Check the work location of Macro in the Technology Department') == 'Employee Information Query'
 
+    def test_intent_classifier_prompt_and_constrain(self):
+        intent_list = ["Chat", "Image Question and Answer", "Music", "Weather Query"]
+        prompt = ('If the input contains attachments, the intent is determined with the highest priority based on the '
+                  'suffix type of the attachments: If it is an image suffix such as .jpg, .png, etc., then the output '
+                  'is: Image Question and Answer. If the audio suffix is .mp3, .wav, etc., the output is: Music')
+        examples = [['Hello world. <attachments>hello.jpg</attachments>', 'Image Question and Answer'],
+                    ['Happy lazyllm. <attachments>hello.wav</attachments>', 'Music']]
+        ic = IntentClassifier(self._llm, intent_list, prompt=prompt, examples=examples,
+                              constrain='intents outside the given intent list is not allowed')
+        ic.start()
+        assert ic('What is the weather today') == 'Weather Query'
+        assert ic('Who are you?') == 'Chat'
+        assert ic('Who are you music<attachments>who.png</attachments>') == 'Image Question and Answer'
+        assert ic('Song of weather <attachments>weather.mp3</attachments>') == 'Music'
+
     def test_intent_classifier_enter(self):
         with IntentClassifier(self._llm) as ic:
             ic.case['Weather Query', lambda x: '38.5°C']

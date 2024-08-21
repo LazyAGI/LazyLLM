@@ -8,10 +8,10 @@ import json
 
 en_prompt_classifier_template = """
 ## role：Intent Classifier
-You are an intent classification engine responsible for analyzing user input text based on dialogue information and determining a unique intent category.
+You are an intent classification engine responsible for analyzing user input text based on dialogue information and determining a unique intent category.{user_prompt}
 
 ## Constrains:
-You only need to reply with the name of the intent. Do not output any additional fields and do not translate it.
+You only need to reply with the name of the intent. Do not output any additional fields and do not translate it.{user_constrains}
 
 ## Text Format
 The input text is in JSON format, where "human_input" contains the user's raw input and "intent_list" contains a list of all intent names.
@@ -33,10 +33,10 @@ Input text is as follows:
 
 ch_prompt_classifier_template = """
 ## role：意图分类器
-你是一个意图分类引擎，负责根据对话信息分析用户输入文本并确定唯一的意图类别
+你是一个意图分类引擎，负责根据对话信息分析用户输入文本并确定唯一的意图类别。{user_prompt}
 
 ## Constrains:
-你只需要回复意图的名字即可，不要额外输出其他字段，也不要进行翻译
+你只需要回复意图的名字即可，不要额外输出其他字段，也不要进行翻译。{user_constrains}
 
 ## 文本格式
 输入文本为JSON格式，"human_input"中内容为用户的原始输入，"intent_list"为所有意图名列表
@@ -58,12 +58,12 @@ ${input}
 
 
 class IntentClassifier(ModuleBase):
-    def __init__(self, llm, intent_list: list = None, examples: list[list[str, str]] = [],
-                 return_trace: bool = False) -> None:
+    def __init__(self, llm, intent_list: list = None, *, prompt: str = '', constrain: str = '',
+                 examples: list[list[str, str]] = [], return_trace: bool = False) -> None:
         super().__init__(return_trace=return_trace)
         self._intent_list = intent_list or []
         self._llm = llm
-        self._examples = examples
+        self._prompt, self._constrain, self._examples = prompt, constrain, examples
         if self._intent_list:
             self._init()
 
@@ -79,9 +79,9 @@ class IntentClassifier(ModuleBase):
 
         examples = ''.join(['\nUser: {{{{"human_input":{inp}, "intent_list": {intent}}}}}\nAssistant: {label}\n'.format(
             inp=input, intent=self._intent_list, label=label) for input, label in self._examples])
-        self._prompter = AlpacaPrompter(choose_prompt().replace('{user_examples}', examples)
-                                        ).pre_hook(self.intent_promt_hook)
-        self._llm = self._llm.share(prompt=self._prompter)
+        prompt = choose_prompt().replace('{user_prompt}', self._prompt).replace(
+            '{user_constrains}', self._constrain).replace('{user_examples}', examples)
+        self._llm = self._llm.share(prompt=AlpacaPrompter(prompt).pre_hook(self.intent_promt_hook))
         self._impl = pipeline(self._llm, self.post_process_result)
 
     def intent_promt_hook(
