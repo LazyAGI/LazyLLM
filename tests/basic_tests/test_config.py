@@ -1,6 +1,7 @@
 import lazyllm
 from lazyllm.configs import Mode
 import os
+import copy
 import pytest
 import contextlib
 import inspect
@@ -40,6 +41,17 @@ def isolated(func):
 
 
 class TestConfig(object):
+    def test_refresh(self):
+        origin = copy.deepcopy(lazyllm.config.impl)
+        os.environ['LAZYLLM_GPU_TYPE'] = 'H100'
+        lazyllm.config.refresh('LAZYLLM_GPU_TYPE')
+        assert lazyllm.config.impl['gpu_type'] == 'H100'
+        os.environ['LAZYLLM_GPU_TYPE'] = origin['gpu_type']
+        lazyllm.config.refresh('gpu_type')
+        assert lazyllm.config.impl['gpu_type'] == origin['gpu_type']
+        lazyllm.config.refresh()
+        assert lazyllm.config.impl == origin
+
     def test_config_mode(self):
         print(os.environ.get('LAZYLLM_DISPLAY'))
         assert lazyllm.config['mode'] == Mode.Normal
