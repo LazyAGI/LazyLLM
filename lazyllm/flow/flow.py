@@ -371,6 +371,9 @@ class Switch(LazyLLMFlowsBase):
             self.conds, items = list(args[0::2]), args[1::2]
         super().__init__(*items, post_action=post_action)
         self._judge_on_full_input = judge_on_full_input
+        self._set_conversion(conversion)
+
+    def _set_conversion(self, conversion):
         self._conversion = conversion
 
     def _run(self, __input, **kw):

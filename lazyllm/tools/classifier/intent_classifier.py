@@ -1,10 +1,8 @@
-# flake8: noqa E501
 from lazyllm.module import ModuleBase
 from lazyllm.components import AlpacaPrompter
-from lazyllm import pipeline, globals, switch, _0, root
+from lazyllm import pipeline, globals, switch
 from lazyllm.tools.utils import chat_history_to_str
 from typing import Dict, Union, Any, List
-import string
 import json
 
 
@@ -21,6 +19,7 @@ The input text is in JSON format, where "human_input" contains the user's raw in
 ## Example
 User: {{"human_input": "What’s the weather like in Beijing tomorrow?", "intent_list": ["Check Weather", "Search Engine Query", "View Surveillance", "Report Summary", "Chat"]}}
 Assistant: Check Weather
+{user_examples}
 
 ## Conversation History
 The chat history between the human and the assistant is stored within the <histories></histories> XML tags below.
@@ -30,7 +29,7 @@ The chat history between the human and the assistant is stored within the <histo
 
 Input text is as follows:
 {input}
-"""
+"""  # noqa E501
 
 ch_prompt_classifier_template = """
 ## role：意图分类器
@@ -45,6 +44,7 @@ ch_prompt_classifier_template = """
 ## 示例
 User: {{"human_input": "北京明天天气怎么样？", "intent_list": ["查看天气", "搜索引擎检索", "查看监控", "周报总结", "聊天"]}}
 Assistant:  查看天气
+{user_examples}
 
 ## 历史对话
 人类和助手之间的聊天记录存储在下面的 <histories></histories> XML 标记中。
@@ -54,14 +54,16 @@ Assistant:  查看天气
 
 输入文本如下:
 ${input}
-"""
+"""  # noqa E501
 
 
 class IntentClassifier(ModuleBase):
-    def __init__(self, llm, intent_list: list = None, return_trace: bool = False) -> None:
+    def __init__(self, llm, intent_list: list = None, examples: list[list[str, str]] = [],
+                 return_trace: bool = False) -> None:
         super().__init__(return_trace=return_trace)
         self._intent_list = intent_list or []
         self._llm = llm
+        self._examples = examples
         if self._intent_list:
             self._init()
 
@@ -75,7 +77,10 @@ class IntentClassifier(ModuleBase):
                         return ch_prompt_classifier_template
             return en_prompt_classifier_template
 
-        self._prompter = AlpacaPrompter(choose_prompt()).pre_hook(self.intent_promt_hook)
+        examples = ''.join(['\nUser: {{{{"human_input":{inp}, "intent_list": {intent}}}}}\nAssistant: {label}\n'.format(
+            inp=input, intent=self._intent_list, label=label) for input, label in self._examples])
+        self._prompter = AlpacaPrompter(choose_prompt().replace('{user_examples}', examples)
+                                        ).pre_hook(self.intent_promt_hook)
         self._llm = self._llm.share(prompt=self._prompter)
         self._impl = pipeline(self._llm, self.post_process_result)
 
@@ -109,6 +114,7 @@ class IntentClassifier(ModuleBase):
         assert not self._intent_list, 'Intent list is already set'
         self._sw = switch()
         self._sw.__enter__(self)
+        return self
 
     @property
     def case(self):
@@ -123,4 +129,5 @@ class IntentClassifier(ModuleBase):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._sw.__exit__(exc_type, exc_val, exc_tb)
         self._init()
-        self._impl = pipeline(self._impl, self._sw.bind(_0, root.input))
+        self._sw._set_conversion(self._impl)
+        self._impl = self._sw

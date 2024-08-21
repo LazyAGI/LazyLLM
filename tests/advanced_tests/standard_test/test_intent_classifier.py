@@ -1,0 +1,29 @@
+from lazyllm.tools import IntentClassifier
+import lazyllm
+
+
+class TestIntentClassifier(object):
+    def setup_method(self):
+        self._llm = lazyllm.TrainableModule('internlm2-chat-7b')
+
+    def test_intent_classifier(self):
+        intent_list = ["Chat", "Financial Knowledge Q&A", "Employee Information Query", "Weather Query"]
+        ic = IntentClassifier(self._llm, intent_list)
+        ic.start()
+        assert ic('What is the weather today') == 'Weather Query'
+        assert ic('Who are you') == 'Chat'
+        assert ic('What is the difference between stocks and funds') == 'Financial Knowledge Q&A'
+        assert ic('Check the work location of Macro in the Technology Department') == 'Employee Information Query'
+
+    def test_intent_classifier_enter(self):
+        with IntentClassifier(self._llm) as ic:
+            ic.case['Weather Query', lambda x: '38.5°C']
+            ic.case['Chat', lambda x: 'permission denied']
+            ic.case['Financial Knowledge Q&A', lambda x: 'Calling Financial RAG']
+            ic.case['Employee Information Query', lambda x: 'Beijing']
+
+        ic.start()
+        assert ic('What is the weather today') == '38.5°C'
+        assert ic('Who are you') == 'permission denied'
+        assert ic('What is the difference between stocks and funds') == 'Calling Financial RAG'
+        assert ic('Check the work location of Macro in the Technology Department') == 'Beijing'
