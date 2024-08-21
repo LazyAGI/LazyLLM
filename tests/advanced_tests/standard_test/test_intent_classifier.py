@@ -32,12 +32,14 @@ class TestIntentClassifier(object):
                   'is: Image Question and Answer. If the audio suffix is .mp3, .wav, etc., the output is: Music')
         examples = [['Hello world. <attachments>hello.jpg</attachments>', 'Image Question and Answer'],
                     ['Happy lazyllm. <attachments>hello.wav</attachments>', 'Music']]
-        ic = IntentClassifier(self._llm, intent_list, prompt=prompt, examples=examples,
+        attention = ('Intent is determined with the highest priority based on the suffix type of the attachments '
+                     'provideded by <attachments>')
+        ic = IntentClassifier(self._llm, intent_list, prompt=prompt, attention=attention, examples=examples,
                               constrain='intents outside the given intent list is not allowed')
         ic.start()
         assert ic('What is the weather today') == 'Weather Query'
         assert ic('Who are you?') == 'Chat'
-        assert ic('Who are you music<attachments>who.png</attachments>') == 'Image Question and Answer'
+        assert ic('Who are you picture<attachments>who.png</attachments>') == 'Image Question and Answer'
         assert ic('Song of weather <attachments>weather.mp3</attachments>') == 'Music'
 
     def test_intent_classifier_enter(self):
