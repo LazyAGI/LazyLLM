@@ -17,6 +17,8 @@ class LightEngine(Engine):
 
     def build_node(self, node):
         if not isinstance(node, Node):
+            if isinstance(node, str):
+                return self._nodes[node]
             node = Node(id=node['id'], kind=node['kind'], name=node['name'], args=node['args'])
         if node.id not in self._nodes:
             self._nodes[node.id] = super(__class__, self).build_node(node)

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Optional, Callable, Dict, Type
 from lazyllm import graph, switch, pipeline
+from lazyllm.tools import IntentClassifier
 from .node import all_nodes
 import re
 import ast
@@ -139,3 +140,14 @@ def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
                 f = Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
             sw.case[cond::f]
     return sw
+
+@NodeConstructor.register('Intention')
+def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
+    with IntentClassifier(Engine().build_node(base_model)) as ic:
+        for cond, nodes in nodes.items():
+            if isinstance(nodes, list) and len(nodes) > 1:
+                f = pipeline([Engine().build_node(node).func for node in nodes])
+            else:
+                f = Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
+            ic.case[cond::f]
+    return ic

@@ -53,7 +53,7 @@ all_nodes = dict(
     ),
 
     Formatter=dict(
-        module=lazyllm.Formatter,
+        module=partial(getattr, lazyllm.formatter),
         init_arguments=dict(
             formatter=NodeArgs(str),
         )
