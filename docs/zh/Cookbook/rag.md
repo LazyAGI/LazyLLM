@@ -1,147 +1,324 @@
 # 知识库问答助手
 
-本文我们将实现一个知识库问答助手应用。
+本文将展示如何实现一个知识库问答助手。在开始本节之前，建议先阅读 [RAG 最佳实践](../Best%20Practice/rag.md)。
 
-> 通过本节您将学习到 LazyLLM 的以下要点：
+> 通过本节您将学习到 `LazyLLM` 的以下要点：
 >
-> - RAG 相关模块的使用：
->      - [Document][lazyllm.tools.Document]
->      - [Retriever][lazyllm.tools.Retriever]
->      - [Reranker][lazyllm.tools.Reranker]
+> - RAG 相关模块：[Document][lazyllm.tools.Document]，[Retriever][lazyllm.tools.Retriever] 和 [Reranker][lazyllm.tools.Reranker]
+> - 内置的 ChatPrompter 模块
+> - 内置的流程模块：[Pipeline][lazyllm.flow.Pipeline] 和 [Parallel][lazyllm.flow.Parallel]
 
+## 版本-1
 
-## 设计思路
+从 [RAG 最佳实践](../Best%20Practice/rag.md) 可知，RAG 的核心在于基于特定的文档集合的回答用户提出的问题。根据这个目标，我们设计了下面的流程：
 
-要设计一个知识库文档助手，首先需要有一个知识库（Documents），在构建好知识库后需要一些召回器（Retriever）用于匹配相似度高的文段。
-在召回文档后一般还需要结合输入，使用 Reranker 模型再次进行重排序以获得顺序更好的文段。最后将召回内容和用户提问送给大模型来回答。
+![rag-cookbook-1](../assets/rag-cookbook-1.svg)
 
-整体设计如下所示：
+`Query` 是用户输入的查询；`Retriever` 根据用户的查询从文档集合 `Document` 中找到匹配的文档；大模型 `LLM` 基于 `Retriever` 传过来的文档，结合用户的查询，给出最终的回答。
 
-![Great Writer](../assets/5_rag_1.svg)
-
-这里设计了两个召回器，分别对文档从不同的颗粒度进行相似度匹配。
-
-## 代码实现
-
-让我们基于 LazyLLM 来实现上述设计思路吧。
-
-### 设计提示词
-
-根据设计，我们需要让大模型结合搜索到的文档和用户的输入来回答问题。此时就需要给大模型设计一个提示词模板。
+下面的例子 `rag.py` 实现了上述功能：
 
 ```python
+# Part0
+
+import lazyllm
+
+# Part1
+
+documents = lazyllm.Document(dataset_path="/path/to/your/doc/dir",
+                             embed=lazyllm.OnlineEmbeddingModule(),
+                             create_ui=False)
+
+# Part2
+
+retriever = lazyllm.Retriever(doc=documents,
+                              group_name="CoarseChunk",
+                              similarity="bm25_chinese",
+                              topk=3)
+
+# Part3
+
+llm = lazyllm.OnlineChatModule()
+
+# Part4
+
 prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
+llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+
+# Part5
+
+query = input("query(enter 'quit' to exit): ")
+if query == "quit":
+    exit(0)
+
+# Part6
+
+doc_node_list = retriever(query=query)
+
+res = llm({
+    "query": query,
+    "context_str": "".join([node.get_content() for node in doc_node_list]),
+})
+
+# Part7
+
+print(f"answer: {res}")
 ```
 
-### 设置模型
+我们来简单说明下各部分的代码。
 
-首先我们需要一个知识库：
+1. Part0 导入了 `lazyllm`。
+
+2. Part1 从本地加载知识库目录，并使用内置的 `OnlineEmbeddingModule` 作为 embedding 函数。
+
+3. Part2 创建一个用于检索文档的 `Retriever`，并使用内置的 `CoarseChunk`（参考 [CoarseChunk 的定义][llm.tools.Retriever]）将文档按指定的大小分块，然后使用内置的 `bm25_chinese` 作为相似度计算函数，并且丢弃相似度小于 0.003 的结果，最后取最相近的 3 篇文档。
+
+4. Part3 创建用来回答问题的大模型实例。
+
+5. Part4 由于需要大模型基于我们提供的文档回答问题，我们在提问的时候需要告诉大模型哪些是参考资料，哪个是我们的问题。这里使用内置的 `ChatPrompter` 将 `Retriever` 返回的文档内容作为参考资料告诉大模型。这里用到的 `ChatPrompter` 两个参数含义如下：
+
+    * `instruction`：提供给大模型的指引内容；
+    * `extro_keys`：从传入的 dict 中的哪个字段获取参考资料。
+
+6. Part5 打印提示信息，等待用户输入要查询的内容。
+
+7. Part6 是主流程：接收用户的输入，使用 `Retriever` 根据用户输入的 `query` 检索出相关的文档，然后把 `query` 和参考资料 `context_str` 打包成一个 dict 传给大模型，并等待结果返回。
+
+8. Part7 把结果打印到屏幕上。
+
+运行前修改 Part1 中 `Document` 的 `dataset_path` 参数指向需要检索的目录，还有在命令行中设置好申请到的商汤日日新模型的鉴权信息（参考 [快速入门](../index.md#hello-world)），然后运行：
 
 ```python
-documents = Document(dataset_path='/file/to/yourpath', embed=lazyllm.TrainableModule('bge-large-zh-v1.5'))
+python3 rag.py
 ```
 
-这里使用到了 LazyLLM 里的 [Document][lazyllm.tools.Document]，它接收一个包含有文档的路径作为参数，
-另外还需要指定一个词嵌入模型（这里用的是 `bge-large-zh-v1.5` ），该模型可以把文档进行向量化，
-同时也可以把用户的请求进行向量化。这样就可以用两个向量化后的内容进行相似度计算来召回匹配的知识库文段内容了。
+输入要查询的内容，等待大模型给我们返回结果。
 
-然后我们定义两个召回器，从不同文档的划分颗粒度来进行匹配：
+在这个例子中，我们在检索相似文档的时候只用了内置的算法 `CoarseChunk`，将文档按照固定的长度分块，对每个分块计算相似度。这种方法在某些场景下可能有不错的效果；但是在大部分情况下，这种简单粗暴的分块可能会将重要信息拆成两段，造成信息损坏，从而得到的文档并不是和用户输入的查询相关的。
 
-```python
-documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=64, chunk_overlap=4)
-retriever1 = Retriever(documents, group_name="sentences", similarity="cosine", topk=3)
-retriever2 = Retriever(documents, "CoarseChunk", "bm25_chinese", 0.003, topk=3)
-``` 
+## 版本-2：添加召回策略和排序
 
-这里用到了 LazyLLM 里的召回器 [Retriever][lazyllm.tools.Retriever]。
-
-- 召回器要求第一个参数要指定用哪个知识库，这里用到了我们刚加载好的知识库。
-- 召回器的第二个参数 `group_name` 需要指定一个组名。
-    - 第一个召回器我们在实例化的 `documents` 中，自定义了一个叫做 `sentences` 的组，这个组用到的节点变换方法是句子划分 [SentenceSplitter][lazyllm.tools.SentenceSplitter]，句子块大小是 64，重叠大小是 4。在实例化 [Retriever][lazyllm.tools.Retriever] 的时候用到了这个组，并且使用余弦相似度来计算相似度，且取前 3 个最相似的句段。
-    - 第二个召回器用了 LazyLLM 内置的 `CoarseChunk`, 其背后用到节点变换方法也是 [SentenceSplitter][lazyllm.tools.SentenceSplitter]，只是它的句子块大小更大，为 1024，重叠大小也是 100。这里同时还指定了相似度计算的方法是中文的 BM25，同时相似度低于 0.003 的就会被丢弃，默认是负无穷大是不丢弃的。并且最后也是取前 3 个最相似的句段。
-
-除了 [SentenceSplitter][lazyllm.tools.SentenceSplitter]，LazyLLM 中还有 [LLMParser][lazyllm.tools.LLMParser] 是一个文本摘要和关键词提取器，可以从用户的文本中根据任务要求提取摘要或关键词。
-
-LazyLLM的 [Document][lazyllm.tools.Document] 中预制了几个节点组(node group)，详见：[Retriever][lazyllm.tools.Retriever]。除了 `CoarseChunk` 还有：
-
-- `MediumChunk`: 它的 `chunk_size` 是 256，`chunk_overlap` 是 25；
-- `FineChunk`: 它的 `chunk_size` 是 128，`chunk_overlap` 是 12；
-
-接下来我们定义一个重排器 Reranker:
+为了从不同的维度来衡量文档和查询的相关性，我们在 Part1 增加一个从句子粒度对文档进行拆分的名为 `sentences` 的 `Node Group`：
 
 ```python
-reranker = Reranker("ModuleReranker", model="bge-reranker-large", topk=1)
+documents.create_node_group(name="sentences",
+                            transform=lambda d: '。'.split(d))
 ```
 
-这里用到了 LazyLLM 里的 [Reranker][lazyllm.tools.Reranker]，它可以对召回的内容进行重新排序。这里取重排后的最相似的内容作为输出。
-
-最后我们再设置一下 LLM 模型：
+并且在 Part2 中使用 `cosine` 来计算句子和用户查询的相似度，然后筛选最相关的 3 篇文档：
 
 ```python
-llm = lazyllm.TrainableModule("internlm2-chat-7b").prompt(lazyllm.ChatPrompter(prompt, extro_keys=["context_str"]))
+retriever2 = Retriever(doc=documents,
+                       group_name="sentences",
+                       similarity="cosine",
+                       topk=3)
 ```
-这里对 [TrainableModule][lazyllm.module.TrainableModule] 设置了 `prompt`, 类似应用可参见：[绘画大师](painting_master.md#use-prompt)
 
-### 组装应用
-
-现在让我们把上面的模块都组装起来吧：
+我们现在有两个不同的检索函数返回了不同顺序的结果，并且这些结果可能是有重复的，这时就需要用 `Reranker` 对多个结果重新排序。我们在 Part2 和 Part3 之间插入 Part8，新增一个 `ModuleReranker`，使用指定模型来排序并取最符合条件的 1 篇文章：
 
 ```python
-with pipeline() as ppl:
-    with parallel().sum as ppl.prl:
-        prl.retriever1 = Retriever(documents, group_name="sentences", similarity="cosine", topk=3)
-        prl.retriever2 = Retriever(documents, "CoarseChunk", "bm25_chinese", 0.003, topk=3)
+# Part8
 
-    ppl.reranker = Reranker("ModuleReranker", model="bge-reranker-large", topk=1) | bind(query=ppl.input)
-    ppl.formatter = (lambda nodes, query: dict(context_str="".join([node.get_content() for node in nodes]), query=query)) | bind(query=ppl.input)
-    ppl.llm = lazyllm.TrainableModule("internlm2-chat-7b").prompt(lazyllm.ChatPrompter(prompt, extro_keys=["context_str"]))
+reranker = Reranker(name="ModuleReranker",
+                    model="bge-reranker-large",
+                    topk=1)
 ```
 
-上面代码中 `parallel().sum` 将其所有并行元素的输出都加在一起。这里我们指定了两类召回器进行召回，
-分别都有3个结果，再经过 `.sum` 设置就可将结果相加起来，获得6个召回的结果。
+`ModuleReranker` 是 `LazyLLM` 内置的一个通用排序模块，它可以简化使用模型来对文档排序的场景。可以查看 [最佳实践中关于 Reranker 的介绍](../Best%20Practice/rag.md#Reranker)。
+
+同时我们将 Part6 改写如下：
 
 ```python
-ppl.formatter = (lambda nodes, query: dict(context_str="".join([node.get_content() for node in nodes]), query=query)) | bind(query=ppl.input)
+# Part6-2
+
+doc_node_list_1 = retriever1(query=query)
+doc_node_list_2 = retriever2(query=query)
+
+doc_node_list = reranker(nodes=doc_node_list_1+doc_node_list_2, query=query)
+
+res = llm({
+    "query": query,
+    "context_str": "".join([node.get_content() for node in doc_node_list]),
+})
 ```
 
-这里定义了一个匿名函数来进行格式化，将格式化后的内容喂给大模型。
-需要注意的是这里 `bind` 上了用户的输入（`bind` 类似应用可参考：[大作家](great_writer.md#use-bind)）。对应了设计图中的蓝色线条。
-另外 `ppl.reranker`也 `bind` 上了用户的输入，对应了设计图中的红色线条。`bind` 用法介绍详见：[参数绑定](../Best Practice/flow.md#use-bind)
+改进后的流程如下：
 
-### 启动应用
-
-最后，我们将控制流 `ppl` 套入一个客户端，并启动部署（`start()`），在部署完后保持客户端不关闭（`wait()`）。
-
-```python
-lazyllm.WebModule(ppl, port=23456).start().wait()
-```
-
-## 完整代码
+![rag-cookbook-2](../assets/rag-cookbook-2.svg)
 
 <details>
-<summary>点击获取import和prompt</summary>
+
+<summary>附完整代码（点击展开）：</summary>
 
 ```python
-import os
+# Part0
+
 import lazyllm
-from lazyllm import pipeline, parallel, bind, _0, Document, Retriever, Reranker
+
+# Part1
+
+documents = lazyllm.Document(dataset_path="rag_master",
+                             embed=lazyllm.OnlineEmbeddingModule(),
+                             create_ui=False)
+
+documents.create_node_group(name="sentences",
+                            transform=lambda s: '。'.split(s))
+
+# Part2
+
+retriever1 = lazyllm.Retriever(doc=documents,
+                               group_name="CoarseChunk",
+                               similarity="bm25_chinese",
+                               topk=3)
+
+retriever2 = lazyllm.Retriever(doc=documents,
+                               group_name="sentences",
+                               similarity="cosine",
+                               topk=3)
+
+# Part8
+
+reranker = lazyllm.Reranker(name='ModuleReranker',
+                            model="bge-reranker-large",
+                            topk=1)
+
+# Part3
+
+llm = lazyllm.OnlineChatModule()
+
+# Part4
 
 prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
+llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+
+# Part5
+
+query = input("query(enter 'quit' to exit): ")
+if query == "quit":
+    exit(0)
+
+# Part6
+
+doc_node_list_1 = retriever1(query=query)
+doc_node_list_2 = retriever2(query=query)
+
+doc_node_list = reranker(nodes=doc_node_list_1+doc_node_list_2, query=query)
+
+res = llm({
+    "query": query,
+    "context_str": "".join([node.get_content() for node in doc_node_list]),
+})
+
+# Part7
+
+print(f"answer: {res}")
 ```
+
 </details>
 
+## 版本-3：使用 flow
+
+从 版本-2 的流程图可以看到整个流程已经比较复杂了。我们注意到两个（或多个）`Retriever` 的检索过程互不影响，它们可以并行执行。同时整个流程上下游之间也有着明确的依赖关系，需要保证上游执行完成之后才可以进行下一步。
+
+`LazyLLM` 提供了一系列的辅助工具来简化执行流程的编写。我们可以用 [parallel](../Best%20Practice/flow.md#parallel) 把两个检索过程封装起来，让其可以并行执行；同时使用 [pipeline](../Best%20Practice/flow.md#pipeline) 把整个流程封装起来。重写后的整个程序如下：
+
 ```python
-documents = Document(dataset_path='/file/to/yourpath', embed=lazyllm.TrainableModule('bge-large-zh-v1.5'))
-documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=64, chunk_overlap=4)
+import lazyllm
 
-with pipeline() as ppl:
-    with parallel().sum as ppl.prl:
-        prl.retriever1 = Retriever(documents, group_name="sentences", similarity="cosine", topk=3)
-        prl.retriever2 = Retriever(documents, "CoarseChunk", "bm25_chinese", 0.003, topk=3)
+# Part0
 
-    ppl.reranker = Reranker("ModuleReranker", model="bge-reranker-large", topk=1) | bind(query=ppl.input)
-    ppl.formatter = (lambda nodes, query: dict(context_str="".join([node.get_content() for node in nodes]), query=query)) | bind(query=ppl.input)
-    ppl.llm = lazyllm.TrainableModule("internlm2-chat-7b").prompt(lazyllm.ChatPrompter(prompt, extro_keys=["context_str"]))
+documents = lazyllm.Document(dataset_path="rag_master",
+                             embed=lazyllm.OnlineEmbeddingModule(),
+                             create_ui=False)
 
-lazyllm.WebModule(ppl, port=23456).start().wait()
+documents.create_node_group(name="sentences",
+                            transform=lambda s: '。'.split(s))
+
+prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
+
+# Part1
+
+with lazyllm.pipeline() as ppl:
+    with lazyllm.parallel().sum as ppl.prl:
+        prl.retriever1 = lazyllm.Retriever(doc=documents,
+                                           group_name="CoarseChunk",
+                                           similarity="bm25_chinese",
+                                           topk=3)
+        prl.retriever2 = lazyllm.Retriever(doc=documents,
+                                           group_name="sentences",
+                                           similarity="cosine",
+                                           topk=3)
+
+    ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
+                                    model="bge-reranker-large",
+                                    topk=1) | bind(query=ppl.input)
+
+    ppl.formatter = (
+        lambda nodes, query: dict(
+            context_str = "".join([node.get_content() for node in nodes]),
+            query = query,
+        )
+    ) | bind(query=ppl.input)
+
+    ppl.llm = lazyllm.OnlineChatModule().prompt(
+        lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+
+# Part2
+
+rag = lazyllm.ActionModule(ppl)
+rag.start()
+
+query = input("query(enter 'quit' to exit): ")
+if query == "quit":
+    exit(0)
+
+res = rag(query)
+print(f"answer: {res}")
 ```
+
+在 Part1 中，外层的 `with` 语句所构造的 `pipeline` 即是我们上面的整个处理流程：先用 `Retriever` 检索出文档，接着交给 `Reranker` 排序选出合适的文档，再传给 `LLM` 参考，最后得到答案。其中分别实现两种不同检索策略的两个 `Retriever` 被封装进了一个 `parallel` 中，内层的 `with` 语句构造的 `parallel.sum`，表示把所有模块的输出合并之后作为 `parallel` 模块的输出。因为大模型 `llm` 需要接收的参数需要放在一个 dict 中，我们新增了一个 `formatter` 的组件，用于把用户查询的内容 `query` 和由 `Reranker` 选出的参考文档拼接而成的提示内容打包，作为 `llm` 的输入。
+
+图示如下：
+
+![rag-cookbook-3](../assets/rag-cookbook-3.svg)
+
+`pipeline` 和 `parallel` 只是方便流程搭建以及可能的一些性能优化，并不会改成程序的逻辑。另外用户查询作为重要的提示内容，基本是中间每个模块都会用到，我们在这里还用了 `LazyLLM` 提供的 [bind()](../Best%20Practice/flow.md#use-bind) 函数将用户查询 `query` 作为参数传给 `ppl.reranker` 和 `ppl.formatter`。
+
+## 版本-4：自定义检索和排序策略
+
+上面的例子使用的都是 `LazyLLM` 内置的组件。现实中总有我们覆盖不到的用户需求，为了满足这些需求，`Retriever` 和 `Reranker` 提供了插件机制，用户可以自定义检索和排序策略，通过 `LazyLLM` 提供的注册接口添加到框架中。
+
+为了简化说明和体现我们编写的策略的效果，这里不考虑策略是否实用。
+
+首先我们来实现一个相似度计算的函数，并使用 `LazyLLM` 提供的 [register_similarity()](../Best%20Practice/rag.md#Retriever) 函数把这个函数注册到框架中：
+
+```python
+@lazyllm.register_similarity(mode='text', batch=True)
+def MySimilarityFunc(query: str, nodes: List[DocNode], **kwargs) -> List[(DocNode, float)]:
+    return [(node, 0.0) for node in nodes]
+```
+
+这个函数给每个文档都打了零分，并且按照输入的文档列表的顺序返回新的结果列表。也就是说，每次检索的结果取决于读取文档的顺序。
+
+类似地，我们使用 `LazyLLM` 提供的 [register_reranker()](../Best%20Practice/rag.md#Reranker) 函数来注册一个按照输入的文档列表顺序返回结果的函数：
+
+```python
+@lazyllm.register_reranker(batch=True)
+def MyReranker(nodes: List[DocNode], **kwargs) -> List[DocNode]:
+    return nodes
+```
+
+之后就可以像内置的组件一样通过函数名称来使用这些扩展，例如下面的代码片段分别生成了使用我们上面定义的相似度计算和检索策略的 `Retriever` 和 `Reranker`：
+
+```python
+my_retriever = lazyllm.Retriever(doc=documents,
+                                 group_name="sentences",
+                                 similarity="MySimilarityFunc",
+                                 topk=3)
+
+my_reranker = Reranker(name="MyReranker")
+```
+
+当然返回的结果可能会很奇怪 :)
+
+这里只是简单介绍了怎么使用 `LazyLLM` 注册扩展的机制。可以参考 [Retriever](../Best%20Practice/rag.md#Retriever) 和 [Reranker](../Best%20Practice/rag.md#Reranker) 的文档，在遇到不能满足需求的时候通过编写自己的相似度计算和排序策略来实现自己的应用。

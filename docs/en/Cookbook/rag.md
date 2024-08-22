@@ -1,149 +1,326 @@
 # Knowledge Base Q&A Assistant
 
-In this article, we will implement a knowledge base Q&A assistant application.
+This article will demonstrate how to implement a knowledge base Q&A assistant. Before starting this section, it is recommended to read the [RAG Best Practices](../Best%20Practice/rag.md) first.
 
-> Through this section, you will learn the following key points of LazyLLM:
->
-> - Use of RAG-related modules:
->      - [Document][lazyllm.tools.Document]
->      - [Retriever][lazyllm.tools.Retriever]
->      - [Reranker][lazyllm.tools.Reranker]
+> Through this section, you will learn the following key points about `LazyLLM`:
 
-## Design Concept
+> * RAG related modules: [Document][lazyllm.tools.Document], [Retriever][lazyllm.tools.Retriever] and [Reranker][lazyllm.tools.Reranker]
+> * Built-in ChatPrompter module
+> * Built-in process modules: [Pipeline][lazyllm.flow.Pipeline] and [Parallel][lazyllm.flow.Parallel]
 
-To design a knowledge base document assistant, you first need to have a knowledge base (Documents). After building the knowledge base, you need some retrievers (Retriever) for matching high-similarity passages.
-After retrieving the documents, it is usually necessary to combine the input and use the Reranker model to re-rank to obtain a better ordered passage. Finally, send the retrieved content and user questions to the large model for answering.
+## Version-1
 
-The overall design is shown as follows:
+As known from [RAG Best Practices](../Best%20Practice/rag.md), the core of RAG is to answer the questions raised by users based on a specific collection of documents. With this goal in mind, we have designed the following process:
 
-![Great Writer](../assets/5_rag_1.svg)
+![rag-cookbook-1](../assets/rag-cookbook-1.svg)
 
-This design includes two retrievers, each matching the documents from different granularity for similarity.
+`Query` is the user's input query; `Retriever` finds matching documents from the document collection `Document` based on the user's query; the large language model `LLM` provides the final answer based on the documents passed over by `Retriever` and combined with the user's query.
 
-## Code Implementation
-
-Let's implement the above design concept based on LazyLLM.
-
-### Designing Prompt
-
-According to the design, we need to make the large model answer questions by combining the retrieved documents and user input. At this time, we need to design a prompt template for the large model.
+The following example rag.py implements the aforementioned functionality:
 
 ```python
-prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task. In this task, you need to provide your answer based on the given context and question.'
+# Part0
+
+import lazyllm
+
+# Part1
+
+documents = lazyllm.Document(dataset_path="/path/to/your/doc/dir",
+                             embed=lazyllm.OnlineEmbeddingModule(),
+                             create_ui=False)
+
+# Part2
+
+retriever = lazyllm.Retriever(doc=documents,
+                              group_name="CoarseChunk",
+                              similarity="bm25_chinese",
+                              topk=3)
+
+# Part3
+
+llm = lazyllm.OnlineChatModule()
+
+# Part4
+
+prompt = 'You will act as an AI question-answering assistant and complete a dialogue task. In this task, you need to provide your answers based on the given context and questions.'
+llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+
+# Part5
+
+query = input("query(enter 'quit' to exit): ")
+if query == "quit":
+    exit(0)
+
+# Part6
+
+doc_node_list = retriever(query=query)
+
+res = llm({
+    "query": query,
+    "context_str": "".join([node.get_content() for node in doc_node_list]),
+})
+
+# Part7
+
+print(f"answer: {res}")
 ```
 
-### Setting up the Model
+Let's briefly explain the code in each part.
 
-First, we need a knowledge base:
+1. Part0 imports `lazyllm`.
+
+2. Part1 loads the local knowledge base directory and uses the built-in `OnlineEmbeddingModule` as the embedding function.
+
+3. Part2 creates a `Retriever` for document retrieval, and uses the built-in `CoarseChunk` (refer to [definition of CoarseChunk][llm.tools.Retriever]) to chunk the documents into specified sizes, then uses the built-in `bm25_chinese` as the similarity calculation function, discards results with a similarity less than 0.003, and finally takes the closest 3 documents.
+
+4. Part3 creates an instance of the large model used for answering questions.
+
+5. Part4 since we need the large model to answer questions based on the documents we provide, we need to tell the large model what are the reference materials and what is our question when we ask. Here, we use the built-in `ChatPrompter` to tell the large model the document content returned by `Retriever` as reference materials. The meanings of the two parameters used in `ChatPrompter` are as follows:
+
+    * instruction: the guidance content provided to the large model;
+    * extro_keys: from which field in the passed-in dict to get the reference materials.
+
+6. Part5 prints prompt information, waiting for the user to input the content they want to query.
+
+7. Part6 is the main process: receive the user's input, use `Retriever` to retrieve relevant documents based on the user's `query`, then package the `query` and reference material `context_str` into a dict and pass it to the large model, waiting for the result to return.
+
+8. Part7 prints the result to the screen.
+
+Before running, modify the `dataset_path` parameter of `Document` in Part1 to point to the directory that needs to be retrieved. Also, set the authentication information for the applied SenseTime DailyNew model in the command line (refer to [Quick Start](../index.md)), and then run the following command:
 
 ```python
-documents = Document(dataset_path='/file/to/yourpath', embed=lazyllm.TrainableModule('bge-large-zh-v1.5'))
+python3 rag.py
 ```
 
-Here, the [Document][lazyllm.tools.Document] from LazyLLM is used, which accepts a path containing documents as a parameter,
-In addition, a word embedding model (here using `bge-large-zh-v1.5`) is also required, which can vectorize the documents,
-It can also vectorize the user's request. This allows the vectorized content of the two to be used for similarity calculation to retrieve the matching knowledge base passage content.
+Enter the content you want to query and wait for the large model to return the results.
 
-Then we define two retrievers to match from different document segmentation granularities:
+In this example, we only used the built-in algorithm `CoarseChunk` for retrieving similar documents, which chunks the document into fixed lengths and calculates the similarity for each chunk. This method may have decent results in some scenarios; however, in most cases, this simple and rough chunking may split important information into two segments, causing information loss, and the resulting documents may not be relevant to the user's input query.
+
+## Version-2: Adding Recall Strategy and Sorting
+
+To measure the relevance between documents and queries from different dimensions, we add a `Node Group` named `sentences` in Part1 that splits the document at the sentence level:
 
 ```python
-documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=64, chunk_overlap=4)
-retriever1 = Retriever(documents, group_name="sentences", similarity="cosine", topk=3)
-retriever2 = Retriever(documents, "CoarseChunk", "bm25_chinese", 0.003, topk=3)
+documents.create_node_group(name="sentences",
+                            transform=lambda d: '。'.split(d))
 ```
 
-Here, the [Retriever][lazyllm.tools.Retriever] from LazyLLM is used.
-
-- The retriever requires the first parameter to specify which database to use, here we use the knowledge base we just loaded.
-- The second parameter `group_name` of the retriever needs to specify a group name.
-    - The first retriever we created a custom group called `sentences` in the instance of `documents`, this group uses the node transformation method of sentence splitting [SentenceSplitter][lazyllm.tools.SentenceSplitter], the sentence block size is 64, and the overlap size is 4. When instantiating [Retriever][lazyllm.tools.Retriever], this group is used, and cosine similarity is used to calculate similarity, and the top 3 most similar sentences are taken.
-    - The second retriever uses the built-in `CoarseChunk` of LazyLLM, which also uses the node transformation method [SentenceSplitter][lazyllm.tools.SentenceSplitter], but its sentence block size is larger, 1024, and the overlap size is also 100. Here, the method of similarity calculation is also specified as the Chinese BM25, and those with similarity lower than 0.003 will be discarded, the default is negative infinity which means not discarded. And finally, the top 3 most similar sentences are also taken.
-
-In addition to [SentenceSplitter][lazyllm.tools.SentenceSplitter], LazyLLM also includes [LLMParser][lazyllm.tools.LLMParser], which is a text summarizer and keyword extractor that can extract summaries or keywords from user text based on task requirements.
-
-LazyLLM's [Document][lazyllm.tools.Document] comes with several pre-configured node groups (node group), for more details, see: [Retriever][lazyllm.tools.Retriever]. In addition to `CoarseChunk`, there are also:
-
-- `MediumChunk`: It has a `chunk_size` of 256 and a `chunk_overlap` of 25;
-- `FineChunk`: It has a `chunk_size` of 128 and a `chunk_overlap` of 12;
-
-
-Next, we define a reranker:
+And in Part2, we use `cosine` to calculate the similarity between sentences and the user's query, then filter out the top 3 most relevant documents:
 
 ```python
-reranker = Reranker("ModuleReranker", model="bge-reranker-large", topk=1)
+retriever2 = Retriever(doc=documents,
+                       group_name="sentences",
+                       similarity="cosine",
+                       topk=3)
 ```
 
-Here, the [Reranker][lazyllm.tools.Reranker] from LazyLLM is used, which can reorder the retrieved content. Here, the most similar content after reordering is taken as the output.
-
-Finally, let's set up the LLM model:
+Now that we have two different retrieval functions returning results in different orders, and these results may be duplicated, we need to use a `Reranker` to re-rank the multiple results. We insert a new Part8 between Part2 and Part4, adding a `ModuleReranker`, which uses a specified model to sort and select the most eligible single article:
 
 ```python
-llm = lazyllm.TrainableModule("internlm2-chat-7b").prompt(lazyllm.ChatPrompter(prompt, extro_keys=["context_str"]))
+# Part8
+
+reranker = Reranker(name="ModuleReranker",
+                    model="bge-reranker-large",
+                    topk=1)
 ```
 
-Here, `prompt` is set for [TrainableModule][lazyllm.module.TrainableModule], and similar applications can be found at: [Painting Master](painting_master.md#use-prompt).
+`ModuleReranker` is a general sorting module built into `LazyLLM` that simplifies the scenario of using a model to sort documents. You can check [the introduction to Reranker in the Best Practice guide](../Best%20Practice/rag.md#Reranker) for more information.
 
-### Assembling the Application
-
-Now let's assemble all the above modules together:
+At the same time, we will rewrite Part 6 as follows:
 
 ```python
-with pipeline() as ppl:
-    with parallel().sum as ppl.prl:
-        prl.retriever1 = Retriever(documents, group_name="sentences", similarity="cosine", topk=3)
-        prl.retriever2 = Retriever(documents, "CoarseChunk", "bm25_chinese", 0.003, topk=3)
+# Part6-2
 
-    ppl.reranker = Reranker("ModuleReranker", model="bge-reranker-large", topk=1) | bind(query=ppl.input)
-    ppl.formatter = (lambda nodes, query: dict(context_str="".join([node.get_content() for node in nodes]), query=query)) | bind(query=ppl.input)
-    ppl.llm = lazyllm.TrainableModule("internlm2-chat-7b").prompt(lazyllm.ChatPrompter(prompt, extro_keys=["context_str"]))
+doc_node_list_1 = retriever1(query=query)
+doc_node_list_2 = retriever2(query=query)
+
+doc_node_list = reranker(nodes=doc_node_list_1+doc_node_list_2, query=query)
+
+res = llm({
+    "query": query,
+    "context_str": "".join([node.get_content() for node in doc_node_list]),
+})
 ```
 
-In the above code, `parallel().sum` adds all the outputs of the parallel elements together. Here, two types of retrievers are specified for retrieval,
-Each has 3 results, and after the `.sum` setting, the results can be added together to obtain 6 retrieved results.
+The improved process is as follows:
 
-```python
-ppl.formatter = (lambda nodes, query: dict(context_str="".join([node.get_content() for node in nodes]), query=query)) | bind(query=ppl.input)
-```
-
-Here, an anonymous function is defined for formatting, which feeds the formatted content to the large model.
-It should be noted that the user's input is `bind` here (the `bind` similar applications can be referred to: [Great Writer](great_writer.md)). It corresponds to the blue line in the design diagram.
-In addition, `ppl.reranker` is also `bind` with the user's input, corresponding to the red line in the design diagram. Introduction to the usage of `bind` can be found in detail at: [PARAMETER BINDING](../Best%20Practice/flow.md#use-bind).
-
-### Starting the Application
-
-Finally, we wrap the control flow `ppl` into a client and start deployment (`start()`), and keep the client open after deployment (`wait()`).
-
-```python
-lazyllm.WebModule(ppl, port=23456).start().wait()
-```
-
-## Full Code
+![rag-cookbook-2](../assets/rag-cookbook-2.svg)
 
 <details>
-<summary>click to look up prompts and imports</summary>
+
+<summary>Here is the complete code (click to expand):</summary>
 
 ```python
+# Part0
 
-import os
 import lazyllm
-from lazyllm import pipeline, parallel, bind, SentenceSplitter, Document, Retriever, Reranker
 
-prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task. In this task, you need to provide your answer based on the given context and question.'
+# Part1
+
+documents = lazyllm.Document(dataset_path="rag_master",
+                             embed=lazyllm.OnlineEmbeddingModule(),
+                             create_ui=False)
+
+documents.create_node_group(name="sentences",
+                            transform=lambda s: '。'.split(s))
+
+# Part2
+
+retriever1 = lazyllm.Retriever(doc=documents,
+                               group_name="CoarseChunk",
+                               similarity="bm25_chinese",
+                               topk=3)
+
+retriever2 = lazyllm.Retriever(doc=documents,
+                               group_name="sentences",
+                               similarity="cosine",
+                               topk=3)
+
+# Part8
+
+reranker = lazyllm.Reranker(name='ModuleReranker',
+                            model="bge-reranker-large",
+                            topk=1)
+
+# Part3
+
+llm = lazyllm.OnlineChatModule()
+
+# Part4
+
+prompt = 'You will act as an AI question-answering assistant and complete a dialogue task. In this task, you need to provide your answers based on the given context and questions.'
+llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+
+# Part5
+
+query = input("query(enter 'quit' to exit): ")
+if query == "quit":
+    exit(0)
+
+# Part6
+
+doc_node_list_1 = retriever1(query=query)
+doc_node_list_2 = retriever2(query=query)
+
+doc_node_list = reranker(nodes=doc_node_list_1+doc_node_list_2, query=query)
+
+res = llm({
+    "query": query,
+    "context_str": "".join([node.get_content() for node in doc_node_list]),
+})
+
+# Part7
+
+print(f"answer: {res}")
 ```
+
 </details>
 
+## Version-3: using the Flow
+
+From the flowchart of version-2, it can be seen that the entire process is already quite complex. We noticed that the retrieval processes of two (or more) `Retriever`s do not affect each other; they can be executed in parallel. At the same time, there are clear dependencies between the upstream and downstream processes, which require the upstream to be completed before the next step can proceed.
+
+`LazyLLM` provides a set of auxiliary tools to simplify the writing of the execution flow. We can use [parallel](../Best%20Practice/flow.md#parallel) to encapsulate the two retrieval processes, allowing them to execute in parallel; and use [pipeline](../Best%20Practice/flow.md#pipeline) to encapsulate the entire process. The entire rewritten program is as follows:
+
+
 ```python
-documents = Document(dataset_path='/file/to/yourpath', embed=lazyllm.TrainableModule('bge-large-zh-v1.5'))
-documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=64, chunk_overlap=4)
+import lazyllm
 
-with pipeline() as ppl:
-    with parallel().sum as ppl.prl:
-        prl.retriever1 = Retriever(documents, group_name="sentences", similarity="cosine", topk=3)
-        prl.retriever2 = Retriever(documents, "CoarseChunk", "bm25_chinese", 0.003, topk=3)
+# Part0
 
-    ppl.reranker = Reranker("ModuleReranker", model="bge-reranker-large", topk=1) | bind(query=ppl.input)
-    ppl.formatter = (lambda nodes, query: dict(context_str="".join([node.get_content() for node in nodes]), query=query)) | bind(query=ppl.input)
-    ppl.llm = lazyllm.TrainableModule("internlm2-chat-7b").prompt(lazyllm.ChatPrompter(prompt, extro_keys=["context_str"]))
+documents = lazyllm.Document(dataset_path="rag_master",
+                             embed=lazyllm.OnlineEmbeddingModule(),
+                             create_ui=False)
 
-lazyllm.WebModule(ppl, port=23456).start().wait()
+documents.create_node_group(name="sentences",
+                            transform=lambda s: '。'.split(s))
+
+prompt = 'You will act as an AI question-answering assistant and complete a dialogue task. In this task, you need to provide your answers based on the given context and questions.'
+
+# Part1
+
+with lazyllm.pipeline() as ppl:
+    with lazyllm.parallel().sum as ppl.prl:
+        prl.retriever1 = lazyllm.Retriever(doc=documents,
+                                           group_name="CoarseChunk",
+                                           similarity="bm25_chinese",
+                                           topk=3)
+        prl.retriever2 = lazyllm.Retriever(doc=documents,
+                                           group_name="sentences",
+                                           similarity="cosine",
+                                           topk=3)
+
+    ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
+                                    model="bge-reranker-large",
+                                    topk=1) | bind(query=ppl.input)
+
+    ppl.formatter = (
+        lambda nodes, query: dict(
+            context_str = "".join([node.get_content() for node in nodes]),
+            query = query,
+        )
+    ) | bind(query=ppl.input)
+
+    ppl.llm = lazyllm.OnlineChatModule().prompt(
+        lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+
+# Part2
+
+rag = lazyllm.ActionModule(ppl)
+rag.start()
+
+query = input("query(enter 'quit' to exit): ")
+if query == "quit":
+    exit(0)
+
+res = rag(query)
+print(f"answer: {res}")
 ```
+
+In Part1, the outer `with` statement constructs the `pipeline` which is our entire processing flow above: first, the `Retriever` retrieves documents, then it hands them over to the `Reranker` to sort and select suitable documents, which are then passed to the `LLM` for reference, and finally, an answer is obtained. The two `Retriever`s that implement different retrieval strategies are encapsulated within a `parallel`. The `parallel.sum` constructed by the inner `with` statement indicates that the outputs of all modules are merged and used as the output of the `parallel` module. Since the large model `llm` requires its parameters to be placed in a dict, we added a `formatter` component to package the user's query content `query` and the prompt content composed of the reference documents selected by the `Reranker` as the input for `llm`.
+
+The illustration is as follows:
+
+![rag-cookbook-3](../assets/rag-cookbook-3.svg)
+
+`pipeline` and `parallel` are merely convenient for process setup and may offer some performance optimizations, but they do not alter the logic of the program. Additionally, the user query is an important prompt content that is essentially used by every intermediate module. Here, we also utilize the [bind()](../Best%20Practice/flow.md#use-bind) function provided by `LazyLLM` to pass the user query `query` as a parameter to `ppl.reranker` and `ppl.formatter`.
+
+## Version-4: Customizing Retrieval and Sorting Strategies
+
+The examples above all use components built into `LazyLLM`. However, in reality, there are always user needs that we cannot cover. To meet these needs, `Retriever` and `Reranker` provide a plugin mechanism that allows users to define their own retrieval and sorting strategies, adding them to the framework through the registration interface provided by `LazyLLM`.
+
+To simplify the explanation and demonstrate the effect of the strategies we write, we will not consider whether the strategies are practical.
+
+First, let's implement a function for similarity calculation and use the [register_similarity()](../Best%20Practice/rag.md#Retriever) function provided by `LazyLLM` to register this function with the framework:
+
+```python
+@lazyllm.register_similarity(mode='text', batch=True)
+def MySimilarityFunc(query: str, nodes: List[DocNode], **kwargs) -> List[(DocNode, float)]:
+    return [(node, 0.0) for node in nodes]
+```
+
+This function assigns a score of zero to each document and returns a new results list in the order of the input document list. That is to say, the retrieval results each time depend on the order in which the documents are read.
+
+Similarly, we use the [register_reranker()](../Best%20Practice/rag.md#Reranker) function provided by LazyLLM to register a function that returns results in the order of the input document list:
+
+```python
+@lazyllm.register_reranker(batch=True)
+def MyReranker(nodes: List[DocNode], **kwargs) -> List[DocNode]:
+    return nodes
+```
+
+After that, these extensions can be used just like the built-in components, by referring to them by their function names. For example, the following code snippet creates a `Retriever` and a `Reranker` using the similarity calculation and retrieval strategy we defined above, respectively:
+
+
+```python
+my_retriever = lazyllm.Retriever(doc=documents,
+                                 group_name="sentences",
+                                 similarity="MySimilarityFunc",
+                                 topk=3)
+
+my_reranker = Reranker(name="MyReranker")
+```
+
+Certainly, the results returned might be a little wired :)
+
+Here, we've simply introduced how to use the `LazyLLM` extension registration mechanism. You can refer to the documentation for [Retriever](../Best%20Practice/rag.md#Retriever) and [Reranker](../Best%20Practice/rag.md#Reranker) for more information. When you encounter scenarios where the built-in functionalities do not meet your needs, you can implement your own applications by writing custom similarity calculation and sorting strategies.
