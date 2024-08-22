@@ -55,6 +55,7 @@ class ModelManager():
             return dict()
 
     def _try_add_mapping(self, model):
+        model = os.path.basename(model)
         if model.lower() in model_name_mapping.keys():
             return
         matched_model_prefix = next((key for key in model_provider if model.lower().startswith(key)), None)
