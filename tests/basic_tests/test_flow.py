@@ -38,6 +38,13 @@ class TestFlow(object):
         fl = diverter(add_one, add_one)(1, 2)
         assert fl == (2, 3)
 
+        div = diverter(lambda x: x + 1, lambda x: x * 2, lambda x: -x)
+        assert div(1, 2, 3) == (2, 4, -3)
+
+        div = diverter(a=lambda x: x + 1, b=lambda x: x * 2, c=lambda x: -x).asdict
+        assert div(1, 2, 3) == {'a': 2, 'b': 4, 'c': -3}
+        assert div(dict(c=3, b=2, a=1)) == {'a': 2, 'b': 4, 'c': -3}
+
     def test_warp(self):
 
         fl = warp(add_one)(1, 2, 3)

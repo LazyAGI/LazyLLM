@@ -173,13 +173,19 @@ In order to further simplify the complexity of the code, we have introduced the 
 
 ```python
 from lazyllm import pipeline, _0
+
+def f1(input, input2=0): return input + input2 + 1
+def f2(input): return input + 3
+def f3(input): return f'f3-{input}'
+def f4(in1, in2): return f'get [{in1}], [{in2}]'
+
 with pipeline(auto_capture=True) as p:
     p1 = f1
     p2 = f2
     p3 = f3
-    p4 = f4 | bind(p.input, _0, in3=p2)
+    p4 = f4 | bind(p.input, _0)
 
-assert p(1) == 'get [1], [f3-5], [5]'
+assert p(1) == 'get [1], [f3-5]'
 ```
 
 > **Note**: This capability is currently not very mature and is not recommended for use. Stay tuned for updates.

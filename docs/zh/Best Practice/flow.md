@@ -173,13 +173,19 @@ assert p1([1, 2]) == '[[3 + 1] + 2]'
 
 ```python
 from lazyllm import pipeline, _0
+
+def f1(input, input2=0): return input + input2 + 1
+def f2(input): return input + 3
+def f3(input): return f'f3-{input}'
+def f4(in1, in2): return f'get [{in1}], [{in2}]'
+
 with pipeline(auto_capture=True) as p:
     p1 = f1
     p2 = f2
     p3 = f3
-    p4 = f4 | bind(p.input, _0, in3=p2)
+    p4 = f4 | bind(p.input, _0)
 
-assert p(1) == 'get [1], [f3-5], [5]'
+assert p(1) == 'get [1], [f3-5]'
 ```
 
 > **注意**：该能力目前还不是很完善，不推荐大家使用，敬请期待

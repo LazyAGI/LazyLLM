@@ -253,7 +253,7 @@ def _split_input(input: Union[Tuple, List], flag: Optional[Union[int, List]] = N
         if isinstance(input, dict):
             return package(input[key] for key in flag)
         elif isinstance(input, (tuple, list)):
-            return _split_input(len(flag))
+            return _split_input(input, len(flag))
     raise TypeError(f'invalid flag type {type(flag)} given')
 
 
