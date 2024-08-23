@@ -64,7 +64,7 @@ Args:
 
 add_example('Document.create_node_group', '''
 >>> import lazyllm
->>> from lazyllm.tools import Document
+>>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
@@ -86,7 +86,7 @@ Args:
 
 add_example('Document.find_parent', '''
 >>> import lazyllm
->>> from lazyllm.tools import Document
+>>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 >>> documents.create_node_group(name="parent", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
@@ -110,7 +110,7 @@ Args:
 
 add_example('Document.find_children', '''
 >>> import lazyllm
->>> from lazyllm.tools import Document
+>>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 >>> documents.create_node_group(name="parent", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
@@ -237,7 +237,7 @@ Args:
 
 add_example('SentenceSplitter', '''
 >>> import lazyllm
->>> from lazyllm.tools import Document
+>>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
