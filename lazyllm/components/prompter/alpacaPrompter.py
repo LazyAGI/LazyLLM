@@ -11,7 +11,7 @@ class AlpacaPrompter(LazyLLMPrompterBase):
             instruction = splice_struction
         instruction_template = ("Below is an instruction that describes a task, paired with extra messages such as "
                                 "input that provides further context if possible. Write a response that appropriately "
-                                f"completes the request.\n\n ### Instruction:\n{instruction if instruction else ''}"
+                                f"completes the request.\n\n### Instruction:\n{instruction if instruction else ''}"
                                 "\n\n" + LazyLLMPrompterBase._get_extro_key_template(extro_keys))
         self._init_prompt("{system}\n{instruction}\n{tools}\n{user}### Response:\n",
                           instruction_template,

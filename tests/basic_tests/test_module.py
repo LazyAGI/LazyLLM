@@ -4,6 +4,7 @@ import requests
 import pytest
 
 import lazyllm
+import multiprocessing
 from lazyllm.launcher import cleanup
 
 class TestModule:
@@ -127,3 +128,12 @@ class TestModule:
         response = requests.get(m.url)
         assert response.status_code == 200
         m.stop()
+
+    # for mac
+    def test_WebModule_spawn(self):
+        m = multiprocessing.get_start_method()
+        if m != 'spawn':
+            multiprocessing.set_start_method('spawn', force=True)
+        self.test_WebModule()
+        if m != 'spawn':
+            multiprocessing.set_start_method(m, force=True)

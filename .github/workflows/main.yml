@@ -10,6 +10,7 @@ on:
     paths-ignore:
       - "**.md"
       - ".git*"
+      - "docs/assets/**"
 env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}'
 
