@@ -763,6 +763,7 @@ add_example(
     "SQLiteTool",
     """\
     >>> from lazyllm.tools import SQLiteTool
+    >>> with open("personal.db", "w") as _: pass
     >>> sql_tool = SQLiteTool("personal.db")
     >>> tables_info = {
     ...     "User": {
