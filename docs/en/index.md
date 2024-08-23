@@ -36,8 +36,7 @@ cd LazyLLM
 Install the basic dependencies:
 
 ```bash
-pip3 install -r requirement.txt
-pip3 install docstring_parser pyjwt httpx==0.19.0 # Dependencies required to run the example
+pip3 install -r requirements.full.txt
 ```
 
 Add `LazyLLM` to the module search path:
@@ -88,7 +87,7 @@ You can also view and pull the required version from [https://hub.docker.com/r/l
 
 To give you a basic understanding of `LazyLLM`, we will use it to create a chatbot based on the conversation capabilities provided by the [Sensetime Nova Platform](https://platform.sensenova.cn/home).
 
-First, you need to register an account on the platform, and according to the first step in the [API Introduction](https://console.sensecore.cn/help/docs/ApiDoc/synopsis), obtain the api key and secret key required for access and set the corresponding environment variables:
+First, you need to register an account on the platform, and according to the first step in the [SenseNova Manual](https://platform.sensenova.cn/doc?path=/platform/helpdoc/help.md), obtain the api key and secret key required for access and set the corresponding environment variables:
 
 ```bash
 export LAZYLLM_SENSENOVA_API_KEY=<your obtained api key>
@@ -106,7 +105,7 @@ while True:
     if query == "quit":                                 #(4)
         break
     res = chat.forward(query)                           #(5)
-    print(f"answer: {str(res)}\n")                      #(6)
+    print(f"answer: {res}")                             #(6)
 ```
 
 Finally, run our demo:
@@ -147,7 +146,7 @@ history = []                                             #(7)
 
 while True:
     query = input("query(enter 'quit' to exit): ")       #(3)
-if query == "quit":                                      #(4)
+    if query == "quit":                                  #(4)
         break
     res = chat(query, llm_chat_history=history)          #(5')
     print(f"answer: {str(res)}\n")                       #(6)

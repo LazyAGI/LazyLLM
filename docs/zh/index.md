@@ -36,8 +36,7 @@ cd LazyLLM
 安装基础依赖：
 
 ```bash
-pip3 install -r requirement.txt
-pip3 install docstring_parser pyjwt httpx==0.19.0 # 运行示例所需的依赖
+pip3 install -r requirements.full.txt
 ```
 
 把 `LazyLLM` 加入到模块搜索路径中：
@@ -147,7 +146,7 @@ history = []                                             #(7)
 
 while True:
     query = input("query(enter 'quit' to exit): ")       #(3)
-if query == "quit":                                      #(4)
+    if query == "quit":                                  #(4)
         break
     res = chat(query, llm_chat_history=history)          #(5')
     print(f"answer: {str(res)}\n")                       #(6)
@@ -156,9 +155,9 @@ if query == "quit":                                      #(4)
 
 对应标号的语句和前面一问一答的版本一样，运行方式也一样。代码中不同的地方主要有下面这些：
 
-1. 语句 7 加了个 `history` 字段，用来保存对话的历史；
-2. 语句 5' 传给远程服务器的内容，除了当前 `query` 外，还把历史内容 `history` 也传进去了；
-3. 语句 8 把本次对话的问答内容拼接到 `history` 之后；
+* 语句 7 加了个 `history` 字段，用来保存对话的历史；
+* 语句 5' 传给远程服务器的内容，除了当前 `query` 外，还把历史内容 `history` 也传进去了；
+* 语句 8 把本次对话的问答内容拼接到 `history` 之后；
 
 ## 使用 web 界面
 
