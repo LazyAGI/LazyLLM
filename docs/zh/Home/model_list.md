@@ -2,7 +2,7 @@
 
 ## 常见模型
 
-以下模型是 LazyLLM 中常见支持的模型。你可以用这里提供的名字直接作为 [TrainableModule][lazyllm.module.TrainableModule] 的参数传入，LazyLLM 会自动下载该模型。如果网络不可访问，您也可以直接指定本地模型的绝对路径。
+以下模型是 LazyLLM 中常见支持的模型。您可以用这里提供的名字直接作为 [TrainableModule][lazyllm.module.TrainableModule] 的参数传入，LazyLLM 会自动下载该模型。如果网络不可访问，您也可以直接指定本地模型的绝对路径。
 
 ### 大语言模型
 
