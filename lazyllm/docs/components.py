@@ -325,8 +325,7 @@ Keyword Args:
 add_example('finetune.LlamafactoryFinetune', '''\
 >>> from lazyllm import finetune
 >>> trainer = finetune.llamafactory('internlm2-chat-7b', 'path/to/target')
-... # Some info: No CUDA runtime is found...
-... <lazyllm.llm.finetune type=LlamafactoryFinetune>
+<lazyllm.llm.finetune type=LlamafactoryFinetune>
 ''')
 
 # Finetune-Auto
@@ -676,10 +675,11 @@ add_example('formatter.FormatterBase', '''\
 ...             return result
 ...         else:
 ...             return data
+...
 >>> fmt = MyFormatter("[1:3]")
 >>> res = fmt.format("[1,2,3,4,5]")s
 >>> print(res)
-... [2, 3]
+[2, 3]
 ''')
 
 # JsonFormatter
@@ -716,8 +716,7 @@ add_example('EmptyFormatter', '''\
 >>> ff = JsonFormatter()
 >>> res = ff.format('This is {"a":12, "b": 24}')
 >>> print(type(res), res)
-... <class 'dict'> {'a': 12, 'b': 24}
-...
+<class 'dict'> {'a': 12, 'b': 24}
 >>> # Example 2:
 >>> # Assume that the model output without specifying a formatter is as follows:
 "Here's a nested list of dictionaries based on your user input:\\\\n\\\\n```json\\\\n[\\\\n    {\\\\n        \\\"title\\\": \\\"# AI in Medical Field\\\",\\\\n        \\\"describe\\\": \\\"Please provide a detailed introduction to the use of artificial intelligence in the medical field, emphasizing its potential benefits and challenges.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"## Applications of AI in Medical Diagnosis\\\",\\\\n        \\\"describe\\\": \\\"Please discuss the utilization of AI in medical diagnosis, including its advantages over traditional methods and notable achievements.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"### AI-assisted Diagnosis Tools\\\",\\\\n        \\\"describe\\\": \\\"Please elaborate on specific AI-assisted diagnostic tools used in medical practice, such as image analysis, predictive analytics, and decision support systems.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Image Analysis Tools\\\",\\\\n        \\\"describe\\\": \\\"Please provide a comprehensive overview of AI-powered image analysis tools and their role in enhancing disease detection and treatment planning.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Predictive Analytics\\\",\\\\n        \\\"describe\\\": \\\"Please explain how predictive analytics leverages AI to forecast diseases, identify risk factors, and develop personalized treatment protocols.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Decision Support Systems\\\",\\\\n        \\\"describe\\\": \\\"Please discuss the role of decision support systems in facilitating clinical decision-making and improving patient outcomes.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"## Advantages and Limitations of AI in Medical Field\\\",\\\\n        \\\"describe\\\": \\\"Please identify and elaborate on the key advantages and limitations of employing AI in the medical field, including ethical, legal, and practical considerations.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"## Future Perspectives and Innovations\\\",\\\\n        \\\"describe\\\": \\\"Please provide a forward-looking view of the progression of AI in the healthcare sector, predicting future developments, and discussing the potential impact on medical professionals and patients.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"### New AI Technologies\\\",\\\\n        \\\"describe\\\": \\\"Please discuss emerging AI technologies that could reshape the medical field, such as machine learning, natural language processing, and robotics.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Machine Learning\\\",\\\\n        \\\"describe\\\": \\\"Please explain how machine learning algorithms are being used to enhance medical research, such as in drug discovery, genomics, and epidemiology.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Natural Language Processing\\\",\\\\n        \\\"describe\\\": \\\"Please discuss the role of natural language processing in extracting and analyzing medical data from various sources, such as electronic health records and scientific literature.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"#### Robotics\\\",\\\\n        \\\"describe\\\": \\\"Please elaborate on the incorporation of AI-driven robots in medical procedures and surgeries, emphasizing their potential to revolutionize patient care and treatment options.\\\"\\\\n    },\\\\n    {\\\\n        \\\"title\\\": \\\"### Ethical Considerations\\\",\\\\n        \\\"describe\\\": \\\"Please address the ethical concerns surrounding AI in healthcare, such as data privacy, transparency, and patient autonomy, and discuss potential methods to mitigate these issues.\\\"\\\\n    }\\\\n]\\\\n```\\\\n\\\\nThis outline provides a comprehensive structure for your article, addressing various aspects of the application of AI in the medical field, from specific AI technologies to ethical considerations. You can start by elaborating on each section, providing detailed descriptions, examples, and relevant information. Be sure to include scientific research, case studies, and expert opinions to support your arguments and provide a comprehensive understanding of the subject."
@@ -1193,7 +1192,7 @@ add_example('MusicGenDeploy', ['''\
 >>> url = deployer(base_model='musicgen-small')
 >>> model = UrlModule(url=url)
 >>> model('Symphony with flute as the main melody')
-... 4981065 {"sounds": [32000, [-931, -1206, -1170, -1078, -10
+4981065 {"sounds": [32000, [-931, -1206, -1170, -1078, -10
 '''])
 
 add_english_doc('SenseVoiceDeploy', '''\
