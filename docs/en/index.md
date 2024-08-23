@@ -149,7 +149,7 @@ while True:
     if query == "quit":                                  #(4)
         break
     res = chat(query, llm_chat_history=history)          #(5')
-    print(f"answer: {str(res)}\n")                       #(6)
+    print(f"answer: {res}")                              #(6)
     history.append([query, res])                         #(8)
 ```
 

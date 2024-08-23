@@ -87,7 +87,7 @@ docker pull lazyllm/lazyllm
 
 为了让大家对 `LazyLLM` 有个初步的认识，我们基于 [商汤日日新开放平台](https://platform.sensenova.cn/home) 提供的对话功能，使用 `LazyLLM` 来实现一个聊天机器人。
 
-首先需要在平台注册一个账号，根据 [API简介](https://console.sensecore.cn/help/docs/ApiDoc/synopsis) 的第一步获取访问所需的 api key 和 secret key，并设置对应的环境变量：
+首先需要在平台注册一个账号，根据 [SenseNova 商汤日日新开放平台使用手册](https://platform.sensenova.cn/doc?path=/platform/helpdoc/help.md) 的第一步获取访问所需的 api key 和 secret key，并设置对应的环境变量：
 
 ```bash
 export LAZYLLM_SENSENOVA_API_KEY=<申请到的api key>
@@ -105,7 +105,7 @@ while True:
     if query == "quit":                                 #(4)
         break
     res = chat.forward(query)                           #(5)
-    print(f"answer: {str(res)}\n")                      #(6)
+    print(f"answer: {res}")                             #(6)
 ```
 
 最后运行我们的 demo：
@@ -149,7 +149,7 @@ while True:
     if query == "quit":                                  #(4)
         break
     res = chat(query, llm_chat_history=history)          #(5')
-    print(f"answer: {str(res)}\n")                       #(6)
+    print(f"answer: {res}")                              #(6)
     history.append([query, res])                         #(8)
 ```
 
