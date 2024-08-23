@@ -36,7 +36,7 @@ cd LazyLLM
 Install the basic dependencies:
 
 ```bash
-pip3 install -r requirements.full.txt
+pip3 install -r requirements.txt
 ```
 
 Add `LazyLLM` to the module search path:

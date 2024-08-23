@@ -36,7 +36,7 @@ cd LazyLLM
 安装基础依赖：
 
 ```bash
-pip3 install -r requirements.full.txt
+pip3 install -r requirements.txt
 ```
 
 把 `LazyLLM` 加入到模块搜索路径中：
