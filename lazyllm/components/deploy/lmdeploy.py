@@ -58,9 +58,11 @@ class LMDeploy(LazyLLMDeployBase):
                             f"base_model({base_model}) will be used")
             finetuned_model = base_model
 
-        if not self.kw["chat-template"]:
+        if not self.kw["chat-template"] and 'vl' not in finetuned_model and 'lava' not in finetuned_model:
             self.kw["chat-template"] = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                     'lmdeploy', 'chat_template.json')
+        else:
+            self.kw.pop("chat-template")
 
         def impl():
             if self.random_port:
