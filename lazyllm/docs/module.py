@@ -76,11 +76,11 @@ Deploy the module and all its submodules.
 
 add_example('ModuleBase.start', '''\
 >>> import lazyllm
->>> m = lazyllm.TrainableModule().deploy_method(lazyllm.deploy.dummy)
+>>> m = lazyllm.TrainableModule().deploy_method(lazyllm.deploy.dummy).prompt(None)
 >>> m.start()
 <Module type=Trainable mode=None basemodel= target= stream=False return_trace=False>
 >>> m(1)
-"reply for You are an AI-Agent developed by LazyLLM.\n\n\n\n1\n\n, and parameters is {'do_sample': False, 'temperature': 0.1}"
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
 ''')
 
 add_chinese_doc('ModuleBase.restart', '''\
@@ -93,11 +93,11 @@ Re-deploy the module and all its submodules.
 
 add_example('ModuleBase.restart', '''\
 >>> import lazyllm
->>> m = lazyllm.TrainableModule().deploy_method(lazyllm.deploy.dummy)
+>>> m = lazyllm.TrainableModule().deploy_method(lazyllm.deploy.dummy).prompt(None)
 >>> m.restart()
 <Module type=Trainable mode=None basemodel= target= stream=False return_trace=False>
 >>> m(1)
-"reply for You are an AI-Agent developed by LazyLLM.\n\n\n\n1\n\n, and parameters is {'do_sample': False, 'temperature': 0.1}"
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
 ''')
 
 add_chinese_doc('ModuleBase.update', '''\

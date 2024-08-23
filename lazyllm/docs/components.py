@@ -677,7 +677,7 @@ add_example('formatter.FormatterBase', '''\
 ...             return data
 ...
 >>> fmt = MyFormatter("[1:3]")
->>> res = fmt.format("[1,2,3,4,5]")s
+>>> res = fmt.format("[1,2,3,4,5]")
 >>> print(res)
 [2, 3]
 ''')
@@ -1192,7 +1192,7 @@ add_example('MusicGenDeploy', ['''\
 >>> url = deployer(base_model='musicgen-small')
 >>> model = UrlModule(url=url)
 >>> model('Symphony with flute as the main melody')
-4981065 {"sounds": [32000, [-931, -1206, -1170, -1078, -10
+4981065 {"sounds": [32000, [-931, -1206, -1170, -1078, -10, ...
 '''])
 
 add_english_doc('SenseVoiceDeploy', '''\
