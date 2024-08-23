@@ -44,6 +44,7 @@ class LMDeploy(LazyLLMDeployBase):
             'server-port': None,
             'tp': 1,
             "max-batch-size": 128,
+            "chat-template": None,
         })
         self.kw.check_and_update(kw)
         self.random_port = False if 'server-port' in kw and kw['server-port'] else True
@@ -56,6 +57,10 @@ class LMDeploy(LazyLLMDeployBase):
                 LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                             f"base_model({base_model}) will be used")
             finetuned_model = base_model
+
+        if not self.kw["chat-template"]:
+            self.kw["chat-template"] = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                    'lmdeploy', 'chat_template.json')
 
         def impl():
             if self.random_port:
