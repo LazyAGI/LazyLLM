@@ -1,17 +1,17 @@
 # flake8: noqa: E501,
 
 model_groups = {
-    "Meta-Llama-3": {
+    "meta-llama-3": {
         "prompt_keys": {'sos': '<|start_header_id|>system<|end_header_id|>\n\n', 'soh': '<|start_header_id|>user<|end_header_id|>\n\n', 'soa': '<|start_header_id|>assistant<|end_header_id|>\n\n', 'eos': '<|eot_id|>', 'eoh': '<|eot_id|>', 'eoa': '<|eot_id|>', 'stop_words': ['<|eot_id|>', '<|end_of_text|>']},
     },
-    "Llama-2": {
+    "llama-2": {
         "prompt_keys": {
             'sos': '[INST] <<SYS>>\n', 'soa': ' [/INST] ', 'eos': '\n<</SYS>>\n\n', 'eoa': '</s>', 'separator': '<s>[INST] ',
             'system': ("\nYou are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.\n\n"
                     "If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.")
             },
     },
-    "QWen": {
+    "qwen": {
         "prompt_keys": {
             'sos': '<|im_start|>system\n', 'soh': '<|im_start|>user\n', 'soa': '<|im_start|>assistant\n', 'soe': '<|im_start|>environment\n', 'eos': '<|im_end|>\n', 'eoh': '<|im_end|>\n', 'eoa': '<|im_end|>', 'eoe': '<|im_end|>\n', 'separator': '\n', 'stop_words': ['<|im_end|>'], 'tool_start_token': '<|action_start|><|function|>', 'tool_end_token': '<|action_end|>', 'tool_args_token': "<|args|>",
             'system': "You are a helpful assistant."
@@ -42,10 +42,10 @@ model_groups = {
     "codellama": {
         "prompt_keys": {},
     },
-    "Baichuan": {
+    "baichuan": {
         "prompt_keys": {},
     },
-    "Baichuan2": {
+    "baichuan2": {
         "prompt_keys": {'soh': '<reserved_106>', 'soa': '<reserved_107>'},
     },
     "chatglm3": {

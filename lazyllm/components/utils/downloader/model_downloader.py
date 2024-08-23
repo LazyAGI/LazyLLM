@@ -55,17 +55,18 @@ class ModelManager():
             return dict()
 
     def _try_add_mapping(self, model):
-        model = os.path.basename(model)
-        if model.lower() in model_name_mapping.keys():
+        model_base = os.path.basename(model)
+        model = model_base.lower()
+        if model in model_name_mapping.keys():
             return
-        matched_model_prefix = next((key for key in model_provider if model.lower().startswith(key)), None)
+        matched_model_prefix = next((key for key in model_provider if model.startswith(key)), None)
         if matched_model_prefix and self.model_source in model_provider[matched_model_prefix]:
             matching_keys = [key for key in model_groups.keys() if key in model]
             if matching_keys:
                 matched_groups = max(matching_keys, key=len)
                 model_name_mapping[model] = {
                     "prompt_keys": model_groups[matched_groups]["prompt_keys"],
-                    "source": {k: v + '/' + model for k, v in model_provider[matched_model_prefix].items()}
+                    "source": {k: v + '/' + model_base for k, v in model_provider[matched_model_prefix].items()}
                 }
 
     def download(self, model=''):
