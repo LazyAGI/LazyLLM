@@ -1,94 +1,94 @@
 # flake8: noqa: E501,
 
 model_groups = {
-	"Meta-Llama-3": {
-		"prompt_keys": {'sos': '<|start_header_id|>system<|end_header_id|>\n\n', 'soh': '<|start_header_id|>user<|end_header_id|>\n\n', 'soa': '<|start_header_id|>assistant<|end_header_id|>\n\n', 'eos': '<|eot_id|>', 'eoh': '<|eot_id|>', 'eoa': '<|eot_id|>', 'stop_words': ['<|eot_id|>', '<|end_of_text|>']},
-	},
-	"Llama-2": {
-		"prompt_keys": {
+    "Meta-Llama-3": {
+        "prompt_keys": {'sos': '<|start_header_id|>system<|end_header_id|>\n\n', 'soh': '<|start_header_id|>user<|end_header_id|>\n\n', 'soa': '<|start_header_id|>assistant<|end_header_id|>\n\n', 'eos': '<|eot_id|>', 'eoh': '<|eot_id|>', 'eoa': '<|eot_id|>', 'stop_words': ['<|eot_id|>', '<|end_of_text|>']},
+    },
+    "Llama-2": {
+        "prompt_keys": {
             'sos': '[INST] <<SYS>>\n', 'soa': ' [/INST] ', 'eos': '\n<</SYS>>\n\n', 'eoa': '</s>', 'separator': '<s>[INST] ',
             'system': ("\nYou are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.\n\n"
                     "If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.")
             },
-	},
-	"QWen": {
-		"prompt_keys": {
+    },
+    "QWen": {
+        "prompt_keys": {
             'sos': '<|im_start|>system\n', 'soh': '<|im_start|>user\n', 'soa': '<|im_start|>assistant\n', 'soe': '<|im_start|>environment\n', 'eos': '<|im_end|>\n', 'eoh': '<|im_end|>\n', 'eoa': '<|im_end|>', 'eoe': '<|im_end|>\n', 'separator': '\n', 'stop_words': ['<|im_end|>'], 'tool_start_token': '<|action_start|><|function|>', 'tool_end_token': '<|action_end|>', 'tool_args_token': "<|args|>",
             'system': "You are a helpful assistant."
             },
-	},
-	"internlm": {
-		"prompt_keys": {
+    },
+    "internlm": {
+        "prompt_keys": {
             'sos': '<|System|>:', 'soh': '<|User|>:', 'soa': '<|Bot|>:', 'eos': '\n', 'eoh': '\n', 'eoa': '<eoa>', 'separator': '\n', 'stop_words': ['<eoa>'],
             'system': "You are an AI assistant whose name is InternLM (书生·浦语).\n- InternLM (书生·浦语) is a conversational language model that is developed by Shanghai AI Laboratory (上海人工智能实验室). It is designed to be helpful, honest, and harmless.\n- InternLM (书生·浦语) can understand and communicate fluently in the language chosen by the user such as English and 中文."
             },
-	},
-	"internlm2": {
-		"prompt_keys": {
+    },
+    "internlm2": {
+        "prompt_keys": {
             'sos': '<|im_start|>system\n', 'soh': '<|im_start|>user\n', 'soa': '<|im_start|>assistant\n', 'soe': '<|im_start|>environment\n', 'plugin': '<|plugin|>', 'interpreter': '<|interpreter|>', 'eos': '<|im_end|>\n', 'eoh': '<|im_end|>\n', 'eoa': '<|im_end|>', 'eoe': '<|im_end|>\n', 'separator': '\n', 'stop_words': ['<|im_end|>'], 'tool_start_token': '<|function|>', 'tool_end_token': '<|action_end|>', 'tool_args_token': '<|args|>',
             'system': "You are an AI assistant whose name is InternLM (书生·浦语).\n- InternLM (书生·浦语) is a conversational language model that is developed by Shanghai AI Laboratory (上海人工智能实验室). It is designed to be helpful, honest, and harmless.\n- InternLM (书生·浦语) can understand and communicate fluently in the language chosen by the user such as English and 中文."
             },
-	},
-	"internlm-xcomposer2": {
-		"prompt_keys": {
+    },
+    "internlm-xcomposer2": {
+        "prompt_keys": {
             'sos': '[UNUSED_TOKEN_146]system\n', 'soh': '[UNUSED_TOKEN_146]user\n', 'soa': '[UNUSED_TOKEN_146]assistant\n', 'eos': '[UNUSED_TOKEN_145]\n', 'eoh': '[UNUSED_TOKEN_145]\n', 'eoa': '[UNUSED_TOKEN_145]\n', 'separator': '\n', 'stop_words': ['[UNUSED_TOKEN_145]'],
             'system': ("You are an AI assistant whose name is InternLM-XComposer (浦语·灵笔).\n- InternLM-XComposer (浦语·灵笔) is a multi-modality conversational language model that is developed by Shanghai AI Laboratory (上海人工智能实验室). It is designed to be helpful, honest, and harmless.\n"
                     "- InternLM-XComposer (浦语·灵笔) can understand and communicate fluently in the language chosen by the user such as English and 中文.\n- InternLM-XComposer (浦语·灵笔) is capable of comprehending and articulating responses effectively based on the provided image.")
             },
-	},
+    },
     "internlm-xcomposer": {
         "prompt_keys": {},
     },
     "codellama": {
         "prompt_keys": {},
     },
-	"Baichuan": {
-		"prompt_keys": {},
-	},
-	"Baichuan2": {
-		"prompt_keys": {'soh': '<reserved_106>', 'soa': '<reserved_107>'},
-	},
-	"chatglm3": {
-		"prompt_keys": {'sos': '<|system|>\n', 'soh': '<|user|>\n', 'soa': '<|assistant|>\n', 'plugin': '<|observation|>\n', 'stop_words': ['<|user|>', '<|observation|>']},
-	},
-	"glm-4": {
-		"prompt_keys": {'sos': '<|system|>\n', 'soh': '<|user|>\n', 'soa': '<|assistant|>\n', 'soe': '<|observation|>\n', 'eoe': '\n', 'plugin': '<|observation|>\n', 'stop_words': ['<|user|>', '<|observation|>'], 'tool_start_token': '✿FUNCTION✿: ', 'tool_args_token': '✿ARGS✿: ', 'tool_end_token': '\n'},
-	},
+    "Baichuan": {
+        "prompt_keys": {},
+    },
+    "Baichuan2": {
+        "prompt_keys": {'soh': '<reserved_106>', 'soa': '<reserved_107>'},
+    },
+    "chatglm3": {
+        "prompt_keys": {'sos': '<|system|>\n', 'soh': '<|user|>\n', 'soa': '<|assistant|>\n', 'plugin': '<|observation|>\n', 'stop_words': ['<|user|>', '<|observation|>']},
+    },
+    "glm-4": {
+        "prompt_keys": {'sos': '<|system|>\n', 'soh': '<|user|>\n', 'soa': '<|assistant|>\n', 'soe': '<|observation|>\n', 'eoe': '\n', 'plugin': '<|observation|>\n', 'stop_words': ['<|user|>', '<|observation|>'], 'tool_start_token': '✿FUNCTION✿: ', 'tool_args_token': '✿ARGS✿: ', 'tool_end_token': '\n'},
+    },
 }
 
 model_provider = {
-	"baichuan": {           
-		"huggingface": "baichuan-inc",
-		"modelscope": "baichuan-inc"
-	},
-	"chatglm": {
-		"huggingface": "THUDM",
-		"modelscope": "ZhipuAI"
-	},
- 	"glm": {
-		"huggingface": "THUDM",
-		"modelscope": "ZhipuAI"
-	},
-	"codellama": {
-		"huggingface": "meta-llama",
+    "baichuan": {           
+        "huggingface": "baichuan-inc",
+        "modelscope": "baichuan-inc"
+    },
+    "chatglm": {
+        "huggingface": "THUDM",
+        "modelscope": "ZhipuAI"
+    },
+     "glm": {
+        "huggingface": "THUDM",
+        "modelscope": "ZhipuAI"
+    },
+    "codellama": {
+        "huggingface": "meta-llama",
         "modelscope": "AI-ModelScope"
-	},
-	"llama": {
-		"huggingface": "meta-llama",
+    },
+    "llama": {
+        "huggingface": "meta-llama",
         "modelscope": "modelscope"
-	},
-	"meta-llama": {
-		"huggingface": "meta-llama",
+    },
+    "meta-llama": {
+        "huggingface": "meta-llama",
         "modelscope": "LLM-Research"
-	},
-	"internlm": {
-		"huggingface": "internlm",
-		"modelscope": "Shanghai_AI_Laboratory"
-	},
-	"qwen": {
-		"huggingface": "Qwen",
-		"modelscope": "qwen"		
-	}
+    },
+    "internlm": {
+        "huggingface": "internlm",
+        "modelscope": "Shanghai_AI_Laboratory"
+    },
+    "qwen": {
+        "huggingface": "Qwen",
+        "modelscope": "qwen"
+    }
 }
 
 model_name_mapping = {
