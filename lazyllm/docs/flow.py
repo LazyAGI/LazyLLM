@@ -224,7 +224,7 @@ add_example('Parallel', '''\
 (2, 4, 0.5)
 >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3)
 >>> ppl(1)
-{'a': 2, 'b': 4, 'c': 0.5}
+{2, 4, 0.5}
 >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).asdict
 >>> ppl(2)
 {'a': 3, 'b': 8, 'c': 1.0}
