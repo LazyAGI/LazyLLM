@@ -46,6 +46,7 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
                 stream: bool = True,
                 return_trace: bool = False,
                 **kwargs):
+        if model in OnlineChatModule.MODELS.keys() and source is None: source, model = model, source
 
         params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace, **kwargs)
 
