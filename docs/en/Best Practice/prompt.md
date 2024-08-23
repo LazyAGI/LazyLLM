@@ -160,8 +160,10 @@ The format of tools is generally as follows:
                         },
                         "arg-2": {}
                         "arg-3": {}
+                    }
                 },
                 "required": ['arg-1', 'arg-2', 'arg-3']
+            }
         },
     ]
 ```
