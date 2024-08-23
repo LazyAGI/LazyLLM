@@ -9,15 +9,16 @@ Suppose we are developing an application for querying the weather. Since weather
 
 ```python
 from typing import Literal
+import json
 def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]="fahrenheit"):
     """
-	Get the current weather in a given location
+    Get the current weather in a given location
 
-	Args:
-		location (str): The city and state, e.g. San Francisco, CA.
+    Args:
+        location (str): The city and state, e.g. San Francisco, CA.
         unit (str): The temperature unit to use. Infer this from the users location.
-	"""
-	if 'tokyo' in location.lower():
+    """
+    if 'tokyo' in location.lower():
         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
     elif 'san francisco' in location.lower():
         return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit'})
