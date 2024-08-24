@@ -7,7 +7,6 @@ from gradio_client import Client
 
 import lazyllm
 from lazyllm.launcher import cleanup
-from lazyllm.common import FileSystemQueue
 
 
 class TestExamples(object):
