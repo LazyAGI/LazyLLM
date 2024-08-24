@@ -16,7 +16,7 @@ import lazyllm
 #           You can apply for the API key at https://platform.sensenova.cn/home
 #     * `source` needs to be specified for multiple API keys, but it does not need to be set for a single API key.
 
-chat = lazyllm.OnlineChatModule(stream=False)
+chat = lazyllm.OnlineChatModule()
 
 if __name__ == '__main__':
     lazyllm.WebModule(chat, port=23466).start().wait()

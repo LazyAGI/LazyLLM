@@ -7,6 +7,7 @@ from gradio_client import Client
 
 import lazyllm
 from lazyllm.launcher import cleanup
+from lazyllm.common import FileSystemQueue
 
 
 class TestExamples(object):
@@ -85,7 +86,7 @@ class TestExamples(object):
                              self.stream_output,
                              self.append_text,
                              api_name="/_respond_stream")
-        assert ans[0][-1][-1] == 'Hello world.'
+        assert ans[0][-1][-1] == 'Hello world.\n\nHello world.'
 
     def test_story(self):
         from examples.story_online import ppl

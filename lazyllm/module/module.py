@@ -293,8 +293,7 @@ class UrlModule(ModuleBase, UrlTemplate):
                     LOG.info(f"chunk: {chunk!r}")
                     if self._stream:
                         token = getattr(self, "_tool_start_token", None)
-                        content = chunk.split(token)[0].strip() if token in chunk else chunk
-                        if content: FileSystemQueue().enqueue(content)
+                        FileSystemQueue().enqueue(chunk.split(token)[0] if token in chunk else chunk)
                     messages += chunk
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
@@ -626,7 +625,7 @@ class TrainableModule(UrlModule):
         else:
             content = output
 
-        return content.strip(), tool_calls
+        return content, tool_calls
 
     def _build_response(self, content: str, tool_calls: List[Dict[str, str]]) -> str:
         tc = [{'id': str(uuid.uuid4().hex), 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
