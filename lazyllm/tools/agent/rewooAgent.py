@@ -7,7 +7,7 @@ import re
 P_PROMPT_PREFIX = ("For the following tasks, make plans that can solve the problem step-by-step. "
                    "For each plan, indicate which external tool together with tool input to retrieve "
                    "evidence. You can store the evidence into a variable #E that can be called by "
-                   "later tools. (Plan, #E1, Plan, #E2, Plan, ...) \n\n")
+                   "later tools. (Plan, #E1, Plan, #E2, Plan, #E3...) \n\n")
 
 P_FEWSHOT = """For example,
 Task: Thomas, Toby, and Rebecca worked a total of 157 hours in one week. Thomas worked x
@@ -65,7 +65,7 @@ class ReWOOAgent(ModuleBase):
         plans = []
         evidence = {}
         for line in response.splitlines():
-            if line.startswith("Plan:"):
+            if line.startswith("Plan"):
                 plans.append(line)
             elif line.startswith("#") and line[1] == "E" and line[2].isdigit():
                 e, tool_call = line.split("=", 1)

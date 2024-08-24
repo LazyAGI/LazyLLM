@@ -7,7 +7,7 @@ import re
 from typing import Tuple, List, Dict, Union, Any
 import time
 import lazyllm
-from lazyllm import globals
+from lazyllm import globals, FileSystemQueue
 from lazyllm.components.prompter import PrompterBase, ChatPrompter
 from lazyllm.components.formatter import FormatterBase, EmptyFormatter
 from ..module import ModuleBase, Pipeline
@@ -128,7 +128,14 @@ class OnlineChatModuleBase(ModuleBase):
             msg = re.sub(pattern, "", msg.decode('utf-8'))
         try:
             chunk = json.loads(msg)
-            return self._convert_msg_format(chunk)
+            message = self._convert_msg_format(chunk)
+            if self._stream:
+                for item in message.get("choices", []):
+                    delta = item.get("delta", {})
+                    content = delta.get("content", '')
+                    if content and "tool_calls" not in delta: FileSystemQueue().enqueue(content)
+            lazyllm.LOG.info(f"message: {message}")
+            return message
         except Exception:
             return ""
 
