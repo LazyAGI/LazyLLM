@@ -85,7 +85,7 @@ class TestExamples(object):
                              self.stream_output,
                              self.append_text,
                              api_name="/_respond_stream")
-        assert ans[0][-1][-1] == 'Hello world.\n\nHello world.'
+        assert ans[0][-1][-1] == 'Hello world.'
 
     def test_story(self):
         from examples.story_online import ppl
