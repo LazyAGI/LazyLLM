@@ -7,6 +7,7 @@ nav:
   - Getting Started: index.md
   - FAQ: Home/FAQ.md
   - Environment: Home/environment.md
+  - Supported Models: Home/model_list.md
 - Cookbook:
   - Chatbot: Cookbook/robot.md
   - Painting Master: Cookbook/painting_master.md

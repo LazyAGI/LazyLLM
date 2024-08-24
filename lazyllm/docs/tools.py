@@ -64,7 +64,7 @@ Args:
 
 add_example('Document.create_node_group', '''
 >>> import lazyllm
->>> from lazyllm.tools import Document
+>>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
@@ -86,7 +86,7 @@ Args:
 
 add_example('Document.find_parent', '''
 >>> import lazyllm
->>> from lazyllm.tools import Document
+>>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 >>> documents.create_node_group(name="parent", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
@@ -110,7 +110,7 @@ Args:
 
 add_example('Document.find_children', '''
 >>> import lazyllm
->>> from lazyllm.tools import Document
+>>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 >>> documents.create_node_group(name="parent", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
@@ -237,7 +237,7 @@ Args:
 
 add_example('SentenceSplitter', '''
 >>> import lazyllm
->>> from lazyllm.tools import Document
+>>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
@@ -366,9 +366,53 @@ Args:
 ''')
 
 add_example('ToolManager', """\
+>>> from lazyllm.tools import ToolManager, fc_register
+>>> import json
+>>> from typing import Literal
+>>> @fc_register("tool")
+>>> def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]="fahrenheit"):
+...     '''
+...     Get the current weather in a given location
+...
+...     Args:
+...         location (str): The city and state, e.g. San Francisco, CA.
+...         unit (str): The temperature unit to use. Infer this from the users location.
+...     '''
+...     if 'tokyo' in location.lower():
+...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
+...     elif 'san francisco' in location.lower():
+...         return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit'})
+...     elif 'paris' in location.lower():
+...         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
+...     elif 'beijing' in location.lower():
+...         return json.dumps({'location': 'Beijing', 'temperature': '90', 'unit': 'fahrenheit'})
+...     else:
+...         return json.dumps({'location': location, 'temperature': 'unknown'})
+...
+>>> @fc_register("tool")
+>>> def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"]='fahrenheit'):
+...     '''
+...     Get an N-day weather forecast
+...
+...     Args:
+...         location (str): The city and state, e.g. San Francisco, CA.
+...         num_days (int): The number of days to forecast.
+...         unit (Literal['celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+...     '''
+...     if 'tokyo' in location.lower():
+...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
+...     elif 'san francisco' in location.lower():
+...         return json.dumps({'location': 'San Francisco', 'temperature': '75', 'unit': 'fahrenheit', "num_days": num_days})
+...     elif 'paris' in location.lower():
+...         return json.dumps({'location': 'Paris', 'temperature': '25', 'unit': 'celsius', "num_days": num_days})
+...     elif 'beijing' in location.lower():
+...         return json.dumps({'location': 'Beijing', 'temperature': '85', 'unit': 'fahrenheit', "num_days": num_days})
+...     else:
+...         return json.dumps({'location': location, 'temperature': 'unknown'})
+...
 >>> tools = ["get_current_weather", "get_n_day_weather_forecast"]
 >>> tm = ToolManager(tools)
->>> tm([{'name': 'get_n_day_weather_forecast', 'arguments': {'location': 'Beijing', 'num_days': 3}}])
+>>> print(tm([{'name': 'get_n_day_weather_forecast', 'arguments': {'location': 'Beijing', 'num_days': 3}}])[0])
 '{"location": "Beijing", "temperature": "85", "unit": "fahrenheit", "num_days": 3}'
 """)
 
@@ -389,6 +433,10 @@ Args:
 ''')
 
 add_example('FunctionCall', """\
+>>> import lazyllm
+>>> from lazyllm.tools import fc_register, FunctionCall
+>>> import json
+>>> from typing import Literal
 >>> @fc_register("tool")
 >>> def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 'fahrenheit'):
 ...     '''
@@ -459,6 +507,10 @@ Args:
 ''')
 
 add_example('FunctionCallAgent', """\
+>>> import lazyllm
+>>> from lazyllm.tools import fc_register, FunctionCallAgent
+>>> import json
+>>> from typing import Literal
 >>> @fc_register("tool")
 >>> def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]='fahrenheit'):
 ...     '''
@@ -532,6 +584,8 @@ Args:
 ''')
 
 add_example('ReactAgent', """\
+>>> import lazyllm
+>>> from lazyllm.tools import fc_register, ReactAgent
 >>> @fc_register("tool")
 >>> def multiply_tool(a: int, b: int) -> int:
 ...     '''
@@ -555,7 +609,7 @@ add_example('ReactAgent', """\
 ...     return a + b
 ...
 >>> tools = ["multiply_tool", "add_tool"]
->>> llm = lazyllm.Trainable("internlm2-chat-20b").start()   # or llm = lazyllm.OnlineChatModule(source="sensenova")
+>>> llm = lazyllm.TrainableModule("internlm2-chat-20b").start()   # or llm = lazyllm.OnlineChatModule(source="sensenova")
 >>> agent = ReactAgent(llm, tools)
 >>> query = "What is 20+(2*4)? Calculate step by step."
 >>> res = agent(query)
@@ -586,6 +640,8 @@ Args:
 ''')
 
 add_example('PlanAndSolveAgent', """\
+>>> import lazyllm
+>>> from lazyllm.tools import fc_register, PlanAndSolveAgent
 >>> @fc_register("tool")
 >>> def multiply(a: int, b: int) -> int:
 ...     '''
@@ -640,6 +696,9 @@ Args:
 ''')
 
 add_example('ReWOOAgent', """\
+>>> import lazyllm
+>>> import wikipedia
+>>> from lazyllm.tools import fc_register, ReWOOAgent
 >>> @fc_register("tool")
 >>> def WikipediaWorker(input: str):
 ...     '''
@@ -648,11 +707,13 @@ add_example('ReWOOAgent', """\
 ...     Args:
 ...         input (str): search query.
 ...     '''
-...     docstore = DocstoreExplorer(Wikipedia())
-...     tool = Tool(name="Search", func=docstore.search, description="useful for when you need to ask with search")
-...     LOG.info(f"wikipedia input: {input}")
-...     evidence = tool.run(input)
-...     LOG.info(f"wikipedia output: {evidence}")
+...     try:
+...         evidence = wikipedia.page(input).content
+...         evidence = evidence.split("\n\n")[0]
+...     except wikipedia.PageError:
+...         evidence = f"Could not find [{input}]. Similar: {wikipedia.search(input)}"
+...     except wikipedia.DisambiguationError:
+...         evidence = f"Could not find [{input}]. Similar: {wikipedia.search(input)}"
 ...     return evidence
 ...
 >>> @fc_register("tool")
@@ -663,15 +724,13 @@ add_example('ReWOOAgent', """\
 ...     Args:
 ...         input (str): instruction
 ...     '''
-...     llm = lazyllm.OnlineChatModule(source="openai")
+...     llm = lazyllm.OnlineChatModule(source="glm")
 ...     query = f"Respond in short directly with no extra words.\n\n{input}"
-...     LOG.info(f"llm query: {query}, input: {input}")
 ...     response = llm(query, llm_chat_history=[])
-...     LOG.info(f"llm res: {response}")
 ...     return response
 ...
 >>> tools = ["WikipediaWorker", "LLMWorker"]
->>> llm = lazyllm.TrainableModule("GLM-4-9B-Chat").deploy_method(deploy.vllm).start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
+>>> llm = lazyllm.TrainableModule("GLM-4-9B-Chat").deploy_method(lazyllm.deploy.vllm).start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
 >>> agent = ReWOOAgent(llm, tools)
 >>> query = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
 >>> res = agent(query)
@@ -704,6 +763,7 @@ add_example(
     "SQLiteTool",
     """\
     >>> from lazyllm.tools import SQLiteTool
+    >>> with open("personal.db", "w") as _: pass
     >>> sql_tool = SQLiteTool("personal.db")
     >>> tables_info = {
     ...     "User": {

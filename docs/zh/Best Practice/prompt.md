@@ -159,8 +159,10 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
                         },
                         "arg-2": {}
                         "arg-3": {}
+                    }
                 },
                 "required": ['arg-1', 'arg-2', 'arg-3']
+            }
         },
     ]
 ```
