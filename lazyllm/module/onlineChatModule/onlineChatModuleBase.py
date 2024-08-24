@@ -257,7 +257,7 @@ class OnlineChatModuleBase(ModuleBase):
                     if self._stream else requests.RequestException(r.text)
 
             msg_json = list(filter(lambda x: x, [self._str_to_json(line) for line in r.iter_lines()
-                if len(line)] if self._stream else [self._str_to_json(r.text)]))
+                                                 if len(line)] if self._stream else [self._str_to_json(r.text)]))
             extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
 
             return self._formatter.format(extractor) if extractor else ""
