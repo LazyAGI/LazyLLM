@@ -38,6 +38,13 @@ class TestFlow(object):
         fl = diverter(add_one, add_one)(1, 2)
         assert fl == (2, 3)
 
+        div = diverter(lambda x: x + 1, lambda x: x * 2, lambda x: -x)
+        assert div(1, 2, 3) == (2, 4, -3)
+
+        div = diverter(a=lambda x: x + 1, b=lambda x: x * 2, c=lambda x: -x).asdict
+        assert div(1, 2, 3) == {'a': 2, 'b': 4, 'c': -3}
+        assert div(dict(c=3, b=2, a=1)) == {'a': 2, 'b': 4, 'c': -3}
+
     def test_warp(self):
 
         fl = warp(add_one)(1, 2, 3)
@@ -55,6 +62,18 @@ class TestFlow(object):
             sw.case(is_2, t2)
             sw.case[is_3, t3]
         assert sw(1) == 2 and sw(2) == 6 and sw(3) == 3
+
+        with switch(conversion=lambda x: x / 10, judge_on_full_input=True) as sw:
+            sw.case[is_1:t1]
+            sw.case(is_2, t2)
+            sw.case[is_3, t3]
+        assert sw(10) == 20 and sw(20) == 60 and sw(30) == 30
+
+        with switch(judge_on_full_input=False) as sw:
+            sw.case[is_1:t1]
+            sw.case(is_2, t2)
+            sw.case[is_3, t3]
+        assert sw(1, 30) == 60 and sw(2, 10) == 30 and sw(3, 5) == 5
 
     def test_ifs(self):
 

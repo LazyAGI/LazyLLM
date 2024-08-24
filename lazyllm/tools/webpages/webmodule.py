@@ -7,7 +7,7 @@ import socket
 import sys
 import requests
 import traceback
-import multiprocessing
+from lazyllm import ForkProcess
 import gradio as gr
 import time
 from PIL import Image
@@ -339,7 +339,7 @@ class WebModule(ModuleBase):
 
         def _impl():
             self.demo.queue().launch(server_name='0.0.0.0', server_port=port)
-        self.p = multiprocessing.Process(target=_impl)
+        self.p = ForkProcess(target=_impl)
         self.p.start()
         self.url = f'http://0.0.0.0:{port}'
 

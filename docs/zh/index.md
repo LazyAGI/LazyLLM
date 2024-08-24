@@ -36,8 +36,7 @@ cd LazyLLM
 安装基础依赖：
 
 ```bash
-pip3 install -r requirement.txt
-pip3 install docstring_parser pyjwt httpx==0.19.0 # 运行示例所需的依赖
+pip3 install -r requirements.txt
 ```
 
 把 `LazyLLM` 加入到模块搜索路径中：
@@ -88,7 +87,7 @@ docker pull lazyllm/lazyllm
 
 为了让大家对 `LazyLLM` 有个初步的认识，我们基于 [商汤日日新开放平台](https://platform.sensenova.cn/home) 提供的对话功能，使用 `LazyLLM` 来实现一个聊天机器人。
 
-首先需要在平台注册一个账号，根据 [API简介](https://console.sensecore.cn/help/docs/ApiDoc/synopsis) 的第一步获取访问所需的 api key 和 secret key，并设置对应的环境变量：
+首先需要在平台注册一个账号，根据 [SenseNova 商汤日日新开放平台使用手册](https://platform.sensenova.cn/doc?path=/platform/helpdoc/help.md) 的第一步获取访问所需的 api key 和 secret key，并设置对应的环境变量：
 
 ```bash
 export LAZYLLM_SENSENOVA_API_KEY=<申请到的api key>
@@ -106,7 +105,7 @@ while True:
     if query == "quit":                                 #(4)
         break
     res = chat.forward(query)                           #(5)
-    print(f"answer: {str(res)}\n")                      #(6)
+    print(f"answer: {res}")                             #(6)
 ```
 
 最后运行我们的 demo：
@@ -147,18 +146,18 @@ history = []                                             #(7)
 
 while True:
     query = input("query(enter 'quit' to exit): ")       #(3)
-if query == "quit":                                      #(4)
+    if query == "quit":                                  #(4)
         break
     res = chat(query, llm_chat_history=history)          #(5')
-    print(f"answer: {str(res)}\n")                       #(6)
+    print(f"answer: {res}")                              #(6)
     history.append([query, res])                         #(8)
 ```
 
 对应标号的语句和前面一问一答的版本一样，运行方式也一样。代码中不同的地方主要有下面这些：
 
-1. 语句 7 加了个 `history` 字段，用来保存对话的历史；
-2. 语句 5' 传给远程服务器的内容，除了当前 `query` 外，还把历史内容 `history` 也传进去了；
-3. 语句 8 把本次对话的问答内容拼接到 `history` 之后；
+* 语句 7 加了个 `history` 字段，用来保存对话的历史；
+* 语句 5' 传给远程服务器的内容，除了当前 `query` 外，还把历史内容 `history` 也传进去了；
+* 语句 8 把本次对话的问答内容拼接到 `history` 之后；
 
 ## 使用 web 界面
 

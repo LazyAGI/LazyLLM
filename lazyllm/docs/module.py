@@ -76,8 +76,9 @@ Deploy the module and all its submodules.
 
 add_example('ModuleBase.start', '''\
 >>> import lazyllm
->>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m = lazyllm.TrainableModule().deploy_method(lazyllm.deploy.dummy).prompt(None)
 >>> m.start()
+<Module type=Trainable mode=None basemodel= target= stream=False return_trace=False>
 >>> m(1)
 "reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
 ''')
@@ -92,8 +93,9 @@ Re-deploy the module and all its submodules.
 
 add_example('ModuleBase.restart', '''\
 >>> import lazyllm
->>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m = lazyllm.TrainableModule().deploy_method(lazyllm.deploy.dummy).prompt(None)
 >>> m.restart()
+<Module type=Trainable mode=None basemodel= target= stream=False return_trace=False>
 >>> m(1)
 "reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
 ''')
@@ -826,7 +828,7 @@ add_example('OnlineChatModuleBase', '''\
 >>> from lazyllm.module import OnlineChatModuleBase
 >>> from lazyllm.module.onlineChatModule.fileHandler import FileHandlerBase
 >>> class NewPlatformChatModule(OnlineChatModuleBase):
-...     def __init___(self,
+...     def __init__(self,
 ...                   base_url: str = "<new platform base url>",
 ...                   model: str = "<new platform model name>",
 ...                   system_prompt: str = "<new platform system prompt>",
@@ -841,7 +843,7 @@ add_example('OnlineChatModuleBase', '''\
 ...
 >>> class NewPlatformChatModule1(OnlineChatModuleBase, FileHandlerBase):
 ...     TRAINABLE_MODELS_LIST = ['model_t1', 'model_t2', 'model_t3']
-...     def __init___(self,
+...     def __init__(self,
 ...                   base_url: str = "<new platform base url>",
 ...                   model: str = "<new platform model name>",
 ...                   system_prompt: str = "<new platform system prompt>",
