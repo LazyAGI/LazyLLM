@@ -293,7 +293,7 @@ class UrlModule(ModuleBase, UrlTemplate):
                     LOG.info(f"chunk: {chunk!r}")
                     if self._stream:
                         token = getattr(self, "_tool_start_token", None)
-                        content = chunk.split(token)[0].strip() if token in chunk else chunk.strip()
+                        content = chunk.split(token)[0].strip() if token in chunk else chunk
                         if content: FileSystemQueue().enqueue(content)
                     messages += chunk
             else:
