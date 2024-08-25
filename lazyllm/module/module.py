@@ -291,7 +291,7 @@ class UrlModule(ModuleBase, UrlTemplate):
                     except Exception:
                         chunk = chunk.decode('utf-8')
                     chunk = self._prompt.get_response(self._extract_result_func(chunk))
-                    if self._stream and isStreamOutput:
+                    if isStreamOutput:
                         token = getattr(self, "_tool_start_token", None)
                         if token in chunk: isStreamOutput = False
                         if isStreamOutput: FileSystemQueue().enqueue(chunk)
