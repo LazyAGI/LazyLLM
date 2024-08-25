@@ -43,10 +43,14 @@ Module的API文档可以参考 [module][lazyllm.module.ModuleBase]
 >>> m.update()
 Module example trained!
 Module example deployed!
+<Module type=MyModule name=example>
 >>> m.start()
 Module example deployed!
+<Module type=MyModule name=example>
 >>> m.evalset(['hello', 'world'])
->>> m.update()
+>>> m.update().eval_result
+Module example trained!
+Module example deployed!
 ['[Module example get input: hello]', '[Module example get input: world]']
 ```
 

@@ -5,6 +5,7 @@ import random
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
+from ..utils import ModelManager
 
 
 class LMDeploy(LazyLLMDeployBase):
@@ -44,6 +45,7 @@ class LMDeploy(LazyLLMDeployBase):
             'server-port': None,
             'tp': 1,
             "max-batch-size": 128,
+            "chat-template": None,
         })
         self.kw.check_and_update(kw)
         self.random_port = False if 'server-port' in kw and kw['server-port'] else True
@@ -56,6 +58,16 @@ class LMDeploy(LazyLLMDeployBase):
                 LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                             f"base_model({base_model}) will be used")
             finetuned_model = base_model
+
+        model_type = ModelManager.get_model_type(finetuned_model)
+        if model_type == 'vlm':
+            self.kw.pop("chat-template")
+        else:
+            if not self.kw["chat-template"] and 'vl' not in finetuned_model and 'lava' not in finetuned_model:
+                self.kw["chat-template"] = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                        'lmdeploy', 'chat_template.json')
+            else:
+                self.kw.pop("chat-template")
 
         def impl():
             if self.random_port:
