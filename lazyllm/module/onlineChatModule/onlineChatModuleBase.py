@@ -39,6 +39,7 @@ class OnlineChatModuleBase(ModuleBase):
         self.formatter()
         self._field_extractor()
         self._model_optional_params = {}
+        self._isStreamOut = self._stream
 
     @property
     def series(self):
@@ -129,11 +130,12 @@ class OnlineChatModuleBase(ModuleBase):
         try:
             chunk = json.loads(msg)
             message = self._convert_msg_format(chunk)
-            if self._stream:
+            if self._stream and self._isStreamOut:
                 for item in message.get("choices", []):
                     delta = item.get("delta", {})
                     content = delta.get("content", '')
-                    if content and "tool_calls" not in delta: FileSystemQueue().enqueue(content)
+                    if "tool_calls" in delta: self._isStreamOut = False
+                    if self._isStreamOut and content and "tool_calls" not in delta: FileSystemQueue().enqueue(content)
             lazyllm.LOG.info(f"message: {message}")
             return message
         except Exception:
@@ -251,6 +253,7 @@ class OnlineChatModuleBase(ModuleBase):
         if len(self._model_optional_params) > 0:
             data.update(self._model_optional_params)
 
+        self._isStreamOut = True
         with requests.post(self._url, json=data, headers=self._headers, stream=self._stream) as r:
             if r.status_code != 200:  # request error
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
@@ -258,6 +261,7 @@ class OnlineChatModuleBase(ModuleBase):
 
             msg_json = list(filter(lambda x: x, [self._str_to_json(line) for line in r.iter_lines()
                                                  if len(line)] if self._stream else [self._str_to_json(r.text)]))
+            if self._stream and self._isStreamOut: FileSystemQueue().enqueue("\n")
             extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
 
             return self._formatter.format(extractor) if extractor else ""
