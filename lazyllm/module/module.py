@@ -296,7 +296,6 @@ class UrlModule(ModuleBase, UrlTemplate):
                         if token in chunk: isStreamOutput = False
                         if isStreamOutput: FileSystemQueue().enqueue(chunk)
                     messages += chunk
-                if self._stream and isStreamOutput: FileSystemQueue().enqueue("\n")
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
             return self._formatter.format(self._extract_and_format(messages))
