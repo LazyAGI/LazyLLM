@@ -26,8 +26,8 @@ class TestEngine(object):
 
     def test_engine_switch(self):
         plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
-        double = dict(id='2', kind='Code', name='m1', args='def test(x: int):\n    return 2 * x\n')
-        square = dict(id='3', kind='Code', name='m2', args='def test(x: int):\n    return x * x\n')
+        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
+        square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
         switch = dict(id='4', kind='Switch', name='s1', args=dict(judge_on_full_input=True, nodes={
             1: [double],
             2: [plus1, double],
