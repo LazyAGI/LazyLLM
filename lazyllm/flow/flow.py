@@ -440,7 +440,7 @@ class Graph(LazyLLMFlowsBase):
     class Node:
         def __init__(self, func, name):
             self.func, self.name = func, name
-            self.inputs, self.outputs = [], []
+            self.inputs, self.outputs = dict(), []
 
         def __repr__(self): return lazyllm.make_repr('Flow', 'Node', name=self.name)
 
@@ -460,7 +460,7 @@ class Graph(LazyLLMFlowsBase):
     @property
     def end_node(self): return self._nodes[Graph.end_node_name]
 
-    def add_edge(self, from_node, to_node):
+    def add_edge(self, from_node, to_node, formatter=None):
         if isinstance(from_node, (tuple, list)):
             for f in from_node: self.add_edge(f, to_node)
             return
@@ -470,7 +470,8 @@ class Graph(LazyLLMFlowsBase):
         if isinstance(from_node, str): from_node = self._nodes[from_node]
         if isinstance(to_node, str): to_node = self._nodes[to_node]
         from_node.outputs.append(to_node)
-        to_node.inputs.append(from_node)
+        assert from_node.name not in to_node.inputs, f'Duplicate edges from {from_node.name} to {to_node.name}'
+        to_node.inputs[from_node.name] = formatter
         self._in_degree[to_node] += 1
 
     def topological_sort(self):
@@ -500,14 +501,17 @@ class Graph(LazyLLMFlowsBase):
                 with intermediate_results['lock']:
                     if name not in intermediate_results['values']:
                         intermediate_results['values'][name] = r
-            return intermediate_results['values'][name]
+            r = intermediate_results['values'][name]
+            if node.inputs[name]:
+                r = node.inputs[name](r)
+            return r
 
         kw = {}
         if len(node.inputs) == 1:
-            input = get_input(node.inputs[0].name)
+            input = get_input(list(node.inputs.keys())[0])
         else:
-            # TODO(wangzhihong): add complex rules: edge formatter / mixture of package / support kwargs / ...
-            input = package(get_input(input.name) for input in node.inputs)
+            # TODO(wangzhihong): add complex rules: mixture of package / support kwargs / ...
+            input = package(get_input(input) for input in node.inputs.keys())
             for inp in input:
                 assert not isinstance(inp, (kwargs, package, arguments))
 
