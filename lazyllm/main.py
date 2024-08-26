@@ -1,11 +1,36 @@
 import sys
 import subprocess
 import toml
+import requests
+import platform
+import os
+
+PYPROJECT_TOML_URL = "https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/pyproject.toml"
+
+def load_local_pyproject():
+    try:
+        with open('pyproject.toml', 'r') as f:
+            return toml.load(f)
+    except (FileNotFoundError, toml.TomlDecodeError):
+        print("Could not find or parse the local pyproject.toml file.")
+        sys.exit(1)
+
+def load_remote_pyproject():
+    try:
+        response = requests.get(PYPROJECT_TOML_URL)
+        response.raise_for_status()
+        return toml.loads(response.text)
+    except (requests.RequestException, toml.TomlDecodeError) as e:
+        print(f"Failed to download or parse remote pyproject.toml file: {e}")
+        sys.exit(1)
 
 def load_packages():
-    with open('pyproject.toml', 'r') as f:
-        config = toml.load(f)
-    return config['tool']['poetry']['extras']
+    config = load_local_pyproject() if os.path.exists('pyproject.toml') else load_remote_pyproject()
+    try:
+        return config['tool']['poetry']['extras']
+    except KeyError:
+        print("No 'extras' information found in the pyproject.toml file.")
+        sys.exit(1)
 
 def install_packages(packages):
     if isinstance(packages, str):
@@ -47,6 +72,11 @@ def main():
         sys.exit(1)
 
     command = sys.argv[2]
+
+    if platform.system() == "Darwin":
+        if command in ["full", "standard"]:
+            print("Installation of 'full' or 'standard' packages is not supported on macOS.")
+            sys.exit(1)
 
     if command == "full":
         install_full()
