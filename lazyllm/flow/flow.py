@@ -462,10 +462,10 @@ class Graph(LazyLLMFlowsBase):
 
     def add_edge(self, from_node, to_node, formatter=None):
         if isinstance(from_node, (tuple, list)):
-            for f in from_node: self.add_edge(f, to_node)
+            for f in from_node: self.add_edge(f, to_node, formatter)
             return
         if isinstance(to_node, (tuple, list)):
-            for t in to_node: self.add_edge(from_node, t)
+            for t in to_node: self.add_edge(from_node, t, formatter)
             return
         if isinstance(from_node, str): from_node = self._nodes[from_node]
         if isinstance(to_node, str): to_node = self._nodes[to_node]

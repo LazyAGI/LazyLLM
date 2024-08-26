@@ -110,7 +110,7 @@ def make_graph(nodes: List[dict], edges: List[dict]):
             setattr(g, node.name, node.func)
 
     for edge in edges:
-        g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name)
+        g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name, edge.get('formatter'))
 
     return g
 
