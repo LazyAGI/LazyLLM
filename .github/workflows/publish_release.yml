@@ -30,6 +30,15 @@ jobs:
         uses: snok/install-poetry@v1
         with:
           version: ${{ env.POETRY_VERSION }}
+      - name: Extract tag from ref
+        id: extract_tag
+        run: echo "TAG=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      - name: Update version in pyproject.toml
+        run: |
+          sed -i "s/^version = \".*\"/version = \"$TAG\"/" pyproject.toml
+          echo $TAG
+        env:
+          TAG: ${{ env.TAG }}
       - name: Install deps
         shell: bash
         run: pip install -e .
