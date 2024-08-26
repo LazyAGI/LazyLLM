@@ -19,7 +19,8 @@ PLANNER_PROMPT = (
 SOLVER_PROMPT = (
     "Objective: {objective}\n\n"
     "Previos steps: {previous_steps}\n\n"
-    "Current objective: {current_step}"
+    "Current objective: {current_step}\n\n"
+    "Just solve the current objective, don't overdo it."
 )
 
 class PlanAndSolveAgent(ModuleBase):
