@@ -59,7 +59,7 @@ jobs:
       - name: Build
         if: env.pypi_version_exists == 'true'
         shell: bash
-        run: poetry build
+        run: cp pyproject.toml lazyllm/ && poetry build
 
       - name: Check if GitHub Release exists
         id: release_check

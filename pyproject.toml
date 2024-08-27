@@ -5,6 +5,9 @@ description = "A Low-code Development Tool For Building Multi-agent LLMs Applica
 authors = ["wangzhihong <wangzhihong@sensetime.com>"]
 license = "Apache-2.0 license"
 readme = "README.md"
+include = [
+    "lazyllm/pyproject.toml",
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -140,4 +143,4 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-lazyllm = "lazyllm.main:main"
+lazyllm = "lazyllm.install:install"

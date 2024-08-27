@@ -4,8 +4,28 @@ import toml
 import requests
 import platform
 import os
+import lazyllm
 
-PYPROJECT_TOML_URL = "https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/pyproject.toml"
+def load_pyproject_from_lazyllm_path():
+    try:
+        lazyllm_path = lazyllm.__path__[0]  # Get the path of the lazyllm package
+        pyproject_path = os.path.join(lazyllm_path, 'pyproject.toml')
+        if os.path.exists(pyproject_path):
+            with open(pyproject_path, 'r') as f:
+                return toml.load(f)
+        else:
+            return None
+    except (FileNotFoundError, toml.TomlDecodeError):
+        print("Could not find or parse pyproject.toml in lazyllm path.")
+        return None
+
+def load_local_pyproject():
+    try:
+        with open('pyproject.toml', 'r') as f:
+            return toml.load(f)
+    except (FileNotFoundError, toml.TomlDecodeError):
+        print("Could not find or parse the local pyproject.toml file.")
+        sys.exit(1)
 
 def load_local_pyproject():
     try:
@@ -17,6 +37,7 @@ def load_local_pyproject():
 
 def load_remote_pyproject():
     try:
+        PYPROJECT_TOML_URL = "https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/pyproject.toml"
         response = requests.get(PYPROJECT_TOML_URL)
         response.raise_for_status()
         return toml.loads(response.text)
@@ -24,8 +45,19 @@ def load_remote_pyproject():
         print(f"Failed to download or parse remote pyproject.toml file: {e}")
         sys.exit(1)
 
+def load_pyproject():
+    config = load_pyproject_from_lazyllm_path()
+    if config is not None:
+        return config
+
+    config = load_local_pyproject()
+    if config is not None:
+        return config
+
+    return load_remote_pyproject()
+
 def load_packages():
-    config = load_local_pyproject() if os.path.exists('pyproject.toml') else load_remote_pyproject()
+    config = load_pyproject()
     try:
         return config['tool']['poetry']['extras']
     except KeyError:
@@ -66,7 +98,7 @@ def install_standard():
 def install_single_package(package_name):
     install_packages(package_name)
 
-def main():
+def install():
     if len(sys.argv) < 3 or sys.argv[1] != "install":
         print("Usage: lazyllm install [full|standard|package_name]")
         sys.exit(1)
@@ -86,4 +118,4 @@ def main():
         install_single_package(command)
 
 if __name__ == "__main__":
-    main()
+    install()
