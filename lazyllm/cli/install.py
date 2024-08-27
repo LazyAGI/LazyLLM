@@ -6,6 +6,8 @@ import platform
 import os
 import lazyllm
 
+PYPROJECT_TOML_URL = "https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/pyproject.toml"
+
 def load_pyproject_from_lazyllm_path():
     try:
         lazyllm_path = lazyllm.__path__[0]  # Get the path of the lazyllm package
@@ -27,17 +29,8 @@ def load_local_pyproject():
         print("Could not find or parse the local pyproject.toml file.")
         sys.exit(1)
 
-def load_local_pyproject():
-    try:
-        with open('pyproject.toml', 'r') as f:
-            return toml.load(f)
-    except (FileNotFoundError, toml.TomlDecodeError):
-        print("Could not find or parse the local pyproject.toml file.")
-        sys.exit(1)
-
 def load_remote_pyproject():
     try:
-        PYPROJECT_TOML_URL = "https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/pyproject.toml"
         response = requests.get(PYPROJECT_TOML_URL)
         response.raise_for_status()
         return toml.loads(response.text)
@@ -49,11 +42,9 @@ def load_pyproject():
     config = load_pyproject_from_lazyllm_path()
     if config is not None:
         return config
-
     config = load_local_pyproject()
     if config is not None:
         return config
-
     return load_remote_pyproject()
 
 def load_packages():
