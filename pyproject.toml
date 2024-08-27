@@ -143,4 +143,4 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-lazyllm = "lazyllm.cli.install:install"
+lazyllm = "lazyllm.cli.install:main"

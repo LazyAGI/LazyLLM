@@ -89,7 +89,7 @@ def install_standard():
 def install_single_package(package_name):
     install_packages(package_name)
 
-def install():
+def main():
     if len(sys.argv) < 3 or sys.argv[1] != "install":
         print("Usage: lazyllm install [full|standard|package_name]")
         sys.exit(1)
@@ -109,4 +109,4 @@ def install():
         install_single_package(command)
 
 if __name__ == "__main__":
-    install()
+    main()
