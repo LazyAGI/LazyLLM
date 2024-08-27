@@ -101,6 +101,7 @@ class NodeConstructor(object):
 _constructor = NodeConstructor()
 
 
+@NodeConstructor.register('Graph')
 @NodeConstructor.register('SubGraph')
 def make_graph(nodes: List[dict], edges: List[dict]):
     engine = Engine()
