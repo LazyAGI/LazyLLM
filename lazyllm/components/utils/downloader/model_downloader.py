@@ -93,6 +93,9 @@ class ModelManager():
             mapped_model_name = model_name_mapping[model.lower()]['source'][self.model_source]
             model_save_dir = self._do_download(mapped_model_name)
             if model_save_dir:
+                # The code safely creates a symbolic link by removing any existing target.
+                if os.path.exists(full_model_dir):
+                    os.remove(full_model_dir)
                 os.symlink(model_save_dir, full_model_dir, target_is_directory=True)
                 return full_model_dir
             return model  # failed to download model, keep model as it is

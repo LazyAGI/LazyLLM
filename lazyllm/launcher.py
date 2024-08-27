@@ -57,6 +57,7 @@ lazyllm.config.add('partition', str, 'your_part', 'SLURM_PART')
 lazyllm.config.add('sco.workspace', str, 'your_workspace', 'SCO_WORKSPACE')
 lazyllm.config.add('sco_env_name', str, '', 'SCO_ENV_NAME')
 lazyllm.config.add('sco_keep_record', bool, False, 'SCO_KEEP_RECORD')
+lazyllm.config.add("sco_resource_type", str, "N2lS.Ie.I60", "SCO_RESOURCE_TYPE")
 
 
 # store cmd, return message and command output.
@@ -402,7 +403,8 @@ class ScoLauncher(LazyLLMLaunchersBase):
             launcher = self.launcher
             # Assemble the cmd
             sco_cmd = f'srun -p {launcher.partition} --workspace-id {self.workspace_name} ' \
-                      f'--job-name={self.name} -f {launcher.framework} -r N2lS.Ie.I60.{launcher.ngpus} ' \
+                      f'--job-name={self.name} -f {launcher.framework} ' \
+                      f'-r {lazyllm.config["sco_resource_type"]}.{launcher.ngpus} ' \
                       f'-N {launcher.nnode} --priority normal '
 
             torchrun_cmd = f'python -m torch.distributed.run --nproc_per_node {launcher.nproc} '

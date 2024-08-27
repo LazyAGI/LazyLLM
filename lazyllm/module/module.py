@@ -281,6 +281,7 @@ class UrlModule(ModuleBase, UrlTemplate):
             data = __input
 
         # context bug with httpx, so we use requests
+        isStreamOutput = self._stream
         with requests.post(self._url, json=data, stream=True, headers=headers) as r:
             if r.status_code == 200:
                 messages = ''
@@ -290,7 +291,10 @@ class UrlModule(ModuleBase, UrlTemplate):
                     except Exception:
                         chunk = chunk.decode('utf-8')
                     chunk = self._prompt.get_response(self._extract_result_func(chunk))
-                    if self._stream: FileSystemQueue().enqueue(chunk)
+                    if isStreamOutput:
+                        token = getattr(self, "_tool_start_token", None)
+                        if token in chunk: isStreamOutput = False
+                        if isStreamOutput: FileSystemQueue().enqueue(chunk)
                     messages += chunk
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
