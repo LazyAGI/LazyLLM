@@ -10,6 +10,7 @@ import inspect
 import functools
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
 from typing import Dict, List, Any, Union
+from enum import Enum
 
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals
@@ -19,6 +20,37 @@ from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
 import uuid
 from ..client import get_redis, redis_client
+
+
+class State(Enum):
+    Normal = 0,
+    Searching = 1,
+    Matched = 2,
+
+class SubstringStateMachine(object):
+    def __init__(self, substring):
+        self._substring = substring
+        self._sub_size = len(substring)
+        self._cache = []
+        self._current_state = State.Normal
+
+    def on_event(self, chunk):
+        if self._current_state == State.Normal:  # start searching
+            chunk = chunk.lstrip('\n')
+            self._cache = [chunk]
+            if self._substring.startswith(chunk):
+                self._current_state = State.Searching
+            elif self._substring in chunk:
+                self._current_state = State.Matched
+        elif self._current_state == State.Searching:  # searching
+            self._cache.append(chunk)
+            cache_str = "".join(self._cache)
+            if len(cache_str) < self._sub_size:
+                if not self._substring.startswith(cache_str): self._current_state = State.Normal
+            else:
+                self._current_state = State.Matched if self._substring in cache_str else State.Normal
+
+        return (self._current_state, self._cache)
 
 
 class ModuleBase(object):
@@ -228,6 +260,9 @@ class UrlModule(ModuleBase, UrlTemplate):
         # Set for request by specific deploy:
         UrlTemplate.__init__(self)
         self._extract_result_func = lambda x: x
+        self._stream_parse_parameters = {}
+        self._stream_extract_result_func = lambda x: x
+        self._stream_url_suffix = ''
         __class__.prompt(self)
         __class__.formatter(self)
 
@@ -280,22 +315,42 @@ class UrlModule(ModuleBase, UrlTemplate):
             if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
             data = __input
 
+        if self._stream:
+            if self._stream_url_suffix and not self._url.endswith(self._stream_url_suffix):
+                self.__url += self._stream_url_suffix
+            if "stream" in data: data['stream'] = self._stream
+        token = getattr(self, "_tool_start_token", '')
+        tokenSearch = SubstringStateMachine(token)
+
         # context bug with httpx, so we use requests
         isStreamOutput = self._stream
         with requests.post(self._url, json=data, stream=True, headers=headers) as r:
             if r.status_code == 200:
                 messages = ''
-                for chunk in r.iter_content(None):
-                    try:
-                        chunk = pickle.loads(codecs.decode(chunk, "base64"))
-                    except Exception:
-                        chunk = chunk.decode('utf-8')
-                    chunk = self._prompt.get_response(self._extract_result_func(chunk))
-                    if isStreamOutput:
-                        token = getattr(self, "_tool_start_token", None)
-                        if token in chunk: isStreamOutput = False
-                        if isStreamOutput: FileSystemQueue().enqueue(chunk)
-                    messages += chunk
+                if self._stream:
+                    for line in r.iter_lines(**self._stream_parse_parameters):
+                        if line:
+                            chunk = self._stream_extract_result_func(line)
+                            chunk = self._prompt.get_response(chunk)
+                            if chunk.startswith(messages): chunk = chunk[len(messages):]
+                            if isStreamOutput:
+                                state, cache = tokenSearch.on_event(chunk)
+                                if state == State.Matched: isStreamOutput = False
+                                if isStreamOutput and state == State.Normal:
+                                    [FileSystemQueue().enqueue(item) for item in cache]
+                            messages += chunk
+                else:
+                    for chunk in r.iter_content(None):
+                        try:
+                            chunk = pickle.loads(codecs.decode(chunk, "base64"))
+                        except Exception:
+                            chunk = chunk.decode('utf-8')
+                        chunk = self._prompt.get_response(self._extract_result_func(chunk))
+                        if isStreamOutput:
+                            token = getattr(self, "_tool_start_token", None)
+                            if token in chunk: isStreamOutput = False
+                            if isStreamOutput: FileSystemQueue().enqueue(chunk)
+                        messages += chunk
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
             return self._formatter.format(self._extract_and_format(messages))
@@ -480,6 +535,15 @@ class _TrainableModuleImpl(ModuleBase):
             f._set_template(template, stop_words=stop_words)
             if hasattr(deployer.__class__, 'extract_result'):
                 f._extract_result_func = deployer.__class__.extract_result
+
+            if hasattr(deployer.__class__, 'stream_parse_parameters'):
+                f._stream_parse_parameters = deployer.__class__.stream_parse_parameters()
+
+            if hasattr(deployer.__class__, 'stream_extract_result'):
+                f._stream_extract_result_func = deployer.__class__.stream_extract_result
+
+            if hasattr(deployer.__class__, 'stream_url_suffix'):
+                f._stream_url_suffix = deployer.__class__.stream_url_suffix()
 
         return Pipeline(lambda *a: lazyllm.package(target_path, self._base_model), deployer,
                         lambda url: [f._set_url(url) for f in self._father])
