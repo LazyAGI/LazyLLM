@@ -228,7 +228,7 @@ class UrlModule(ModuleBase, UrlTemplate):
         # Set for request by specific deploy:
         UrlTemplate.__init__(self)
         self._extract_result_func = lambda x: x
-        self._stream_parse_parameters = {"delimiter": "<|lazyllm_delimiter|>"}
+        self._stream_parse_parameters = {"delimiter": b"<|lazyllm_delimiter|>"}
         self._stream_url_suffix = ''
         __class__.prompt(self)
         __class__.formatter(self)
