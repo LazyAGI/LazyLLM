@@ -432,6 +432,7 @@ class _TrainableModuleImpl(ModuleBase):
         self._stream = stream
         self._father = []
         self._launchers = []
+        self._deployer = None
 
     def _add_father(self, father):
         if father not in self._father: self._father.append(father)
@@ -469,9 +470,15 @@ class _TrainableModuleImpl(ModuleBase):
             if os.path.exists(merge_path): target_path = os.path.abspath(merge_path)
 
         if self._deploy is lazyllm.deploy.AutoDeploy:
-            deployer = self._deploy(base_model=self._base_model, stream=self._stream, **self._deploy_args)
+            self._deployer = self._deploy(base_model=self._base_model, stream=self._stream, **self._deploy_args)
+            self._set_template(self._deployer)
         else:
-            deployer = self._deploy(stream=self._stream, **self._deploy_args)
+            self._deployer = self._deploy(stream=self._stream, **self._deploy_args)
+
+        return Pipeline(lambda *a: lazyllm.package(target_path, self._base_model), self._deployer,
+                        lambda url: [f._set_url(url) for f in self._father])
+
+    def _set_template(self, deployer):
         template = UrlTemplate(copy.deepcopy(deployer.message_format), deployer.keys_name_handle,
                                copy.deepcopy(deployer.default_headers))
         stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
@@ -481,11 +488,10 @@ class _TrainableModuleImpl(ModuleBase):
             if hasattr(deployer.__class__, 'extract_result'):
                 f._extract_result_func = deployer.__class__.extract_result
 
-        return Pipeline(lambda *a: lazyllm.package(target_path, self._base_model), deployer,
-                        lambda url: [f._set_url(url) for f in self._father])
-
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
+        if self._deploy is not lazyllm.deploy.AutoDeploy:
+            self._set_template(self._deploy)
 
     def __del__(self):
         for launcher in self._launchers:
@@ -513,6 +519,15 @@ class TrainableModule(UrlModule):
     @property
     def type(self):
         return ModelManager.get_model_type(self.base_model).upper()
+
+    @property
+    def _deploy_type(self):
+        if self._impl._deploy is not lazyllm.deploy.AutoDeploy:
+            return self._impl._deploy
+        elif self._impl._deployer:
+            return type(self._impl._deployer)
+        else:
+            return lazyllm.deploy.AutoDeploy
 
     # modify default value to ''
     def prompt(self, prompt=''):

@@ -106,6 +106,7 @@ class TestModule:
 
     def test_TrainableModule_stream(self):
         tm = lazyllm.TrainableModule(self.base_model, self.target_path, stream=True).deploy_method(lazyllm.deploy.dummy)
+        assert tm._deploy_type == lazyllm.deploy.dummy
         tm.prompt(None).start()
 
         _ = tm('input')
