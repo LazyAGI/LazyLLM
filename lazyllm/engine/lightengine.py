@@ -26,7 +26,7 @@ class LightEngine(Engine):
         return self._nodes[node.id]
 
     def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], gid=None, name=None):
-        node = Node(id=gid or str(uuid.uuid4().hex), kind=['Graph'],
+        node = Node(id=gid or str(uuid.uuid4().hex), kind='Graph',
                     name=name or str(uuid.uuid4().hex), args=dict(nodes=nodes, edges=edges))
         self.graph = self.build_node(node).func
         ActionModule(self.graph).start()
