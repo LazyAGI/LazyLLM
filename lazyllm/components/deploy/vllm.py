@@ -86,9 +86,5 @@ class Vllm(LazyLLMDeployBase):
         return {"decode_unicode": False, "delimiter": b"\0"}
 
     @staticmethod
-    def stream_extract_result(line):
-        return json.loads(line.decode('utf-8'))['text'][0]
-
-    @staticmethod
     def stream_url_suffix():
         return ''

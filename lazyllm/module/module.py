@@ -10,7 +10,6 @@ import inspect
 import functools
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
 from typing import Dict, List, Any, Union
-from enum import Enum
 
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals
@@ -20,37 +19,6 @@ from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
 import uuid
 from ..client import get_redis, redis_client
-
-
-class State(Enum):
-    Normal = 0,
-    Searching = 1,
-    Matched = 2,
-
-class SubstringStateMachine(object):
-    def __init__(self, substring):
-        self._substring = substring
-        self._sub_size = len(substring)
-        self._cache = []
-        self._current_state = State.Normal
-
-    def on_event(self, chunk):
-        if self._current_state == State.Normal:  # start searching
-            chunk = chunk.lstrip('\n')
-            self._cache = [chunk]
-            if self._substring.startswith(chunk):
-                self._current_state = State.Searching
-            elif self._substring in chunk:
-                self._current_state = State.Matched
-        elif self._current_state == State.Searching:  # searching
-            self._cache.append(chunk)
-            cache_str = "".join(self._cache)
-            if len(cache_str) < self._sub_size:
-                if not self._substring.startswith(cache_str): self._current_state = State.Normal
-            else:
-                self._current_state = State.Matched if self._substring in cache_str else State.Normal
-
-        return (self._current_state, self._cache)
 
 
 class ModuleBase(object):
@@ -260,8 +228,7 @@ class UrlModule(ModuleBase, UrlTemplate):
         # Set for request by specific deploy:
         UrlTemplate.__init__(self)
         self._extract_result_func = lambda x: x
-        self._stream_parse_parameters = {}
-        self._stream_extract_result_func = lambda x: x
+        self._stream_parse_parameters = {"delimiter": "<|lazyllm_delimiter|>"}
         self._stream_url_suffix = ''
         __class__.prompt(self)
         __class__.formatter(self)
@@ -320,31 +287,41 @@ class UrlModule(ModuleBase, UrlTemplate):
                 self.__url += self._stream_url_suffix
             if "stream" in data: data['stream'] = self._stream
         token = getattr(self, "_tool_start_token", '')
-        tokenSearch = SubstringStateMachine(token)
+        cache = []
+        state = 0  # 0: normal, 1: searching 2: matched
 
         # context bug with httpx, so we use requests
         isStreamOutput = self._stream
         with requests.post(self._url, json=data, stream=True, headers=headers) as r:
             if r.status_code == 200:
                 messages = ''
-                if self._stream:
-                    for line in r.iter_lines(**self._stream_parse_parameters):
-                        if line:
-                            chunk = self._prompt.get_response(self._stream_extract_result_func(line))
-                            if chunk.startswith(messages): chunk = chunk[len(messages):]
-                            if isStreamOutput:
-                                state, cache = tokenSearch.on_event(chunk)
-                                if state == State.Matched: isStreamOutput = False
-                                if isStreamOutput and state == State.Normal:
-                                    [FileSystemQueue().enqueue(item) for item in cache]
-                            messages += chunk
-                else:
-                    for chunk in r.iter_content(None):
+                for line in r.iter_lines(**self._stream_parse_parameters):
+                    if line:
                         try:
-                            chunk = pickle.loads(codecs.decode(chunk, "base64"))
+                            line = pickle.loads(codecs.decode(line, "base64"))
                         except Exception:
-                            chunk = chunk.decode('utf-8')
-                        chunk = self._prompt.get_response(self._extract_result_func(chunk))
+                            line = line.decode('utf-8')
+                        chunk = self._prompt.get_response(self._extract_result_func(line))
+                        if chunk.startswith(messages): chunk = chunk[len(messages):]
+                        if isStreamOutput:
+                            schunk = chunk
+                            if state == 0:
+                                if not token.startswith('\n'): schunk = schunk.lstrip('\n')
+                                cache = [schunk]
+                                if token.startswith(schunk): state = 1
+                                elif token in schunk: state = 2
+                            elif state == 1:
+                                cache.append(schunk)
+                                cache_str = "".join(cache)
+                                if len(cache_str) < len(token):
+                                    if not token.startswith(cache_str): state = 0
+                                else:
+                                    state = 2 if token in cache_str else 0
+
+                            if state == 2: isStreamOutput = False
+                            if isStreamOutput and state == 0:
+                                [FileSystemQueue().enqueue(item) for item in cache]
+                                cache = []
                         messages += chunk
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
@@ -533,9 +510,6 @@ class _TrainableModuleImpl(ModuleBase):
 
             if hasattr(deployer.__class__, 'stream_parse_parameters'):
                 f._stream_parse_parameters = deployer.__class__.stream_parse_parameters()
-
-            if hasattr(deployer.__class__, 'stream_extract_result'):
-                f._stream_extract_result_func = deployer.__class__.stream_extract_result
 
             if hasattr(deployer.__class__, 'stream_url_suffix'):
                 f._stream_url_suffix = deployer.__class__.stream_url_suffix()

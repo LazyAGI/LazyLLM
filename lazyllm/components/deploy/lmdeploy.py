@@ -95,9 +95,5 @@ class LMDeploy(LazyLLMDeployBase):
         return {"delimiter": b"\n"}
 
     @staticmethod
-    def stream_extract_result(line):
-        return json.loads(line.decode('utf-8'))['text']
-
-    @staticmethod
     def stream_url_suffix():
         return ''

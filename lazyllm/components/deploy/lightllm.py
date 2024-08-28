@@ -85,15 +85,12 @@ class Lightllm(LazyLLMDeployBase):
 
     @staticmethod
     def extract_result(x):
-        return json.loads(x)['generated_text'][0]
+        if x.startswith("data:"): return json.loads(x[len("data:"):])['token']['text']
+        else: return json.loads(x)['generated_text'][0]
 
     @staticmethod
     def stream_parse_parameters():
         return {"delimiter": b"\n\n"}
-
-    @staticmethod
-    def stream_extract_result(line):
-        return json.loads(line[len("data:"):])['token']['text']
 
     @staticmethod
     def stream_url_suffix():
