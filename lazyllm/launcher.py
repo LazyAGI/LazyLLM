@@ -186,6 +186,10 @@ class EmptyLauncher(LazyLLMLaunchersBase):
         def get_jobip(self):
             return '0.0.0.0'
 
+        def wait(self):
+            if self.ps:
+                self.ps.wait()
+
     def __init__(self, subprocess=False, ngpus=None, sync=True):
         super().__init__()
         self.subprocess = subprocess
