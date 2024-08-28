@@ -11,7 +11,7 @@ MAX_TOKEN_NUM = Rule.from_indexed("MAX_TOKEN_NUM", [64 * 1024, 256 * 1024, 1024 
 LORA_R = Rule.from_indexed("LORA_R", [8, 16, 32], matches=SearchMode.BINARY_CEIL)
 
 # VALUES
-FINETUNE_FRAMEWORK = Rule.from_options("FRAMEWORK", ["ALPACALORA", "COLLIE"])
+FINETUNE_FRAMEWORK = Rule.from_options("FRAMEWORK", ["ALPACALORA", "COLLIE", 'LLAMAFACTORY'])
 DEPLOY_FRAMEWORK = Rule.from_options("FRAMEWORK", ["LIGHTLLM", "VLLM"])
 TP = Rule.from_options("TP", [1, 2, 4, 8])
 ZERO = Rule.from_options("ZERO", [0, 1, 2, 3])

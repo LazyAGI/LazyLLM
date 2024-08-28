@@ -480,6 +480,10 @@ class ScoLauncher(LazyLLMLaunchersBase):
                 self.output_thread_event.set()
                 self.output_thread.join()
 
+        def wait(self):
+            if self.ps:
+                self.ps.wait()
+
         @property
         def status(self):
             if self.jobid:
