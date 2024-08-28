@@ -228,7 +228,7 @@ class UrlModule(ModuleBase, UrlTemplate):
         # Set for request by specific deploy:
         UrlTemplate.__init__(self)
         self._extract_result_func = lambda x: x
-        self._stream_parse_parameters = {"delimiter": b"<|lazyllm_delimiter|>"}
+        self._stream_parse_parameters = {}
         self._stream_url_suffix = ''
         __class__.prompt(self)
         __class__.formatter(self)
@@ -286,6 +286,9 @@ class UrlModule(ModuleBase, UrlTemplate):
             if self._stream_url_suffix and not self._url.endswith(self._stream_url_suffix):
                 self.__url += self._stream_url_suffix
             if "stream" in data: data['stream'] = self._stream
+        else:
+            self._stream_parse_parameters = {"delimiter": b"<|lazyllm_delimiter|>"}
+
         token = getattr(self, "_tool_start_token", '')
         cache = []
         state = 0  # 0: normal, 1: searching 2: matched
