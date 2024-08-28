@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import List, Optional, Callable, Dict, Type
+import lazyllm
 from lazyllm import graph, switch, pipeline
+from lazyllm.tools import IntentClassifier
 from .node import all_nodes
 import re
 import ast
@@ -99,6 +101,7 @@ class NodeConstructor(object):
 _constructor = NodeConstructor()
 
 
+@NodeConstructor.register('Graph')
 @NodeConstructor.register('SubGraph')
 def make_graph(nodes: List[dict], edges: List[dict]):
     engine = Engine()
@@ -109,7 +112,10 @@ def make_graph(nodes: List[dict], edges: List[dict]):
             setattr(g, node.name, node.func)
 
     for edge in edges:
-        g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name)
+        if formatter := edge.get('formatter'):
+            assert formatter.startswith('[') and formatter.endswith(']')
+            formatter = lazyllm.formatter.JsonLike(formatter)
+        g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name, formatter)
 
     return g
 
@@ -139,3 +145,14 @@ def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
                 f = Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
             sw.case[cond::f]
     return sw
+
+@NodeConstructor.register('Intention')
+def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
+    with IntentClassifier(Engine().build_node(base_model)) as ic:
+        for cond, nodes in nodes.items():
+            if isinstance(nodes, list) and len(nodes) > 1:
+                f = pipeline([Engine().build_node(node).func for node in nodes])
+            else:
+                f = Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
+            ic.case[cond::f]
+    return ic

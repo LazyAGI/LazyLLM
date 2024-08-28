@@ -257,10 +257,11 @@ class WebModule(ModuleBase):
                     if h not in globals['chat_history']: globals['chat_history'][h] = list()
                     globals['chat_history'][h] = history
 
+            if FileSystemQueue().size() > 0: FileSystemQueue().clear()
             func_future = self.pool.submit(self.m, input)
             while True:
                 if value := FileSystemQueue().dequeue():
-                    chat_history[-1][1] = chat_history[-1][1] + ''.join(value) if append_text else ''.join(value)
+                    chat_history[-1][1] += ''.join(value) if append_text else ''.join(value)
                     if stream_output: yield chat_history, ''
                 elif value := FileSystemQueue.get_instance('lazy_error').dequeue():
                     log_history.append(''.join(value))
@@ -269,6 +270,7 @@ class WebModule(ModuleBase):
                 elif func_future.done(): break
                 time.sleep(0.01)
             result = func_future.result()
+            if FileSystemQueue().size() > 0: FileSystemQueue().clear()
             if files:
                 globals['global_parameters']["lazyllm-files"].pop('files', None)
 
@@ -311,9 +313,10 @@ class WebModule(ModuleBase):
                 if 'audio' in file:
                     chat_history[-1][1] = gr.Audio(file['audio'])
             elif isinstance(result, str):
-                chat_history[-1][1] = result
+                if not chat_history[-1][1].endswith(result): chat_history[-1][1] += "\n\n" + result
             elif isinstance(result, dict):
-                chat_history[-1][1] = result.get("message", "")
+                if not chat_history[-1][1].endswith(result.get("message", "")):
+                    chat_history[-1][1] += "\n\n" + result.get("message", "")
             else:
                 raise TypeError(f'function result should only be str, but got {type(result)}')
         except requests.RequestException as e:

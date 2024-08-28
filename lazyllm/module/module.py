@@ -281,6 +281,7 @@ class UrlModule(ModuleBase, UrlTemplate):
             data = __input
 
         # context bug with httpx, so we use requests
+        isStreamOutput = self._stream
         with requests.post(self._url, json=data, stream=True, headers=headers) as r:
             if r.status_code == 200:
                 messages = ''
@@ -290,7 +291,10 @@ class UrlModule(ModuleBase, UrlTemplate):
                     except Exception:
                         chunk = chunk.decode('utf-8')
                     chunk = self._prompt.get_response(self._extract_result_func(chunk))
-                    if self._stream: FileSystemQueue().enqueue(chunk)
+                    if isStreamOutput:
+                        token = getattr(self, "_tool_start_token", None)
+                        if token in chunk: isStreamOutput = False
+                        if isStreamOutput: FileSystemQueue().enqueue(chunk)
                     messages += chunk
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
@@ -462,7 +466,7 @@ class _TrainableModuleImpl(ModuleBase):
         target_path = self._target_path
         if os.path.basename(self._target_path) != 'merge':
             merge_path = os.path.join(self._target_path, 'merge')
-            if os.path.exists(merge_path): target_path = merge_path
+            if os.path.exists(merge_path): target_path = os.path.abspath(merge_path)
 
         if self._deploy is lazyllm.deploy.AutoDeploy:
             deployer = self._deploy(base_model=self._base_model, stream=self._stream, **self._deploy_args)

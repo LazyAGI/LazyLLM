@@ -27,7 +27,7 @@ FC_PROMPT_LOCAL = """# Tools
 which can be called zero or multiple times according to your needs:
 
 {tool_start_token}The tool to use, should be one of tools list.
-{tool_args_token}The input of the tool.
+{tool_args_token}The input of the tool. The output format is: {"input1": param1, "input2": param2}. Can only return json.
 {tool_end_token}End of tool."""
 
 FC_PROMPT_ONLINE = ("Don't make assumptions about what values to plug into functions."
@@ -36,7 +36,7 @@ FC_PROMPT_ONLINE = ("Don't make assumptions about what values to plug into funct
 class FunctionCall(ModuleBase):
     def __init__(self, llm, tools: List[str], *, return_trace: bool = False, _prompt: str = None):
         super().__init__(return_trace=return_trace)
-        if llm.series == "QWEN" and llm._stream is True:
+        if isinstance(llm, OnlineChatModule) and llm.series == "QWEN" and llm._stream is True:
             raise ValueError("The qwen platform does not currently support stream function calls.")
         if _prompt is None:
             _prompt = FC_PROMPT_ONLINE if isinstance(llm, OnlineChatModule) else FC_PROMPT_LOCAL

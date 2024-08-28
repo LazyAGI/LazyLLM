@@ -149,7 +149,6 @@ class TestFlow(object):
             g.concat = concat
 
         g.add_edge(g.start_node_name, ['test1', 'test2', 'test3'])
-        # TODO: add_edge(['test1', 'test2'], 'add')
         g.add_edge(['test1', 'test2'], 'add')
         g.add_edge(['add', 'test3'], 'concat')
         g.add_edge('concat', g.end_node_name)
