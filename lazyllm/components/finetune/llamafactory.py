@@ -19,6 +19,9 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
                  merge_path=None,
                  config_path=None,
                  export_config_path=None,
+                 lora_r=None,
+                 modules_to_save=None,
+                 lora_target_modules=None,
                  launcher=launchers.remote(ngpus=1, sync=True),
                  **kw
                  ):
@@ -48,6 +51,12 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         if self.config_path:
             self.template_dict.update(self.load_yaml(self.config_path))
 
+        if lora_r:
+            self.template_dict['lora_rank'] = lora_r
+        if modules_to_save:
+            self.template_dict['additional_target'] = modules_to_save.strip('[]')
+        if lora_target_modules:
+            self.template_dict['lora_target'] = lora_target_modules.strip('[]')
         self.template_dict['model_name_or_path'] = base_model
         self.template_dict['output_dir'] = target_path
         self.template_dict['template'] = self.get_template_name(base_model)

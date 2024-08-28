@@ -31,6 +31,29 @@ scipy
 deepspeed>=0.12.3
 sentence_transformers
 faiss-cpu
+''', llamafactory='''
+llamafactory
+accelerate
+datasets
+einops
+fastapi
+fire
+gradio
+matplotlib
+numpy
+packaging
+pandas
+peft
+protobuf
+pydantic
+pyyaml
+scipy
+sentencepiece
+sse-starlette
+tiktoken
+transformers
+trl
+uvicorn
 ''', lightllm='''
 lightllm>=2.0.0
 einops
