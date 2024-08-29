@@ -808,33 +808,6 @@ THis JSON format should be as: {$TABLE_NAME:{"fields":{$COLUMN_NAME:{"type":("RE
 """,
 )
 
-add_example(
-    "SQLiteTool.create_tables",
-    """\
->>> from lazyllm.tools import SQLiteTool
->>> sql_tool = SQLiteTool("personal.db")
->>> tables_info = {
-...     "User": {
-...         "fields": {
-...             "id": {
-...                 "type": "integer",
-...                 "comment": "user id"
-...             },
-...             "name": {
-...                 "type": "text",
-...                 "comment": "user name"
-...             },
-...             "email": {
-...                 "type": "text",
-...                 "comment": "user email"
-...             }
-...         }
-...     }
-... }
->>> sql_tool.create_tables(tables_info)
-""",
-)
-
 add_chinese_doc(
     "SQLiteTool.get_all_tables",
     """\
@@ -846,31 +819,6 @@ add_english_doc(
     "SQLiteTool.get_all_tables",
     """\
 Retrieves and returns a string representation of all the tables in the SQLite database.
-""",
-)
-
-add_example(
-    "SQLiteTool.get_all_tables",
-    """\
->>> from lazyllm.tools import SQLiteTool
->>> sql_tool = SQLiteTool("personal.db")
->>> tables_info = sql_tool.get_all_tables()
->>> print(tables_info)
-CREATE TABLE employee
-(
-    employee_id INT comment '工号',
-    first_name TEXT comment '姓',
-    last_name TEXT comment '名',
-    department TEXT comment '部门'
-)
-CREATE TABLE sales
-(
-    employee_id INT comment '工号',
-    q1_2023 REAL comment '2023年第1季度销售额',
-    q2_2023 REAL comment '2023年第2季度销售额',
-    q3_2023 REAL comment '2023年第3季度销售额',
-    q4_2023 REAL comment '2023年第4季度销售额'
-)
 """,
 )
 
@@ -888,17 +836,6 @@ Executes a SQL query and returns the result in JSON format.
 """,
 )
 
-add_example(
-    "SQLiteTool.get_query_result_in_json",
-    """\
->>> from lazyllm.tools import SQLiteTool
->>> sql_tool = SQLiteTool("personal.db")
->>> result_json = sql_tool.get_query_result_in_json("SELECT * from sales limit 1")
->>> print(result_json)
-[{employee_id: 8, q1_2023: 3471.41, q2_2023: 14789.25, q3_2023: 3478.34, q4_2023: 1254.23}]
-""",
-)
-
 add_chinese_doc(
     "SQLiteTool.sql_update",
     """\
@@ -910,15 +847,6 @@ add_english_doc(
     "SQLiteTool.sql_update",
     """\
 Execute insert or update script.
-""",
-)
-
-add_example(
-    "SQLiteTool.sql_update",
-    """\
->>> from lazyllm.tools import SQLiteTool
->>> sql_tool = SQLiteTool("personal.db")
->>> sql_tool.sql_update("INSERT INTO sales VALUES (1, 8715.55, 8465.65, 24747.82, 3514.36);")
 """,
 )
 
@@ -1007,6 +935,7 @@ Arguments:
 add_example(
     "SqlModule",
     """\
+    >>> # First, run SQLiteTool example
     >>> import lazyllm
     >>> from lazyllm.tools import SQLiteTool, SqlModule
     >>> sql_tool = SQLiteTool("personal.db")
