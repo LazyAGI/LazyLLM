@@ -290,8 +290,7 @@ class UrlModule(ModuleBase, UrlTemplate):
             self._stream_parse_parameters = {"delimiter": b"<|lazyllm_delimiter|>"}
 
         token = getattr(self, "_tool_start_token", '')
-        cache = []
-        state = 0  # 0: normal, 1: searching 2: matched
+        cache = ""
 
         # context bug with httpx, so we use requests
         isStreamOutput = self._stream
@@ -299,33 +298,26 @@ class UrlModule(ModuleBase, UrlTemplate):
             if r.status_code == 200:
                 messages = ''
                 for line in r.iter_lines(**self._stream_parse_parameters):
-                    if line:
-                        try:
-                            line = pickle.loads(codecs.decode(line, "base64"))
-                        except Exception:
-                            line = line.decode('utf-8')
-                        chunk = self._prompt.get_response(self._extract_result_func(line))
-                        if chunk.startswith(messages): chunk = chunk[len(messages):]
-                        if isStreamOutput:
-                            schunk = chunk
-                            if state == 0:
-                                if not token.startswith('\n'): schunk = schunk.lstrip('\n')
-                                cache = [schunk]
-                                if token.startswith(schunk): state = 1
-                                elif token in schunk: state = 2
-                            elif state == 1:
-                                cache.append(schunk)
-                                cache_str = "".join(cache)
-                                if len(cache_str) < len(token):
-                                    if not token.startswith(cache_str): state = 0
-                                else:
-                                    state = 2 if token in cache_str else 0
-
-                            if state == 2: isStreamOutput = False
-                            if isStreamOutput and state == 0:
-                                [FileSystemQueue().enqueue(item) for item in cache]
-                                cache = []
-                        messages += chunk
+                    if not line: continue
+                    try:
+                        line = pickle.loads(codecs.decode(line, "base64"))
+                    except Exception:
+                        line = line.decode('utf-8')
+                    chunk = self._prompt.get_response(self._extract_result_func(line))
+                    if chunk.startswith(messages): chunk = chunk[len(messages):]
+                    messages += chunk
+                    if not isStreamOutput: continue
+                    if not cache:
+                        if token.startswith(chunk.lstrip('\n') if not token.startswith('\n') else chunk): cache = chunk
+                        elif token in chunk: isStreamOutput = False
+                        else: FileSystemQueue().enqueue(chunk)
+                    elif token in cache: isStreamOutput = False
+                    else:
+                        cache += chunk
+                        if not (token.startswith(cache.lstrip('\n') if not token.startswith('\n') else cache)
+                                or token in cache):
+                            FileSystemQueue().enqueue(cache)
+                            cache = ""
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
             return self._formatter.format(self._extract_and_format(messages))
