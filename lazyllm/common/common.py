@@ -398,7 +398,8 @@ class once_flag(object):
         self._lock = threading.Lock()
 
     def _set(self, flag=True):
-        self._flag = flag
+        with self._lock:
+            self._flag = flag
 
     def reset(self):
         with self._lock:

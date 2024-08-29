@@ -492,6 +492,11 @@ class _TrainableModuleImpl(ModuleBase):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
         if self._deploy is not lazyllm.deploy.AutoDeploy:
             self._set_template(self._deploy)
+            if url := self._deploy_args.get('url', None):
+                assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
+                for f in self._father:
+                    f._set_url(url)
+                self._get_deploy_tasks.flag._set()
 
     def __del__(self):
         for launcher in self._launchers:

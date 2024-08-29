@@ -104,6 +104,12 @@ class TestModule:
         assert type(tm4._prompt) is lazyllm.ChatPrompter
         assert type(tm2._prompt) is lazyllm.prompter.EmptyPrompter
 
+        # tm5 use tm4's url
+        tm5 = lazyllm.TrainableModule(self.base_model).deploy_method(tm4._deploy_type, url=tm4._url).prompt(prompt=None)
+        tm5.evalset(inputs)
+        tm5.eval()
+        assert tm5.eval_result == tm2.eval_result
+
     def test_TrainableModule_stream(self):
         tm = lazyllm.TrainableModule(self.base_model, self.target_path, stream=True).deploy_method(lazyllm.deploy.dummy)
         assert tm._deploy_type == lazyllm.deploy.dummy
