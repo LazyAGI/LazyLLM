@@ -105,10 +105,15 @@ class TestModule:
         assert type(tm2._prompt) is lazyllm.prompter.EmptyPrompter
 
         # tm5 use tm4's url
-        tm5 = lazyllm.TrainableModule(self.base_model).deploy_method(tm4._deploy_type, url=tm4._url).prompt(prompt=None)
+        tm5 = lazyllm.TrainableModule(self.base_model).deploy_method(tm4._deploy_type, url=tm4._url)
         tm5.evalset(inputs)
         tm5.eval()
-        assert tm5.eval_result == tm2.eval_result
+        assert tm5.eval_result == tm4.eval_result
+
+        tm5.prompt(None)
+        tm5.evalset(inputs)
+        inputs = 'input-tm5'
+        assert tm5(inputs) == res_template.format(inputs)
 
     def test_TrainableModule_stream(self):
         tm = lazyllm.TrainableModule(self.base_model, self.target_path, stream=True).deploy_method(lazyllm.deploy.dummy)
