@@ -276,7 +276,9 @@ pip install lazyllm
 
 安装lazyllm及所有的依赖，可以使用
 ```bash
-pip install lazyllm[full]
+pip install 'lazyllm[full]'
+或
+lazyllm install full
 ```
 
 ## 六、设计理念

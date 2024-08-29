@@ -281,7 +281,9 @@ pip install lazyllm
 
 Install lazyllm and all dependencies, you can use:
 ```bash
-pip install lazyllm[full]
+pip install 'lazyllm[full]'
+or
+lazyllm install full
 ```
 
 ## Design concept
