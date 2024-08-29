@@ -308,10 +308,12 @@ class UrlModule(ModuleBase, UrlTemplate):
                     messages += chunk
                     if not isStreamOutput: continue
                     if not cache:
-                        if token.startswith(chunk.lstrip('\n') if not token.startswith('\n') else chunk): cache = chunk
-                        elif token in chunk: isStreamOutput = False
+                        if token.startswith(chunk.lstrip('\n') if not token.startswith('\n') else chunk) \
+                           or token in chunk: cache = chunk
                         else: FileSystemQueue().enqueue(chunk)
-                    elif token in cache: isStreamOutput = False
+                    elif token in cache:
+                        isStreamOutput = False
+                        if not cache.startswith(token): FileSystemQueue().enqueue(cache.split(token)[0])
                     else:
                         cache += chunk
                         if not (token.startswith(cache.lstrip('\n') if not token.startswith('\n') else cache)
