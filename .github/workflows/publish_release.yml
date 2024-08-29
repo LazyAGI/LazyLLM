@@ -36,7 +36,7 @@ jobs:
       - name: Test import
         working-directory: ${{ vars.RUNNER_TEMP }}
         shell: bash
-        run: python -c "import lazyllm" && cp LazyLLM-Env/poetry.lock .
+        run: python -c "import lazyllm" && cp LazyLLM-Env/poetry.lock . && cp pyproject.toml lazyllm/
       - name: Check PyPI for existing version
         id: pypi_check
         run: |
@@ -59,7 +59,7 @@ jobs:
       - name: Build
         if: env.pypi_version_exists == 'true'
         shell: bash
-        run: cp pyproject.toml lazyllm/ && poetry build
+        run: poetry build
 
       - name: Check if GitHub Release exists
         id: release_check
