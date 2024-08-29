@@ -485,8 +485,8 @@ class _TrainableModuleImpl(ModuleBase):
 
         for f in self._father:
             f._set_template(template, stop_words=stop_words)
-            if hasattr(deployer.__class__, 'extract_result'):
-                f._extract_result_func = deployer.__class__.extract_result
+            if hasattr(deployer, 'extract_result'):
+                f._extract_result_func = deployer.extract_result
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])
