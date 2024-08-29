@@ -55,6 +55,14 @@ def load_packages():
         print("No 'extras' information found in the pyproject.toml file.")
         sys.exit(1)
 
+def load_dependencies():
+    config = load_pyproject()
+    try:
+        return config['tool']['poetry']['dependencies']
+    except KeyError:
+        print("No 'dependencies' information found in the pyproject.toml file.")
+        sys.exit(1)
+
 def install_packages(packages):
     if isinstance(packages, str):
         packages = [packages]
@@ -64,49 +72,75 @@ def install_packages(packages):
         print(f"安装失败: {e}")
         sys.exit(1)
 
-def install_additional_packages(package_list):
-    for package in package_list:
-        install_packages(package)
-
 def install_full():
     packages = load_packages()
     install_packages(packages['full'])
-    additional_packages = [
-        "git+https://github.com/hiyouga/LLaMA-Factory.git@9dcff3a#egg=llamafactory",
-        "git+https://github.com/ModelTC/lightllm@e6452fd#egg=lightllm",
-        "flash-attn>=2.5.8"
-    ]
-    install_additional_packages(additional_packages)
+    install_packages("flash-attn>=2.5.8")
 
 def install_standard():
     packages = load_packages()
     install_packages(packages['standard'])
-    additional_packages = [
-        "git+https://github.com/hiyouga/LLaMA-Factory.git@9dcff3a#egg=llamafactory"
-    ]
-    install_additional_packages(additional_packages)
 
-def install_single_package(package_name):
-    install_packages(package_name)
+def parse_caret_to_tilde_version(version):
+    if version.startswith("^"):
+        version_parts = version[1:].split(".")
+        if len(version_parts) > 1:
+            return f"~={version_parts[0]}.{version_parts[1]}"
+        else:
+            return f"~={version_parts[0]}"
+    return version
+
+def process_package(package_name_with_version, dependencies):
+    if '==' in package_name_with_version:
+        package_name, _ = package_name_with_version.split('==', 1)
+        package_name = package_name.strip()
+    else:
+        package_name = package_name_with_version
+    if package_name in dependencies:
+        version_spec = dependencies[package_name]
+        if isinstance(version_spec, dict):
+            version_spec = version_spec.get('version', '')
+        elif isinstance(version_spec, str):
+            version_spec = version_spec.strip()
+        if version_spec == '*' or version_spec == '':
+            return package_name
+        elif version_spec.startswith("^"):
+            version_spec = parse_caret_to_tilde_version(version_spec)
+        return f"{package_name}{version_spec}"
+    else:
+        print(f"Error: Package '{package_name}' is not listed in the 'dependencies' section of pyproject.toml.")
+        sys.exit(1)
+
+def install_multiple_packages(package_names_with_versions):
+    dependencies = load_dependencies()
+    packages_to_install = []
+    for package in package_names_with_versions:
+        package_with_version = process_package(package, dependencies)
+        packages_to_install.append(package_with_version)
+    install_packages(packages_to_install)
 
 def main():
     if len(sys.argv) < 3 or sys.argv[1] != "install":
         print("Usage: lazyllm install [full|standard|package_name]")
         sys.exit(1)
 
-    command = sys.argv[2]
+    commands = sys.argv[2:]
 
     if platform.system() == "Darwin":
-        if command in ["full", "standard"]:
+        if any(command == "full" or command == "standard" for command in commands):
             print("Installation of 'full' or 'standard' packages is not supported on macOS.")
             sys.exit(1)
 
-    if command == "full":
-        install_full()
-    elif command == "standard":
-        install_standard()
+    if len(commands) == 1:
+        command = commands[0]
+        if command == "full":
+            install_full()
+        elif command == "standard":
+            install_standard()
+        else:
+            install_multiple_packages([command])
     else:
-        install_single_package(command)
+        install_multiple_packages(commands)
 
 if __name__ == "__main__":
     main()
