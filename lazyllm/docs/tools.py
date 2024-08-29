@@ -151,15 +151,14 @@ Args:
 
 add_example('Reranker', '''
 >>> import lazyllm
->>> from lazyllm.tools import Reranker, Retriever
->>> from lazyllm.tools import Document
->>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
->>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
->>> reranker = Reranker(name='ModuleReranker')
->>> m = lazyllm.ActionModule(rm, reranker)
->>> m.start()
->>> print(m("query"))
+>>> from lazyllm.tools import Document, Reranker, Retriever
+>>> m = lazyllm.OnlineEmbeddingModule()
+>>> documents = Document(dataset_path='rag_master', embed=m, create_ui=False)
+>>> retriever = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
+>>> reranker = Reranker(name='ModuleReranker', model='bg-reranker-large', topk=1)
+>>> ppl = lazyllm.ActionModule(retriever, reranker)
+>>> ppl.start()
+>>> print(ppl("query"))
 ''')
 
 # ---------------------------------------------------------------------------- #
@@ -208,7 +207,7 @@ add_example('Retriever', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Retriever
 >>> from lazyllm.tools import Document
->>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+>>> m = lazyllm.OnlineEmbeddingModule()
 >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 >>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
 >>> rm.start()
@@ -262,8 +261,8 @@ Args:
 ''')
 
 add_example('LLMParser', '''
->>> import lazyllm
->>> from lazyllm.tools import LLMParser, TrainableModule
+>>> from lazyllm import TrainableModule
+>>> from lazyllm.tools.rag import LLMParser
 >>> llm = TrainableModule("internlm2-chat-7b")
 >>> summary_parser = LLMParser(llm, language="en", task_type="summary")
 ''')

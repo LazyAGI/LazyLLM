@@ -267,3 +267,5 @@ module(dict(context='背景', input='输入'))
 > - ``TrainableModule`` requires manually calling ``start`` to initiate the service. For more information on how to use ``TrainableModule``, refer to [module][lazyllm.module.ModuleBase].
 
 #### Built-in Scenario Prompt in LazyLLM
+
+Stay tuned.

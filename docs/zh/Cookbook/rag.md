@@ -293,8 +293,8 @@ print(f"answer: {res}")
 首先我们来实现一个相似度计算的函数，并使用 `LazyLLM` 提供的 [register_similarity()](../Best%20Practice/rag.md#Retriever) 函数把这个函数注册到框架中：
 
 ```python
-@lazyllm.register_similarity(mode='text', batch=True)
-def MySimilarityFunc(query: str, nodes: List[DocNode], **kwargs) -> List[(DocNode, float)]:
+@lazyllm.tools.rag.register_similarity(mode='text', batch=True)
+def MySimilarityFunc(query: str, nodes: List[DocNode], **kwargs) -> List[Tuple[DocNode, float]]:
     return [(node, 0.0) for node in nodes]
 ```
 
@@ -303,7 +303,7 @@ def MySimilarityFunc(query: str, nodes: List[DocNode], **kwargs) -> List[(DocNod
 类似地，我们使用 `LazyLLM` 提供的 [register_reranker()](../Best%20Practice/rag.md#Reranker) 函数来注册一个按照输入的文档列表顺序返回结果的函数：
 
 ```python
-@lazyllm.register_reranker(batch=True)
+@lazyllm.tools.rag.register_reranker(batch=True)
 def MyReranker(nodes: List[DocNode], **kwargs) -> List[DocNode]:
     return nodes
 ```
