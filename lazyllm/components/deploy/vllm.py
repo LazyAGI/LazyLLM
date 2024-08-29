@@ -80,3 +80,11 @@ class Vllm(LazyLLMDeployBase):
     @staticmethod
     def extract_result(x):
         return json.loads(x)['text'][0]
+
+    @staticmethod
+    def stream_parse_parameters():
+        return {"decode_unicode": False, "delimiter": b"\0"}
+
+    @staticmethod
+    def stream_url_suffix():
+        return ''
