@@ -885,6 +885,7 @@ add_example(
     "IntentClassifier",
     """\
     >>> import lazyllm
+    >>> from lazyllm.tools import IntentClassifier
     >>> classifier_llm = lazyllm.OnlineChatModule(source="openai")
     >>> chatflow_intent_list = ["Chat", "Financial Knowledge Q&A", "Employee Information Query", "Weather Query"]
     >>> classifier = IntentClassifier(classifier_llm, intent_list=chatflow_intent_list)
