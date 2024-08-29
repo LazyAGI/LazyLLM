@@ -395,14 +395,14 @@ class once_flag(object):
     def __init__(self, reset_on_pickle=False):
         self._flag = False
         self._reset_on_pickle = reset_on_pickle
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
-    def _set(self, flag=True):
-        self._flag = flag
+    def set(self, flag=True):
+        with self._lock:
+            self._flag = flag
 
     def reset(self):
-        with self._lock:
-            self._set(False)
+        self.set(False)
 
     def __bool__(self):
         return self._flag
@@ -419,7 +419,7 @@ class once_flag(object):
 def call_once(flag, func, *args, **kw):
     with flag._lock:
         if not flag:
-            flag._set()
+            flag.set()
             return func(*args, **kw)
     return None
 
