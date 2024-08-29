@@ -228,6 +228,8 @@ class UrlModule(ModuleBase, UrlTemplate):
         # Set for request by specific deploy:
         UrlTemplate.__init__(self)
         self._extract_result_func = lambda x: x
+        self._stream_parse_parameters = {}
+        self._stream_url_suffix = ''
         __class__.prompt(self)
         __class__.formatter(self)
 
@@ -280,22 +282,44 @@ class UrlModule(ModuleBase, UrlTemplate):
             if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
             data = __input
 
+        if self._stream:
+            if self._stream_url_suffix and not self._url.endswith(self._stream_url_suffix):
+                self.__url += self._stream_url_suffix
+            if "stream" in data: data['stream'] = self._stream
+        else:
+            self._stream_parse_parameters = {"delimiter": b"<|lazyllm_delimiter|>"}
+
+        token = getattr(self, "_tool_start_token", '')
+        cache = ""
+
         # context bug with httpx, so we use requests
         isStreamOutput = self._stream
         with requests.post(self._url, json=data, stream=True, headers=headers) as r:
             if r.status_code == 200:
                 messages = ''
-                for chunk in r.iter_content(None):
+                for line in r.iter_lines(**self._stream_parse_parameters):
+                    if not line: continue
                     try:
-                        chunk = pickle.loads(codecs.decode(chunk, "base64"))
+                        line = pickle.loads(codecs.decode(line, "base64"))
                     except Exception:
-                        chunk = chunk.decode('utf-8')
-                    chunk = self._prompt.get_response(self._extract_result_func(chunk))
-                    if isStreamOutput:
-                        token = getattr(self, "_tool_start_token", None)
-                        if token in chunk: isStreamOutput = False
-                        if isStreamOutput: FileSystemQueue().enqueue(chunk)
+                        line = line.decode('utf-8')
+                    chunk = self._prompt.get_response(self._extract_result_func(line))
+                    if chunk.startswith(messages): chunk = chunk[len(messages):]
                     messages += chunk
+                    if not isStreamOutput: continue
+                    if not cache:
+                        if token.startswith(chunk.lstrip('\n') if not token.startswith('\n') else chunk) \
+                           or token in chunk: cache = chunk
+                        else: FileSystemQueue().enqueue(chunk)
+                    elif token in cache:
+                        isStreamOutput = False
+                        if not cache.startswith(token): FileSystemQueue().enqueue(cache.split(token)[0])
+                    else:
+                        cache += chunk
+                        if not (token.startswith(cache.lstrip('\n') if not token.startswith('\n') else cache)
+                                or token in cache):
+                            FileSystemQueue().enqueue(cache)
+                            cache = ""
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
             return self._formatter.format(self._extract_and_format(messages))
@@ -487,6 +511,12 @@ class _TrainableModuleImpl(ModuleBase):
             f._set_template(template, stop_words=stop_words)
             if hasattr(deployer, 'extract_result'):
                 f._extract_result_func = deployer.extract_result
+
+            if hasattr(deployer, 'stream_parse_parameters'):
+                f._stream_parse_parameters = deployer.stream_parse_parameters()
+
+            if hasattr(deployer, 'stream_url_suffix'):
+                f._stream_url_suffix = deployer.stream_url_suffix()
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_args('deploy', disable=['target_path'])

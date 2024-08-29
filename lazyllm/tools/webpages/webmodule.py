@@ -313,9 +313,9 @@ class WebModule(ModuleBase):
                 if 'audio' in file:
                     chat_history[-1][1] = gr.Audio(file['audio'])
             elif isinstance(result, str):
-                if not chat_history[-1][1].endswith(result): chat_history[-1][1] += "\n\n" + result
+                if not chat_history[-1][1].rstrip().endswith(result): chat_history[-1][1] += "\n\n" + result
             elif isinstance(result, dict):
-                if not chat_history[-1][1].endswith(result.get("message", "")):
+                if not chat_history[-1][1].rstrip().endswith(result.get("message", "")):
                     chat_history[-1][1] += "\n\n" + result.get("message", "")
             else:
                 raise TypeError(f'function result should only be str, but got {type(result)}')
