@@ -126,19 +126,19 @@ Depending on the different values of `mode` and `batch`, the prototype of the us
 
 ```python
 # (1)
-@lazyllm.register_similarity(mode='text', batch=True)
-def dummy_similarity_func(query: str, nodes: List[DocNode], **kwargs) -> List[(DocNode, float)]:
+@lazyllm.tools.rag.register_similarity(mode='text', batch=True)
+def dummy_similarity_func(query: str, nodes: List[DocNode], **kwargs) -> List[Tuple[DocNode, float]]:
 
 # (2)
-@lazyllm.register_similarity(mode='text', batch=False)
+@lazyllm.tools.rag.register_similarity(mode='text', batch=False)
 def dummy_similarity_func(query: str, nodes: List[DocNode], **kwargs) -> float:
 
 # (3)
-@lazyllm.register_similarity(mode='embedding', batch=True)
-def dummy_similarity_func(query: List[float], nodes: List[DocNode], **kwargs) -> List[(DocNode, float):
+@lazyllm.tools.rag.register_similarity(mode='embedding', batch=True)
+def dummy_similarity_func(query: List[float], nodes: List[DocNode], **kwargs) -> List[Tuple[DocNode, float]]:
 
 # (4)
-@lazyllm.register_similarity(mode='embedding', batch=False)
+@lazyllm.tools.rag.register_similarity(mode='embedding', batch=False)
 def dummy_similarity_func(query: List[float], node: DocNode, **kwargs) -> float:
 ```
 
@@ -204,11 +204,11 @@ Based on the different values of `batch`, the corresponding `func` function prot
 
 ```python
 # (1)
-@lazyllm.register_reranker(batch=True)
+@lazyllm.tools.rag.register_reranker(batch=True)
 def dummy_reranker(nodes: List[DocNode], **kwargs) -> List[DocNode]:
 
 # (2)
-@lazyllm.register_reranker(batch=False)
+@lazyllm.tools.rag.register_reranker(batch=False)
 def dummy_reranker(node: DocNode, **kwargs) -> Optional[DocNode]:
 ```
 
