@@ -85,13 +85,12 @@ You can also view and pull the required version from [https://hub.docker.com/r/l
 
 ## Hello, world!
 
-To give you a basic understanding of `LazyLLM`, we will use it to create a chatbot based on the conversation capabilities provided by the [Sensetime Nova Platform](https://platform.sensenova.cn/home).
+To give you a basic understanding of `LazyLLM`, we will use it to create a chatbot based on the conversation capabilities provided by the platform below.
 
-First, you need to register an account on the platform, and according to the first step in the [SenseNova Manual](https://platform.sensenova.cn/doc?path=/platform/helpdoc/help.md), obtain the api key and secret key required for access and set the corresponding environment variables:
+First, if you don't have an account on the corresponding platform, you need to register an account on the platform first, then get the required key according to the link to get the API key of the platform below(not: sensenova needs to get two keys), and set the corresponding evironment variables:
 
 ```bash
-export LAZYLLM_SENSENOVA_API_KEY=<your obtained api key>
-export LAZYLLM_SENSENOVA_SECRET_KEY=<your obtained secret key>
+export LAZYLLM_PLATFORM_API_KEY=<your obtained api key>
 ```
 
 Next, open an editor and enter the following code, save it as `chat.py`:
@@ -124,11 +123,11 @@ First, statement 1 imports the `lazyllm` module, and in statement 2, an instance
 
 | Platform | API Key Acquisition URL              | Environment Variables to Set                            |
 |:---------|:-------------------------------------|:--------------------------------------------------------|
-| Nova     | https://platform.sensenova.cn/       | LAZYLLM_SENSENOVA_API_KEY, LAZYLLM_SENSENOVA_SECRET_KEY |
-| Zhipu    | https://open.bigmodel.cn/            | LAZYLLM_GLM_API_KEY                                     |
-| OpenAI   | https://openai.com/index/openai-api/ | LAZYLLM_OPENAI_API_KEY                                  |
-| Kimi     | https://platform.moonshot.cn/        | LAZYLLM_KIMI_API_KEY                                    |
-| Qwen     | https://home.console.aliyun.com/     | LAZYLLM_QWEN_API_KEY                                    |
+| [Nova](https://platform.sensenova.cn/)     | [API Keys](https://platform.sensenova.cn/doc?path=/platform/helpdoc/help.md)       | LAZYLLM_SENSENOVA_API_KEY, LAZYLLM_SENSENOVA_SECRET_KEY |
+| [OpenAI](https://openai.com/index/openai-api/)   | [API Keys](https://platform.openai.com/api-keys) | LAZYLLM_OPENAI_API_KEY                                  |
+| [Zhipu](https://openai.com/index/openai-api/)    | [API Keys](https://platform.openai.com/api-keys)            | LAZYLLM_GLM_API_KEY                                     |
+| [Kimi](https://platform.moonshot.cn/)     | [API Keys](https://platform.moonshot.cn/console/api-keys)        | LAZYLLM_KIMI_API_KEY                                    |
+| [Qwen](https://help.aliyun.com/zh/dashscope/developer-reference/use-qwen-by-api)     | [API Keys](https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key)     | LAZYLLM_QWEN_API_KEY                                    |
 
 You can use the corresponding platform by setting different environment variables.
 

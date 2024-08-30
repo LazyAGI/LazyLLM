@@ -16,7 +16,7 @@ You can utilize the built-in Prompter provided by LazyLLM to achieve the require
 ```python
 import lazyllm
 instruction = '你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是{context}，用户的问题是{input}, 现在请你做出回答。'
-prompter = lazyllm.AlpacaPrompter(instruction)
+prompter = lazyllm.AlpacaPrompter({"user": instruction})
 module = lazyllm.OnlineChatModule('openai').prompt(prompter)
 module(dict(context='背景', input='输入'))
 ```

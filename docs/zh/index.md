@@ -85,13 +85,12 @@ docker pull lazyllm/lazyllm
 
 ## Hello, world!
 
-为了让大家对 `LazyLLM` 有个初步的认识，我们基于 [商汤日日新开放平台](https://platform.sensenova.cn/home) 提供的对话功能，使用 `LazyLLM` 来实现一个聊天机器人。
+为了让大家对 `LazyLLM` 有个初步的认识，我们基于下面提供的平台提供的对话功能，使用 `LazyLLM` 来实现一个聊天机器人。
 
-首先需要在平台注册一个账号，根据 [SenseNova 商汤日日新开放平台使用手册](https://platform.sensenova.cn/doc?path=/platform/helpdoc/help.md) 的第一步获取访问所需的 api key 和 secret key，并设置对应的环境变量：
+首先如果没有对应平台的账号，就需要先在平台注册一个账号，然后根据下面平台对应的获取api key的链接获取所需要的key(注意:sensenova需要获取两个key)，并设置对应的环境变量：
 
 ```bash
-export LAZYLLM_SENSENOVA_API_KEY=<申请到的api key>
-export LAZYLLM_SENSENOVA_SECRET_KEY=<申请到的 secret key>
+export LAZYLLM_PLATFORM_API_KEY=<申请到的api key>
 ```
 
 接着打开编辑器输入以下代码，保存为 `chat.py`：
@@ -124,11 +123,11 @@ python3 chat.py
 
 | 平台     | 获取 api key                         | 需要设置的环境变量                                           |
 | :------- | :----------------------------------- | :----------------------------------------------------------- |
-| 日日新   | https://platform.sensenova.cn/       | `LAZYLLM_SENSENOVA_API_KEY`,  `LAZYLLM_SENSENOVA_SECRET_KEY` |
-| 智谱     | https://open.bigmodel.cn/            | `LAZYLLM_GLM_API_KEY`                                        |
-| OpenAI   | https://openai.com/index/openai-api/ | `LAZYLLM_OPENAI_API_KEY`                                     |
-| Kimi     | https://platform.moonshot.cn/        | `LAZYLLM_KIMI_API_KEY`                                       |
-| 通义千问 | https://home.console.aliyun.com/     | `LAZYLLM_QWEN_API_KEY`                                       |
+| [日日新](https://platform.sensenova.cn/)   | [获取访问密钥](https://platform.sensenova.cn/doc?path=/platform/helpdoc/help.md)       | `LAZYLLM_SENSENOVA_API_KEY`,  `LAZYLLM_SENSENOVA_SECRET_KEY` |
+| [OpenAI](https://openai.com/index/openai-api/)   | [获取访问密钥](https://platform.openai.com/api-keys) | `LAZYLLM_OPENAI_API_KEY`                                     |
+| [智谱](https://open.bigmodel.cn/ )     | [获取访问密钥](https://open.bigmodel.cn/usercenter/apikeys)            | `LAZYLLM_GLM_API_KEY`                                        |
+| [Kimi](https://platform.moonshot.cn/)     | [获取访问密钥](https://platform.moonshot.cn/console/api-keys)        | `LAZYLLM_KIMI_API_KEY`                                       |
+| [通义千问](https://help.aliyun.com/zh/dashscope/developer-reference/use-qwen-by-api) | [获取访问密钥](https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key)     | `LAZYLLM_QWEN_API_KEY`                                       |
 
 可以通过设置不同的环境变量来使用对应的平台。
 

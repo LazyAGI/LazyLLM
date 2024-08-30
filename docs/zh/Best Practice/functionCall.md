@@ -303,7 +303,7 @@ def add_tool(a: int, b: int):
     '''
     return a + b
 tools = ["multiply_tool", "add_tool"]
-llm = lazyllm.Trainable("internlm2-chat-20b").start()   # or llm = lazyllm.OnlineChatModule(source="openai")
+llm = lazyllm.TrainableModule("internlm2-chat-20b").start()   # or llm = lazyllm.OnlineChatModule(source="openai")
 agent = ReactAgent(llm, tools)
 query = "What is 20+(2*4)? Calculate step by step."
 res = agent(query)

@@ -116,11 +116,11 @@ Args:
 
 add_example('ModuleBase.update', '''\
 >>> import lazyllm
->>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(deploy.dummy).mode('finetune')
+>>> m = lazyllm.module.TrainableModule().finetune_method(lazyllm.finetune.dummy).deploy_method(lazyllm.deploy.dummy).mode('finetune').prompt(None)
 >>> m.evalset([1, 2, 3])
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
->>> m.eval_result
+>>> print(m.eval_result)
 ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
 ''')
 
@@ -134,11 +134,11 @@ during update or eval, and the results will be stored in the eval_result variabl
 
 add_example('ModuleBase.evalset', '''\
 >>> import lazyllm
->>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m = lazyllm.module.TrainableModule().deploy_method(layzllm.deploy.dummy).finetune_method(lazyllm.finetune.dummy).mode("finetune").prompt(None)
 >>> m.evalset([1, 2, 3])
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
->>> m.eval_result
+>>> print(m.eval_result)
 ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
 ''')
 

@@ -303,7 +303,7 @@ def add_tool(a: int, b: int):
     '''
     return a + b
 tools = ["multiply_tool", "add_tool"]
-llm = lazyllm.Trainable("internlm2-chat-20b").start()   # or llm = lazyllm.OnlineChatModule(source="openai")
+llm = lazyllm.TrainableModule("internlm2-chat-20b").start()   # or llm = lazyllm.OnlineChatModule(source="openai")
 agent = ReactAgent(llm, tools)
 query = "What is 20+(2*4)? Calculate step by step."
 res = agent(query)
@@ -356,7 +356,7 @@ def add(a: int, b: int):
     """
     return a + b
 
-llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source='glm', stream=False)
+llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source='openai', stream=False)
 tools = ["multiply", "add"]
 agent = PlanAndSolveAgent(llm, tools=tools)
 query = "What is 20+(2*4)? Calculate step by step."
@@ -441,7 +441,7 @@ def LLMWorker(input: str):
     response = llm(query, llm_chat_history=[])
     return response
 tools = ["WikipediaWorker", "LLMWorker"]
-llm = lazyllm.TrainableModule("Qwen2-72B-Instruct-AWQ").deploy_method(deploy.vllm).start()  # or llm = lazyllm.OnlineChatModule(source="kimi", stream=True)
+llm = lazyllm.TrainableModule("Qwen2-72B-Instruct-AWQ").deploy_method(deploy.vllm).start()  # or llm = lazyllm.OnlineChatModule(source="openai", stream=True)
 agent = ReWOOAgent(llm, tools=tools)
 query = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
 ret = agent(query)
