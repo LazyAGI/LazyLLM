@@ -119,12 +119,10 @@ def install_multiple_packages(package_names_with_versions):
         packages_to_install.append(package_with_version)
     install_packages(packages_to_install)
 
-def main():
-    if len(sys.argv) < 3 or sys.argv[1] != "install":
+def install(commands):
+    if not commands:
         print("Usage: lazyllm install [full|standard|package_name]")
         sys.exit(1)
-
-    commands = sys.argv[2:]
 
     if platform.system() == "Darwin":
         if any(command == "full" or command == "standard" for command in commands):
@@ -141,6 +139,3 @@ def main():
             install_multiple_packages([command])
     else:
         install_multiple_packages(commands)
-
-if __name__ == "__main__":
-    main()
