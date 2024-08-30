@@ -294,8 +294,8 @@ To simplify the explanation and demonstrate the effect of the strategies we writ
 First, let's implement a function for similarity calculation and use the [register_similarity()](../Best%20Practice/rag.md#Retriever) function provided by `LazyLLM` to register this function with the framework:
 
 ```python
-@lazyllm.register_similarity(mode='text', batch=True)
-def MySimilarityFunc(query: str, nodes: List[DocNode], **kwargs) -> List[(DocNode, float)]:
+@lazyllm.tools.rag.register_similarity(mode='text', batch=True)
+def MySimilarityFunc(query: str, nodes: List[DocNode], **kwargs) -> List[Tuple[DocNode, float]]:
     return [(node, 0.0) for node in nodes]
 ```
 
@@ -304,7 +304,7 @@ This function assigns a score of zero to each document and returns a new results
 Similarly, we use the [register_reranker()](../Best%20Practice/rag.md#Reranker) function provided by LazyLLM to register a function that returns results in the order of the input document list:
 
 ```python
-@lazyllm.register_reranker(batch=True)
+@lazyllm.tools.rag.register_reranker(batch=True)
 def MyReranker(nodes: List[DocNode], **kwargs) -> List[DocNode]:
     return nodes
 ```

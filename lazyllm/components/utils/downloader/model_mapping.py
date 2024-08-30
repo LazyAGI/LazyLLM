@@ -85,6 +85,10 @@ model_provider = {
         "huggingface": "internlm",
         "modelscope": "Shanghai_AI_Laboratory"
     },
+    "internvl": {
+        "huggingface": "OpenGVLab",
+        "modelscope": "OpenGVLab"
+    },
     "qwen": {
         "huggingface": "Qwen",
         "modelscope": "qwen"
@@ -145,6 +149,13 @@ model_name_mapping = {
         "source": {
             "huggingface": "OpenGVLab/Mini-InternVL-Chat-2B-V1-5",
             "modelscope": "OpenGVLab/Mini-InternVL-Chat-2B-V1-5"
+        },
+        "type": "vlm"
+    },
+    "mini-internvl-chat-4b-v1-5": {
+        "source": {
+            "huggingface": "OpenGVLab/Mini-InternVL-Chat-4B-V1-5",
+            "modelscope": "OpenGVLab/Mini-InternVL-Chat-4B-V1-5"
         },
         "type": "vlm"
     },

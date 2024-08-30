@@ -179,6 +179,9 @@ class ModelManager():
             return model_dir_result
         except Exception as e:
             lazyllm.LOG.error(f"Huggingface: {e}")
+            if not self.token:
+                lazyllm.LOG.error('The token is found to be empty. Please set the token by '
+                                  'the environment variable LAZYLLM_MODEL_SOURCE_TOKEN.')
             if os.path.isdir(model_dir):
                 shutil.rmtree(model_dir)
                 lazyllm.LOG.error(f"{model_dir} removed due to exceptions.")
@@ -194,10 +197,13 @@ class ModelManager():
                 api.login(self.token)
             model_dir_result = snapshot_download(model_id=model_name, cache_dir=model_source_dir)
 
-            print(f"[INFO] model downloaded at {model_dir_result}")
+            lazyllm.LOG.info(f"Model downloaded at {model_dir_result}")
             return model_dir_result
         except Exception as e:
-            print(f"[ERROR] Modelscope:{e}")
+            lazyllm.LOG.error(f"Modelscope:{e}")
+            if not self.token:
+                lazyllm.LOG.error('The token is found to be empty. Please set the token by '
+                                  'the environment variable LAZYLLM_MODEL_SOURCE_TOKEN.')
 
             # unlike Huggingface, Modelscope adds model name as sub-dir to cache_dir.
             # so we need to figure out the exact dir of the model for clearing in case of exceptions.
@@ -205,4 +211,4 @@ class ModelManager():
             full_model_dir = os.path.join(model_source_dir, model_dir)
             if os.path.isdir(full_model_dir):
                 shutil.rmtree(full_model_dir)
-                print(f"[ERROR] {full_model_dir} removed due to exceptions.")
+                lazyllm.LOG.error(f"{full_model_dir} removed due to exceptions.")

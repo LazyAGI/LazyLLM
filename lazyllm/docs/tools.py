@@ -151,15 +151,14 @@ Args:
 
 add_example('Reranker', '''
 >>> import lazyllm
->>> from lazyllm.tools import Reranker, Retriever
->>> from lazyllm.tools import Document
->>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
->>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
->>> reranker = Reranker(name='ModuleReranker')
->>> m = lazyllm.ActionModule(rm, reranker)
->>> m.start()
->>> print(m("query"))
+>>> from lazyllm.tools import Document, Reranker, Retriever
+>>> m = lazyllm.OnlineEmbeddingModule()
+>>> documents = Document(dataset_path='rag_master', embed=m, create_ui=False)
+>>> retriever = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
+>>> reranker = Reranker(name='ModuleReranker', model='bg-reranker-large', topk=1)
+>>> ppl = lazyllm.ActionModule(retriever, reranker)
+>>> ppl.start()
+>>> print(ppl("query"))
 ''')
 
 # ---------------------------------------------------------------------------- #
@@ -208,7 +207,7 @@ add_example('Retriever', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Retriever
 >>> from lazyllm.tools import Document
->>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+>>> m = lazyllm.OnlineEmbeddingModule()
 >>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
 >>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
 >>> rm.start()
@@ -262,8 +261,8 @@ Args:
 ''')
 
 add_example('LLMParser', '''
->>> import lazyllm
->>> from lazyllm.tools import LLMParser, TrainableModule
+>>> from lazyllm import TrainableModule
+>>> from lazyllm.tools.rag import LLMParser
 >>> llm = TrainableModule("internlm2-chat-7b")
 >>> summary_parser = LLMParser(llm, language="en", task_type="summary")
 ''')
@@ -808,33 +807,6 @@ THis JSON format should be as: {$TABLE_NAME:{"fields":{$COLUMN_NAME:{"type":("RE
 """,
 )
 
-add_example(
-    "SQLiteTool.create_tables",
-    """\
->>> from lazyllm.tools import SQLiteTool
->>> sql_tool = SQLiteTool("personal.db")
->>> tables_info = {
-...     "User": {
-...         "fields": {
-...             "id": {
-...                 "type": "integer",
-...                 "comment": "user id"
-...             },
-...             "name": {
-...                 "type": "text",
-...                 "comment": "user name"
-...             },
-...             "email": {
-...                 "type": "text",
-...                 "comment": "user email"
-...             }
-...         }
-...     }
-... }
->>> sql_tool.create_tables(tables_info)
-""",
-)
-
 add_chinese_doc(
     "SQLiteTool.get_all_tables",
     """\
@@ -846,31 +818,6 @@ add_english_doc(
     "SQLiteTool.get_all_tables",
     """\
 Retrieves and returns a string representation of all the tables in the SQLite database.
-""",
-)
-
-add_example(
-    "SQLiteTool.get_all_tables",
-    """\
->>> from lazyllm.tools import SQLiteTool
->>> sql_tool = SQLiteTool("personal.db")
->>> tables_info = sql_tool.get_all_tables()
->>> print(tables_info)
-CREATE TABLE employee
-(
-    employee_id INT comment '工号',
-    first_name TEXT comment '姓',
-    last_name TEXT comment '名',
-    department TEXT comment '部门'
-)
-CREATE TABLE sales
-(
-    employee_id INT comment '工号',
-    q1_2023 REAL comment '2023年第1季度销售额',
-    q2_2023 REAL comment '2023年第2季度销售额',
-    q3_2023 REAL comment '2023年第3季度销售额',
-    q4_2023 REAL comment '2023年第4季度销售额'
-)
 """,
 )
 
@@ -888,17 +835,6 @@ Executes a SQL query and returns the result in JSON format.
 """,
 )
 
-add_example(
-    "SQLiteTool.get_query_result_in_json",
-    """\
->>> from lazyllm.tools import SQLiteTool
->>> sql_tool = SQLiteTool("personal.db")
->>> result_json = sql_tool.get_query_result_in_json("SELECT * from sales limit 1")
->>> print(result_json)
-[{employee_id: 8, q1_2023: 3471.41, q2_2023: 14789.25, q3_2023: 3478.34, q4_2023: 1254.23}]
-""",
-)
-
 add_chinese_doc(
     "SQLiteTool.sql_update",
     """\
@@ -910,15 +846,6 @@ add_english_doc(
     "SQLiteTool.sql_update",
     """\
 Execute insert or update script.
-""",
-)
-
-add_example(
-    "SQLiteTool.sql_update",
-    """\
->>> from lazyllm.tools import SQLiteTool
->>> sql_tool = SQLiteTool("personal.db")
->>> sql_tool.sql_update("INSERT INTO sales VALUES (1, 8715.55, 8465.65, 24747.82, 3514.36);")
 """,
 )
 
@@ -957,6 +884,7 @@ add_example(
     "IntentClassifier",
     """\
     >>> import lazyllm
+    >>> from lazyllm.tools import IntentClassifier
     >>> classifier_llm = lazyllm.OnlineChatModule(source="openai")
     >>> chatflow_intent_list = ["Chat", "Financial Knowledge Q&A", "Employee Information Query", "Weather Query"]
     >>> classifier = IntentClassifier(classifier_llm, intent_list=chatflow_intent_list)
@@ -1007,6 +935,7 @@ Arguments:
 add_example(
     "SqlModule",
     """\
+    >>> # First, run SQLiteTool example
     >>> import lazyllm
     >>> from lazyllm.tools import SQLiteTool, SqlModule
     >>> sql_tool = SQLiteTool("personal.db")
