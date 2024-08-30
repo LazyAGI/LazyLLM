@@ -5,6 +5,9 @@ description = "A Low-code Development Tool For Building Multi-agent LLMs Applica
 authors = ["wangzhihong <wangzhihong@sensetime.com>"]
 license = "Apache-2.0 license"
 readme = "README.md"
+include = [
+    "lazyllm/pyproject.toml",
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -32,7 +35,7 @@ pystemmer = "^2.2.0.1"
 nltk = "^3.8.1"
 jieba = ">=0.42.1"
 pyjwt = ">=2.8.0"
-llama-index-core = "<=0.10.44"
+llama-index-core = "^0.11.2"
 redis = { version = ">=5.0.4", optional = true }
 huggingface-hub = { version = ">=0.23.1", optional = true }
 llama-index = { version = ">=0.10.25", optional = true }
@@ -69,6 +72,8 @@ timm = {version = "^1.0.8", optional = true}
 diffusers = {version = "^0.30.0", optional = true}
 sortedcontainers = {version = "^2.4.0", optional = true}
 flash-attn = {version = "^2.6.3", optional = true}
+lightllm = {version = "^0.0.1", optional = true}
+lazyllm-llamafactory = {version = "^0.8.3.dev0", optional = true}
 
 [tool.poetry.extras]
 standard = [
@@ -94,7 +99,8 @@ standard = [
     "funasr",
     "lmdeploy",
     "timm",
-    "diffusers"
+    "diffusers",
+    "lazyllm-llamafactory"
 ]
 full = [
     "datasets",
@@ -132,7 +138,9 @@ full = [
     "tensorboard",
     "tensorboard-data-server",
     "sortedcontainers",
-    "flash-attn"
+    "flash-attn",
+    "lazyllm-llamafactory",
+    "lightllm"
 ]
 
 [build-system]
@@ -140,4 +148,4 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-lazyllm = "lazyllm.main:main"
+lazyllm = "lazyllm.cli.install:main"
