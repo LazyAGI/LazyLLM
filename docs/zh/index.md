@@ -83,7 +83,7 @@ docker pull lazyllm/lazyllm
 
 ## Hello, world!
 
-为了让大家对 `LazyLLM` 有个初步的认识，我们基于下面提供的平台提供的对话功能，使用 `LazyLLM` 来实现一个聊天机器人。
+为了让大家对 `LazyLLM` 有个初步的认识，我们基于下面提供的 [平台](/#platformt) 提供的对话功能，使用 `LazyLLM` 来实现一个聊天机器人。
 
 首先如果没有对应平台的账号，就需要先在平台注册一个账号，然后根据下面平台对应的获取 [API key](/#platform) 的链接获取所需要的key(注意:sensenova需要获取两个key)，并设置对应的环境变量：
 
