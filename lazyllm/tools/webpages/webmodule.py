@@ -316,11 +316,12 @@ class WebModule(ModuleBase):
                     chat_history[-1][1] = gr.Image(file['img'])
                 if 'audio' in file:
                     chat_history[-1][1] = gr.Audio(file['audio'])
-            assert isinstance(result, (str, dict)), f'function result should only be str, but got {type(result)}'
-            if isinstance(result, dict): result = result.get('message', '')
-            count = (len(match.group(1)) if (match := re.search(r'(\n+)$', result)) else 0) + len(result) + 1
-            if result and not (result in chat_history[-1][1][-count:]):
-                chat_history[-1][1] += "\n\n" + result
+            else:
+                assert isinstance(result, (str, dict)), f'Result should only be str, but got {type(result)}'
+                if isinstance(result, dict): result = result.get('message', '')
+                count = (len(match.group(1)) if (match := re.search(r'(\n+)$', result)) else 0) + len(result) + 1
+                if result and not (result in chat_history[-1][1][-count:]):
+                    chat_history[-1][1] += "\n\n" + result
         except requests.RequestException as e:
             chat_history = None
             log = str(e)
