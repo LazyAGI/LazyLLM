@@ -85,7 +85,7 @@ You can also view and pull the required version from [https://hub.docker.com/r/l
 
 To give you a basic understanding of `LazyLLM`, we will use it to create a chatbot based on the conversation capabilities provided by the platform below.
 
-First, if you don't have an account on the corresponding platform, you need to register an account on the platform first, then get the required key according to the link to get the API key of the platform below(not: sensenova needs to get two keys), and set the corresponding evironment variables:
+First, if you don't have an account on the corresponding platform, you need to register an account on the platform first, then get the required key according to the link to get the [API key](/#platform) of the platform below(not: sensenova needs to get two keys), and set the corresponding evironment variables:
 
 ```bash
 export LAZYLLM_PLATFORM_API_KEY=<your obtained api key>
