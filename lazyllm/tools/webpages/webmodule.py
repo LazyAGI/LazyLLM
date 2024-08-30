@@ -13,9 +13,10 @@ import time
 from PIL import Image
 from io import BytesIO
 import numpy as np
+import re
 
 import lazyllm
-from lazyllm import LOG, globals, FileSystemQueue
+from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule
 from lazyllm.flow import Pipeline
 from ...module.module import ModuleBase
 
@@ -46,6 +47,8 @@ class WebModule(ModuleBase):
         components = sum([[([k._module_id, k._module_name] + list(v)) for v in vs]
                          for k, vs in components.items()], [])
         self.ckeys = [[c[0], c[2]] for c in components]
+        if isinstance(m, (OnlineChatModule, TrainableModule)) and not history:
+            history = [m]
         self.history = [h._module_id for h in history]
         if trace_mode:
             LOG.warn('trace_mode is deprecated')
@@ -258,7 +261,8 @@ class WebModule(ModuleBase):
                     globals['chat_history'][h] = history
 
             if FileSystemQueue().size() > 0: FileSystemQueue().clear()
-            func_future = self.pool.submit(self.m, input)
+            kw = dict(stream_output=stream_output) if isinstance(self.m, TrainableModule) else {}
+            func_future = self.pool.submit(self.m, input, **kw)
             while True:
                 if value := FileSystemQueue().dequeue():
                     chat_history[-1][1] += ''.join(value) if append_text else ''.join(value)
@@ -312,13 +316,12 @@ class WebModule(ModuleBase):
                     chat_history[-1][1] = gr.Image(file['img'])
                 if 'audio' in file:
                     chat_history[-1][1] = gr.Audio(file['audio'])
-            elif isinstance(result, str):
-                if not chat_history[-1][1].rstrip().endswith(result): chat_history[-1][1] += "\n\n" + result
-            elif isinstance(result, dict):
-                if not chat_history[-1][1].rstrip().endswith(result.get("message", "")):
-                    chat_history[-1][1] += "\n\n" + result.get("message", "")
             else:
-                raise TypeError(f'function result should only be str, but got {type(result)}')
+                assert isinstance(result, (str, dict)), f'Result should only be str, but got {type(result)}'
+                if isinstance(result, dict): result = result.get('message', '')
+                count = (len(match.group(1)) if (match := re.search(r'(\n+)$', result)) else 0) + len(result) + 1
+                if result and not (result in chat_history[-1][1][-count:]):
+                    chat_history[-1][1] += "\n\n" + result
         except requests.RequestException as e:
             chat_history = None
             log = str(e)
@@ -326,6 +329,7 @@ class WebModule(ModuleBase):
             chat_history = None
             log = f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}'
             LOG.error(log)
+        globals['chat_history'].clear()
         yield chat_history, log
 
     def _clear_history(self, session):
