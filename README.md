@@ -276,12 +276,13 @@ pip install -r requirements.txt
 
 Only install lazyllm and necessary dependencies, you can use:
 ```bash
-pip install lazyllm
+pip3 install lazyllm
 ```
 
 Install lazyllm and all dependencies, you can use:
 ```bash
-pip install lazyllm[full]
+pip3 install lazyllm
+lazyllm install full
 ```
 
 ## Design concept
