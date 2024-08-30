@@ -52,7 +52,7 @@ class PlanAndSolveAgent(ModuleBase):
             self._agent.post_action = lambda pre, res, steps, query: res
 
     def _post_action(self, pre_steps: List[str], response: str, steps: List[str], query: str):
-        LOG.info(f"current step: {steps[0]}, response: {response}")
+        LOG.debug(f"current step: {steps[0]}, response: {response}")
         pre_steps.append(steps.pop(0))
         return package(pre_steps, response, steps, query)
 

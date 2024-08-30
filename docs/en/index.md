@@ -83,13 +83,12 @@ You can also view and pull the required version from [https://hub.docker.com/r/l
 
 ## Hello, world!
 
-To give you a basic understanding of `LazyLLM`, we will use it to create a chatbot based on the conversation capabilities provided by the [Sensetime Nova Platform](https://platform.sensenova.cn/home).
+To give you a basic understanding of `LazyLLM`, we will use it to create a chatbot based on the conversation capabilities provided by the [platform](/#platform) below.
 
-First, you need to register an account on the platform, and according to the first step in the [SenseNova Manual](https://platform.sensenova.cn/doc?path=/platform/helpdoc/help.md), obtain the api key and secret key required for access and set the corresponding environment variables:
+First, if you don't have an account on the corresponding platform, you need to register an account on the platform first, then get the required key according to the link to get the [API key](/#platform) of the platform below(not: sensenova needs to get two keys), and set the corresponding evironment variables:
 
 ```bash
-export LAZYLLM_SENSENOVA_API_KEY=<your obtained api key>
-export LAZYLLM_SENSENOVA_SECRET_KEY=<your obtained secret key>
+export LAZYLLM_PLATFORM_API_KEY=<your obtained api key>
 ```
 
 Next, open an editor and enter the following code, save it as `chat.py`:
@@ -118,15 +117,15 @@ Let’s briefly introduce the functionality of this code.
 
 First, statement 1 imports the `lazyllm` module, and in statement 2, an instance of the online chat service named `chat` is created. We then enter an infinite loop that will only exit when the string “quit” is received (statement 4). Statement 3 prints the input prompt and saves the user’s input in the variable `query`. Statement 5 passes the user’s input to the chat module, which sends a request to the Nova model’s online service and saves the reply returned by Nova in the variable `res`. Statement 6 prints the received reply on the screen.
 
-`LazyLLM` has built-in support for the following platforms:
+`LazyLLM` has built-in support for the following platforms:[](){#platform}
 
 | Platform | API Key Acquisition URL              | Environment Variables to Set                            |
 |:---------|:-------------------------------------|:--------------------------------------------------------|
-| Nova     | https://platform.sensenova.cn/       | LAZYLLM_SENSENOVA_API_KEY, LAZYLLM_SENSENOVA_SECRET_KEY |
-| Zhipu    | https://open.bigmodel.cn/            | LAZYLLM_GLM_API_KEY                                     |
-| OpenAI   | https://openai.com/index/openai-api/ | LAZYLLM_OPENAI_API_KEY                                  |
-| Kimi     | https://platform.moonshot.cn/        | LAZYLLM_KIMI_API_KEY                                    |
-| Qwen     | https://home.console.aliyun.com/     | LAZYLLM_QWEN_API_KEY                                    |
+| [Nova](https://platform.sensenova.cn/)     | [API Keys](https://platform.sensenova.cn/doc?path=/platform/helpdoc/help.md)       | LAZYLLM_SENSENOVA_API_KEY, LAZYLLM_SENSENOVA_SECRET_KEY |
+| [OpenAI](https://openai.com/index/openai-api/)   | [API Keys](https://platform.openai.com/api-keys) | LAZYLLM_OPENAI_API_KEY                                  |
+| [Zhipu](https://open.bigmodel.cn/)    | [API Keys](https://open.bigmodel.cn/usercenter/apikeys)            | LAZYLLM_GLM_API_KEY                                     |
+| [Kimi](https://platform.moonshot.cn/)     | [API Keys](https://platform.moonshot.cn/console/api-keys)        | LAZYLLM_KIMI_API_KEY                                    |
+| [Qwen](https://help.aliyun.com/zh/dashscope/developer-reference/use-qwen-by-api)     | [API Keys](https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key)     | LAZYLLM_QWEN_API_KEY                                    |
 
 You can use the corresponding platform by setting different environment variables.
 

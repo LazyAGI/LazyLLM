@@ -97,7 +97,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         val_input = self._validate_input(tool_input)
         ret = self.apply(**val_input)
         if verbose or self._verbose:
-            lazyllm.LOG.info(f"The output of tool {self.name} is {ret}")
+            lazyllm.LOG.debug(f"The output of tool {self.name} is {ret}")
 
         return ret
 

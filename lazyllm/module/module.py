@@ -176,6 +176,7 @@ class ModuleBase(object):
     def eval(self, *, recursive=True): return self._update(mode=['eval'], recursive=recursive)
     def start(self): return self._update(mode=['server'], recursive=True)
     def restart(self): return self.start()
+    def wait(self): pass
 
     @property
     def options(self):
@@ -304,8 +305,12 @@ class UrlModule(ModuleBase, UrlTemplate):
                     except Exception:
                         line = line.decode('utf-8')
                     chunk = self._prompt.get_response(self._extract_result_func(line))
-                    if chunk.startswith(messages): chunk = chunk[len(messages):]
-                    messages += chunk
+                    if isinstance(chunk, str):
+                        if chunk.startswith(messages): chunk = chunk[len(messages):]
+                        messages += chunk
+                    else:
+                        messages = chunk
+
                     if not stream_output: continue
                     if not cache:
                         if token.startswith(chunk.lstrip('\n') if not token.startswith('\n') else chunk) \
@@ -439,6 +444,9 @@ class ServerModule(UrlModule):
 
     _url_id = property(lambda self: self._impl._module_id)
 
+    def wait(self):
+        self._impl._launcher.wait()
+
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
                                  stream=self._stream, return_trace=self._return_trace)
@@ -563,6 +571,11 @@ class TrainableModule(UrlModule):
             return type(self._impl._deployer)
         else:
             return lazyllm.deploy.AutoDeploy
+
+    def wait(self):
+        # TODO(wangzhihong): Split finetune launcher and deploy launcher; Only one deploy launcher is allowed.
+        for launcher in self._impl._launchers:
+            launcher.wait()
 
     # modify default value to ''
     def prompt(self, prompt=''):
