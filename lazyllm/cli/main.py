@@ -8,8 +8,7 @@ except ImportError:
     from .deploy import deploy
     from .run import run
 
-if __name__ == "__main__":
-
+def main():
     def exit():
         print('Usage:\n  lazyllm install [full|standard|package_name]\n'
               '  lazyllm deploy modelname\n  lazyllm run graph.json\n')
@@ -26,3 +25,6 @@ if __name__ == "__main__":
         run(commands)
     else:
         exit()
+
+if __name__ == "__main__":
+    main()
