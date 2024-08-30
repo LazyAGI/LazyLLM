@@ -143,25 +143,36 @@ class _MetaBind(type):
         return super(__class__, self).__instancecheck__(__instance)
 
 
+class BindInputNone:
+    pass
+
+
 class Bind(object):
     class __None: pass
 
     class Input(object):
         class __None: pass
 
-        def __init__(self): self._item_key, self._attr_key = Bind.Input.__None, Bind.Input.__None
+        def __init__(self):
+            self._item_key, self._attr_key = BindInputNone, BindInputNone
 
         def __getitem__(self, key):
-            self._item_key = key
-            return self
+            return None
 
         def __getattr__(self, key):
-            self._attr_key = key
-            return self
+            return None
+
+        def __getstate__(self):
+            return self._item_key, self._attr_key
+
+        def __setstate__(self, state):
+            self._item_key, self._attr_key = state
 
         def get_input(self, input):
-            if self._item_key is not Bind.Input.__None: return input[self._item_key]
-            elif self._attr_key is not Bind.Input.__None: return getattr(input, self._attr_key)
+            if self._item_key is not BindInputNone:
+                return input[self._item_key]
+            elif self._attr_key is not BindInputNone:
+                return getattr(input, self._attr_key)
             return input
 
     def __init__(self, __bind_func=__None, *args, **kw):
