@@ -74,12 +74,12 @@ def install_packages(packages):
 
 def install_full():
     packages = load_packages()
-    install_packages(packages['full'])
+    install_multiple_packages(packages['full'])
     install_packages("flash-attn>=2.5.8")
 
 def install_standard():
     packages = load_packages()
-    install_packages(packages['standard'])
+    install_multiple_packages(packages['standard'])
 
 def parse_caret_to_tilde_version(version):
     if version.startswith("^"):
