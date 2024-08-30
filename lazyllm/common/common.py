@@ -157,10 +157,12 @@ class Bind(object):
             self._item_key, self._attr_key = BindInputNone, BindInputNone
 
         def __getitem__(self, key):
-            return None
+            self._item_key = key
+            return self
 
         def __getattr__(self, key):
-            return None
+            self._attr_key = key
+            return self
 
         def __getstate__(self):
             return self._item_key, self._attr_key
