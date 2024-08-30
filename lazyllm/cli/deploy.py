@@ -16,7 +16,10 @@ def deploy(commands):
     if args.chat in ["ON", "on", "1", "true", "True"]:
         t = lazyllm.WebModule(t)
     t.start()
-    lazyllm.LOG.success(f'LazyLLM TrainableModule launched successfully:\n  URL: {t._url}\n  '
-                        f'Framework: {t._deploy_type.__name__}', flush=True)
-    while True:
-        time.sleep(10)
+    if args.chat in ["ON", "on", "1", "true", "True"]:
+        t.wait()
+    else:
+        lazyllm.LOG.success(f'LazyLLM TrainableModule launched successfully:\n  URL: {t._url}\n  '
+                            f'Framework: {t._deploy_type.__name__}', flush=True)
+        while True:
+            time.sleep(10)

@@ -134,7 +134,7 @@ class OnlineChatModuleBase(ModuleBase):
                     delta = item.get("delta", {})
                     content = delta.get("content", '')
                     if content and "tool_calls" not in delta: FileSystemQueue().enqueue(content)
-            lazyllm.LOG.info(f"message: {message}")
+            lazyllm.LOG.debug(f"message: {message}")
             return message
         except Exception:
             return ""
@@ -194,7 +194,7 @@ class OnlineChatModuleBase(ModuleBase):
         result = extracted_data.get(pkeys[0])
         result += ''.join(delimiters[idx] + extracted_data[key]
                           for idx, key in enumerate(pkeys[1:]) if extracted_data.get(key))
-        lazyllm.LOG.info(f"result: {result}")
+        lazyllm.LOG.debug(f"result: {result}")
         return result
 
     def _extract_specified_key_fields(self, response: Dict[str, Any]):
