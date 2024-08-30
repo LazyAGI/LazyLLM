@@ -2,6 +2,7 @@ appdirs
 fastapi>=0.111.0
 loguru>=0.7.2
 loralib
+toml
 pydantic>=2.5.0
 requests>=2.32.2
 uvicorn<0.29.0
@@ -56,6 +57,7 @@ lmdeploy
 timm
 diffusers
 sortedcontainers
-#flash-attn>=2.5.8
-git+https://github.com/ModelTC/lightllm@e6452fd#egg=lightllm
-git+https://github.com/hiyouga/LLaMA-Factory.git@9dcff3a#egg=llamafactory
+llama-index-core
+flash-attn>=2.5.8
+lightllm
+lazyllm-llamafactory
