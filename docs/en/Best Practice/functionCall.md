@@ -70,7 +70,7 @@ Then we can define the model and use [FunctionCall][lazyllm.tools.agent.Function
 ```python
 import lazyllm
 from lazyllm.tools import FunctionCall
-llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source="openai")
+llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule()
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
 fc = FunctionCall(llm, tools)
 query = "What's the weather like today in celsius in Tokyo and Paris."
@@ -84,7 +84,7 @@ The result is output as a list, the first element is the current input, the seco
 ```python
 import lazyllm
 from lazyllm.tools import FunctionCallAgent
-llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source="openai")
+llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule()
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
 agent = FunctionCallAgent(llm, tools)
 query = "What's the weather like today in celsius in Tokyo and Paris."
@@ -303,7 +303,7 @@ def add_tool(a: int, b: int):
     '''
     return a + b
 tools = ["multiply_tool", "add_tool"]
-llm = lazyllm.Trainable("internlm2-chat-20b").start()   # or llm = lazyllm.OnlineChatModule(source="openai")
+llm = lazyllm.TrainableModule("internlm2-chat-20b").start()   # or llm = lazyllm.OnlineChatModule()
 agent = ReactAgent(llm, tools)
 query = "What is 20+(2*4)? Calculate step by step."
 res = agent(query)
@@ -356,7 +356,7 @@ def add(a: int, b: int):
     """
     return a + b
 
-llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source='glm', stream=False)
+llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(stream=False)
 tools = ["multiply", "add"]
 agent = PlanAndSolveAgent(llm, tools=tools)
 query = "What is 20+(2*4)? Calculate step by step."
@@ -436,12 +436,12 @@ def LLMWorker(input: str):
     Args:
         input (str): instruction
     """
-    llm = lazyllm.OnlineChatModule(source="openai", stream=False)
+    llm = lazyllm.OnlineChatModule(stream=False)
     query = f"Respond in short directly with no extra words.\n\n{input}"
     response = llm(query, llm_chat_history=[])
     return response
 tools = ["WikipediaWorker", "LLMWorker"]
-llm = lazyllm.TrainableModule("Qwen2-72B-Instruct-AWQ").deploy_method(deploy.vllm).start()  # or llm = lazyllm.OnlineChatModule(source="kimi", stream=True)
+llm = lazyllm.TrainableModule("Qwen2-72B-Instruct-AWQ").deploy_method(deploy.vllm).start()  # or llm = lazyllm.OnlineChatModule()
 agent = ReWOOAgent(llm, tools=tools)
 query = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
 ret = agent(query)

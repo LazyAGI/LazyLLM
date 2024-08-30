@@ -304,8 +304,12 @@ class UrlModule(ModuleBase, UrlTemplate):
                     except Exception:
                         line = line.decode('utf-8')
                     chunk = self._prompt.get_response(self._extract_result_func(line))
-                    if chunk.startswith(messages): chunk = chunk[len(messages):]
-                    messages += chunk
+                    if isinstance(chunk, str):
+                        if chunk.startswith(messages): chunk = chunk[len(messages):]
+                        messages += chunk
+                    else:
+                        messages = chunk
+
                     if not stream_output: continue
                     if not cache:
                         if token.startswith(chunk.lstrip('\n') if not token.startswith('\n') else chunk) \
