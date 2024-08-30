@@ -261,7 +261,8 @@ class WebModule(ModuleBase):
                     globals['chat_history'][h] = history
 
             if FileSystemQueue().size() > 0: FileSystemQueue().clear()
-            func_future = self.pool.submit(self.m, input)
+            kw = dict(stream_output=stream_output) if isinstance(self.m, TrainableModule) else {}
+            func_future = self.pool.submit(self.m, input, **kw)
             while True:
                 if value := FileSystemQueue().dequeue():
                     chat_history[-1][1] += ''.join(value) if append_text else ''.join(value)
@@ -327,6 +328,7 @@ class WebModule(ModuleBase):
             chat_history = None
             log = f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}'
             LOG.error(log)
+        globals['chat_history'].clear()
         yield chat_history, log
 
     def _clear_history(self, session):
