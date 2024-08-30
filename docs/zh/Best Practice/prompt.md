@@ -267,3 +267,5 @@ module(dict(context='背景', input='输入'))
 > - ``TrainableModule`` 需要手动调用 ``start`` 以启动服务，想了解更多关于 ``TrainableModule`` 的用法，可以参考 : [module][lazyllm.module.ModuleBase]
 
 #### LazyLLM中内置的场景Prompt
+
+敬请期待。

@@ -89,7 +89,7 @@ with pipeline() as ppl:
     with switch(judge_on_full_input=False).bind(_0, ppl.input) as ppl.sw:
         ppl.sw.case[chatflow_intent_list[0], chat]
         ppl.sw.case[chatflow_intent_list[1], TrainableModule('SenseVoiceSmall')]
-        ppl.sw.case[chatflow_intent_list[2], TrainableModule('internvl-chat-2b-v1-5').deploy_method(deploy.LMDeploy)]
+        ppl.sw.case[chatflow_intent_list[2], TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)]
         ppl.sw.case[chatflow_intent_list[3], pipeline(base.share().prompt(painter_prompt), TrainableModule('stable-diffusion-3-medium'))]
         ppl.sw.case[chatflow_intent_list[4], pipeline(base.share().prompt(musician_prompt), TrainableModule('musicgen-small'))]
         ppl.sw.case[chatflow_intent_list[5], TrainableModule('ChatTTS')]
