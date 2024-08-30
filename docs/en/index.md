@@ -119,13 +119,13 @@ Let’s briefly introduce the functionality of this code.
 
 First, statement 1 imports the `lazyllm` module, and in statement 2, an instance of the online chat service named `chat` is created. We then enter an infinite loop that will only exit when the string “quit” is received (statement 4). Statement 3 prints the input prompt and saves the user’s input in the variable `query`. Statement 5 passes the user’s input to the chat module, which sends a request to the Nova model’s online service and saves the reply returned by Nova in the variable `res`. Statement 6 prints the received reply on the screen.
 
-`LazyLLM` has built-in support for the following platforms:
+`LazyLLM` has built-in support for the following platforms:[](){#platform}
 
 | Platform | API Key Acquisition URL              | Environment Variables to Set                            |
 |:---------|:-------------------------------------|:--------------------------------------------------------|
 | [Nova](https://platform.sensenova.cn/)     | [API Keys](https://platform.sensenova.cn/doc?path=/platform/helpdoc/help.md)       | LAZYLLM_SENSENOVA_API_KEY, LAZYLLM_SENSENOVA_SECRET_KEY |
 | [OpenAI](https://openai.com/index/openai-api/)   | [API Keys](https://platform.openai.com/api-keys) | LAZYLLM_OPENAI_API_KEY                                  |
-| [Zhipu](https://openai.com/index/openai-api/)    | [API Keys](https://platform.openai.com/api-keys)            | LAZYLLM_GLM_API_KEY                                     |
+| [Zhipu](https://open.bigmodel.cn/)    | [API Keys](https://open.bigmodel.cn/usercenter/apikeys)            | LAZYLLM_GLM_API_KEY                                     |
 | [Kimi](https://platform.moonshot.cn/)     | [API Keys](https://platform.moonshot.cn/console/api-keys)        | LAZYLLM_KIMI_API_KEY                                    |
 | [Qwen](https://help.aliyun.com/zh/dashscope/developer-reference/use-qwen-by-api)     | [API Keys](https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key)     | LAZYLLM_QWEN_API_KEY                                    |
 

@@ -709,7 +709,7 @@ add_example('TrialModule', '''\
 ''')
 
 add_chinese_doc('OnlineChatModule', '''\
-用来管理创建目前市面上公开的大模型平台访问模块，目前支持openai、sensenova、glm、kimi、qwen、doubao(由于该平台暂时不对个人用户开发，暂时不支持访问)
+用来管理创建目前市面上公开的大模型平台访问模块，目前支持openai、sensenova、glm、kimi、qwen、doubao(由于该平台暂时不对个人用户开发，暂时不支持访问)。平台的api key获取方法参见 [开始入门](/#platform)
 
 Args:
     model (str): 指定要访问的模型，默认为 ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` 
@@ -721,7 +721,7 @@ Args:
 ''')
 
 add_english_doc('OnlineChatModule', '''\
-Used to manage and create access modules for large model platforms currently available on the market. Currently, it supports openai, sensenova, glm, kimi, qwen and doubao (since the platform is not currently being developed for individual users, access is not currently supported).
+Used to manage and create access modules for large model platforms currently available on the market. Currently, it supports openai, sensenova, glm, kimi, qwen and doubao (since the platform is not currently being developed for individual users, access is not currently supported). For how to obtain the platform's API key, please visit [Getting Started](/#platform)
 
 Args:
     model (str): Specify the model to access, default is ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` .

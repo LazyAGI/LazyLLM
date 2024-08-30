@@ -691,10 +691,10 @@ add_english_doc('JsonFormatter', '''\
 This class is a JSON formatter, that is, the user wants the model to output content is JSON format, and can also select a field in the output content by indexing.
 ''')
 
-add_example('JsonFormatter', '''\
+add_example('JsonFormatter', """\
 >>> import lazyllm
 >>> from lazyllm.components import JsonFormatter
->>> toc_prompt="""
+>>> toc_prompt='''
 You are now an intelligent assistant. Your task is to understand the user's input and convert the outline into a list of nested dictionaries. Each dictionary contains a `title` and a `describe`, where the `title` should clearly indicate the level using Markdown format, and the `describe` is a description and writing guide for that section.
 
 Please generate the corresponding list of nested dictionaries based on the following user input:
@@ -715,7 +715,7 @@ Example output:
     }
 ]
 User input is as follows:
-"""
+'''
 >>> query = "Please help me write an article about the application of artificial intelligence in the medical field."
 >>> m = lazyllm.TrainableModule("internlm2-chat-20b").prompt(toc_prompt).start()
 >>> ret = m(query, max_new_tokens=2048)
@@ -725,7 +725,7 @@ User input is as follows:
 >>> ret = m(query, max_new_tokens=2048)
 >>> print(f"ret: {ret!r}")  # the model output of the specified formaater
 ['# Application of Artificial Intelligence in the Medical Field', '## AI in Medical Diagnosis', '### AI in Medical Imaging', '### AI in Drug Discovery and Development', '## AI in Medical Research', '### AI in Genomics and Precision Medicine', '### AI in Epidemiology and Public Health', '### AI in Clinical Trials', '## AI in Medical Practice', '### AI in Patient Monitoring', '### AI in Personalized Medicine', '### AI in Telemedicine', '## AI in Medical Ethics and Policy']
-''')
+""")
 
 # EmptyFormatter
 add_chinese_doc('EmptyFormatter', '''\
@@ -736,10 +736,10 @@ add_english_doc('EmptyFormatter', '''\
 This type is the system default formatter. When the user does not specify anything or does not want to format the model output, this type is selected. The model output will be in the same format.
 ''')
 
-add_example('EmptyFormatter', '''\
+add_example('EmptyFormatter', """\
 >>> import lazyllm
 >>> from lazyllm.components import EmptyFormatter
->>> toc_prompt="""
+>>> toc_prompt='''
 You are now an intelligent assistant. Your task is to understand the user's input and convert the outline into a list of nested dictionaries. Each dictionary contains a `title` and a `describe`, where the `title` should clearly indicate the level using Markdown format, and the `describe` is a description and writing guide for that section.
 
 Please generate the corresponding list of nested dictionaries based on the following user input:
@@ -760,7 +760,7 @@ Example output:
     }
 ]
 User input is as follows:
-"""
+'''
 >>> query = "Please help me write an article about the application of artificial intelligence in the medical field."
 >>> m = lazyllm.TrainableModule("internlm2-chat-20b").prompt(toc_prompt).start()  # the model output without specifying a formatter
 >>> ret = m(query, max_new_tokens=2048)
@@ -770,7 +770,7 @@ User input is as follows:
 >>> ret = m(query, max_new_tokens=2048)
 >>> print(f"ret: {ret!r}")
 'Based on your user input, here is the corresponding list of nested dictionaries:\n\n[\n    {\n        "title": "# Application of Artificial Intelligence in the Medical Field",\n        "describe": "Please provide a detailed description of the application of artificial intelligence in the medical field, including its benefits, challenges, and future prospects."\n    },\n    {\n        "title": "## AI in Medical Diagnosis",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in medical diagnosis, including specific examples of AI-based diagnostic tools and their impact on patient outcomes."\n    },\n    {\n        "title": "### AI in Medical Imaging",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in medical imaging, including the advantages of AI-based image analysis and its applications in various medical specialties."\n    },\n    {\n        "title": "### AI in Drug Discovery and Development",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in drug discovery and development, including the role of AI in identifying potential drug candidates and streamlining the drug development process."\n    },\n    {\n        "title": "## AI in Medical Research",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in medical research, including its applications in genomics, epidemiology, and clinical trials."\n    },\n    {\n        "title": "### AI in Genomics and Precision Medicine",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in genomics and precision medicine, including the role of AI in analyzing large-scale genomic data and tailoring treatments to individual patients."\n    },\n    {\n        "title": "### AI in Epidemiology and Public Health",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in epidemiology and public health, including its applications in disease surveillance, outbreak prediction, and resource allocation."\n    },\n    {\n        "title": "### AI in Clinical Trials",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in clinical trials, including its role in patient recruitment, trial design, and data analysis."\n    },\n    {\n        "title": "## AI in Medical Practice",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in medical practice, including its applications in patient monitoring, personalized medicine, and telemedicine."\n    },\n    {\n        "title": "### AI in Patient Monitoring",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in patient monitoring, including its role in real-time monitoring of vital signs and early detection of health issues."\n    },\n    {\n        "title": "### AI in Personalized Medicine",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in personalized medicine, including its role in analyzing patient data to tailor treatments and predict outcomes."\n    },\n    {\n        "title": "### AI in Telemedicine",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in telemedicine, including its applications in remote consultations, virtual diagnoses, and digital health records."\n    },\n    {\n        "title": "## AI in Medical Ethics and Policy",\n        "describe": "Please provide a detailed description of the ethical and policy considerations surrounding the use of artificial intelligence in the medical field, including issues related to data privacy, bias, and accountability."\n    }\n]'
-''')
+""")
 
 # ============= Prompter
 

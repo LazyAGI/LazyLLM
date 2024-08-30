@@ -119,13 +119,13 @@ python3 chat.py
 
 首先语句 1 引入了模块 `lazyllm`，并且在语句 2 中生成了一个在线聊天服务的实例 `chat`。接着我们进入一个无限循环，只有当接收到 "quit" 这个字符串才会退出（语句 4）。语句 3 打印输入提示，并把用户的输入保存在 `query` 这个变量中。语句 5 把用户的输入内容传给聊天模块，由聊天模块向日日新模型在线服务发送请求，并把日日新返回的回复保存在变量 `res` 中。语句 6 把收到的回复打印到屏幕上。
 
-`LazyLLM` 内建了以下平台的支持：
+`LazyLLM` 内建了以下平台的支持：[](){#platform}
 
 | 平台     | 获取 api key                         | 需要设置的环境变量                                           |
 | :------- | :----------------------------------- | :----------------------------------------------------------- |
 | [日日新](https://platform.sensenova.cn/)   | [获取访问密钥](https://platform.sensenova.cn/doc?path=/platform/helpdoc/help.md)       | `LAZYLLM_SENSENOVA_API_KEY`,  `LAZYLLM_SENSENOVA_SECRET_KEY` |
 | [OpenAI](https://openai.com/index/openai-api/)   | [获取访问密钥](https://platform.openai.com/api-keys) | `LAZYLLM_OPENAI_API_KEY`                                     |
-| [智谱](https://open.bigmodel.cn/ )     | [获取访问密钥](https://open.bigmodel.cn/usercenter/apikeys)            | `LAZYLLM_GLM_API_KEY`                                        |
+| [智谱](https://open.bigmodel.cn/)     | [获取访问密钥](https://open.bigmodel.cn/usercenter/apikeys)            | `LAZYLLM_GLM_API_KEY`                                        |
 | [Kimi](https://platform.moonshot.cn/)     | [获取访问密钥](https://platform.moonshot.cn/console/api-keys)        | `LAZYLLM_KIMI_API_KEY`                                       |
 | [通义千问](https://help.aliyun.com/zh/dashscope/developer-reference/use-qwen-by-api) | [获取访问密钥](https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key)     | `LAZYLLM_QWEN_API_KEY`                                       |
 
