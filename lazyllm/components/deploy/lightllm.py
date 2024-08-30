@@ -85,8 +85,12 @@ class Lightllm(LazyLLMDeployBase):
 
     @staticmethod
     def extract_result(x):
-        if x.startswith("data:"): return json.loads(x[len("data:"):])['token']['text']
-        else: return json.loads(x)['generated_text'][0]
+        try:
+            if x.startswith("data:"): return json.loads(x[len("data:"):])['token']['text']
+            else: return json.loads(x)['generated_text'][0]
+        except Exception as e:
+            LOG.warning(f'JSONDecodeError on load {x}')
+            raise e
 
     @staticmethod
     def stream_parse_parameters():
