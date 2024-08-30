@@ -255,8 +255,10 @@ class UrlModule(ModuleBase, UrlTemplate):
     # Cannot modify or add any attrubute of self
     # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
     # deploy parameters keys are in **kw
-    def forward(self, __input=package(), *, llm_chat_history=None, tools=None, **kw):  # noqa C901
+    def forward(self, __input=package(), *, llm_chat_history=None, tools=None, stream_output=False, **kw):  # noqa C901
         assert self._url is not None, f'Please start {self.__class__} first'
+        stream_output = stream_output or self._stream
+        url = self._url
 
         files = []
         if self.template_message and globals['global_parameters'].get("lazyllm-files"):
@@ -282,22 +284,20 @@ class UrlModule(ModuleBase, UrlTemplate):
             if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
             data = __input
 
-        if self._stream:
-            if self._stream_url_suffix and not self._url.endswith(self._stream_url_suffix):
-                self.__url += self._stream_url_suffix
-            if "stream" in data: data['stream'] = self._stream
-        else:
-            self._stream_parse_parameters = {"delimiter": b"<|lazyllm_delimiter|>"}
+        if stream_output:
+            if self._stream_url_suffix and not url.endswith(self._stream_url_suffix):
+                url += self._stream_url_suffix
+            if "stream" in data: data['stream'] = stream_output
+        parse_parameters = self._stream_parse_parameters if stream_output else {"delimiter": b"<|lazyllm_delimiter|>"}
 
         token = getattr(self, "_tool_start_token", '')
         cache = ""
 
         # context bug with httpx, so we use requests
-        isStreamOutput = self._stream
-        with requests.post(self._url, json=data, stream=True, headers=headers) as r:
+        with requests.post(url, json=data, stream=True, headers=headers) as r:
             if r.status_code == 200:
                 messages = ''
-                for line in r.iter_lines(**self._stream_parse_parameters):
+                for line in r.iter_lines(**parse_parameters):
                     if not line: continue
                     try:
                         line = pickle.loads(codecs.decode(line, "base64"))
@@ -306,13 +306,13 @@ class UrlModule(ModuleBase, UrlTemplate):
                     chunk = self._prompt.get_response(self._extract_result_func(line))
                     if chunk.startswith(messages): chunk = chunk[len(messages):]
                     messages += chunk
-                    if not isStreamOutput: continue
+                    if not stream_output: continue
                     if not cache:
                         if token.startswith(chunk.lstrip('\n') if not token.startswith('\n') else chunk) \
                            or token in chunk: cache = chunk
                         else: FileSystemQueue().enqueue(chunk)
                     elif token in cache:
-                        isStreamOutput = False
+                        stream_output = False
                         if not cache.startswith(token): FileSystemQueue().enqueue(cache.split(token)[0])
                     else:
                         cache += chunk
