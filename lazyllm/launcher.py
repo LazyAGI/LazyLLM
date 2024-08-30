@@ -44,6 +44,10 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
             LOG.info(f"killed job:{k}")
         self.all_processes.pop(self._id)
 
+    def wait(self):
+        for _, v in self.all_processes[self._id]:
+            v.wait()
+
     def clone(self):
         new = copy.deepcopy(self)
         new._id = str(uuid.uuid4().hex)
