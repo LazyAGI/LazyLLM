@@ -70,12 +70,14 @@ You can also view and pull the required version from [https://hub.docker.com/r/l
 2. Install the minimum dependency package for all features of `LazyLLM`. Not only does it support the fine-tuning and inference of online models, but it also supports the fine-tuning (mainly dependent on `LLaMA-Factory`) and inference (mainly dependent on `vLLM`) of offline models.
 
     ```bash
+    pip3 install lazyllm
     lazyllm install standard
     ```
 
 3. Install all dependency packages of `LazyLLM`, all features as well as advanced features are supported, such as automatic framework selection (`AutoFinetune`, `AutoDeploy`, etc.), more offline inference tools (such as `LightLLM`), and more offline training tools (such as `AlpacaloraFinetune`, `CollieFinetune`, etc.).
 
     ```bash
+    pip3 install lazyllm
     lazyllm install full
     ```
 

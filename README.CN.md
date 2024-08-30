@@ -271,13 +271,12 @@ pip install -r requirements.txt
 
 仅安装lazyllm及必要的依赖，可以使用
 ```bash
-pip install lazyllm
+pip3 install lazyllm
 ```
 
 安装lazyllm及所有的依赖，可以使用
 ```bash
-pip install 'lazyllm[full]'
-或
+pip3 install lazyllm
 lazyllm install full
 ```
 
