@@ -61,7 +61,7 @@ class ReWOOAgent(ModuleBase):
         return prompt
 
     def _parse_plan(self, response: str):
-        LOG.info(f"planner plans: {response}")
+        LOG.debug(f"planner plans: {response}")
         plans = []
         evidence = {}
         for line in response.splitlines():
@@ -97,7 +97,7 @@ class ReWOOAgent(ModuleBase):
         for idx, plan in enumerate(plans):
             e = f"#E{idx+1}"
             worker_log += f"{plan}\nEvidence:\n{worker_evidences[e]}\n"
-        LOG.info(f"worker_log: {worker_log}")
+        LOG.debug(f"worker_log: {worker_log}")
         return worker_log
 
     def _build_solver_prompt(self, worker_log, input):
