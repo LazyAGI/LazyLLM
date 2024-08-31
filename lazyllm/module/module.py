@@ -402,8 +402,9 @@ def light_reduce(cls):
     def rebuild(mid): return cls()._set_mid(mid)
 
     def _impl(self):
-        assert self._get_deploy_tasks.flag, f'{cls.__name__[1:-4]} shoule be deployed before pickling to another process'
-        if os.getenv('LAZYLLM_ON_CLOUDPICKLE', False) == 'ON': return rebuild, (self._module_id,)
+        if os.getenv('LAZYLLM_ON_CLOUDPICKLE', False) == 'ON':
+            assert self._get_deploy_tasks.flag, f'{cls.__name__[1:-4]} shoule be deployed before used'
+            return rebuild, (self._module_id,)
         return super(cls, self).__reduce__()
     setattr(cls, '__reduce__', _impl)
     return cls
@@ -453,7 +454,8 @@ class _TrainableModuleImpl(ModuleBase):
 
     def __init__(self, base_model='', target_path='', stream=False, train=None, finetune=None, deploy=None):
         super().__init__()
-        # Fake base_model and target_path for dummy
+        # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
+        #                    Then support Option for base_model
         self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model)
         self._target_path = target_path
         self._train, self._finetune, self._deploy = train, finetune, deploy
