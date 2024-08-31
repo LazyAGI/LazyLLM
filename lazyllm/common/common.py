@@ -74,11 +74,11 @@ class kwargs(dict):
 
 
 class arguments(object):
-    class __None: pass
+    class _None: pass
 
-    def __init__(self, args=__None, kw=__None) -> None:
-        self.args = package() if args is arguments.__None else args
-        self.kw = kwargs() if args is arguments.__None else kw
+    def __init__(self, args=_None, kw=_None) -> None:
+        self.args = package() if args is arguments._None else args
+        self.kw = kwargs() if args is arguments._None else kw
 
 
 setattr(builtins, 'package', package)
@@ -143,18 +143,13 @@ class _MetaBind(type):
         return super(__class__, self).__instancecheck__(__instance)
 
 
-class BindInputNone:
-    pass
-
-
 class Bind(object):
-    class __None: pass
+    class _None: pass
 
     class Input(object):
-        class __None: pass
+        class _None: pass
 
-        def __init__(self):
-            self._item_key, self._attr_key = BindInputNone, BindInputNone
+        def __init__(self): self._item_key, self._attr_key = Bind.Input._None, Bind.Input._None
 
         def __getitem__(self, key):
             self._item_key = key
@@ -171,21 +166,19 @@ class Bind(object):
             self._item_key, self._attr_key = state
 
         def get_input(self, input):
-            if self._item_key is not BindInputNone:
-                return input[self._item_key]
-            elif self._attr_key is not BindInputNone:
-                return getattr(input, self._attr_key)
+            if self._item_key is not Bind.Input._None: return input[self._item_key]
+            elif self._attr_key is not Bind.Input._None: return getattr(input, self._attr_key)
             return input
 
-    def __init__(self, __bind_func=__None, *args, **kw):
-        self._f = __bind_func() if isinstance(__bind_func, type) and __bind_func is not Bind.__None else __bind_func
+    def __init__(self, __bind_func=_None, *args, **kw):
+        self._f = __bind_func() if isinstance(__bind_func, type) and __bind_func is not Bind._None else __bind_func
         self._args = args
         self._kw = kw
         self._has_root = any([isinstance(a, AttrTree) for a in args])
         self._has_root = self._has_root or any([isinstance(v, AttrTree) for k, v in kw.items()])
 
     def __ror__(self, __value: Callable):
-        if self._f is not Bind.__None: self._args = (self._f,) + self._args
+        if self._f is not Bind._None: self._args = (self._f,) + self._args
         self._f = __value
         return self
 

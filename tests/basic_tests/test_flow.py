@@ -1,3 +1,4 @@
+import lazyllm
 from lazyllm import pipeline, parallel, diverter, warp, switch, ifs, loop, graph
 from lazyllm import barrier, bind
 import time
@@ -24,6 +25,16 @@ class TestFlow(object):
             p.f3 = xy2z | bind(y=p.input, z=p.f1)
         # 2 + 4 + 2 * 3
         assert p(2) == 12
+
+    def test_server_with_bind(self):
+        with pipeline() as ppl:
+            ppl.f1 = lambda x: str(len(x))
+            ppl.formatter = (lambda length, query: dict(length=length, query=query)) | bind(query=ppl.input)
+            ppl.f2 = lambda y: f"The original query is : {y['query']}, length is : {y['length']}"
+        sm = lazyllm.ServerModule(ppl)
+        sm.start()
+        query = "Hello World"
+        assert sm(query) == f"The original query is : {query}, length is : {len(query)}"
 
     def test_parallel(self):
         fl = parallel(add_one, add_one)(1)
