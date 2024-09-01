@@ -348,15 +348,13 @@ class WebModule(ModuleBase):
     def _update(self, *, mode=None, recursive=True):
         super(__class__, self)._update(mode=mode, recursive=recursive)
         self._work()
+        return self
 
-    def wait(self):
-        if hasattr(self, 'p'):
-            return self.p.join()
+    @lazyllm.deprecated
+    def wait(self): pass
 
-    def stop(self):
-        if hasattr(self, 'p') and self.p.is_alive():
-            self.p.terminate()
-            self.p.join()
+    @lazyllm.deprecated
+    def stop(self): pass
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Web', name=self._module_name, subs=[repr(self.m)])
