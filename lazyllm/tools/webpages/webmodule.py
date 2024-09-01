@@ -13,9 +13,10 @@ from PIL import Image
 from io import BytesIO
 import numpy as np
 import re
+import platform
 
 import lazyllm
-from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule
+from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule, ForkProcess
 from ...module.module import ModuleBase
 
 
@@ -343,18 +344,26 @@ class WebModule(ModuleBase):
             assert self._verify_port_access(port), f'port {port} is occupied'
 
         self.url = f'http://0.0.0.0:{port}'
-        self.demo.queue().launch(server_name='0.0.0.0', server_port=port)
+        def _impl(): self.demo.queue().launch(server_name='0.0.0.0', server_port=port)
+        if platform.system == 'Darwin':
+            _impl()
+        else:
+            self.p = ForkProcess(target=_impl)
+            self.p.start()
 
     def _update(self, *, mode=None, recursive=True):
         super(__class__, self)._update(mode=mode, recursive=recursive)
         self._work()
         return self
 
-    @lazyllm.deprecated
-    def wait(self): pass
+    def wait(self):
+        if hasattr(self, 'p'):
+            return self.p.join()
 
-    @lazyllm.deprecated
-    def stop(self): pass
+    def stop(self):
+        if hasattr(self, 'p') and self.p.is_alive():
+            self.p.terminate()
+            self.p.join()
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Web', name=self._module_name, subs=[repr(self.m)])
