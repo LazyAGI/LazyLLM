@@ -60,7 +60,7 @@ class TestExamples(object):
     def test_chat(self):
         from examples.chatbot import chat
         chat.start()
-        query = "请原样输出：Hello world."
+        query = "请原样英文输出：Hello world."
         res = chat(query)
         assert res == 'Hello world.'
 
