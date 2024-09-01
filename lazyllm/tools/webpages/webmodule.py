@@ -345,7 +345,7 @@ class WebModule(ModuleBase):
 
         self.url = f'http://0.0.0.0:{port}'
         def _impl(): self.demo.queue().launch(server_name='0.0.0.0', server_port=port)
-        if platform.system == 'Darwin':
+        if platform.system() == 'Darwin':
             _impl()
         else:
             self.p = ForkProcess(target=_impl)
