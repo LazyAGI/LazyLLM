@@ -55,7 +55,7 @@ transformers
 trl
 uvicorn
 ''', lightllm='''
-lightllm>=2.0.0
+lightllm>=0.0.1
 einops
 ninja
 packaging

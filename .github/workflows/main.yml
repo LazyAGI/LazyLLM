@@ -55,7 +55,8 @@ jobs:
           env | grep '^SCC'
           export LAZYLLM_SCO_ENV_NAME=lazyllm
           export LAZYLLM_DEFAULT_LAUNCHER=sco
-          export LAZYLLM_SLURM_PART=a100
+          export LAZYLLM_SLURM_PART=a800
+          export LAZYLLM_SCO_RESOURCE_TYPE=N3lS.Ii.I60
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_SCO_WORKSPACE=expert-services
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
@@ -73,7 +74,8 @@ jobs:
           env | grep '^SCC'
           export LAZYLLM_SCO_ENV_NAME=lazyllm
           export LAZYLLM_DEFAULT_LAUNCHER=sco
-          export LAZYLLM_SLURM_PART=a100
+          export LAZYLLM_SLURM_PART=a800
+          export LAZYLLM_SCO_RESOURCE_TYPE=N3lS.Ii.I60
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_SCO_WORKSPACE=expert-services
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
@@ -91,7 +93,8 @@ jobs:
           env | grep '^SCC'
           export LAZYLLM_SCO_ENV_NAME=lazyllm
           export LAZYLLM_DEFAULT_LAUNCHER=sco
-          export LAZYLLM_SLURM_PART=a100
+          export LAZYLLM_SLURM_PART=a800
+          export LAZYLLM_SCO_RESOURCE_TYPE=N3lS.Ii.I60
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_SCO_WORKSPACE=expert-services
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
