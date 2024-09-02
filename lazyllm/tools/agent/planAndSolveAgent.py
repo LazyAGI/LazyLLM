@@ -44,7 +44,7 @@ class PlanAndSolveAgent(ModuleBase):
                 self._agent.lp.pre_action = lambda pre_steps, response, steps, query: \
                     package(SOLVER_PROMPT.format(previous_steps="\n".join(pre_steps), current_step=steps[0],
                             objective=query) + "input: " + response + "\n" + steps[0], [])
-                self._agent.lp.solve = FunctionCallAgent(self._solve_llm, tools=self._tools)
+                self._agent.lp.solve = FunctionCallAgent(self._solve_llm, tools=self._tools, return_trace=return_trace)
                 self._agent.lp.post_action = self._post_action | bind(self._agent.lp.input[0][0], _0,
                                                                       self._agent.lp.input[0][2],
                                                                       self._agent.lp.input[0][3])

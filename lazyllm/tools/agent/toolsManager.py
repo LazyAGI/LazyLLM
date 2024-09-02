@@ -10,7 +10,7 @@ from pydantic import create_model, BaseModel, ValidationError
 
 
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
-    def __init__(self, verbose: bool = False, return_trace: bool = False):
+    def __init__(self, verbose: bool = False, return_trace: bool = True):
         super().__init__(return_trace=return_trace)
         self._verbose = verbose
         self._name = self.apply.__name__ if hasattr(self.apply, "__name__") and self.apply.__name__ is not None \
