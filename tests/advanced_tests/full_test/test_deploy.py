@@ -123,6 +123,8 @@ class TestDeploy(object):
         chat = lazyllm.AutoModel(framework='vllm')
         assert isinstance(chat, lazyllm.TrainableModule)
 
+        lazyllm.config.add("openai_api_key", str, "123", "OPENAI_API_KEY")
+
         # set source
         chat = lazyllm.AutoModel('sensenova')
         assert isinstance(chat, lazyllm.OnlineChatModule)
@@ -130,7 +132,6 @@ class TestDeploy(object):
         assert isinstance(chat, lazyllm.OnlineChatModule)
 
         # No model_name, but set key
-        lazyllm.config.add("openai_api_key", str, "123", "OPENAI_API_KEY")
         chat = lazyllm.AutoModel()
         assert isinstance(chat, lazyllm.OnlineChatModule)
 
