@@ -123,12 +123,19 @@ class IntentClassifier(ModuleBase):
     def __enter__(self):
         assert not self._intent_list, 'Intent list is already set'
         self._sw = switch()
-        self._sw.__enter__(self)
+        self._sw.__enter__()
         return self
 
     @property
     def case(self):
         return switch.Case(self)
+
+    @property
+    def submodules(self):
+        if isinstance(self._impl, switch):
+            submodule = []
+            self._impl.for_each(lambda x: isinstance(x, ModuleBase), lambda x: submodule.append(x))
+        return super().submodules + submodule
 
     # used by switch.Case
     def _add_case(self, cond, func):
