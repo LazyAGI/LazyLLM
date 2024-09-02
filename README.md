@@ -40,7 +40,7 @@ LazyLLM can be used to build common artificial intelligence applications. Here a
 
 ### ChatBots
 
-This is a simple example of a chat bot.
+**This is a simple example of a chat bot.**
 
 ```python
 # set environment variable: LAZYLLM_OPENAI_API_KEY=xx 
@@ -59,7 +59,7 @@ chat = lazyllm.TrainableModule('internlm2-chat-7b')
 lazyllm.WebModule(chat, port=23466).start().wait()
 ```
 
-This is an advanced bot example with multimodality and intent recognition.
+**This is an advanced bot example with multimodality and intent recognition.**
 
 ![Demo Multimodal bot](docs/assets/multimodal-bot.svg)
 
