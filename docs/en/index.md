@@ -171,4 +171,20 @@ The `WebModule` accepts two parameters: the chat module for conversation and the
 
 > Note: If there is an error starting up or accessing the web page, please check the error information in the terminal window to see if the port is occupied by another application, or if a proxy is enabled, or if it is blocked by a firewall.
 
+## Using Command Line Interface
+
+If you installed `lazyllm` using `pip` and ensured that the `bin` directory of your Python environment is in your `$PATH`, you can quickly start a chatbot by executing:
+
+```bash
+lazyllm run chatbot
+```
+
+If you want to use a local model, you need to specify the model name with the `--model` parameter. For example, you can start a chatbot based on a local model by using:
+
+```bash
+lazyllm run chatbot --model=internlm2-chat-7b
+```
+
+-----
+
 This concludes the introductory section of `LazyLLM`. The following chapters will explore the powerful features of `LazyLLM` from different aspects.
