@@ -8,6 +8,7 @@
 > - 如何基于 [Switch][lazyllm.flow.Switch] 控制流来实现路由，我们将基于它结合 LLM 实现一个简单的意图识别机器人；
 > - 如何给 [TrainableModule][lazyllm.module.TrainableModule] 指定部署的框架；
 > - 如何在控制流上使用 [bind](../Best Practice/flow.md#use-bind) 来传入参数；
+> - 如何使用 [IntentClassifier][lazyllm.tools.IntentClassifier] 来实现意图识别。
 
 ## 设计思路
 
@@ -29,6 +30,8 @@
 ![Multimodal bot](../assets/3_multimodal-bot3.svg)
 
 这里意图识别机器人为核心，通过它将用户的需求路由到六个功能机器人之一上。
+
+值得注意的是 LazyLLM 提供了一个意图识别工具，详见本节的 [代码优化](#code_opt)。
 
 ## 代码实现
 
@@ -191,3 +194,37 @@ WebModule(ppl, history=[chat], audio=True, port=8847).start().wait()
 效果如下：
 
 ![Multimodal Robot](../assets/3_multimodal-bot2.png)
+
+## 代码优化
+
+[](){#code_opt}
+
+上面代码中，我们使用 LazyLLM 的一些基本模块，实现了一个简单的意图识别。然而该意图识别代码比较冗余，使用比较复杂，而且不具有历史记忆等功能。所以 LazyLLM 提供了一个意图识别工具，简化意图识别的实现。我们将设计修改如下：
+
+![Multimodal bot](../assets/3_multimodal-bot4.svg)
+
+在 LazyLLM 中可以将 [IntentClassifier][lazyllm.tools.IntentClassifier] 作为一个上下文管理器来使用，它内置了 Prompt, 我们仅需要指定 LLM 模型即可，它的使用方法和 [Switch][lazyllm.flow.Switch] 类似，指定每个 `case` 分支，并设置其中的意图类别和对应调用的对象即可。完整代码实现如下：
+
+<details>
+<summary>点击获取import和prompt</summary>
+
+```python
+from lazyllm import TrainableModule, WebModule, deploy, pipeline
+from lazyllm.tools import IntentClassifier
+
+painter_prompt = '现在你是一位绘图提示词大师，能够将用户输入的任意中文内容转换成英文绘图提示词，在本任务中你需要将任意输入内容转换成英文绘图提示词，并且你可以丰富和扩充提示词内容。'
+musician_prompt = '现在你是一位作曲提示词大师，能够将用户输入的任意中文内容转换成英文作曲提示词，在本任务中你需要将任意输入内容转换成英文作曲提示词，并且你可以丰富和扩充提示词内容。'
+```
+</details>
+
+```python
+base = TrainableModule('internlm2-chat-7b')
+with IntentClassifier(base) as ic:
+    ic.case['聊天', base]
+    ic.case['语音识别', TrainableModule('SenseVoiceSmall')]
+    ic.case['图片问答', TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)]
+    ic.case['画图', pipeline(base.share().prompt(painter_prompt), TrainableModule('stable-diffusion-3-medium'))]
+    ic.case['生成音乐', pipeline(base.share().prompt(musician_prompt), TrainableModule('musicgen-small'))]
+    ic.case['文字转语音', TrainableModule('ChatTTS')]
+WebModule(ic, history=[base], audio=True, port=8847).start().wait()
+```
