@@ -25,6 +25,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Build doc
+        run: |
+          set -e
+          pip install -r requirements.txt
+          pip install -r docs/requirements.txt
+          python docs/add_docstrings.py
+
       - name: Create custom directory
         run: |
           set -ex

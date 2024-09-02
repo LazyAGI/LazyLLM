@@ -1,8 +1,8 @@
-import lazyllm
 import argparse
 import time
 
 def deploy(commands):
+    import lazyllm
     parser = argparse.ArgumentParser(description="lazyllm deploy command")
     parser.add_argument("model", help="model name")
     parser.add_argument("--framework", help="deploy framework", default="auto",
