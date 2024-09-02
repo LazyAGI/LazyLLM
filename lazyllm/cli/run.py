@@ -33,19 +33,22 @@ def rag(llm, documents):
 
 
 def run(commands):
+    if not commands:
+        print('Usage:\n  lazyllm run graph.json\n  lazyllm run chatbot\n  lazyllm run rag\n')
+
     parser = argparse.ArgumentParser(description='lazyllm deploy command')
     parser.add_argument('command', type=str, help='command')
 
-    args, _ = parser.parse_known_args()
+    args, _ = parser.parse_known_args(commands)
 
     if args.command in ('chatbot', 'rag'):
-        parser.add_argument('model', type=str, default=None, help='model name')
-        parser.add_argument('source', type=str, default=None, help='Online model source, conflict with framework',
+        parser.add_argument('--model', type=str, default=None, help='model name')
+        parser.add_argument('--source', type=str, default=None, help='Online model source, conflict with framework',
                             choices=['openai', 'sensenova', 'glm', 'kimi', 'qwen', 'doubao'])
-        parser.add_argument('framework', type=str, default=None, help='Online model source, conflict with source',
+        parser.add_argument('--framework', type=str, default=None, help='Online model source, conflict with source',
                             choices=['lightllm', 'vllm', 'lmdeploy'])
         if args.command == 'rag':
-            parser.add_argument('documents', type=str, default=None, help='document absolute path')
+            parser.add_argument('--documents', required=True, type=str, help='document absolute path')
 
         args = parser.parse_args(commands)
         import lazyllm
@@ -56,6 +59,5 @@ def run(commands):
         elif args.command == 'rag':
             rag(llm, args.documents)
     else:
-        assert isinstance
         print('lazyllm run is not ready yet.')
         sys.exit(0)
