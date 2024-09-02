@@ -8,6 +8,7 @@ We will further enhance our chatbot! Based on the previous section [Painting Mas
 > - How to implement routing based on [Switch][lazyllm.flow.Switch] control flow, we will combine it with LLM to create a simple intent recognition robot;
 > - How to specify the deployment framework for [TrainableModule][lazyllm.module.TrainableModule];
 > - How to use [bind](../Best Practice/flow.md#use-bind) on the control flow to pass in parameters;
+> - How to use [IntentClassifier][lazyllm.tools.IntentClassifier] for intent recognition.
 
 ## Design Concept
 
@@ -28,6 +29,8 @@ Considering the above, we proceed with the following design:
 ![Multimodal bot](../assets/3_multimodal-bot3.svg)
 
 Here, the intent recognition robot is the core, routing user needs to one of the six functional robots.
+
+It is worth noting that LazyLLM provides an intent recognition tool, see the [Code Optimization](#code_opt) section of this chapter for details.
 
 ## Code Implementation
 
@@ -188,3 +191,37 @@ WebModule(ppl, history=[chat], audio=True, port=8847).start().wait()
 The effect is as follows:
 
 ![Multimodal Robot](../assets/3_multimodal-bot2.png)
+
+## Code Optimization
+
+[](){#code_opt}
+
+In the above code, we have implemented a simple intent recognition using some basic modules of LazyLLM. However, this intent recognition code is somewhat redundant, complex to use, and lacks functions such as historical memory. Therefore, LazyLLM provides an intent recognition tool to simplify the implementation of intent recognition. We will design the modification as follows:
+
+![Multimodal bot](../assets/3_multimodal-bot4.svg)
+
+In LazyLLM, [IntentClassifier][lazyllm.tools.IntentClassifier] can be used as a context manager. It comes with a built-in Prompt, and we only need to specify the LLM model. Its usage is similar to [Switch][lazyllm.flow.Switch], where you specify each `case` branch and set the intent categories and the corresponding objects to be called. The complete code implementation is as follows:
+
+<details>
+<summary>click to look up prompts and imports</summary>
+
+```python
+from lazyllm import TrainableModule, WebModule, deploy, pipeline
+from lazyllm.tools import IntentClassifier
+
+painter_prompt = 'Now you are a master of drawing prompts, capable of converting any Chinese content entered by the user into English drawing prompts. In this task, you need to convert any input content into English drawing prompts, and you can enrich and expand the prompt content.'
+musician_prompt = 'Now you are a master of music composition prompts, capable of converting any Chinese content entered by the user into English music composition prompts. In this task, you need to convert any input content into English music composition prompts, and you can enrich and expand the prompt content.'
+```
+</details>
+
+```python
+base = TrainableModule('internlm2-chat-7b')
+with IntentClassifier(base) as ic:
+    ic.case['Chat', base]
+    ic.case['Speech Recognition', TrainableModule('SenseVoiceSmall')]
+    ic.case['mage QA', TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)]
+    ic.case['Drawing', pipeline(base.share().prompt(painter_prompt), TrainableModule('stable-diffusion-3-medium'))]
+    ic.case['Generate Music', pipeline(base.share().prompt(musician_prompt), TrainableModule('musicgen-small'))]
+    ic.case['Text to Speech', TrainableModule('ChatTTS')]
+WebModule(ic, history=[base], audio=True, port=8847).start().wait()
+```
