@@ -112,6 +112,7 @@ class IntentClassifier(ModuleBase):
         return dict(history_info=history_info, input=input_text), history, tools, label
 
     def post_process_result(self, input):
+        input = input.strip()
         return input if input in self._intent_list else self._intent_list[0]
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):

@@ -702,10 +702,17 @@ Args:
 
 add_example('TrialModule', '''\
 >>> import lazyllm
->>> m = lazyllm.TrainableModule(lazyllm.Option(['b1', 'b2', 'b3']), 't').finetune_method(finetune.dummy, **dict(a=lazyllm.Option(['f1', 'f2']))).deploy_method(deploy.dummy).mode('finetune')
->>> s = lazyllm.ServerModule(m, post=lambda x, *, ori: f'post2({x})')
+>>> from lazyllm import finetune, deploy
+>>> m = lazyllm.TrainableModule('b1', 't').finetune_method(finetune.dummy, **dict(a=lazyllm.Option(['f1', 'f2'])))
+>>> m.deploy_method(deploy.dummy).mode('finetune').prompt(None)
+>>> s = lazyllm.ServerModule(m, post=lambda x, ori: f'post2({x})')
+>>> s.evalset([1, 2, 3])
 >>> t = lazyllm.TrialModule(s)
 >>> t.update()
+>>>
+dummy finetune!, and init-args is {a: f1}
+dummy finetune!, and init-args is {a: f2}
+[["post2(reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1})"], ["post2(reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1})"]]
 ''')
 
 add_chinese_doc('OnlineChatModule', '''\
