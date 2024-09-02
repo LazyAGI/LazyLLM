@@ -67,5 +67,5 @@ jobs:
 
       - name: Test import
         shell: bash
-        working-directory: ${{ vars.RUNNER_TEMP }}
+        working-directory: /tmp
         run: python -c "import lazyllm"

@@ -43,9 +43,12 @@ jobs:
         shell: bash
         run: pip install -e .
       - name: Test import
-        working-directory: ${{ vars.RUNNER_TEMP }}
+        working-directory: /tmp
         shell: bash
-        run: python -c "import lazyllm" && cp LazyLLM-Env/poetry.lock . && cp pyproject.toml lazyllm/
+        run: python -c "import lazyllm"
+      - name: Copy files
+        shell: bash
+        run: cp LazyLLM-Env/poetry.lock . && cp pyproject.toml lazyllm/
       - name: Build doc
         run: |
           set -ex
