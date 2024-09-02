@@ -28,6 +28,7 @@ jobs:
       - name: Build doc
         run: |
           set -e
+          pip install -r requirements.txt
           pip install -r docs/requirements.txt
           python docs/add_docstrings.py
 

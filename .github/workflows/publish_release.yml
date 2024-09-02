@@ -46,10 +46,11 @@ jobs:
         working-directory: ${{ vars.RUNNER_TEMP }}
         shell: bash
         run: python -c "import lazyllm" && cp LazyLLM-Env/poetry.lock . && cp pyproject.toml lazyllm/
-      - name: Add docstrings
+      - name: Build doc
         run: |
           set -ex
           export PYTHONPATH=$PWD:$PYTHONPATH
+          pip install -r requirements.txt
           pip install -r docs/requirements.txt
           python docs/add_docstrings.py
       - name: Check PyPI for existing version
