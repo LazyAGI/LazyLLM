@@ -1,10 +1,20 @@
 # noqa: E121
 import lazyllm
-from typing import Any, Optional, List, Callable
+from typing import Any, Optional, List, Callable, Dict
 from dataclasses import dataclass
 from functools import partial
 
 from lazyllm.tools.http_request.http_request import HttpRequest
+
+
+@dataclass
+class Node():
+    id: int
+    kind: str
+    name: str
+    args: Optional[Dict] = None
+    func: Optional[Callable] = None
+
 
 @dataclass
 class NodeArgs(object):

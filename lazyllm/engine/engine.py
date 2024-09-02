@@ -1,21 +1,12 @@
 from dataclasses import dataclass
-from typing import List, Optional, Callable, Dict, Type
+from typing import List, Callable, Dict, Type
 import lazyllm
 from lazyllm import graph, switch, pipeline
 from lazyllm.tools import IntentClassifier
-from .node import all_nodes
+from .node import all_nodes, Node
 import re
 import ast
 import inspect
-
-
-@dataclass
-class Node():
-    id: int
-    kind: str
-    name: str
-    args: Optional[Dict] = None
-    func: Optional[Callable] = None
 
 
 class CodeBlock(object):
@@ -103,8 +94,9 @@ _constructor = NodeConstructor()
 
 @NodeConstructor.register('Graph')
 @NodeConstructor.register('SubGraph')
-def make_graph(nodes: List[dict], edges: List[dict]):
+def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = []):
     engine = Engine()
+    resources = [engine.build_node(resource) for resource in resources]
     nodes = [engine.build_node(node) for node in nodes]
 
     with graph() as g:
