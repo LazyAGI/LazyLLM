@@ -4,12 +4,12 @@ import toml
 import requests
 import platform
 import os
-import lazyllm
 
 PYPROJECT_TOML_URL = "https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/pyproject.toml"
 
 def load_pyproject_from_lazyllm_path():
     try:
+        import lazyllm
         lazyllm_path = lazyllm.__path__[0]  # Get the path of the lazyllm package
         pyproject_path = os.path.join(lazyllm_path, 'pyproject.toml')
         if os.path.exists(pyproject_path):
