@@ -7,17 +7,16 @@ import socket
 import sys
 import requests
 import traceback
-from lazyllm import ForkProcess
 import gradio as gr
 import time
 from PIL import Image
 from io import BytesIO
 import numpy as np
 import re
+import platform
 
 import lazyllm
-from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule
-from lazyllm.flow import Pipeline
+from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule, ForkProcess
 from ...module.module import ModuleBase
 
 
@@ -344,24 +343,25 @@ class WebModule(ModuleBase):
             port = self.port
             assert self._verify_port_access(port), f'port {port} is occupied'
 
-        def _impl():
-            self.demo.queue().launch(server_name='0.0.0.0', server_port=port)
-        self.p = ForkProcess(target=_impl)
-        self.p.start()
         self.url = f'http://0.0.0.0:{port}'
+        def _impl(): self.demo.queue().launch(server_name='0.0.0.0', server_port=port)
+        if platform.system() == 'Darwin':
+            _impl()
+        else:
+            self.p = ForkProcess(target=_impl)
+            self.p.start()
 
-    def _get_deploy_tasks(self):
-        return Pipeline(self._work)
-
-    def _get_post_process_tasks(self):
-        return Pipeline(self._print_url)
+    def _update(self, *, mode=None, recursive=True):
+        super(__class__, self)._update(mode=mode, recursive=recursive)
+        self._work()
+        return self
 
     def wait(self):
         if hasattr(self, 'p'):
             return self.p.join()
 
     def stop(self):
-        if self.p and self.p.is_alive():
+        if hasattr(self, 'p') and self.p.is_alive():
             self.p.terminate()
             self.p.join()
 
@@ -381,6 +381,3 @@ class WebModule(ModuleBase):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             result = s.connect_ex(('localhost', port))
             return result != 0
-
-    def _print_url(self):
-        LOG.success(f'LazyLLM webmodule launched successfully: Running on local URL: {self.url}', flush=True)
