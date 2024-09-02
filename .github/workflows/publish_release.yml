@@ -68,7 +68,11 @@ jobs:
       - name: Build
         if: env.pypi_version_exists == 'true'
         shell: bash
-        run: poetry build
+        run: |
+          set -e
+          pip install -r docs/requirements.txt
+          python docs/add_docstrings.py
+          poetry build
 
       - name: Check if GitHub Release exists
         id: release_check
