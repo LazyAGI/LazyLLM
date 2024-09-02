@@ -55,7 +55,12 @@ jobs:
 
       - name: Install deps
         shell: bash
-        run: cp LazyLLM-Env/poetry.lock . && poetry install
+        run: 
+          set -ex
+          cp LazyLLM-Env/poetry.lock . 
+          export POETRY_CACHE_DIR=$(mktemp -d)
+          poetry install
+          rm -rf $POETRY_CACHE_DIR
 
       - name: Build
         shell: bash
