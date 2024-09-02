@@ -132,8 +132,8 @@ class IntentClassifier(ModuleBase):
 
     @property
     def submodules(self):
+        submodule = []
         if isinstance(self._impl, switch):
-            submodule = []
             self._impl.for_each(lambda x: isinstance(x, ModuleBase), lambda x: submodule.append(x))
         return super().submodules + submodule
 
