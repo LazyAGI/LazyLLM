@@ -46,6 +46,12 @@ jobs:
         working-directory: ${{ vars.RUNNER_TEMP }}
         shell: bash
         run: python -c "import lazyllm" && cp LazyLLM-Env/poetry.lock . && cp pyproject.toml lazyllm/
+      - name: Add docstrings
+        run: |
+          set -ex
+          export PYTHONPATH=$PWD:$PYTHONPATH
+          pip install -r docs/requirements.txt
+          python docs/add_docstrings.py
       - name: Check PyPI for existing version
         id: pypi_check
         run: |
@@ -65,14 +71,10 @@ jobs:
         with:
           pypi_token: ${{ secrets.LazyLLM_INDEX_PYPI_TOKEN }}
           ignore_dev_requirements: "yes"
-      - name: Build
+      - name: Skip publish
         if: env.pypi_version_exists == 'true'
         shell: bash
-        run: |
-          set -e
-          pip install -r docs/requirements.txt
-          python docs/add_docstrings.py
-          poetry build
+        run: echo "Skip publish"
 
       - name: Check if GitHub Release exists
         id: release_check
