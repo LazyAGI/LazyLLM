@@ -83,9 +83,9 @@ You can also view and pull the required version from [https://hub.docker.com/r/l
 
 ## Hello, world!
 
-To give you a basic understanding of `LazyLLM`, we will use it to create a chatbot based on the conversation capabilities provided by the [platform](/#platform) below.
+To give you a basic understanding of `LazyLLM`, we will use it to create a chatbot based on the conversation capabilities provided by the [platform](#platform) below.
 
-First, if you don't have an account on the corresponding platform, you need to register an account on the platform first, then get the required key according to the link to get the [API key](/#platform) of the platform below(not: sensenova needs to get two keys), and set the corresponding evironment variables:
+First, if you don't have an account on the corresponding platform, you need to register an account on the platform first, then get the required key according to the link to get the [API key](#platform) of the platform below(not: sensenova needs to get two keys), and set the corresponding evironment variables:
 
 ```bash
 export LAZYLLM_PLATFORM_API_KEY=<your obtained api key>
@@ -117,7 +117,8 @@ Let’s briefly introduce the functionality of this code.
 
 First, statement 1 imports the `lazyllm` module, and in statement 2, an instance of the online chat service named `chat` is created. We then enter an infinite loop that will only exit when the string “quit” is received (statement 4). Statement 3 prints the input prompt and saves the user’s input in the variable `query`. Statement 5 passes the user’s input to the chat module, which sends a request to the Nova model’s online service and saves the reply returned by Nova in the variable `res`. Statement 6 prints the received reply on the screen.
 
-`LazyLLM` has built-in support for the following platforms:[](){#platform}
+`LazyLLM` has built-in support for the following platforms:
+[](){#platform}
 
 | Platform | API Key Acquisition URL              | Environment Variables to Set                            |
 |:---------|:-------------------------------------|:--------------------------------------------------------|
