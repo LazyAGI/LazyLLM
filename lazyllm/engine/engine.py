@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import List, Callable, Dict, Type
 import lazyllm
 from lazyllm import graph, switch, pipeline
@@ -58,7 +57,7 @@ class NodeConstructor(object):
         if node.kind in NodeConstructor.builder_methods:
             createf = NodeConstructor.builder_methods[node.kind]
             r = inspect.getfullargspec(createf)
-            if isinstance(node.args, dict) and set(r.args) == set(node.args.keys()):
+            if isinstance(node.args, dict) and set(node.args.keys()).issubset(set(r.args)):
                 node.func = NodeConstructor.builder_methods[node.kind](**node.args)
             else:
                 node.func = NodeConstructor.builder_methods[node.kind](node.args)
@@ -67,18 +66,21 @@ class NodeConstructor(object):
         node_msgs = all_nodes[node.kind]
         init_args, build_args, other_args = dict(), dict(), dict()
 
+        def get_args(cls, key, value, builder_key=None):
+            node_args = node_msgs[cls][builder_key][key] if builder_key else node_msgs[cls][key]
+            if node_args.type == Node:
+                return Engine().build_node(value).func
+            return node_args.getattr_f(value) if node_args.getattr_f else value
+
         for key, value in node.args.items():
             if key in node_msgs['init_arguments']:
-                getf = node_msgs['init_arguments'][key].getattr_f
-                init_args[key] = getf(value) if getf else value
+                init_args[key] = get_args('init_arguments', key, value)
             elif key in node_msgs['builder_argument']:
-                getf = node_msgs['builder_argument'][key].getattr_f
-                build_args[key] = getf(value) if getf else value
+                build_args[key] = get_args('builder_argument', key, value)
             elif '.' in key:
                 builder_key, key = key.split('.')
                 if builder_key not in other_args: other_args[builder_key] = dict()
-                getf = node_msgs['other_arguments'][builder_key][key].getattr_f
-                other_args[builder_key][key] = getf(value) if getf else value
+                other_args[builder_key][key] = get_args('other_arguments', key, value, builder_key=builder_key)
             else:
                 raise KeyError(f'Invalid key `{key}` found')
 
