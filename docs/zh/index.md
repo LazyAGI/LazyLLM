@@ -88,7 +88,7 @@ docker pull lazyllm/lazyllm
 首先如果没有对应平台的账号，就需要先在平台注册一个账号，然后根据下面平台对应的获取 [API key](#platform) 的链接获取所需要的key(注意:sensenova需要获取两个key)，并设置对应的环境变量：
 
 ```bash
-export LAZYLLM_PLATFORM_API_KEY=<申请到的api key>
+export LAZYLLM_<使用的平台环境变量名称，大写>_API_KEY=<申请到的api key>
 ```
 
 接着打开编辑器输入以下代码，保存为 `chat.py`：
@@ -155,7 +155,7 @@ while True:
 
 * 语句 7 加了个 `history` 字段，用来保存对话的历史；
 * 语句 5' 传给远程服务器的内容，除了当前 `query` 外，还把历史内容 `history` 也传进去了；
-* 语句 8 把本次对话的问答内容拼接到 `history` 之后；
+* 语句 8 把本次对话的问答内容拼接到 `history` 之后。
 
 ## 使用 web 界面
 

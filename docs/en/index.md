@@ -88,7 +88,7 @@ To give you a basic understanding of `LazyLLM`, we will use it to create a chatb
 First, if you don't have an account on the corresponding platform, you need to register an account on the platform first, then get the required key according to the link to get the [API key](#platform) of the platform below(not: sensenova needs to get two keys), and set the corresponding evironment variables:
 
 ```bash
-export LAZYLLM_PLATFORM_API_KEY=<your obtained api key>
+export LAZYLLM_<PLATFORM_ENVIRONMENT_VARIABLE_NAME_IN_UPPERCASE>_API_KEY=<your obtained api key>
 ```
 
 Next, open an editor and enter the following code, save it as `chat.py`:
