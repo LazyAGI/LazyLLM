@@ -32,7 +32,7 @@ deepspeed>=0.12.3
 sentence_transformers
 faiss-cpu
 ''', llamafactory='''
-lazyllm-llamafactory
+llamafactory
 accelerate
 datasets
 einops
