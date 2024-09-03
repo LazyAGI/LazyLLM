@@ -5,6 +5,7 @@ API 文档可以参考 [FunctionCall][lazyllm.tools.agent.FunctionCall]。接下
 
 ## FunctionCall 牛刀小试
 
+[](){#define-function}
 假设我们在开发一个查询天气的应用，由于天气信息具有时效性，所以单纯靠大模型是没有办法生成具体的天气信息的，这就需要模型调用外部查询天气的工具来获取实时的天气消息。现在我们定义两个查询天气函数如下：
 
 ```python
