@@ -1,4 +1,4 @@
-from lazyllm import ModuleBase
+from lazyllm import ModuleBase, pipeline
 from .store import DocNode
 from typing import List
 
@@ -24,6 +24,9 @@ class Retriever(ModuleBase):
         self.index = index
         self.topk = topk
         self.similarity_kw = kwargs  # kw parameters
+
+    def _get_post_process_tasks(self):
+        return pipeline(lambda *a: self('Test Query'))
 
     def forward(self, query: str) -> List[DocNode]:
         return self.doc.forward(
