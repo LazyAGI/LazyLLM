@@ -47,7 +47,8 @@ class ReactAgent(ModuleBase):
         prompt = INSTRUCTION.replace("{TOKENIZED_PROMPT}", WITHOUT_TOKEN_PROMPT if isinstance(llm, OnlineChatModule)
                                      else WITH_TOKEN_PROMPT)
         self._agent = loop(FunctionCall(llm, tools,
-                                        _prompt=prompt.replace("{tool_names}", json.dumps(tools, ensure_ascii=False))),
+                                        _prompt=prompt.replace("{tool_names}", json.dumps(tools, ensure_ascii=False)),
+                                        return_trace=return_trace),
                            stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):

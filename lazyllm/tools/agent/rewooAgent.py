@@ -42,7 +42,7 @@ class ReWOOAgent(ModuleBase):
         self._planner = plan_llm or llm
         self._solver = solve_llm or llm
         self._workers = tools
-        self._tools_manager = ToolManager(tools).tools_info
+        self._tools_manager = ToolManager(tools, return_trace=return_trace).tools_info
         with pipeline() as self._agent:
             self._agent.planner_pre_action = self._build_planner_prompt
             self._agent.planner = self._planner

@@ -38,7 +38,7 @@ LazyLLM可用来构建常用的人工智能应用，下面给出一些例子。
 
 ### 3.1 对话机器人
 
-这是一个简单的对话机器人示例。
+**这是一个简单的对话机器人示例。**
 
 ```python
 # set environment variable: LAZYLLM_OPENAI_API_KEY=xx 
@@ -57,7 +57,9 @@ chat = lazyllm.TrainableModule('internlm2-chat-7b')
 lazyllm.WebModule(chat, port=23466).start().wait()
 ```
 
-这是一个带多模态和意图识别的高级机器人示例。
+如果你是使用 `pip` 安装的 `lazyllm` ，并且保证python环境的`bin`目录已经在`$PATH`中，则你可以通过执行 `lazyllm run chatbot` 来快速启动一个对话机器人。如果你想使用本地模型，则需要用`--model`参数指定模型名称，例如你可以用`lazyllm run chatbot --model=internlm2-chat-7b` 来启动基于本地模型的对话机器人。
+
+**这是一个带多模态和意图识别的高级机器人示例。**
 
 ![Demo Multimodal bot](docs/assets/multimodal-bot.svg)
 
@@ -138,6 +140,8 @@ lazyllm.WebModule(ppl, port=23456).start().wait()
 ```
 
 https://github.com/LazyAGI/LazyLLM/assets/12124621/77267adc-6e40-47b8-96a8-895df165b0ce
+
+如果你是使用 `pip` 安装的 `lazyllm` ，并且保证python环境的`bin`目录已经在`$PATH`中，则你可以通过执行 `lazyllm run rag --documents=/file/to/yourpath` 来快速启动一个检索增强机器人。如果你想使用本地模型，则需要用`--model`参数指定模型名称，例如你可以用`lazyllm run rag --documents=/file/to/yourpath --model=internlm2-chat-7b` 来启动基于本地模型的检索增强机器人。
 
 ### 3.3 故事创作
 
