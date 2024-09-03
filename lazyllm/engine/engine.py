@@ -140,6 +140,7 @@ def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
             sw.case[cond::f]
     return sw
 
+
 @NodeConstructor.register('Intention')
 def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
     with IntentClassifier(Engine().build_node(base_model)) as ic:
@@ -150,3 +151,17 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
                 f = Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
             ic.case[cond::f]
     return ic
+
+
+@NodeConstructor.register('Document')
+def make_document(dataset_path: str, embed: Node, create_ui: bool, node_group: List):
+    document = lazyllm.tools.rag.Document(dataset_path, Engine().build_node(embed), create_ui)
+    for group in node_group:
+        if group['name'] == 'summary': group['llm'] = Engine().build_node(group['llm'])
+        document.create_node_group(**group)
+    return document
+
+
+@NodeConstructor.register('Reranker')
+def make_reranker(name: str = 'ModuleReranker', arguments: Dict = {}):
+    return lazyllm.tools.Reranker(name, **arguments)

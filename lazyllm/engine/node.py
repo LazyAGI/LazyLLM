@@ -85,3 +85,48 @@ all_nodes['Formatter'] = dict(
         formatter=NodeArgs(str),
     )
 )
+
+all_nodes['FunctionCall'] = dict(
+    module=lazyllm.tools.FunctionCallAgent,
+    init_arguments=dict(
+        llm=NodeArgs(Node),
+        tools=NodeArgs(list)
+    )
+)
+
+all_nodes['ToolsForLLM'] = dict(
+    module=lazyllm.tools.ToolManager,
+    init_arguments=dict(
+        tools=NodeArgs(list)
+    )
+)
+
+all_nodes['Retriver'] = dict(
+    module=lazyllm.tools.rag.Retriever,
+    init_arguments=dict(
+        doc=NodeArgs(Node),
+        group_name=NodeArgs(str),
+        similarity=NodeArgs(str, "cosine"),
+        similarity_cut_off=NodeArgs(float, float("-inf")),
+        index=NodeArgs(str, "default"),
+        topk=NodeArgs(int, 6),
+    )
+)
+
+all_nodes['Reranker'] = dict(
+    module=lazyllm.tools.rag.Retriever,
+    init_arguments=dict(
+        name=NodeArgs(str, 'ModuleReranker'),
+        arguments=NodeArgs({
+            'ModuleReranker': dict(
+                model=NodeArgs(str, 'bge-reranker-large'),
+                topk=NodeArgs(int, -1)
+            ),
+            'KeywordFilter': dict(
+                required_keys=NodeArgs(list, []),
+                exclude_keys=NodeArgs(list, []),
+                language=NodeArgs(str, "en")
+            )
+        })
+    )
+)
