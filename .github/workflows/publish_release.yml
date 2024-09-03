@@ -56,6 +56,11 @@ jobs:
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
           python docs/add_docstrings.py
+      - name: Clean cache
+        shell: bash
+        run: |
+          pip cache purge
+          pip freeze | grep -v "^-e" | xargs pip uninstall -y
       - name: Check PyPI for existing version
         id: pypi_check
         run: |
