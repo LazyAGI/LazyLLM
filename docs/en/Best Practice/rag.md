@@ -4,7 +4,7 @@ Retrieval-augmented Generation (RAG) is one of the cutting-edge technologies in 
 
 Generally, the process of RAG can be illustrated as follows in the diagram below:
 
-![RAG intro](../assets/rag-intro.png)
+![RAG intro](../assets/rag-intro.svg)
 
 ## Design
 
