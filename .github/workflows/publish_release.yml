@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: |
           pip cache purge
-          pip freeze | xargs pip uninstall -y
+          pip freeze | grep -v "^-e" | xargs pip uninstall -y
       - name: Check PyPI for existing version
         id: pypi_check
         run: |
