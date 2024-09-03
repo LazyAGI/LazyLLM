@@ -101,7 +101,7 @@ all_nodes['ToolsForLLM'] = dict(
     )
 )
 
-all_nodes['Retriver'] = dict(
+all_nodes['Retriever'] = dict(
     module=lazyllm.tools.rag.Retriever,
     init_arguments=dict(
         doc=NodeArgs(Node),
@@ -114,10 +114,12 @@ all_nodes['Retriver'] = dict(
 )
 
 all_nodes['Reranker'] = dict(
-    module=lazyllm.tools.rag.Retriever,
+    module=lazyllm.tools.rag.Reranker,
     init_arguments=dict(
         name=NodeArgs(str, 'ModuleReranker'),
-        arguments=NodeArgs({
+        arguments={
+            '__name__': 'name',
+            '__cls__': 'init_arguments',
             'ModuleReranker': dict(
                 model=NodeArgs(str, 'bge-reranker-large'),
                 topk=NodeArgs(int, -1)
@@ -127,6 +129,6 @@ all_nodes['Reranker'] = dict(
                 exclude_keys=NodeArgs(list, []),
                 language=NodeArgs(str, "en")
             )
-        })
+        }
     )
 )
