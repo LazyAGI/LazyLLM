@@ -16,7 +16,7 @@ import re
 import platform
 
 import lazyllm
-from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule, ForkProcess
+from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule, ForkProcess, pipeline
 from ...module.module import ModuleBase
 
 
@@ -356,6 +356,9 @@ class WebModule(ModuleBase):
         self._work()
         return self
 
+    def _get_post_process_tasks(self):
+        return pipeline(self._print_url)
+
     def wait(self):
         if hasattr(self, 'p'):
             return self.p.join()
@@ -381,3 +384,6 @@ class WebModule(ModuleBase):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             result = s.connect_ex(('localhost', port))
             return result != 0
+
+    def _print_url(self):
+        LOG.success(f'LazyLLM webmodule launched successfully: Running on local URL: {self.url}', flush=True)

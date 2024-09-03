@@ -40,7 +40,7 @@ LazyLLM can be used to build common artificial intelligence applications. Here a
 
 ### ChatBots
 
-This is a simple example of a chat bot.
+**This is a simple example of a chat bot.**
 
 ```python
 # set environment variable: LAZYLLM_OPENAI_API_KEY=xx 
@@ -59,7 +59,9 @@ chat = lazyllm.TrainableModule('internlm2-chat-7b')
 lazyllm.WebModule(chat, port=23466).start().wait()
 ```
 
-This is an advanced bot example with multimodality and intent recognition.
+If you installed `lazyllm` using `pip` and ensured that the `bin` directory of your Python environment is in your `$PATH`, you can quickly start a chatbot by executing `lazyllm run chatbot`. If you want to use a local model, you need to specify the model name with the `--model` parameter. For example, you can start a chatbot based on a local model by using `lazyllm run chatbot --model=internlm2-chat-7b`.
+
+**This is an advanced bot example with multimodality and intent recognition.**
 
 ![Demo Multimodal bot](docs/assets/multimodal-bot.svg)
 
@@ -140,6 +142,8 @@ lazyllm.WebModule(ppl, port=23456).start().wait()
 ```
 
 https://github.com/LazyAGI/LazyLLM/assets/12124621/77267adc-6e40-47b8-96a8-895df165b0ce
+
+If you installed `lazyllm` using `pip` and ensured that the `bin` directory of your Python environment is in your `$PATH`, you can quickly start a retrieval-augmented bot by executing `lazyllm run rag --documents=/file/to/yourpath`. If you want to use a local model, you need to specify the model name with the `--model` parameter. For example, you can start a retrieval-augmented bot based on a local model by using `lazyllm run rag --documents=/file/to/yourpath --model=internlm2-chat-7b`.
 
 ### Stories Creator
 

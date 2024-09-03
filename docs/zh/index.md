@@ -171,6 +171,22 @@ lazyllm.WebModule(chat, port=23333).start().wait()
 
 > 注意：如果启动报错或者网页访问出错，请查看终端窗口的错误信息，检查是否端口被其它应用占用，或者启用了代理，或者被防火墙拦截等。
 
+## 使用命令行工具
+
+如果你是使用 `pip` 安装的 `lazyllm` ，并且保证python环境的`bin`目录已经在`$PATH`中，则你可以通过执行:
+
+```bash
+lazyllm run chatbot
+```
+
+来快速启动一个对话机器人。如果你想使用本地模型，则需要用`--model`参数指定模型名称，例如你可以用:
+
+```bash
+lazyllm run chatbot --model=internlm2-chat-7b
+```
+
+来启动基于本地模型的对话机器人。
+
 -----
 
 以上就是 `LazyLLM` 的入门介绍，接下来的章节会从不同的方面来探索 `LazyLLM` 的强大功能。
