@@ -48,9 +48,9 @@ def check_requirements(level, requirements_file):
         if package_name in req_dict:
             if not compare_versions(version_spec, req_dict[package_name]):
                 mismatched.append(
-                f"{package_name}: toml version {version_spec} does not match "
-                f"requirements {req_dict[package_name]}"
-            )
+                    f"{package_name}: toml version {version_spec} does not match "
+                    f"requirements {req_dict[package_name]}"
+                )
         else:
             missing.append(f"{package_name} is missing from requirements")
 
