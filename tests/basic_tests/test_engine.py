@@ -1,6 +1,12 @@
 from lazyllm import LightEngine
+import pytest
 
 class TestEngine(object):
+
+    @pytest.fixture(autouse=True)
+    def run_around_tests(self):
+        yield
+        LightEngine().reset()
 
     def test_engine_subgraph(self):
         nodes = [dict(id='1', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
@@ -54,3 +60,20 @@ class TestEngine(object):
         engine.start(nodes, edges)
         assert engine.run(1) == '1[2, 4]1'
         assert engine.run(2) == '2[4, 8]4'
+
+
+class TestEngineRAG(object):
+
+    def setup_method(self):
+        resources = [dict(id='1', kind='Document', name='d1', args=dict(dataset_path='rag_master'))]
+        nodes = [dict(id='2', kind='Retriever', name='ret1', args=dict(doc='1', group_name='CoarseChunk')),
+                 dict(id='3', kind='Reranker', name='KeywordFilter', output_format='content', join=True,
+                      args=dict(required_keys='道', language='cn')),
+                 dict(id='4', kind='Code', name='c1',
+                      args='def test(nodes, query):    return dict(context_str=nodes, query=query\n'),
+                 dict(id='5', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2')]
+        engine = LightEngine()
+        engine.start(nodes, edges, resources)
+
+    # def test_rag_nodegroup(self):

@@ -1,5 +1,5 @@
 from .engine import Engine, Node
-from lazyllm import ActionModule
+from lazyllm import ActionModule, once_wrapper
 from typing import List, Dict
 import uuid
 
@@ -13,6 +13,7 @@ class LightEngine(Engine):
             cls._instance = super().__new__(cls)
         return cls._instance
 
+    @once_wrapper
     def __init__(self):
         super().__init__()
 

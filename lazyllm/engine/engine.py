@@ -1,4 +1,4 @@
-from typing import List, Callable, Dict, Type
+from typing import List, Callable, Dict, Type, Optional, Union
 import lazyllm
 from lazyllm import graph, switch, pipeline
 from lazyllm.tools import IntentClassifier
@@ -24,7 +24,8 @@ class Engine(object):
     def __new__(cls):
         if cls is not Engine:
             return super().__new__(cls)
-        return Engine.__default_engine__()
+        obj = Engine.__default_engine__()
+        return obj
 
     @classmethod
     def set_default(cls, engine: Type):
@@ -38,6 +39,10 @@ class Engine(object):
 
     def build_node(self, node) -> Callable:
         return _constructor.build(node)
+
+    def reset(self):
+        self.__init__.flag.reset()
+        self.__init__()
 
 
 class NodeConstructor(object):
@@ -163,5 +168,6 @@ def make_document(dataset_path: str, embed: Node, create_ui: bool, node_group: L
 
 
 @NodeConstructor.register('Reranker')
-def make_reranker(name: str = 'ModuleReranker', arguments: Dict = {}):
-    return lazyllm.tools.Reranker(name, **arguments)
+def make_reranker(name: str = 'ModuleReranker', target: Optional[str] = None,
+                  output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
+    return lazyllm.tools.Reranker(name, target=target, output_format=output_format, join=join, **arguments)

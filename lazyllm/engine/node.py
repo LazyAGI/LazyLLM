@@ -110,6 +110,9 @@ all_nodes['Retriever'] = dict(
         similarity_cut_off=NodeArgs(float, float("-inf")),
         index=NodeArgs(str, "default"),
         topk=NodeArgs(int, 6),
+        target=NodeArgs(str, None),
+        output_format=NodeArgs(str, None),
+        join=NodeArgs(bool, False)
     )
 )
 
@@ -117,6 +120,9 @@ all_nodes['Reranker'] = dict(
     module=lazyllm.tools.rag.Reranker,
     init_arguments=dict(
         name=NodeArgs(str, 'ModuleReranker'),
+        target=NodeArgs(str, None),
+        output_format=NodeArgs(str, None),
+        join=NodeArgs(bool, False),
         arguments={
             '__name__': 'name',
             '__cls__': 'init_arguments',
