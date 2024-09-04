@@ -75,5 +75,6 @@ class TestEngineRAG(object):
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='2'), dict(iid='2', oid='__end__')]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
+        engine('什么是道')
 
     # def test_rag_nodegroup(self):

@@ -13,13 +13,13 @@ class Reranker(ModuleBase, _PostProcess):
     def __init__(self, name: str = "ModuleReranker", target: Optional[str] = None,
                  output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs) -> None:
         super().__init__()
-        self.name = name
-        self.kwargs = kwargs
+        self._name = name
+        self._kwargs = kwargs
         _PostProcess.__init__(self, target, output_format, join)
 
     def forward(self, nodes: List[DocNode], query: str = "") -> List[DocNode]:
-        results = self.registered_reranker[self.name](nodes, query=query, **self.kwargs)
-        LOG.debug(f"Rerank use `{self.name}` and get nodes: {results}")
+        results = self.registered_reranker[self._name](nodes, query=query, **self._kwargs)
+        LOG.debug(f"Rerank use `{self._name}` and get nodes: {results}")
         return self._post_process(results)
 
     @classmethod
