@@ -178,13 +178,14 @@ class ModelManager():
             lazyllm.LOG.info(f"model downloaded at {model_dir_result}")
             return model_dir_result
         except Exception as e:
-            lazyllm.LOG.error(f"Huggingface: {e}")
+            lazyllm.LOG.warning(f"Huggingface: {e}")
             if not self.token:
-                lazyllm.LOG.error('The token is found to be empty. Please set the token by '
-                                  'the environment variable LAZYLLM_MODEL_SOURCE_TOKEN.')
+                lazyllm.LOG.warning('Token is empty, which may prevent private models from being downloaded, '
+                                    'as indicated by "the model does not exist." Please set the token with the '
+                                    'environment variable LAZYLLM_MODEL_SOURCE_TOKEN to download private models.')
             if os.path.isdir(model_dir):
                 shutil.rmtree(model_dir)
-                lazyllm.LOG.error(f"{model_dir} removed due to exceptions.")
+                lazyllm.LOG.warning(f"{model_dir} removed due to exceptions.")
                 # so that lazyllm would not regard model_dir as a downloaded available model after.
 
     def _download_model_from_ms(self, model_name='', model_source_dir=''):
@@ -200,10 +201,11 @@ class ModelManager():
             lazyllm.LOG.info(f"Model downloaded at {model_dir_result}")
             return model_dir_result
         except Exception as e:
-            lazyllm.LOG.error(f"Modelscope:{e}")
+            lazyllm.LOG.warning(f"Modelscope:{e}")
             if not self.token:
-                lazyllm.LOG.error('The token is found to be empty. Please set the token by '
-                                  'the environment variable LAZYLLM_MODEL_SOURCE_TOKEN.')
+                lazyllm.LOG.warning('Token is empty, which may prevent private models from being downloaded, '
+                                    'as indicated by "the model does not exist." Please set the token with the '
+                                    'environment variable LAZYLLM_MODEL_SOURCE_TOKEN to download private models.')
 
             # unlike Huggingface, Modelscope adds model name as sub-dir to cache_dir.
             # so we need to figure out the exact dir of the model for clearing in case of exceptions.
@@ -211,4 +213,4 @@ class ModelManager():
             full_model_dir = os.path.join(model_source_dir, model_dir)
             if os.path.isdir(full_model_dir):
                 shutil.rmtree(full_model_dir)
-                lazyllm.LOG.error(f"{full_model_dir} removed due to exceptions.")
+                lazyllm.LOG.warning(f"{full_model_dir} removed due to exceptions.")
