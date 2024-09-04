@@ -72,7 +72,7 @@ class TestEngineRAG(object):
                  dict(id='4', kind='Code', name='c1',
                       args='def test(nodes, query):    return dict(context_str=nodes, query=query\n'),
                  dict(id='5', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
-        edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2')]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='2'), dict(iid='2', oid='__end__')]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
 
