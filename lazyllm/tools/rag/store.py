@@ -121,6 +121,9 @@ class DocNode:
             return self.text if self.text else ""
         return f"{metadata_str}\n\n{self.text}".strip()
 
+    def to_dict(self) -> Dict:
+        return dict(text=self.text, embedding=self.embedding, metadata=self.metadata)
+
 
 class BaseStore(ABC):
     def __init__(self, node_groups: List[str]) -> None:

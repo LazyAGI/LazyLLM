@@ -290,7 +290,7 @@ class Parallel(LazyLLMFlowsBase):
     aslist = property(partial(_set_status, type=PostProcessType.LIST))
     sum = property(partial(_set_status, type=PostProcessType.SUM))
 
-    def join(self, string):
+    def join(self, string=''):
         assert isinstance(string, str), 'argument of join shoule be str'
         return Parallel._set_status(self, type=Parallel.PostProcessType.JOIN, args=string)
 
@@ -329,7 +329,7 @@ class Parallel(LazyLLMFlowsBase):
         elif self._post_process_type == Parallel.PostProcessType.LIST:
             output = list(output)
         elif self._post_process_type == Parallel.PostProcessType.SUM:
-            output = sum(output, type(output[0])())
+            output = ''.join([str(i) for i in output]) if isinstance(output[0], str) else sum(output, type(output[0])())
         elif self._post_process_type == Parallel.PostProcessType.JOIN:
             output = self._post_process_args.join([str(i) for i in output])
         return output

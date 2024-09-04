@@ -1,23 +1,26 @@
 from functools import lru_cache
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Union
 from lazyllm import ModuleBase, config, LOG
 from lazyllm.tools.rag.store import DocNode, MetadataMode
 from lazyllm.components.utils.downloader import ModelManager
+from .retriever import _PostProcess
 import numpy as np
 
 
-class Reranker(ModuleBase):
+class Reranker(ModuleBase, _PostProcess):
     registered_reranker = dict()
 
-    def __init__(self, name: str = "ModuleReranker", **kwargs) -> None:
+    def __init__(self, name: str = "ModuleReranker", target: Optional[str] = None,
+                 output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs) -> None:
         super().__init__()
         self.name = name
         self.kwargs = kwargs
+        _PostProcess.__init__(self, target, output_format, join)
 
     def forward(self, nodes: List[DocNode], query: str = "") -> List[DocNode]:
         results = self.registered_reranker[self.name](nodes, query=query, **self.kwargs)
         LOG.debug(f"Rerank use `{self.name}` and get nodes: {results}")
-        return results
+        return self._post_process(results)
 
     @classmethod
     def register_reranker(
