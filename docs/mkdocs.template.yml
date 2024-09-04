@@ -22,6 +22,7 @@ nav:
   - Prompt: Best Practice/prompt.md
   - Rag: Best Practice/rag.md
   - FunctionCall: Best Practice/functionCall.md
+  - Stream: Best Practice/stream.md
 - Advanced Topics:
   - Contribution: Advanced Topics/contribution.md
   - Changelog: Advanced Topics/changelog.md

@@ -4,7 +4,7 @@
 
 一般来说 RAG 的流程如下图所示：
 
-![RAG intro](../assets/rag-intro.png)
+![RAG intro](../assets/rag-intro.svg)
 
 ## 设计
 
