@@ -111,9 +111,9 @@ LazyLLM实现了一个 ``Module`` 的注册器，利用它可以很方便的将�
     >          [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
     >          >>> sm = lazyllm.ServerModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
     >          >>> sm.submodules
-	>          [<Module type=_ServerModuleImpl>]
+    >          [<Module type=_ServerModuleImpl>]
     >          >>> sm.submodules[0].submodules
-	>          [<Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>
+    >          [<Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>
     >           └- <Flow type=Pipeline items=[]>
     >               |- <Module type=MyModule name=m1>
     >               └- <Flow type=Parallel items=[]>
