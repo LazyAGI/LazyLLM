@@ -75,7 +75,7 @@ jobs:
         working-directory: /tmp
         run: python -c "import lazyllm"
 
-  Check requirements:
+  Check_requirements:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
