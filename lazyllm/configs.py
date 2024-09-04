@@ -82,7 +82,7 @@ class Config(object):
             names = [names]
         elif targets is None:
             curr_envs = [key for key in os.environ.keys() if key.startswith('LAZYLLM_')]
-            names = list(set([self._env_map_name[key] for key in curr_envs]))
+            names = list(set([self._env_map_name[key] for key in curr_envs if key in self._env_map_name]))
         assert isinstance(names, list)
         for name in names:
             self._update_impl(name, *self._config_params[name])
