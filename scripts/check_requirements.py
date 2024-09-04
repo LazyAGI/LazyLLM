@@ -2,8 +2,6 @@ import toml
 import re
 import os
 
-
-
 def load_toml():
     with open('../pyproject.toml', 'r') as f:
         config = toml.load(f)
@@ -19,7 +17,7 @@ def load_toml():
             light[package_name] = version
     del full['python']
     del light['python']
-    return full,light
+    return full, light
 
 def parse_requirement(line):
     match = re.match(r'^([a-zA-Z0-9_-]+)([><=~!^*]+.*)?$', line.strip())
@@ -49,7 +47,10 @@ def check_requirements(level, requirements_file):
     for package_name, version_spec in level.items():
         if package_name in req_dict:
             if not compare_versions(version_spec, req_dict[package_name]):
-                mismatched.append(f"{package_name}: toml version {version_spec} does not match requirements {req_dict[package_name]}")
+                mismatched.append(
+                f"{package_name}: toml version {version_spec} does not match "
+                f"requirements {req_dict[package_name]}"
+            )
         else:
             missing.append(f"{package_name} is missing from requirements")
 
@@ -70,8 +71,8 @@ def check_requirements(level, requirements_file):
 if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(script_dir)
-    full,light = load_toml()
-    print('='*30 ,'full', '='*30)
+    full, light = load_toml()
+    print('=' * 30, 'full', '=' * 30)
     check_requirements(full, '../requirements.full.txt')
-    print('='*30 ,'light', '='*30)
+    print('=' * 30, 'light', '=' * 30)
     check_requirements(light, '../requirements.txt')
