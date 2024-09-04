@@ -1,4 +1,5 @@
 appdirs
+loralib
 toml
 fastapi>=0.111.0
 loguru>=0.7.2
@@ -8,12 +9,11 @@ uvicorn<0.29.0
 cloudpickle>=3.0.0
 flake8>=7.0.0
 gradio>=3.48.0
-gradio_client>=0.6.1
+gradio-client>=0.6.1
 protobuf>=3.20.1
 setuptools<70.0.0
-json5
-appdirs
 docstring-parser
+json5
 tiktoken
 spacy
 chromadb
@@ -23,3 +23,7 @@ nltk
 jieba>=0.42.1
 pyjwt>=2.8.0
 llama-index-core
+llama-index-readers-file
+sentence-transformers
+sentencepiece
+modelscope
