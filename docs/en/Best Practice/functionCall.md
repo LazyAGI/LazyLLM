@@ -5,6 +5,7 @@ You can refer to the API documentation as [FunctionCall][lazyllm.tools.agent.Fun
 
 ## FunctionCall Quick Start
 
+[](){#define-function}
 Suppose we are developing an application for querying the weather. Since weather information is time-sensitive, it is impossible to generate specific weather information simply by relying on a large model. This requires the model to call an external weather query tool to obtain realtime weather information. Now we define two weather query functions as follows:
 
 ```python

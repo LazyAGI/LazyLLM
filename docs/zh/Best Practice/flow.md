@@ -4,6 +4,7 @@ LazyLLM中定义了大量的数据流组件，用于让您像搭积木一样，�
 
 ### 定义和API文档
 
+[](){#use-flow}
 数据流的定义和基本使用方法如 [flow][lazyllm.flow.FlowBase] 中所述
 
 ### pipeline

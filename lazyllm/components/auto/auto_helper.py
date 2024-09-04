@@ -35,7 +35,10 @@ def check_requirements(frame):
     for package in packages:
         parts = package.split('==') if '==' in package else package.split('>=') if '>=' in package else [package]
         try:
-            installed = pkg_resources.get_distribution(parts[0])
+            try:
+                installed = pkg_resources.get_distribution(parts[0])
+            except pkg_resources.DistributionNotFound:
+                installed = pkg_resources.get_distribution('lazyllm-' + parts[0])
             if len(parts) > 1:
                 # if parts[1] not in installed.version:
                 if compare_versions(installed.version, parts[1]) == -1:
