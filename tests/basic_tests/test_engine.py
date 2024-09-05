@@ -47,6 +47,43 @@ class TestEngine(object):
         assert engine.run(2) == 6
         assert engine.run(3) == 9
 
+    def test_engine_ifs(self):
+        plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
+        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
+        square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
+        ifs = dict(id='4', kind='Ifs', name='i1', args=dict(
+            cond='def cond(x): return x < 10', true=[plus1, double], false=[square]))
+        nodes = [ifs]
+        edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        assert engine.run(1) == 4
+        assert engine.run(5) == 12
+        assert engine.run(10) == 100
+
+    def test_engine_loop(self):
+        nodes = [dict(id='1', kind='Code', name='code', args='def square(x: int): return x * x')]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+
+        nodes = [dict(id='2', kind='Loop', name='loop',
+                      args=dict(stop_condition='def cond(x): return x > 10', nodes=nodes, edges=edges))]
+        edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
+
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        assert engine.run(2) == 16
+
+    def test_engine_warp(self):
+        nodes = [dict(id='1', kind='Code', name='code', args='def square(x: int): return x * x')]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+
+        nodes = [dict(id='2', kind='Warp', name='warp', args=dict(nodes=nodes, edges=edges))]
+        edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
+
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        assert engine.run(2, 3, 4, 5) == (4, 9, 16, 25)
+
     def test_engine_formatter(self):
         nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
                  dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),

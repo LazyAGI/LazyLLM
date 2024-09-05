@@ -157,15 +157,16 @@ def make_warp(nodes: List[dict], edges: List[dict], resources: List[dict] = []):
 
 
 @NodeConstructor.register('Loop')
-def make_loop(stop_condition: str, judge_on_full_input: bool, nodes: List[dict],
-              edges: List[dict], resources: List[dict] = []):
+def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict],
+              resources: List[dict] = [], judge_on_full_input: bool = True):
     stop_condition = make_code(stop_condition)
     return lazyllm.loop(make_graph(nodes, edges, resources), stop_condition=stop_condition,
                         judge_on_full_input=judge_on_full_input)
 
 
 @NodeConstructor.register('Ifs')
-def make_ifs(cond: str, judge_on_full_input: bool, true: List[dict], false: List[dict]):
+def make_ifs(cond: str, true: List[dict], false: List[dict], judge_on_full_input: bool = True):
+    assert judge_on_full_input, 'judge_on_full_input only support True now'
     return lazyllm.ifs(make_code(cond), tpath=_build_pipeline(true), fpath=_build_pipeline(false))
 
 
