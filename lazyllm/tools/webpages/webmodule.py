@@ -350,14 +350,12 @@ class WebModule(ModuleBase):
         else:
             self.p = ForkProcess(target=_impl)
             self.p.start()
+        LOG.success(f'LazyLLM webmodule launched successfully: Running on local URL: {self.url}', flush=True)
 
     def _update(self, *, mode=None, recursive=True):
         super(__class__, self)._update(mode=mode, recursive=recursive)
         self._work()
         return self
-
-    def _get_post_process_tasks(self):
-        return pipeline(self._print_url)
 
     def wait(self):
         if hasattr(self, 'p'):
@@ -384,6 +382,3 @@ class WebModule(ModuleBase):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             result = s.connect_ex(('localhost', port))
             return result != 0
-
-    def _print_url(self):
-        LOG.success(f'LazyLLM webmodule launched successfully: Running on local URL: {self.url}', flush=True)

@@ -387,7 +387,8 @@ class Switch(LazyLLMFlowsBase):
         if self._conversion: exp = self._conversion(exp)
 
         for idx, cond in enumerate(self.conds):
-            if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or cond == 'default':
+            if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or (
+                    exp == package((cond,))) or cond == 'default':
                 return self.invoke(self._items[idx], __input, **kw)
 
     class Case:
@@ -521,6 +522,7 @@ class Graph(LazyLLMFlowsBase):
         if isinstance(input, arguments):
             kw = input.kw
             input = input.args
+
         return self.invoke(node.func, input, **kw)
 
     def _run(self, __input, **kw):
