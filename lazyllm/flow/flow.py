@@ -453,7 +453,7 @@ class Graph(LazyLLMFlowsBase):
     def __post_init__(self):
         self._nodes = {n: Graph.Node(f, n) for f, n in zip(self._items, self._item_names)}
         self._nodes[Graph.start_node_name] = Graph.Node(None, Graph.start_node_name)
-        self._nodes[Graph.end_node_name] = Graph.Node(lambda x: x, Graph.end_node_name)
+        self._nodes[Graph.end_node_name] = Graph.Node(lazyllm.Identity(), Graph.end_node_name)
         self._in_degree = {node: 0 for node in self._nodes.values()}
         self._sorted_nodes = None
 
