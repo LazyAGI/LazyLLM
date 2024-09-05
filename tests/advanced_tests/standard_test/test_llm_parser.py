@@ -1,21 +1,25 @@
 import unittest
 from unittest.mock import MagicMock
 from lazyllm import LLMParser, TrainableModule
+from lazyllm.launcher import cleanup
 
 
 class TestLLMParser(unittest.TestCase):
-    def setUp(self):
-        self.llm = TrainableModule("internlm2-chat-7b")
-        self.llm.start()
-
-        self.mock_node = MagicMock()
-        self.mock_node.get_text.return_value = (
+    @classmethod
+    def setup_class(cls):
+        cls.llm = TrainableModule("internlm2-chat-7b").start()
+        cls.mock_node = MagicMock()
+        cls.mock_node.get_text.return_value = (
             "Hello, I am an AI robot developed by SenseTime, named LazyLLM. "
             "My mission is to assist you in building the most powerful large-scale model applications with minimal cost."
         )
 
-        self.summary_parser = LLMParser(self.llm, language="en", task_type="summary")
-        self.keywords_parser = LLMParser(self.llm, language="en", task_type="keywords")
+        cls.summary_parser = LLMParser(cls.llm, language="en", task_type="summary")
+        cls.keywords_parser = LLMParser(cls.llm, language="en", task_type="keywords")
+
+    @classmethod
+    def teardown_class(cls):
+        cleanup()
 
     def test_summary_transform(self):
         result = self.summary_parser.transform(self.mock_node)
