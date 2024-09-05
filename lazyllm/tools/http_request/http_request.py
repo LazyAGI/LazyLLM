@@ -5,7 +5,7 @@ from lazyllm.module.module import ModuleBase
 from lazyllm.tools.http_request.http_executor_response import HttpExecutorResponse
 
 class HttpRequest(ModuleBase):
-    def __init__(self, method, url, api_key, headers, params, body):
+    def __init__(self, method, url, api_key, headers, params, body, timeout=10, proxies=None):
         super().__init__()
         self.method = method
         self.url = url
@@ -13,6 +13,8 @@ class HttpRequest(ModuleBase):
         self.headers = headers
         self.params = params
         self.body = body
+        self.timeout = timeout
+        self.proxies = proxies
         self._process_api_key()
 
     def _process_api_key(self):
@@ -37,11 +39,14 @@ class HttpRequest(ModuleBase):
 
         self.url = _map_input(self.url)
         self.body = _map_input(self.body)
-        self.params = {key: _map_input(value) for key, value in self.params.items()}
-        self.headers = {key: _map_input(value) for key, value in self.headers.items()}
+        if self.params:
+            self.params = {key: _map_input(value) for key, value in self.params.items()}
+        if self.headers:
+            self.headers = {key: _map_input(value) for key, value in self.headers.items()}
 
         http_response = httpx.request(method=self.method, url=self.url, headers=self.headers,
-                                      params=self.params, data=self.body)
+                                      params=self.params, data=self.body, timeout=self.timeout,
+                                      proxies=self.proxies)
         response = HttpExecutorResponse(http_response)
 
         _, file_binary = response.extract_file()
