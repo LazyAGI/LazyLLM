@@ -16,7 +16,7 @@ import re
 import platform
 
 import lazyllm
-from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule, ForkProcess, pipeline
+from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule, ForkProcess
 from ...module.module import ModuleBase
 
 
