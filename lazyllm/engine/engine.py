@@ -24,8 +24,7 @@ class Engine(object):
     def __new__(cls):
         if cls is not Engine:
             return super().__new__(cls)
-        obj = Engine.__default_engine__()
-        return obj
+        return Engine.__default_engine__()
 
     @classmethod
     def set_default(cls, engine: Type):
