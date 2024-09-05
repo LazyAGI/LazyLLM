@@ -515,7 +515,7 @@ add_example('UrlModule', '''\
 >>> import lazyllm
 >>> def demo(input): return input * 2
 ... 
->>> s = lazyllm.ServerModule(demo, launcher=launchers.empty(sync=False))
+>>> s = lazyllm.ServerModule(demo, launcher=lazyllm.launchers.empty(sync=False))
 >>> s.start()
 INFO:     Uvicorn running on http://0.0.0.0:35485
 >>> u = lazyllm.UrlModule(url=s._url)

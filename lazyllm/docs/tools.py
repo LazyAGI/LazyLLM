@@ -708,7 +708,7 @@ add_example('ReWOOAgent', """\
 ...     '''
 ...     try:
 ...         evidence = wikipedia.page(input).content
-...         evidence = evidence.split("\n\n")[0]
+...         evidence = evidence.split("\\\\n\\\\n")[0]
 ...     except wikipedia.PageError:
 ...         evidence = f"Could not find [{input}]. Similar: {wikipedia.search(input)}"
 ...     except wikipedia.DisambiguationError:
@@ -724,7 +724,7 @@ add_example('ReWOOAgent', """\
 ...         input (str): instruction
 ...     '''
 ...     llm = lazyllm.OnlineChatModule(source="glm")
-...     query = f"Respond in short directly with no extra words.\n\n{input}"
+...     query = f"Respond in short directly with no extra words.\\\\n\\\\n{input}"
 ...     response = llm(query, llm_chat_history=[])
 ...     return response
 ...

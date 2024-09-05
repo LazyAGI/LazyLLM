@@ -23,7 +23,7 @@ lazyllm.WebModule(llm, port=23333).start().wait()
 
 实现是不是很简单，只需要定义好模型使用流式，其余工作交给 [WebModule][lazyllm.tools.webpages.WebModule] 来处理即可，则在前端界面上会流式的显示展示给用户的消息。
 
-效果入下：
+效果如下：
 ![Stream_chat_bot](../assets/stream_cookbook_robot.png)
 
 其实使用 [WebModule][lazyllm.tools.webpages.WebModule] 的话，还可以从界面上来控制是否使用流式，即选中或者取消页面左侧 `流式输出` 的选项即可。是不是很简单。
@@ -36,7 +36,7 @@ lazyllm.WebModule(llm, port=23333).start().wait()
 import lazyllm
 from functools import partial
 
-llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True) # or llm = lazyllm.OnlineChatModule(stream=True)
+llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True).start() # or llm = lazyllm.OnlineChatModule(stream=True)
 
 query = "你会哪些技能"
 
@@ -62,6 +62,7 @@ with lazyllm.ThreadPoolExecutor(1) as executor:
 import json
 import lazyllm
 from lazyllm import fc_register
+from typing import Literal
 
 @fc_register("tool")
 def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]='fahrenheit'):
@@ -111,7 +112,7 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 
 ```python
 import lazyllm
-llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True)  # or llm = lazyllm.OnlineChatModule()
+llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True).start()  # or llm = lazyllm.OnlineChatModule()
 ```
 
 此处需要注意， 使用 [TrainableModule][lazyllm.module.TrainableModule] 时，需要明确指定 `stream=True`， 因为它默认的是 `stream=False` ，但是使用 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 时，可以不用指定，因为 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 默认的是 `stream=True` 。
@@ -139,6 +140,7 @@ lazyllm.WebModule(agent, port=23333).start().wait()
 import json
 import lazyllm
 from lazyllm import fc_register, FunctionCallAgent
+from typing import Literal
 
 @fc_register("tool")
 def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]='fahrenheit'):
@@ -181,7 +183,7 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
     else:
         return json.dumps({'location': location, 'temperature': 'unknown'})
 
-llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True)  # or llm = lazyllm.OnlineChatModule()
+llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True).start()  # or llm = lazyllm.OnlineChatModule()
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
 agent = FunctionCallAgent(llm, tools)
 lazyllm.WebModule(agent, port=23333).start().wait()
@@ -196,11 +198,66 @@ lazyllm.WebModule(agent, port=23333).start().wait()
 如果需要把 agent 的中间结果打印出来，不管是 [FunctionCall][lazyllm.tools.agent.FunctionCall] 执行过程中的 LLM 输出结果还是 [ToolManager][lazyllm.tools.agent.ToolManager] 执行结果显示出来，则在定义 LLM 时和定义 agent 时设置 `return_trace` 为 `True`。只需要修改上面代码中的两句即可：
 
 ```python
-llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True, return_trace=True)  # or llm = lazyllm.OnlineChatModule(return_trace=True)
+llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True, return_trace=True).start()  # or llm = lazyllm.OnlineChatModule(return_trace=True)
 agent = FunctionCallAgent(llm, tools, return_trace=True)
 ```
 
 这样就会在界面的左下角的 `处理日志` 里把 [FunctionCall][lazyllm.tools.agent.FunctionCall] 的中间处理结果显示出来了。
+
+完整代码如下：
+
+```python
+import json
+import lazyllm
+from lazyllm import fc_register, FunctionCallAgent
+from typing import Literal
+
+@fc_register("tool")
+def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]='fahrenheit'):
+    """
+    Get the current weather in a given location
+
+    Args:
+        location (str): The city and state, e.g. San Francisco, CA.
+        unit (str): The temperature unit to use. Infer this from the users location.
+    """
+    if 'tokyo' in location.lower():
+        return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
+    elif 'san francisco' in location.lower():
+        return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit'})
+    elif 'paris' in location.lower():
+        return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
+    elif 'beijing' in location.lower():
+        return json.dumps({'location': 'Beijing', 'temperature': '90', 'unit': 'Fahrenheit'})
+    else:
+        return json.dumps({'location': location, 'temperature': 'unknown'})
+
+@fc_register("tool")
+def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"]='fahrenheit'):
+    """
+    Get an N-day weather forecast
+
+    Args:
+        location (str): The city and state, e.g. San Francisco, CA.
+        num_days (int): The number of days to forecast.
+        unit (Literal['celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+    """
+    if 'tokyo' in location.lower():
+        return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
+    elif 'san francisco' in location.lower():
+        return json.dumps({'location': 'San Francisco', 'temperature': '75', 'unit': 'fahrenheit', "num_days": num_days})
+    elif 'paris' in location.lower():
+        return json.dumps({'location': 'Paris', 'temperature': '25', 'unit': 'celsius', "num_days": num_days})
+    elif 'beijing' in location.lower():
+        return json.dumps({'location': 'Beijing', 'temperature': '85', 'unit': 'fahrenheit', "num_days": num_days})
+    else:
+        return json.dumps({'location': location, 'temperature': 'unknown'})
+
+llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True, return_trace=True).start()  # or llm = lazyllm.OnlineChatModule(return_trace=True)
+tools = ["get_current_weather", "get_n_day_weather_forecast"]
+agent = FunctionCallAgent(llm, tools, return_trace=True)
+lazyllm.WebModule(agent, port=23333).start().wait()
+```
 
 效果如下：
 

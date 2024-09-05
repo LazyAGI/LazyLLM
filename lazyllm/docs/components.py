@@ -662,6 +662,21 @@ Main methods: _parse_formatter: parse the index content. _load: Parse the str ob
 add_example('formatter.FormatterBase', '''\
 >>> from lazyllm.components.formatter import FormatterBase
 >>> class MyFormatter(FormatterBase):
+...     def __init__(self, formatter: str = None):
+...         self._formatter = formatter
+...         if self._formatter:
+...             self._parse_formatter()
+...         else:
+...             self._slices = None
+...     def _parse_formatter(self):
+...         slice_str = self._formatter.strip()[1:-1]
+...         slices = []
+...         parts = slice_str.split(":")
+...         start = int(parts[0]) if parts[0] else None
+...         end = int(parts[1]) if len(parts) > 1 and parts[1] else None
+...         step = int(parts[2]) if len(parts) > 2 and parts[2] else None
+...         slices.append(slice(start, end, step))
+...         self._slices = slices
 ...     def _load(self, data):
 ...         return [int(x) for x in data.strip('[]').split(',')]
 ...     def _parse_py_data_by_formatter(self, data):
