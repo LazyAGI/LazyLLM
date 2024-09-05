@@ -1,10 +1,16 @@
 from lazyllm.tools import IntentClassifier
 import lazyllm
+from lazyllm.launcher import cleanup
 
 
 class TestIntentClassifier(object):
-    def setup_method(self):
-        self._llm = lazyllm.TrainableModule('internlm2-chat-7b')
+    @classmethod
+    def setup_class(cls):
+        cls._llm = lazyllm.TrainableModule('internlm2-chat-7b')
+
+    @classmethod
+    def teardown_class(cls):
+        cleanup()
 
     def test_intent_classifier(self):
         intent_list = ["Chat", "Financial Knowledge Q&A", "Employee Information Query", "Weather Query"]
