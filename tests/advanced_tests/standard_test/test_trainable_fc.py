@@ -170,7 +170,7 @@ squery2 = "What will the weather be like in celsius in Paris tomorrow?"
 mquery1 = "What's the weather like today in celsius in Tokyo and Paris."
 mquery2 = "What will the weather be like in fahrenheit in san francisco and beijing tomorrow?"
 agentQuery = "计算 20*(45+23)*4, Calculate step by step."
-rewooquery = "截止到当前美国历届总统就职时年龄最大的是谁"
+rewooquery = "美国历届总统就职时年龄最大的是谁"
 
 class TestTrainableFunctionCall(object):
     @classmethod
