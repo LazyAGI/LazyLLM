@@ -1,21 +1,11 @@
-from dataclasses import dataclass
-from typing import List, Optional, Callable, Dict, Type
+from typing import List, Callable, Dict, Type, Optional, Union
 import lazyllm
 from lazyllm import graph, switch, pipeline
 from lazyllm.tools import IntentClassifier
-from .node import all_nodes
+from .node import all_nodes, Node
 import re
 import ast
 import inspect
-
-
-@dataclass
-class Node():
-    id: int
-    kind: str
-    name: str
-    args: Optional[Dict] = None
-    func: Optional[Callable] = None
 
 
 class CodeBlock(object):
@@ -40,14 +30,20 @@ class Engine(object):
     def set_default(cls, engine: Type):
         cls.__default_engine__ = engine
 
-    def start(self, nodes=[]):
+    def start(self, nodes: List[Dict], edges: List[Dict], resources: List[Dict],
+              gid: Optional[str], name: Optional[str]):
         raise NotImplementedError
 
-    def update(self, changes=[]):
+    def update(self, nodes: List[Dict], changed_nodes: List[Dict], edges: List[Dict],
+               changed_resources: List[Dict], gid: Optional[str], name: Optional[str]):
         raise NotImplementedError
 
     def build_node(self, node) -> Callable:
         return _constructor.build(node)
+
+    def reset(self):
+        self.__init__.flag.reset()
+        self.__init__()
 
 
 class NodeConstructor(object):
@@ -67,7 +63,7 @@ class NodeConstructor(object):
         if node.kind in NodeConstructor.builder_methods:
             createf = NodeConstructor.builder_methods[node.kind]
             r = inspect.getfullargspec(createf)
-            if isinstance(node.args, dict) and set(r.args) == set(node.args.keys()):
+            if isinstance(node.args, dict) and set(node.args.keys()).issubset(set(r.args)):
                 node.func = NodeConstructor.builder_methods[node.kind](**node.args)
             else:
                 node.func = NodeConstructor.builder_methods[node.kind](node.args)
@@ -76,18 +72,21 @@ class NodeConstructor(object):
         node_msgs = all_nodes[node.kind]
         init_args, build_args, other_args = dict(), dict(), dict()
 
+        def get_args(cls, key, value, builder_key=None):
+            node_args = node_msgs[cls][builder_key][key] if builder_key else node_msgs[cls][key]
+            if node_args.type == Node:
+                return Engine().build_node(value).func
+            return node_args.getattr_f(value) if node_args.getattr_f else value
+
         for key, value in node.args.items():
             if key in node_msgs['init_arguments']:
-                getf = node_msgs['init_arguments'][key].getattr_f
-                init_args[key] = getf(value) if getf else value
+                init_args[key] = get_args('init_arguments', key, value)
             elif key in node_msgs['builder_argument']:
-                getf = node_msgs['builder_argument'][key].getattr_f
-                build_args[key] = getf(value) if getf else value
+                build_args[key] = get_args('builder_argument', key, value)
             elif '.' in key:
                 builder_key, key = key.split('.')
                 if builder_key not in other_args: other_args[builder_key] = dict()
-                getf = node_msgs['other_arguments'][builder_key][key].getattr_f
-                other_args[builder_key][key] = getf(value) if getf else value
+                other_args[builder_key][key] = get_args('other_arguments', key, value, builder_key=builder_key)
             else:
                 raise KeyError(f'Invalid key `{key}` found')
 
@@ -103,8 +102,9 @@ _constructor = NodeConstructor()
 
 @NodeConstructor.register('Graph')
 @NodeConstructor.register('SubGraph')
-def make_graph(nodes: List[dict], edges: List[dict]):
+def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = []):
     engine = Engine()
+    resources = [engine.build_node(resource) for resource in resources]
     nodes = [engine.build_node(node) for node in nodes]
 
     with graph() as g:
@@ -146,6 +146,7 @@ def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
             sw.case[cond::f]
     return sw
 
+
 @NodeConstructor.register('Intention')
 def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
     with IntentClassifier(Engine().build_node(base_model)) as ic:
@@ -156,3 +157,25 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
                 f = Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
             ic.case[cond::f]
     return ic
+
+
+@NodeConstructor.register('Document')
+def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False, node_group: List = []):
+    document = lazyllm.tools.rag.Document(dataset_path, Engine().build_node(embed) if embed else None, create_ui)
+    for group in node_group:
+        if group['transform'] == 'LLMParser': group['llm'] = Engine().build_node(group['llm']).func
+        elif group['transform'] == 'FuncNode': group['function'] = Engine().build_node(group['function']).func
+        document.create_node_group(**group)
+    return document
+
+@NodeConstructor.register('Reranker')
+def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
+                  output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
+    return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
+
+@NodeConstructor.register('JoinFormatter')
+def make_join_formatter(method='sum'):
+    def impl(*args):
+        assert len(args) > 0, 'Cannot sum empty inputs'
+        return sum(args, type(args[0])())
+    return impl

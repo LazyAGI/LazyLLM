@@ -1,6 +1,12 @@
 from lazyllm import LightEngine
+import pytest
 
 class TestEngine(object):
+
+    @pytest.fixture(autouse=True)
+    def run_around_tests(self):
+        yield
+        LightEngine().reset()
 
     def test_engine_subgraph(self):
         nodes = [dict(id='1', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
@@ -54,3 +60,38 @@ class TestEngine(object):
         engine.start(nodes, edges)
         assert engine.run(1) == '1[2, 4]1'
         assert engine.run(2) == '2[4, 8]4'
+
+
+class TestEngineRAG(object):
+
+    def test_rag(self):
+        resources = [dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master'))]
+        nodes = [dict(id='1', kind='Retriever', name='ret1',
+                      args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
+                 dict(id='4', kind='Reranker', name='rek1',
+                      args=dict(type='ModuleReranker', output_format='content', join=True,
+                                arguments=dict(model="bge-reranker-large", topk=1))),
+                 dict(id='5', kind='Code', name='c1',
+                      args='def test(nodes, query): return f\'context_str={nodes}, query={query}\''),
+                 dict(id='6', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='4'), dict(iid='__start__', oid='4'),
+                 dict(iid='4', oid='5'), dict(iid='__start__', oid='5'), dict(iid='5', oid='6'),
+                 dict(iid='6', oid='__end__')]
+        engine = LightEngine()
+        engine.start(nodes, edges, resources)
+        assert '观天之道，执天之行' in engine.run('何为天道?')
+
+        # test add doc_group
+        changed_resources = [dict(id='0', kind='Document', name='d1', args=dict(
+            dataset_path='rag_master', node_group=[dict(name='sentence', transform='SentenceSplitter',
+                                                        chunk_size=100, chunk_overlap=10)]))]
+        changed_nodes = [dict(id='2', kind='Retriever', name='ret2',
+                              args=dict(doc='0', group_name='sentence', similarity='bm25', topk=3)),
+                         dict(id='3', kind='JoinFormatter', name='c', args=dict(method='sum'))]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='1', oid='3'),
+                 dict(iid='2', oid='3'), dict(iid='3', oid='4'), dict(iid='__start__', oid='4'),
+                 dict(iid='4', oid='5'), dict(iid='__start__', oid='5'), dict(iid='5', oid='6'),
+                 dict(iid='6', oid='__end__')]
+        engine = LightEngine()
+        engine.update(nodes + changed_nodes, changed_nodes, edges, changed_resources)
+        assert '观天之道，执天之行' in engine.run('何为天道?')

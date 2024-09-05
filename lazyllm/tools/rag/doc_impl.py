@@ -4,10 +4,12 @@ from functools import wraps
 from typing import Callable, Dict, List, Optional, Set
 from lazyllm import LOG, config, once_flag, call_once
 from lazyllm.common import LazyLlmRequest
-from .transform import FuncNodeTransform, SentenceSplitter
+from .transform import FuncNodeTransform, SentenceSplitter, LLMParser
 from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, BaseStore
 from .data_loaders import DirectoryReader
 from .index import DefaultIndex
+
+_transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
 
 def embed_wrapper(func):
@@ -78,6 +80,8 @@ class DocImpl:
     ) -> None:
         if name in self.node_groups:
             LOG.warning(f"Duplicate group name: {name}")
+        if isinstance(transform, str):
+            transform = _transmap[transform.lower()]
         assert callable(transform), "transform should be callable"
         self.node_groups[name] = dict(
             transform=transform, transform_kwargs=kwargs, parent_name=parent

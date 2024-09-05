@@ -176,7 +176,8 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             else:
                 return it(__input, **kw)
         except Exception as e:
-            LOG.error(f'An error occored when invoking `{type(it)}({it})` with input `{__input}` and kw `{kw}`')
+            LOG.error(f'An error occored when invoking `{type(it)}({it})` with '
+                      f'input {type(__input)}`{__input}` and kw `{kw}`')
             error_type, error_message = type(e).__name__, str(e)
             tb_str = ''.join(traceback.format_exception(*sys.exc_info()))
             LOG.debug(f'Error type: {error_type}, Error message: {error_message}\n'
@@ -290,7 +291,7 @@ class Parallel(LazyLLMFlowsBase):
     aslist = property(partial(_set_status, type=PostProcessType.LIST))
     sum = property(partial(_set_status, type=PostProcessType.SUM))
 
-    def join(self, string):
+    def join(self, string=''):
         assert isinstance(string, str), 'argument of join shoule be str'
         return Parallel._set_status(self, type=Parallel.PostProcessType.JOIN, args=string)
 
@@ -329,7 +330,7 @@ class Parallel(LazyLLMFlowsBase):
         elif self._post_process_type == Parallel.PostProcessType.LIST:
             output = list(output)
         elif self._post_process_type == Parallel.PostProcessType.SUM:
-            output = sum(output, type(output[0])())
+            output = ''.join([str(i) for i in output]) if isinstance(output[0], str) else sum(output, type(output[0])())
         elif self._post_process_type == Parallel.PostProcessType.JOIN:
             output = self._post_process_args.join([str(i) for i in output])
         return output
@@ -386,7 +387,8 @@ class Switch(LazyLLMFlowsBase):
         if self._conversion: exp = self._conversion(exp)
 
         for idx, cond in enumerate(self.conds):
-            if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or cond == 'default':
+            if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or (
+                    exp == package((cond,))) or cond == 'default':
                 return self.invoke(self._items[idx], __input, **kw)
 
     class Case:
@@ -512,13 +514,15 @@ class Graph(LazyLLMFlowsBase):
             input = get_input(list(node.inputs.keys())[0])
         else:
             # TODO(wangzhihong): add complex rules: mixture of package / support kwargs / ...
-            input = package(get_input(input) for input in node.inputs.keys())
-            for inp in input:
-                assert not isinstance(inp, (kwargs, package, arguments))
+            inputs = package(get_input(input) for input in node.inputs.keys())
+            input = arguments()
+            for inp in inputs:
+                input.append(inp)
 
         if isinstance(input, arguments):
             kw = input.kw
             input = input.args
+
         return self.invoke(node.func, input, **kw)
 
     def _run(self, __input, **kw):

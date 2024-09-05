@@ -27,10 +27,10 @@ with pipeline() as ppl:
     with parallel().sum as ppl.prl:
         prl.retriever1 = Retriever(documents, group_name="sentences", similarity="cosine", topk=3)
         prl.retriever2 = Retriever(documents, "CoarseChunk", "bm25_chinese", 0.003, topk=3)
-    ppl.reranker = Reranker("ModuleReranker", model="bge-reranker-large", topk=1) | bind(query=ppl.input)
-    ppl.formatter = (lambda nodes, query: dict(context_str="".join([node.get_content() for node in nodes]), query=query)) | bind(query=ppl.input)
+    ppl.reranker = Reranker("ModuleReranker", model="bge-reranker-large", topk=1, output_format='content', join=True) | bind(query=ppl.input)
+    ppl.formatter = (lambda nodes, query: dict(context_str=nodes, query=query)) | bind(query=ppl.input)
     ppl.llm = lazyllm.TrainableModule("internlm2-chat-7b").prompt(lazyllm.ChatPrompter(prompt, extro_keys=["context_str"]))
 
 
 if __name__ == "__main__":
-    lazyllm.WebModule(ppl, port=23456).start().wait()
+    lazyllm.WebModule(ppl, port=range(23466, 24000)).start().wait()
