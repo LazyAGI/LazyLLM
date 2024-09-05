@@ -119,92 +119,90 @@ def LLMWorker(input: str):
 @pytest.fixture()
 def exe_trainable_single_function_call(request):
     params = request.param if hasattr(request, 'param') else {}
-    model = params.get('model', None)
     tools = params.get("tools", [])
     query = params.get("query", "")
+    llm = request.cls.llm
     if not query or not tools:
         raise ValueError(f"query: {query} and {tools} cannot be empty.")
-    llm = lazyllm.TrainableModule(model).deploy_method(deploy.vllm).start()
 
-    print(f"\nStarting test 【{model}】 function calling")
+    print(f"\nStarting test 【{llm}】 function calling")
     fc = FunctionCall(llm, tools)
     ret = fc(query)
     yield ret
-    print(f"\n【{model}】 function calling test done.")
+    print(f"\n【{llm}】 function calling test done.")
 
 @pytest.fixture()
 def exe_trainable_parallel_function_call(request):
     params = request.param if hasattr(request, 'param') else {}
-    model = params.get('model', None)
     tools = params.get("tools", [])
     query = params.get("query", "")
+    llm = request.cls.llm
     if not query or not tools:
         raise ValueError(f"query: {query} and tools: {tools} cannot be empty.")
-    llm = lazyllm.TrainableModule(model).deploy_method(deploy.vllm).start()
 
     agent = FunctionCallAgent(llm, tools)
-    print(f"\nStarting test 【{model}】parallel function calling")
+    print(f"\nStarting test 【{llm}】parallel function calling")
     ret = agent(query)
     yield ret
-    print(f"\n【{model}】parallel function calling test done.")
+    print(f"\n【{llm}】parallel function calling test done.")
 
 @pytest.fixture()
 def exe_trainable_advance_agent(request):
     params = request.param if hasattr(request, 'param') else {}
-    model = params.get('model', None)
     tools = params.get('tools', [])
     query = params.get('query', '')
     Agent = params.get('Agent', None)
+    llm = request.cls.llm
     if not query or not tools:
         raise ValueError(f"query: {query} and tools: {tools} cannot be empty.")
     if Agent is None:
         raise ValueError(f"Agent: {Agent} must be a valid value.")
-    llm = lazyllm.TrainableModule(model).deploy_method(deploy.vllm).start()
 
     agent = Agent(llm, tools)
-    print(f"\nStarting test 【{model}】 {Agent}.")
+    print(f"\nStarting test 【{llm}】 {Agent}.")
     ret = agent(query)
     yield ret
-    print(f"\n【{model}】 {Agent} test done.")
+    print(f"\n【{llm}】 {Agent} test done.")
 
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
 squery1 = "What's the weather like today in celsius in Tokyo."
 squery2 = "What will the weather be like in celsius in Paris tomorrow?"
 mquery1 = "What's the weather like today in celsius in Tokyo and Paris."
 mquery2 = "What will the weather be like in fahrenheit in san francisco and beijing tomorrow?"
-vModels = ['glm-4-9b-chat', 'qwen2-7b-instruct']
-agentQuery = "What is 20+(2*4)? Calculate step by step."
-rewooquery = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
+agentQuery = "计算 20*(45+23)*4, Calculate step by step."
+rewooquery = "美国历届总统就职时年龄最大的是谁"
 
 class TestTrainableFunctionCall(object):
-    @pytest.fixture(autouse=True)
-    def run_around_tests(self):
-        yield
+    @classmethod
+    def setup_class(cls):
+        models = ["internlm2-chat-20b", "glm-4-9b-chat", "qwen2-7b-instruct", "qwen2-72b-instruct-awq"]
+        model = random.choice(models)
+        cls.llm = lazyllm.TrainableModule(model).deploy_method(deploy.vllm).start()
+
+    @classmethod
+    def teardown_class(cls):
         cleanup()
 
     @pytest.mark.parametrize("exe_trainable_single_function_call",
-                             [{"model": random.choice(vModels), "tools": tools, "query": squery1},
-                              {"model": random.choice(vModels), "tools": tools, "query": squery2}],
+                             [{"tools": tools, "query": squery1},
+                              {"tools": tools, "query": squery2}],
                              indirect=True)
     def test_trainable_single_function_call(self, exe_trainable_single_function_call):
         ret = exe_trainable_single_function_call
         assert isinstance(ret, list)
 
     @pytest.mark.parametrize("exe_trainable_parallel_function_call",
-                             [{"model": random.choice(vModels), 'tools': tools, 'query': mquery1},
-                              {"model": random.choice(vModels), 'tools': tools, 'query': mquery2}],
+                             [{'tools': tools, 'query': mquery1},
+                              {'tools': tools, 'query': mquery2}],
                              indirect=True)
     def test_trainable_parallel_function_call(self, exe_trainable_parallel_function_call):
         ret = exe_trainable_parallel_function_call
         assert isinstance(ret, str)
 
     @pytest.mark.parametrize("exe_trainable_advance_agent",
-                             [{"model": random.choice(['internlm2-chat-20b', 'Qwen1.5-14B-Chat']),
-                               'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, "Agent": ReactAgent},
-                              {"model": random.choice(['internlm2-chat-20b', 'Qwen1.5-14B-Chat']),
-                               'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, "Agent": PlanAndSolveAgent},
-                              {"model": random.choice(['GLM-4-9B-Chat', 'Qwen2-72B-Instruct-AWQ']),
-                               'tools': ['WikipediaWorker', 'LLMWorker'], 'query': rewooquery, "Agent": ReWOOAgent}],
+                             [{'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, "Agent": ReactAgent},
+                              {'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, "Agent": PlanAndSolveAgent},
+                              {'tools': ['WikipediaWorker', 'LLMWorker'], 'query': rewooquery, "Agent": ReWOOAgent}],
                              indirect=True)
     def test_trainable_advance_agent(self, exe_trainable_advance_agent):
         ret = exe_trainable_advance_agent
