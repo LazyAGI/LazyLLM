@@ -54,11 +54,12 @@ def get_nlp_and_matchers(language):
 @Reranker.register_reranker
 def KeywordFilter(
     node: DocNode,
-    required_keys: List[str],
-    exclude_keys: List[str],
+    required_keys: List[str] = [],
+    exclude_keys: List[str] = [],
     language: str = "en",
     **kwargs,
 ) -> Optional[DocNode]:
+    assert required_keys or exclude_keys, 'One of required_keys or exclude_keys should be provided'
     nlp, required_matcher, exclude_matcher = get_nlp_and_matchers(language)
     if required_keys:
         required_matcher.add("RequiredKeywords", list(nlp.pipe(required_keys)))

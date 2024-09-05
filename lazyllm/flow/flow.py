@@ -176,7 +176,8 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             else:
                 return it(__input, **kw)
         except Exception as e:
-            LOG.error(f'An error occored when invoking `{type(it)}({it})` with input `{__input}` and kw `{kw}`')
+            LOG.error(f'An error occored when invoking `{type(it)}({it})` with '
+                      f'input {type(__input)}`{__input}` and kw `{kw}`')
             error_type, error_message = type(e).__name__, str(e)
             tb_str = ''.join(traceback.format_exception(*sys.exc_info()))
             LOG.debug(f'Error type: {error_type}, Error message: {error_message}\n'
@@ -512,9 +513,10 @@ class Graph(LazyLLMFlowsBase):
             input = get_input(list(node.inputs.keys())[0])
         else:
             # TODO(wangzhihong): add complex rules: mixture of package / support kwargs / ...
-            input = package(get_input(input) for input in node.inputs.keys())
-            for inp in input:
-                assert not isinstance(inp, (kwargs, package, arguments))
+            inputs = package(get_input(input) for input in node.inputs.keys())
+            input = arguments()
+            for inp in inputs:
+                input.append(inp)
 
         if isinstance(input, arguments):
             kw = input.kw

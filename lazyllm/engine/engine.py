@@ -31,10 +31,12 @@ class Engine(object):
     def set_default(cls, engine: Type):
         cls.__default_engine__ = engine
 
-    def start(self, nodes=[]):
+    def start(self, nodes: List[Dict], edges: List[Dict], resources: List[Dict],
+              gid: Optional[str], name: Optional[str]):
         raise NotImplementedError
 
-    def update(self, changes=[]):
+    def update(self, nodes: List[Dict], changed_nodes: List[Dict], edges: List[Dict],
+               changed_resources: List[Dict], gid: Optional[str], name: Optional[str]):
         raise NotImplementedError
 
     def build_node(self, node) -> Callable:
@@ -159,15 +161,22 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
 
 
 @NodeConstructor.register('Document')
-def make_document(dataset_path: str, embed: Node, create_ui: bool, node_group: List):
-    document = lazyllm.tools.rag.Document(dataset_path, Engine().build_node(embed), create_ui)
+def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False, node_group: List = []):
+    document = lazyllm.tools.rag.Document(dataset_path, Engine().build_node(embed) if embed else None, create_ui)
     for group in node_group:
-        if group['name'] == 'summary': group['llm'] = Engine().build_node(group['llm'])
+        if group['transform'] == 'LLMParser': group['llm'] = Engine().build_node(group['llm']).func
+        elif group['transform'] == 'FuncNode': group['function'] = Engine().build_node(group['function']).func
         document.create_node_group(**group)
     return document
 
-
 @NodeConstructor.register('Reranker')
-def make_reranker(name: str = 'ModuleReranker', target: Optional[str] = None,
+def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
                   output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
-    return lazyllm.tools.Reranker(name, target=target, output_format=output_format, join=join, **arguments)
+    return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
+
+@NodeConstructor.register('JoinFormatter')
+def make_join_formatter(method='sum'):
+    def impl(*args):
+        assert len(args) > 0, 'Cannot sum empty inputs'
+        return sum(args, type(args[0])())
+    return impl

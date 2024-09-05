@@ -86,7 +86,7 @@ class DocNode:
         )
 
     def __repr__(self) -> str:
-        return str(self) if config["debug"] else self.uid
+        return str(self) if config["debug"] else f'<Node id={self.uid}>'
 
     def has_embedding(self) -> bool:
         return self.embedding and self.embedding[0] != -1  # placeholder
@@ -211,7 +211,7 @@ class ChromadbStore(BaseStore):
             group: self._db_client.get_or_create_collection(group)
             for group in node_groups
         }
-        self._placeholder = [-1] * len(embed("a"))
+        self._placeholder = [-1] * len(embed("a")) if embed else []
 
     def try_load_store(self) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:
