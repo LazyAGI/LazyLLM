@@ -125,6 +125,7 @@ def make_subapp(nodes: List[dict], edges: List[dict]):
     return make_graph(nodes, edges)
 
 
+# Note: It will be very dangerous if provided to C-end users as a SAAS service
 @NodeConstructor.register('Code')
 def make_code(code):
     fname = re.search(r'def\s+(\w+)\s*\(', code).group(1)
@@ -135,16 +136,37 @@ def make_code(code):
     return local_dict[fname]
 
 
+def _build_pipeline(nodes):
+    if isinstance(nodes, list) and len(nodes) > 1:
+        return pipeline([Engine().build_node(node).func for node in nodes])
+    else:
+        return Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
+
+
 @NodeConstructor.register('Switch')
 def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     with switch(judge_on_full_input=judge_on_full_input) as sw:
         for cond, nodes in nodes.items():
-            if isinstance(nodes, list) and len(nodes) > 1:
-                f = pipeline([Engine().build_node(node).func for node in nodes])
-            else:
-                f = Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
-            sw.case[cond::f]
+            sw.case[cond::_build_pipeline(nodes)]
     return sw
+
+
+@NodeConstructor.register('Warp')
+def make_warp(nodes: List[dict], edges: List[dict], resources: List[dict] = []):
+    return lazyllm.warp(make_graph(nodes, edges, resources))
+
+
+@NodeConstructor.register('Loop')
+def make_loop(stop_condition: str, judge_on_full_input: bool, nodes: List[dict],
+              edges: List[dict], resources: List[dict] = []):
+    stop_condition = make_code(stop_condition)
+    return lazyllm.loop(make_graph(nodes, edges, resources), stop_condition=stop_condition,
+                        judge_on_full_input=judge_on_full_input)
+
+
+@NodeConstructor.register('Ifs')
+def make_ifs(cond: str, judge_on_full_input: bool, true: List[dict], false: List[dict]):
+    return lazyllm.ifs(make_code(cond), tpath=_build_pipeline(true), fpath=_build_pipeline(false))
 
 
 @NodeConstructor.register('Intention')
@@ -164,7 +186,7 @@ def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False
     document = lazyllm.tools.rag.Document(dataset_path, Engine().build_node(embed) if embed else None, create_ui)
     for group in node_group:
         if group['transform'] == 'LLMParser': group['llm'] = Engine().build_node(group['llm']).func
-        elif group['transform'] == 'FuncNode': group['function'] = Engine().build_node(group['function']).func
+        elif group['transform'] == 'FuncNode': group['function'] = make_code(group['function'])
         document.create_node_group(**group)
     return document
 
