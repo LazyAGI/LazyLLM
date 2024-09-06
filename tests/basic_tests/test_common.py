@@ -1,5 +1,5 @@
 import lazyllm
-from lazyllm.common import ArgsDict
+from lazyllm.common import ArgsDict, compile_code
 import random
 import time
 import pytest
@@ -63,6 +63,17 @@ class TestCommon(object):
         r2 = lazyllm.make_repr('b', 2)
         rr = lazyllm.make_repr('c', 3, subs=[r1, r2])
         assert rr == '<c type=3>\n |- <a type=1>\n └- <b type=2>\n'
+
+    def test_compile_code(self):
+        str1 = "def identity(v): return v"
+        identity = compile_code(str1)
+        assert identity("abc") == "abc"
+        assert identity(12345) == 12345
+
+        str2 = "def square(v): return v * v"
+        square = compile_code(str2)
+        assert square(3) == 9
+        assert square(18) == 324
 
 
 class TestCommonGlobals(object):

@@ -11,6 +11,7 @@ from .agent import (
 )
 from .classifier import IntentClassifier
 from .sql import SQLiteTool, SqlModule
+from .tools import Tool
 
 __all__ = [
     "Document",
@@ -29,4 +30,5 @@ __all__ = [
     "SentenceSplitter",
     "SQLiteTool",
     "SqlModule",
+    "Tool",
 ]

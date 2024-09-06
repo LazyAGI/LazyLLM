@@ -2,9 +2,8 @@ from typing import List, Callable, Dict, Type, Optional, Union
 import lazyllm
 from lazyllm import graph, switch, pipeline
 from lazyllm.tools import IntentClassifier
+from lazyllm.common import compile_code
 from .node import all_nodes, Node
-import re
-import ast
 import inspect
 
 
@@ -127,12 +126,7 @@ def make_subapp(nodes: List[dict], edges: List[dict]):
 
 @NodeConstructor.register('Code')
 def make_code(code):
-    fname = re.search(r'def\s+(\w+)\s*\(', code).group(1)
-    module = ast.parse(code)
-    code = compile(module, filename="<ast>", mode="exec")
-    local_dict = {}
-    exec(code, {}, local_dict)
-    return local_dict[fname]
+    return compile_code(code)
 
 
 @NodeConstructor.register('Switch')
