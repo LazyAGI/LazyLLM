@@ -11,7 +11,7 @@ from .agent import (
 )
 from .classifier import IntentClassifier
 from .sql import SQLiteTool, SqlModule
-from .tools import Tool
+from .tools.http_tool import HttpTool
 
 __all__ = [
     "Document",
@@ -30,5 +30,5 @@ __all__ = [
     "SentenceSplitter",
     "SQLiteTool",
     "SqlModule",
-    "Tool",
+    "HttpTool",
 ]

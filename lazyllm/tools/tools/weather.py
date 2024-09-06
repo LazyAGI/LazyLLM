@@ -1,52 +1,41 @@
 import json
 import httpx
-from lazyllm.module.module import ModuleBase
-from lazyllm.tools.http_request import HttpRequest
+from lazyllm.tools.tools import HttpTool
 from functools import lru_cache
-from typing import Dict
+from typing import Dict, Optional
 
+# assumes the city name is unique
 @lru_cache(maxsize=None)
-def get_city_list():
-    province_list = []
+def get_city2code():
+    city2code = {}
 
     res = httpx.get('http://nmc.cn/rest/province')
     provinces = json.loads(res.text)
     for prov in provinces:
-        city_list = []
-
         url = f'http://nmc.cn/rest/province/{prov["code"]}'
         res = httpx.get(url)
         cities = json.loads(res.text)
         for c in cities:
-            city_list.append({
-                'code': c['code'],
-                'name': c['city'],
-            })
+            city2code[c['city']] = c['code']
 
-        province_list.append({
-            'code': prov['code'],
-            'name': prov['name'],
-            'city_list': city_list,
-        })
-
-    return province_list
+    return city2codee
 
 
-class Weather(ModuleBase):
-    def __init__(self):
-        super().__init__()
+class Weather(HttpTool):
+    def __init__(self, post_process_code: Optional[str] = None):
+        self.city2code = get_city2code()
+        url = 'http://www.nmc.cn/rest/real/{{city_code}}'
+        super().__init__(method='GET', url=url, post_process_code=post_process_code)
 
-    @staticmethod
-    def get_city_list():
-        return get_city_list()
+    def forward(self, city_name: str) -> Optional[Dict]:
+        city_code = city2code.get(city_name)
+        if not city_code:
+            return None
 
-    def forward(self, cityid) -> Dict:
-        url = f'http://www.nmc.cn/rest/real/{cityid}'
-        req = HttpRequest(method='GET', url=url, params=None,
-                          api_key='', headers=None, body=None)
-        return req()
+        return super().forward(city_code=city_code)
 
 
 if __name__ == '__main__':
     weather = Weather()
-    res = weather('fElIR')
+    res = weather('海淀')
+    print(res)
