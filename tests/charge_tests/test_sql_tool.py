@@ -8,7 +8,7 @@ from lazyllm import LightEngine
 import os
 
 
-class TestSqlTool(unittest.TestCase):
+class TestSQLiteTool(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         filepath = str(Path(tempfile.gettempdir()) / f"{str(uuid.uuid4().hex)}.db")
