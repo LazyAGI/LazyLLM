@@ -21,6 +21,9 @@ concurrency:
 
 jobs:
   Clone:
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
     runs-on: tps_sco_nv
     steps:
       - name: Checkout code
@@ -69,7 +72,7 @@ jobs:
           export LAZYLLM_SCO_WORKSPACE=expert-services
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-          python -m pytest -vx tests/basic_tests/
+          python -m pytest --lf --last-failed-no-failures=all -v tests/basic_tests/
 
   AdvancedStandardTests:
     runs-on: tps_sco_nv
@@ -89,7 +92,7 @@ jobs:
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           source ~/ENV/env.sh
-          python -m pytest -vx tests/advanced_tests/standard_test/
+          python -m pytest --lf --last-failed-no-failures=all -v tests/advanced_tests/standard_test/
 
   AdvancedFullTests:
     runs-on: tps_sco_nv
@@ -107,7 +110,7 @@ jobs:
           export LAZYLLM_SCO_WORKSPACE=expert-services
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-          python -m pytest -vx tests/advanced_tests/full_test/
+          python -m pytest --lf --last-failed-no-failures=all -v tests/advanced_tests/full_test/
 
   ChargeTests:
     runs-on: tps_sco_nv
@@ -121,4 +124,4 @@ jobs:
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           source ~/ENV/env.sh
-          python -m pytest -vx tests/charge_tests
+          python -m pytest --lf --last-failed-no-failures=all -v tests/charge_tests
