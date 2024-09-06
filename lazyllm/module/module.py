@@ -9,6 +9,7 @@ import codecs
 import inspect
 import functools
 from datetime import datetime
+from multiprocessing import Lock
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
 from typing import Dict, List, Any, Union
 
@@ -21,6 +22,7 @@ from ..flow import FlowBase, Pipeline, Parallel
 import uuid
 from ..client import get_redis, redis_client
 
+lock = Lock()
 
 class ModuleBase(object):
     builder_keys = []  # keys in builder support Option by default
@@ -462,15 +464,13 @@ class _TrainableModuleImpl(ModuleBase):
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
         self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model)
-        self._target_path = target_path
+        self._target_path = target_path if target_path else os.path.join(os.getcwd(), 'save_ckpt')
         self._train, self._finetune, self._deploy = train, finetune, deploy
         self._stream = stream
         self._father = []
         self._launchers = []
         self._deployer = None
-        self.use_latest_target_path = False
-        self.specific_target_path = None
-        self.finetuned_models_list = []
+        self._specific_target_path = None
 
     def _add_father(self, father):
         if father not in self._father: self._father.append(father)
@@ -499,21 +499,39 @@ class _TrainableModuleImpl(ModuleBase):
             raise RuntimeError('mode must be train or finetune')
 
         def after_train(real_target_path):
-            self.use_latest_target_path = True
-            self.finetuned_models_list.append(real_target_path)
+            self._finetuned_model_path = real_target_path
+            with lock:
+                with open(os.path.join(self._target_path, '.finetuned_models_list'), 'a') as file:
+                    file.write(real_target_path + '\n')
             return real_target_path
         return Pipeline(trainset_getf, train, after_train)
 
     def _get_all_finetuned_models(self):
-        return self.finetuned_models_list
+        valid_paths = []
+        invalid_paths = []
+        with open(os.path.join(self._target_path, '.finetuned_models_list'), 'r') as file:
+            for line in file:
+                path = line.strip()
+                if os.path.exists(path) and \
+                    any(filename.endswith('.bin') or filename.endswith('.safetensors')
+                        for filename in os.listdir(path)):
+                    valid_paths.append(path)
+                else:
+                    invalid_paths.append(path)
+        return valid_paths, invalid_paths
 
     def _set_specific_finetuned_model(self, model_path):
-        if model_path in self.finetuned_models_list:
-            self.specific_target_path = model_path
-        else:
-            LOG.warning(f'Model Path: {model_path} not in list: {self.finetuned_models_list}. '
+        valid_paths, invalid_paths = self._get_all_finetuned_models()
+        if model_path in valid_paths:
+            self._specific_target_path = model_path
+        elif model_path in invalid_paths:
+            LOG.warning(f'Model Path: {model_path} in list, but the path is invalid. '
                         'Base Model will be used to deploy.')
-            self.specific_target_path = None
+            self._specific_target_path = None
+        else:
+            LOG.warning(f'Model Path: {model_path} not in list: {valid_paths}. '
+                        'Base Model will be used to deploy.')
+            self._specific_target_path = None
 
     @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
@@ -526,12 +544,11 @@ class _TrainableModuleImpl(ModuleBase):
             self._deployer = self._deploy(stream=self._stream, **self._deploy_args)
 
         def before_deploy(*no_use_args):
-            if self.use_latest_target_path:
-                assert self.finetuned_models_list
-                target_path = self.finetuned_models_list[-1]
-                self.use_latest_target_path = False
-            elif self.specific_target_path:
-                target_path = self.specific_target_path
+            if hasattr(self, '_finetuned_model_path') and self._finetuned_model_path:
+                target_path = self._finetuned_model_path
+                self._finetuned_model_path = None
+            elif self._specific_target_path:
+                target_path = self._specific_target_path
             else:
                 target_path = ''
             return lazyllm.package(target_path, self._base_model)
