@@ -489,6 +489,8 @@ class _TrainableModuleImpl(ModuleBase):
         trainset_getf = lambda: lazyllm.package(self._trainset, None) \
             if isinstance(self._trainset, str) else self._trainset  # noqa E731
         target_path = self._generate_target_path()
+        if not os.path.exists(target_path):
+            os.system(f'mkdir -p {target_path}')
         if self._mode == 'train':
             args = self._get_args('train', disable=['base_model', 'target_path'])
             train = self._train(base_model=self._base_model, target_path=target_path, **args)
