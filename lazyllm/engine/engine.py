@@ -290,7 +290,6 @@ def make_shared_llm(llm: str, prompt: Optional[str] = None):
 def make_sql_tool(db_type: str, conn_url: str):
     return SqlTool(db_type, conn_url)
 
-
 @NodeConstructor.register("SqlCall")
 def make_sql_call(db_type: str, conn_url: str, base_model: str, tables: list, tables_desc: str, sql_examples: str):
     return SqlModule(Engine().build_node(base_model), SqlTool(db_type, conn_url), tables, tables_desc, sql_examples)
