@@ -1,7 +1,12 @@
 from typing import List, Callable, Dict, Type, Optional, Union
 import lazyllm
+<<<<<<< HEAD
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier, SqlTool, SqlModule
+=======
+from lazyllm import graph, switch, pipeline
+from lazyllm.tools import IntentClassifier
+>>>>>>> 0a70b8e (fix lint problem)
 from .node import all_nodes, Node
 import re
 import ast
@@ -322,3 +327,11 @@ def make_sql_call_dummy(db_type: str, conn_url: str, tables: list, tables_desc: 
     dummy_llm = DummyLLM(_llm_dummy_generate)
     sql_module = SqlModule(dummy_llm, SqlTool(db_type, conn_url), tables, tables_desc, sql_examples)
     return sql_module
+
+@NodeConstructor.register('JoinFormatter')
+def make_join_formatter(method='sum'):
+    def impl(*args):
+        assert len(args) > 0, 'Cannot sum empty inputs'
+        return sum(args, type(args[0])())
+
+    return impl
