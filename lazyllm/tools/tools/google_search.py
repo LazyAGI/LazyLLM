@@ -24,28 +24,10 @@ class GoogleSearch(HttpTool):
                 start: int = 0, num: int = 10,
                 search_engine_id: Optional[str] = None) -> Optional[Dict]:
         params = {
-            'cx': search_engine_id if search_engine_id else self.search_engine_id,
-            'q': query,
-            'dateRestrict': date_restrict,
-            'start': str(start),
-            'num': str(num),
+            'search_engine_id': search_engine_id if search_engine_id else self.search_engine_id,
+            'query': query,
+            'date_restrict': date_restrict,
+            'start': start,
+            'num': num,
         }
         return super().forward(**params)
-
-
-if __name__ == '__main__':
-    key = '<custom search api key>',
-    cx = '<search engine id>',
-    proxies = {
-        "http://": "<http_proxy>",
-        "https://": "<https_proxy>",
-    }
-    params = {
-        'query': '商汤科技',
-        'date_restrict': 'm1',
-        'start': 0,
-        'num': 10,
-    }
-    google = GoogleSearch(key, cx, proxies=proxies)
-    res = google(**params)
-    print(res)

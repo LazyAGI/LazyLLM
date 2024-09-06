@@ -7,9 +7,3 @@ class Calculator(ModuleBase):
 
     def forward(self, exp: str, *args, **kwargs):
         return eval(exp)
-
-
-if __name__ == '__main__':
-    calc = Calculator()
-    ret = calc('fabs(-5.0)')
-    print(ret)

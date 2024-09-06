@@ -33,9 +33,3 @@ class Weather(HttpTool):
             return None
 
         return super().forward(city_code=city_code)
-
-
-if __name__ == '__main__':
-    weather = Weather()
-    res = weather('海淀')
-    print(res)
