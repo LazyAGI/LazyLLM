@@ -519,11 +519,6 @@ class _TrainableModuleImpl(ModuleBase):
     def _get_deploy_tasks(self):
         if self._deploy is None: return None
 
-        # target_path = self._target_path
-        # if os.path.basename(self._target_path) != 'merge':
-        #     merge_path = os.path.join(self._target_path, 'merge')
-        #     if self._mode and os.path.exists(merge_path): target_path = os.path.abspath(merge_path)
-
         if self._deploy is lazyllm.deploy.AutoDeploy:
             self._deployer = self._deploy(base_model=self._base_model, stream=self._stream, **self._deploy_args)
             self._set_template(self._deployer)
