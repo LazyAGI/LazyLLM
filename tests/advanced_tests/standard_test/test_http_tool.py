@@ -1,4 +1,3 @@
-from lazyllm.module import ModuleBase
 from lazyllm.tools import HttpTool
 
 class TestHttpTool(object):
