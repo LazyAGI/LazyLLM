@@ -4,9 +4,11 @@ import lazyllm
 import tempfile
 from pathlib import Path
 import uuid
+from lazyllm import LightEngine
+import os
 
 
-class TestSQLiteTool(unittest.TestCase):
+class TestSqlTool(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         filepath = str(Path(tempfile.gettempdir()) / f"{str(uuid.uuid4().hex)}.db")
@@ -87,14 +89,31 @@ class TestSQLiteTool(unittest.TestCase):
         self.assertIn("张三", str_results)
 
 
-class TestSqlTool(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        # Recommend to use sensenova, gpt-4o, qwen online model
-        cls.sql_llm = lazyllm.OnlineChatModule(source="sensenova")
-
-    def test_all_api(self):
-        db
+class TestSqlCallInEngine(unittest.TestCase):
+    def test_sql_call(self):
+        db_types = ["PostgreSQL"]
+        for db_type in db_types:
+            env_key = f"LAZYLLM_{db_type.replace(' ', '_')}_URL"
+            conn_url = os.environ.get(env_key, None)
+            assert conn_url is not None
+            resources = [
+                dict(id="0", kind="SqlTool", name="sql_tool", args=dict(db_type=db_type, conn_url=conn_url)),
+                dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="sensenova")),
+            ]
+            nodes = [
+                dict(
+                    id="2",
+                    kind="SqlCall",
+                    name="sql_call",
+                    args=dict(sql_tool="0", llm="1", tables=[], tables_desc="", sql_examples=""),
+                )
+            ]
+            edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
+            engine = LightEngine()
+            engine.start(nodes, edges, resources)
+            str_answer = engine.run("员工编号是3的人来自哪个部门？")
+            print(str_answer)
+            assert "销售三部" in str_answer
         pass
 
 

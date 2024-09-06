@@ -216,7 +216,7 @@ class SqlModule(ModuleBase):
         self._pattern = re.compile(r"```sql(.+?)```", re.DOTALL)
         with pipeline() as sql_execute_ppl:
             sql_execute_ppl.exec = self._sql_tool.get_query_result_in_json
-            if not use_llm_for_sql_result:
+            if use_llm_for_sql_result:
                 sql_execute_ppl.concate = (lambda q, r: [q, r]) | bind(sql_execute_ppl.input, _0)
                 sql_execute_ppl.llm_answer = self._llm_answer
         with pipeline() as ppl:

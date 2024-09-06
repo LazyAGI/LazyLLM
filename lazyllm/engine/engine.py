@@ -294,3 +294,32 @@ def make_sql_tool(db_type: str, conn_url: str):
 @NodeConstructor.register("SqlCall")
 def make_sql_call(db_type: str, conn_url: str, base_model: str, tables: list, tables_desc: str, sql_examples: str):
     return SqlModule(Engine().build_node(base_model), SqlTool(db_type, conn_url), tables, tables_desc, sql_examples)
+
+@NodeConstructor.register("SqlCallDummy")
+def make_sql_call_dummy(db_type: str, conn_url: str, tables: list, tables_desc: str, sql_examples: str):
+    import uuid
+
+    class DummyLLM:
+        def __init__(self, func):
+            self.func = func
+            self._module_id = str(uuid.uuid4())
+
+        def share(self, prompt):
+            return self
+
+        def __call__(self, x):
+            print(f"Input is: {x}")
+            output = self.func(x)
+            print(f"Output is: {output}")
+            return output
+
+    def _llm_dummy_generate(x):
+        print(f"DUMMY LLM INPUT: {x}")
+        if "employee" in x:
+            return x
+        else:
+            return "```sql\nSELECT department from employee WHERE employee_id=1;\n```"
+
+    dummy_llm = DummyLLM(_llm_dummy_generate)
+    sql_module = SqlModule(dummy_llm, SqlTool(db_type, conn_url), tables, tables_desc, sql_examples)
+    return sql_module

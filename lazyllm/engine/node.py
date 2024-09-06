@@ -130,3 +130,21 @@ all_nodes['Reranker'] = dict(
         }
     )
 )
+
+
+all_nodes["SqlTool"] = dict(
+    module=lazyllm.tools.SqlTool, init_arguments=dict(db_type=NodeArgs(str, None), conn_url=NodeArgs(str, None))
+)
+
+all_nodes["SqlCall"] = dict(
+    module=lazyllm.tools.SqlModule,
+    init_arguments=dict(
+        sql_tool=NodeArgs(Node),
+        llm=NodeArgs(Node),
+        tables=NodeArgs(list, []),
+        tables_desc=NodeArgs(str, ""),
+        sql_examples=NodeArgs(str, ""),
+        use_llm_for_sql_result=NodeArgs(bool, True),
+        return_trace=NodeArgs(bool, True),
+    ),
+)
