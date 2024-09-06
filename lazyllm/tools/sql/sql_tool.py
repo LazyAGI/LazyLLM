@@ -2,7 +2,7 @@
 from lazyllm.module import ModuleBase
 import sqlite3
 import lazyllm
-from lazyllm.components import ChatPrompter, AlpacaPrompter
+from lazyllm.components import ChatPrompter
 from lazyllm.tools.utils import chat_history_to_str
 from lazyllm import pipeline, globals, bind, LOG, _0, switch
 import json5 as json
@@ -10,32 +10,74 @@ from typing import List, Any, Dict, Union
 from pathlib import Path
 import datetime
 import re
-from abc import ABC, abstractmethod
+import sqlalchemy
+from sqlalchemy.exc import SQLAlchemyError, OperationalError
+from sqlalchemy.schema import CreateTable
 
 
-class SqlTool(ABC):
-    def __init__(self) -> None:
-        self.db_type = "UNKNOWN"
+class SqlTool:
+    DB_TYPE_SUPPORTED = set(["PostgreSQL", "MySQL", "MS SQL"])
 
-    @abstractmethod
-    def __del__(self):
-        pass
+    def __init__(self, db_type: str, conn_url: str) -> None:
+        self.reset_db(db_type, conn_url)
 
-    @abstractmethod
-    def create_tables(self, tabes_info: dict):
-        pass
+    def reset_db(self, db_type: str, conn_url: str):
+        assert db_type in self.DB_TYPE_SUPPORTED
+        extra_fields = {}
+        if "?" in conn_url:
+            npos = conn_url.find("?")
+            str_extra = conn_url[npos + 1 :]
+            extra_fields = {key: value for key_value in str_extra.split("&") for key, value in (key_value.split("="),)}
+            conn_url = conn_url[0:npos]
 
-    @abstractmethod
-    def sql_update(self, sql_script):
-        pass
+        self.db_type = db_type
+        self.conn_url = conn_url
+        self.extra_fields = extra_fields
+        self.engine = sqlalchemy.create_engine(conn_url)
 
-    @abstractmethod
-    def get_query_result_in_json(self, sql_script):
-        pass
+    def check_connection(self) -> tuple[bool, str]:
+        try:
+            with self.engine.connect() as _:
+                return True, "Success"
+        except SQLAlchemyError as e:
+            return False, str(e)
 
-    @abstractmethod
-    def get_all_tables(self) -> str:
-        pass
+    def get_query_result_in_json(self, sql_script) -> str:
+        str_result = ""
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(sqlalchemy.text(sql_script))
+                columns = result.keys()
+                result_dict = [dict(zip(columns, row)) for row in result]
+                str_result = json.dumps(result_dict, ensure_ascii=False)
+        except OperationalError as e:
+            str_result = f"ERROR: {str(e)}"
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return str_result
+
+    def get_all_tables(self) -> list:
+        inspector = sqlalchemy.inspect(self.engine)
+        table_names = inspector.get_table_names(schema=self.extra_fields.get("schema", None))
+        return table_names
+
+    def get_tables_desc(self, tables: list = None) -> str:
+        if tables is None or len(tables) == 0:
+            tables = self.get_all_tables()
+        metadata = sqlalchemy.MetaData()
+        metadata.reflect(bind=self.engine)
+        str_desc = ""
+        for table_name in tables:
+            cur_table = sqlalchemy.Table(table_name, metadata, autoload_with=self.engine)
+            creation_sql = str(CreateTable(cur_table).compile(self.engine))
+            str_desc += creation_sql + "\n"
+        return str_desc
+
+    def get_table_columns(self, table_name: str):
+        inspector = sqlalchemy.inspect(self.engine)
+        columns = inspector.get_columns(table_name, schema=self.extra_fields.get("schema", None))
+        return columns
 
 
 class SQLiteTool(SqlTool):
@@ -76,7 +118,7 @@ class SQLiteTool(SqlTool):
         if self.conn:
             self.conn.close()
 
-    def get_all_tables(self) -> str:
+    def get_tables_desc(self, tables: list = None) -> str:
         sql_script = "SELECT sql FROM sqlite_master WHERE type='table'"
         cursor = self.conn.cursor()
         try:
@@ -153,7 +195,16 @@ the sql result is
 
 
 class SqlModule(ModuleBase):
-    def __init__(self, llm, sql_tool: SqlTool, use_llm_for_sql_result=True, return_trace: bool = False) -> None:
+    def __init__(
+        self,
+        llm,
+        sql_tool: SqlTool,
+        tables: Union[List[str], None] = None,
+        tables_desc: str = "",
+        sql_examples: str = "",
+        use_llm_for_sql_result=True,
+        return_trace: bool = False,
+    ) -> None:
         super().__init__(return_trace=return_trace)
         self._sql_tool = sql_tool
         self._query_prompter = ChatPrompter(instruction=sql_query_instruct_template).pre_hook(self.sql_query_promt_hook)
@@ -184,7 +235,7 @@ class SqlModule(ModuleBase):
         label: Union[str, None] = None,
     ):
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
-        sql_tables_info = self._sql_tool.get_all_tables()
+        sql_tables_info = self._sql_tool.get_tables_desc()
         if not isinstance(input, str):
             raise ValueError(f"Unexpected type for input: {type(input)}")
         return (

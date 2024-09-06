@@ -1,7 +1,7 @@
 from typing import List, Callable, Dict, Type, Optional, Union
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
-from lazyllm.tools import IntentClassifier
+from lazyllm.tools import IntentClassifier, SqlTool, SqlModule
 from .node import all_nodes, Node
 import re
 import ast
@@ -285,3 +285,12 @@ def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
 @NodeConstructor.register('SharedLLM')
 def make_shared_llm(llm: str, prompt: Optional[str] = None):
     return Engine().build_node(llm).func.share(prompt=prompt)
+
+@NodeConstructor.register("SqlTool")
+def make_sql_tool(db_type: str, conn_url: str):
+    return SqlTool(db_type, conn_url)
+
+
+@NodeConstructor.register("SqlCall")
+def make_sql_call(db_type: str, conn_url: str, base_model: str, tables: list, tables_desc: str, sql_examples: str):
+    return SqlModule(Engine().build_node(base_model), SqlTool(db_type, conn_url), tables, tables_desc, sql_examples)

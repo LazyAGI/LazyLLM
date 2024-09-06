@@ -73,7 +73,7 @@ class TestSqlTool(unittest.TestCase):
             db_path.unlink()
 
     def test_get_talbes(self):
-        str_result = self.sql_tool.get_all_tables()
+        str_result = self.sql_tool.get_tables_desc()
         self.assertIn("employee", str_result)
 
     def test_sql_query(self):

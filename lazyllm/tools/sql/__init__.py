@@ -1,3 +1,3 @@
-from .sql_tool import SQLiteTool, SqlModule
+from .sql_tool import SQLiteTool, SqlModule, SqlTool
 
-__all__ = ["SqlModule", "SQLiteTool"]
+__all__ = ["SqlModule", "SQLiteTool", "SqlTool"]
