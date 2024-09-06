@@ -5,8 +5,8 @@ class HttpExecutorResponse:
     response: httpx.Response
 
     def __init__(self, response: httpx.Response = None):
-        self.response = response
-        self.headers = dict(response.headers) if isinstance(self.response, httpx.Response) else {}
+        self._response = response
+        self._headers = dict(response.headers) if isinstance(self._response, httpx.Response) else {}
 
     @property
     def is_file(self) -> bool:
@@ -19,7 +19,7 @@ class HttpExecutorResponse:
         return any(v in content_type for v in file_content_types)
 
     def get_content_type(self) -> str:
-        return self.headers.get('content-type', '')
+        return self._headers.get('content-type', '')
 
     def extract_file(self) -> tuple[str, bytes]:
         """
@@ -32,21 +32,21 @@ class HttpExecutorResponse:
 
     @property
     def content(self) -> str:
-        if isinstance(self.response, httpx.Response):
-            return self.response.text
+        if isinstance(self._response, httpx.Response):
+            return self._response.text
         else:
-            raise ValueError(f'Invalid response type {type(self.response)}')
+            raise ValueError(f'Invalid response type {type(self._response)}')
 
     @property
     def body(self) -> bytes:
-        if isinstance(self.response, httpx.Response):
-            return self.response.content
+        if isinstance(self._response, httpx.Response):
+            return self._response.content
         else:
-            raise ValueError(f'Invalid response type {type(self.response)}')
+            raise ValueError(f'Invalid response type {type(self._response)}')
 
     @property
     def status_code(self) -> int:
-        if isinstance(self.response, httpx.Response):
-            return self.response.status_code
+        if isinstance(self._response, httpx.Response):
+            return self._response.status_code
         else:
-            raise ValueError(f'Invalid response type {type(self.response)}')
+            raise ValueError(f'Invalid response type {type(self._response)}')

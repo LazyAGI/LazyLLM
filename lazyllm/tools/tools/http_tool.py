@@ -12,8 +12,8 @@ class HttpTool(HttpRequest):
                  proxies: Optional[Dict] = None,
                  post_process_code: Optional[str] = None):
         super().__init__(method, url, api_key, headers, params, body)
-        self.post_processor = compile_code(post_process_code) if post_process_code else None
+        self._post_processor = compile_code(post_process_code) if post_process_code else None
 
     def forward(self, *args, **kwargs):
         res = super().forward(*args, **kwargs)
-        return self.post_processor(res) if self.post_processor else res
+        return self._post_processor(res) if self._post_processor else res

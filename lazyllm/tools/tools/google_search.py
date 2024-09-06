@@ -18,12 +18,12 @@ class GoogleSearch(HttpTool):
         super().__init__(method='GET', url='https://customsearch.googleapis.com/customsearch/v1',
                          params=params, timeout=timeout, proxies=proxies,
                          post_process_code=post_process_code)
-        self.search_engine_id = search_engine_id
+        self._search_engine_id = search_engine_id
 
     def forward(self, query: str, date_restrict: str = 'm1',
                 search_engine_id: Optional[str] = None) -> Optional[Dict]:
         if not search_engine_id:
-            search_engine_id = self.search_engine_id
+            search_engine_id = self._search_engine_id
 
         return super().forward(query=query, search_engine_id=search_engine_id,
                                date_restrict=date_restrict)
