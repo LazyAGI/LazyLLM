@@ -8,6 +8,7 @@ import pickle
 import codecs
 import inspect
 import functools
+from datetime import datetime
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
 from typing import Dict, List, Any, Union
 
@@ -467,6 +468,9 @@ class _TrainableModuleImpl(ModuleBase):
         self._father = []
         self._launchers = []
         self._deployer = None
+        self.use_latest_target_path = False
+        self.specific_target_path = None
+        self.finetuned_models_list = []
 
     def _add_father(self, father):
         if father not in self._father: self._father.append(father)
@@ -484,24 +488,41 @@ class _TrainableModuleImpl(ModuleBase):
     def _get_train_tasks(self):
         trainset_getf = lambda: lazyllm.package(self._trainset, None) \
             if isinstance(self._trainset, str) else self._trainset  # noqa E731
+        target_path = self._generate_target_path()
         if self._mode == 'train':
             args = self._get_args('train', disable=['base_model', 'target_path'])
-            train = self._train(base_model=self._base_model, target_path=self._target_path, **args)
+            train = self._train(base_model=self._base_model, target_path=target_path, **args)
         elif self._mode == 'finetune':
             args = self._get_args('finetune', disable=['base_model', 'target_path'])
-            train = self._finetune(base_model=self._base_model, target_path=self._target_path, **args)
+            train = self._finetune(base_model=self._base_model, target_path=target_path, **args)
         else:
             raise RuntimeError('mode must be train or finetune')
-        return Pipeline(trainset_getf, train)
+
+        def after_train(real_target_path):
+            self.use_latest_target_path = True
+            self.finetuned_models_list.append(real_target_path)
+            return real_target_path
+        return Pipeline(trainset_getf, train, after_train)
+
+    def _get_all_finetuned_models(self):
+        return self.finetuned_models_list
+
+    def _set_specific_finetuned_model(self, model_path):
+        if model_path in self.finetuned_models_list:
+            self.specific_target_path = model_path
+        else:
+            LOG.warning(f'Model Path: {model_path} not in list: {self.finetuned_models_list}. '
+                        'Base Model will be used to deploy.')
+            self.specific_target_path = None
 
     @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
         if self._deploy is None: return None
 
-        target_path = self._target_path
-        if os.path.basename(self._target_path) != 'merge':
-            merge_path = os.path.join(self._target_path, 'merge')
-            if self._mode and os.path.exists(merge_path): target_path = os.path.abspath(merge_path)
+        # target_path = self._target_path
+        # if os.path.basename(self._target_path) != 'merge':
+        #     merge_path = os.path.join(self._target_path, 'merge')
+        #     if self._mode and os.path.exists(merge_path): target_path = os.path.abspath(merge_path)
 
         if self._deploy is lazyllm.deploy.AutoDeploy:
             self._deployer = self._deploy(base_model=self._base_model, stream=self._stream, **self._deploy_args)
@@ -509,7 +530,18 @@ class _TrainableModuleImpl(ModuleBase):
         else:
             self._deployer = self._deploy(stream=self._stream, **self._deploy_args)
 
-        return Pipeline(lambda *a: lazyllm.package(target_path, self._base_model), self._deployer,
+        def before_deploy(*no_use_args):
+            if self.use_latest_target_path:
+                assert self.finetuned_models_list
+                target_path = self.finetuned_models_list[-1]
+                self.use_latest_target_path = False
+            elif self.specific_target_path:
+                target_path = self.specific_target_path
+            else:
+                target_path = ''
+            return lazyllm.package(target_path, self._base_model)
+
+        return Pipeline(before_deploy, self._deployer,
                         lambda url: [f._set_url(url) for f in self._father])
 
     def _set_template(self, deployer):
@@ -542,6 +574,22 @@ class _TrainableModuleImpl(ModuleBase):
         for launcher in self._launchers:
             launcher.cleanup()
 
+    def _generate_target_path(self):
+        base_model_name = os.path.basename(self._base_model)
+        train_set_name = os.path.basename(self._trainset) if isinstance(self._trainset, str) else ''
+
+        def optimize_name(name):
+            if len(name) > 10:
+                return name[:5] + '_' + name[-4:]
+            return name
+        base_model_name = optimize_name(base_model_name)
+        train_set_name = optimize_name(train_set_name)
+
+        target_path = os.path.join(self._target_path,
+                                   f"{base_model_name}-{train_set_name}-"
+                                   f"{datetime.now().strftime('%y%m%d%H%M%S%f')[:14]}")
+        return target_path
+
 
 class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
@@ -564,6 +612,12 @@ class TrainableModule(UrlModule):
     @property
     def type(self):
         return ModelManager.get_model_type(self.base_model).upper()
+
+    def get_all_finetuned_models(self):
+        return self._impl._get_all_finetuned_models()
+
+    def set_specific_finetuned_model(self, model_path):
+        return self._impl._set_specific_finetuned_model(model_path)
 
     @property
     def _deploy_type(self):
