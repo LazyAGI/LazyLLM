@@ -64,3 +64,5 @@ sortedcontainers
 flash-attn
 lightllm
 lazyllm-llamafactory
+psycopg2
+sqlalchemy

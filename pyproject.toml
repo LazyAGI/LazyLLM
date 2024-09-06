@@ -141,7 +141,9 @@ full = [
     "sortedcontainers",
     "flash-attn",
     "lazyllm-llamafactory",
-    "lightllm"
+    "lightllm",
+    "psycopg2",
+    "sqlalchemy"
 ]
 
 [build-system]
