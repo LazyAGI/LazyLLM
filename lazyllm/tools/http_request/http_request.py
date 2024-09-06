@@ -23,6 +23,9 @@ class HttpRequest(ModuleBase):
 
     def forward(self, *args, **kwargs):
         def _map_input(target_str):
+            if not isinstance(target_str, str):
+                return target_str
+
             # TODO: replacements could be more complex to create.
             replacements = {**kwargs, **(args[0] if args and isinstance(args[0], dict) else {})}
             if not replacements:

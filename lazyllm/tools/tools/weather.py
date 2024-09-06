@@ -18,7 +18,7 @@ def get_city2code():
         for c in cities:
             city2code[c['city']] = c['code']
 
-    return city2codee
+    return city2code
 
 
 class Weather(HttpTool):
@@ -28,7 +28,7 @@ class Weather(HttpTool):
         super().__init__(method='GET', url=url, post_process_code=post_process_code)
 
     def forward(self, city_name: str) -> Optional[Dict]:
-        city_code = city2code.get(city_name)
+        city_code = self.city2code.get(city_name)
         if not city_code:
             return None
 

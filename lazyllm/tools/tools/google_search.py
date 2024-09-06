@@ -12,8 +12,8 @@ class GoogleSearch(HttpTool):
             'cx': '{{search_engine_id}}',
             'q': '{{query}}',
             'dateRestrict': '{{date_restrict}}',
-            'start': '{{start}}',
-            'num': '{{num}}',
+            'start': 0,
+            'num': 10,
         }
         super().__init__(method='GET', url='https://customsearch.googleapis.com/customsearch/v1',
                          params=params, timeout=timeout, proxies=proxies,
@@ -21,13 +21,9 @@ class GoogleSearch(HttpTool):
         self.search_engine_id = search_engine_id
 
     def forward(self, query: str, date_restrict: str = 'm1',
-                start: int = 0, num: int = 10,
                 search_engine_id: Optional[str] = None) -> Optional[Dict]:
-        params = {
-            'search_engine_id': search_engine_id if search_engine_id else self.search_engine_id,
-            'query': query,
-            'date_restrict': date_restrict,
-            'start': start,
-            'num': num,
-        }
-        return super().forward(**params)
+        if not search_engine_id:
+            search_engine_id = self.search_engine_id
+
+        return super().forward(query=query, search_engine_id=search_engine_id,
+                               date_restrict=date_restrict)
