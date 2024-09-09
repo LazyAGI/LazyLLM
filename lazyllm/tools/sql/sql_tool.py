@@ -16,7 +16,7 @@ from sqlalchemy.schema import CreateTable
 
 
 class SqlTool:
-    DB_TYPE_SUPPORTED = set(["PostgreSQL", "MySQL", "MS SQL"])
+    DB_TYPE_SUPPORTED = set(["PostgreSQL", "MySQL", "MS SQL", "SQLite"])
 
     def __init__(self, db_type: str, conn_url: str) -> None:
         self.reset_db(db_type, conn_url)
@@ -82,91 +82,67 @@ class SqlTool:
 
 class SQLiteTool(SqlTool):
     def __init__(self, db_file, return_trace=False):
-        super().__init__()
         self.db_type = ""
         assert Path(db_file).is_file()
         self._return_trace = return_trace
-        self.conn = sqlite3.connect(db_file, check_same_thread=False)
-
-    def __del__(self):
-        self.close_connection()
+        super().__init__("SQLite", f"sqlite:///{db_file}")
 
     def create_tables(self, tables_info: dict):
-        cursor = self.conn.cursor()
-        for table_name, table_info in tables_info.items():
-            # Start building the SQL for creating the table
-            create_table_sql = f"CREATE TABLE {table_name} ("
+        try:
+            with self.engine.connect() as conn:
+                for table_name, table_info in tables_info.items():
+                    # Start building the SQL for creating the table
+                    create_table_sql = f"CREATE TABLE {table_name} ("
 
-            # Iterate over fields to add them to the SQL statement
-            fields = []
-            for field_name, field_info in table_info["fields"].items():
-                field_type = field_info["type"]
-                comment = field_info["comment"]
-
-                # Add field definition
-                fields.append(f"{field_name} {field_type} comment '{comment}'")
-
-            # Join fields and complete SQL statement
-            create_table_sql += ", ".join(fields) + ");"
-
-            # Execute SQL statement to create the table
-            cursor.execute(create_table_sql)
-        cursor.close()
-        self.conn.commit()
-
-    def close_connection(self):
-        if self.conn:
-            self.conn.close()
+                    # Iterate over fields to add them to the SQL statement
+                    fields = []
+                    for field_name, field_info in table_info["fields"].items():
+                        field_type = field_info["type"]
+                        comment = field_info["comment"]
+                        # Add field definition
+                        fields.append(f"{field_name} {field_type} comment '{comment}'")
+                    # Join fields and complete SQL statement
+                    create_table_sql += ", ".join(fields) + ");"
+                    # Execute SQL statement to create the table
+                    conn.execute(sqlalchemy.text(create_table_sql))
+                    conn.commit()
+        except OperationalError as e:
+            str_result = f"ERROR: {str(e)}"
+        finally:
+            if "conn" in locals():
+                conn.close()
 
     def get_tables_desc(self, tables: list = None) -> str:
         sql_script = "SELECT sql FROM sqlite_master WHERE type='table'"
-        cursor = self.conn.cursor()
+        str_tables = ""
         try:
-            cursor.execute(sql_script)
-            table_infos = cursor.fetchall()
-            str_tables = ""
+            with self.engine.connect() as conn:
+                result = conn.execute(sqlalchemy.text(sql_script))
+                table_infos = list(result)
             for table_info in table_infos:
                 str_tables += table_info[0] + "\n"
-            cursor.close()
-            return str_tables
-        except Exception as e:
-            cursor.close()
+        except OperationalError as e:
             if self._return_trace:
                 globals["trace"].append(f"SQLiteTool Exception: {str(e)}. sql_script: {sql_script}")
             LOG.warning(str(e))
-            return ""
-
-    def get_query_result_in_json(self, sql_script):
-        cursor = self.conn.cursor()
-        str_result = ""
-        try:
-            cursor.execute(sql_script)
-            columns = [description[0] for description in cursor.description]
-            rows = cursor.fetchall()
-            # change result to json
-            results = [dict(zip(columns, row)) for row in rows]
-            str_result = json.dumps(results, ensure_ascii=False)
-        except sqlite3.Error as e:
-            lazyllm.LOG.warning(f"SQLite error: {str(e)}")
-            if self._return_trace:
-                globals["trace"].append(f"SQLiteTool Exception: {str(e)}. sql_script: {sql_script}")
+            str_tables = ""
         finally:
-            cursor.close()
-        return str_result
+            if "conn" in locals():
+                conn.close()
+        return str_tables
 
     def sql_update(self, sql_script):
-        cursor = self.conn.cursor()
         try:
-            cursor.execute(sql_script)
-            # For INSERT, UPDATE execution must be committed
-            self.conn.commit()
-            cursor.close()
-        except sqlite3.Error as e:
+            with self.engine.connect() as conn:
+                conn.execute(sqlalchemy.text(sql_script))
+                conn.commit()
+        except OperationalError as e:
             lazyllm.LOG.warning(f"SQLite error: {str(e)}")
             if self._return_trace:
                 globals["trace"].append(f"SQLiteTool Exception: {str(e)}. sql_script: {sql_script}")
         finally:
-            cursor.close()
+            if "conn" in locals():
+                conn.close()
 
 
 sql_query_instruct_template = """
