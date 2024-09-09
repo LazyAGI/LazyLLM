@@ -74,3 +74,22 @@ jobs:
         shell: bash
         working-directory: /tmp
         run: python -c "import lazyllm"
+
+  Check_requirements:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.9'
+
+      - name: Check requirements
+        shell: bash
+        run: |
+          pip install toml
+          python scripts/check_requirements.py

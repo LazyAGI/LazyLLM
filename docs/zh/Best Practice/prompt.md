@@ -236,7 +236,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 
 #### 和OnlineChatModule一起使用
 
-当 ``Prompter`` 和 ``和OnlineChatModule`` 一起使用时， ``和OnlineChatModule.__call__`` 会调用 ``Prompter.generate_prompt`` ，并且将 ``__input``,
+当 ``Prompter`` 和 ``OnlineChatModule`` 一起使用时， ``OnlineChatModule.__call__`` 会调用 ``Prompter.generate_prompt`` ，并且将 ``__input``,
 ``history`` 和 ``tools`` 传给 ``generate_prompt`` ，此时 ``generate_prompt`` 的 ``return_dict`` 会被设置为 ``True``。下面给出一个例子：
 
 ```python
@@ -263,7 +263,7 @@ module(dict(context='背景', input='输入'))
 
 > **注意**：
 >
-> - 我们保证了 ``Prompter`` 在 ``TrainableModule`` 和 ``和OnlineChatModule`` 具有一致的使用体验，您可以方便的更换模型以进行效果的尝试。
+> - 我们保证了 ``Prompter`` 在 ``TrainableModule`` 和 ``OnlineChatModule`` 具有一致的使用体验，您可以方便的更换模型以进行效果的尝试。
 > - ``TrainableModule`` 需要手动调用 ``start`` 以启动服务，想了解更多关于 ``TrainableModule`` 的用法，可以参考 : [module][lazyllm.module.ModuleBase]
 
 #### LazyLLM中内置的场景Prompt

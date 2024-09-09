@@ -350,6 +350,7 @@ class WebModule(ModuleBase):
         else:
             self.p = ForkProcess(target=_impl)
             self.p.start()
+        LOG.success(f'LazyLLM webmodule launched successfully: Running on local URL: {self.url}', flush=True)
 
     def _update(self, *, mode=None, recursive=True):
         super(__class__, self)._update(mode=mode, recursive=recursive)

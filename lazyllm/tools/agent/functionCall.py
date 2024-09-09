@@ -41,7 +41,7 @@ class FunctionCall(ModuleBase):
         if _prompt is None:
             _prompt = FC_PROMPT_ONLINE if isinstance(llm, OnlineChatModule) else FC_PROMPT_LOCAL
 
-        self._tools_manager = ToolManager(tools)
+        self._tools_manager = ToolManager(tools, return_trace=return_trace)
         self._prompter = ChatPrompter(instruction=_prompt, tools=self._tools_manager.tools_description)\
             .pre_hook(function_call_hook)
         self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter())
@@ -104,7 +104,7 @@ class FunctionCallAgent(ModuleBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
-        self._agent = loop(FunctionCall(llm, tools),
+        self._agent = loop(FunctionCall(llm, tools, return_trace=return_trace),
                            stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):

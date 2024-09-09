@@ -1,6 +1,6 @@
 from .engine import Engine, Node
-from lazyllm import ActionModule
-from typing import List, Dict
+from lazyllm import ActionModule, once_wrapper
+from typing import List, Dict, Optional
 import uuid
 
 
@@ -13,6 +13,7 @@ class LightEngine(Engine):
             cls._instance = super().__new__(cls)
         return cls._instance
 
+    @once_wrapper
     def __init__(self):
         super().__init__()
 
@@ -25,10 +26,27 @@ class LightEngine(Engine):
             self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]
 
-    def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], gid=None, name=None):
+    def update_node(self, node):
+        if not isinstance(node, Node):
+            node = Node(id=node['id'], kind=node['kind'], name=node['name'], args=node['args'])
+        self._nodes[node.id] = super(__class__, self).build_node(node)
+        return self._nodes[node.id]
+
+    def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
+              gid: Optional[str] = None, name: Optional[str] = None):
+        node = Node(id=gid or str(uuid.uuid4().hex), kind='Graph',
+                    name=name or str(uuid.uuid4().hex), args=dict(nodes=nodes, edges=edges, resources=resources))
+        self.graph = self.build_node(node).func
+        ActionModule(self.graph).start()
+
+    def update(self, nodes: List[Dict] = [], changed_nodes: List[Dict] = [],
+               edges: List[Dict] = [], changed_resources: List[Dict] = [],
+               gid: Optional[str] = None, name: Optional[str] = None):
+        for r in changed_resources: self.update_node(r)
+        for n in changed_nodes: self.update_node(n)
         node = Node(id=gid or str(uuid.uuid4().hex), kind='Graph',
                     name=name or str(uuid.uuid4().hex), args=dict(nodes=nodes, edges=edges))
-        self.graph = self.build_node(node).func
+        self.graph = self.update_node(node).func
         ActionModule(self.graph).start()
 
     def run(self, *args, **kw):
