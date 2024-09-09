@@ -37,7 +37,7 @@ class LightEngine(Engine):
         node = Node(id=gid or str(uuid.uuid4().hex), kind='Graph',
                     name=name or str(uuid.uuid4().hex), args=dict(nodes=nodes, edges=edges, resources=resources))
         self.graph = self.build_node(node).func
-        ActionModule(self.graph).start()
+        self.graph.start()
 
     def update(self, nodes: List[Dict] = [], changed_nodes: List[Dict] = [],
                edges: List[Dict] = [], changed_resources: List[Dict] = [],

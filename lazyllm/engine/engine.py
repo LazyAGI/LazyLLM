@@ -106,7 +106,7 @@ class ServerGraph(lazyllm.ModuleBase):
         self._g = lazyllm.ActionModule(g)
         if server:
             if server.args.get('port'): raise NotImplementedError('Port is not supported now')
-            self._server = lazyllm.ServerModule(g)
+            self._g = lazyllm.ServerModule(g)
         if web:
             port = self._get_port(web.args['port'])
             self._web = lazyllm.WebModule(g, port=port, title=web.args['title'], audio=web.args['audio'],
@@ -115,8 +115,14 @@ class ServerGraph(lazyllm.ModuleBase):
     def forward(self, *args, **kw):
         return self._g(*args, **kw)
 
+    # TODO(wangzhihong)
+    def _update(self, *, mode=None, recursive=True):
+        super(__class__, self)._update(mode=mode, recursive=recursive)
+        if hasattr(self, '_web'): self._web.start()
+        return self
+
     def _get_port(self, port):
-        if port == '': return None
+        if not port: return None
         elif ',' in port:
             return list(int(p.strip()) for p in port.split(','))
         elif '-' in port:
@@ -124,6 +130,18 @@ class ServerGraph(lazyllm.ModuleBase):
             assert left < right
             return range(left, right)
         return int(port)
+
+    @property
+    def api_url(self):
+        if isinstance(self._g, lazyllm.ServerModule):
+            return self._g._url
+        return None
+
+    @property
+    def web_url(self):
+        if hasattr(self, '_web'):
+            return self._web.url
+        return None
 
 
 @NodeConstructor.register('Graph')
