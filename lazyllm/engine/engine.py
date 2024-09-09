@@ -102,6 +102,7 @@ _constructor = NodeConstructor()
 
 class ServerGraph(lazyllm.ModuleBase):
     def __init__(self, g: lazyllm.graph, server: Node, web: Node):
+        super().__init__()
         self._g = lazyllm.ActionModule(g)
         if server:
             if server.args.get('port'): raise NotImplementedError('Port is not supported now')

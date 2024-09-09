@@ -43,7 +43,7 @@ class LightEngine(Engine):
                edges: List[Dict] = [], changed_resources: List[Dict] = [],
                gid: Optional[str] = None, name: Optional[str] = None):
         for r in changed_resources:
-            if r['kind'] not in ('server', 'web'):
+            if r['kind'] in ('server', 'web'):
                 raise NotImplementedError('Web and Api server are not allowed now')
             self.update_node(r)
         for n in changed_nodes: self.update_node(n)
