@@ -14,12 +14,13 @@ class HttpTool(HttpRequest):
                  proxies: Optional[Dict] = None,
                  py_code: Optional[str] = None):
         super().__init__(method, url, api_key, headers, params, body)
-        self._url = url
+        self._has_http = True if url else False
         self._py_code = compile_code(py_code) if py_code else None
 
     def forward(self, *args, **kwargs):
-        if self._url:
+        if self._has_http:
             res = super().forward(*args, **kwargs)
             return self._py_code(res) if self._py_code else res
         elif self._py_code:
             return self._py_code(*args, **kwargs)
+        return None
