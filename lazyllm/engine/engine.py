@@ -100,11 +100,44 @@ class NodeConstructor(object):
 _constructor = NodeConstructor()
 
 
+class ServerGraph(lazyllm.ModuleBase):
+    def __init__(self, g: lazyllm.graph, server: Node, web: Node):
+        self._g = lazyllm.ActionModule(g)
+        if server:
+            if server.args.get('port'): raise NotImplementedError('Port is not supported now')
+            self._server = lazyllm.ServerModule(g)
+        if web:
+            port = self._get_port(web.args['port'])
+            self._web = lazyllm.WebModule(g, port=port, title=web.args['title'], audio=web.args['audio'],
+                                          history=[Engine().build_node(h).func for h in web.args['history']])
+
+    def forward(self, *args, **kw):
+        return self._g(*args, **kw)
+
+    def _get_port(self, port):
+        if port == '': return None
+        elif ',' in port:
+            return list(int(p.strip()) for p in port.split(','))
+        elif '-' in port:
+            left, right = tuple(int(p.strip()) for p in port.split('-'))
+            assert left < right
+            return range(left, right)
+        return int(port)
+
+
 @NodeConstructor.register('Graph')
 @NodeConstructor.register('SubGraph')
-def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = []):
+def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [], enable_server=True):
     engine = Engine()
-    resources = [engine.build_node(resource) for resource in resources]
+    server_resources = dict(server=None, web=None)
+    for resource in resources:
+        if resource['kind'] in server_resources:
+            assert enable_server, 'Web and Api server are not allowed outside graph and subgraph'
+            assert server_resources[resource['kind']] is None, f'Duplicated {resource["kind"]} resource'
+            server_resources[resource['kind']] = Node(id=resource['id'], kind=resource['kind'],
+                                                      name=resource['name'], args=resource['args'])
+
+    resources = [engine.build_node(resource) for resource in resources if resource['kind'] not in server_resources]
     nodes = [engine.build_node(node) for node in nodes]
 
     with graph() as g:
@@ -117,12 +150,12 @@ def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [])
             formatter = lazyllm.formatter.JsonLike(formatter)
         g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name, formatter)
 
-    return g
+    return ServerGraph(g, server_resources['server'], server_resources['web'])
 
 
 @NodeConstructor.register('App')
-def make_subapp(nodes: List[dict], edges: List[dict]):
-    return make_graph(nodes, edges)
+def make_subapp(nodes: List[dict], edges: List[dict], resources: List[dict] = []):
+    return make_graph(nodes, edges, resources)
 
 
 # Note: It will be very dangerous if provided to C-end users as a SAAS service
@@ -153,15 +186,15 @@ def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
 
 @NodeConstructor.register('Warp')
 def make_warp(nodes: List[dict], edges: List[dict], resources: List[dict] = []):
-    return lazyllm.warp(make_graph(nodes, edges, resources))
+    return lazyllm.warp(make_graph(nodes, edges, resources, enable_server=False))
 
 
 @NodeConstructor.register('Loop')
 def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict],
               resources: List[dict] = [], judge_on_full_input: bool = True):
     stop_condition = make_code(stop_condition)
-    return lazyllm.loop(make_graph(nodes, edges, resources), stop_condition=stop_condition,
-                        judge_on_full_input=judge_on_full_input)
+    return lazyllm.loop(make_graph(nodes, edges, resources, enable_server=False),
+                        stop_condition=stop_condition, judge_on_full_input=judge_on_full_input)
 
 
 @NodeConstructor.register('Ifs')
