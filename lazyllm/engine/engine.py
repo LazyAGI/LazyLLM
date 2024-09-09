@@ -172,7 +172,7 @@ def make_ifs(cond: str, true: List[dict], false: List[dict], judge_on_full_input
 
 @NodeConstructor.register('Intention')
 def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
-    with IntentClassifier(Engine().build_node(base_model)) as ic:
+    with IntentClassifier(Engine().build_node(base_model).func) as ic:
         for cond, nodes in nodes.items():
             if isinstance(nodes, list) and len(nodes) > 1:
                 f = pipeline([Engine().build_node(node).func for node in nodes])
