@@ -4,8 +4,7 @@ from typing import Optional, Dict
 class GoogleSearch(HttpTool):
     # @param proxies refer to https://www.python-httpx.org/advanced/proxies
     def __init__(self, custom_search_api_key: str, search_engine_id: str,
-                 timeout=10, proxies: Optional[Dict] = None,
-                 post_process_code: Optional[str] = None):
+                 timeout=10, proxies: Optional[Dict] = None):
         # refer to https://developers.google.com/custom-search/v1/reference/rest/v1/cse/list?hl=zh-cn
         params = {
             'key': custom_search_api_key,
@@ -16,8 +15,7 @@ class GoogleSearch(HttpTool):
             'num': 10,
         }
         super().__init__(method='GET', url='https://customsearch.googleapis.com/customsearch/v1',
-                         params=params, timeout=timeout, proxies=proxies,
-                         post_process_code=post_process_code)
+                         params=params, timeout=timeout, proxies=proxies)
         self._search_engine_id = search_engine_id
 
     def forward(self, query: str, date_restrict: str = 'm1',

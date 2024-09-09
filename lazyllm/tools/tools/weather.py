@@ -22,10 +22,10 @@ def get_city2code():
 
 
 class Weather(HttpTool):
-    def __init__(self, post_process_code: Optional[str] = None):
+    def __init__(self):
         self._city2code = get_city2code()
         url = 'http://www.nmc.cn/rest/real/{{city_code}}'
-        super().__init__(method='GET', url=url, post_process_code=post_process_code)
+        super().__init__(method='GET', url=url)
 
     def forward(self, city_name: str) -> Optional[Dict]:
         city_code = self._city2code.get(city_name)
