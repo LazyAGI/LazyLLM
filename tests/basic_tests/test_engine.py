@@ -233,7 +233,6 @@ class TestEngine(object):
         print(f"DUMMY LLM ANSWER: {str_answer}")
         assert "销售一部" in str_answer
 
-
 class TestEngineRAG(object):
 
     def test_rag(self):
