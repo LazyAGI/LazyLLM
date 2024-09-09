@@ -14,7 +14,6 @@ class TestHttpTool(object):
     def test_no_url(self):
         code_str = "def echo(s): return s"
         tool = HttpTool(py_code=code_str)
-
         content = "hello, world!"
         assert tool(content) == content
 
