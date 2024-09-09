@@ -92,7 +92,7 @@ add_chinese_doc('finetune.AlpacaloraFinetune', '''\
 Args:
     base_model (str): 用于进行微调的基模型的本地绝对路径。
     target_path (str): 微调后模型保存LoRA权重的本地绝对路径。
-    merge_path (str): 模型合并LoRA权重后的路径，默认为 ``None`` 。如果未指定，则会在 ``target_path`` 下创建 "lora" 和 "merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
+    merge_path (str): 模型合并LoRA权重后的路径，默认为 ``None`` 。如果未指定，则会在 ``target_path`` 下创建 "lazyllm_lora" 和 "lazyllm_merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
     model_name (str): 模型的名称，用于设置日志名的前缀，默认为 ``LLM``。
     cp_files (str): 指定复制源自基模型路径下的配置文件，会被复制到  ``merge_path`` ，默认为 ``tokeniz*``
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
@@ -128,7 +128,7 @@ This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuni
 Args:
     base_model (str): The base model used for fine-tuning. It is required to be the path of the base model.
     target_path (str): The path where the LoRA weights of the fine-tuned model are saved.
-    merge_path (str): The path where the model merges the LoRA weights, default to `None`. If not specified, "lora" and "merge" directories will be created under ``target_path`` as ``target_path`` and ``merge_path`` respectively.
+    merge_path (str): The path where the model merges the LoRA weights, default to `None`. If not specified, "lazyllm_lora" and "lazyllm_merge" directories will be created under ``target_path`` as ``target_path`` and ``merge_path`` respectively.
     model_name (str): The name of the model, used as the prefix for setting the log name, default to "LLM".
     cp_files (str): Specify configuration files to be copied from the base model path, which will be copied to ``merge_path``, default to ``tokeniz*``
     launcher (lazyllm.launcher): The launcher for fine-tuning, default to ``launchers.remote(ngpus=1)``.
@@ -170,7 +170,7 @@ add_chinese_doc('finetune.CollieFinetune', '''\
 Args:
     base_model (str): 用于进行微调的基模型。要求是基模型的路径。
     target_path (str): 微调后模型保存LoRA权重的路径。
-    merge_path (str): 模型合并LoRA权重后的路径，默认为None。如果未指定，则会在 ``target_path`` 下创建 "lora" 和 "merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
+    merge_path (str): 模型合并LoRA权重后的路径，默认为None。如果未指定，则会在 ``target_path`` 下创建 "lazyllm_lora" 和 "lazyllm_merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
     model_name (str): 模型的名称，用于设置日志名的前缀，默认为 "LLM"。
     cp_files (str): 指定复制源自基模型路径下的配置文件，会被复制到  ``merge_path`` ，默认为 "tokeniz\*"
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
@@ -202,7 +202,7 @@ This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuni
 Args:
     base_model (str): The base model used for fine-tuning. It is required to be the path of the base model.
     target_path (str): The path where the LoRA weights of the fine-tuned model are saved.
-    merge_path (str): The path where the model merges the LoRA weights, default to ``None``. If not specified, "lora" and "merge" directories will be created under ``target_path`` as ``target_path`` and ``merge_path`` respectively.
+    merge_path (str): The path where the model merges the LoRA weights, default to ``None``. If not specified, "lazyllm_lora" and "lazyllm_merge" directories will be created under ``target_path`` as ``target_path`` and ``merge_path`` respectively.
     model_name (str): The name of the model, used as the prefix for setting the log name, default to "LLM".
     cp_files (str): Specify configuration files to be copied from the base model path, which will be copied to ``merge_path``, default to "tokeniz*"
     launcher (lazyllm.launcher): The launcher for fine-tuning, default to ``launchers.remote(ngpus=1)``.
@@ -240,7 +240,7 @@ add_chinese_doc('finetune.LlamafactoryFinetune', '''\
 Args:
     base_model (str): 用于进行训练的基模型。要求是基模型的路径。
     target_path (str): 训练后模型保存权重的路径。
-    merge_path (str): 模型合并LoRA权重后的路径，默认为None。如果未指定，则会在 ``target_path`` 下创建 "lora" 和 "merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
+    merge_path (str): 模型合并LoRA权重后的路径，默认为None。如果未指定，则会在 ``target_path`` 下创建 "lazyllm_lora" 和 "lazyllm_merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
     config_path (str): LLaMA-Factory的训练配置文件（这里要求格式为yaml），默认为None。如果未指定，则会在当前工作路径下，创建一个名为 ``.temp`` 的文件夹，并在其中生成以 ``train_`` 前缀开头，以 ``.yaml`` 结尾的配置文件。
     export_config_path (str): LLaMA-Factory的Lora权重合并的配置文件（这里要求格式为yaml），默认为None。如果未指定，则会在当前工作路径下中的 ``.temp`` 文件夹内生成以 ``merge_`` 前缀开头，以 ``.yaml`` 结尾的配置文件。
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1, sync=True)``。
@@ -285,7 +285,7 @@ This class is a subclass of ``LazyLLMFinetuneBase``, based on the training capab
 Args:
     base_model (str): The base model used for training. It is required to be the path of the base model.
     target_path (str): The path where the trained model weights are saved.
-    merge_path (str): The path where the model is merged with LoRA weights, default is None. If not specified, "lora" and "merge" directories will be created under ``target_path``, to be used as ``target_path`` and ``merge_path`` respectively.
+    merge_path (str): The path where the model is merged with LoRA weights, default is None. If not specified, "lazyllm_lora" and "lazyllm_merge" directories will be created under ``target_path``, to be used as ``target_path`` and ``merge_path`` respectively.
     config_path (str): The LLaMA-Factory training configuration file (yaml format is required), default is None. If not specified, a ``.temp`` folder will be created in the current working directory, and a configuration file starting with ``train_`` and ending with ``.yaml`` will be generated inside it.
     export_config_path (str): The LLaMA-Factory Lora weight merging configuration file (yaml format is required), default is None. If not specified, a configuration file starting with ``merge_`` and ending with ``.yaml`` will be generated inside the ``.temp`` folder in the current working directory.
     launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1, sync=True)``.
@@ -338,7 +338,7 @@ Args:
     base_model (str): 用于进行微调的基模型。要求是基模型的路径。
     source (lazyllm.config['model_source']): 指定模型的下载源。可通过设置环境变量 ``LAZYLLM_MODEL_SOURCE`` 来配置，目前仅支持 ``huggingface`` 或 ``modelscope`` 。若不设置，lazyllm不会启动自动模型下载。
     target_path (str): 微调后模型保存LoRA权重的路径。
-    merge_path (str): 模型合并LoRA权重后的路径，默认为 ``None``。如果未指定，则会在 ``target_path`` 下创建 "lora" 和 "merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
+    merge_path (str): 模型合并LoRA权重后的路径，默认为 ``None``。如果未指定，则会在 ``target_path`` 下创建 "lazyllm_lora" 和 "lazyllm_merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
     ctx_len (int): 输入微调模型的token最大长度，默认为 ``1024``。
     batch_size (int): 批处理大小，默认为 ``32``。
     lora_r (int): LoRA 的秩，默认为 ``8``；该数值决定添加参数的量，数值越小参数量越小。
@@ -356,7 +356,7 @@ Args:
     base_model (str): The base model used for fine-tuning. It is required to be the path of the base model.
     source (lazyllm.config['model_source']): Specifies the model download source. This can be configured by setting the environment variable ``LAZYLLM_MODEL_SOURCE``.
     target_path (str): The path where the LoRA weights of the fine-tuned model are saved.
-    merge_path (str): The path where the model merges the LoRA weights, default to ``None``. If not specified, "lora" and "merge" directories will be created under ``target_path`` as ``target_path`` and ``merge_path`` respectively.
+    merge_path (str): The path where the model merges the LoRA weights, default to ``None``. If not specified, "lazyllm_lora" and "lazyllm_merge" directories will be created under ``target_path`` as ``target_path`` and ``merge_path`` respectively.
     ctx_len (int): The maximum token length for input to the fine-tuned model, default to ``1024``.
     batch_size (int): Batch size, default to ``32``.
     lora_r (int): LoRA rank, default to ``8``; this value determines the amount of parameters added, the smaller the value, the fewer the parameters.

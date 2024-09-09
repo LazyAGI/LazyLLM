@@ -41,7 +41,7 @@ class AlpacaloraFinetune(LazyLLMFinetuneBase):
                  ):
         if not merge_path:
             save_path = os.path.join(os.getcwd(), target_path)
-            target_path, merge_path = os.path.join(save_path, "lora"), os.path.join(save_path, "merge")
+            target_path, merge_path = os.path.join(save_path, "lazyllm_lora"), os.path.join(save_path, "lazyllm_merge")
             os.system(f'mkdir -p {target_path} {merge_path}')
         super().__init__(
             base_model,

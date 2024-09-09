@@ -9,7 +9,6 @@ import codecs
 import inspect
 import functools
 from datetime import datetime
-from multiprocessing import Lock
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
 from typing import Dict, List, Any, Union
 
@@ -22,7 +21,6 @@ from ..flow import FlowBase, Pipeline, Parallel
 import uuid
 from ..client import get_redis, redis_client
 
-lock = Lock()
 
 class ModuleBase(object):
     builder_keys = []  # keys in builder support Option by default
@@ -502,24 +500,18 @@ class _TrainableModuleImpl(ModuleBase):
 
         def after_train(real_target_path):
             self._finetuned_model_path = real_target_path
-            with lock:
-                with open(os.path.join(self._target_path, '.finetuned_models_list'), 'a') as file:
-                    file.write(real_target_path + '\n')
             return real_target_path
         return Pipeline(trainset_getf, train, after_train)
 
     def _get_all_finetuned_models(self):
         valid_paths = []
         invalid_paths = []
-        with open(os.path.join(self._target_path, '.finetuned_models_list'), 'r') as file:
-            for line in file:
-                path = line.strip()
-                if os.path.exists(path) and \
-                    any(filename.endswith('.bin') or filename.endswith('.safetensors')
-                        for filename in os.listdir(path)):
-                    valid_paths.append(path)
+        for root, dirs, files in os.walk(self._target_path):
+            if root.endswith('lazyllm_merge'):
+                if any(file.endswith(('.bin', '.safetensors')) for file in files):
+                    valid_paths.append(os.path.abspath(root))
                 else:
-                    invalid_paths.append(path)
+                    invalid_paths.append(os.path.abspath(root))
         return valid_paths, invalid_paths
 
     def _set_specific_finetuned_model(self, model_path):
