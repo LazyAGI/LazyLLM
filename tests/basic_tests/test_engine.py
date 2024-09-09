@@ -110,7 +110,7 @@ class TestEngine(object):
         engine = LightEngine()
         engine.start(nodes, edges, resources, gid='graph-1')
         assert engine.run(1) == 2
-        time.sleep(3)
+        # time.sleep(3)
         # web = engine.build_node('graph-1').func._web
         # client = Client(web.url, download_files=web.cach_path)
         # chat_history = [['123', None]]
