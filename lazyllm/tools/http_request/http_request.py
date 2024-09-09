@@ -7,6 +7,9 @@ from lazyllm.tools.http_request.http_executor_response import HttpExecutorRespon
 class HttpRequest(ModuleBase):
     def __init__(self, method, url, api_key, headers, params, body, timeout=10, proxies=None):
         super().__init__()
+        if not url:
+            return
+
         self._method = method
         self._url = url
         self._api_key = api_key
