@@ -55,3 +55,34 @@ class TestEngine(object):
         engine = LightEngine()
         engine.start(nodes, edges, resources)
         assert '5440' in engine.run("Calculate 20*(45+23)*(1+3), step by step.")
+
+    def test_rag(self):
+        prompt = ("作为国学大师，你将扮演一个人工智能国学问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的已知国学篇章以及"
+                  "问题，给出你的结论。请注意，你的回答应基于给定的国学篇章，而非你的先验知识，且注意你回答的前后逻辑不要出现"
+                  "重复，且不需要提到具体文件名称。\n任务示例如下：\n示例国学篇章：《礼记 大学》大学之道，在明明德，在亲民，在止于至善"
+                  "。\n问题：什么是大学？\n回答：“大学”在《礼记》中代表的是一种理想的教育和社会实践过程，旨在通过个人的"
+                  "道德修养和社会实践达到最高的善治状态。\n注意以上仅为示例，禁止在下面任务中提取或使用上述示例已知国学篇章。"
+                  "\n现在，请对比以下给定的国学篇章和给出的问题。如果已知国学篇章中有该问题相关的原文，请提取相关原文出来。\n"
+                  "已知国学篇章：{context_str}\n")
+        resources = [dict(id='0', kind='Document', name='d1', args=dict(
+            dataset_path='rag_master', node_group=[dict(name='sentence', transform='SentenceSplitter',
+                                                        chunk_size=100, chunk_overlap=10)]))]
+        nodes = [dict(id='1', kind='Retriever', name='ret1',
+                      args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
+                 dict(id='2', kind='Retriever', name='ret2',
+                      args=dict(doc='0', group_name='sentence', similarity='bm25', topk=3)),
+                 dict(id='3', kind='JoinFormatter', name='c', args=dict(method='sum')),
+                 dict(id='4', kind='Reranker', name='rek1',
+                      args=dict(type='ModuleReranker', output_format='content', join=True,
+                                arguments=dict(model="bge-reranker-large", topk=1))),
+                 dict(id='5', kind='Code', name='c1',
+                      args='def test(nodes, query): return dict(context_str=nodes, query=query)'),
+                 dict(id='6', kind='OnlineLLM', name='m1',
+                      args=dict(source='glm', prompt=dict(system=prompt, user='问题: {query}')))]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='1', oid='3'),
+                 dict(iid='2', oid='3'), dict(iid='3', oid='4'), dict(iid='__start__', oid='4'),
+                 dict(iid='4', oid='5'), dict(iid='__start__', oid='5'), dict(iid='5', oid='6'),
+                 dict(iid='6', oid='__end__')]
+        engine = LightEngine()
+        engine.start(nodes, edges, resources)
+        assert '观天之道，执天之行' in engine.run('何为天道?')
