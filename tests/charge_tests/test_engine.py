@@ -33,7 +33,7 @@ class TestEngine(object):
         assert '22' in engine.run([dict(name='get_current_weather', arguments=dict(location='Paris'))])[0]
 
     def test_fc(self):
-        resources = [dict(id="0", kind="OnlineLLM", name="llm", args=dict(source=None))]
+        resources = [dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm'))]
         nodes = [dict(id="1", kind="FunctionCall", name="fc",
                       args=dict(llm='0', tools=['get_current_weather', 'get_n_day_weather_forecast',
                                                 'multiply_tool', 'add_tool']))]
