@@ -117,10 +117,10 @@ LazyLLM 在面对这个问题的时候通过文件队列的方式进行解决的
 
 通过使用文件队列，保证了普通对话应用和 [FunctionCall][lazyllm.tools.agent.FunctionCall] 应用中消息内容的流式输出。在需要生成流式数据的地方，不断的把数据压入到文件队列中，而在需要获取流式数据的地方不断地再把数据从文件队列中取出来。这里写数据到队列和从队列里拿出数据必须是在多线程中进行，并且需要使用 LazyLLM 的线程池，因为 LazyLLM 在多线程中会对文件队列增加标识符，来保证在多线程中操作文件队列时不会混乱。如果不使用多线程或者使用的是 python 自己的库创建的多线程，就不能正确的使用流式操作。
 
-> **注意**:
-> 
-> - 流式需要设置 `stream=True`。
-> - 必须要在多线程中使用文件队列来实现流式输出，并且多线程必须要使用 LazyLLM 提供的线程池来实现。
+!!! Note "注意"
+
+    - 流式需要设置 `stream=True`。
+    - 必须要在多线程中使用文件队列来实现流式输出，并且多线程必须要使用 LazyLLM 提供的线程池来实现。
 
 ## 中间日志输出
 
@@ -182,9 +182,9 @@ with lazyllm.ThreadPoolExecutor(1) as executor:
 
 从上面代码中可以看到对于模型和 agent 定义，只需要加上 `return_trace=True` 即可，后面显示代码只需要加上从文件队列中获取日志和打印日志的语句即可。从最后的结果中可以看出来，LazyLLM 可以同时支持流式输出 `output:` 记录和中间结果日志 `trace:` 记录。`trace` 日志的收集是在 [ModuleBase][lazyllm.module.ModuleBase] 中实现的，如果想要在自己实现的模块上实现这个能力，只需要继承 [ModuleBase][lazyllm.module.ModuleBase] 类即可。
 
-> **注意**:
->
-> - 输出中间结果日志时，需要设置 `return_trace=True`;
-> - 如果想要自己实现的功能也有收集中间结果日志的能力，需要继承 [ModuleBase][lazyllm.module.ModuleBase] 类。
+!!! Note "注意"
+
+    - 输出中间结果日志时，需要设置 `return_trace=True`;
+    - 如果想要自己实现的功能也有收集中间结果日志的能力，需要继承 [ModuleBase][lazyllm.module.ModuleBase] 类。
 
 对于 LazyLLM 来说，使用流式输出或者收集中间结果日志就是如此简单，但是却能给用户很好的效果体验。

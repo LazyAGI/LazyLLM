@@ -3,10 +3,10 @@
 
 Let's start by building a simple conversational bot that supports streaming.
 
-> In this section, you will learn the following key points of LazyLLM:
-> 
-> - How to use [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] to build a conversational bot that supports streaming.
-> - How to use a streaming chatbot with [FunctionCall][lazyllm.tools.agent.FunctionCall].
+!!! abstract "Through this section, you will learn about the following key points of LazyLLM"
+
+    - How to use [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] to build a conversational bot that supports streaming.
+    - How to use a streaming chatbot with [FunctionCall][lazyllm.tools.agent.FunctionCall].
 
 ## Code Implementation
 

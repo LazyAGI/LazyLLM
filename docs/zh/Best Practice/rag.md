@@ -85,7 +85,9 @@ docs.create_node_group(name='sentence-len',
 
 ![relationship of node groups](../assets/rag-relationship-of-node-groups.svg)
 
-注意：`Document.create_node_group()` 有一个名为 `parent` 的参数，用于指定本次转换是基于哪个 `Node Group` 进行的。如果不指定则默认是整篇文档，也就是名为 `lazyllm-root` 的根 `Node`。另外，`Document` 的构造函数中有一个 `embed` 参数，是用来把 `Node` 的内容转换成向量的函数。
+!!! Note "注意"
+
+    `Document.create_node_group()` 有一个名为 `parent` 的参数，用于指定本次转换是基于哪个 `Node Group` 进行的。如果不指定则默认是整篇文档，也就是名为 `lazyllm-root` 的根 `Node`。另外，`Document` 的构造函数中有一个 `embed` 参数，是用来把 `Node` 的内容转换成向量的函数。
 
 这些 `Node Group` 的拆分粒度和规则各不相同，反映了文档不同方面的特征。在后续的处理中，我们通过在不同的场合使用这些特征，从而更好地判断文档和用户输入的查询内容的相关性。
 
