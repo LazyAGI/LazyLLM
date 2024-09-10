@@ -2,13 +2,13 @@
 
 We will further enhance our chatbot! Based on the previous section [Painting Master](painting_master.md), we introduce more models to transform it into a multimodal robot! Let's get started!
 
-> Through this section, you will learn the following key points of LazyLLM:
->
-> - How to set different prompt words for the same model;
-> - How to implement routing based on [Switch][lazyllm.flow.Switch] control flow, we will combine it with LLM to create a simple intent recognition robot;
-> - How to specify the deployment framework for [TrainableModule][lazyllm.module.TrainableModule];
-> - How to use [bind](../Best Practice/flow.md#use-bind) on the control flow to pass in parameters;
-> - How to use [IntentClassifier][lazyllm.tools.IntentClassifier] for intent recognition.
+!!! abstract "Through this section, you will learn the following key points of LazyLLM"
+
+    - How to set different prompt words for the same model;
+    - How to implement routing based on [Switch][lazyllm.flow.Switch] control flow, we will combine it with LLM to create a simple intent recognition robot;
+    - How to specify the deployment framework for [TrainableModule][lazyllm.module.TrainableModule];
+    - How to use [bind](../Best Practice/flow.md#use-bind) on the control flow to pass in parameters;
+    - How to use [IntentClassifier][lazyllm.tools.IntentClassifier] for intent recognition.
 
 ## Design Concept
 

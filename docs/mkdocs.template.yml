@@ -110,3 +110,4 @@ markdown_extensions:
   - pymdownx.snippets
   - pymdownx.superfences
   - attr_list
+  - admonition

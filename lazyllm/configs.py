@@ -16,7 +16,7 @@ class Config(object):
         self._env_map_name = dict()
         self.prefix = prefix
         self.impl, self.cfgs = dict(), dict()
-        self.add('home', str, home, 'HOME')
+        self.add('home', str, os.path.expanduser(home), 'HOME')
         os.system(f'mkdir -p {home}')
         self.cgf_path = os.path.join(self['home'], 'config.json')
         if os.path.exists(self.cgf_path):

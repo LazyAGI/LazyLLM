@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# flake8: noqa: F401
 
 from .configs import config
 from .configs import * # noqa F401 of Config
@@ -57,7 +56,7 @@ __all__ = [
     'module_register',
     'OnlineChatModule',
     'OnlineEmbeddingModule',
-    'AutoModel'
+    'AutoModel',
 
     # client
     'redis_client',

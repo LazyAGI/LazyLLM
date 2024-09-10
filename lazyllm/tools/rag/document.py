@@ -1,9 +1,9 @@
 from functools import partial
 import os
 
-from typing import Callable
+from typing import Callable, Optional
 import lazyllm
-from lazyllm import ModuleBase, ServerModule
+from lazyllm import ModuleBase, ServerModule, TrainableModule
 
 from .web import DocWebModule
 from .doc_manager import DocManager
@@ -12,7 +12,8 @@ from .store import LAZY_ROOT_NAME
 
 
 class Document(ModuleBase):
-    def __init__(self, dataset_path: str, embed, create_ui: bool = True, launcher=None):
+    def __init__(self, dataset_path: str, embed: Optional[TrainableModule] = None,
+                 create_ui: bool = True, launcher=None):
         super().__init__()
         if not os.path.exists(dataset_path):
             defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)

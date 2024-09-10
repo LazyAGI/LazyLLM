@@ -1,21 +1,11 @@
-from dataclasses import dataclass
-from typing import List, Optional, Callable, Dict, Type
+from typing import List, Callable, Dict, Type, Optional, Union
 import lazyllm
 from lazyllm import graph, switch, pipeline
 from lazyllm.tools import IntentClassifier
-from .node import all_nodes
+from .node import all_nodes, Node
 import re
 import ast
 import inspect
-
-
-@dataclass
-class Node():
-    id: int
-    kind: str
-    name: str
-    args: Optional[Dict] = None
-    func: Optional[Callable] = None
 
 
 class CodeBlock(object):
@@ -40,14 +30,20 @@ class Engine(object):
     def set_default(cls, engine: Type):
         cls.__default_engine__ = engine
 
-    def start(self, nodes=[]):
+    def start(self, nodes: List[Dict], edges: List[Dict], resources: List[Dict],
+              gid: Optional[str], name: Optional[str]):
         raise NotImplementedError
 
-    def update(self, changes=[]):
+    def update(self, nodes: List[Dict], changed_nodes: List[Dict], edges: List[Dict],
+               changed_resources: List[Dict], gid: Optional[str], name: Optional[str]):
         raise NotImplementedError
 
     def build_node(self, node) -> Callable:
         return _constructor.build(node)
+
+    def reset(self):
+        self.__init__.flag.reset()
+        self.__init__()
 
 
 class NodeConstructor(object):
@@ -67,7 +63,7 @@ class NodeConstructor(object):
         if node.kind in NodeConstructor.builder_methods:
             createf = NodeConstructor.builder_methods[node.kind]
             r = inspect.getfullargspec(createf)
-            if isinstance(node.args, dict) and set(r.args) == set(node.args.keys()):
+            if isinstance(node.args, dict) and set(node.args.keys()).issubset(set(r.args)):
                 node.func = NodeConstructor.builder_methods[node.kind](**node.args)
             else:
                 node.func = NodeConstructor.builder_methods[node.kind](node.args)
@@ -76,18 +72,21 @@ class NodeConstructor(object):
         node_msgs = all_nodes[node.kind]
         init_args, build_args, other_args = dict(), dict(), dict()
 
+        def get_args(cls, key, value, builder_key=None):
+            node_args = node_msgs[cls][builder_key][key] if builder_key else node_msgs[cls][key]
+            if node_args.type == Node:
+                return Engine().build_node(value).func
+            return node_args.getattr_f(value) if node_args.getattr_f else value
+
         for key, value in node.args.items():
             if key in node_msgs['init_arguments']:
-                getf = node_msgs['init_arguments'][key].getattr_f
-                init_args[key] = getf(value) if getf else value
+                init_args[key] = get_args('init_arguments', key, value)
             elif key in node_msgs['builder_argument']:
-                getf = node_msgs['builder_argument'][key].getattr_f
-                build_args[key] = getf(value) if getf else value
+                build_args[key] = get_args('builder_argument', key, value)
             elif '.' in key:
                 builder_key, key = key.split('.')
                 if builder_key not in other_args: other_args[builder_key] = dict()
-                getf = node_msgs['other_arguments'][builder_key][key].getattr_f
-                other_args[builder_key][key] = getf(value) if getf else value
+                other_args[builder_key][key] = get_args('other_arguments', key, value, builder_key=builder_key)
             else:
                 raise KeyError(f'Invalid key `{key}` found')
 
@@ -101,10 +100,63 @@ class NodeConstructor(object):
 _constructor = NodeConstructor()
 
 
+class ServerGraph(lazyllm.ModuleBase):
+    def __init__(self, g: lazyllm.graph, server: Node, web: Node):
+        super().__init__()
+        self._g = lazyllm.ActionModule(g)
+        if server:
+            if server.args.get('port'): raise NotImplementedError('Port is not supported now')
+            self._g = lazyllm.ServerModule(g)
+        if web:
+            port = self._get_port(web.args['port'])
+            self._web = lazyllm.WebModule(g, port=port, title=web.args['title'], audio=web.args['audio'],
+                                          history=[Engine().build_node(h).func for h in web.args['history']])
+
+    def forward(self, *args, **kw):
+        return self._g(*args, **kw)
+
+    # TODO(wangzhihong)
+    def _update(self, *, mode=None, recursive=True):
+        super(__class__, self)._update(mode=mode, recursive=recursive)
+        if hasattr(self, '_web'): self._web.start()
+        return self
+
+    def _get_port(self, port):
+        if not port: return None
+        elif ',' in port:
+            return list(int(p.strip()) for p in port.split(','))
+        elif '-' in port:
+            left, right = tuple(int(p.strip()) for p in port.split('-'))
+            assert left < right
+            return range(left, right)
+        return int(port)
+
+    @property
+    def api_url(self):
+        if isinstance(self._g, lazyllm.ServerModule):
+            return self._g._url
+        return None
+
+    @property
+    def web_url(self):
+        if hasattr(self, '_web'):
+            return self._web.url
+        return None
+
+
 @NodeConstructor.register('Graph')
 @NodeConstructor.register('SubGraph')
-def make_graph(nodes: List[dict], edges: List[dict]):
+def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [], enable_server=True):
     engine = Engine()
+    server_resources = dict(server=None, web=None)
+    for resource in resources:
+        if resource['kind'] in server_resources:
+            assert enable_server, 'Web and Api server are not allowed outside graph and subgraph'
+            assert server_resources[resource['kind']] is None, f'Duplicated {resource["kind"]} resource'
+            server_resources[resource['kind']] = Node(id=resource['id'], kind=resource['kind'],
+                                                      name=resource['name'], args=resource['args'])
+
+    resources = [engine.build_node(resource) for resource in resources if resource['kind'] not in server_resources]
     nodes = [engine.build_node(node) for node in nodes]
 
     with graph() as g:
@@ -117,14 +169,15 @@ def make_graph(nodes: List[dict], edges: List[dict]):
             formatter = lazyllm.formatter.JsonLike(formatter)
         g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name, formatter)
 
-    return g
+    return ServerGraph(g, server_resources['server'], server_resources['web'])
 
 
 @NodeConstructor.register('App')
-def make_subapp(nodes: List[dict], edges: List[dict]):
-    return make_graph(nodes, edges)
+def make_subapp(nodes: List[dict], edges: List[dict], resources: List[dict] = []):
+    return make_graph(nodes, edges, resources)
 
 
+# Note: It will be very dangerous if provided to C-end users as a SAAS service
 @NodeConstructor.register('Code')
 def make_code(code):
     fname = re.search(r'def\s+(\w+)\s*\(', code).group(1)
@@ -135,20 +188,43 @@ def make_code(code):
     return local_dict[fname]
 
 
+def _build_pipeline(nodes):
+    if isinstance(nodes, list) and len(nodes) > 1:
+        return pipeline([Engine().build_node(node).func for node in nodes])
+    else:
+        return Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
+
+
 @NodeConstructor.register('Switch')
 def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     with switch(judge_on_full_input=judge_on_full_input) as sw:
         for cond, nodes in nodes.items():
-            if isinstance(nodes, list) and len(nodes) > 1:
-                f = pipeline([Engine().build_node(node).func for node in nodes])
-            else:
-                f = Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
-            sw.case[cond::f]
+            sw.case[cond::_build_pipeline(nodes)]
     return sw
+
+
+@NodeConstructor.register('Warp')
+def make_warp(nodes: List[dict], edges: List[dict], resources: List[dict] = []):
+    return lazyllm.warp(make_graph(nodes, edges, resources, enable_server=False))
+
+
+@NodeConstructor.register('Loop')
+def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict],
+              resources: List[dict] = [], judge_on_full_input: bool = True):
+    stop_condition = make_code(stop_condition)
+    return lazyllm.loop(make_graph(nodes, edges, resources, enable_server=False),
+                        stop_condition=stop_condition, judge_on_full_input=judge_on_full_input)
+
+
+@NodeConstructor.register('Ifs')
+def make_ifs(cond: str, true: List[dict], false: List[dict], judge_on_full_input: bool = True):
+    assert judge_on_full_input, 'judge_on_full_input only support True now'
+    return lazyllm.ifs(make_code(cond), tpath=_build_pipeline(true), fpath=_build_pipeline(false))
+
 
 @NodeConstructor.register('Intention')
 def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
-    with IntentClassifier(Engine().build_node(base_model)) as ic:
+    with IntentClassifier(Engine().build_node(base_model).func) as ic:
         for cond, nodes in nodes.items():
             if isinstance(nodes, list) and len(nodes) > 1:
                 f = pipeline([Engine().build_node(node).func for node in nodes])
@@ -156,3 +232,32 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
                 f = Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
             ic.case[cond::f]
     return ic
+
+
+@NodeConstructor.register('Document')
+def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False, node_group: List = []):
+    document = lazyllm.tools.rag.Document(dataset_path, Engine().build_node(embed) if embed else None, create_ui)
+    for group in node_group:
+        if group['transform'] == 'LLMParser': group['llm'] = Engine().build_node(group['llm']).func
+        elif group['transform'] == 'FuncNode': group['function'] = make_code(group['function'])
+        document.create_node_group(**group)
+    return document
+
+@NodeConstructor.register('Reranker')
+def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
+                  output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
+    return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
+
+@NodeConstructor.register('JoinFormatter')
+def make_join_formatter(method='sum'):
+    def impl(*args):
+        assert len(args) > 0, 'Cannot sum empty inputs'
+        return sum(args, type(args[0])())
+    return impl
+
+@NodeConstructor.register('FunctionCall')
+def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
+    f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
+        lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
+        lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
+    return f(Engine().build_node(llm).func, tools)
