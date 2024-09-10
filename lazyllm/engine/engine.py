@@ -202,3 +202,10 @@ def make_join_formatter(method='sum'):
         assert len(args) > 0, 'Cannot sum empty inputs'
         return sum(args, type(args[0])())
     return impl
+
+@NodeConstructor.register('FunctionCall')
+def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
+    f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
+        lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
+        lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
+    return f(Engine().build_node(llm).func, tools)

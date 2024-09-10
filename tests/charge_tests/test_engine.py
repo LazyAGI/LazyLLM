@@ -33,15 +33,15 @@ class TestEngine(object):
         engine.start(nodes, edges, resources)
         assert '10' in engine.run("What's the weather like today in celsius in Tokyo.")
 
-        nodes = [dict(id="2", kind="React", name="re",
-                      args=dict(llm='0', tools=['multiply_tool', 'add_tool']))]
+        nodes = [dict(id="2", kind="FunctionCall", name="re",
+                      args=dict(llm='0', tools=['multiply_tool', 'add_tool'], algorithm='React'))]
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
         assert '5440' in engine.run("Calculate 20*(45+23)*4, step by step.")
 
-        nodes = [dict(id="2", kind="PlanAndSolve", name="re",
-                      args=dict(llm='0', tools=['multiply_tool', 'add_tool']))]
+        nodes = [dict(id="2", kind="FunctionCall", name="re",
+                      args=dict(llm='0', tools=['multiply_tool', 'add_tool'], algorithm='PlanAndSolve'))]
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
