@@ -3,11 +3,11 @@
 
 让我们以一个经典的聊天机器人来开始对 LazyLLM 的探索之旅吧。
 
-> 通过本节您将学习到 LazyLLM 的以下要点：
->
-> - [TrainableModule][lazyllm.module.TrainableModule] 和 [WebModule][lazyllm.tools.WebModule] 的使用，以实现模型的部署、客户端的发布；
-> - 如何指定一个模型；
-> - 如何设置 history。
+!!! abstract "通过本节您将学习到 LazyLLM 的以下要点"
+
+    - [TrainableModule][lazyllm.module.TrainableModule] 和 [WebModule][lazyllm.tools.WebModule] 的使用，以实现模型的部署、客户端的发布；
+    - 如何指定一个模型；
+    - 如何设置 history。
 
 ## 三行代码构建聊天机器人
 

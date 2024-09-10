@@ -85,7 +85,9 @@ The relationship of these `Node Group`s is shown in the diagram below:
 
 ![relationship of node groups](../assets/rag-relationship-of-node-groups.svg)
 
-Note: The `Document.create_node_group()` method has a parameter named `parent` which is used to specify which `Node Group` the transformation is based on. If not specified, it defaults to the entire document, which is the root `Node` named `lazyllm-root`. Additionally, the `Document` constructor has an `embed` parameter, which is a function used to convert the content of a `Node` into a vector.
+!!! Note
+
+    The `Document.create_node_group()` method has a parameter named `parent` which is used to specify which `Node Group` the transformation is based on. If not specified, it defaults to the entire document, which is the root `Node` named `lazyllm-root`. Additionally, the `Document` constructor has an `embed` parameter, which is a function used to convert the content of a `Node` into a vector.
 
 These `Node Group`s have different granularities and rules, reflecting various characteristics of the document. In subsequent processing, we use these characteristics in different contexts to better judge the relevance between the document and the user's query content.
 

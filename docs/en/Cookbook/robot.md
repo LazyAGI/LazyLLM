@@ -3,11 +3,11 @@
 
 Let's begin our journey into LazyLLM with a classic chatbot.
 
-> By the end of this section, you will have learned the following key points about LazyLLM:
->
-> - The use of [TrainableModule][lazyllm.module.TrainableModule] and [WebModule][lazyllm.tools.WebModule] for model deployment and client publishing;
-> - How to specify a model;
-> - How to set up history.
+!!! abstract "Through this section, you will learn about the following key points of LazyLLM"
+
+    - The use of [TrainableModule][lazyllm.module.TrainableModule] and [WebModule][lazyllm.tools.WebModule] for model deployment and client publishing;
+    - How to specify a model;
+    - How to set up history.
 
 ## Build a Chatbot in Three Lines of Code
 

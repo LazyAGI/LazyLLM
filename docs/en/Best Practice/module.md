@@ -54,7 +54,9 @@ Module example deployed!
 ['[Module example get input: hello]', '[Module example get input: world]']
 ```
 
-> **Note**: The test set is set by calling `evalset`, and there is no need to explicitly override any function. All `Modules` can have a test set.
+!!! Note
+
+    The test set is set by calling `evalset`, and there is no need to explicitly override any function. All `Modules` can have a test set.
 
 ### Using the Built-in Registry
 
@@ -79,7 +81,7 @@ LazyLLM implements a registry for ``Modules``, which allows you to easily regist
 
 #### Concept of Submodules
 
-Similar to the ``Module`` class in ``pytorch``, the ``Module`` in LazyLLM also has a hierarchical concept, where a Module can have one or more ``Submodule``.
+Similar to the ``Module`` class in PyTorch, the ``Module`` in LazyLLM also has a hierarchical concept, where a Module can have one or more ``Submodule``.
 When using the ``update`` function to update a ``Module``, its ``Submodule`` will also be updated, unless explicitly set not to update the ``Submodule``.
 Similarly, when using the ``start`` function to start the deployment task of a ``Module``, its ``Submodule`` will also be deployed, unless explicitly set not to deploy the ``Submodule``.
 Here is an example:
@@ -99,38 +101,38 @@ You can make one ``Module`` a ``Submodule`` of another ``Module`` in the followi
         >>> sm.submodules
         [<Module type=MyModule name=m1>]
 
-    > **Note**:
-    >
-    > - When a flow is passed as a constructor argument to ``ActionModule`` or ``ServerModule``, any ``Module`` within it will also become a ``Submodule`` of the ``ActionModule`` or ``ServerModule``. Here's an example:
-    > 
-    >          >>> m1 = MyModule('m1')
-    >          >>> m2 = MyModule('m2')
-    >          >>> m3 = MyModule('m3')
-    >          >>> am = lazyllm.ActionModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
-    >          >>> am.submodules
-    >          [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
-    >          >>> sm = lazyllm.ServerModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
-    >          >>> sm.submodules
-    >          [<Module type=_ServerModuleImpl>]
-    >          >>> sm.submodules[0].submodules
-    >          [<Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>
-    >           └- <Flow type=Pipeline items=[]>
-    >               |- <Module type=MyModule name=m1>
-    >               └- <Flow type=Parallel items=[]>
-    >                   |- <Module type=MyModule name=m2>
-    >                   └- <Module type=MyModule name=m3>
-    >          ]
-    >
-    > - When directly printing the ``repr`` of a ``Module``, it will display its hierarchical structure, including all its ``Submodules``. Continuing from the previous example:
-    >
-    >           >>> sm
-    >           <Module type=Server stream=False return_trace=False>
-    >           └- <Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>
-    >             └- <Flow type=Pipeline items=[]>
-    >                |- <Module type=MyModule name=m1>
-    >                └- <Flow type=Parallel items=[]>
-    >                     |- <Module type=MyModule name=m2>
-    >                     └- <Module type=MyModule name=m3>
+    !!! Note
+
+        - When a flow is passed as a constructor argument to ``ActionModule`` or ``ServerModule``, any ``Module`` within it will also become a ``Submodule`` of the ``ActionModule`` or ``ServerModule``. Here's an example:
+
+                >>> m1 = MyModule('m1')
+                >>> m2 = MyModule('m2')
+                >>> m3 = MyModule('m3')
+                >>> am = lazyllm.ActionModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
+                >>> am.submodules
+                [<Module type=MyModule name=m1>, <Module type=MyModule name=m2>, <Module type=MyModule name=m3>]
+                >>> sm = lazyllm.ServerModule(lazyllm.pipeline(m1, lazyllm.parallel(m2, m3)))
+                >>> sm.submodules
+                [<Module type=_ServerModuleImpl>]
+                >>> sm.submodules[0].submodules
+                [<Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>
+                └- <Flow type=Pipeline items=[]>
+                    |- <Module type=MyModule name=m1>
+                    └- <Flow type=Parallel items=[]>
+                        |- <Module type=MyModule name=m2>
+                        └- <Module type=MyModule name=m3>
+                ]
+
+        - When directly printing the ``repr`` of a ``Module``, it will display its hierarchical structure, including all its ``Submodules``. Continuing from the previous example:
+
+                >>> sm
+                <Module type=Server stream=False return_trace=False>
+                └- <Module type=Action return_trace=False sub-category=Flow type=Pipeline items=[]>
+                └- <Flow type=Pipeline items=[]>
+                    |- <Module type=MyModule name=m1>
+                    └- <Flow type=Parallel items=[]>
+                        |- <Module type=MyModule name=m2>
+                        └- <Module type=MyModule name=m3>
 
 2. Setting another ``Module`` as a member variable in a ``Module`` can make the other ``Module`` become its ``submodule``. Here is an example:
 
@@ -187,9 +189,7 @@ Module m2-2 m1-2 deployed!
 Module m2-2 deployed!
 ```
 
-> **Note**:
->
-> It can be seen that when updating the ``ActionModule``, all its ``Submodules`` will be updated together. If there are deployment tasks, they will be executed after all the training/fine-tuning tasks are completed.
-> Since parent modules may depend on submodules, submodules will be deployed first, followed by parent modules.
+!!! Note
 
-> **Note**: When the ``Redis`` service is configured, the lightweight gateway mechanism provided by LazyLLM can be used to achieve parallel deployment of all services.
+    - It can be seen that when updating the ``ActionModule``, all its ``Submodules`` will be updated together. If there are deployment tasks, they will be executed after all the training/fine-tuning tasks are completed. Since parent modules may depend on submodules, submodules will be deployed first, followed by parent modules.
+    - When the ``Redis`` service is configured, the lightweight gateway mechanism provided by LazyLLM can be used to achieve parallel deployment of all services.
