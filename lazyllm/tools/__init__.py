@@ -10,7 +10,7 @@ from .agent import (
     ReWOOAgent,
 )
 from .classifier import IntentClassifier
-from .sql import SQLiteTool, SqlTool, SqlModule
+from .sql import SQLiteManger, SqlManager, SqlCall
 
 __all__ = [
     "Document",
@@ -27,7 +27,7 @@ __all__ = [
     "ReWOOAgent",
     "IntentClassifier",
     "SentenceSplitter",
-    "SQLiteTool",
-    "SqlTool",
-    "SqlModule",
+    "SQLiteManger",
+    "SqlManager",
+    "SqlCall",
 ]

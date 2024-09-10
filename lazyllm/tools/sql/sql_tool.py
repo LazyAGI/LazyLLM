@@ -1,39 +1,97 @@
 # flake8: noqa E501
 from lazyllm.module import ModuleBase
-import sqlite3
 import lazyllm
 from lazyllm.components import ChatPrompter
 from lazyllm.tools.utils import chat_history_to_str
 from lazyllm import pipeline, globals, bind, LOG, _0, switch
-import json5 as json
+import json
 from typing import List, Any, Dict, Union
 from pathlib import Path
 import datetime
 import re
 import sqlalchemy
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
-from sqlalchemy.schema import CreateTable
+from sqlalchemy.orm import declarative_base
+import pydantic
 
 
-class SqlTool:
-    DB_TYPE_SUPPORTED = set(["PostgreSQL", "MySQL", "MS SQL", "SQLite"])
+class ColumnInfo(pydantic.BaseModel):
+    name: str
+    data_type: str
+    comment: str = ""
+    is_primary_key: bool = False
+    nullable: bool = True
 
-    def __init__(self, db_type: str, conn_url: str) -> None:
-        self.reset_db(db_type, conn_url)
 
-    def reset_db(self, db_type: str, conn_url: str):
+class TableInfo(pydantic.BaseModel):
+    name: str
+    comment: str = ""
+    columns: list[ColumnInfo]
+
+
+class TablesInfo(pydantic.BaseModel):
+    tables: list[TableInfo]
+
+
+class SqlManager:
+    DB_TYPE_SUPPORTED = set(["PostgreSQL", "MySQL", "MSSQL", "SQLite"])
+
+    def __init__(
+        self,
+        db_type: str,
+        user: str,
+        password: str,
+        host: str,
+        port: int,
+        db_name: str,
+        tabels_info_dict: dict,
+        options_str: str = "",
+    ) -> None:
+        conn_url = f"{db_type.lower()}://{user}:{password}@{host}:{port}/{db_name}"
+        self.reset_db(db_type, conn_url, tabels_info_dict)
+        lazyllm.LOG.warning(f"After init. prompt: {self.tables_prompt}")
+
+    def reset_tables(self, tabels_info_dict: dict) -> tuple[bool, str]:
+        existing_tables = set(self.get_all_tables())
+        try:
+            tables_info = TablesInfo.model_validate(tabels_info_dict)
+        except pydantic.ValidationError as e:
+            lazyllm.LOG.warning(str(e))
+            return False, str(e)
+        for table_info in tables_info.tables:
+            if table_info.name not in existing_tables:
+                # create table
+                cur_rt, cur_err_msg = self._create_table(table_info.model_dump())
+            else:
+                # check table
+                cur_rt, cur_err_msg = self._check_columns_match(table_info.model_dump())
+            if not cur_rt:
+                lazyllm.LOG.warning(f"cur_err_msg: {cur_err_msg}")
+                return cur_rt, cur_err_msg
+        rt, err_msg = self._set_tables_desc_prompt(tabels_info_dict)
+        if not rt:
+            lazyllm.LOG.warning(err_msg)
+        return True, "Success"
+
+    def reset_db(self, db_type: str, conn_url: str, tabels_info_dict: dict, options_str=""):
         assert db_type in self.DB_TYPE_SUPPORTED
         extra_fields = {}
-        if "?" in conn_url:
-            npos = conn_url.find("?")
-            str_extra = conn_url[npos + 1 :]
-            extra_fields = {key: value for key_value in str_extra.split("&") for key, value in (key_value.split("="),)}
-            conn_url = conn_url[0:npos]
-
+        if options_str:
+            extra_fields = {
+                key: value for key_value in options_str.split("&") for key, value in (key_value.split("="),)
+            }
         self.db_type = db_type
         self.conn_url = conn_url
         self.extra_fields = extra_fields
         self.engine = sqlalchemy.create_engine(conn_url)
+        self.tables_prompt = ""
+        rt, err_msg = self.reset_tables(tabels_info_dict)
+        if not rt:
+            self.err_msg = err_msg
+        self.err_msg = ""
+
+    def get_tables_desc(self):
+        return self.tables_prompt
 
     def check_connection(self) -> tuple[bool, str]:
         try:
@@ -47,7 +105,7 @@ class SqlTool:
         try:
             with self.engine.connect() as conn:
                 result = conn.execute(sqlalchemy.text(sql_script))
-                columns = result.keys()
+                columns = list(result.keys())
                 result_dict = [dict(zip(columns, row)) for row in result]
                 str_result = json.dumps(result_dict, ensure_ascii=False)
         except OperationalError as e:
@@ -62,76 +120,7 @@ class SqlTool:
         table_names = inspector.get_table_names(schema=self.extra_fields.get("schema", None))
         return table_names
 
-    def get_tables_desc(self, tables: list = None) -> str:
-        if tables is None or len(tables) == 0:
-            tables = self.get_all_tables()
-        metadata = sqlalchemy.MetaData()
-        metadata.reflect(bind=self.engine)
-        str_desc = ""
-        for table_name in tables:
-            cur_table = sqlalchemy.Table(table_name, metadata, autoload_with=self.engine)
-            creation_sql = str(CreateTable(cur_table).compile(self.engine))
-            str_desc += creation_sql + "\n"
-        return str_desc
-
-    def get_table_columns(self, table_name: str):
-        inspector = sqlalchemy.inspect(self.engine)
-        columns = inspector.get_columns(table_name, schema=self.extra_fields.get("schema", None))
-        return columns
-
-
-class SQLiteTool(SqlTool):
-    def __init__(self, db_file, return_trace=False):
-        self.db_type = ""
-        assert Path(db_file).is_file()
-        self._return_trace = return_trace
-        super().__init__("SQLite", f"sqlite:///{db_file}")
-
-    def create_tables(self, tables_info: dict):
-        try:
-            with self.engine.connect() as conn:
-                for table_name, table_info in tables_info.items():
-                    # Start building the SQL for creating the table
-                    create_table_sql = f"CREATE TABLE {table_name} ("
-
-                    # Iterate over fields to add them to the SQL statement
-                    fields = []
-                    for field_name, field_info in table_info["fields"].items():
-                        field_type = field_info["type"]
-                        comment = field_info["comment"]
-                        # Add field definition
-                        fields.append(f"{field_name} {field_type} comment '{comment}'")
-                    # Join fields and complete SQL statement
-                    create_table_sql += ", ".join(fields) + ");"
-                    # Execute SQL statement to create the table
-                    conn.execute(sqlalchemy.text(create_table_sql))
-                    conn.commit()
-        except OperationalError as e:
-            str_result = f"ERROR: {str(e)}"
-        finally:
-            if "conn" in locals():
-                conn.close()
-
-    def get_tables_desc(self, tables: list = None) -> str:
-        sql_script = "SELECT sql FROM sqlite_master WHERE type='table'"
-        str_tables = ""
-        try:
-            with self.engine.connect() as conn:
-                result = conn.execute(sqlalchemy.text(sql_script))
-                table_infos = list(result)
-            for table_info in table_infos:
-                str_tables += table_info[0] + "\n"
-        except OperationalError as e:
-            if self._return_trace:
-                globals["trace"].append(f"SQLiteTool Exception: {str(e)}. sql_script: {sql_script}")
-            LOG.warning(str(e))
-            str_tables = ""
-        finally:
-            if "conn" in locals():
-                conn.close()
-        return str_tables
-
-    def sql_update(self, sql_script):
+    def execute_sql_update(self, sql_script):
         try:
             with self.engine.connect() as conn:
                 conn.execute(sqlalchemy.text(sql_script))
@@ -143,6 +132,104 @@ class SQLiteTool(SqlTool):
         finally:
             if "conn" in locals():
                 conn.close()
+
+    def _get_table_columns(self, table_name: str):
+        inspector = sqlalchemy.inspect(self.engine)
+        columns = inspector.get_columns(table_name, schema=self.extra_fields.get("schema", None))
+        return columns
+
+    def _create_table(self, table_info_dict: dict) -> tuple[bool, str]:
+        rt, err_msg = True, "Success"
+        sqlalchemy_type_map = {
+            "integer": sqlalchemy.Integer,
+            "string": sqlalchemy.String,
+            "boolean": sqlalchemy.Boolean,
+            "float": sqlalchemy.Float,
+            "text": sqlalchemy.Text,
+        }
+        try:
+            table_info = TableInfo.model_validate(table_info_dict)
+        except pydantic.ValidationError as e:
+            return False, str(e)
+        try:
+            with self.engine.connect() as conn:
+                Base = declarative_base()
+                # build table dynamically
+                attrs = {"__tablename__": table_info.name}
+                for column_info in table_info.columns:
+                    column_type = column_info.data_type.lower()
+                    is_nullable = column_info.nullable
+                    column_name = column_info.name
+                    is_primpary = column_info.is_primary_key
+                    if column_type not in sqlalchemy_type_map:
+                        return False, f"Unsupported column type: {column_type}"
+                    real_type = sqlalchemy_type_map[column_type]
+                    attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable, primary_key=is_primpary)
+                TableClass = type(table_info.name.capitalize(), (Base,), attrs)
+                Base.metadata.create_all(self.engine)
+        except OperationalError as e:
+            rt, err_msg = False, f"ERROR: {str(e)}"
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return rt, err_msg
+
+    def _check_columns_match(self, table_info_dict: dict):
+        try:
+            table_info = TableInfo.model_validate(table_info_dict)
+        except pydantic.ValidationError as e:
+            return False, str(e)
+        real_columns = self._get_table_columns(table_info.name)
+        tmp_dict = {}
+        for real_column in real_columns:
+            tmp_dict[real_column["name"]] = (real_column["type"], real_column["nullable"])
+        for column_info in table_info.columns:
+            if column_info.name not in tmp_dict:
+                return False, f"Table {table_info.name} exists but column {column_info.name} does not."
+            real_column = tmp_dict[column_info.name]
+            if column_info.data_type.lower() != real_column[0].__class__.__name__.lower():
+                return (
+                    False,
+                    f"Table {table_info.name} exists but column {column_info.name} data_type mismatch"
+                    f": {column_info.data_type} vs {real_column[0].__class__.__name__}",
+                )
+            if column_info.nullable != real_column[1]:
+                return False, f"Table {table_info.name} exists but column {column_info.name} nullable mistach"
+        if len(tmp_dict) > len(table_info.columns):
+            return (
+                False,
+                f"Table {table_info.name} exists but has more columns. {len(tmp_dict)} vs {len(table_info.columns)}",
+            )
+        return True, "Match"
+
+    def _set_tables_desc_prompt(self, tabels_info_dict: dict) -> str:
+        try:
+            tables_info = TablesInfo.model_validate(tabels_info_dict)
+        except pydantic.ValidationError as e:
+            return False, str(e)
+        self.tables_prompt = "The tables description is as follows\n```\n"
+        for table_info in tables_info.tables:
+            self.tables_prompt += f'Table "{table_info.name}"'
+            if table_info.comment:
+                self.tables_prompt += f' comment "{table_info.comment}"'
+            self.tables_prompt += "\n(\n"
+            for i, column_info in enumerate(table_info.columns):
+                self.tables_prompt += f"{column_info.name} {column_info.data_type}"
+                if column_info.comment:
+                    self.tables_prompt += f' comment "{column_info.comment}"'
+                if i != len(table_info.columns) - 1:
+                    self.tables_prompt += ","
+                self.tables_prompt += "\n"
+            self.tables_prompt += ");\n"
+        self.tables_prompt += "```\n"
+        return True, "Success"
+
+
+class SQLiteManger(SqlManager):
+    def __init__(self, db_file, tabels_info_dict: dict, return_trace=False):
+        assert Path(db_file).is_file()
+        self._return_trace = return_trace
+        super().reset_db("SQLite", f"sqlite:///{db_file}", tabels_info_dict)
 
 
 sql_query_instruct_template = """
@@ -170,13 +257,11 @@ the sql result is
 """
 
 
-class SqlModule(ModuleBase):
+class SqlCall(ModuleBase):
     def __init__(
         self,
         llm,
-        sql_tool: SqlTool,
-        tables: Union[List[str], None] = None,
-        tables_desc: str = "",
+        sql_tool: SqlManager,
         sql_examples: str = "",
         use_llm_for_sql_result=True,
         return_trace: bool = False,
