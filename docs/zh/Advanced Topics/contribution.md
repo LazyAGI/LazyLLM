@@ -79,10 +79,10 @@ git push -u origin {branch_name}
 - 在 GitHub 的 Pull request 界面创建pull request <br>
 - 根据指引修改 PR 描述，以便于其他开发者更好地理解你的修改
 
-> **注意**：
->
-> - PR 描述应该包含修改理由、修改内容以及修改后带来的影响，并关联相关 Issue
-> - 所有 reviewer 同意合入 PR 后，我们会尽快将 PR 合并到主分支。
+!!! Note "注意"
+
+      - PR 描述应该包含修改理由、修改内容以及修改后带来的影响，并关联相关 Issue
+      - 所有 reviewer 同意合入 PR 后，我们会尽快将 PR 合并到主分支。
 
 #### 解决冲突
 

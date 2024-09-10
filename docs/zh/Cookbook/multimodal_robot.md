@@ -2,13 +2,13 @@
 
 我们将进一步增强我们的机器人！在上一节的 [绘画大师](painting_master.md) 的基础上，引入更多模型使它成为一个多模态机器人！让我们开始吧！
 
-> 通过本节您将学习到 LazyLLM 的以下要点：
->
-> - 如何给同一个模型设置不同的提示词；
-> - 如何基于 [Switch][lazyllm.flow.Switch] 控制流来实现路由，我们将基于它结合 LLM 实现一个简单的意图识别机器人；
-> - 如何给 [TrainableModule][lazyllm.module.TrainableModule] 指定部署的框架；
-> - 如何在控制流上使用 [bind](../Best Practice/flow.md#use-bind) 来传入参数；
-> - 如何使用 [IntentClassifier][lazyllm.tools.IntentClassifier] 来实现意图识别。
+!!! abstract "通过本节您将学习到 LazyLLM 的以下要点"
+
+    - 如何给同一个模型设置不同的提示词；
+    - 如何基于 [Switch][lazyllm.flow.Switch] 控制流来实现路由，我们将基于它结合 LLM 实现一个简单的意图识别机器人；
+    - 如何给 [TrainableModule][lazyllm.module.TrainableModule] 指定部署的框架；
+    - 如何在控制流上使用 [bind](../Best Practice/flow.md#use-bind) 来传入参数；
+    - 如何使用 [IntentClassifier][lazyllm.tools.IntentClassifier] 来实现意图识别。
 
 ## 设计思路
 
@@ -134,7 +134,7 @@ with switch(judge_on_full_input=False).bind(_0, ppl.input) as ppl.sw:
 
 - 我们首先关注 `bind(_0, ppl.input)`, 其中 `_0` 是上一步输出的结果第0个参数，即意图列表中的一个意图。`ppl.input`是用户的输入（对应设计图中红色线条）。所以这行代码是给 `switch` 控制流设置了两个参数，第一个参数是意图，第二个参数是用户的输入。更多 `bind` 使用方法参见：[参数绑定](../Best Practice/flow.md#use-bind)
 
-- 然后`judge_on_full_input=False`，可以将输入分为两部分，第一部分是作为判断条件，剩下部分作为分支的输入，否则如果为 `True` 就会把整个输入作为判断条件和分支输入。
+- 然后 `judge_on_full_input=False`，可以将输入分为两部分，第一部分是作为判断条件，剩下部分作为分支的输入，否则如果为 `True` 就会把整个输入作为判断条件和分支输入。
 
 - 最后我们将实例化后的 `switch` 也添加到了 `ppl` 上：`ppl.sw`。更多参见：[Switch][lazyllm.flow.Switch]。
 

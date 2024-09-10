@@ -1,10 +1,20 @@
 # noqa: E121
 import lazyllm
-from typing import Any, Optional, List, Callable
+from typing import Any, Optional, List, Callable, Dict
 from dataclasses import dataclass
 from functools import partial
 
 from lazyllm.tools.http_request.http_request import HttpRequest
+
+
+@dataclass
+class Node():
+    id: int
+    kind: str
+    name: str
+    args: Optional[Dict] = None
+    func: Optional[Callable] = None
+
 
 @dataclass
 class NodeArgs(object):
@@ -73,5 +83,50 @@ all_nodes['Formatter'] = dict(
     module=partial(getattr, lazyllm.formatter),
     init_arguments=dict(
         formatter=NodeArgs(str),
+    )
+)
+
+all_nodes['ToolsForLLM'] = dict(
+    module=lazyllm.tools.ToolManager,
+    init_arguments=dict(
+        tools=NodeArgs(list)
+    )
+)
+
+all_nodes['Retriever'] = dict(
+    module=lazyllm.tools.rag.Retriever,
+    init_arguments=dict(
+        doc=NodeArgs(Node),
+        group_name=NodeArgs(str),
+        similarity=NodeArgs(str, "cosine"),
+        similarity_cut_off=NodeArgs(float, float("-inf")),
+        index=NodeArgs(str, "default"),
+        topk=NodeArgs(int, 6),
+        target=NodeArgs(str, None),
+        output_format=NodeArgs(str, None),
+        join=NodeArgs(bool, False)
+    )
+)
+
+all_nodes['Reranker'] = dict(
+    module=lazyllm.tools.rag.Reranker,
+    init_arguments=dict(
+        name=NodeArgs(str, 'ModuleReranker'),
+        target=NodeArgs(str, None),
+        output_format=NodeArgs(str, None),
+        join=NodeArgs(bool, False),
+        arguments={
+            '__name__': 'name',
+            '__cls__': 'init_arguments',
+            'ModuleReranker': dict(
+                model=NodeArgs(str, 'bge-reranker-large'),
+                topk=NodeArgs(int, -1)
+            ),
+            'KeywordFilter': dict(
+                required_keys=NodeArgs(list, []),
+                exclude_keys=NodeArgs(list, []),
+                language=NodeArgs(str, "en")
+            )
+        }
     )
 )

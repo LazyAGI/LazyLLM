@@ -1,23 +1,26 @@
 from functools import lru_cache
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Union
 from lazyllm import ModuleBase, config, LOG
 from lazyllm.tools.rag.store import DocNode, MetadataMode
 from lazyllm.components.utils.downloader import ModelManager
+from .retriever import _PostProcess
 import numpy as np
 
 
-class Reranker(ModuleBase):
+class Reranker(ModuleBase, _PostProcess):
     registered_reranker = dict()
 
-    def __init__(self, name: str = "ModuleReranker", **kwargs) -> None:
+    def __init__(self, name: str = "ModuleReranker", target: Optional[str] = None,
+                 output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs) -> None:
         super().__init__()
-        self.name = name
-        self.kwargs = kwargs
+        self._name = name
+        self._kwargs = kwargs
+        _PostProcess.__init__(self, target, output_format, join)
 
     def forward(self, nodes: List[DocNode], query: str = "") -> List[DocNode]:
-        results = self.registered_reranker[self.name](nodes, query=query, **self.kwargs)
-        LOG.debug(f"Rerank use `{self.name}` and get nodes: {results}")
-        return results
+        results = self.registered_reranker[self._name](nodes, query=query, **self._kwargs)
+        LOG.debug(f"Rerank use `{self._name}` and get nodes: {results}")
+        return self._post_process(results)
 
     @classmethod
     def register_reranker(
@@ -51,11 +54,12 @@ def get_nlp_and_matchers(language):
 @Reranker.register_reranker
 def KeywordFilter(
     node: DocNode,
-    required_keys: List[str],
-    exclude_keys: List[str],
+    required_keys: List[str] = [],
+    exclude_keys: List[str] = [],
     language: str = "en",
     **kwargs,
 ) -> Optional[DocNode]:
+    assert required_keys or exclude_keys, 'One of required_keys or exclude_keys should be provided'
     nlp, required_matcher, exclude_matcher = get_nlp_and_matchers(language)
     if required_keys:
         required_matcher.add("RequiredKeywords", list(nlp.pipe(required_keys)))

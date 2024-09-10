@@ -68,6 +68,9 @@ class package(tuple):
             return package(super(__class__, self).__getitem__(key))
         return super(__class__, self).__getitem__(key)
 
+    def __add__(self, __other):
+        return package(super().__add__(__other))
+
 
 class kwargs(dict):
     pass
@@ -78,7 +81,25 @@ class arguments(object):
 
     def __init__(self, args=_None, kw=_None) -> None:
         self.args = package() if args is arguments._None else args
-        self.kw = kwargs() if args is arguments._None else kw
+        if not isinstance(self.args, package): self.args = package((self.args,))
+        self.kw = kwargs() if kw is arguments._None else copy.copy(kw)
+
+    def append(self, x):
+        args, kw = package(), kwargs()
+        if isinstance(x, package):
+            args = x
+        elif isinstance(x, kwargs):
+            kw = x
+        elif isinstance(x, arguments):
+            args, kw = x.args, x.kw
+        else:
+            args = package((x,))
+        if args: self.args += args
+        if kw:
+            dup_keys = set(self.kw.keys()).intersection(set(kw.keys()))
+            assert len(dup_keys) == 0, f'Duplicated keys: {dup_keys}'
+            self.kw.update(kw)
+        return self
 
 
 setattr(builtins, 'package', package)

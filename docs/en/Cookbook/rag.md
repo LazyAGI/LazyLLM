@@ -2,11 +2,11 @@
 
 This article will demonstrate how to implement a knowledge base Q&A assistant. Before starting this section, it is recommended to read the [RAG Best Practices](../Best%20Practice/rag.md) first.
 
-> Through this section, you will learn the following key points about `LazyLLM`:
+!!! abstract "Through this section, you will learn about the following key points of LazyLLM"
 
-> * RAG related modules: [Document][lazyllm.tools.Document], [Retriever][lazyllm.tools.Retriever] and [Reranker][lazyllm.tools.Reranker]
-> * Built-in ChatPrompter module
-> * Built-in process modules: [Pipeline][lazyllm.flow.Pipeline] and [Parallel][lazyllm.flow.Parallel]
+    - RAG related modules: [Document][lazyllm.tools.Document], [Retriever][lazyllm.tools.Retriever] and [Reranker][lazyllm.tools.Reranker]
+    - Built-in ChatPrompter module
+    - Built-in process modules: [Pipeline][lazyllm.flow.Pipeline] and [Parallel][lazyllm.flow.Parallel]
 
 ## Version-1
 

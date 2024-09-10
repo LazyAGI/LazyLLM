@@ -60,4 +60,4 @@ with pipeline() as ppl:
     ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
 
 if __name__ == '__main__':
-    lazyllm.WebModule(ppl, port=23466).start().wait()
+    lazyllm.WebModule(ppl, port=range(23467, 24000)).start().wait()
