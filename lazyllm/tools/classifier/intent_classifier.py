@@ -31,7 +31,6 @@ The chat history between the human and the assistant is stored within the <histo
 </histories>
 
 Input text is as follows:
-{input}
 """  # noqa E501
 
 ch_prompt_classifier_template = """
@@ -59,7 +58,6 @@ Assistant:  查看天气
 </histories>
 
 输入文本如下:
-${input}
 """  # noqa E501
 
 
@@ -90,7 +88,8 @@ class IntentClassifier(ModuleBase):
         prompt = choose_prompt().replace(
             '{user_prompt}', f' {self._prompt}').replace('{attention}', self._attention).replace(
             '{user_constrains}', f' {self._constrain}').replace('{user_examples}', f' {examples}')
-        self._llm = self._llm.share(prompt=AlpacaPrompter(prompt).pre_hook(self.intent_promt_hook))
+        self._llm = self._llm.share(prompt=AlpacaPrompter(dict(system=prompt, user='${input}')
+                                                          ).pre_hook(self.intent_promt_hook))
         self._impl = pipeline(self._llm, self.post_process_result)
 
     def intent_promt_hook(

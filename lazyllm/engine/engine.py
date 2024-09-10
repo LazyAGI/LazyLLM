@@ -224,7 +224,7 @@ def make_ifs(cond: str, true: List[dict], false: List[dict], judge_on_full_input
 
 @NodeConstructor.register('Intention')
 def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
-    with IntentClassifier(Engine().build_node(base_model)) as ic:
+    with IntentClassifier(Engine().build_node(base_model).func) as ic:
         for cond, nodes in nodes.items():
             if isinstance(nodes, list) and len(nodes) > 1:
                 f = pipeline([Engine().build_node(node).func for node in nodes])
@@ -254,3 +254,10 @@ def make_join_formatter(method='sum'):
         assert len(args) > 0, 'Cannot sum empty inputs'
         return sum(args, type(args[0])())
     return impl
+
+@NodeConstructor.register('FunctionCall')
+def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
+    f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
+        lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
+        lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
+    return f(Engine().build_node(llm).func, tools)
