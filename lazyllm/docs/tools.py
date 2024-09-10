@@ -1029,14 +1029,14 @@ Args:
     city_name (str): 需要获取天气的城市名称。
 """)
 
-add_tools_english_doc("Weather", """
+add_tools_english_doc("Weather.forward", """
 Query the weather of a specific city. The minimum input scope for cities is at the prefecture level, and for municipalities, it is at the district level. The input city or district name should not include the suffix "市" (city) or "区" (district). Refer to the examples below.
 
 Args:
     city_name (str): The name of the city for which weather information is needed.
 """)
 
-add_tools_example("Weather", """
+add_tools_example("Weather.forward", """
 from lazyllm.tools.tools import Weather
 
 weather = Weather()
