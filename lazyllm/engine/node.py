@@ -94,6 +94,30 @@ all_nodes['FunctionCall'] = dict(
     )
 )
 
+all_nodes['React'] = dict(
+    module=lazyllm.tools.ReactAgent,
+    init_arguments=dict(
+        llm=NodeArgs(Node),
+        tools=NodeArgs(list)
+    )
+)
+
+all_nodes['PlanAndSolve'] = dict(
+    module=lazyllm.tools.PlanAndSolveAgent,
+    init_arguments=dict(
+        llm=NodeArgs(Node),
+        tools=NodeArgs(list)
+    )
+)
+
+all_nodes['ReWOO'] = dict(
+    module=lazyllm.tools.ReWOOAgent,
+    init_arguments=dict(
+        llm=NodeArgs(Node),
+        tools=NodeArgs(list)
+    )
+)
+
 all_nodes['ToolsForLLM'] = dict(
     module=lazyllm.tools.ToolManager,
     init_arguments=dict(

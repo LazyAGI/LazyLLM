@@ -1,5 +1,72 @@
-from lazyllm import LightEngine
+from lazyllm import LightEngine, fc_register
+import json
+from typing import Literal
 import pytest
+
+
+@fc_register("tool")
+def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 'fahrenheit'):
+    """
+    Get the current weather in a given location
+
+    Args:
+        location (str): The city and state, e.g. San Francisco, CA.
+        unit (str): The temperature unit to use. Infer this from the users location.
+    """
+    if 'tokyo' in location.lower():
+        return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
+    elif 'san francisco' in location.lower():
+        return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit'})
+    elif 'paris' in location.lower():
+        return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
+    elif 'beijing' in location.lower():
+        return json.dumps({'location': 'Beijing', 'temperature': '90', 'unit': 'Fahrenheit'})
+    else:
+        return json.dumps({'location': location, 'temperature': 'unknown'})
+
+@fc_register("tool")
+def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"] = 'fahrenheit'):
+    """
+    Get an N-day weather forecast
+
+    Args:
+        location (str): The city and state, e.g. San Francisco, CA.
+        num_days (int): The number of days to forecast.
+        unit (Literal['celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+    """
+    if 'tokyo' in location.lower():
+        return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
+    elif 'san francisco' in location.lower():
+        return json.dumps({'location': 'San Francisco', 'temperature': '75', 'unit': 'fahrenheit', "num_days": num_days})
+    elif 'paris' in location.lower():
+        return json.dumps({'location': 'Paris', 'temperature': '25', 'unit': 'celsius', "num_days": num_days})
+    elif 'beijing' in location.lower():
+        return json.dumps({'location': 'Beijing', 'temperature': '85', 'unit': 'fahrenheit', "num_days": num_days})
+    else:
+        return json.dumps({'location': location, 'temperature': 'unknown'})
+
+@fc_register("tool")
+def multiply_tool(a: int, b: int) -> int:
+    """
+    Multiply two integers and return the result integer
+
+    Args:
+        a (int): multiplier
+        b (int): multiplier
+    """
+    return a * b
+
+@fc_register("tool")
+def add_tool(a: int, b: int):
+    """
+    Add two integers and returns the result integer
+
+    Args:
+        a (int): addend
+        b (int): addend
+    """
+    return a + b
+
 
 class TestEngine(object):
 
@@ -20,3 +87,27 @@ class TestEngine(object):
         engine.start(nodes, edges, resources)
         assert engine.run("sing a song") == 'Music get sing a song'
         assert engine.run("draw a hourse") == 'Draw get draw a hourse'
+
+    def test_fc(self):
+        resources = [dict(id="0", kind="OnlineLLM", name="llm", args=dict(source=None))]
+        nodes = [dict(id="1", kind="FunctionCall", name="fc",
+                      args=dict(llm='0', tools=['get_current_weather', 'get_n_day_weather_forecast',
+                                                'multiply_tool', 'add_tool']))]
+        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
+        engine = LightEngine()
+        engine.start(nodes, edges, resources)
+        assert '10' in engine.run("What's the weather like today in celsius in Tokyo.")
+
+        nodes = [dict(id="2", kind="React", name="re",
+                      args=dict(llm='0', tools=['multiply_tool', 'add_tool']))]
+        edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
+        engine = LightEngine()
+        engine.start(nodes, edges, resources)
+        assert '5440' in engine.run("Calculate 20*(45+23)*4, step by step.")
+
+        nodes = [dict(id="2", kind="PlanAndSolve", name="re",
+                      args=dict(llm='0', tools=['multiply_tool', 'add_tool']))]
+        edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
+        engine = LightEngine()
+        engine.start(nodes, edges, resources)
+        assert '5440' in engine.run("Calculate 20*(45+23)*(1+3), step by step.")
