@@ -201,25 +201,23 @@ class ToolManager(ModuleBase):
         else:
             raise TypeError(f"The tools type should be List instead of {type(self._tools)}")
 
-    def forward(self, tools: List[Dict[str, Any]], verbose: bool = False):
-        def process_tool_call(tool_calls):
-            tool_calls = [{"name": tool['name'], "arguments": json.loads(tool['arguments'])
-                           if isinstance(tool['arguments'], str) else tool['arguments']} for tool in tool_calls]
-            tool_output = []
-            flag_val = [True if self._validate_tool(tool['name'], tool['arguments']) else False for tool in tool_calls]
-            tool_inputs = [tool_calls[idx]['arguments'] for idx, val in enumerate(flag_val) if val]
-            tools = [self._tool_call[tool_calls[idx]['name']] for idx, val in enumerate(flag_val) if val]
-            tool_diverter = lazyllm.diverter(tuple(tools))
-            rets = tool_diverter(tuple(tool_inputs))
-            res = iter(rets)
-            rets = [next(res) if ele else None for ele in flag_val]
-            for idx, tool in enumerate(tool_calls):
-                if flag_val[idx]:
-                    ret = rets[idx]
-                    tool_output.append(json.dumps(ret, ensure_ascii=False) if not isinstance(ret, str) else ret)
-                else:
-                    tool_output.append(f"{tool} parameters error.")
+    def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False):
+        tool_calls = [tools,] if isinstance(tools, dict) else tools
+        tool_calls = [{"name": tool['name'], "arguments": json.loads(tool['arguments'])
+                      if isinstance(tool['arguments'], str) else tool['arguments']} for tool in tool_calls]
+        output = []
+        flag_val = [True if self._validate_tool(tool['name'], tool['arguments']) else False for tool in tool_calls]
+        tool_inputs = [tool_calls[idx]['arguments'] for idx, val in enumerate(flag_val) if val]
+        tools = [self._tool_call[tool_calls[idx]['name']] for idx, val in enumerate(flag_val) if val]
+        tool_diverter = lazyllm.diverter(tuple(tools))
+        rets = tool_diverter(tuple(tool_inputs))
+        res = iter(rets)
+        rets = [next(res) if ele else None for ele in flag_val]
+        for idx, tool in enumerate(tool_calls):
+            if flag_val[idx]:
+                ret = rets[idx]
+                output.append(json.dumps(ret, ensure_ascii=False) if not isinstance(ret, str) else ret)
+            else:
+                output.append(f"{tool} parameters error.")
 
-            return tool_output
-        output = process_tool_call(tools)
         return output

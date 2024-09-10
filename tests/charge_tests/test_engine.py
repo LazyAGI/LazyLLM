@@ -23,6 +23,15 @@ class TestEngine(object):
         assert engine.run("sing a song") == 'Music get sing a song'
         assert engine.run("draw a hourse") == 'Draw get draw a hourse'
 
+    def test_toolsforllm(self):
+        nodes = [dict(id="1", kind="ToolsForLLM", name="fc",
+                      args=dict(tools=['get_current_weather', 'get_n_day_weather_forecast',
+                                       'multiply_tool', 'add_tool']))]
+        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        assert '22' in engine.run([dict(name='get_current_weather', arguments=dict(location='Paris'))])[0]
+
     def test_fc(self):
         resources = [dict(id="0", kind="OnlineLLM", name="llm", args=dict(source=None))]
         nodes = [dict(id="1", kind="FunctionCall", name="fc",
@@ -40,9 +49,9 @@ class TestEngine(object):
         engine.start(nodes, edges, resources)
         assert '5440' in engine.run("Calculate 20*(45+23)*4, step by step.")
 
-        nodes = [dict(id="2", kind="FunctionCall", name="re",
+        nodes = [dict(id="3", kind="FunctionCall", name="re",
                       args=dict(llm='0', tools=['multiply_tool', 'add_tool'], algorithm='PlanAndSolve'))]
-        edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
+        edges = [dict(iid="__start__", oid="3"), dict(iid="3", oid="__end__")]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
         assert '5440' in engine.run("Calculate 20*(45+23)*(1+3), step by step.")
