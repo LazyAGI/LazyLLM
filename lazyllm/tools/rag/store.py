@@ -28,12 +28,13 @@ class DocNode:
         group: Optional[str] = None,
         embedding: Optional[List[float]] = None,
         parent: Optional["DocNode"] = None,
+        metadata: Optional[Dict[str, Any]] = {},
     ) -> None:
         self.uid: str = uid if uid else str(uuid.uuid4())
         self.text: Optional[str] = text
         self.group: Optional[str] = group
         self.embedding: Optional[List[float]] = embedding or None
-        self._metadata: Dict[str, Any] = {}
+        self._metadata: Dict[str, Any] = metadata
         # Metadata keys that are excluded from text for the embed model.
         self._excluded_embed_metadata_keys: List[str] = []
         # Metadata keys that are excluded from text for the LLM.
