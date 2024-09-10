@@ -158,10 +158,10 @@ print(f"ret: {ret}")
 # The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.
 ```
 
-> Note:
->
-> - When registering a function or tool, you must specify the default group `tool`, otherwise the model will not be able to use the corresponding tool.
-> - When using the model, thers is no need to distinguish between [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule], because the output types of [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] are designed to the same.
+!!! Note
+
+    - When registering a function or tool, you must specify the default group `tool`, otherwise the model will not be able to use the corresponding tool.
+    - When using the model, thers is no need to distinguish between [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule], because the output types of [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] are designed to the same.
 
 ## Design Concept of FunctionCall
 The design process of [FunctionCall][lazyllm.tools.agent.FunctionCall] is carried out in a bottom-up manner. First, since [FunctionCall][lazyllm.tools.agent.FunctionCall] must call LLM, the output format of the model must be consistent. Therefore, the outputs of [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] are aligned. Then a single round of [FunctionCall][lazyllm.tools.agent.FunctionCall] is implemented, that is, LLM and tools are called once. Finally, the complete [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] is implemented, that is, [FunctionCall][lazyllm.tools.agent.FunctionCall] is iterated multiple times until the model iteration is completed or the maximum number of iterations is exceeded.
@@ -244,10 +244,10 @@ If the tool is not called, the output is of type str, which is the output of the
 今天东京的天气温度是10摄氏度，而巴黎的天气温度是22摄氏度。
 ```
 
-> Note:
->
-> - The output format of the model is `content<|tool_calls|>tool_calls`, the delimiter is fixed, and the delimiter is used to determine whether it is a tool call.
-> - The tool call information contains the tool's `name` and `arguments` fields as well as the `id`, `type` and `function` fields.
+!!! Note
+
+    - The output format of the model is `content<|tool_calls|>tool_calls`, the delimiter is fixed, and the delimiter is used to determine whether it is a tool call.
+    - The tool call information contains the tool's `name` and `arguments` fields as well as the `id`, `type` and `function` fields.
 
 
 ### FunctionCall Output Flow

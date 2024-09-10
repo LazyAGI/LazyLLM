@@ -117,10 +117,10 @@ The principle is as follows:
 
 By using file queues, the streaming output of message content in common conversation applications and [FunctionCall][lazyllm.tools.agent.FunctionCall] applications is guaranteed. Where streaming data needs to be generated, data is continuously pushed into the file queue, and where streaming data needs to be obtained, data is continuously token out from the file queue. Here, writing data to the queue and taking data out of the queue must be done in multiple threads, and the LazyLLM thread pool must be used, because LazyLLM will add identifiers to the file queue in multiple threads to ensure that there is no confusion when operating the file queue in multiple threads. If you do not use multiple threads or use multithreading created by Python's own library, you cannot use streaming operations correctly.
 
-> **Note**:
->
-> - Streaming requires setting `stream=True`.
-> - File queues must be used in multi-threading to implement streaming output, and multi-threading must be implemented using the thread pool provided by LazyLLM.
+!!! Note
+
+    - Streaming requires setting `stream=True`.
+    - File queues must be used in multi-threading to implement streaming output, and multi-threading must be implemented using the thread pool provided by LazyLLM.
 
 ## Intermediate log output
 
@@ -182,9 +182,9 @@ with lazyllm.ThreadPoolExecutor(1) as executor:
 
 From the above code, we can see that for the model and agent definitions, we only need to add `return_trace=True`. The following code only needs to add statements to get logs from the file queue and print logs. From the final result, we can see that LazyLLM can support both streaming output `output:` records and intermediate result log `trace:` records. The collection of `trace` logs is implemented in [ModuleBase][lazyllm.module.ModuleBase]. If you want to implement this capability on your own module, you only need to inherit the [ModuleBase][lazyllm.module.ModuleBase] class.
 
-> **Note**:
->
-> - When outputing intermediate result logs, you need to set `return_trace=True`;
-> - If you want your own functions to also have the ability to collect intermediate result logs, you need to inherit the [ModuleBase][lazyllm.module.ModuleBase] class.
+!!! Note
+
+    - When outputing intermediate result logs, you need to set `return_trace=True`;
+    - If you want your own functions to also have the ability to collect intermediate result logs, you need to inherit the [ModuleBase][lazyllm.module.ModuleBase] class.
 
 For LazyLLM, using streaming output or collecting intermediate result logs is so simple, but it can give users a good effect experience.

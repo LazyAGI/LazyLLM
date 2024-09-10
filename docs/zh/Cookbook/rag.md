@@ -2,11 +2,11 @@
 
 本文将展示如何实现一个知识库问答助手。在开始本节之前，建议先阅读 [RAG 最佳实践](../Best%20Practice/rag.md)。
 
-> 通过本节您将学习到 `LazyLLM` 的以下要点：
->
-> - RAG 相关模块：[Document][lazyllm.tools.Document]，[Retriever][lazyllm.tools.Retriever] 和 [Reranker][lazyllm.tools.Reranker]
-> - 内置的 ChatPrompter 模块
-> - 内置的流程模块：[Pipeline][lazyllm.flow.Pipeline] 和 [Parallel][lazyllm.flow.Parallel]
+!!! abstract "通过本节您将学习到 LazyLLM 的以下要点"
+
+    - RAG 相关模块：[Document][lazyllm.tools.Document]，[Retriever][lazyllm.tools.Retriever] 和 [Reranker][lazyllm.tools.Reranker]
+    - 内置的 ChatPrompter 模块
+    - 内置的流程模块：[Pipeline][lazyllm.flow.Pipeline] 和 [Parallel][lazyllm.flow.Parallel]
 
 ## 版本-1
 

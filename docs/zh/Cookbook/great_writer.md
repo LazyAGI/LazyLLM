@@ -2,11 +2,11 @@
 
 本文我们将实现一个写作机器人应用。
 
-> 通过本节您将学习到 LazyLLM 的以下要点：
->
-> - 如何给模型设置 [formatter][lazyllm.components.formatter.LazyLLMFormatterBase]；
-> - 如何基于 [Warp][lazyllm.flow.Warp] 控制流来实现多输入并发；
-> - 如何在函数上使用 [bind](../Best Practice/flow.md#use-bind) 来传入参数；
+!!! abstract "通过本节您将学习到 LazyLLM 的以下要点"
+
+    - 如何给模型设置 [formatter][lazyllm.components.formatter.LazyLLMFormatterBase]；
+    - 如何基于 [Warp][lazyllm.flow.Warp] 控制流来实现多输入并发；
+    - 如何在函数上使用 [bind](../Best Practice/flow.md#use-bind) 来传入参数；
 
 ## 设计思路
 
