@@ -1,6 +1,6 @@
 from typing import List, Callable, Dict, Type, Optional, Union
 import lazyllm
-from lazyllm import graph, switch, pipeline
+from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier
 from lazyllm.common import compile_code
 from .node import all_nodes, Node
@@ -164,7 +164,8 @@ def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [],
 
     for edge in edges:
         if formatter := edge.get('formatter'):
-            assert formatter.startswith('[') and formatter.endswith(']')
+            assert formatter.startswith('[') and formatter.endswith(']') or \
+                formatter.startswith('{') and formatter.endswith('}')
             formatter = lazyllm.formatter.JsonLike(formatter)
         g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name, formatter)
 
@@ -242,12 +243,31 @@ def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
                   output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
     return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
 
+class JoinFormatter(lazyllm.components.FormatterBase):
+    def __init__(self, type, *, names=None, symbol=None):
+        self.type = type
+        self.names = names
+        self.symbol = symbol
+
+    def _parse_py_data_by_formatter(self, data):
+        if self.type == 'sum':
+            assert len(data) > 0, 'Cannot sum empty inputs'
+            if isinstance(data[0], str): return ''.join(data)
+            return sum(data, type(data[0])())
+        elif self.type == 'stack':
+            return list(data) if isinstance(data, package) else [data,]
+        elif self.type == 'to_dict':
+            assert self.names and len(self.names) == len(data)
+            return {k: v for k, v in zip(self.names, data)}
+        elif self.type == 'join':
+            symbol = self.symbol or ''
+            return symbol.join(data)
+        else:
+            raise TypeError('type should be one of sum/stack/to_dict/join')
+
 @NodeConstructor.register('JoinFormatter')
-def make_join_formatter(method='sum'):
-    def impl(*args):
-        assert len(args) > 0, 'Cannot sum empty inputs'
-        return sum(args, type(args[0])())
-    return impl
+def make_join_formatter(type='sum', names=None, symbol=None):
+    return JoinFormatter(type, names=names, symbol=symbol)
 
 @NodeConstructor.register('FunctionCall')
 def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):

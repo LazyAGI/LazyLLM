@@ -543,15 +543,16 @@ add_example('UrlModule.forward', '''\
 ''')
 
 add_chinese_doc('ServerModule', '''\
-借助fastapi，将任意可调用对象包装成api服务，可同时启动一个主服务和多个卫星服务.
+借助 fastapi，将任意可调用对象包装成 api 服务，可同时启动一个主服务和多个卫星服务。
 
 Args:
-    m (Callable): 被包装成服务的函数，可以是一个函数，也可以是一个仿函数。当启动卫星服务时，需要是一个实现了__call__的对象（仿函数）。
-    pre (Callable): 前处理函数，在服务进程执行，可以是一个函数，也可以是一个仿函数，默认为None.
-    post (Callable): 后处理函数，在服务进程执行，可以是一个函数，也可以是一个仿函数，默认为None.
-    stream (bool): 是否流式请求和输出，默认为非流式
-    return_trace (bool): 是否将结果记录在trace中，默认为False
-    launcher (LazyLLMLaunchersBase): 用于选择服务执行的计算节点，默认为launchers.remote
+    m (Callable): 被包装成服务的函数，可以是一个函数，也可以是一个仿函数。当启动卫星服务时，需要是一个实现了 ``__call__`` 的对象（仿函数）。
+    pre (Callable): 前处理函数，在服务进程执行，可以是一个函数，也可以是一个仿函数，默认为 ``None``。
+    post (Callable): 后处理函数，在服务进程执行，可以是一个函数，也可以是一个仿函数，默认为 ``None``。
+    stream (bool): 是否流式请求和输出，默认为非流式。
+    return_trace (bool): 是否将结果记录在 trace 中，默认为``False``。
+    port (int): 指定服务部署后的端口，默认为 ``None`` 会随机生成端口。
+    launcher (LazyLLMLaunchersBase): 用于选择服务执行的计算节点，默认为`` launchers.remote``。
 ''')
 
 add_english_doc('ServerModule', '''\
@@ -559,10 +560,11 @@ Using FastAPI, any callable object can be wrapped into an API service, allowing 
 
 Args:
     m (Callable): The function to be wrapped as a service. It can be a function or a functor. When launching satellite services, it needs to be an object implementing ``__call__`` (a functor).
-    pre (Callable): Preprocessing function executed in the service process. It can be a function or a functor, default is None.
-    post (Callable): Postprocessing function executed in the service process. It can be a function or a functor, default is None.
+    pre (Callable): Preprocessing function executed in the service process. It can be a function or a functor, default is ``None``.
+    post (Callable): Postprocessing function executed in the service process. It can be a function or a functor, default is ``None``.
     stream (bool): Whether to request and output in streaming mode, default is non-streaming.
-    return_trace (bool): Whether to record the results in trace, default is False.
+    return_trace (bool): Whether to record the results in trace, default is ``False``.
+    port (int): Specifies the port after the service is deployed. The default is ``None``, which will generate a random port.
     launcher (LazyLLMLaunchersBase): Used to select the compute node for service execution, default is ``launchers.remote`` .
 
 **Examples:**\n
