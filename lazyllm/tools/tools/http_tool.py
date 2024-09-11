@@ -6,11 +6,11 @@ class HttpTool(HttpRequest):
     def __init__(self,
                  method: Optional[str] = None,
                  url: Optional[str] = None,
-                 headers: Optional[Dict] = None,
-                 params: Optional[Dict] = None,
+                 params: Optional[Dict[str, str]] = None,
+                 headers: Optional[Dict[str, str]] = None,
                  body: Optional[str] = None,
                  timeout: int = 10,
-                 proxies: Optional[Dict] = None,
+                 proxies: Optional[Dict[str, str]] = None,
                  py_code: Optional[str] = None):
         super().__init__(method, url, '', headers, params, body)
         self._has_http = True if url else False

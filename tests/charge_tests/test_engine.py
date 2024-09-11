@@ -55,3 +55,28 @@ class TestEngine(object):
         engine = LightEngine()
         engine.start(nodes, edges, resources)
         assert '5440' in engine.run("Calculate 20*(45+23)*(1+3), step by step.")
+
+    def test_register_tools(self):
+        get_weather_code = """
+        def get_weather(city_name):
+            if city_name == 'Tokyo':
+                return 50
+            return 30
+        """
+        echo_code = """
+        def Echo(c):
+            return c
+        """
+        resources = [
+            dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
+            dict(id="1", kind="HttpTool", name="weather-111", args=dict(py_code=get_weather_code)),
+            dict(id="2", kind="HttpTool", name="echo-111", args=dict(py_code=echo_code)),
+        ]
+        # `tools` in `args` is a list of ids in `resources`
+        nodes = [dict(id="1", kind="FunctionCall", name="fc",
+                      args=dict(llm='0', tools=['1', '2']))]
+        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
+        engine = LightEngine()
+        engine.start(nodes, edges, resources)
+        print(engine.run("What's the weather like today in celsius in Tokyo."))
+        #assert '海淀' in engine.run("What's the weather like today in celsius in 海淀.")

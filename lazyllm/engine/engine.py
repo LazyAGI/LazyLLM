@@ -254,4 +254,28 @@ def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
+
+    callable_list = []
+
+    # `tools` is a list of ids in engine's resources
+    for rid in tools:
+        node = build_node(rid)
+        func = node.func
+        def wrapper_func(*args, **kwargs):
+            func(*args, **kwargs)
+        functools.update_wrapper(wrapper_func, func)
+        callable_list.append(wrapper_func)
+
     return f(Engine().build_node(llm).func, tools)
+
+
+@NodeConstructor.register('HttpTool')
+def make_http_tool(method: Optional[str] = None,
+                   url: Optional[str] = None,
+                   params: Optional[Dict[str, str]] = None,
+                   headers: Optional[Dict[str, str]] = None,
+                   body: Optional[str] = None,
+                   timeout: int = 10,
+                   proxies: Optional[Dict[str, str]] = None,
+                   py_code: Optional[str] = None):
+    return lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies, py_code)
