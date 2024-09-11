@@ -26,10 +26,13 @@ class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
 
 
 class JsonLikeFormatter(LazyLLMFormatterBase):
+    class _ListIdxes(tuple): pass
+    class _DictKeys(tuple): pass
+
     def __init__(self, formatter: str = None):
         self._formatter = formatter
         if self._formatter:
-            self._formatter = self._formatter.strip()
+            self._formatter = self._formatter.strip().replace('{', '[{').replace('}', '}]')
             self._parse_formatter()
         else:
             self._slices = None
@@ -42,7 +45,9 @@ class JsonLikeFormatter(LazyLLMFormatterBase):
         slices = []
 
         for dim in dimensions:
-            if ":" in dim:
+            if '{' in dim:
+                slices.append(__class__._DictKeys(d.strip() for d in dim[1:-1].split(',') if d.strip()))
+            elif ":" in dim:
                 assert ',' not in dim, '[a, b:c] is not supported'
                 parts = dim.split(":")
                 start = int(parts[0]) if is_number(parts[0]) else None
@@ -50,32 +55,41 @@ class JsonLikeFormatter(LazyLLMFormatterBase):
                 step = int(parts[2]) if len(parts) > 2 and is_number(parts[2]) else None
                 slices.append(slice(start, end, step))
             elif ',' in dim:
-                slices.append(tuple(d.strip() for d in dim.split(',') if d.strip()))
+                slices.append(__class__._ListIdxes(d.strip() for d in dim.split(',') if d.strip()))
             else:
                 slices.append(dim.strip())
         self._slices = slices
 
-    def _parse_py_data_by_formatter(self, data, *, slices=None):
+    def _parse_py_data_by_formatter(self, data, *, slices=None):  # noqa C901
         def _impl(data, slice):
             if isinstance(data, (tuple, list)) and isinstance(slice, str):
                 return data[int(slice)]
-            if isinstance(slice, tuple):
+            if isinstance(slice, __class__._ListIdxes):
                 if isinstance(data, dict): return [data[k] for k in slice]
                 elif isinstance(data, (tuple, list)): return [data[int(k)] for k in slice]
                 else: raise RuntimeError('Only tuple/list/dict is supported for [a,b,c]')
+            if isinstance(slice, __class__._DictKeys):
+                assert isinstance(data, dict)
+                if len(slice) == 1 and slice[0] == ':': return data
+                return {k: data[k] for k in slice}
             return data[slice]
 
         if slices is None: slices = self._slices
         if not slices: return data
-        if isinstance(slices[0], slice): return [self._parse_py_data_by_formatter(d, slices=slices[1:])
-                                                 for d in _impl(data, slices[0])]
-        elif isinstance(slices[0], tuple):
-            rs = _impl(data, slices[0])
-            if isinstance(rs, dict):
-                return {k: self._parse_py_data_by_formatter(v, slices=slices[1:]) for k, v in rs.items()}
-            elif isinstance(rs, (tuple, list)):
-                return [self._parse_py_data_by_formatter(r, slices=slices[1:]) for r in rs]
-        else: return self._parse_py_data_by_formatter(_impl(data, slices[0]), slices=slices[1:])
+        curr_slice = slices[0]
+        if isinstance(curr_slice, slice):
+            if isinstance(data, list):
+                return [self._parse_py_data_by_formatter(d, slices=slices[1:]) for d in _impl(data, curr_slice)]
+            elif isinstance(data, dict):
+                assert curr_slice.start is None and curr_slice.stop is None and curr_slice.step is None, (
+                    'Only {:} and [:] is supported in dict slice')
+                curr_slice = __class__._ListIdxes(data.keys())
+        if isinstance(curr_slice, __class__._DictKeys):
+            return {k: self._parse_py_data_by_formatter(v, slices=slices[1:])
+                    for k, v in _impl(data, curr_slice).items()}
+        elif isinstance(curr_slice, __class__._ListIdxes):
+            return [self._parse_py_data_by_formatter(r, slices=slices[1:]) for r in _impl(data, curr_slice)]
+        else: return self._parse_py_data_by_formatter(_impl(data, curr_slice), slices=slices[1:])
 
 
 class EmptyFormatter(LazyLLMFormatterBase):
