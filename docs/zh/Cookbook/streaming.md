@@ -3,10 +3,10 @@
 
 我们先从构建一个简单的支持流式对话机器人开始。
 
-> 通过本节您将学习到LazyLLM的以下要点：
->
-> - 如何使用 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 来构建支持流式的对话机器人。
-> - 如何使用带 [FunctionCall][lazyllm.tools.agent.FunctionCall] 的流式对话机器人
+!!! abstract "通过本节您将学习到 LazyLLM 的以下要点"
+
+    - 如何使用 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 来构建支持流式的对话机器人。
+    - 如何使用带 [FunctionCall][lazyllm.tools.agent.FunctionCall] 的流式对话机器人
 
 ## 代码实现
 

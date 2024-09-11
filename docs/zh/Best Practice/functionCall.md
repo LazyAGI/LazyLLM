@@ -158,10 +158,10 @@ print(f"ret: {ret}")
 # The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.
 ```
 
-> **注意**：
->
-> - 注册函数或者工具时，必需指定默认分组 `tool`，否则模型没有办法使用对应的工具。
-> - 在使用模型时，不用区分 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule]，因为设计的 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 的输出类型是一致的。
+!!! Note "注意"
+
+    - 注册函数或者工具时，必需指定默认分组 `tool`，否则模型没有办法使用对应的工具。
+    - 在使用模型时，不用区分 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule]，因为设计的 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 的输出类型是一致的。
 
 ## FunctionCall 的设计思路
 [FunctionCall][lazyllm.tools.agent.FunctionCall] 的设计流程采用自底向上的方式进行的，首先由于 [FunctionCall][lazyllm.tools.agent.FunctionCall] 是必需要调用 LLM 的，所以必须是模型的输出格式一致，因此，首先保证 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 的输出对齐，然后再实现单轮的 [FunctionCall][lazyllm.tools.agent.FunctionCall], 即调用 LLM 和 tools 一次，最后实现完整的 [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent]，即多次迭代 [FunctionCall][lazyllm.tools.agent.FunctionCall], 直到模型迭代完成或者超过最大迭代次数。
@@ -246,10 +246,10 @@ content<|tool_calls|>tool_calls
 今天东京的天气温度是10摄氏度，而巴黎的天气温度是22摄氏度。
 ```
 
-> **注意**：
->
-> - 模型的输出结果格式为 `content<|tool_calls|>tool_calls`, 分隔符固定，通过分隔符来判断是否是工具调用。
-> - 工具调用的信息里面，除了工具的 `name` 和 `arguments` 之外，还有 `id` 、`type` 和 `function` 字段。
+!!! Note "注意"
+
+    - 模型的输出结果格式为 `content<|tool_calls|>tool_calls`, 分隔符固定，通过分隔符来判断是否是工具调用。
+    - 工具调用的信息里面，除了工具的 `name` 和 `arguments` 之外，还有 `id` 、`type` 和 `function` 字段。
 
 
 ### FunctionCall 的输出流程

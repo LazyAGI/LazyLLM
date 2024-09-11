@@ -2,11 +2,11 @@
 
 In this article, we will implement a writing robot application.
 
-> Through this section, you will learn the following key points of LazyLLM:
->
-> - How to set a [formatter][lazyllm.components.formatter.LazyLLMFormatterBase] for the model;
-> - How to implement multi-input concurrency based on [Warp][lazyllm.flow.Warp] control flow;
-> - How to use [bind](../Best Practice/flow.md#use-bind) on functions to pass in parameters;
+!!! abstract "Through this section, you will learn the following key points of LazyLLM"
+
+    - How to set a [formatter][lazyllm.components.formatter.LazyLLMFormatterBase] for the model;
+    - How to implement multi-input concurrency based on [Warp][lazyllm.flow.Warp] control flow;
+    - How to use [bind](../Best Practice/flow.md#use-bind) on functions to pass in parameters;
 
 ## Design Concept
 

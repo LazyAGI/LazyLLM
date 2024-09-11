@@ -86,14 +86,6 @@ all_nodes['Formatter'] = dict(
     )
 )
 
-all_nodes['FunctionCall'] = dict(
-    module=lazyllm.tools.FunctionCallAgent,
-    init_arguments=dict(
-        llm=NodeArgs(Node),
-        tools=NodeArgs(list)
-    )
-)
-
 all_nodes['ToolsForLLM'] = dict(
     module=lazyllm.tools.ToolManager,
     init_arguments=dict(

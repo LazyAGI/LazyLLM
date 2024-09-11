@@ -170,7 +170,9 @@ lazyllm.WebModule(chat, port=23333).start().wait()
 
 The `WebModule` accepts two parameters: the chat module for conversation and the port number for the web server to listen on. After calling the member function `start()` to successfully start, call `wait()` to block and wait for user operations on the web interface. You can access `http://localhost:23333` with your browser to interact with the chatbot component on the page, which will call the large model service in the background. `LazyLLM` will display the model’s return results on the page.
 
-> Note: If there is an error starting up or accessing the web page, please check the error information in the terminal window to see if the port is occupied by another application, or if a proxy is enabled, or if it is blocked by a firewall.
+!!! Note "Note"
+
+    If there is an error starting up or accessing the web page, please check the error information in the terminal window to see if the port is occupied by another application, or if a proxy is enabled, or if it is blocked by a firewall.
 
 ## Using Command Line Interface
 

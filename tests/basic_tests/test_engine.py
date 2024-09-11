@@ -1,5 +1,8 @@
 from lazyllm import LightEngine
 import pytest
+import time
+from gradio_client import Client
+import lazyllm
 
 class TestEngine(object):
 
@@ -47,6 +50,43 @@ class TestEngine(object):
         assert engine.run(2) == 6
         assert engine.run(3) == 9
 
+    def test_engine_ifs(self):
+        plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
+        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
+        square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
+        ifs = dict(id='4', kind='Ifs', name='i1', args=dict(
+            cond='def cond(x): return x < 10', true=[plus1, double], false=[square]))
+        nodes = [ifs]
+        edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        assert engine.run(1) == 4
+        assert engine.run(5) == 12
+        assert engine.run(10) == 100
+
+    def test_engine_loop(self):
+        nodes = [dict(id='1', kind='Code', name='code', args='def square(x: int): return x * x')]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+
+        nodes = [dict(id='2', kind='Loop', name='loop',
+                      args=dict(stop_condition='def cond(x): return x > 10', nodes=nodes, edges=edges))]
+        edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
+
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        assert engine.run(2) == 16
+
+    def test_engine_warp(self):
+        nodes = [dict(id='1', kind='Code', name='code', args='def square(x: int): return x * x')]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+
+        nodes = [dict(id='2', kind='Warp', name='warp', args=dict(nodes=nodes, edges=edges))]
+        edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
+
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        assert engine.run(2, 3, 4, 5) == (4, 9, 16, 25)
+
     def test_engine_formatter(self):
         nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
                  dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),
@@ -60,6 +100,25 @@ class TestEngine(object):
         engine.start(nodes, edges)
         assert engine.run(1) == '1[2, 4]1'
         assert engine.run(2) == '2[4, 8]4'
+
+    def test_engine_server(self):
+        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 2 * x\n')]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+        resources = [dict(id='2', kind='server', name='s1', args=dict(port=None)),
+                     dict(id='3', kind='web', name='w1', args=dict(port=None, title='网页', history=[], audio=False))
+                    ]
+        engine = LightEngine()
+        engine.start(nodes, edges, resources, gid='graph-1')
+        assert engine.run(1) == 2
+        time.sleep(3)
+        web = engine.build_node('graph-1').func._web
+        client = Client(web.url, download_files=web.cach_path)
+        chat_history = [['123', None]]
+        ans = client.predict(False, chat_history, False, False, api_name="/_respond_stream")
+        assert ans[0][-1][-1] == '123123'
+        client.close()
+        lazyllm.launcher.cleanup()
+        web.stop()
 
 
 class TestEngineRAG(object):
