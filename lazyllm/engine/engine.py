@@ -281,3 +281,7 @@ def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
     return f(Engine().build_node(llm).func, tools)
+
+@NodeConstructor.register('SharedLLM')
+def make_shared_llm(llm: str, prompt: Optional[str] = None):
+    return Engine().build_node(llm).func.share(prompt=prompt)
