@@ -19,7 +19,7 @@ class AutoDeploy(LazyLLMDeployBase):
         base_model = ModelManager(source).download(base_model)
         model_name = get_model_name(base_model)
         if type == 'embed' or ModelManager.get_model_type(model_name) == 'embed':
-            return EmbeddingDeploy(trust_remote_code, launcher)
+            return EmbeddingDeploy(launcher)
         elif type == 'sd' or ModelManager.get_model_type(model_name) == 'sd':
             return StableDiffusionDeploy(launcher)
         elif type == 'stt' or ModelManager.get_model_type(model_name) == 'stt':

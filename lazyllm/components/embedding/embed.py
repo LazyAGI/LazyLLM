@@ -2,49 +2,54 @@ import os
 import json
 import lazyllm
 from lazyllm import LOG
+from lazyllm.thirdparty import transformers as tf
+from lazyllm.thirdparty import torch
 
 
 class LazyHuggingFaceEmbedding(object):
-    def __init__(self, base_embed, source=None, embed_batch_size=30, trust_remote_code=True, init=False):
+    def __init__(self, base_embed, source=None, init=False):
         from ..utils.downloader import ModelManager
         source = lazyllm.config['model_source'] if not source else source
         self.base_embed = ModelManager(source).download(base_embed)
-        self.embed_batch_size = embed_batch_size
-        self.trust_remote_code = trust_remote_code
         self.embed = None
+        self.tokenizer = None
+        self.device = "cpu"
         self.init_flag = lazyllm.once_flag()
         if init:
             lazyllm.call_once(self.init_flag, self.load_embed)
 
     def load_embed(self):
-        from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-        self.embed = HuggingFaceEmbedding(model_name=self.base_embed,
-                                          embed_batch_size=self.embed_batch_size,
-                                          trust_remote_code=self.trust_remote_code)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.tokenizer = tf.AutoTokenizer.from_pretrained(self.base_embed)
+        self.embed = tf.AutoModel.from_pretrained(self.base_embed).to(self.device)
+        self.embed.eval()
 
     def __call__(self, string):
         lazyllm.call_once(self.init_flag, self.load_embed)
+        encoded_input = self.tokenizer(string, padding=True, truncation=True, return_tensors='pt').to(self.device)
+        with torch.no_grad():
+            model_output = self.embed(**encoded_input)
+            sentence_embeddings = model_output[0][:, 0]
+        res = torch.nn.functional.normalize(sentence_embeddings, p=2, dim=1).cpu().numpy().tolist()
         if type(string) is str:
-            res = self.embed.get_text_embedding(string)
+            return json.dumps(res[0])
         else:
-            res = self.embed.get_text_embedding_batch(string)
-        return json.dumps(res)
+            return json.dumps(res)
 
     @classmethod
-    def rebuild(cls, base_embed, embed_batch_size, trust_remote_code, init):
-        return cls(base_embed, embed_batch_size, trust_remote_code, init)
+    def rebuild(cls, base_embed, init):
+        return cls(base_embed, init)
 
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return LazyHuggingFaceEmbedding.rebuild, (self.base_embed, self.embed_batch_size, self.trust_remote_code, init)
+        return LazyHuggingFaceEmbedding.rebuild, (self.base_embed, init)
 
 class EmbeddingDeploy():
     message_format = None
     keys_name_handle = None
     default_headers = {'Content-Type': 'application/json'}
 
-    def __init__(self, trust_remote_code=True, launcher=None):
-        self.trust_remote_code = trust_remote_code
+    def __init__(self, launcher=None):
         self.launcher = launcher
 
     def __call__(self, finetuned_model=None, base_model=None):
@@ -56,4 +61,4 @@ class EmbeddingDeploy():
                             f"base_model({base_model}) will be used")
             finetuned_model = base_model
         return lazyllm.deploy.RelayServer(func=LazyHuggingFaceEmbedding(
-            finetuned_model, trust_remote_code=self.trust_remote_code), launcher=self.launcher)()
+            finetuned_model), launcher=self.launcher)()
