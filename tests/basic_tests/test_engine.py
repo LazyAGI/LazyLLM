@@ -93,7 +93,7 @@ class TestEngine(object):
                  dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return dict(a=1, b=x * x)\n'),
                  dict(id='4', kind='Code', name='m4', args='def test(x, y, z):\n    return f"{x}{y}{z}"\n')]
         edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='__start__', oid='3'),
-                 dict(iid='1', oid='4'), dict(iid='2', oid='4', formatter='[:, 1]'),
+                 dict(iid='1', oid='4'), dict(iid='2', oid='4', formatter='[:][1]'),
                  dict(iid='3', oid='4', formatter='[b]'), dict(iid='4', oid='__end__')]
 
         engine = LightEngine()
