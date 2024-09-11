@@ -1,15 +1,19 @@
 from lazyllm import formatter
+import lazyllm
 
 class TestFormatter(object):
 
     def test_jsonlike_formatter_base(self):
         jsf = formatter.JsonLike
 
-        origin = [1, 2, 3, 4, 5, 6, 7, 8]
-        assert jsf('[0]')(origin) == 1
-        assert jsf('[0, 3, 6]')(origin) == [1, 4, 7]
-        assert jsf('[0:7:3]')(origin) == [1, 4, 7]
-        assert jsf('[:]')(origin) == origin
+        for tp in [list, tuple, lazyllm.package]:
+            origin = tp([1, 2, 3, 4, 5, 6, 7, 8])
+            assert jsf('[0]')(origin) == 1
+            assert jsf('[0, 3, 6]')(origin) == tp([1, 4, 7])
+            assert isinstance(jsf('[0, 3, 6]')(origin), tp)
+            assert jsf('[0:7:3]')(origin) == tp([1, 4, 7])
+            assert isinstance(jsf('[0:7:3]')(origin), tp)
+            assert jsf('[:]')(origin) == origin
 
         origin = dict(a=1, b=2, c=3, d=4, e=5, f=6)
         assert jsf('[a]')(origin) == 1
