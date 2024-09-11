@@ -7,87 +7,25 @@ import uuid
 from lazyllm import LightEngine
 import os
 import re
-import json
 
 
-class TestSQLite(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        filepath = str(Path(tempfile.gettempdir()) / f"{str(uuid.uuid4().hex)}.db")
-        cls.db_filepath = filepath
-        with open(filepath, "w") as _:
-            pass
-        tables_info = {
-            "tables": [
-                {
-                    "name": "employee",
-                    "comment": "员工信息表",
-                    "columns": [
-                        {
-                            "name": "employee_id",
-                            "data_type": "Integer",
-                            "comment": "工号",
-                            "nullable": False,
-                            "is_primary_key": True,
-                        },
-                        {"name": "name", "data_type": "String", "comment": "姓名", "nullable": False},
-                        {"name": "department", "data_type": "String", "comment": "部门", "nullable": False},
-                    ],
-                },
-                {
-                    "name": "sales",
-                    "comment": "销售额记录表",
-                    "columns": [
-                        {
-                            "name": "employee_id",
-                            "data_type": "Integer",
-                            "comment": "工号",
-                            "nullable": False,
-                            "is_primary_key": True,
-                        },
-                        {"name": "q1_2023", "data_type": "Float", "comment": "2023年第1季度销售额", "nullable": False},
-                        {"name": "q2_2023", "data_type": "Float", "comment": "2023年第2季度销售额", "nullable": False},
-                        {"name": "q3_2023", "data_type": "Float", "comment": "2023年第3季度销售额", "nullable": False},
-                        {"name": "q4_2023", "data_type": "Float", "comment": "2023年第4季度销售额", "nullable": False},
-                    ],
-                },
-            ]
-        }
-        sql_tool = SQLiteManger(filepath, tables_info)
-        assert not sql_tool.err_msg
-        sql_tool.execute_sql_update("INSERT INTO employee VALUES (1, '张三', '销售一部');")
-        sql_tool.execute_sql_update("INSERT INTO employee VALUES (2, '李四', '销售二部');")
-        sql_tool.execute_sql_update("INSERT INTO sales VALUES (1, 8715.55, 8465.65, 24747.82, 3514.36);")
-        sql_tool.execute_sql_update("INSERT INTO sales VALUES (2, 4989.23, 5103.22, 4897.98, 5322.05);")
-        cls.sql_tool: SQLiteManger = sql_tool
-        # Recommend to use sensenova, gpt-4o, qwen online model
-        sql_llm = lazyllm.OnlineChatModule(source="sensenova")
-        cls.sql_module: SqlCall = SqlCall(sql_llm, sql_tool, use_llm_for_sql_result=True)
-
-    @classmethod
-    def tearDownClass(cls):
-        db_path = Path(cls.db_filepath)
-        if db_path.is_file():
-            db_path.unlink()
-
-    def test_get_talbes(self):
-        str_result = self.sql_tool.get_tables_desc()
-        self.assertIn("employee", str_result)
-
-    def test_sql_query(self):
-        str_results = self.sql_tool.get_query_result_in_json("SELECT department from employee WHERE employee_id=1;")
-        self.assertIn("销售一部", str_results)
-
-    @unittest.skip("temporary skip")
-    def test_llm_query(self):
-        # 3. llm chat
-        str_results = self.sql_module("去年一整年销售额最多的员工是谁，销售额是多少？")
-        print(str_results)
-        self.assertIn("张三", str_results)
+def _get_sql_init_keywords(db_type):
+    env_key = f"LAZYLLM_{db_type.replace(' ', '_')}_URL"
+    conn_url = os.environ.get(env_key, None)
+    assert conn_url is not None
+    pattern = r"postgresql://(?P<username>[^:]+):(?P<password>[^@]+)@(?P<host>[^:]+):(?P<port>\d+)/(?P<database>.+)"
+    match = re.search(pattern, conn_url)
+    assert match
+    username = match.group("username")
+    password = match.group("password")
+    host = match.group("host")
+    port = match.group("port")
+    database = match.group("database")
+    return username, password, host, port, database
 
 
-class TestOnlineSql(unittest.TestCase):
-    tables_info = {
+class TestSqlManager(unittest.TestCase):
+    TEST_TABLES_INFO = {
         "tables": [
             {
                 "name": "employee",
@@ -97,54 +35,151 @@ class TestOnlineSql(unittest.TestCase):
                         "name": "employee_id",
                         "data_type": "Integer",
                         "comment": "工号",
-                        "nullable": True,
+                        "nullable": False,
                         "is_primary_key": True,
                     },
-                    {"name": "first_name", "data_type": "Text", "comment": "姓", "nullable": True},
-                    {"name": "last_name", "data_type": "Text", "comment": "名", "nullable": True},
-                    {"name": "department", "data_type": "Text", "comment": "部门", "nullable": True},
+                    {"name": "name", "data_type": "String", "comment": "姓名", "nullable": False},
+                    {"name": "department", "data_type": "String", "comment": "部门", "nullable": False},
                 ],
-            }
+            },
+            {
+                "name": "sales",
+                "comment": "销售额信息表",
+                "columns": [
+                    {
+                        "name": "employee_id",
+                        "data_type": "Integer",
+                        "comment": "工号",
+                        "nullable": False,
+                        "is_primary_key": True,
+                    },
+                    {"name": "q1_2023", "data_type": "Float", "comment": "2023年第1季度销售额", "nullable": False},
+                    {"name": "q2_2023", "data_type": "Float", "comment": "2023年第2季度销售额", "nullable": False},
+                    {"name": "q3_2023", "data_type": "Float", "comment": "2023年第3季度销售额", "nullable": False},
+                    {"name": "q4_2023", "data_type": "Float", "comment": "2023年第4季度销售额", "nullable": False},
+                ],
+            },
         ]
     }
+    TEST_INSERT_SCRIPTS = [
+        "INSERT INTO employee VALUES (1, '张三', '销售一部');",
+        "INSERT INTO employee VALUES (2, '李四', '销售二部');",
+        "INSERT INTO employee VALUES (3, '王五', '销售三部');",
+        "INSERT INTO sales VALUES (1, 8715.55, 8465.65, 24747.82, 3514.36);",
+        "INSERT INTO sales VALUES (2, 4989.23, 5103.22, 4897.98, 5322.05);",
+        "INSERT INTO sales VALUES (3, 5989.23, 6103.22, 2897.98, 3322.05);",
+    ]
+    TEST_TABLES = ["employee", "sales"]
 
-    def _get_sql_init_keywords(self, db_type):
-        env_key = f"LAZYLLM_{db_type.replace(' ', '_')}_URL"
-        conn_url = os.environ.get(env_key, None)
-        assert conn_url is not None
-        pattern = r"postgresql://(?P<username>[^:]+):(?P<password>[^@]+)@(?P<host>[^:]+):(?P<port>\d+)/(?P<database>.+)"
-        match = re.search(pattern, conn_url)
-        assert match
-        username = match.group("username")
-        password = match.group("password")
-        host = match.group("host")
-        port = match.group("port")
-        database = match.group("database")
-        return username, password, host, port, database
+    @classmethod
+    def setUpClass(cls):
+        cls.sql_managers: list[SqlManager] = []
 
-    def test_sql_api(self):
-        db_types = ["PostgreSQL"]
+        filepath = str(Path(tempfile.gettempdir()) / f"{str(uuid.uuid4().hex)}.db")
+        filepath = "personal.db"
+        cls.db_filepath = filepath
+        with open(filepath, "w") as _:
+            pass
+        cls.sql_managers.append(SQLiteManger(filepath, cls.TEST_TABLES_INFO))
+        # cls.sql_managers = []
+        for db_type in ["PostgreSQL"]:
+            username, password, host, port, database = _get_sql_init_keywords(db_type)
+            cls.sql_managers.append(SqlManager(db_type, username, password, host, port, database, cls.TEST_TABLES_INFO))
+        for sql_manager in cls.sql_managers:
+            for table_name in cls.TEST_TABLES:
+                rt, err_msg = sql_manager._delete_rows_by_name(table_name)
+                assert rt, err_msg
+            for insert_scripts in cls.TEST_INSERT_SCRIPTS:
+                sql_manager.execute_sql_update(insert_scripts)
+
+        # Recommend to use sensenova, gpt-4o, qwen online model
         sql_llm = lazyllm.OnlineChatModule(source="sensenova")
-        for db_type in db_types:
-            username, password, host, port, database = self._get_sql_init_keywords(db_type)
-            sql_manager = SqlManager(db_type, username, password, host, port, database, self.tables_info)
-            result_str = sql_manager.get_query_result_in_json("select * from employee where employee_id=3")
-            json_obj = json.loads(result_str)
-            assert len(json_obj) == 1
-            sql_module: SqlCall = SqlCall(sql_llm, sql_manager, use_llm_for_sql_result=True)
-            str_result = sql_module("员工编号是3的人来自哪个部门？")
-            print("str_result:", str_result)
+        cls.sql_calls: list[SqlCall] = []
+        for sql_manager in cls.sql_managers:
+            cls.sql_calls.append(SqlCall(sql_llm, sql_manager, use_llm_for_sql_result=True))
+        lazyllm.LOG.info(f"Run unitest for {len(cls.sql_managers)} SqlManagers: {cls.sql_managers}")
 
-    @unittest.skip("temporary skip")
+    @classmethod
+    def tearDownClass(cls):
+        # restore to clean database
+        for sql_manager in cls.sql_managers:
+            for table_name in cls.TEST_TABLES:
+                rt, err_msg = sql_manager._drop_table_by_name(table_name)
+                assert rt, f"sql_manager table {table_name} error: {err_msg}"
+        db_path = Path(cls.db_filepath)
+        if db_path.is_file():
+            db_path.unlink()
+
+    def test_manager_status(self):
+        for sql_manager in self.sql_managers:
+            rt, err_msg = sql_manager.check_connection()
+            assert rt, err_msg
+            assert sql_manager.err_code == 0
+
+    def test_manager_table_create_drop(self):
+        for sql_manager in self.sql_managers:
+            # 1. drop tables
+            for table_name in self.TEST_TABLES:
+                rt, err_msg = sql_manager._drop_table_by_name(table_name)
+                assert rt, err_msg
+            existing_tables = sql_manager.get_all_tables()
+            assert len(existing_tables) == 0
+            # 2. create table
+            rt, err_msg = sql_manager.reset_tables(self.TEST_TABLES_INFO)
+            assert rt, err_msg
+
+            # 3. restore rows
+            for insert_scripts in self.TEST_INSERT_SCRIPTS:
+                rt, err_msg = sql_manager.execute_sql_update(insert_scripts)
+                assert rt, err_msg
+
+    def test_manager_table_delete_insert_query(self):
+        query_script = "SELECT department from employee WHERE employee_id=1;"
+        # 1. Delete, as rows already exists during setUp
+        for sql_manager in self.sql_managers:
+            for table_name in self.TEST_TABLES:
+                rt, err_msg = sql_manager._delete_rows_by_name(table_name)
+                assert rt, err_msg
+            str_results = sql_manager.get_query_result_in_json(query_script)
+            self.assertNotIn("销售一部", str_results)
+
+        # 2. Insert, restore rows
+        for sql_manager in self.sql_managers:
+            for insert_scripts in self.TEST_INSERT_SCRIPTS:
+                rt, err_msg = sql_manager.execute_sql_update(insert_scripts)
+                assert rt, err_msg
+            str_results = sql_manager.get_query_result_in_json(query_script)
+            self.assertIn("销售一部", str_results)
+
+    def test_get_talbes(self):
+        for sql_manager in self.sql_managers:
+            tables_desc = sql_manager.get_tables_desc()
+        self.assertIn("employee", tables_desc)
+        self.assertIn("sales", tables_desc)
+
+    def test_llm_query_online(self):
+        for sql_call in self.sql_calls:
+            str_results = sql_call("去年一整年销售额最多的员工是谁，销售额是多少？")
+            print(str_results)
+            self.assertIn("张三", str_results)
+
+    def test_llm_query_local(self):
+        local_llm = lazyllm.TrainableModule("internlm2-chat-20b").deploy_method(lazyllm.deploy.vllm).start()
+        sql_call = SqlCall(local_llm, self.sql_managers[0], use_llm_for_sql_result=True, return_trace=True)
+        str_results = sql_call("员工编号是3的人来自哪个部门？")
+        print(str_results)
+        self.assertIn("销售三部", str_results)
+
     def test_engine(self):
+        # In this test, sql_manager will connect to existing tables which is created in class setup method
         db_types = ["PostgreSQL"]
         for db_type in db_types:
-            username, password, host, port, database = self._get_sql_init_keywords(db_type)
+            username, password, host, port, database = _get_sql_init_keywords(db_type)
             resources = [
                 dict(
                     id="0",
                     kind="SqlManager",
-                    name="sql_tool",
+                    name="sql_manager",
                     args=dict(
                         db_type=db_type,
                         user=username,
@@ -152,7 +187,7 @@ class TestOnlineSql(unittest.TestCase):
                         host=host,
                         port=port,
                         db_name=database,
-                        tabels_info_dict=self.tables_info,
+                        tabels_info_dict=self.TEST_TABLES_INFO,
                     ),
                 ),
                 dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="sensenova")),
@@ -162,7 +197,7 @@ class TestOnlineSql(unittest.TestCase):
                     id="2",
                     kind="SqlCall",
                     name="sql_call",
-                    args=dict(sql_tool="0", llm="1", tables=[], tables_desc="", sql_examples=""),
+                    args=dict(sql_manager="0", llm="1", sql_examples=""),
                 )
             ]
             edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
@@ -171,6 +206,7 @@ class TestOnlineSql(unittest.TestCase):
             str_answer = engine.run("员工编号是3的人来自哪个部门？")
             print(str_answer)
             assert "销售三部" in str_answer
+            engine.reset()
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ class ColumnInfo(pydantic.BaseModel):
     name: str
     data_type: str
     comment: str = ""
+    # At least one column should be True
     is_primary_key: bool = False
     nullable: bool = True
 
@@ -35,6 +36,12 @@ class TablesInfo(pydantic.BaseModel):
 
 class SqlManager:
     DB_TYPE_SUPPORTED = set(["PostgreSQL", "MySQL", "MSSQL", "SQLite"])
+    SUPPORTED_DATA_TYPES = {
+        "integer": sqlalchemy.Integer,
+        "string": sqlalchemy.String,
+        "boolean": sqlalchemy.Boolean,
+        "float": sqlalchemy.Float,
+    }
 
     def __init__(
         self,
@@ -48,8 +55,7 @@ class SqlManager:
         options_str: str = "",
     ) -> None:
         conn_url = f"{db_type.lower()}://{user}:{password}@{host}:{port}/{db_name}"
-        self.reset_db(db_type, conn_url, tabels_info_dict)
-        lazyllm.LOG.warning(f"After init. prompt: {self.tables_prompt}")
+        self.reset_db(db_type, conn_url, tabels_info_dict, options_str)
 
     def reset_tables(self, tabels_info_dict: dict) -> tuple[bool, str]:
         existing_tables = set(self.get_all_tables())
@@ -89,6 +95,7 @@ class SqlManager:
         if not rt:
             self.err_msg = err_msg
         self.err_msg = ""
+        self.err_code = 0
 
     def get_tables_desc(self):
         return self.tables_prompt
@@ -121,17 +128,18 @@ class SqlManager:
         return table_names
 
     def execute_sql_update(self, sql_script):
+        rt, err_msg = True, "Success"
         try:
             with self.engine.connect() as conn:
                 conn.execute(sqlalchemy.text(sql_script))
                 conn.commit()
         except OperationalError as e:
-            lazyllm.LOG.warning(f"SQLite error: {str(e)}")
-            if self._return_trace:
-                globals["trace"].append(f"SQLiteTool Exception: {str(e)}. sql_script: {sql_script}")
+            lazyllm.LOG.warning(f"sql error: {str(e)}")
+            rt, err_msg = False, str(e)
         finally:
             if "conn" in locals():
                 conn.close()
+        return rt, err_msg
 
     def _get_table_columns(self, table_name: str):
         inspector = sqlalchemy.inspect(self.engine)
@@ -140,13 +148,6 @@ class SqlManager:
 
     def _create_table(self, table_info_dict: dict) -> tuple[bool, str]:
         rt, err_msg = True, "Success"
-        sqlalchemy_type_map = {
-            "integer": sqlalchemy.Integer,
-            "string": sqlalchemy.String,
-            "boolean": sqlalchemy.Boolean,
-            "float": sqlalchemy.Float,
-            "text": sqlalchemy.Text,
-        }
         try:
             table_info = TableInfo.model_validate(table_info_dict)
         except pydantic.ValidationError as e:
@@ -161,9 +162,9 @@ class SqlManager:
                     is_nullable = column_info.nullable
                     column_name = column_info.name
                     is_primpary = column_info.is_primary_key
-                    if column_type not in sqlalchemy_type_map:
+                    if column_type not in self.SUPPORTED_DATA_TYPES:
                         return False, f"Unsupported column type: {column_type}"
-                    real_type = sqlalchemy_type_map[column_type]
+                    real_type = self.SUPPORTED_DATA_TYPES[column_type]
                     attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable, primary_key=is_primpary)
                 TableClass = type(table_info.name.capitalize(), (Base,), attrs)
                 Base.metadata.create_all(self.engine)
@@ -172,6 +173,32 @@ class SqlManager:
         finally:
             if "conn" in locals():
                 conn.close()
+        return rt, err_msg
+
+    def _delete_rows_by_name(self, table_name):
+        metadata = sqlalchemy.MetaData()
+        metadata.reflect(bind=self.engine)
+        rt, err_msg = True, "Success"
+        try:
+            with self.engine.connect() as conn:
+                table = sqlalchemy.Table(table_name, metadata, autoload_with=self.engine)
+                delete = table.delete()
+                conn.execute(delete)
+                conn.commit()
+        except SQLAlchemyError as e:
+            rt, err_msg = False, str(e)
+        return rt, err_msg
+
+    def _drop_table_by_name(self, table_name):
+        metadata = sqlalchemy.MetaData()
+        metadata.reflect(bind=self.engine)
+        rt, err_msg = True, "Success"
+        try:
+            table = sqlalchemy.Table(table_name, metadata, autoload_with=self.engine)
+            table.drop(bind=self.engine, checkfirst=True)
+        except SQLAlchemyError as e:
+            lazyllm.LOG.warning("GET SQLAlchemyError")
+            rt, err_msg = False, str(e)
         return rt, err_msg
 
     def _check_columns_match(self, table_info_dict: dict):
@@ -187,12 +214,21 @@ class SqlManager:
             if column_info.name not in tmp_dict:
                 return False, f"Table {table_info.name} exists but column {column_info.name} does not."
             real_column = tmp_dict[column_info.name]
-            if column_info.data_type.lower() != real_column[0].__class__.__name__.lower():
+            column_type = column_info.data_type.lower()
+            if column_type not in self.SUPPORTED_DATA_TYPES:
+                return False, f"Unsupported column type: {column_type}"
+            # 1. check data type
+            # string type sometimes changes to other type (such as varchar)
+            real_type_cls = real_column[0].__class__
+            if column_type != real_type_cls.__name__.lower() and not issubclass(
+                real_type_cls, self.SUPPORTED_DATA_TYPES[column_type]
+            ):
                 return (
                     False,
                     f"Table {table_info.name} exists but column {column_info.name} data_type mismatch"
                     f": {column_info.data_type} vs {real_column[0].__class__.__name__}",
                 )
+            # 2. check nullable
             if column_info.nullable != real_column[1]:
                 return False, f"Table {table_info.name} exists but column {column_info.name} nullable mistach"
         if len(tmp_dict) > len(table_info.columns):
@@ -226,9 +262,8 @@ class SqlManager:
 
 
 class SQLiteManger(SqlManager):
-    def __init__(self, db_file, tabels_info_dict: dict, return_trace=False):
+    def __init__(self, db_file, tabels_info_dict: dict):
         assert Path(db_file).is_file()
-        self._return_trace = return_trace
         super().reset_db("SQLite", f"sqlite:///{db_file}", tabels_info_dict)
 
 
