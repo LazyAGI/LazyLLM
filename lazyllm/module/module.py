@@ -412,18 +412,19 @@ def light_reduce(cls):
 
 @light_reduce
 class _ServerModuleImpl(ModuleBase):
-    def __init__(self, m=None, pre=None, post=None, launcher=None, *, father=None):
+    def __init__(self, m=None, pre=None, post=None, launcher=None, port=None, *, father=None):
         super().__init__()
         self._m = ActionModule(m) if isinstance(m, FlowBase) else m
         self._pre_func, self._post_func = pre, post
         self._launcher = launcher.clone() if launcher else launchers.remote(sync=False)
         self._set_url_f = father._set_url if father else None
+        self._port = port
 
     @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
         if self._m is None: return None
         return Pipeline(
-            lazyllm.deploy.RelayServer(func=self._m, pre_func=self._pre_func,
+            lazyllm.deploy.RelayServer(func=self._m, pre_func=self._pre_func, port=self._port,
                                        post_func=self._post_func, launcher=self._launcher),
             self._set_url_f)
 
@@ -432,7 +433,7 @@ class _ServerModuleImpl(ModuleBase):
 
 
 class ServerModule(UrlModule):
-    def __init__(self, m, pre=None, post=None, stream=False, return_trace=False, launcher=None):
+    def __init__(self, m, pre=None, post=None, stream=False, return_trace=False, port=None, launcher=None):
         assert stream is False or return_trace is False, 'Module with stream output has no trace'
         assert (post is None) or (stream is False), 'Stream cannot be true when post-action exists'
         super().__init__(url=None, stream=stream, return_trace=return_trace)
@@ -441,7 +442,7 @@ class ServerModule(UrlModule):
             lazyllm.deploy.RelayServer.keys_name_handle,
             copy.deepcopy(lazyllm.deploy.RelayServer.default_headers),
         )
-        self._impl = _ServerModuleImpl(m, pre, post, launcher, father=self)
+        self._impl = _ServerModuleImpl(m, pre, post, launcher, port, father=self)
 
     _url_id = property(lambda self: self._impl._module_id)
 
