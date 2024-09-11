@@ -1,4 +1,4 @@
-from lazyllm import LightEngine
+from lazyllm.engine import LightEngine
 import pytest
 from . import tools as _  # noqa F401
 
@@ -71,7 +71,7 @@ class TestEngine(object):
                       args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
                  dict(id='2', kind='Retriever', name='ret2',
                       args=dict(doc='0', group_name='sentence', similarity='bm25', topk=3)),
-                 dict(id='3', kind='JoinFormatter', name='c', args=dict(method='sum')),
+                 dict(id='3', kind='JoinFormatter', name='c', args=dict(type='sum')),
                  dict(id='4', kind='Reranker', name='rek1',
                       args=dict(type='ModuleReranker', output_format='content', join=True,
                                 arguments=dict(model="bge-reranker-large", topk=1))),
