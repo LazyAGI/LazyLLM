@@ -26,7 +26,8 @@ class LazyHuggingFaceEmbedding(object):
 
     def __call__(self, string):
         lazyllm.call_once(self.init_flag, self.load_embed)
-        encoded_input = self.tokenizer(string, padding=True, truncation=True, return_tensors='pt').to(self.device)
+        encoded_input = self.tokenizer(string, padding=True, truncation=True, return_tensors='pt',
+                                       max_length=512, add_special_tokens=True).to(self.device)
         with torch.no_grad():
             model_output = self.embed(**encoded_input)
             sentence_embeddings = model_output[0][:, 0]
