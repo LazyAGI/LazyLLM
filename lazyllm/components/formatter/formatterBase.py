@@ -66,7 +66,7 @@ class JsonLikeFormatter(LazyLLMFormatterBase):
                 return data[int(slice)]
             if isinstance(slice, __class__._ListIdxes):
                 if isinstance(data, dict): return [data[k] for k in slice]
-                elif isinstance(data, (tuple, list)): return [data[int(k)] for k in slice]
+                elif isinstance(data, (tuple, list)): return type(data)(data[int(k)] for k in slice)
                 else: raise RuntimeError('Only tuple/list/dict is supported for [a,b,c]')
             if isinstance(slice, __class__._DictKeys):
                 assert isinstance(data, dict)
@@ -78,17 +78,19 @@ class JsonLikeFormatter(LazyLLMFormatterBase):
         if not slices: return data
         curr_slice = slices[0]
         if isinstance(curr_slice, slice):
-            if isinstance(data, list):
-                return [self._parse_py_data_by_formatter(d, slices=slices[1:]) for d in _impl(data, curr_slice)]
-            elif isinstance(data, dict):
+            if isinstance(data, dict):
                 assert curr_slice.start is None and curr_slice.stop is None and curr_slice.step is None, (
                     'Only {:} and [:] is supported in dict slice')
                 curr_slice = __class__._ListIdxes(data.keys())
+            elif isinstance(data, list):
+                return type(data)(self._parse_py_data_by_formatter(d, slices=slices[1:])
+                                  for d in _impl(data, curr_slice))
         if isinstance(curr_slice, __class__._DictKeys):
             return {k: self._parse_py_data_by_formatter(v, slices=slices[1:])
                     for k, v in _impl(data, curr_slice).items()}
         elif isinstance(curr_slice, __class__._ListIdxes):
-            return [self._parse_py_data_by_formatter(r, slices=slices[1:]) for r in _impl(data, curr_slice)]
+            tp = list if isinstance(data, dict) else type(data)
+            return tp(self._parse_py_data_by_formatter(r, slices=slices[1:]) for r in _impl(data, curr_slice))
         else: return self._parse_py_data_by_formatter(_impl(data, curr_slice), slices=slices[1:])
 
 
