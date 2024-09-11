@@ -133,8 +133,17 @@ class Register(object):
             rewrite_func = base.__reg_overwrite__ if getattr(base, '__reg_overwrite__', None) else self.fnames[0]
         assert rewrite_func in self.fnames, f'Invalid function "{rewrite_func}" provived for rewrite.'
 
-        def impl(func):
-            func_name = func.__name__
+        def impl(func, func_name=None):
+            if func_name:
+                func_for_wrapper = func # avoid calling recursively
+                def wrapper_func(*args, **kwargs):
+                    return func_for_wrapper(*args, **kwargs)
+                # override `wrapper_func`'s meta infos
+                functools.update_wrapper(wrapper_func, func)
+                wrapper_func.__name__ = func_name
+                func = wrapper_func
+            else:
+                func_name = func.__name__
             exec(self.template.format(
                 name=func_name + cls.split('.')[-1].capitalize(), base=cls))
             # 'func' cannot be recognized by exec, so we use 'setattr' instead
