@@ -1,4 +1,4 @@
-from ...common import LazyLLMRegisterMetaClass
+from ...common import LazyLLMRegisterMetaClass, package
 
 def is_number(s: str):
     try:
@@ -21,8 +21,8 @@ class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
         if isinstance(msg, str): msg = self._load(msg)
         return self._parse_py_data_by_formatter(msg)
 
-    def __call__(self, msg):
-        return self.format(msg)
+    def __call__(self, *msg):
+        return self.format(msg[0] if len(msg) == 1 else package(msg))
 
 
 class JsonLikeFormatter(LazyLLMFormatterBase):
