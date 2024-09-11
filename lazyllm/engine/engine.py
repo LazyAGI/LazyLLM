@@ -5,7 +5,9 @@ from lazyllm.tools import IntentClassifier
 from lazyllm.common import compile_code
 from .node import all_nodes, Node
 import inspect
+import functools
 
+from lazyllm.tools.tools import Weather
 
 class CodeBlock(object):
     def __init__(self, code):
@@ -271,6 +273,7 @@ def make_join_formatter(type='sum', names=None, symbol=None):
 
 @NodeConstructor.register('FunctionCall')
 def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
+    print(f'*****in make_fc, get llm [{llm}]')
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
@@ -279,14 +282,15 @@ def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
 
     # `tools` is a list of ids in engine's resources
     for rid in tools:
-        node = build_node(rid)
+        node = Engine().build_node(rid)
         func = node.func
         def wrapper_func(*args, **kwargs):
             func(*args, **kwargs)
-        functools.update_wrapper(wrapper_func, func)
+        wrapper_func.__name__ = node.name
+        wrapper_func.__doc__ = func.__doc__
         callable_list.append(wrapper_func)
 
-    return f(Engine().build_node(llm).func, tools)
+    return f(Engine().build_node(llm).func, callable_list)
 
 
 @NodeConstructor.register('HttpTool')
@@ -297,5 +301,19 @@ def make_http_tool(method: Optional[str] = None,
                    body: Optional[str] = None,
                    timeout: int = 10,
                    proxies: Optional[Dict[str, str]] = None,
-                   py_code: Optional[str] = None):
-    return lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies, py_code)
+                   py_code: Optional[str] = None,
+                   doc: Optional[str] = None):
+    def wrapper_func(*args, **kwargs):
+        t = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies, py_code)
+        return t(*args, **kwargs)
+    wrapper_func.__doc__ = doc
+    return wrapper_func
+
+
+@NodeConstructor.register('Weather')
+def make_weather():
+    weather = Weather()
+    def wrapper_func(*args, **kwargs):
+        return weather.forward(*args, **kwargs) # call forward() explicitly
+    functools.update_wrapper(wrapper_func, weather.forward)
+    return wrapper_func

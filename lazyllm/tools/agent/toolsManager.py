@@ -106,21 +106,26 @@ if "tool" not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group("tool")
 
 class ToolManager(ModuleBase):
-    def __init__(self, tools: List[str], return_trace: bool = False):
+    def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._tools = self._load_tools(tools)
         self._format_tools()
         self._tools_desc = self._transform_to_openai_function()
 
-    def _load_tools(self, tools_str: List[str]):
+    def _load_tools(self, tools: List[Union[str, Callable]]):
         _tools = []
-        for tool_str in tools_str:
-            tool_all_str = tool_str + "tool".capitalize()
-            t = lazyllm.tool.get(tool_all_str, None)
-            if t:
-                _tools.append(t())
-            else:
-                raise ValueError(f"Tool {tool_str} has not been registered yet.")
+        for element in tools:
+            if isinstance(element, str):
+                tool_all_str = element + "tool".capitalize()
+                print(f"---------------- get tool_all_str {tool_all_str}")
+                t = lazyllm.tool.get(tool_all_str, None)
+                if t:
+                    _tools.append(t())
+                else:
+                    raise ValueError(f"Tool {element} has not been registered yet.")
+            elif isinstance(element, Callable):
+                print(f"---------------- get element.__name__ {element.__name__}")
+                _tools.append(element)
         return _tools
 
     @property
