@@ -13,6 +13,10 @@ on:
       - "docs/assets/**"
 env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}'
+  LAZYLLM_SLURM_PART: ${{ vars.LAZYLLM_SLURM_PART }}
+  LAZYLLM_SCO_RESOURCE_TYPE: ${{ vars.LAZYLLM_SCO_RESOURCE_TYPE }}
+  LAZYLLM_SCO_WORKSPACE: ${{ vars.LAZYLLM_SCO_WORKSPACE }}
+
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -65,14 +69,13 @@ jobs:
           env | grep '^SCC'
           export LAZYLLM_SCO_ENV_NAME=lazyllm
           export LAZYLLM_DEFAULT_LAUNCHER=sco
+          export LAZYLLM_SLURM_PART=${{ env.LAZYLLM_SLURM_PART }}
+          export LAZYLLM_SCO_RESOURCE_TYPE=${{ env.LAZYLLM_SCO_RESOURCE_TYPE }}
+          export LAZYLLM_SCO_WORKSPACE=${{ env.LAZYLLM_SCO_WORKSPACE }}
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           python -m pytest --lf --last-failed-no-failures=all -v tests/basic_tests/
-        env:
-          LAZYLLM_SLURM_PART: ${{ vars.LAZYLLM_SLURM_PART }}
-          LAZYLLM_SCO_RESOURCE_TYPE: ${{ vars.LAZYLLM_SCO_RESOURCE_TYPE }}
-          LAZYLLM_SCO_WORKSPACE: ${{ vars.LAZYLLM_SCO_WORKSPACE }}
 
   AdvancedStandardTests:
     runs-on: tps_sco_nv
@@ -85,15 +88,14 @@ jobs:
           env | grep '^SCC'
           export LAZYLLM_SCO_ENV_NAME=lazyllm
           export LAZYLLM_DEFAULT_LAUNCHER=sco
+          export LAZYLLM_SLURM_PART=${{ env.LAZYLLM_SLURM_PART }}
+          export LAZYLLM_SCO_RESOURCE_TYPE=${{ env.LAZYLLM_SCO_RESOURCE_TYPE }}
+          export LAZYLLM_SCO_WORKSPACE=${{ env.LAZYLLM_SCO_WORKSPACE }}
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           source ~/ENV/env.sh
           python -m pytest --lf --last-failed-no-failures=all -v tests/advanced_tests/standard_test/
-        env:
-          LAZYLLM_SLURM_PART: ${{ vars.LAZYLLM_SLURM_PART }}
-          LAZYLLM_SCO_RESOURCE_TYPE: ${{ vars.LAZYLLM_SCO_RESOURCE_TYPE }}
-          LAZYLLM_SCO_WORKSPACE: ${{ vars.LAZYLLM_SCO_WORKSPACE }}
 
   AdvancedFullTests:
     runs-on: tps_sco_nv
@@ -105,14 +107,13 @@ jobs:
           env | grep '^SCC'
           export LAZYLLM_SCO_ENV_NAME=lazyllm
           export LAZYLLM_DEFAULT_LAUNCHER=sco
+          export LAZYLLM_SLURM_PART=${{ env.LAZYLLM_SLURM_PART }}
+          export LAZYLLM_SCO_RESOURCE_TYPE=${{ env.LAZYLLM_SCO_RESOURCE_TYPE }}
+          export LAZYLLM_SCO_WORKSPACE=${{ env.LAZYLLM_SCO_WORKSPACE }}
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           python -m pytest --lf --last-failed-no-failures=all -v tests/advanced_tests/full_test/
-        env:
-          LAZYLLM_SLURM_PART: ${{ vars.LAZYLLM_SLURM_PART }}
-          LAZYLLM_SCO_RESOURCE_TYPE: ${{ vars.LAZYLLM_SCO_RESOURCE_TYPE }}
-          LAZYLLM_SCO_WORKSPACE: ${{ vars.LAZYLLM_SCO_WORKSPACE }}
 
   ChargeTests:
     runs-on: tps_sco_nv
