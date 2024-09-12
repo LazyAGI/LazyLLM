@@ -1,6 +1,6 @@
 from lazyllm.engine import LightEngine
 import pytest
-from . import tools as _  # noqa F401
+#from . import tools as _  # noqa F401
 
 class TestEngine(object):
 
@@ -104,22 +104,28 @@ Args:
 
         resources = [
             dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
-            dict(id="1", kind="HttpTool", name="weather-111",
+            dict(id="3", kind="HttpTool", name="weather_111",
                  args=dict(py_code=get_current_weather_code,
                            doc=get_current_weather_doc)),
-            dict(id="2", kind="HttpTool", name="echo-111",
+            dict(id="2", kind="HttpTool", name="echo_111",
                  args=dict(py_code=echo_code, doc='echo')),
         ]
         # `tools` in `args` is a list of ids in `resources`
         nodes = [dict(id="1", kind="FunctionCall", name="fc",
-                      args=dict(llm='0', tools=['1', '2']))]
+                      args=dict(llm='0', tools=['3', '2']))]
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
+        print('before engine start')
+        # TODO handle duplicated node id
         engine.start(nodes, edges, resources)
 
         city_name = 'Tokyo'
         unit = 'Celsius'
+        print('before engine run')
         ret = engine.run(f"What is the temperature in {city_name} today in {unit}?")
-        print(f'ret -> {ret}')
+        print(f'after engine run -> {ret}')
         assert ret['location'] == city_name
         assert ret['unit'] == unit
+
+tt = TestEngine()
+tt.test_register_tools()
