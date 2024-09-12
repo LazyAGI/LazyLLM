@@ -113,6 +113,9 @@ class ToolManager(ModuleBase):
         self._tools_desc = self._transform_to_openai_function()
 
     def _load_tools(self, tools: List[Union[str, Callable]]):
+        tmp_register = lazyllm.Register(ModuleTool, ['apply'])
+        tmp_register.new_group('tmp_tool')
+
         _tools = []
         for element in tools:
             if isinstance(element, str):
@@ -124,8 +127,12 @@ class ToolManager(ModuleBase):
                 else:
                     raise ValueError(f"Tool {element} has not been registered yet.")
             elif isinstance(element, Callable):
+                tmp_register('tmp_tool')(element)
+                tool_all_str = element.__name__ + "tmp_tool".capitalize()
+                t = lazyllm.tmp_tool.get(tool_all_str, None)
+                tt = t()
+                _tools.append(tt)
                 print(f"---------------- get element.__name__ {element.__name__}")
-                _tools.append(element)
         return _tools
 
     @property
@@ -140,11 +147,20 @@ class ToolManager(ModuleBase):
     def tools_info(self):
         return self._tool_call
 
-    def _validate_tool(self, tool_name: str, tool_arguments: Dict[str, Any]):
-        # Does the tool exists
+    def _validate_tool(self, tool_info):
+        tool_name = tool_info['name']
+        tool_arguments = tool_info['arguments']
+
         tool = self._tool_call.get(tool_name)
-        if tool: return tool.validate_parameters(tool_arguments)
-        return False
+        if not tool:
+            return False
+
+        # don't check parameters if this function contains '*args' or '**kwargs'
+        for name, param in inspect.signature(tool).parameters.items():
+            if param.kind == 'VAR_POSITIONAL' or param.kind == 'VAR_KEYWORD':
+                return True
+
+        return tool.validate_parameters(tool_arguments)
 
     def _format_tools(self):
         if isinstance(self._tools, List):
@@ -156,25 +172,16 @@ class ToolManager(ModuleBase):
             for tool in self._tools:
                 try:
                     parsed = docstring_parser.parse(tool.description)
-                    tool_args = tool.args
-                    assert len(tool_args) == len(parsed.params), ("The parameter description and the actual "
-                                                                  "number of input parameters are inconsistent.")
-                    args_description = {}
-                    for param in parsed.params:
-                        args_description[param.arg_name] = param.description
+
                     args = {}
-                    for k, v in tool_args.items():
-                        val = copy.deepcopy(v)
-                        if "title" in val.keys():
-                            del val["title"]
-                        if "default" in val.keys():
-                            del val["default"]
-                        args[k] = val if val else {"type": "string"}
-                        if k in args_description:
-                            args[k].update({"description": args_description[k]})
-                        else:
-                            raise ValueError(f"The actual input parameter {k} is not found "
-                                             "in the parameter description.")
+                    required_arg_list = []
+                    for param in parsed.params:
+                        args[param.arg_name] = {
+                            "type": param.type_name,
+                            "description": param.description,
+                        }
+                        if not param.is_optional:
+                            required_arg_list.append(param.arg_name)
                     func = {
                         "type": "function",
                         "function": {
@@ -183,7 +190,7 @@ class ToolManager(ModuleBase):
                             "parameters": {
                                 "type": "object",
                                 "properties": args,
-                                "required": tool.get_params_schema().model_json_schema().get("required", [])
+                                "required": required_arg_list,
                             }
                         }
                     }
@@ -211,7 +218,7 @@ class ToolManager(ModuleBase):
         tool_calls = [{"name": tool['name'], "arguments": json.loads(tool['arguments'])
                       if isinstance(tool['arguments'], str) else tool['arguments']} for tool in tool_calls]
         output = []
-        flag_val = [True if self._validate_tool(tool['name'], tool['arguments']) else False for tool in tool_calls]
+        flag_val = [True if self._validate_tool(tool) else False for tool in tool_calls]
         tool_inputs = [tool_calls[idx]['arguments'] for idx, val in enumerate(flag_val) if val]
         tools = [self._tool_call[tool_calls[idx]['name']] for idx, val in enumerate(flag_val) if val]
         tool_diverter = lazyllm.diverter(tuple(tools))

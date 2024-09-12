@@ -61,6 +61,7 @@ class FunctionCall(ModuleBase):
                 arguments = item.get('function', {}).get('arguments', '')
                 arguments = json.loads(arguments) if isinstance(arguments, str) else arguments
                 res.append({"name": item.get('function', {}).get('name', ''), 'arguments': arguments})
+            LOG.info(f'debug! parser returns -> {res}')
             return res
         elif isinstance(llm_output, str):
             return llm_output

@@ -11,15 +11,15 @@ class HttpTool(HttpRequest):
                  body: Optional[str] = None,
                  timeout: int = 10,
                  proxies: Optional[Dict[str, str]] = None,
-                 py_code: Optional[str] = None):
+                 code_str: Optional[str] = None):
         super().__init__(method, url, '', headers, params, body)
         self._has_http = True if url else False
-        self._py_code = compile_code(py_code) if py_code else None
+        self._code_str = compile_code(code_str) if code_str else None
 
     def forward(self, *args, **kwargs):
         if self._has_http:
             res = super().forward(*args, **kwargs)
-            return self._py_code(res) if self._py_code else res
-        elif self._py_code:
-            return self._py_code(*args, **kwargs)
+            return self._code_str(res) if self._code_str else res
+        elif self._code_str:
+            return self._code_str(*args, **kwargs)
         return None
