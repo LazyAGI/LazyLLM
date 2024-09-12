@@ -68,6 +68,10 @@ class TestDeploy(object):
         m.update_server()
         res = m('你好')
         assert len(json.loads(res)) == 1024
+        res = m(['你好'])
+        assert len(json.loads(res)) == 1
+        res = m(['你好', '世界'])
+        assert len(json.loads(res)) == 2
 
     def test_sd3(self):
         m = lazyllm.TrainableModule('stable-diffusion-3-medium')
