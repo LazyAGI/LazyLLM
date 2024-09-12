@@ -50,11 +50,11 @@ class SqlManager:
         host: str,
         port: int,
         db_name: str,
-        tabels_info_dict: dict,
+        table_info_dict: dict,
         options_str: str = "",
     ) -> None:
         conn_url = f"{db_type.lower()}://{user}:{password}@{host}:{port}/{db_name}"
-        self.reset_db(db_type, conn_url, tabels_info_dict, options_str)
+        self.reset_db(db_type, conn_url, table_info_dict, options_str)
 
     def reset_tables(self, tabels_info_dict: dict) -> tuple[bool, str]:
         existing_tables = set(self.get_all_tables())
@@ -93,8 +93,9 @@ class SqlManager:
         rt, err_msg = self.reset_tables(tabels_info_dict)
         if not rt:
             self.err_msg = err_msg
-        self.err_msg = ""
-        self.err_code = 0
+            self.err_code = 1001
+        else:
+            self.err_code = 0
 
     def get_tables_desc(self):
         return self.tables_prompt
@@ -160,11 +161,11 @@ class SqlManager:
                     column_type = column_info.data_type.lower()
                     is_nullable = column_info.nullable
                     column_name = column_info.name
-                    is_primpary = column_info.is_primary_key
+                    is_primary = column_info.is_primary_key
                     if column_type not in self.SUPPORTED_DATA_TYPES:
                         return False, f"Unsupported column type: {column_type}"
                     real_type = self.SUPPORTED_DATA_TYPES[column_type]
-                    attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable, primary_key=is_primpary)
+                    attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable, primary_key=is_primary)
                 TableClass = type(table_info.name.capitalize(), (Base,), attrs)
                 Base.metadata.create_all(self.engine)
         except OperationalError as e:
@@ -229,7 +230,7 @@ class SqlManager:
                 )
             # 2. check nullable
             if column_info.nullable != real_column[1]:
-                return False, f"Table {table_info.name} exists but column {column_info.name} nullable mistach"
+                return False, f"Table {table_info.name} exists but column {column_info.name} nullable mismatch"
         if len(tmp_dict) > len(table_info.columns):
             return (
                 False,
