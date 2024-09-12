@@ -2,7 +2,7 @@ from lazyllm.module import ModuleBase
 import lazyllm
 from lazyllm.components import ChatPrompter
 from lazyllm.tools.utils import chat_history_to_str
-from lazyllm import pipeline, globals, bind, LOG, _0, switch
+from lazyllm import pipeline, globals, bind, _0, switch
 import json
 from typing import List, Any, Dict, Union
 from pathlib import Path

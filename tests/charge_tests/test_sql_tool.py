@@ -4,7 +4,6 @@ import lazyllm
 import tempfile
 from pathlib import Path
 import uuid
-from lazyllm.engine import LightEngine
 import os
 import re
 
