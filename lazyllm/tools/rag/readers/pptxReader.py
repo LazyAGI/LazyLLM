@@ -8,7 +8,7 @@ from .readerBase import LazyLLMReaderBase, infer_torch_device
 from ..store import DocNode
 
 class PPTXReader(LazyLLMReaderBase):
-    def __init__(self) -> None:
+    def __init__(self, return_trace: bool = True) -> None:
         try:
             import torch  # noqa
             from PIL import Image # noqa
@@ -18,6 +18,7 @@ class PPTXReader(LazyLLMReaderBase):
             raise ImportError("Please install extra dependencies that are required for the "
                               "PPTXReader: `pip install torch transformers python-pptx Pillow`")
 
+        super().__init__(return_trace=return_trace)
         model = VisionEncoderDecoderModel.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
         feature_extractor = ViTFeatureExtractor.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
         tokenizer = AutoTokenizer.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
@@ -49,8 +50,8 @@ class PPTXReader(LazyLLMReaderBase):
         preds = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
         return preds[0].strip()
 
-    def load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                  fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         from pptx import Presentation
 
         if not isinstance(file, Path): file = Path(file)

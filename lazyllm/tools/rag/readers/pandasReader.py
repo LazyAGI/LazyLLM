@@ -8,16 +8,16 @@ from .readerBase import LazyLLMReaderBase
 from ..store import DocNode
 
 class PandasCSVReader(LazyLLMReaderBase):
-    def __init__(self, *args, concat_rows: bool = True, col_joiner: str = ", ", row_joiner: str = "\n",
-                 pandas_config: dict = {}, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, concat_rows: bool = True, col_joiner: str = ", ", row_joiner: str = "\n",
+                 pandas_config: Optional[Dict] = None, return_trace: bool = True) -> None:
+        super().__init__(return_trace=return_trace)
         self._concat_rows = concat_rows
         self._col_joiner = col_joiner
         self._row_joiner = row_joiner
-        self._pandas_config = pandas_config
+        self._pandas_config = pandas_config or {}
 
-    def load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                  fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:
@@ -32,15 +32,15 @@ class PandasCSVReader(LazyLLMReaderBase):
         else: return [DocNode(text=text, metadata=extra_info or {}) for text in text_list]
 
 class PandasExcelReader(LazyLLMReaderBase):
-    def __init__(self, *args, concat_rows: bool = True, sheet_name: Optional[str] = None,
-                 pandas_config: dict = {}, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, concat_rows: bool = True, sheet_name: Optional[str] = None,
+                 pandas_config: Optional[Dict] = None, return_trace: bool = True) -> None:
+        super().__init__(return_trace=return_trace)
         self._concat_rows = concat_rows
         self._sheet_name = sheet_name
-        self._pandas_config = pandas_config
+        self._pandas_config = pandas_config or {}
 
-    def load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                  fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         openpyxl_spec = importlib.util.find_spec("openpyxl")
         if openpyxl_spec is not None: pass
         else: raise ImportError("Please install openpyxl to read Excel files. "

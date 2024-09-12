@@ -6,8 +6,8 @@ from .readerBase import LazyLLMReaderBase
 from ..store import DocNode
 
 class VideoAudioReader(LazyLLMReaderBase):
-    def __init__(self, *args, model_version: str = "base", **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, model_version: str = "base", return_trace: bool = True) -> None:
+        super().__init__(return_trace=return_trace)
         self._model_version = model_version
 
         try:
@@ -19,8 +19,8 @@ class VideoAudioReader(LazyLLMReaderBase):
         model = whisper.load_model(self._model_version)
         self._parser_config = {"model": model}
 
-    def load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                  fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         import whisper
 
         if not isinstance(file, Path): file = Path(file)

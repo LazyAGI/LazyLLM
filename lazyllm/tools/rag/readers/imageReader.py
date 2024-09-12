@@ -2,7 +2,7 @@ import base64
 import re
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, List, Optional, Any, cast
+from typing import Dict, List, Optional, cast
 from fsspec import AbstractFileSystem
 from PIL import Image
 
@@ -20,7 +20,9 @@ def b64_2_img(data: str) -> Image:
 
 class ImageReader(LazyLLMReaderBase):
     def __init__(self, parser_config: Optional[Dict] = None, keep_image: bool = False, parse_text: bool = False,
-                 text_type: str = "text", pytesseract_model_kwargs: Dict[str, Any] = {}) -> None:
+                 text_type: str = "text", pytesseract_model_kwargs: Optional[Dict] = None,
+                 return_trace: bool = True) -> None:
+        super().__init__(return_trace=return_trace)
         self._text_type = text_type
         if parser_config is None and parse_text:
             if text_type == "plain_text":
@@ -49,10 +51,10 @@ class ImageReader(LazyLLMReaderBase):
         self._parser_config = parser_config
         self._keep_image = keep_image
         self._parse_text = parse_text
-        self._pytesseract_model_kwargs = pytesseract_model_kwargs
+        self._pytesseract_model_kwargs = pytesseract_model_kwargs or {}
 
-    def load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                  fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:

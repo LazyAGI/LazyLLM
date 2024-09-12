@@ -10,12 +10,13 @@ from ..store import DocNode
 RETRY_TIMES = 3
 
 class PDFReader(LazyLLMReaderBase):
-    def __init__(self, return_full_document: bool = False) -> None:
+    def __init__(self, return_full_document: bool = False, return_trace: bool = True) -> None:
+        super().__init__(return_trace=return_trace)
         self._return_full_document = return_full_document
 
     @retry(stop=stop_after_attempt(RETRY_TIMES))
-    def load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                  fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         try:

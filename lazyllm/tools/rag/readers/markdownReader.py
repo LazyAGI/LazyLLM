@@ -8,8 +8,8 @@ from .readerBase import LazyLLMReaderBase
 from ..store import DocNode
 
 class MarkdownReader(LazyLLMReaderBase):
-    def __init__(self, *args, remove_hyperlinks: bool = True, remove_images: bool = True, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, remove_hyperlinks: bool = True, remove_images: bool = True, return_trace: bool = True) -> None:
+        super().__init__(return_trace=return_trace)
         self._remove_hyperlinks = remove_hyperlinks
         self._remove_images = remove_images
 
@@ -56,8 +56,8 @@ class MarkdownReader(LazyLLMReaderBase):
         if self._remove_images: content = self.remove_images(content)
         return self._markdown_to_tups(content)
 
-    def load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                  fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         tups = self._parse_tups(file, fs=fs)

@@ -6,8 +6,8 @@ from .readerBase import LazyLLMReaderBase
 from ..store import DocNode
 
 class DocxReader(LazyLLMReaderBase):
-    def load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                  fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
         try:
             import docx2txt

@@ -15,18 +15,19 @@ class MboxReader(LazyLLMReaderBase):
         "Content: {_content}"
     )
 
-    def __init__(self, *args, max_count: int = 0, message_format: str = DEFAULT_MESSAGE_FORMAT, **kwargs) -> None:
+    def __init__(self, max_count: int = 0, message_format: str = DEFAULT_MESSAGE_FORMAT,
+                 return_trace: bool = True) -> None:
         try:
             from bs4 import BeautifulSoup  # noqa
         except ImportError:
             raise ImportError("`BeautifulSoup` package not found: `pip install beautifulsoup4`")
 
-        super().__init__(*args, **kwargs)
+        super().__init__(return_trace=return_trace)
         self._max_count = max_count
         self._message_format = message_format
 
-    def load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                  fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         import mailbox
         from email.parser import BytesParser
         from email.policy import default

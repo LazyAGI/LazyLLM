@@ -1,6 +1,6 @@
 import os
 import shutil
-from typing import Callable, List
+from typing import Callable, List, Optional, Dict
 from .doc_impl import DocImpl
 import lazyllm
 from .store import LAZY_ROOT_NAME
@@ -10,7 +10,7 @@ DEFAULT_DIR = "default"
 
 
 class DocGroupImpl(lazyllm.ModuleBase):
-    def __init__(self, dataset_path, embed) -> None:
+    def __init__(self, dataset_path, embed, readers: Optional[Dict] = None) -> None:
         super().__init__()
         self._dataset_path = dataset_path
         self._embed = embed
@@ -22,7 +22,7 @@ class DocGroupImpl(lazyllm.ModuleBase):
 
         file_paths = self._list_all_files(self.dataset_path, lambda x: DATA_DIR in x)
         self._impl: DocImpl = DocImpl(
-            doc_files=file_paths, embed=self._embed, doc_name="lazyllm_doc"
+            doc_files=file_paths, embed=self._embed, readers=readers, doc_name="lazyllm_doc"
         )
 
     @property

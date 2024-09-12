@@ -9,8 +9,8 @@ from ..store import DocNode
 from lazyllm import LOG
 
 class HWPReader(LazyLLMReaderBase):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, return_trace: bool = True) -> None:
+        super().__init__(return_trace=return_trace)
         self._FILE_HEADER_SECTION = "FileHeader"
         self._HWP_SUMMARY_SECTION = "\x05HwpSummaryInformation"
         self._SECTION_NAME_LENGTH = len("Section")
@@ -18,8 +18,8 @@ class HWPReader(LazyLLMReaderBase):
         self._HWP_TEXT_TAGS = [67]
         self._text = ""
 
-    def load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                  fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         try:
             import olefile
         except ImportError:

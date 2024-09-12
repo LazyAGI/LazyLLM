@@ -7,8 +7,8 @@ from ..store import DocNode
 from lazyllm import LOG
 
 class EpubReader(LazyLLMReaderBase):
-    def load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                  fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         try:
             import ebooklib
             import html2text

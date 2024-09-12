@@ -4,13 +4,20 @@ from typing import Iterable, List
 
 from ....common import LazyLLMRegisterMetaClass
 from ..store import DocNode
+from lazyllm.module import ModuleBase
 
-class LazyLLMReaderBase(metaclass=LazyLLMRegisterMetaClass):
-    def lazy_load_data(self, *args, **load_kwargs) -> Iterable[DocNode]:
+class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
+    def __init__(self, *args, return_trace: bool = True, **kwargs):
+        super().__init__(return_trace=return_trace)
+
+    def _lazy_load_data(self, *args, **load_kwargs) -> Iterable[DocNode]:
         raise NotImplementedError(f"{self.__class__.__name__} does not implement lazy_load_data method.")
 
-    def load_data(self, *args, **load_kwargs) -> List[DocNode]:
-        return list(self.lazy_load_data(*args, **load_kwargs))
+    def _load_data(self, *args, **load_kwargs) -> List[DocNode]:
+        return list(self._lazy_load_data(*args, **load_kwargs))
+
+    def forward(self, *args, **kwargs) -> List[DocNode]:
+        return self._load_data(*args, **kwargs)
 
 
 def get_default_fs():

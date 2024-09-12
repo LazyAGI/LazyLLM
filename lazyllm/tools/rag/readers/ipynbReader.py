@@ -7,12 +7,13 @@ from .readerBase import LazyLLMReaderBase
 from ..store import DocNode
 
 class IPYNBReader(LazyLLMReaderBase):
-    def __init__(self, parser_config: Optional[Dict] = None, concatenate: bool = False):
+    def __init__(self, parser_config: Optional[Dict] = None, concatenate: bool = False, return_trace: bool = True):
+        super().__init__(return_trace=return_trace)
         self._parser_config = parser_config
         self._concatenate = concatenate
 
-    def load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                  fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if file.name.endswith(".ipynb"):
