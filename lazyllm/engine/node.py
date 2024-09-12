@@ -60,8 +60,8 @@ all_nodes['OnlineLLM'] = dict(
         prompt=NodeArgs(str)),
 )
 
-all_nodes['VQA'] = all_nodes['SD'] = all_nodes['TTS'] = all_nodes['STT'] = dict(
-    module=lazyllm.OnlineChatModule,
+all_nodes['SD'] = all_nodes['TTS'] = all_nodes['STT'] = dict(
+    module=lazyllm.TrainableModule,
     init_arguments=dict(base_model=NodeArgs(str))
 )
 

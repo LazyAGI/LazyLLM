@@ -16,7 +16,6 @@ from .client import redis_client
 from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
                     FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
                     LLMParser, SimpleDirectoryReader)
-from .engine import *  # noqa F403
 from .docs import add_doc
 
 config.done()
@@ -82,4 +81,3 @@ __all__ = [
 
 __all__ += common.__all__  # noqa F405
 __all__ += flow.__all__  # noqa F405
-__all__ += engine.__all__  # noqa F405
