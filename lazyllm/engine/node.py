@@ -141,7 +141,7 @@ all_nodes["SqlManager"] = dict(
         host=NodeArgs(str, None),
         port=NodeArgs(str, None),
         db_name=NodeArgs(str, None),
-        tabels_info_dict=NodeArgs(list, None),
+        tables_info_dict=NodeArgs(list, None),
     ),
 )
 

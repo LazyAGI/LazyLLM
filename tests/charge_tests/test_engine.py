@@ -1,7 +1,7 @@
 from lazyllm.engine import LightEngine
 import pytest
 from . import tools as _  # noqa F401
-from .test_sql_tool import TestSqlManager, get_sql_init_keywords
+from .utils import SqlEgsData, get_sql_init_keywords
 from lazyllm.tools import SqlManager
 
 
@@ -94,10 +94,10 @@ class TestEngine(object):
         username, password, host, port, database = get_sql_init_keywords(db_type)
 
         # 1.  Init: insert data to database
-        tmp_sql_manager = SqlManager(db_type, username, password, host, port, database, TestSqlManager.TEST_TABLES_INFO)
-        for table_name in TestSqlManager.TEST_TABLES:
+        tmp_sql_manager = SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)
+        for table_name in SqlEgsData.TEST_TABLES:
             rt, err_msg = tmp_sql_manager._delete_rows_by_name(table_name)
-        for insert_script in TestSqlManager.TEST_INSERT_SCRIPTS:
+        for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
             tmp_sql_manager.execute_sql_update(insert_script)
 
         # 2. Engine: build and chat
@@ -113,7 +113,7 @@ class TestEngine(object):
                     host=host,
                     port=port,
                     db_name=database,
-                    tabels_info_dict=TestSqlManager.TEST_TABLES_INFO,
+                    tables_info_dict=SqlEgsData.TEST_TABLES_INFO,
                 ),
             ),
             dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="sensenova")),
@@ -133,5 +133,5 @@ class TestEngine(object):
         assert "销售三部" in str_answer
 
         # 3. Release: delete data and table from database
-        for table_name in TestSqlManager.TEST_TABLES:
+        for table_name in SqlEgsData.TEST_TABLES:
             rt, err_msg = tmp_sql_manager._drop_table_by_name(table_name)

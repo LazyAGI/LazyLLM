@@ -50,16 +50,16 @@ class SqlManager:
         host: str,
         port: int,
         db_name: str,
-        table_info_dict: dict,
+        tables_info_dict: dict,
         options_str: str = "",
     ) -> None:
         conn_url = f"{db_type.lower()}://{user}:{password}@{host}:{port}/{db_name}"
-        self.reset_db(db_type, conn_url, table_info_dict, options_str)
+        self.reset_db(db_type, conn_url, tables_info_dict, options_str)
 
-    def reset_tables(self, tabels_info_dict: dict) -> tuple[bool, str]:
+    def reset_tables(self, tables_info_dict: dict) -> tuple[bool, str]:
         existing_tables = set(self.get_all_tables())
         try:
-            tables_info = TablesInfo.model_validate(tabels_info_dict)
+            tables_info = TablesInfo.model_validate(tables_info_dict)
         except pydantic.ValidationError as e:
             lazyllm.LOG.warning(str(e))
             return False, str(e)
@@ -73,12 +73,12 @@ class SqlManager:
             if not cur_rt:
                 lazyllm.LOG.warning(f"cur_err_msg: {cur_err_msg}")
                 return cur_rt, cur_err_msg
-        rt, err_msg = self._set_tables_desc_prompt(tabels_info_dict)
+        rt, err_msg = self._set_tables_desc_prompt(tables_info_dict)
         if not rt:
             lazyllm.LOG.warning(err_msg)
         return True, "Success"
 
-    def reset_db(self, db_type: str, conn_url: str, tabels_info_dict: dict, options_str=""):
+    def reset_db(self, db_type: str, conn_url: str, tables_info_dict: dict, options_str=""):
         assert db_type in self.DB_TYPE_SUPPORTED
         extra_fields = {}
         if options_str:
@@ -90,7 +90,7 @@ class SqlManager:
         self.extra_fields = extra_fields
         self.engine = sqlalchemy.create_engine(conn_url)
         self.tables_prompt = ""
-        rt, err_msg = self.reset_tables(tabels_info_dict)
+        rt, err_msg = self.reset_tables(tables_info_dict)
         if not rt:
             self.err_msg = err_msg
             self.err_code = 1001
@@ -238,9 +238,9 @@ class SqlManager:
             )
         return True, "Match"
 
-    def _set_tables_desc_prompt(self, tabels_info_dict: dict) -> str:
+    def _set_tables_desc_prompt(self, tables_info_dict: dict) -> str:
         try:
-            tables_info = TablesInfo.model_validate(tabels_info_dict)
+            tables_info = TablesInfo.model_validate(tables_info_dict)
         except pydantic.ValidationError as e:
             return False, str(e)
         self.tables_prompt = "The tables description is as follows\n```\n"
@@ -262,9 +262,9 @@ class SqlManager:
 
 
 class SQLiteManger(SqlManager):
-    def __init__(self, db_file, tabels_info_dict: dict):
+    def __init__(self, db_file, tables_info_dict: dict):
         assert Path(db_file).is_file()
-        super().reset_db("SQLite", f"sqlite:///{db_file}", tabels_info_dict)
+        super().reset_db("SQLite", f"sqlite:///{db_file}", tables_info_dict)
 
 
 sql_query_instruct_template = """
