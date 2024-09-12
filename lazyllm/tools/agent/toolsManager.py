@@ -7,6 +7,7 @@ from lazyllm.common import LazyLLMRegisterMetaClass
 from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Set
 import inspect
 from pydantic import create_model, BaseModel, ValidationError
+from lazyllm import LOG
 
 
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
@@ -19,6 +20,14 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
             else (_ for _ in ()).throw(ValueError("Function must has a docstring"))
 
         self._params_schema = self.load_function_schema(self.__class__.apply)
+
+        self._has_var_args = False
+        signature = inspect.signature(self.__class__.apply)
+        for name, param in signature.parameters.items():
+            if param.kind == inspect.Parameter.VAR_POSITIONAL or\
+               param.kind == inspect.Parameter.VAR_KEYWORD:
+                self._has_var_args = True
+                break
 
     def load_function_schema(self, func: Callable) -> Type[BaseModel]:
         if func.__name__ is None or func.__doc__ is None:
@@ -68,6 +77,9 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         raise NotImplementedError("Implement apply function in subclass")
 
     def _validate_input(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        if self._has_var_args:
+            return tool_input
+
         input_params = self._params_schema
         if isinstance(tool_input, dict):
             if input_params is not None:
@@ -95,6 +107,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
     def forward(self, tool_input: Union[str, Dict[str, Any]], verbose: bool = False) -> Any:
         val_input = self._validate_input(tool_input)
+        print(f'debug!!! 111 in ModuleTool, func addr [{self.apply}]')
         ret = self.apply(**val_input)
         if verbose or self._verbose:
             lazyllm.LOG.debug(f"The output of tool {self.name} is {ret}")
@@ -131,8 +144,9 @@ class ToolManager(ModuleBase):
                 tool_all_str = element.__name__ + "tmp_tool".capitalize()
                 t = lazyllm.tmp_tool.get(tool_all_str, None)
                 tt = t()
+                LOG.info(f'debug!!! element orig func addr [{id(element)}], wrapper addr [{id(tt)}]')
                 _tools.append(tt)
-                print(f"---------------- get element.__name__ {element.__name__}")
+        LOG.info(f'debug!!! ToolManager init tools [{_tools}]')
         return _tools
 
     @property
@@ -153,11 +167,14 @@ class ToolManager(ModuleBase):
 
         tool = self._tool_call.get(tool_name)
         if not tool:
+            LOG.error(f'cannot find tool named [{tool_name}]')
             return False
 
         # don't check parameters if this function contains '*args' or '**kwargs'
         for name, param in inspect.signature(tool).parameters.items():
-            if param.kind == 'VAR_POSITIONAL' or param.kind == 'VAR_KEYWORD':
+            print(f'get param [{param.name}] kind [{param.kind}], kind type [{type(param.kind)}]')
+            if param.kind == inspect.Parameter.VAR_POSITIONAL or\
+               param.kind == inspect.Parameter.VAR_KEYWORD:
                 return True
 
         return tool.validate_parameters(tool_arguments)
@@ -209,20 +226,34 @@ class ToolManager(ModuleBase):
                     """
                     raise TypeError("Function description must include function description and"
                                     f"parameter description, the format is as follows: {typehints_template}")
+            print(f'debug!!! in _transform_to_openai_function, return format_tools [{format_tools}]')
             return format_tools
         else:
             raise TypeError(f"The tools type should be List instead of {type(self._tools)}")
 
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False):
+        print(f'debug!!! in ToolManager::forward() 00000 tools |{tools}| func addr [{id(tools[0])}]')
         tool_calls = [tools,] if isinstance(tools, dict) else tools
+        print(f'debug!!! in ToolManager::forward() 11111 tools [{tools}] tool_calls -> [{tool_calls}]')
         tool_calls = [{"name": tool['name'], "arguments": json.loads(tool['arguments'])
                       if isinstance(tool['arguments'], str) else tool['arguments']} for tool in tool_calls]
+        print(f'debug!!! in ToolManager::forward() 22222 tools [{tools}] tool_calls -> [{tool_calls}]')
         output = []
         flag_val = [True if self._validate_tool(tool) else False for tool in tool_calls]
+        print(f'debug!!! flag_val -> [{flag_val}]')
         tool_inputs = [tool_calls[idx]['arguments'] for idx, val in enumerate(flag_val) if val]
+        for idx, val in enumerate(flag_val):
+            if val:
+                print(f'debug!!! idx [{idx}] name [{tool_calls[idx]["name"]}]')
+        for k, v in self._tool_call.items():
+            print(f'debug!!! _tool_call [{k}] -> func addr {id(v)}')
         tools = [self._tool_call[tool_calls[idx]['name']] for idx, val in enumerate(flag_val) if val]
+        for idx, val in enumerate(tools):
+            print(f'debug!!! tools[{idx}] -> func addr [{id(val)}]')
+        print(f'debug!!! in toolsManager::forward(), nr tools -> [{len(tools)}], tools [{tools}]')
         tool_diverter = lazyllm.diverter(tuple(tools))
         rets = tool_diverter(tuple(tool_inputs))
+        print(f'debug!!! in toolsManager::forward() rets -> {rets}')
         res = iter(rets)
         rets = [next(res) if ele else None for ele in flag_val]
         for idx, tool in enumerate(tool_calls):

@@ -174,7 +174,12 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             if not isinstance(it, LazyLLMFlowsBase) and isinstance(__input, (package, kwargs)):
                 return it(*__input, **kw) if isinstance(__input, package) else it(**__input, **kw)
             else:
-                return it(__input, **kw)
+                print('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
+                print(f'debug!!! 180 invoke [{it}] func addr [{id(it)}], __call__ -> [{it.__call__}]')
+                print('yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy')
+                ret = it(__input, **kw)
+                print('zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz')
+                return ret
         except Exception as e:
             LOG.error(f'An error occored when invoking `{type(it)}({it})` with '
                       f'input {type(__input)}`{__input}` and kw `{kw}`')

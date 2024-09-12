@@ -2,6 +2,8 @@ from lazyllm.common import compile_code
 from lazyllm.tools.http_request import HttpRequest
 from typing import Optional, Dict
 
+import traceback
+
 class HttpTool(HttpRequest):
     def __init__(self,
                  method: Optional[str] = None,
@@ -11,15 +13,21 @@ class HttpTool(HttpRequest):
                  body: Optional[str] = None,
                  timeout: int = 10,
                  proxies: Optional[Dict[str, str]] = None,
+                 name: str = None,
                  code_str: Optional[str] = None):
         super().__init__(method, url, '', headers, params, body)
         self._has_http = True if url else False
-        self._code_str = compile_code(code_str) if code_str else None
+        self._compiled_code = compile_code(code_str) if code_str else None
+        self._name = name
+        print(f'in HttpTool __init__, outside name [{self._name}], code name [{self._compiled_code.__name__}], compile_code -> [{self._compiled_code}]')
 
     def forward(self, *args, **kwargs):
         if self._has_http:
+            print(f'debug!!! enter HttpTool::forward() with http url')
             res = super().forward(*args, **kwargs)
-            return self._code_str(res) if self._code_str else res
-        elif self._code_str:
-            return self._code_str(*args, **kwargs)
+            return self._compiled_code(res) if self._compiled_code else res
+        elif self._compiled_code:
+            traceback.print_stack()
+            print(f'debug!!! final enter HttpTool::forward() func addr [{id(self.forward)}] with outside name [{self._name}], code name [{self._compiled_code.__name__}] code_str [{self._compiled_code}]')
+            return self._compiled_code(*args, **kwargs)
         return None

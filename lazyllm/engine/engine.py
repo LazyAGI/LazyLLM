@@ -6,6 +6,7 @@ from lazyllm.common import compile_code
 from .node import all_nodes, Node
 import inspect
 import functools
+from lazyllm import LOG
 
 class CodeBlock(object):
     def __init__(self, code):
@@ -156,6 +157,7 @@ def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [],
                                                       name=resource['name'], args=resource['args'])
 
     resources = [engine.build_node(resource) for resource in resources if resource['kind'] not in server_resources]
+    print(f'in make_graph resources -> [{resources}]')
     nodes = [engine.build_node(node) for node in nodes]
 
     with graph() as g:
@@ -282,12 +284,14 @@ def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
     for rid in tools:
         node = Engine().build_node(rid)
         func = node.func
+        @functools.wraps(func)
         def wrapper_func(*args, **kwargs):
             func(*args, **kwargs)
-        functools.update_wrapper(wrapper_func, func)
         wrapper_func.__name__ = node.name
+        LOG.info(f'debug!!! 289 in make_fc, node [{node.name}] func addr [{id(func)}], wrapper addr [{id(wrapper_func)}] orig name [{func.__name__}], new name [{node.name}]')
         callable_list.append(wrapper_func)
 
+    print(f'debug!!! in make_fc, passing callable_list [{callable_list}]')
     return f(Engine().build_node(llm).func, callable_list)
 
 
@@ -300,10 +304,13 @@ def make_http_tool(method: Optional[str] = None,
                    timeout: int = 10,
                    proxies: Optional[Dict[str, str]] = None,
                    code_str: Optional[str] = None,
+                   name: str = None,
                    doc: Optional[str] = None):
-    instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies, code_str)
+    print(f'debug!!! in make_http_tool({code_str})')
+    instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies, name, code_str)
+    @functools.wraps(instance.forward)
     def wrapper_func(*args, **kwargs):
-        return instance(*args, **kwargs)
-    functools.update_wrapper(wrapper_func, instance.forward)
+        return instance.forward(*args, **kwargs)
     wrapper_func.__doc__ = doc
+    LOG.info(f'debug!!! 313 in make_http_tool returns [{name}] func addr [{id(instance.forward)}], wrapper addr [{id(wrapper_func)}]')
     return wrapper_func

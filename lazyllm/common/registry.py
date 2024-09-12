@@ -113,7 +113,9 @@ class {name}(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].base):
 def bind_to_instance(func):
     @functools.wraps(func)
     def wrapper(instance, *args, **kwargs):
-        return func(*args, **kwargs)
+        print(f'debug!!! 117 in bind_to_instance, run func name -> [{func.__name__}]')
+        ret = func(*args, **kwargs)
+        return ret
     return wrapper
 
 class Register(object):
@@ -136,10 +138,9 @@ class Register(object):
         def impl(func, func_name=None):
             if func_name:
                 func_for_wrapper = func # avoid calling recursively
+                @functools.wraps(func)
                 def wrapper_func(*args, **kwargs):
                     return func_for_wrapper(*args, **kwargs)
-                # override `wrapper_func`'s meta infos
-                functools.update_wrapper(wrapper_func, func)
                 wrapper_func.__name__ = func_name
                 func = wrapper_func
             else:

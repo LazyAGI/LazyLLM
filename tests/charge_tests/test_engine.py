@@ -89,7 +89,8 @@ class TestEngine(object):
         get_current_weather_code = '''
 from typing import Literal
 def get_current_weather_for_http_tool(location: str, unit: Literal["fahrenheit", "celsius"] = 'fahrenheit'):
-        return {'location': location, 'temperature': '10', 'unit': unit}
+    print('iiiiiiii get_current_weather_for_http_tool')
+    return {'location': location, 'temperature': '10', 'unit': unit}
 '''
         get_current_weather_doc = '''
 Get the current weather in a given location
@@ -99,15 +100,16 @@ Args:
     unit (str): The temperature unit to use. Infer this from the users location.
 '''
 
-        echo_code = "def Echo(c):\n    return c"
+        dummy_code = "def Dummy(location, unit):\n    return None"
 
         resources = [
             dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
-            dict(id="3", kind="HttpTool", name="weather_111",
-                 args=dict(py_code=get_current_weather_code,
+            dict(id="3", kind="HttpTool", name="weather_12345",
+                 args=dict(code_str=get_current_weather_code,
+                           name="weather_12345",
                            doc=get_current_weather_doc)),
-            dict(id="2", kind="HttpTool", name="echo_111",
-                 args=dict(py_code=echo_code, doc='echo')),
+            dict(id="2", kind="HttpTool", name="dummy_111",
+                 args=dict(code_str=dummy_code, name="dummy_111", doc='dummy')),
         ]
         # `tools` in `args` is a list of ids in `resources`
         nodes = [dict(id="1", kind="FunctionCall", name="fc",
