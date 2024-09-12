@@ -299,9 +299,9 @@ def make_http_tool(method: Optional[str] = None,
                    body: Optional[str] = None,
                    timeout: int = 10,
                    proxies: Optional[Dict[str, str]] = None,
-                   py_code: Optional[str] = None,
+                   code_str: Optional[str] = None,
                    doc: Optional[str] = None):
-    instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies, py_code)
+    instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies, code_str)
     def wrapper_func(*args, **kwargs):
         return instance(*args, **kwargs)
     functools.update_wrapper(wrapper_func, instance.forward)
