@@ -22,7 +22,14 @@
 }
 
 #dialog-box {
-    display: none;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+}
+
+.dialog-container {
     position: fixed;
     bottom: 50%;
     left: 50%;
@@ -35,7 +42,7 @@
     z-index: 1000;
 }
 
-#dialog-box h3 {
+.dialog-container h3 {
     margin-top: 0;
 }
 
@@ -57,8 +64,8 @@
     height: 24px;
     width: 24px;
     cursor: pointer;
-    background: url(../icon_dialog.png) 0 -95px;
-    background-size: 26px 142px;
+    background: url(../ico.png) 0 -93px;
+    background-size: 28px 159px;
 }
 
 .close {
@@ -69,13 +76,14 @@
     height: 24px;
     width: 24px;
     cursor: pointer;
-    background: url(../icon_dialog.png) 0 -118px;
-    background-size: 24px 139px;
+    background: url(../ico.png) 0 -118px;
+    background-size: 28px 159px;
 }
 
 .messages {
     height: 500px;
     overflow-y: auto;
+    /* border: 1px solid #ddd; */
     padding: 10px;
     margin-bottom: 10px;
     background-color: rgb(249, 250, 251);
@@ -97,6 +105,7 @@
     border-radius: 10px;
     line-height: 1.4;
     color: #000;
+    font-size: 15px;
 }
 
 .message.received p {
@@ -170,26 +179,60 @@
     font-family: "Microsoft YaHei", arial, sans-serif;
     color: #444444;
     line-height: 1.4;
+    pointer-events: none;
 }
 
 .content pre {
+    position: relative; 
     margin: 0 10px;
     padding: 10px;
     overflow: auto;
-    background: #595959;
-    color: #fff;
+    background: #eee;
+    pointer-events: none;
     code {
-        background: #595959;
         margin: 0;
-        padding: 0
+        padding: 0;
+        font-family: initial;
+    }
+    code::after{
+        content: '';
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        padding: 0.5em;
+        height: 24px;
+        width: 24px;
+        background: url(../ico.png) 0 -140px;
+        background-size: 28px 159px;
+        pointer-events: auto;
+        cursor: pointer;
+        opacity: 0.2;
+    }
+    code::after:hover{
+        opacity: 0.6;
     }
 }
 
 .content code {
     margin: 0 5px;
     padding: 0 5px;
-    background: rgb(223 223 223);
+    background: rgb(237 237 237);
     border-radius: 5%;
+}
+
+.content a {
+    padding: 5px 10px;
+    margin: 10px 10px 0 0;
+    float: left;
+    border: solid 1px #b4b4b4;
+    border-radius: 5px;
+    pointer-events: auto;
+}
+
+.content a:hover {
+    cursor: pointer;
+    background-color: #eee;
+    border: solid 1px #bebebe;
 }
 
 #loader {
@@ -345,7 +388,7 @@
     right: 11px;
     width: 15px;
     height: 15px;
-    background: url(../icon_slider.png) 0 -38px;
+    background: url(../slider_icon.png) 0 -38px;
     background-size: 34px 471px;
 }
 
@@ -355,7 +398,7 @@
     left: 13px;
     width: 14px;
     height: 12px;
-    background: url(../icon_slider.png) 0 -25px;
+    background: url(../slider_icon.png) 0 -25px;
     background-size: 34px 471px;
 }
 
@@ -366,6 +409,6 @@
     width: 34px;
     height: 34px;
     cursor: pointer;
-    background: url(../icon_slider.png) 0 -400px;
+    background: url(../slider_icon.png) 0 -400px;
     background-size: 34px 471px;
 }
