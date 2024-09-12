@@ -1,12 +1,7 @@
 from typing import List, Callable, Dict, Type, Optional, Union
 import lazyllm
-<<<<<<< HEAD
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier, SqlTool, SqlModule
-=======
-from lazyllm import graph, switch, pipeline
-from lazyllm.tools import IntentClassifier
->>>>>>> 0a70b8e (fix lint problem)
 from .node import all_nodes, Node
 import re
 import ast
@@ -115,7 +110,7 @@ class ServerGraph(lazyllm.ModuleBase):
         if web:
             port = self._get_port(web.args['port'])
             self._web = lazyllm.WebModule(g, port=port, title=web.args['title'], audio=web.args['audio'],
-                                          history=[Engine().build_node(h).func for h in web.args['history']])
+                                          history=[Engine().build_node(h).func for h in web.args.get('history', [])])
 
     def forward(self, *args, **kw):
         return self._g(*args, **kw)
@@ -291,47 +286,7 @@ def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
 def make_shared_llm(llm: str, prompt: Optional[str] = None):
     return Engine().build_node(llm).func.share(prompt=prompt)
 
-@NodeConstructor.register("SqlTool")
-def make_sql_tool(db_type: str, conn_url: str):
-    return SqlTool(db_type, conn_url)
-
-@NodeConstructor.register("SqlCall")
-def make_sql_call(db_type: str, conn_url: str, base_model: str, tables: list, tables_desc: str, sql_examples: str):
-    return SqlModule(Engine().build_node(base_model), SqlTool(db_type, conn_url), tables, tables_desc, sql_examples)
-
-@NodeConstructor.register("SqlCallDummy")
-def make_sql_call_dummy(db_type: str, conn_url: str, tables: list, tables_desc: str, sql_examples: str):
-    import uuid
-
-    class DummyLLM:
-        def __init__(self, func):
-            self.func = func
-            self._module_id = str(uuid.uuid4())
-
-        def share(self, prompt):
-            return self
-
-        def __call__(self, x):
-            print(f"Input is: {x}")
-            output = self.func(x)
-            print(f"Output is: {output}")
-            return output
-
-    def _llm_dummy_generate(x):
-        print(f"DUMMY LLM INPUT: {x}")
-        if "employee" in x:
-            return x
-        else:
-            return "```sql\nSELECT department from employee WHERE employee_id=1;\n```"
-
-    dummy_llm = DummyLLM(_llm_dummy_generate)
-    sql_module = SqlModule(dummy_llm, SqlTool(db_type, conn_url), tables, tables_desc, sql_examples)
-    return sql_module
-
-@NodeConstructor.register('JoinFormatter')
-def make_join_formatter(method='sum'):
-    def impl(*args):
-        assert len(args) > 0, 'Cannot sum empty inputs'
-        return sum(args, type(args[0])())
-
-    return impl
+@NodeConstructor.register('VQA')
+def make_vqa(base_model: str):
+    return lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
+>>>>>>> upstream/main

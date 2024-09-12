@@ -717,7 +717,7 @@ class TrainableModule(UrlModule):
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Trainable', mode=self._impl._mode, basemodel=self.base_model,
-                                 target=self.target_path, name=self._module_name,
+                                 target=self.target_path, name=self._module_name, deploy_type=self._deploy_type,
                                  stream=self._stream, return_trace=self._return_trace)
 
     def __getattr__(self, key):
