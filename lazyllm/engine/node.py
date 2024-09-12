@@ -60,8 +60,8 @@ all_nodes['OnlineLLM'] = dict(
         prompt=NodeArgs(str)),
 )
 
-all_nodes['VQA'] = all_nodes['SD'] = all_nodes['TTS'] = all_nodes['STT'] = dict(
-    module=lazyllm.OnlineChatModule,
+all_nodes['SD'] = all_nodes['TTS'] = all_nodes['STT'] = dict(
+    module=lazyllm.TrainableModule,
     init_arguments=dict(base_model=NodeArgs(str))
 )
 
@@ -83,14 +83,6 @@ all_nodes['Formatter'] = dict(
     module=partial(getattr, lazyllm.formatter),
     init_arguments=dict(
         formatter=NodeArgs(str),
-    )
-)
-
-all_nodes['FunctionCall'] = dict(
-    module=lazyllm.tools.FunctionCallAgent,
-    init_arguments=dict(
-        llm=NodeArgs(Node),
-        tools=NodeArgs(list)
     )
 )
 

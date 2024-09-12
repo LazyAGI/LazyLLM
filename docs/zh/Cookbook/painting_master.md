@@ -2,11 +2,11 @@
 
 我们将基于上一节的 [构建你的第一个聊天机器人](robot.md)，构建一个AI绘画大师。
 
-> 通过本节您将学习到 LazyLLM 的以下要点：
->
-> - 如何给模型设置提示词；
-> - 如何基于 [Pipeline][lazyllm.flow.Pipeline] 控制流来组装应用；
-> - 如何使用 LazyLLM 中的非 LLM 类模型；
+!!! abstract "通过本节您将学习到 LazyLLM 的以下要点"
+
+    - 如何给模型设置提示词；
+    - 如何基于 [Pipeline][lazyllm.flow.Pipeline] 控制流来组装应用；
+    - 如何使用 LazyLLM 中的非 LLM 类模型；
 
 ## 设计思路
 
@@ -70,10 +70,10 @@ with pipeline() as ppl:
 
 这行代码创建了一个名为 `ppl` 的管道实例，并进入了一个上下文管理器。
 
-> 注意：
->
-> - 要将模块添加到 `ppl` 中，需要给ppl添加属性：`ppl.llm = xxx` 和 `ppl.sd3 = xxx`
-> - 未明确添加到 `ppl` 中的模块是不会经过控制流的；
+!!! Note "注意"
+
+    - 要将模块添加到 `ppl` 中，需要给ppl添加属性：`ppl.llm = xxx` 和 `ppl.sd3 = xxx`
+    - 未明确添加到 `ppl` 中的模块是不会经过控制流的；
 
 ### 启动应用
 

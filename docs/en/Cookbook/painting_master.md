@@ -2,11 +2,11 @@
 
 We will build an AI Painting Master based on the previous section [Build Your First Chatbot](robot.md).
 
-> Through this section, you will learn about the following key points of LazyLLM:
->
-> - How to set prompt for the model;
-> - How to assemble applications based on the [Pipeline][lazyllm.flow.Pipeline] control flow;
-> - How to use non-LLM models in LazyLLM;
+!!! abstract "Through this section, you will learn about the following key points of LazyLLM"
+
+    - How to set prompt for the model;
+    - How to assemble applications based on the [Pipeline][lazyllm.flow.Pipeline] control flow;
+    - How to use non-LLM models in LazyLLM;
 
 ## Design Concept
 
@@ -70,10 +70,10 @@ with pipeline() as ppl:
 
 This line of code creates a pipeline instance named `ppl` and enters a context manager.
 
-> Note:
->
-> - To add a module to `ppl`, you need to add attributes: `ppl.llm = xxx` and `ppl.sd3 = xxx`
-> - Modules that are not explicitly added to `ppl` will not go through the control flow;
+!!! Note
+
+    - To add a module to `ppl`, you need to add attributes: `ppl.llm = xxx` and `ppl.sd3 = xxx`
+    - Modules that are not explicitly added to `ppl` will not go through the control flow;
 
 ### Starting the Application
 
