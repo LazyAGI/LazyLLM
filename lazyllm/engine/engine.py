@@ -110,7 +110,7 @@ class ServerGraph(lazyllm.ModuleBase):
         if web:
             port = self._get_port(web.args['port'])
             self._web = lazyllm.WebModule(g, port=port, title=web.args['title'], audio=web.args['audio'],
-                                          history=[Engine().build_node(h).func for h in web.args['history']])
+                                          history=[Engine().build_node(h).func for h in web.args.get('history', [])])
 
     def forward(self, *args, **kw):
         return self._g(*args, **kw)
@@ -285,3 +285,7 @@ def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
 @NodeConstructor.register('SharedLLM')
 def make_shared_llm(llm: str, prompt: Optional[str] = None):
     return Engine().build_node(llm).func.share(prompt=prompt)
+
+@NodeConstructor.register('VQA')
+def make_vqa(base_model: str):
+    return lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
