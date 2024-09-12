@@ -1,4 +1,3 @@
-# flake8: noqa E501
 from lazyllm.module import ModuleBase
 import lazyllm
 from lazyllm.components import ChatPrompter
@@ -272,7 +271,7 @@ Given the following SQL tables and current date {current_date}, your job is to w
 Alert: Just replay the sql query in a code block.
 
 {sql_tables}
-"""
+"""  # noqa E501
 
 sql_explain_instruct_template = """
 According to chat history
@@ -296,13 +295,13 @@ class SqlCall(ModuleBase):
     def __init__(
         self,
         llm,
-        sql_tool: SqlManager,
+        sql_manager: SqlManager,
         sql_examples: str = "",
         use_llm_for_sql_result=True,
         return_trace: bool = False,
     ) -> None:
         super().__init__(return_trace=return_trace)
-        self._sql_tool = sql_tool
+        self._sql_tool = sql_manager
         self._query_prompter = ChatPrompter(instruction=sql_query_instruct_template).pre_hook(self.sql_query_promt_hook)
         self._llm_query = llm.share(prompt=self._query_prompter)
         self._answer_prompter = ChatPrompter(instruction=sql_explain_instruct_template).pre_hook(

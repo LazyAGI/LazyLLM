@@ -1,7 +1,7 @@
 from typing import List, Callable, Dict, Type, Optional, Union
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
-from lazyllm.tools import IntentClassifier, SqlTool, SqlModule
+from lazyllm.tools import IntentClassifier
 from .node import all_nodes, Node
 import re
 import ast
@@ -289,4 +289,3 @@ def make_shared_llm(llm: str, prompt: Optional[str] = None):
 @NodeConstructor.register('VQA')
 def make_vqa(base_model: str):
     return lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
->>>>>>> upstream/main

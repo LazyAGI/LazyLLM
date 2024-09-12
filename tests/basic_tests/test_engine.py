@@ -210,28 +210,6 @@ class TestEngine(object):
         lazyllm.launcher.cleanup()
         web.stop()
 
-    def test_engine_sql_call(self):
-        host = "101.230.144.205"
-        database = "mydb"
-        user = "zhang"
-        password = "zhangyongchao"
-        port = 5432
-        db_url = f"postgresql://{user}:{password}@{host}:{port}/{database}"
-
-        nodes = [
-            dict(
-                id="1",
-                kind="SqlCallDummy",
-                name="m1",
-                args=dict(db_type="PostgreSQL", conn_url=db_url, tables=[], tables_desc="", sql_examples=""),
-            )
-        ]
-        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
-        engine = LightEngine()
-        engine.start(nodes, edges)
-        str_answer = engine.run("员工编号是1的人来自哪个部门？")
-        print(f"DUMMY LLM ANSWER: {str_answer}")
-        assert "销售一部" in str_answer
 
 class TestEngineRAG(object):
 

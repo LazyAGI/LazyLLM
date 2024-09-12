@@ -104,7 +104,9 @@ standard = [
     "lmdeploy",
     "timm",
     "diffusers",
-    "lazyllm-llamafactory"
+    "lazyllm-llamafactory",
+    "psycopg2",
+    "sqlalchemy"
 ]
 full = [
     "datasets",

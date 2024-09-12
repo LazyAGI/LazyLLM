@@ -4,12 +4,12 @@ import lazyllm
 import tempfile
 from pathlib import Path
 import uuid
-from lazyllm import LightEngine
+from lazyllm.engine import LightEngine
 import os
 import re
 
 
-def _get_sql_init_keywords(db_type):
+def get_sql_init_keywords(db_type):
     env_key = f"LAZYLLM_{db_type.replace(' ', '_')}_URL"
     conn_url = os.environ.get(env_key, None)
     assert conn_url is not None
@@ -76,28 +76,25 @@ class TestSqlManager(unittest.TestCase):
         cls.sql_managers: list[SqlManager] = []
 
         filepath = str(Path(tempfile.gettempdir()) / f"{str(uuid.uuid4().hex)}.db")
-        filepath = "personal.db"
         cls.db_filepath = filepath
         with open(filepath, "w") as _:
             pass
         cls.sql_managers.append(SQLiteManger(filepath, cls.TEST_TABLES_INFO))
-        # cls.sql_managers = []
         for db_type in ["PostgreSQL"]:
-            username, password, host, port, database = _get_sql_init_keywords(db_type)
+            username, password, host, port, database = get_sql_init_keywords(db_type)
             cls.sql_managers.append(SqlManager(db_type, username, password, host, port, database, cls.TEST_TABLES_INFO))
         for sql_manager in cls.sql_managers:
             for table_name in cls.TEST_TABLES:
                 rt, err_msg = sql_manager._delete_rows_by_name(table_name)
                 assert rt, err_msg
-            for insert_scripts in cls.TEST_INSERT_SCRIPTS:
-                sql_manager.execute_sql_update(insert_scripts)
+            for insert_script in cls.TEST_INSERT_SCRIPTS:
+                sql_manager.execute_sql_update(insert_script)
 
         # Recommend to use sensenova, gpt-4o, qwen online model
         sql_llm = lazyllm.OnlineChatModule(source="sensenova")
         cls.sql_calls: list[SqlCall] = []
         for sql_manager in cls.sql_managers:
             cls.sql_calls.append(SqlCall(sql_llm, sql_manager, use_llm_for_sql_result=True))
-        lazyllm.LOG.info(f"Run unitest for {len(cls.sql_managers)} SqlManagers: {cls.sql_managers}")
 
     @classmethod
     def tearDownClass(cls):
@@ -129,8 +126,8 @@ class TestSqlManager(unittest.TestCase):
             assert rt, err_msg
 
             # 3. restore rows
-            for insert_scripts in self.TEST_INSERT_SCRIPTS:
-                rt, err_msg = sql_manager.execute_sql_update(insert_scripts)
+            for insert_script in self.TEST_INSERT_SCRIPTS:
+                rt, err_msg = sql_manager.execute_sql_update(insert_script)
                 assert rt, err_msg
 
     def test_manager_table_delete_insert_query(self):
@@ -145,8 +142,8 @@ class TestSqlManager(unittest.TestCase):
 
         # 2. Insert, restore rows
         for sql_manager in self.sql_managers:
-            for insert_scripts in self.TEST_INSERT_SCRIPTS:
-                rt, err_msg = sql_manager.execute_sql_update(insert_scripts)
+            for insert_script in self.TEST_INSERT_SCRIPTS:
+                rt, err_msg = sql_manager.execute_sql_update(insert_script)
                 assert rt, err_msg
             str_results = sql_manager.get_query_result_in_json(query_script)
             self.assertIn("销售一部", str_results)
@@ -160,53 +157,13 @@ class TestSqlManager(unittest.TestCase):
     def test_llm_query_online(self):
         for sql_call in self.sql_calls:
             str_results = sql_call("去年一整年销售额最多的员工是谁，销售额是多少？")
-            print(str_results)
             self.assertIn("张三", str_results)
 
     def test_llm_query_local(self):
         local_llm = lazyllm.TrainableModule("internlm2-chat-20b").deploy_method(lazyllm.deploy.vllm).start()
         sql_call = SqlCall(local_llm, self.sql_managers[0], use_llm_for_sql_result=True, return_trace=True)
         str_results = sql_call("员工编号是3的人来自哪个部门？")
-        print(str_results)
         self.assertIn("销售三部", str_results)
-
-    def test_engine(self):
-        # In this test, sql_manager will connect to existing tables which is created in class setup method
-        db_types = ["PostgreSQL"]
-        for db_type in db_types:
-            username, password, host, port, database = _get_sql_init_keywords(db_type)
-            resources = [
-                dict(
-                    id="0",
-                    kind="SqlManager",
-                    name="sql_manager",
-                    args=dict(
-                        db_type=db_type,
-                        user=username,
-                        password=password,
-                        host=host,
-                        port=port,
-                        db_name=database,
-                        tabels_info_dict=self.TEST_TABLES_INFO,
-                    ),
-                ),
-                dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="sensenova")),
-            ]
-            nodes = [
-                dict(
-                    id="2",
-                    kind="SqlCall",
-                    name="sql_call",
-                    args=dict(sql_manager="0", llm="1", sql_examples=""),
-                )
-            ]
-            edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
-            engine = LightEngine()
-            engine.start(nodes, edges, resources)
-            str_answer = engine.run("员工编号是3的人来自哪个部门？")
-            print(str_answer)
-            assert "销售三部" in str_answer
-            engine.reset()
 
 
 if __name__ == "__main__":

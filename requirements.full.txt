@@ -27,6 +27,8 @@ llama-index-readers-file
 sentence-transformers
 sentencepiece
 modelscope
+psycopg2
+sqlalchemy
 redis>=5.0.4
 huggingface-hub>=0.23.1
 llama-index>=0.10.25
@@ -64,5 +66,3 @@ sortedcontainers
 flash-attn
 lightllm
 lazyllm-llamafactory
-psycopg2
-sqlalchemy
