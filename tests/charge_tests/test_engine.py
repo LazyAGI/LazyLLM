@@ -1,7 +1,7 @@
 from lazyllm.engine import LightEngine
 import pytest
-import tools as _  # noqa F401
-from test_sql_tool import TestSqlManager, get_sql_init_keywords
+from . import tools as _  # noqa F401
+from .test_sql_tool import TestSqlManager, get_sql_init_keywords
 from lazyllm.tools import SqlManager
 
 
