@@ -15,7 +15,7 @@ from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
 from .client import redis_client
 from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
                     FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
-                    LLMParser, SimpleDirectoryReader)
+                    LLMParser)
 from .docs import add_doc
 
 config.done()
@@ -73,7 +73,6 @@ __all__ = [
     'PlanAndSolveAgent',
     'ReWOOAgent',
     'SentenceSplitter',
-    'SimpleDirectoryReader',
 
     # docs
     'add_doc',

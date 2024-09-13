@@ -10,7 +10,8 @@ DEFAULT_DIR = "default"
 
 
 class DocGroupImpl(lazyllm.ModuleBase):
-    def __init__(self, dataset_path, embed, readers: Optional[Dict] = None) -> None:
+    def __init__(self, dataset_path, embed, local_readers: Optional[Dict] = None,
+                 global_readers: Optional[Dict] = None) -> None:
         super().__init__()
         self._dataset_path = dataset_path
         self._embed = embed
@@ -22,7 +23,8 @@ class DocGroupImpl(lazyllm.ModuleBase):
 
         file_paths = self._list_all_files(self.dataset_path, lambda x: DATA_DIR in x)
         self._impl: DocImpl = DocImpl(
-            doc_files=file_paths, embed=self._embed, readers=readers, doc_name="lazyllm_doc"
+            doc_files=file_paths, embed=self._embed, local_readers=local_readers, global_readers=global_readers,
+            doc_name="lazyllm_doc"
         )
 
     @property

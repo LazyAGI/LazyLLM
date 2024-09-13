@@ -1,8 +1,8 @@
 import os
 import lazyllm
-from lazyllm import SimpleDirectoryReader, Document
+from lazyllm import Document
 from lazyllm.tools.rag.readers import ReaderBase
-from lazyllm.tools.rag import DocNode
+from lazyllm.tools.rag import SimpleDirectoryReader, DocNode
 
 class YmlReader(ReaderBase):
     def _load_data(self, file, extra_info=None, fs=None):
@@ -38,7 +38,7 @@ class TestRagReader(object):
         assert len(docs) == 13
 
     def test_register_reader(self):
-        self.doc.register_instance_file_reader({lazyllm.config['data_path'] + "/**/*.yml": YmlReader()})
+        self.doc.add_reader("/**/*.yml", YmlReader)
         files = [os.path.join(self.datasets, "reader_test.yml")]
         docs = self.doc._impl._impl.directory_reader.load_data(input_files=files)
         assert len(docs) == 1

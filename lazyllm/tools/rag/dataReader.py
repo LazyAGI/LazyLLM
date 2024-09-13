@@ -1,3 +1,7 @@
+"""
+The overall process of SimpleDirectoryReader is borrowed from LLAMA_INDEX, but we have added a customized part
+based on it, that is, allowing users to register custom rules instead of processing only based on file suffixes.
+"""
 import os
 import mimetypes
 import multiprocessing
@@ -6,12 +10,12 @@ from tqdm import tqdm
 from datetime import datetime
 from functools import reduce
 from itertools import repeat
-from typing import Dict, Optional, List, Callable
+from typing import Dict, Optional, List, Callable, Type
 from pathlib import Path, PurePosixPath, PurePath
 from fsspec import AbstractFileSystem
 from lazyllm import ModuleBase, LOG
 from .store import DocNode
-from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader,
+from .readers import (ReaderBase, PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader,
                       EpubReader, MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
                       get_default_fs, is_default_fs)
 
@@ -51,6 +55,29 @@ class _DefaultFileMetadataFunc:
         return {meta_key: meta_value for meta_key, meta_value in default_meta.items() if meta_value is not None}
 
 class SimpleDirectoryReader(ModuleBase):
+    default_file_readers: Dict[str, Type[ReaderBase]] = {
+        "*.pdf": PDFReader,
+        "*.docx": DocxReader,
+        "*.hwp": HWPReader,
+        "*.pptx": PPTXReader,
+        "*.ppt": PPTXReader,
+        "*.pptm": PPTXReader,
+        "*.gif": ImageReader,
+        "*.jpeg": ImageReader,
+        "*.jpg": ImageReader,
+        "*.png": ImageReader,
+        "*.webp": ImageReader,
+        "*.ipynb": IPYNBReader,
+        "*.epub": EpubReader,
+        "*.md": MarkdownReader,
+        "*.mbox": MboxReader,
+        "*.csv": PandasCSVReader,
+        "*.xls": PandasExcelReader,
+        "*.xlsx": PandasExcelReader,
+        "*.mp3": VideoAudioReader,
+        "*.mp4": VideoAudioReader,
+    }
+
     def __init__(self, input_dir: Optional[str] = None, input_files: Optional[List] = None,
                  exclude: Optional[List] = None, exclude_hidden: bool = True, recursive: bool = False,
                  encoding: str = "utf-8", filename_as_id: bool = False, required_exts: Optional[List[str]] = None,
@@ -59,7 +86,7 @@ class SimpleDirectoryReader(ModuleBase):
                  return_trace: bool = False) -> None:
         super().__init__(return_trace=return_trace)
 
-        if not input_dir and not input_files:
+        if (not input_dir and not input_files) or (input_dir and input_files):
             raise ValueError("Must provide either `input_dir` or `input_files`.")
 
         self._fs = fs or get_default_fs()
@@ -85,10 +112,7 @@ class SimpleDirectoryReader(ModuleBase):
             self._input_dir = self._Path(input_dir)
             self._input_files = self._add_files(self._input_dir)
 
-        if file_extractor is not None:
-            self._file_extractor = file_extractor
-        else:
-            self._file_extractor = {}
+        self._file_extractor = file_extractor or {}
 
         self._file_metadata = file_metadata or _DefaultFileMetadataFunc(self._fs)
         self._filename_as_id = filename_as_id
@@ -166,25 +190,21 @@ class SimpleDirectoryReader(ModuleBase):
 
     @staticmethod
     def load_file(input_file: Path, file_metadata: Callable[[str], Dict], file_extractor: Dict[str, Callable],
-                  filename_as_id: bool = False, encoding: str = "utf-8", _Path: PurePath = Path,
+                  filename_as_id: bool = False, encoding: str = "utf-8", pathm: PurePath = Path,
                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
-        default_file_reader = SimpleDirectoryReader._loading_default_file_reader()
-        default_file_reader_patterns = list(default_file_reader.keys())
         metadata: Optional[dict] = None
         documents: List[DocNode] = []
 
         if file_metadata is not None: metadata = file_metadata(str(input_file))
 
         file_reader_patterns = list(file_extractor.keys())
-        file_reader_patterns.extend(default_file_reader_patterns)
 
         for pattern in file_reader_patterns:
-            pt = str(_Path(pattern))
-            match_pattern = pt if pt.startswith("*") else os.path.join(str(_Path.cwd()), pt)
+            pt = str(pathm(pattern))
+            match_pattern = pt if pt.startswith("*") else os.path.join(str(pathm.cwd()), pt)
             if fnmatch.fnmatch(input_file, match_pattern):
-                reader = file_extractor[pattern] if pattern not in default_file_reader_patterns \
-                    else default_file_reader[pattern]
-
+                reader = file_extractor[pattern]
+                reader = reader() if isinstance(reader, type) else reader
                 kwargs = {"extra_info": metadata}
                 if fs and not is_default_fs(fs): kwargs['fs'] = fs
                 docs = reader(input_file, **kwargs)
@@ -212,13 +232,14 @@ class SimpleDirectoryReader(ModuleBase):
         fs = fs or self._fs
         process_file = self._input_files
 
-        if num_workers and num_workers > 1:
+        if num_workers and num_workers >= 1:
             if num_workers > multiprocessing.cpu_count():
                 LOG.warning("Specified num_workers exceed number of CPUs in the system. "
                             "Setting `num_workers` down to the maximum CPU count.")
             with multiprocessing.get_context("spawn").Pool(num_workers) as p:
                 results = p.starmap(SimpleDirectoryReader.load_file,
-                                    zip(process_file, repeat(self._file_metadata), repeat(self._file_extractor),
+                                    zip(process_file, repeat(self._file_metadata),
+                                        repeat({**self._file_extractor, **self.default_file_readers}),
                                         repeat(self._filename_as_id), repeat(self._encoding), repeat(self._Path),
                                         repeat(self._fs)))
                 documents = reduce(lambda x, y: x + y, results)
@@ -228,36 +249,11 @@ class SimpleDirectoryReader(ModuleBase):
             for input_file in process_file:
                 documents.extend(
                     SimpleDirectoryReader.load_file(input_file=input_file, file_metadata=self._file_metadata,
-                                                    file_extractor=self._file_extractor, encoding=self._encoding,
-                                                    filename_as_id=self._filename_as_id, _Path=self._Path, fs=self._fs))
+                                                    file_extractor={**self._file_extractor, **self.default_file_readers},
+                                                    filename_as_id=self._filename_as_id, encoding=self._encoding,
+                                                    pathm=self._Path, fs=self._fs))
 
         return self._exclude_metadata(documents)
 
     def forward(self, *args, **kwargs) -> List[DocNode]:
         return self._load_data(*args, **kwargs)
-
-    @staticmethod
-    def _loading_default_file_reader() -> Dict[str, Callable]:
-        default_file_reader: Dict[str, Callable] = {
-            "*.pdf": PDFReader(),
-            "*.docx": DocxReader(),
-            "*.hwp": HWPReader(),
-            "*.pptx": PPTXReader(),
-            "*.ppt": PPTXReader(),
-            "*.pptm": PPTXReader(),
-            "*.gif": ImageReader(),
-            "*.jpeg": ImageReader(),
-            "*.jpg": ImageReader(),
-            "*.png": ImageReader(),
-            "*.webp": ImageReader(),
-            "*.ipynb": IPYNBReader(),
-            "*.epub": EpubReader(),
-            "*.md": MarkdownReader(),
-            "*.mbox": MboxReader(),
-            "*.csv": PandasCSVReader(),
-            "*.xls": PandasExcelReader(),
-            "*.xlsx": PandasExcelReader(),
-            "*.mp3": VideoAudioReader(),
-            "*.mp4": VideoAudioReader(),
-        }
-        return default_file_reader

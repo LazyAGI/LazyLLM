@@ -1,4 +1,4 @@
-from .rag import (Document, Reranker, Retriever, SentenceSplitter, LLMParser, SimpleDirectoryReader)
+from .rag import Document, Reranker, Retriever, SentenceSplitter, LLMParser
 from .webpages import WebModule
 from .agent import (
     ToolManager,
@@ -29,5 +29,4 @@ __all__ = [
     "SentenceSplitter",
     "SQLiteTool",
     "SqlModule",
-    "SimpleDirectoryReader",
 ]

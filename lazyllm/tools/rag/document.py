@@ -23,9 +23,10 @@ class Document(ModuleBase):
                 dataset_path = defatult_path
         self._create_ui = create_ui
         launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
-        self._instance_registered_file_reader: Dict[str, Callable] = {}
+        self._local_file_reader: Dict[str, Callable] = {}
 
-        self._impl = DocGroupImpl(dataset_path=dataset_path, embed=embed, readers=self._registered_file_reader)
+        self._impl = DocGroupImpl(dataset_path=dataset_path, embed=embed, local_readers=self._local_file_reader,
+                                  global_readers=self._registered_file_reader)
         if create_ui:
             doc_manager = DocManager(self._impl)
             self.doc_server = ServerModule(doc_manager, launcher=launcher)
@@ -52,23 +53,16 @@ class Document(ModuleBase):
     ) -> None:
         self._impl.create_node_group(name, transform, parent, **kwargs)
 
-    def register_instance_file_reader(self, readers: Dict[str, Callable]):
-        self._instance_registered_file_reader.update(readers)
-        self._impl._impl.directory_reader.register_file_reader({**self._instance_registered_file_reader,
-                                                                **self._registered_file_reader})
+    def add_reader(self, pattern: str, func: Callable):
+        self._local_file_reader[pattern] = func
 
     @classmethod
-    def register_cls_file_reader(cls, match_key: str):
-        if isinstance(match_key, type):
-            raise TypeError("Document.register_file_reader() missing 1 required positional argument: 'match_key'")
+    def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
+        if func is not None:
+            cls._registered_file_reader[pattern] = func
 
         def decorator(klass):
-            if isinstance(klass, type): cls._registered_file_reader[match_key] = klass()
-            elif callable(klass): cls._registered_file_reader[match_key] = klass
+            if callable(klass): cls._registered_file_reader[pattern] = klass
             else: raise TypeError(f"The registered object {klass} is not a callable object.")
             return klass
         return decorator
-
-    @classmethod
-    def get_registry(cls):
-        return cls._registered_file_reader

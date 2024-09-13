@@ -25,9 +25,10 @@ def embed_wrapper(func):
 
 
 class DocImpl:
-    def __init__(self, embed, doc_files=Optional[List[str]], readers: Optional[Dict] = None, **kwargs):
+    def __init__(self, embed, doc_files=Optional[List[str]], local_readers: Optional[Dict] = None,
+                 global_readers: Optional[Dict] = None, **kwargs):
         super().__init__()
-        self.directory_reader = DirectoryReader(doc_files, readers=readers)
+        self.directory_reader = DirectoryReader(doc_files, local_readers=local_readers, global_readers=global_readers)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self._create_node_group_default()
         self.embed = embed_wrapper(embed)
