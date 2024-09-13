@@ -2,7 +2,7 @@ from lazyllm.engine import LightEngine
 import pytest
 from .utils import SqlEgsData, get_sql_init_keywords
 from lazyllm.tools import SqlManager
-from . import tools as _  # noqa F401
+from .tools import *
 
 class TestEngine(object):
 
@@ -40,15 +40,15 @@ class TestEngine(object):
         resources = [
             dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
             dict(id="1001", kind="Code", name="get_current_weather",
-                 args=(dict(code=get_current_weather_code, # noqa F821
-                            vars_for_code=get_current_weather_vars))), # noqa F821
+                 args=(dict(code=get_current_weather_code,
+                            vars_for_code=get_current_weather_vars))),
             dict(id="1002", kind="Code", name="get_n_day_weather_forecast",
-                 args=dict(code=get_n_day_weather_forecast_code, # noqa F821
-                           vars_for_code=get_current_weather_vars)), # noqa F821
+                 args=dict(code=get_n_day_weather_forecast_code,
+                           vars_for_code=get_current_weather_vars)),
             dict(id="1003", kind="Code", name="multiply_tool",
-                 args=dict(code=multiply_tool_code)), # noqa F821
+                 args=dict(code=multiply_tool_code)),
             dict(id="1004", kind="Code", name="add_tool",
-                 args=dict(code=add_tool_code)), # noqa F821
+                 args=dict(code=add_tool_code)),
         ]
         nodes = [dict(id="1", kind="FunctionCall", name="fc",
                       args=dict(llm='0', tools=['1001', '1002', '1003', '1004']))]
@@ -153,11 +153,11 @@ class TestEngine(object):
         resources = [
             dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
             dict(id="3", kind="HttpTool", name="weather_12345",
-                 args=dict(code_str=get_current_weather_code, # noqa F821
-                           vars_for_code=get_current_weather_vars, # noqa F821
-                           doc=get_current_weather_doc)), # noqa F821
+                 args=dict(code_str=get_current_weather_code,
+                           vars_for_code=get_current_weather_vars,
+                           doc=get_current_weather_doc)),
             dict(id="2", kind="HttpTool", name="dummy_111",
-                 args=dict(code_str=dummy_code, doc='dummy')), # noqa F821
+                 args=dict(code_str=dummy_code, doc='dummy')),
         ]
         # `tools` in `args` is a list of ids in `resources`
         nodes = [dict(id="1", kind="FunctionCall", name="fc",
