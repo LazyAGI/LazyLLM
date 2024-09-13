@@ -7,7 +7,6 @@ from lazyllm.common import LazyLLMRegisterMetaClass
 from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Set
 import inspect
 from pydantic import create_model, BaseModel, ValidationError
-from lazyllm import LOG
 
 
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
