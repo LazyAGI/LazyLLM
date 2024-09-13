@@ -1,7 +1,7 @@
 import json
 import lazyllm
-from lazyllm import fc_register
 from typing import Literal
+from lazyllm import fc_register
 import wikipedia
 
 dummy_code = "def Dummy():\n    return None"
