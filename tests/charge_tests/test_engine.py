@@ -1,6 +1,13 @@
 from lazyllm.engine import LightEngine
 import pytest
+<<<<<<< HEAD
 from .tools import * # noqa F401
+=======
+from . import tools as _  # noqa F401
+from .utils import SqlEgsData, get_sql_init_keywords
+from lazyllm.tools import SqlManager
+
+>>>>>>> main
 
 class TestEngine(object):
 
@@ -99,6 +106,53 @@ class TestEngine(object):
         engine = LightEngine()
         engine.start(nodes, edges, resources)
         assert '观天之道，执天之行' in engine.run('何为天道?')
+
+    def test_sql_call(self):
+        db_type = "PostgreSQL"
+        username, password, host, port, database = get_sql_init_keywords(db_type)
+
+        # 1.  Init: insert data to database
+        tmp_sql_manager = SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)
+        for table_name in SqlEgsData.TEST_TABLES:
+            rt, err_msg = tmp_sql_manager._delete_rows_by_name(table_name)
+        for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
+            tmp_sql_manager.execute_sql_update(insert_script)
+
+        # 2. Engine: build and chat
+        resources = [
+            dict(
+                id="0",
+                kind="SqlManager",
+                name="sql_manager",
+                args=dict(
+                    db_type=db_type,
+                    user=username,
+                    password=password,
+                    host=host,
+                    port=port,
+                    db_name=database,
+                    tables_info_dict=SqlEgsData.TEST_TABLES_INFO,
+                ),
+            ),
+            dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="sensenova")),
+        ]
+        nodes = [
+            dict(
+                id="2",
+                kind="SqlCall",
+                name="sql_call",
+                args=dict(sql_manager="0", llm="1", sql_examples=""),
+            )
+        ]
+        edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
+        engine = LightEngine()
+        engine.start(nodes, edges, resources)
+        str_answer = engine.run("员工编号是3的人来自哪个部门？")
+        assert "销售三部" in str_answer
+
+        # 3. Release: delete data and table from database
+        for table_name in SqlEgsData.TEST_TABLES:
+            rt, err_msg = tmp_sql_manager._drop_table_by_name(table_name)
 
     def test_register_tools(self):
         resources = [

@@ -699,7 +699,9 @@ Args:
     max_retries (int): The maximum number of tool call iterations. The default value is 5.
 ''')
 
-add_example('ReWOOAgent', """\
+add_example(
+    "ReWOOAgent",
+    """\
 >>> import lazyllm
 >>> import wikipedia
 >>> from lazyllm.tools import fc_register, ReWOOAgent
@@ -740,117 +742,6 @@ add_example('ReWOOAgent', """\
 >>> res = agent(query)
 >>> print(res)
 '\nHennessy '
-""")
-add_chinese_doc(
-    "SQLiteTool",
-    """\
-SQLiteTool是与SQLite数据库进行交互的专用工具。它扩展了SqlTool类，提供了创建表、执行查询和对SQLite数据库进行更新的方法。
-
-Arguments:
-    db_file (str): SQLite 文件数据库的路径
-""",
-)
-
-add_english_doc(
-    "SQLiteTool",
-    """\
-SQLiteTool is a specialized tool for interacting with SQLite databases.
-It extends the SqlTool class and provides methods for creating tables, executing queries, and performing updates on SQLite databases.
-
-
-Arguments:
-    db_file (str): The path to the SQLite database file.
-""",
-)
-
-add_example(
-    "SQLiteTool",
-    """\
-    >>> from lazyllm.tools import SQLiteTool
-    >>> with open("personal.db", "w") as _: pass
-    >>> sql_tool = SQLiteTool("personal.db")
-    >>> tables_info = {
-    ...     "User": {
-    ...         "fields": {
-    ...             "id": {
-    ...                 "type": "integer",
-    ...                 "comment": "user id"
-    ...             },
-    ...             "name": {
-    ...                 "type": "text",
-    ...                 "comment": "user name"
-    ...             },
-    ...             "email": {
-    ...                 "type": "text",
-    ...                 "comment": "user email"
-    ...             }
-    ...         }
-    ...     }
-    ... }
-    >>> sql_tool.create_tables(tables_info)
-    >>> sql_tool.sql_update("INSERT INTO User (id, name, email) VALUES (1, 'Alice', 'alice@example.com')")
-    >>> table_info = sql_tool.get_all_tables()
-    >>> print(table_info)
-    >>> result_json = sql_tool.get_query_result_in_json("SELECT * from User")
-    >>> print(result_json)
-""",
-)
-
-add_chinese_doc(
-    "SQLiteTool.create_tables",
-    """\
-根据描述表结构的JSON字典在SQLite数据库中创建表。
-JSON格式形如：{$TABLE_NAME:{"fields":{$COLUMN_NAME:{"type":("REAL"/"TEXT"/"INT"), "comment":"..."} } } }
-""",
-)
-
-add_english_doc(
-    "SQLiteTool.create_tables",
-    """\
-Create tables According to tables json dict.
-THis JSON format should be as: {$TABLE_NAME:{"fields":{$COLUMN_NAME:{"type":("REAL"/"TEXT"/"INT"), "comment":"..."} } } }
-""",
-)
-
-add_chinese_doc(
-    "SQLiteTool.get_all_tables",
-    """\
-检索并返回SQLite数据库中所有表的字符串表示形式。
-""",
-)
-
-add_english_doc(
-    "SQLiteTool.get_all_tables",
-    """\
-Retrieves and returns a string representation of all the tables in the SQLite database.
-""",
-)
-
-add_chinese_doc(
-    "SQLiteTool.get_query_result_in_json",
-    """\
-执行SQL查询并返回JSON格式的结果。
-""",
-)
-
-add_english_doc(
-    "SQLiteTool.get_query_result_in_json",
-    """\
-Executes a SQL query and returns the result in JSON format.
-""",
-)
-
-add_chinese_doc(
-    "SQLiteTool.sql_update",
-    """\
-在SQLite数据库上执行SQL插入或更新脚本。
-""",
-)
-
-add_english_doc(
-    "SQLiteTool.sql_update",
-    """\
-Execute insert or update script.
 """,
 )
 
@@ -910,9 +801,9 @@ add_example(
 )
 
 add_chinese_doc(
-    "SqlModule",
+    "SqlCall",
     """\
-SqlModule 是一个扩展自 ModuleBase 的类,提供了使用语言模型(LLM)生成和执行 SQL 查询的接口。
+SqlCall 是一个扩展自 ModuleBase 的类,提供了使用语言模型(LLM)生成和执行 SQL 查询的接口。
 它设计用于与 SQL 数据库交互,从语言模型的响应中提取 SQL 查询,执行这些查询,并返回结果或解释。
 
 Arguments:
@@ -924,9 +815,9 @@ Arguments:
 )
 
 add_english_doc(
-    "SqlModule",
+    "SqlCall",
     """\
-SqlModule is a class that extends ModuleBase and provides an interface for generating and executing SQL queries using a language model (LLM).
+SqlCall is a class that extends ModuleBase and provides an interface for generating and executing SQL queries using a language model (LLM).
 It is designed to interact with a SQL database, extract SQL queries from LLM responses, execute those queries, and return results or explanations.
 
 Arguments:
@@ -938,14 +829,14 @@ Arguments:
 )
 
 add_example(
-    "SqlModule",
+    "SqlCall",
     """\
-    >>> # First, run SQLiteTool example
+    >>> # First, run SQLiteManger example
     >>> import lazyllm
-    >>> from lazyllm.tools import SQLiteTool, SqlModule
-    >>> sql_tool = SQLiteTool("personal.db")
+    >>> from lazyllm.tools import SQLiteManger, SqlCall
+    >>> sql_tool = SQLiteManger("personal.db")
     >>> sql_llm = lazyllm.OnlineChatModule(model="gpt-4o", source="openai", base_url="***")
-    >>> sql_module = SqlModule(sql_llm, sql_tool, use_llm_for_sql_result=True)
+    >>> sql_module = SqlCall(sql_llm, sql_tool, use_llm_for_sql_result=True)
     >>> print(sql_module("员工Alice的邮箱地址是什么?"))
 """,
 )
