@@ -232,7 +232,7 @@ class ToolManager(ModuleBase):
         flag_val = [True if self._validate_tool(tool) else False for tool in tool_calls]
         tool_inputs = [tool_calls[idx]['arguments'] for idx, val in enumerate(flag_val) if val]
         tools = [self._tool_call[tool_calls[idx]['name']] for idx, val in enumerate(flag_val) if val]
-        tool_diverter = lazyllm.diverter.sequential(tuple(tools))
+        tool_diverter = lazyllm.diverter(tuple(tools))
         rets = tool_diverter(tuple(tool_inputs))
         res = iter(rets)
         rets = [next(res) if ele else None for ele in flag_val]
