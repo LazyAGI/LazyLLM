@@ -101,8 +101,6 @@ class TestEngine(object):
         assert '观天之道，执天之行' in engine.run('何为天道?')
 
     def test_register_tools(self):
-        dummy_code = "def Dummy(location, unit):\n    return None"
-
         resources = [
             dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
             dict(id="3", kind="HttpTool", name="weather_12345",
@@ -123,4 +121,4 @@ class TestEngine(object):
         city_name = 'Tokyo'
         unit = 'Celsius'
         ret = engine.run(f"What is the temperature in {city_name} today in {unit}?")
-        assert city_name in ret and unit.lower() in ret
+        assert city_name in ret and unit in ret

@@ -302,8 +302,10 @@ def make_http_tool(method: Optional[str] = None,
                    timeout: int = 10,
                    proxies: Optional[Dict[str, str]] = None,
                    code_str: Optional[str] = None,
+                   vars_for_code: Optional[Dict[str, Any]] = None,
                    doc: Optional[str] = None):
-    instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies, code_str)
+    instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies,
+                                      code_str, vars_for_code)
     @functools.wraps(instance.forward)
     def wrapper_func(*args, **kwargs):
         return instance.forward(*args, **kwargs)

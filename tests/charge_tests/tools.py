@@ -4,6 +4,8 @@ from lazyllm import fc_register
 from typing import Literal
 import wikipedia
 
+dummy_code = "def Dummy():\n    return None"
+
 get_current_weather_code = '''
 def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 'fahrenheit'):
     """
