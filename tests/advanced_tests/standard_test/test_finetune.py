@@ -39,5 +39,5 @@ class TestFinetune(object):
             )
         )
         ppl()
-        assert self.has_bin_file(os.path.join(self.save_path, 'lora'))
-        assert self.has_bin_file(os.path.join(self.save_path, 'merge'))
+        assert self.has_bin_file(os.path.join(self.save_path, 'lazyllm_lora'))
+        assert self.has_bin_file(os.path.join(self.save_path, 'lazyllm_merge'))
