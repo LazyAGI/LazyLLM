@@ -2,7 +2,7 @@ from lazyllm.engine import LightEngine
 import pytest
 from .utils import SqlEgsData, get_sql_init_keywords
 from lazyllm.tools import SqlManager
-from .tools import * as _ # noqa F405
+from . import tools as _  # noqa F401
 
 class TestEngine(object):
 
