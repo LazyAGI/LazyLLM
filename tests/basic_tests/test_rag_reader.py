@@ -13,8 +13,8 @@ class YmlReader(ReaderBase):
 class TestRagReader(object):
     @classmethod
     def setup_class(cls):
-        cls.doc = Document(dataset_path="ci_data", create_ui=False)
-        cls.datasets = os.path.join(lazyllm.config['data_path'], "ci_data/default/__data/sources")
+        cls.doc = Document(dataset_path="ci_data/rag_reader", create_ui=False)
+        cls.datasets = os.path.join(lazyllm.config['data_path'], "ci_data/rag_reader/default/__data/sources")
 
     def test_reader_file(self):
         files = [os.path.join(self.datasets, "联网搜索.pdf"), os.path.join(self.datasets, "说明文档测试.docx")]
