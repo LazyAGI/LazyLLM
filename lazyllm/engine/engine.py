@@ -293,7 +293,6 @@ def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
 
     return f(Engine().build_node(llm).func, callable_list)
 
-
 @NodeConstructor.register('HttpTool')
 def make_http_tool(method: Optional[str] = None,
                    url: Optional[str] = None,
