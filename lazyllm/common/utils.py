@@ -28,14 +28,6 @@ def check_path(
 
 
 def compile_func(func_code: str, global_env: Optional[Dict[str, Any]] = None) -> Callable:
-    '''
-    compile `func_code` to a runnable function
-
-    Args:
-        func_code (str): the code string
-        global_env (str): used in `func_code`, including variables and modules
-    '''
-
     fname = re.search(r'def\s+(\w+)\s*\(', func_code).group(1)
     module = ast.parse(func_code)
     func = compile(module, filename="<ast>", mode="exec")

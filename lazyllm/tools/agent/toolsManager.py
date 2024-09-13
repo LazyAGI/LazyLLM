@@ -145,8 +145,8 @@ class ToolManager(ModuleBase):
 
                 tool_all_str = element.__name__ + "tmp_tool".capitalize()
                 t = lazyllm.tmp_tool.get(tool_all_str, None)
-                tt = t()
-                _tools.append(tt)
+                _tools.append(t())
+        delattr(lazyllm, "tmp_tool")
         return _tools
 
     @property
@@ -161,10 +161,7 @@ class ToolManager(ModuleBase):
     def tools_info(self):
         return self._tool_call
 
-    def _validate_tool(self, tool_info):
-        tool_name = tool_info['name']
-        tool_arguments = tool_info['arguments']
-
+    def _validate_tool(self, tool_name: str, tool_arguments: Dict[str, Any]):
         tool = self._tool_call.get(tool_name)
         if not tool:
             LOG.error(f'cannot find tool named [{tool_name}]')
@@ -234,7 +231,7 @@ class ToolManager(ModuleBase):
         tool_calls = [{"name": tool['name'], "arguments": json.loads(tool['arguments'])
                       if isinstance(tool['arguments'], str) else tool['arguments']} for tool in tool_calls]
         output = []
-        flag_val = [True if self._validate_tool(tool) else False for tool in tool_calls]
+        flag_val = [True if self._validate_tool(tool['name'], tool['arguments']) else False for tool in tool_calls]
         tool_inputs = [tool_calls[idx]['arguments'] for idx, val in enumerate(flag_val) if val]
         tools = [self._tool_call[tool_calls[idx]['name']] for idx, val in enumerate(flag_val) if val]
         tool_diverter = lazyllm.diverter(tuple(tools))

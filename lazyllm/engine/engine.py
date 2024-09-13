@@ -282,9 +282,7 @@ def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
 
     callable_list = []
-
-    # `tools` is a list of ids in engine's resources
-    for rid in tools:
+    for rid in tools:  # `tools` is a list of ids in engine's resources
         node = Engine().build_node(rid)
         func = node.func
         wrapper_func = return_a_wrapper_func(func)
@@ -306,14 +304,9 @@ def make_http_tool(method: Optional[str] = None,
                    doc: Optional[str] = None):
     instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies,
                                       code_str, vars_for_code)
-
-    @functools.wraps(instance.forward)
-    def wrapper_func(*args, **kwargs):
-        return instance.forward(*args, **kwargs)
-
     if doc:
-        wrapper_func.__doc__ = doc
-    return wrapper_func
+        instance.__doc__ = doc
+    return instance
 
 @NodeConstructor.register('SharedLLM')
 def make_shared_llm(llm: str, prompt: Optional[str] = None):

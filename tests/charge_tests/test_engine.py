@@ -170,4 +170,4 @@ class TestEngine(object):
         city_name = 'Tokyo'
         unit = 'Celsius'
         ret = engine.run(f"What is the temperature in {city_name} today in {unit}?")
-        assert city_name in ret and unit in ret
+        assert city_name in ret and unit in ret and '10' in ret
