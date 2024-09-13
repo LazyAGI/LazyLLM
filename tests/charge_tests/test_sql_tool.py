@@ -70,13 +70,12 @@ class TestSqlManager(unittest.TestCase):
                 assert rt, err_msg
 
     def test_manager_table_delete_insert_query(self):
-        query_script = "SELECT department from employee WHERE employee_id=1;"
         # 1. Delete, as rows already exists during setUp
         for sql_manager in self.sql_managers:
             for table_name in SqlEgsData.TEST_TABLES:
                 rt, err_msg = sql_manager._delete_rows_by_name(table_name)
                 assert rt, err_msg
-            str_results = sql_manager.get_query_result_in_json(query_script)
+            str_results = sql_manager.get_query_result_in_json(SqlEgsData.TEST_QUERY_SCRIPTS)
             self.assertNotIn("销售一部", str_results)
 
         # 2. Insert, restore rows
@@ -84,7 +83,7 @@ class TestSqlManager(unittest.TestCase):
             for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
                 rt, err_msg = sql_manager.execute_sql_update(insert_script)
                 assert rt, err_msg
-            str_results = sql_manager.get_query_result_in_json(query_script)
+            str_results = sql_manager.get_query_result_in_json(SqlEgsData.TEST_QUERY_SCRIPTS)
             self.assertIn("销售一部", str_results)
 
     def test_get_talbes(self):

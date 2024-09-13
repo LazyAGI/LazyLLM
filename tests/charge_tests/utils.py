@@ -1,12 +1,17 @@
 import os
 import re
+import uuid
+
+
+UUID_HEX = str(uuid.uuid4().hex)
 
 
 class SqlEgsData:
+    TEST_TABLES = [f"employee_{UUID_HEX}", f"sales_{UUID_HEX}"]
     TEST_TABLES_INFO = {
         "tables": [
             {
-                "name": "employee",
+                "name": f"{TEST_TABLES[0]}",
                 "comment": "员工信息表",
                 "columns": [
                     {
@@ -21,7 +26,7 @@ class SqlEgsData:
                 ],
             },
             {
-                "name": "sales",
+                "name": f"{TEST_TABLES[1]}",
                 "comment": "销售额信息表",
                 "columns": [
                     {
@@ -40,14 +45,14 @@ class SqlEgsData:
         ]
     }
     TEST_INSERT_SCRIPTS = [
-        "INSERT INTO employee VALUES (1, '张三', '销售一部');",
-        "INSERT INTO employee VALUES (2, '李四', '销售二部');",
-        "INSERT INTO employee VALUES (3, '王五', '销售三部');",
-        "INSERT INTO sales VALUES (1, 8715.55, 8465.65, 24747.82, 3514.36);",
-        "INSERT INTO sales VALUES (2, 4989.23, 5103.22, 4897.98, 5322.05);",
-        "INSERT INTO sales VALUES (3, 5989.23, 6103.22, 2897.98, 3322.05);",
+        f"INSERT INTO {TEST_TABLES[0]} VALUES (1, '张三', '销售一部');",
+        f"INSERT INTO {TEST_TABLES[0]} VALUES (2, '李四', '销售二部');",
+        f"INSERT INTO {TEST_TABLES[0]} VALUES (3, '王五', '销售三部');",
+        f"INSERT INTO {TEST_TABLES[1]} VALUES (1, 8715.55, 8465.65, 24747.82, 3514.36);",
+        f"INSERT INTO {TEST_TABLES[1]} VALUES (2, 4989.23, 5103.22, 4897.98, 5322.05);",
+        f"INSERT INTO {TEST_TABLES[1]} VALUES (3, 5989.23, 6103.22, 2897.98, 3322.05);",
     ]
-    TEST_TABLES = ["employee", "sales"]
+    TEST_QUERY_SCRIPTS = f"SELECT department from {TEST_TABLES[0]} WHERE employee_id=1;"
 
 
 def get_sql_init_keywords(db_type):
