@@ -107,7 +107,6 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
     def forward(self, tool_input: Union[str, Dict[str, Any]], verbose: bool = False) -> Any:
         val_input = self._validate_input(tool_input)
-        print(f'debug!!! 111 in ModuleTool, func addr [{self.apply}]')
         ret = self.apply(**val_input)
         if verbose or self._verbose:
             lazyllm.LOG.debug(f"The output of tool {self.name} is {ret}")
@@ -133,7 +132,6 @@ class ToolManager(ModuleBase):
         for element in tools:
             if isinstance(element, str):
                 tool_all_str = element + "tool".capitalize()
-                print(f"---------------- get tool_all_str {tool_all_str}")
                 t = lazyllm.tool.get(tool_all_str, None)
                 if t:
                     _tools.append(t())
@@ -144,9 +142,7 @@ class ToolManager(ModuleBase):
                 tool_all_str = element.__name__ + "tmp_tool".capitalize()
                 t = lazyllm.tmp_tool.get(tool_all_str, None)
                 tt = t()
-                LOG.info(f'debug!!! element orig func addr [{id(element)}], wrapper addr [{id(tt)}]')
                 _tools.append(tt)
-        LOG.info(f'debug!!! ToolManager init tools [{_tools}]')
         return _tools
 
     @property
@@ -172,7 +168,6 @@ class ToolManager(ModuleBase):
 
         # don't check parameters if this function contains '*args' or '**kwargs'
         for name, param in inspect.signature(tool).parameters.items():
-            print(f'get param [{param.name}] kind [{param.kind}], kind type [{type(param.kind)}]')
             if param.kind == inspect.Parameter.VAR_POSITIONAL or\
                param.kind == inspect.Parameter.VAR_KEYWORD:
                 return True
@@ -226,34 +221,20 @@ class ToolManager(ModuleBase):
                     """
                     raise TypeError("Function description must include function description and"
                                     f"parameter description, the format is as follows: {typehints_template}")
-            print(f'debug!!! in _transform_to_openai_function, return format_tools [{format_tools}]')
             return format_tools
         else:
             raise TypeError(f"The tools type should be List instead of {type(self._tools)}")
 
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False):
-        print(f'debug!!! in ToolManager::forward() 00000 tools |{tools}| func addr [{id(tools[0])}]')
         tool_calls = [tools,] if isinstance(tools, dict) else tools
-        print(f'debug!!! in ToolManager::forward() 11111 tools [{tools}] tool_calls -> [{tool_calls}]')
         tool_calls = [{"name": tool['name'], "arguments": json.loads(tool['arguments'])
                       if isinstance(tool['arguments'], str) else tool['arguments']} for tool in tool_calls]
-        print(f'debug!!! in ToolManager::forward() 22222 tools [{tools}] tool_calls -> [{tool_calls}]')
         output = []
         flag_val = [True if self._validate_tool(tool) else False for tool in tool_calls]
-        print(f'debug!!! flag_val -> [{flag_val}]')
         tool_inputs = [tool_calls[idx]['arguments'] for idx, val in enumerate(flag_val) if val]
-        for idx, val in enumerate(flag_val):
-            if val:
-                print(f'debug!!! idx [{idx}] name [{tool_calls[idx]["name"]}]')
-        for k, v in self._tool_call.items():
-            print(f'debug!!! _tool_call [{k}] -> func addr {id(v)}')
         tools = [self._tool_call[tool_calls[idx]['name']] for idx, val in enumerate(flag_val) if val]
-        for idx, val in enumerate(tools):
-            print(f'debug!!! tools[{idx}] -> func addr [{id(val)}]')
-        print(f'debug!!! in toolsManager::forward(), nr tools -> [{len(tools)}], tools [{tools}]')
-        tool_diverter = lazyllm.diverter(tuple(tools))
+        tool_diverter = lazyllm.diverter.sequential(tuple(tools))
         rets = tool_diverter(tuple(tool_inputs))
-        print(f'debug!!! in toolsManager::forward() rets -> {rets}')
         res = iter(rets)
         rets = [next(res) if ele else None for ele in flag_val]
         for idx, tool in enumerate(tool_calls):

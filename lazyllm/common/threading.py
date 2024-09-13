@@ -18,7 +18,6 @@ class Thread(threading.Thread):
     def work(self, prehook, target, args, **kw):
         [p() for p in prehook]
         try:
-            print(f'debug!!! in threading.py, run target [{target}], name [{target.__name__}], __call__ [{target.__call__}]')
             r = target(*args, **kw)
         except Exception as e:
             self.q.put(e)

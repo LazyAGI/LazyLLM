@@ -113,9 +113,7 @@ class {name}(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].base):
 def bind_to_instance(func):
     @functools.wraps(func)
     def wrapper(instance, *args, **kwargs):
-        print(f'debug!!! 117 in bind_to_instance, run func name -> [{func.__name__}]')
-        ret = func(*args, **kwargs)
-        return ret
+        return func(*args, **kwargs)
     return wrapper
 
 class Register(object):

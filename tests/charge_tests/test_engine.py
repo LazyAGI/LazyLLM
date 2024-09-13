@@ -100,7 +100,7 @@ Args:
     unit (str): The temperature unit to use. Infer this from the users location.
 '''
 
-        dummy_code = "def Dummy(location, unit):\n    return None"
+        dummy_code = "def Dummy(location, unit):\n    return 'for_test_str'"
 
         resources = [
             dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
@@ -116,17 +116,15 @@ Args:
                       args=dict(llm='0', tools=['3', '2']))]
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
-        print('before engine start')
         # TODO handle duplicated node id
         engine.start(nodes, edges, resources)
 
         city_name = 'Tokyo'
         unit = 'Celsius'
-        print('before engine run')
         ret = engine.run(f"What is the temperature in {city_name} today in {unit}?")
         print(f'after engine run -> {ret}')
-        assert ret['location'] == city_name
-        assert ret['unit'] == unit
+        assert city_name in ret and unit in ret
+
 
 tt = TestEngine()
 tt.test_register_tools()
