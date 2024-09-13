@@ -1,5 +1,6 @@
 from lazyllm.engine import LightEngine
 import pytest
+from . import tools as _  # noqa F401
 
 class TestEngine(object):
 
