@@ -146,7 +146,6 @@ class ToolManager(ModuleBase):
                 tool_all_str = element.__name__ + "tmp_tool".capitalize()
                 t = lazyllm.tmp_tool.get(tool_all_str, None)
                 _tools.append(t())
-        delattr(lazyllm, "tmp_tool")
         return _tools
 
     @property
