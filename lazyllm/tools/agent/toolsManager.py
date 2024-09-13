@@ -125,7 +125,8 @@ class ToolManager(ModuleBase):
 
     def _load_tools(self, tools: List[Union[str, Callable]]):
         tmp_register = lazyllm.Register(ModuleTool, ['apply'])
-        tmp_register.new_group('tmp_tool')
+        if "tmp_tool" not in LazyLLMRegisterMetaClass.all_clses:
+            tmp_register.new_group('tmp_tool')
 
         _tools = []
         for element in tools:

@@ -1,8 +1,8 @@
-from typing import List, Callable, Dict, Type, Optional, Union
+from typing import List, Callable, Dict, Type, Optional, Union, Any
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier
-from lazyllm.common import compile_code
+from lazyllm.common import compile_func
 from .node import all_nodes, Node
 import inspect
 import functools
@@ -179,8 +179,8 @@ def make_subapp(nodes: List[dict], edges: List[dict], resources: List[dict] = []
 
 # Note: It will be very dangerous if provided to C-end users as a SAAS service
 @NodeConstructor.register('Code')
-def make_code(code):
-    return compile_code(code)
+def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
+    return compile_func(code, vars_for_code)
 
 
 def _build_pipeline(nodes):
@@ -302,13 +302,13 @@ def make_http_tool(method: Optional[str] = None,
                    timeout: int = 10,
                    proxies: Optional[Dict[str, str]] = None,
                    code_str: Optional[str] = None,
-                   name: str = None,
                    doc: Optional[str] = None):
-    instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies, name, code_str)
+    instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies, code_str)
     @functools.wraps(instance.forward)
     def wrapper_func(*args, **kwargs):
         return instance.forward(*args, **kwargs)
-    wrapper_func.__doc__ = doc
+    if doc:
+        wrapper_func.__doc__ = doc
     return wrapper_func
 
 @NodeConstructor.register('SharedLLM')

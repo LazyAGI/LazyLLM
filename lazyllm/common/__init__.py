@@ -11,7 +11,7 @@ from .logger import LOG
 from .deprecated import deprecated
 from .globals import globals, LazyLlmResponse, LazyLlmRequest, encode_request, decode_request
 from .queue import FileSystemQueue
-from .utils import compile_code
+from .utils import compile_func
 
 __all__ = [
     # registry
@@ -29,7 +29,7 @@ __all__ = [
     'timeout',
     'final',
     'deprecated',
-    'compile_code',
+    'compile_func',
 
     # arg praser
     'LazyLLMCMD',

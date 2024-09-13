@@ -1,6 +1,6 @@
 from os import PathLike, makedirs
 from os.path import expanduser, expandvars, isfile, join, normpath
-from typing import Union
+from typing import Union, Dict, Callable, Any, Optional
 import re
 import ast
 
@@ -27,10 +27,18 @@ def check_path(
     return path
 
 
-def compile_code(code):
-    fname = re.search(r'def\s+(\w+)\s*\(', code).group(1)
-    module = ast.parse(code)
-    code = compile(module, filename="<ast>", mode="exec")
+def compile_func(func_code: str, global_env: Optional[Dict[str, Any]] = None) -> Callable:
+    '''
+    compile `func_code` to a runnable function
+
+    Args:
+        func_code (str): the code string
+        global_env (str): used in `func_code`, including variables and modules
+    '''
+
+    fname = re.search(r'def\s+(\w+)\s*\(', func_code).group(1)
+    module = ast.parse(func_code)
+    func = compile(module, filename="<ast>", mode="exec")
     local_dict = {}
-    exec(code, {}, local_dict)
+    exec(func, global_env, local_dict)
     return local_dict[fname]
