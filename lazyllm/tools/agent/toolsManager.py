@@ -138,7 +138,12 @@ class ToolManager(ModuleBase):
                 else:
                     raise ValueError(f"Tool {element} has not been registered yet.")
             elif isinstance(element, Callable):
-                tmp_register('tmp_tool')(element)
+                try:
+                    tmp_register('tmp_tool')(element)
+                except Exception:
+                    # TODO FIXME exception of duplicated element
+                    pass
+
                 tool_all_str = element.__name__ + "tmp_tool".capitalize()
                 t = lazyllm.tmp_tool.get(tool_all_str, None)
                 tt = t()

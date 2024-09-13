@@ -1,7 +1,7 @@
 from lazyllm.module import ModuleBase, OnlineChatModule
 from lazyllm import loop
 from .functionCall import FunctionCall
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Callable
 import json5 as json
 
 INSTRUCTION = """You are designed to help with a variety of tasks, from answering questions to providing \
@@ -44,10 +44,20 @@ class ReactAgent(ModuleBase):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
         assert llm and tools, "llm and tools cannot be empty."
+
+        tool_name_list = []
+        for t in tools:
+            if isinstance(t, str):
+                tool_name_list.append(t)
+            elif isinstance(t, Callable):
+                tool_name_list.append(t.__name__)
+            else:
+                raise ValueError(f'unsupported tool type [{type(t)}]')
+
         prompt = INSTRUCTION.replace("{TOKENIZED_PROMPT}", WITHOUT_TOKEN_PROMPT if isinstance(llm, OnlineChatModule)
                                      else WITH_TOKEN_PROMPT)
         self._agent = loop(FunctionCall(llm, tools,
-                                        _prompt=prompt.replace("{tool_names}", json.dumps(tools, ensure_ascii=False)),
+                                        _prompt=prompt.replace("{tool_names}", json.dumps(tool_name_list, ensure_ascii=False)),
                                         return_trace=return_trace),
                            stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
 
