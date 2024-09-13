@@ -9,7 +9,6 @@ class TestRegistry:
         registered_func = fc_register('tool')(orig_func)
         assert registered_func == orig_func
 
-
     def test_register_with_new_func_name(self):
         new_func_name = 'another_func_name'
         registered_func = fc_register('tool')(orig_func, new_func_name)

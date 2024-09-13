@@ -306,9 +306,11 @@ def make_http_tool(method: Optional[str] = None,
                    doc: Optional[str] = None):
     instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies,
                                       code_str, vars_for_code)
+
     @functools.wraps(instance.forward)
     def wrapper_func(*args, **kwargs):
         return instance.forward(*args, **kwargs)
+
     if doc:
         wrapper_func.__doc__ = doc
     return wrapper_func

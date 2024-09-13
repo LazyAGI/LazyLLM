@@ -135,10 +135,12 @@ class Register(object):
 
         def impl(func, func_name=None):
             if func_name:
-                func_for_wrapper = func # avoid calling recursively
+                func_for_wrapper = func  # avoid calling recursively
+
                 @functools.wraps(func)
                 def wrapper_func(*args, **kwargs):
                     return func_for_wrapper(*args, **kwargs)
+
                 wrapper_func.__name__ = func_name
                 func = wrapper_func
             else:
