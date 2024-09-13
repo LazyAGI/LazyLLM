@@ -89,7 +89,6 @@ class TestEngine(object):
         get_current_weather_code = '''
 from typing import Literal
 def get_current_weather_for_http_tool(location: str, unit: Literal["fahrenheit", "celsius"] = 'fahrenheit'):
-    print('iiiiiiii get_current_weather_for_http_tool')
     return {'location': location, 'temperature': '10', 'unit': unit}
 '''
         get_current_weather_doc = '''
@@ -100,7 +99,7 @@ Args:
     unit (str): The temperature unit to use. Infer this from the users location.
 '''
 
-        dummy_code = "def Dummy(location, unit):\n    return 'for_test_str'"
+        dummy_code = "def Dummy(location, unit):\n    return None"
 
         resources = [
             dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
@@ -122,7 +121,6 @@ Args:
         city_name = 'Tokyo'
         unit = 'Celsius'
         ret = engine.run(f"What is the temperature in {city_name} today in {unit}?")
-        print(f'after engine run -> {ret}')
         assert city_name in ret and unit in ret
 
 
