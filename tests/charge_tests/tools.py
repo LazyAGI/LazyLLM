@@ -146,28 +146,6 @@ def add_tool(a: int, b: int):
     """
     return a + b
 
-WikipediaWorker_code = '''
-def WikipediaWorker(input: str):
-    """
-    Worker that search for similar page contents from Wikipedia. Useful when you need to get holistic knowledge \
-    about people, places, companies, historical events, or other subjects. The response are long and might \
-    contain some irrelevant information. Input should be a search query.
-
-    Args:
-        input (str): search query.
-    """
-    print(f"wikipedia input: {input}")
-    try:
-        evidence = wikipedia.page(input).content
-        evidence = evidence.split("\n\n")[0]
-    except wikipedia.PageError:
-        evidence = f"Could not find [{input}]. Similar: {wikipedia.search(input)}"
-    except wikipedia.DisambiguationError:
-        evidence = f"Could not find [{input}]. Similar: {wikipedia.search(input)}"
-    print(f"wikipedia output: {evidence}")
-    return evidence
-'''
-
 @fc_register("tool")
 def WikipediaWorker(input: str):
     """
@@ -188,23 +166,6 @@ def WikipediaWorker(input: str):
         evidence = f"Could not find [{input}]. Similar: {wikipedia.search(input)}"
     print(f"wikipedia output: {evidence}")
     return evidence
-
-LLMWorker_code = '''
-def LLMWorker(input: str):
-    """
-    A pretrained LLM like yourself. Useful when you need to act with general world knowledge and common sense. \
-    Prioritize it when you are confident in solving the problem yourself. Input can be any instruction.
-
-    Args:
-        input (str): instruction
-    """
-    llm = lazyllm.OnlineChatModule(source="glm", stream=False)
-    query = f"Respond in short directly with no extra words.\n\n{input}"
-    print(f"llm query: {query}, input: {input}")
-    response = llm(query, llm_chat_history=[])
-    print(f"llm res: {response}")
-    return response
-'''
 
 @fc_register("tool")
 def LLMWorker(input: str):
