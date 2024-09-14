@@ -9,3 +9,6 @@ build
 *.db
 mkdocs.yml
 .temp
+lazyllm_chroma/
+docs/en/assets
+docs/zh/assets

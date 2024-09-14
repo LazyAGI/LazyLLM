@@ -48,24 +48,27 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
 
 class NodeTransform(ABC):
 
-    def forward(
+    def batch_forward(
         self, documents: Union[DocNode, List[DocNode]], node_group: str, **kwargs
     ) -> List[DocNode]:
         documents = documents if isinstance(documents, list) else [documents]
         all_nodes: List[DocNode] = []
         for node in documents:
-            splits = self.transform(node, **kwargs)
-            all_nodes.extend(build_nodes_from_splits(splits, node, node_group))
+            splits = self(node, **kwargs)
+            for s in splits:
+                s.parent = node
+                s.group = node_group
+            node.children[node_group] = splits
+            all_nodes.extend(splits)
         return all_nodes
 
     @abstractmethod
     def transform(self, document: DocNode, **kwargs) -> List[str]:
         raise NotImplementedError("Not implemented")
 
-    def __call__(
-        self, nodes: List[DocNode], node_group: str, **kwargs: Any
-    ) -> List[DocNode]:
-        return self.forward(nodes, node_group, **kwargs)
+    def __call__(self, node: DocNode, **kwargs: Any) -> List[DocNode]:
+        # Parent and child should not be set here.
+        return [DocNode(text=chunk) for chunk in self.transform(node, **kwargs) if chunk]
 
 
 class SentenceSplitter(NodeTransform):
@@ -253,17 +256,22 @@ class FuncNodeTransform(NodeTransform):
 
     Wrapped the transform to: List[Docnode] -> List[Docnode]
 
-    This wrapper supports:
+    This wrapper supports when trans_node is False:
         1. str -> list: transform=lambda t: t.split('\n')
         2. str -> str: transform=lambda t: t[:3]
+
+    This wrapper supports when trans_node is True:
+        1. DocNode -> list: pipeline(lambda x:x, SentenceSplitter)
+        2. DocNode -> DocNode: pipeline(LLMParser)
     """
 
-    def __init__(self, func: Callable[[str], List[str]]):
-        self._func = func
+    def __init__(self, func: Union[Callable[[str], List[str]], Callable[[DocNode], List[DocNode]]],
+                 trans_node: bool = None):
+        self._func, self._trans_node = func, trans_node
 
     def transform(self, node: DocNode, **kwargs) -> List[str]:
-        result = self._func(node.get_text())
-        text_splits = [result] if isinstance(result, str) else result
+        result = self._func(node if self._trans_node else node.get_text())
+        text_splits = [result] if isinstance(result, (str, DocNode)) else result
         return text_splits
 
 
