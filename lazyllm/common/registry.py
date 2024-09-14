@@ -41,7 +41,7 @@ class LazyDict(dict):
     # default -> self.default
     # key -> Key, keyName, KeyName
     # if self.name ends with 's' or 'es', ignor it
-    def __getattr__(self, key):
+    def _match(self, key):
         key = self._default if key == 'default' else key
         keys = [key, f'{key[0].upper()}{key[1:]}', f'{key}{self.name}', f'{key[0].upper()}{key[1:]}{self.name}',
                 f'{key}{self.name.lower()}', f'{key[0].upper()}{key[1:]}{self.name.lower()}']
@@ -51,9 +51,14 @@ class LazyDict(dict):
 
         for k in set(keys):
             if k in self.keys():
-                return self[k]
-        # return super(__class__, self).__getattribute__(key)
+                return k
         raise AttributeError(f'Attr {key} not found in {self}')
+
+    def __getattr__(self, key):
+        return self[self._match(key)]
+
+    def remove(self, key):
+        super(__class__, self).pop(self._match(key))
 
     def __call__(self, *args, **kwargs):
         assert self._default is not None or len(self.keys()) == 1
@@ -119,7 +124,7 @@ def bind_to_instance(func):
 class Register(object):
     def __init__(self, base, fnames, template=reg_template):
         self.basecls = base
-        self.fnames = fnames
+        self.fnames = [fnames] if isinstance(fnames, str) else fnames
         self.template = template
         assert len(self.fnames) > 0, 'At least one function should be given for overwrite.'
 
