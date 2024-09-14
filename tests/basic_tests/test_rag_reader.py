@@ -12,8 +12,9 @@ class YmlReader(ReaderBase):
             raise ImportError("yaml is required to read YAML file: `pip install pyyaml`")
         with open(file, 'r') as f:
             data = yaml.safe_load(f)
-
-        return [DocNode(text=data, metadata=extra_info or {})]
+            node = DocNode(text=data, metadata=extra_info or {})
+            node.text = "Call the class YmlReader."
+        return [node]
 
 def processYml(file, extra_info=None):
     with open(file, 'r') as f:
@@ -63,7 +64,5 @@ class TestRagReader(object):
         Document.register_global_reader("**/*.yml", processYml)
         self.doc.add_reader("**/*.yml", YmlReader)
         files = [os.path.join(self.datasets, "reader_test.yml")]
-        try:
-            self.doc._impl._impl.directory_reader.load_data(input_files=files)
-        except ImportError as e:
-            assert e == "yaml is required to read YAML file: `pip install pyyaml`"
+        docs = self.doc._impl._impl.directory_reader.load_data(input_files=files)
+        assert docs[0].text == "Call the class YmlReader."
