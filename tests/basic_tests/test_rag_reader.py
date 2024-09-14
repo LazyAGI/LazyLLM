@@ -6,12 +6,8 @@ from lazyllm.tools.rag import SimpleDirectoryReader, DocNode
 
 class YmlReader(ReaderBase):
     def _load_data(self, file, extra_info=None, fs=None):
-        try:
-            import yaml
-        except ImportError:
-            raise ImportError("yaml is required to read YAML file: `pip install pyyaml`")
         with open(file, 'r') as f:
-            data = yaml.safe_load(f)
+            data = f.read()
             node = DocNode(text=data, metadata=extra_info or {})
             node.text = "Call the class YmlReader."
         return [node]
