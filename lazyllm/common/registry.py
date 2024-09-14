@@ -41,7 +41,7 @@ class LazyDict(dict):
     # default -> self.default
     # key -> Key, keyName, KeyName
     # if self.name ends with 's' or 'es', ignor it
-    def __getattr__(self, key):
+    def _match(self, key):
         key = self._default if key == 'default' else key
         keys = [key, f'{key[0].upper()}{key[1:]}', f'{key}{self.name}', f'{key[0].upper()}{key[1:]}{self.name}',
                 f'{key}{self.name.lower()}', f'{key[0].upper()}{key[1:]}{self.name.lower()}']
@@ -51,9 +51,14 @@ class LazyDict(dict):
 
         for k in set(keys):
             if k in self.keys():
-                return self[k]
-        # return super(__class__, self).__getattribute__(key)
+                return k
         raise AttributeError(f'Attr {key} not found in {self}')
+
+    def __getattr__(self, key):
+        return self[self._match(key)]
+
+    def remove(self, key):
+        super(__class__, self).pop(self._match(key))
 
     def __call__(self, *args, **kwargs):
         assert self._default is not None or len(self.keys()) == 1
