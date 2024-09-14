@@ -120,10 +120,12 @@ class ToolManager(ModuleBase):
     type_any2openai = {
         'str': 'string',
         'int': 'number',
+        'integer': 'number',
         'float': 'number',
         'bool': 'boolean',
-        'List': 'array',
-        'Dict': 'object',
+        'list': 'array',
+        'dict': 'object',
+        'tuple': 'object',
     }
 
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False):
@@ -194,7 +196,7 @@ class ToolManager(ModuleBase):
                     required_arg_list = []
                     for param in parsed.params:
                         args[param.arg_name] = {
-                            "type": self.type_any2openai.get(param.type_name, param.type_name),
+                            "type": self.type_any2openai.get(param.type_name.lower(), param.type_name),
                             "description": param.description,
                         }
                         if not param.is_optional:
