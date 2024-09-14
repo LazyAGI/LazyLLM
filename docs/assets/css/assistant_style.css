@@ -18,7 +18,7 @@
 
 #floating-icon:hover{
     cursor: pointer;
-    opacity: 0.7;
+    opacity: 0.9;
 }
 
 #dialog-box {
@@ -48,11 +48,11 @@
 
 .dialog{
     margin: 5px;
+    height: 20px;
 }
 
 .dialog h2 {
-    display: inline;
-    margin: 0;
+    margin: 0 0 10px;
     font-size: 18px;
     color: #333;
 }
@@ -60,12 +60,68 @@
 .reset {
     position: fixed;
     top: 15px;
-    right: 60px;
-    height: 24px;
-    width: 24px;
+    right: 13px;
+    height: 34px;
+    width: 34px;
     cursor: pointer;
-    background: url(../ico.png) 0 -93px;
-    background-size: 28px 159px;
+    background: url(../icon_dialog.png) 0 -125px;
+    background-size: 34px 150px;
+}
+
+.dropdown {
+    position: fixed;
+    top: 15px;
+    display: inline-block;
+}
+
+.dropdown-icon {
+    position: fixed;
+    top: 14px;
+    left: 20px;
+    height: 30px;
+    width: 34px;
+    cursor: pointer;
+    background: url(../icon_dialog.png) 0 -115px;
+    background-size: 34px 170px;
+}
+
+.dropdown-button {
+    padding: 5px 40px;
+    font-size: 18px;
+    border-radius: 5px;
+    cursor: pointer;
+    outline: none;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.dropdown-content {
+    display: none;
+    position: absolute;
+    left: 12px;
+    background-color: #ffffff;
+    min-width: 100px;
+    box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.2);
+    z-index: 1;
+    border-radius: 5px;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.dropdown-content span {
+    color: #333;
+    padding: 8px 16px;
+    text-decoration: none;
+    display: block;
+    text-align: center;
+    font-size: 14px;
+}
+
+.dropdown-content span:hover {
+    background-color: #f1f1f1;
+}
+
+.dropdown-show {
+    display: block;
 }
 
 .close {
@@ -76,8 +132,8 @@
     height: 24px;
     width: 24px;
     cursor: pointer;
-    background: url(../ico.png) 0 -118px;
-    background-size: 28px 159px;
+    background: url(../icon_dialog.png) 0 -109px;
+    background-size: 34px 160px;
 }
 
 .messages {
@@ -100,7 +156,6 @@
 }
 
 .message p {
-    display: inline-block;
     margin: 0;
     border-radius: 10px;
     line-height: 1.4;
@@ -188,11 +243,12 @@
     padding: 10px;
     overflow: auto;
     background: #eee;
-    pointer-events: none;
+    pointer-events: auto;
     code {
         margin: 0;
         padding: 0;
         font-family: initial;
+        pointer-events: none;
     }
     code::after{
         content: '';
@@ -202,13 +258,13 @@
         padding: 0.5em;
         height: 24px;
         width: 24px;
-        background: url(../ico.png) 0 -140px;
-        background-size: 28px 159px;
+        background: url(../icon_dialog.png) 0 -75px;
+        background-size: 34px 150px;
         pointer-events: auto;
         cursor: pointer;
         opacity: 0.2;
     }
-    code::after:hover{
+    code:hover::after{
         opacity: 0.6;
     }
 }
@@ -388,7 +444,7 @@
     right: 11px;
     width: 15px;
     height: 15px;
-    background: url(../slider_icon.png) 0 -38px;
+    background: url(../icon_slider.png) 0 -38px;
     background-size: 34px 471px;
 }
 
@@ -398,7 +454,7 @@
     left: 13px;
     width: 14px;
     height: 12px;
-    background: url(../slider_icon.png) 0 -25px;
+    background: url(../icon_slider.png) 0 -25px;
     background-size: 34px 471px;
 }
 
@@ -409,6 +465,6 @@
     width: 34px;
     height: 34px;
     cursor: pointer;
-    background: url(../slider_icon.png) 0 -400px;
+    background: url(../icon_slider.png) 0 -400px;
     background-size: 34px 471px;
 }
