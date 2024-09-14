@@ -231,6 +231,8 @@ class SimpleDirectoryReader(ModuleBase):
 
         fs = fs or self._fs
         process_file = self._input_files
+        file_readers = {k: self._file_extractor.get(k, self.default_file_readers.get(k))
+                        for k in self._file_extractor.keys() | self.default_file_readers.keys()}
 
         if num_workers and num_workers >= 1:
             if num_workers > multiprocessing.cpu_count():
@@ -238,8 +240,7 @@ class SimpleDirectoryReader(ModuleBase):
                             "Setting `num_workers` down to the maximum CPU count.")
             with multiprocessing.get_context("spawn").Pool(num_workers) as p:
                 results = p.starmap(SimpleDirectoryReader.load_file,
-                                    zip(process_file, repeat(self._file_metadata),
-                                        repeat({**self._file_extractor, **self.default_file_readers}),
+                                    zip(process_file, repeat(self._file_metadata), repeat(file_readers),
                                         repeat(self._filename_as_id), repeat(self._encoding), repeat(self._Path),
                                         repeat(self._fs)))
                 documents = reduce(lambda x, y: x + y, results)
@@ -249,9 +250,8 @@ class SimpleDirectoryReader(ModuleBase):
             for input_file in process_file:
                 documents.extend(
                     SimpleDirectoryReader.load_file(input_file=input_file, file_metadata=self._file_metadata,
-                                                    file_extractor={**self._file_extractor, **self.default_file_readers},
-                                                    filename_as_id=self._filename_as_id, encoding=self._encoding,
-                                                    pathm=self._Path, fs=self._fs))
+                                                    file_extractor=file_readers, filename_as_id=self._filename_as_id,
+                                                    encoding=self._encoding, pathm=self._Path, fs=self._fs))
 
         return self._exclude_metadata(documents)
 

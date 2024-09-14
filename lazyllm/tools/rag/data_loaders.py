@@ -12,10 +12,10 @@ class DirectoryReader:
 
     def load_data(self, input_files: Optional[List[str]] = None) -> List[DocNode]:
         input_files = input_files or self._input_files
-
+        file_readers = {k: self._local_readers.get(k, self._global_readers.get(k))
+                        for k in self._local_readers.keys() | self._global_readers.keys()}
         LOG.info(f"DirectoryReader loads data, input files: {input_files}")
-        reader = SimpleDirectoryReader(input_files=input_files,
-                                       file_extractor={**self._local_readers, **self._global_readers})
+        reader = SimpleDirectoryReader(input_files=input_files, file_extractor=file_readers)
         nodes: List[DocNode] = []
         for doc in reader():
             doc.group = LAZY_ROOT_NAME

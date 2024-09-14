@@ -6,9 +6,19 @@ from lazyllm.tools.rag import SimpleDirectoryReader, DocNode
 
 class YmlReader(ReaderBase):
     def _load_data(self, file, extra_info=None, fs=None):
+        try:
+            import yaml
+        except ImportError:
+            raise ImportError("yaml is required to read YAML file: `pip install pyyaml`")
         with open(file, 'r') as f:
-            data = f.read()
+            data = yaml.safe_load(f)
+
         return [DocNode(text=data, metadata=extra_info or {})]
+
+def processYml(file, extra_info=None):
+    with open(file, 'r') as f:
+        data = f.read()
+    return [DocNode(text=data, metadata=extra_info or {})]
 
 class TestRagReader(object):
     @classmethod
@@ -37,8 +47,23 @@ class TestRagReader(object):
         print(len(docs))
         assert len(docs) == 13
 
-    def test_register_reader(self):
-        self.doc.add_reader("/**/*.yml", YmlReader)
+    def test_register_local_reader(self):
+        self.doc.add_reader("/**/*.yml", processYml)
         files = [os.path.join(self.datasets, "reader_test.yml")]
         docs = self.doc._impl._impl.directory_reader.load_data(input_files=files)
         assert len(docs) == 1
+
+    def test_register_global_reader(self):
+        Document.register_global_reader("/**/*.yml", processYml)
+        files = [os.path.join(self.datasets, "reader_test.yml")]
+        docs = self.doc._impl._impl.directory_reader.load_data(input_files=files)
+        assert len(docs) == 1
+
+    def test_register_local_and_global_reader(self):
+        Document.register_global_reader("/**/*.yml", processYml)
+        self.doc.add_reader("/**/*.yml", YmlReader)
+        files = [os.path.join(self.datasets, "reader_test.yml")]
+        try:
+            self.doc._impl._impl.directory_reader.load_data(input_files=files)
+        except ImportError as e:
+            assert e == "yaml is required to read YAML file: `pip install pyyaml`"
