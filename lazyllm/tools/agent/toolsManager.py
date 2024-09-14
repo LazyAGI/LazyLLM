@@ -116,6 +116,16 @@ if "tool" not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group("tool")
 
 class ToolManager(ModuleBase):
+    # make the descriptions more consistent with openai standards
+    type_any2openai = {
+        'str': 'string',
+        'int': 'number',
+        'float': 'number',
+        'bool': 'boolean',
+        'List': 'array',
+        'Dict': 'object',
+    }
+
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._tools = self._load_tools(tools)
@@ -184,7 +194,7 @@ class ToolManager(ModuleBase):
                     required_arg_list = []
                     for param in parsed.params:
                         args[param.arg_name] = {
-                            "type": param.type_name,
+                            "type": self.type_any2openai.get(param.type_name, param.type_name),
                             "description": param.description,
                         }
                         if not param.is_optional:
