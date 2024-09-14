@@ -100,3 +100,46 @@ class TestCommonGlobals(object):
         t = threading.Thread(target=self._normal_worker)
         t.start()
         t.join()
+
+
+class TestCommonRegistry(object):
+    def test_component_registry(self):
+        lazyllm.component_register.new_group('mygroup')
+
+        @lazyllm.component_register('mygroup')
+        def myfunc(input):
+            return input
+
+        assert lazyllm.mygroup.myfunc()(1) == 1
+        assert lazyllm.mygroup.myfunc(launcher=lazyllm.launchers.empty)(1) == 1
+
+        lazyllm.mygroup.remove('myfunc')
+        with pytest.raises(AttributeError):
+            lazyllm.mygroup.myfunc()(1)
+
+        @lazyllm.component_register('mygroup.subgroup')
+        def myfunc2(input):
+            return input
+
+        assert lazyllm.mygroup.subgroup.myfunc2()(1) == 1
+        assert lazyllm.mygroup.subgroup.myfunc2(launcher=lazyllm.launchers.empty)(1) == 1
+
+    def test_custom_registry(self):
+        class CustomClass(object, metaclass=lazyllm.common.registry.LazyLLMRegisterMetaClass):
+            def __call__(self, a, b):
+                return self.forward(a + 1, b * 2)
+
+            def forward(self, a, b):
+                raise NotImplementedError('forward is not implemented')
+
+        reg = lazyllm.Register(CustomClass, 'forward')
+        reg.new_group('custom')
+
+        @reg('custom')
+        def test(a, b): return a + b
+
+        @reg.forward('custom')
+        def test2(a, b): return a * b
+
+        assert lazyllm.custom.test()(1, 2) == 6
+        assert lazyllm.custom.test2()(1, 2) == 8
