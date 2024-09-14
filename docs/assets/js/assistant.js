@@ -11,79 +11,94 @@ document.addEventListener('DOMContentLoaded', function() {
     floatingIcon.id = 'floating-icon';
     floatingIcon.innerHTML = '<img src="/assets/logo.png" alt="icon">';
     document.body.appendChild(floatingIcon);
-    // 对话框
-    var placeholdervalue = 'What is LazyLLM ?';
-    
-    var dialogBox = document.createElement('div');
-    dialogBox.id = 'dialog-box';
-    dialogBox.style = 'display: none'
-    dialogBox.innerHTML = `
-    <div class="dialog-container">
-        <div id="dialog" class="dialog"> 
-            <div class="dropdown">
-                <div class="dropdown-icon"></div>
-                <button class="dropdown-button">stable</button>
-                <div class="dropdown-content" style="dispaly:none">
-                </div>
-            </div>
-            <div id="reset-dialog" class="reset"></div>
-            
-        </div>
-        <div id="messages" class="messages"> </div> 
-        <div class="input-container"> 
-            <input type="text" id="user-input" placeholder="${placeholdervalue}"> 
-            <button id="send-message">Send</button> 
-        </div>
-    </div>`
 
-    document.body.appendChild(dialogBox);
-    // 人机验证框
-    var captchaBox = document.createElement('div');
-    captchaBox.id = 'captcha-box';
-    captchaBox.style = "display: none";
-    captchaBox.innerHTML = `
-    <div id="close-captcha" class="close-captcha"></div>
-    <div id="captcha-container" class="container">
-        <div id="captcha"></div>
-    </div>
-    `
-    document.body.appendChild(captchaBox);
-
-    var copySucceed = document.createElement('div');
-    copySucceed.innerHTML = `
-    <span class='copy-success'>Copied to clipboard</span>
-    `
-
-    const sendMessageButton = document.getElementById('send-message');
-    const resetDialogButton = document.getElementById('reset-dialog');
-    const userInput = document.getElementById('user-input');
-    const messages = document.getElementById('messages');
-    const closeCaptchaButton = document.getElementById('close-captcha');
-    
-    const dropdownButton = document.querySelector('.dropdown-button');
-    const dropdownContent = document.querySelector('.dropdown-content');
-
+    var language;
     var userQuery = '';
     var isWaiting = false;
     var firstHello = true;
-    var currentVersion = 1002;
+    var dialogInit = true;
     var converter;
+    var placeholdervalue;
 
-    (function addversion() {
-        const versions = [{"text": "latest", "id": 1001}, {"text": "stable", "id": 1002}, {"text":"v0.2.2", "id": 1022}, {"text":"v0.2.3", "id":1023}];
-        versions.forEach(version => {
-            const link = document.createElement('span');
-            link.textContent = version.text;
-            link.addEventListener('click', function (event) {
-                event.preventDefault();
-                currentVersion = version.value;
-                dropdownButton.textContent = `${version.text}`;
-                dropdownContent.style.display = 'none';
-                event.stopPropagation();
+    var sendMessageButton;
+    var resetDialogButton;
+    var userInput;
+    var messages;
+    var dialogBox;
+    var captchaBox;
+    // 对话框
+    async function initDialogDom() {
+        let curVersion = 'stable';
+        let pathName = window.document.location.pathname;  
+        let paths = pathName.replace(/^\/|\/$/g, '').split('/');
+        language = paths[0];
+        curVersion = paths[1];
+
+        try {
+            // 发送请求到后端接口
+            const response = await fetch('http://api.lazyllm.top/checkVersion', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ version: curVersion }),
             });
-            dropdownContent.appendChild(link);
-        });
-    })();
+
+            // 处理响应
+            const data = await response.json();
+            curVersion = data.version;
+            placeholdervalue = data.suggestedQuestion;
+        } catch (error) {
+            curVersion = 'stable';
+            placeholdervalue = 'What is LazyLLM ?';
+        } finally {
+            let sendbtn = language=='zh-cn' ? '发送' : 'Send';
+            dialogBox = document.createElement('div');
+            dialogBox.id = 'dialog-box';
+            dialogBox.style = 'display: block'
+            dialogBox.innerHTML = `
+            <div class="dialog-container">
+                <div id="dialog" class="dialog"> 
+                    <div class="dropdown">
+                        <div class="dropdown-icon"></div>
+                        <button class="dropdown-button">${curVersion}</button>
+                    </div>
+                    <div id="reset-dialog" class="reset"></div>
+                </div>
+                <div id="messages" class="messages"> </div> 
+                <div class="input-container"> 
+                    <input type="text" id="user-input" placeholder="${placeholdervalue}"> 
+                    <button id="send-message">${sendbtn}</button> 
+                </div>
+            </div>`
+
+            document.body.appendChild(dialogBox);
+            dialogInit = false;
+            sendMessageButton = document.getElementById('send-message');
+            resetDialogButton = document.getElementById('reset-dialog')
+            userInput = document.getElementById('user-input');
+            messages = document.getElementById('messages');
+            bindEvents();
+            setTimeout(popHelloMessage, 1000);
+            userInput.focus();
+        }
+    }
+    
+    // 人机验证框
+    function initCaptchaDom(){
+        captchaBox = document.createElement('div');
+        captchaBox.id = 'captcha-box';
+        captchaBox.style = "display: none";
+        captchaBox.innerHTML = `
+        <div id="close-captcha" class="close-captcha"></div>
+        <div id="captcha-container" class="container">
+            <div id="captcha"></div>
+        </div>
+        `
+        document.body.appendChild(captchaBox);
+        let closeCaptchaButton = document.getElementById('close-captcha');
+        closeCaptchaButton.addEventListener('click', closeCaptcha);
+    }
 
     function setMessageState(state) {
         isWaiting = state;
@@ -107,20 +122,26 @@ document.addEventListener('DOMContentLoaded', function() {
         if (event.target === dialogBox) {
             dialogBox.style.display = 'none';
             window.removeEventListener('click', handleClickOutside);
-        } else {
-            dropdownContent.style.display = 'none';
         }
     }
 
     function switchDialobBoxDisplay() {
-        dialogBox.style.display = dialogBox.style.display==='none' ? 'block' : 'none';
+        if (dialogInit) {
+            initDialogDom();
+            initCaptchaDom();
+            converter = new showdown.Converter();
+            return;
+        } 
+
         if (dialogBox.style.display === 'none') {
-            captchaBox.style.display = 'none';
-            window.removeEventListener('click', handleClickOutside);
-        } else {
+            dialogBox.style.display = 'block';
             window.addEventListener('click', handleClickOutside);
             setTimeout(popHelloMessage, 1000);
             userInput.focus();
+        } else {
+            dialogBox.style.display = 'none';
+            captchaBox.style.display = 'none';
+            window.removeEventListener('click', handleClickOutside);
         }
     }
 
@@ -172,6 +193,19 @@ document.addEventListener('DOMContentLoaded', function() {
         messages.removeChild(messages.lastChild);
     }
 
+    function fetchWithTimeout(url, options = {}, timeout = 120000) {
+        // 创建一个新的 Promise 来处理超时逻辑
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Request timed out')), timeout)
+        );
+    
+        // 执行 fetch 请求
+        const fetchPromise = fetch(url, options);
+    
+        // 使用 Promise.race() 来处理 fetch 请求和超时逻辑
+        return Promise.race([fetchPromise, timeoutPromise]);
+    }
+
     async function getChatContent() {
         const botMessage = document.createElement('div');
         botMessage.classList.add('message');
@@ -183,49 +217,57 @@ document.addEventListener('DOMContentLoaded', function() {
                                 `;
         botMessage.children[1].addEventListener('click', function(e) {
             navigator.clipboard.writeText(e.target.innerText);
-            console.log(e)
         });
         messages.appendChild(botMessage);
         messages.scrollTop = messages.scrollHeight; // 滚动到最新消息
 
         try {
-            // 发送请求到后端接口
-            const response = await fetch('http://api.lazyllm.top/chat', {
-                method: 'POST',
+            fetchWithTimeout('http://api.lazyllm.top/chat', { 
+                method: 'POST',  
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ query: userQuery, token: sessionStorage.getItem('jigsaw_token'), version: currentVersion }),
-            });
-
-            // 处理响应
-            const data = await response.json();
-            converter = new showdown.Converter();
-            if (data.errmsg == 200){
-                botMessage.children[1].innerHTML = converter.makeHtml(data.reply);
-                
-                var source_box = document.createElement('div');
-                data.sources.forEach(source => {
-                    const link = document.createElement('a');
-                    link.textContent = source.text;
-                    link.href = source.href;
-                    link.target = '_black'
-                    source_box.appendChild(link);
-                });
-                botMessage.children[1].appendChild(source_box);
-                setMessageState(false);
-            } else if (data.errmsg == 102 || data.errmsg==103){
-                // 触发敏感词或无关问题
-                botMessage.children[1].innerHTML = converter.makeHtml(data.reply);
-                setMessageState(false);
-            } else if (data.errmsg == 101) {
-                // token 过期
-                messages.removeChild(messages.lastChild);
-                showCaptcha();
-            } else {
+                body: JSON.stringify({ query: userQuery, token: sessionStorage.getItem('jigsaw_token') }),})
+            .then(response => {
+                if (!response.ok) {
+                    botMessage.children[1].innerHTML = converter.makeHtml('请求失败');
+                    setMessageState(false);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.errmsg == 200){
+                    botMessage.children[1].innerHTML = converter.makeHtml(data.reply);
+                    
+                    var source_box = document.createElement('div');
+                    source_box.classList.add('source-box');
+                    data.sources.forEach(source => {
+                        const link = document.createElement('a');
+                        link.textContent = source.text;
+                        link.href = source.href;
+                        link.target = '_blank'
+                        source_box.appendChild(link);
+                    });
+                    botMessage.children[1].appendChild(source_box);
+                    setMessageState(false);
+                } else if (data.errmsg == 102 || data.errmsg==103){
+                    // 触发敏感词或无关问题
+                    botMessage.children[1].innerHTML = converter.makeHtml(data.reply);
+                    setMessageState(false);
+                } else if (data.errmsg == 101) {
+                    // token 过期
+                    messages.removeChild(messages.lastChild);
+                    showCaptcha();
+                } else {
+                    botMessage.children[1].innerHTML = converter.makeHtml("未能获取回复，请稍后再试");
+                    setMessageState(false);
+                }
+            })
+            .catch(error => {
+                // 500 404等
                 botMessage.children[1].innerHTML = converter.makeHtml("未能获取回复，请稍后再试");
                 setMessageState(false);
-            }
+            });
         } catch (error) {
             botMessage.children[1].innerHTML = converter.makeHtml('请求失败');
             setMessageState(false);
@@ -256,18 +298,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    sendMessageButton.addEventListener('click', sendMessage);
-    resetDialogButton.addEventListener('click', resetDialog);
-    closeCaptchaButton.addEventListener('click', closeCaptcha);
-    dropdownButton.addEventListener('click', function (event) {
-        dropdownContent.style.display = 'block';
-        event.stopPropagation();
-    });
     floatingIcon.addEventListener('click', switchDialobBoxDisplay);
-    userInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            sendMessage();
-        }
-    });
 
+    function bindEvents() {
+        window.addEventListener('click', handleClickOutside);
+        sendMessageButton.addEventListener('click', sendMessage);
+        resetDialogButton.addEventListener('click', resetDialog);
+        userInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    }
 });
