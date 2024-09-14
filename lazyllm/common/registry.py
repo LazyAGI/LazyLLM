@@ -124,7 +124,7 @@ def bind_to_instance(func):
 class Register(object):
     def __init__(self, base, fnames, template=reg_template):
         self.basecls = base
-        self.fnames = fnames
+        self.fnames = [fnames] if isinstance(fnames, str) else fnames
         self.template = template
         assert len(self.fnames) > 0, 'At least one function should be given for overwrite.'
 
