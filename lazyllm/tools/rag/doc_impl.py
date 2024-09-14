@@ -1,7 +1,7 @@
 import ast
 from collections import defaultdict
 from functools import wraps
-from typing import Callable, Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional, Set, Union
 from lazyllm import LOG, config, once_flag, call_once
 from lazyllm.common import LazyLlmRequest
 from .transform import FuncNodeTransform, SentenceSplitter, LLMParser
@@ -75,16 +75,18 @@ class DocImpl:
             chunk_overlap=12,
         )
 
-    def create_node_group(
-        self, name, transform: Callable, parent: str = LAZY_ROOT_NAME, **kwargs
-    ) -> None:
+    def create_node_group(self, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
+                          trans_node: bool = None, **kwargs) -> None:
         if name in self.node_groups:
             LOG.warning(f"Duplicate group name: {name}")
         if isinstance(transform, str):
             transform = _transmap[transform.lower()]
-        assert callable(transform), "transform should be callable"
+        if isinstance(transform, type):
+            assert trans_node is None, 'Is not allowed to set `trans_node` when transform is `type`'
+        else:
+            assert callable(transform), "transform should be callable"
         self.node_groups[name] = dict(
-            transform=transform, transform_kwargs=kwargs, parent_name=parent
+            transform=transform, trans_node=trans_node, transform_kwargs=kwargs, parent_name=parent
         )
 
     def add_files(self, input_files: List[str]) -> None:
@@ -137,11 +139,11 @@ class DocImpl:
                 "Please check the group name or add a new one through `create_node_group`."
             )
 
-        transform = node_group["transform"]
+        transform, trans_node = node_group["transform"], node_group["trans_node"]
         return (
             transform(**node_group["transform_kwargs"])
             if isinstance(transform, type)
-            else FuncNodeTransform(transform)
+            else FuncNodeTransform(transform, trans_node=trans_node)
         )
 
     def _dynamic_create_nodes(self, group_name: str, store: BaseStore) -> None:
@@ -150,7 +152,7 @@ class DocImpl:
         node_group = self.node_groups.get(group_name)
         transform = self._get_transform(group_name)
         parent_nodes = self._get_nodes(node_group["parent_name"], store)
-        nodes = transform(parent_nodes, group_name)
+        nodes = transform.batch_forward(parent_nodes, group_name)
         store.add_nodes(nodes)
         LOG.debug(f"building {group_name} nodes: {nodes}")
 
