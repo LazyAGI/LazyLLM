@@ -231,8 +231,9 @@ class SimpleDirectoryReader(ModuleBase):
 
         fs = fs or self._fs
         process_file = self._input_files
-        file_readers = {k: self._file_extractor.get(k, self.default_file_readers.get(k))
-                        for k in self._file_extractor.keys() | self.default_file_readers.keys()}
+        file_readers = self._file_extractor.copy()
+        for key, func in self.default_file_readers.items():
+            if key not in file_readers: file_readers[key] = func
 
         if num_workers and num_workers >= 1:
             if num_workers > multiprocessing.cpu_count():
