@@ -4,7 +4,7 @@ from functools import wraps
 from typing import Callable, Dict, List, Optional, Set, Union
 from lazyllm import LOG, config, once_flag, call_once
 from lazyllm.common import LazyLlmRequest
-from .transform import FuncNodeTransform, SentenceSplitter, LLMParser
+from .transform import NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser
 from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, BaseStore
 from .data_loaders import DirectoryReader
 from .index import DefaultIndex
@@ -83,6 +83,10 @@ class DocImpl:
             transform = _transmap[transform.lower()]
         if isinstance(transform, type):
             assert trans_node is None, 'Is not allowed to set `trans_node` when transform is `type`'
+            if not issubclass(type, NodeTransform):
+                LOG.warning('Please note! You are trying to use a completely custom transform class. The relationship '
+                            'between nodes may become unreliable, `Document.get_parent/get_child` functions and the '
+                            'target parameter of Retriever may have strange anomalies. Please use it at your own risk.')
         else:
             assert callable(transform), "transform should be callable"
         self.node_groups[name] = dict(
