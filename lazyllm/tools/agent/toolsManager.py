@@ -124,28 +124,22 @@ class ToolManager(ModuleBase):
 
     def _load_tools(self, tools: List[Union[str, Callable]]):
         tmp_register = lazyllm.Register(ModuleTool, ['apply'])
-        if "tmp_tool" not in LazyLLMRegisterMetaClass.all_clses:
-            tmp_register.new_group('tmp_tool')
+        tmp_register.new_group('tmp_tool')
 
         _tools = []
         for element in tools:
             if isinstance(element, str):
-                tool_all_str = element + "tool".capitalize()
-                t = lazyllm.tool.get(tool_all_str, None)
+                t = lazyllm.tool.get(element, None)
                 if t:
                     _tools.append(t())
                 else:
                     raise ValueError(f"Tool {element} has not been registered yet.")
             elif isinstance(element, Callable):
-                try:
-                    tmp_register('tmp_tool')(element)
-                except Exception:
-                    # TODO FIXME exception of duplicated element
-                    pass
-
-                tool_all_str = element.__name__ + "tmp_tool".capitalize()
-                t = lazyllm.tmp_tool.get(tool_all_str, None)
+                tmp_register('tmp_tool')(element)
+                t = lazyllm.tmp_tool.get(element.__name__, None)
                 _tools.append(t())
+                lazyllm.tmp_tool.remove(element.__name__)
+
         return _tools
 
     @property

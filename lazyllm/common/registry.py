@@ -68,6 +68,10 @@ class LazyDict(dict):
         assert isinstance(key, str), 'default key must be str'
         self._default = key
 
+    def get(self, key, value=None):
+        real_key = key + self.name
+        return super(__class__, self).get(real_key, value)
+
 
 group_template = '''\
 class LazyLLM{name}Base(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].base):
