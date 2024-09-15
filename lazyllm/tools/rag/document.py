@@ -1,7 +1,7 @@
 from functools import partial
 import os
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, TrainableModule
 
@@ -12,6 +12,8 @@ from .store import LAZY_ROOT_NAME
 
 
 class Document(ModuleBase):
+    _registered_file_reader: Dict[str, Callable] = {}
+
     def __init__(self, dataset_path: str, embed: Optional[TrainableModule] = None,
                  create_ui: bool = True, launcher=None):
         super().__init__()
@@ -21,15 +23,14 @@ class Document(ModuleBase):
                 dataset_path = defatult_path
         self._create_ui = create_ui
         launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
+        self._local_file_reader: Dict[str, Callable] = {}
 
+        self._impl = DocGroupImpl(dataset_path=dataset_path, embed=embed, local_readers=self._local_file_reader,
+                                  global_readers=self._registered_file_reader)
         if create_ui:
-            self._impl = DocGroupImpl(dataset_path=dataset_path, embed=embed)
             doc_manager = DocManager(self._impl)
             self.doc_server = ServerModule(doc_manager, launcher=launcher)
-
             self.web = DocWebModule(doc_server=self.doc_server)
-        else:
-            self._impl = DocGroupImpl(dataset_path=dataset_path, embed=embed)
 
     def forward(self, func_name: str, *args, **kwargs):
         if self._create_ui:
@@ -51,3 +52,17 @@ class Document(ModuleBase):
         self, name: str, transform: Callable, parent: str = LAZY_ROOT_NAME, **kwargs
     ) -> None:
         self._impl.create_node_group(name, transform, parent, **kwargs)
+
+    def add_reader(self, pattern: str, func: Callable):
+        self._local_file_reader[pattern] = func
+
+    @classmethod
+    def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
+        if func is not None:
+            cls._registered_file_reader[pattern] = func
+
+        def decorator(klass):
+            if callable(klass): cls._registered_file_reader[pattern] = klass
+            else: raise TypeError(f"The registered object {klass} is not a callable object.")
+            return klass
+        return decorator
