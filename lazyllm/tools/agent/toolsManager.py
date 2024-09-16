@@ -117,11 +117,28 @@ if "tool" not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group("tool")
 
 class ToolManager(ModuleBase):
+    type_any2openai = {
+        'str': 'string',
+        'int': 'integer',
+        'bool': 'boolean',
+    }
+
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._tools = self._load_tools(tools)
         self._format_tools()
+        self._name_of_tools_with_var_args = self._check_var_args_of_tools(self._tools)
         self._tools_desc = self._transform_to_openai_function()
+
+    def _check_var_args_of_tools(self, tool_list: List[Callable]) -> Set[str]:
+        ret_set = set()
+        for tool in tool_list:
+            for name, param in inspect.signature(tool).parameters.items():
+                if param.kind == inspect.Parameter.VAR_POSITIONAL or\
+                   param.kind == inspect.Parameter.VAR_KEYWORD:
+                    ret_set.add(tool.name)
+                    break
+        return ret_set
 
     def _load_tools(self, tools: List[Union[str, Callable]]):
         tmp_register = lazyllm.Register(ModuleTool, ['apply'])
@@ -163,10 +180,8 @@ class ToolManager(ModuleBase):
             return False
 
         # don't check parameters if this function contains '*args' or '**kwargs'
-        for name, param in inspect.signature(tool).parameters.items():
-            if param.kind == inspect.Parameter.VAR_POSITIONAL or\
-               param.kind == inspect.Parameter.VAR_KEYWORD:
-                return True
+        if tool.name in self._name_of_tools_with_var_args:
+            return True
 
         return tool.validate_parameters(tool_arguments)
 
@@ -174,31 +189,60 @@ class ToolManager(ModuleBase):
         if isinstance(self._tools, List):
             self._tool_call = {tool.name: tool for tool in self._tools}
 
+    def _to_openai_type(self, type_str):
+        lower_str = type_str.lower()
+
+        openai_type = self.type_any2openai.get(lower_str, None)
+        if openai_type:
+            return openai_type
+
+        if 'dict' in lower_str:
+            return 'object'
+        if 'list' in lower_str:
+            return 'object'
+        if 'tuple' in lower_str:
+            return 'object'
+
+        return 'string'
+
     def _transform_to_openai_function(self):
         if isinstance(self._tools, List):
             format_tools = []
             for tool in self._tools:
                 try:
-                    parsed = docstring_parser.parse(tool.description)
-                    tool_args = tool.args
-                    assert len(tool_args) == len(parsed.params), ("The parameter description and the actual "
-                                                                  "number of input parameters are inconsistent.")
-                    args_description = {}
-                    for param in parsed.params:
-                        args_description[param.arg_name] = param.description
                     args = {}
-                    for k, v in tool_args.items():
-                        val = copy.deepcopy(v)
-                        if "title" in val.keys():
-                            del val["title"]
-                        if "default" in val.keys():
-                            del val["default"]
-                        args[k] = val if val else {"type": "string"}
-                        if k in args_description:
-                            args[k].update({"description": args_description[k]})
-                        else:
-                            raise ValueError(f"The actual input parameter {k} is not found "
-                                             "in the parameter description.")
+                    required_arg_list = []
+                    parsed = docstring_parser.parse(tool.description)
+
+                    if tool.name in self._name_of_tools_with_var_args:
+                        for param in parsed.params:
+                            args[param.arg_name] = {
+                                "type": self._to_openai_type(param.type_name),
+                                "description": param.description,
+                            }
+                            if not param.is_optional:
+                                required_arg_list.append(param.arg_name)
+                    else:
+                        tool_args = tool.args
+                        assert len(tool_args) == len(parsed.params), ("The parameter description and the actual "
+                                                                    "number of input parameters are inconsistent.")
+                        args_description = {}
+                        for param in parsed.params:
+                            args_description[param.arg_name] = param.description
+
+                        for k, v in tool_args.items():
+                            print(f'debug!!!!! k [{k}] v [{v}]')
+                            val = copy.deepcopy(v)
+                            if "title" in val.keys():
+                                del val["title"]
+                            if "default" in val.keys():
+                                del val["default"]
+                            args[k] = val if val else {"type": "string"}
+                            if k in args_description:
+                                args[k].update({"description": args_description[k]})
+                            else:
+                                raise ValueError(f"The actual input parameter {k} is not found "
+                                                "in the parameter description.")
                     func = {
                         "type": "function",
                         "function": {
