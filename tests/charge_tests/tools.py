@@ -7,7 +7,8 @@ import wikipedia
 dummy_code = "def Dummy():\n    return None"
 
 get_current_weather_code = '''
-def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "fahrenheit", "celsius"] = 'fahrenheit'):
+def get_current_weather(location: str,
+                        unit: Literal["Fahrenheit", "Celsius", "fahrenheit", "celsius"] = 'fahrenheit'):
     """
     Get the current weather in a given location
 
@@ -39,7 +40,8 @@ get_current_weather_vars = {
 }
 
 @fc_register("tool")
-def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "fahrenheit", "celsius"] = 'fahrenheit'):
+def get_current_weather(location: str,
+                        unit: Literal["Fahrenheit", "Celsius", "fahrenheit", "celsius"] = 'fahrenheit'):
     """
     Get the current weather in a given location
 
@@ -57,14 +59,16 @@ def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "f
         return json.dumps({'location': location, 'temperature': 'unknown'})
 
 get_n_day_weather_forecast_code = '''
-def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["Fahrenheit", "Celsius", "celsius", "fahrenheit"] = 'fahrenheit'):
+def get_n_day_weather_forecast(location: str, num_days: int,
+                               unit: Literal["Fahrenheit", "Celsius", "celsius", "fahrenheit"] = 'fahrenheit'):
     """
     Get an N-day weather forecast
 
     Args:
         location (str): The city and state, e.g. San Francisco, CA.
         num_days (int): The number of days to forecast.
-        unit (Literal["Fahrenheit", "Celsius", 'celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+        unit (Literal["Fahrenheit", "Celsius", 'celsius', 'fahrenheit']):
+             The temperature unit to use. Infer this from the users location.
     """
     if 'tokyo' in location.lower():
         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
@@ -82,14 +86,16 @@ get_n_day_weather_forecast_vars = {
 }
 
 @fc_register("tool")
-def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["Fahrenheit", "Celsius", "celsius", "fahrenheit"] = 'fahrenheit'):
+def get_n_day_weather_forecast(location: str, num_days: int,
+                               unit: Literal["Fahrenheit", "Celsius", "celsius", "fahrenheit"] = 'fahrenheit'):
     """
     Get an N-day weather forecast
 
     Args:
         location (str): The city and state, e.g. San Francisco, CA.
         num_days (int): The number of days to forecast.
-        unit (Literal["Fahrenheit", "Celsius", 'celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+        unit (Literal["Fahrenheit", "Celsius", 'celsius', 'fahrenheit']):
+            The temperature unit to use. Infer this from the users location.
     """
     if 'tokyo' in location.lower():
         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
