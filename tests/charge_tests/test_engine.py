@@ -56,6 +56,7 @@ class TestEngine(object):
         engine = LightEngine()
         engine.start(nodes, edges, resources)
         assert '10' in engine.run("What's the weather like today in celsius in Tokyo.")
+        assert '22' in engine.run("What's the weather tomorrow in celsius in Paris.")
 
         nodes = [dict(id="2", kind="FunctionCall", name="re",
                       args=dict(llm='0', tools=['1003', '1004'], algorithm='React'))]
