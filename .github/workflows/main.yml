@@ -61,6 +61,7 @@ jobs:
         run: |
           set -ex
           cd ${{ env.CI_PATH }}
+          pip install -r tests/requirements.txt
           realpath .
           env | grep '^SCC'
           export LAZYLLM_SCO_ENV_NAME=lazyllm
