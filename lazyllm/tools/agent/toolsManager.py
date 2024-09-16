@@ -1,3 +1,4 @@
+import copy
 import json5 as json
 import lazyllm
 import docstring_parser
@@ -116,18 +117,6 @@ if "tool" not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group("tool")
 
 class ToolManager(ModuleBase):
-    # make the descriptions more consistent with openai standards
-    type_any2openai = {
-        'str': 'string',
-        'int': 'number',
-        'integer': 'number',
-        'float': 'number',
-        'bool': 'boolean',
-        'list': 'array',
-        'dict': 'object',
-        'tuple': 'object',
-    }
-
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._tools = self._load_tools(tools)
@@ -142,14 +131,14 @@ class ToolManager(ModuleBase):
         _tools = []
         for element in tools:
             if isinstance(element, str):
-                t = lazyllm.tool.get(element, None)
+                t = getattr(lazyllm.tool, element)
                 if t:
                     _tools.append(t())
                 else:
                     raise ValueError(f"Tool {element} has not been registered yet.")
             elif isinstance(element, Callable):
                 tmp_register('tmp_tool')(element)
-                t = lazyllm.tmp_tool.get(element.__name__, None)
+                t = getattr(lazyllm.tmp_tool, element.__name__)
                 _tools.append(t())
                 lazyllm.tmp_tool.remove(element.__name__)
 
@@ -191,16 +180,25 @@ class ToolManager(ModuleBase):
             for tool in self._tools:
                 try:
                     parsed = docstring_parser.parse(tool.description)
-
-                    args = {}
-                    required_arg_list = []
+                    tool_args = tool.args
+                    assert len(tool_args) == len(parsed.params), ("The parameter description and the actual "
+                                                                  "number of input parameters are inconsistent.")
+                    args_description = {}
                     for param in parsed.params:
-                        args[param.arg_name] = {
-                            "type": self.type_any2openai.get(param.type_name.lower(), param.type_name),
-                            "description": param.description,
-                        }
-                        if not param.is_optional:
-                            required_arg_list.append(param.arg_name)
+                        args_description[param.arg_name] = param.description
+                    args = {}
+                    for k, v in tool_args.items():
+                        val = copy.deepcopy(v)
+                        if "title" in val.keys():
+                            del val["title"]
+                        if "default" in val.keys():
+                            del val["default"]
+                        args[k] = val if val else {"type": "string"}
+                        if k in args_description:
+                            args[k].update({"description": args_description[k]})
+                        else:
+                            raise ValueError(f"The actual input parameter {k} is not found "
+                                             "in the parameter description.")
                     func = {
                         "type": "function",
                         "function": {
@@ -209,7 +207,7 @@ class ToolManager(ModuleBase):
                             "parameters": {
                                 "type": "object",
                                 "properties": args,
-                                "required": required_arg_list,
+                                "required": tool.get_params_schema().model_json_schema().get("required", [])
                             }
                         }
                     }
