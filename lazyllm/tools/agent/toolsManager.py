@@ -231,7 +231,6 @@ class ToolManager(ModuleBase):
                             args_description[param.arg_name] = param.description
 
                         for k, v in tool_args.items():
-                            print(f'debug!!!!! k [{k}] v [{v}]')
                             val = copy.deepcopy(v)
                             if "title" in val.keys():
                                 del val["title"]
