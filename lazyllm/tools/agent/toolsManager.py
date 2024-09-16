@@ -141,9 +141,8 @@ class ToolManager(ModuleBase):
         return ret_set
 
     def _load_tools(self, tools: List[Union[str, Callable]]):
-        tmp_register = lazyllm.Register(ModuleTool, ['apply'])
         if "tmp_tool" not in LazyLLMRegisterMetaClass.all_clses:
-            tmp_register.new_group('tmp_tool')
+            register.new_group('tmp_tool')
 
         _tools = []
         for element in tools:
@@ -151,7 +150,7 @@ class ToolManager(ModuleBase):
                 _tools.append(getattr(lazyllm.tool, element)())
             elif isinstance(element, Callable):
                 # just to convert `element` to the internal type in `Register`
-                tmp_register('tmp_tool')(element)
+                register('tmp_tool')(element)
                 _tools.append(getattr(lazyllm.tmp_tool, element.__name__)())
                 lazyllm.tmp_tool.remove(element.__name__)
 
