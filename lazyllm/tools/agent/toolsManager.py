@@ -205,7 +205,7 @@ class ToolManager(ModuleBase):
 
         return 'string'
 
-    def _transform_to_openai_function(self):
+    def _transform_to_openai_function(self): # noqa C901
         if isinstance(self._tools, List):
             format_tools = []
             for tool in self._tools:
@@ -225,7 +225,7 @@ class ToolManager(ModuleBase):
                     else:
                         tool_args = tool.args
                         assert len(tool_args) == len(parsed.params), ("The parameter description and the actual "
-                                                                    "number of input parameters are inconsistent.")
+                                                                      "number of input parameters are inconsistent.")
                         args_description = {}
                         for param in parsed.params:
                             args_description[param.arg_name] = param.description
@@ -241,7 +241,7 @@ class ToolManager(ModuleBase):
                                 args[k].update({"description": args_description[k]})
                             else:
                                 raise ValueError(f"The actual input parameter {k} is not found "
-                                                "in the parameter description.")
+                                                 "in the parameter description.")
                     func = {
                         "type": "function",
                         "function": {
