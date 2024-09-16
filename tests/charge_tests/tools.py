@@ -1,4 +1,4 @@
-import json                     #
+import json
 import lazyllm
 from typing import Literal
 from lazyllm import fc_register
@@ -7,7 +7,7 @@ import wikipedia
 dummy_code = "def Dummy():\n    return None"
 
 get_current_weather_code = '''
-def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "C", "fahrenheit", "celsius"] = 'fahrenheit'):  # noqa E501
+def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "C", "fahrenheit", "celsius"] = 'fahrenheit'):
     """
     Get the current weather in a given location
 
@@ -23,7 +23,7 @@ def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "C
         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
     else:
         return json.dumps({'location': location, 'temperature': 'unknown'})
-'''
+'''  # noqa E501
 
 get_current_weather_doc = '''
 Get the current weather in a given location
@@ -57,14 +57,14 @@ def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "C
         return json.dumps({'location': location, 'temperature': 'unknown'})
 
 get_n_day_weather_forecast_code = '''
-def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["Fahrenheit", "Celsius", "C", "celsius", "fahrenheit"] = 'fahrenheit'):  # noqa E501
+def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["Fahrenheit", "Celsius", "C", "celsius", "fahrenheit"] = 'fahrenheit'):
     """
     Get an N-day weather forecast
 
     Args:
         location (str): The city and state, e.g. San Francisco, CA.
         num_days (int): The number of days to forecast.
-        unit (Literal["Fahrenheit", "Celsius", "C", 'celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.  # noqa E501
+        unit (Literal["Fahrenheit", "Celsius", "C", 'celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
     """
     if 'tokyo' in location.lower():
         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
@@ -74,7 +74,7 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["Fahr
         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius', "num_days": num_days})
     else:
         return json.dumps({'location': location, 'temperature': 'unknown'})
-'''
+'''  # noqa E501
 
 get_n_day_weather_forecast_vars = {
     'Literal': Literal,
@@ -82,15 +82,16 @@ get_n_day_weather_forecast_vars = {
 }
 
 @fc_register("tool")
-def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["Fahrenheit", "Celsius", "C", "celsius", "fahrenheit"] = 'fahrenheit'):  # noqa E501
+def get_n_day_weather_forecast(location: str, num_days: int,
+                               unit: Literal["Fahrenheit", "Celsius", "C", "celsius", "fahrenheit"] = 'fahrenheit'):
     """
     Get an N-day weather forecast
 
     Args:
         location (str): The city and state, e.g. San Francisco, CA.
         num_days (int): The number of days to forecast.
-        unit (Literal["Fahrenheit", "Celsius", "C", 'celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.  # noqa E501
-    """
+        unit (Literal["Fahrenheit", "Celsius", "C", 'celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+    """  # noqa E501
     if 'tokyo' in location.lower():
         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
     elif 'san francisco' in location.lower():

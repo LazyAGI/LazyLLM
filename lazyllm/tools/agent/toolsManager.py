@@ -141,23 +141,14 @@ class ToolManager(ModuleBase):
         return ret_set
 
     def _load_tools(self, tools: List[Union[str, Callable]]):
-        tmp_register = lazyllm.Register(ModuleTool, ['apply'])
-        if "tmp_tool" not in LazyLLMRegisterMetaClass.all_clses:
-            tmp_register.new_group('tmp_tool')
-
         _tools = []
         for element in tools:
             if isinstance(element, str):
-                t = getattr(lazyllm.tool, element)
-                if t:
-                    _tools.append(t())
-                else:
-                    raise ValueError(f"Tool {element} has not been registered yet.")
+                _tools.append(getattr(lazyllm.tool, element)())
             elif isinstance(element, Callable):
-                tmp_register('tmp_tool')(element)
-                t = getattr(lazyllm.tmp_tool, element.__name__)
-                _tools.append(t())
-                lazyllm.tmp_tool.remove(element.__name__)
+                register('tool')(element)  # just to convert `element` to internal type in `Register`
+                _tools.append(getattr(lazyllm.tool, element.__name__)())
+                lazyllm.tool.remove(element.__name__)
 
         return _tools
 

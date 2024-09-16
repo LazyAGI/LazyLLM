@@ -251,7 +251,6 @@ class OnlineChatModuleBase(ModuleBase):
         if len(self._model_optional_params) > 0:
             data.update(self._model_optional_params)
 
-        print(f'debug!!! right before post, json -> [{json.dumps(data,indent=4)}]')
         with requests.post(self._url, json=data, headers=self._headers, stream=self._stream) as r:
             if r.status_code != 200:  # request error
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
