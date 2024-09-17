@@ -11,7 +11,7 @@ from lazyllm.tools import FunctionCall, FunctionCallAgent, ReactAgent, PlanAndSo
 from lazyllm.launcher import cleanup
 
 @fc_register("tool")
-def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 'fahrenheit'):
+def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "fahrenheit", "celsius"] = 'fahrenheit'):
     """
     Get the current weather in a given location
 
@@ -31,14 +31,14 @@ def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 
         return json.dumps({'location': location, 'temperature': 'unknown'})
 
 @fc_register("tool")
-def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"] = 'fahrenheit'):
+def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["Celsius", "Fahrenheit", "celsius", "fahrenheit"] = 'fahrenheit'):  # noqa E501
     """
     Get an N-day weather forecast
 
     Args:
         location (str): The city and state, e.g. San Francisco, CA.
         num_days (int): The number of days to forecast.
-        unit (Literal['celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+        unit (Literal['Celsius', 'Fahrenheit', 'celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.  # noqa E501
     """
     if 'tokyo' in location.lower():
         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})

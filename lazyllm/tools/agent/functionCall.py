@@ -4,7 +4,7 @@ from .functionCallFormatter import FunctionCallFormatter
 from lazyllm import pipeline, ifs, loop, globals, bind, LOG
 import json5 as json
 from .toolsManager import ToolManager
-from typing import List, Any, Dict, Union
+from typing import List, Any, Dict, Union, Callable
 
 
 def function_call_hook(input: Dict[str, Any], history: List[Dict[str, Any]], tools: List[Dict[str, Any]], label: Any):
@@ -34,7 +34,7 @@ FC_PROMPT_ONLINE = ("Don't make assumptions about what values to plug into funct
                     "Ask for clarification if a user request is ambiguous.\n")
 
 class FunctionCall(ModuleBase):
-    def __init__(self, llm, tools: List[str], *, return_trace: bool = False, _prompt: str = None):
+    def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False, _prompt: str = None):
         super().__init__(return_trace=return_trace)
         if isinstance(llm, OnlineChatModule) and llm.series == "QWEN" and llm._stream is True:
             raise ValueError("The qwen platform does not currently support stream function calls.")

@@ -1,9 +1,8 @@
 from lazyllm.engine import LightEngine
 import pytest
-from . import tools as _  # noqa F401
 from .utils import SqlEgsData, get_sql_init_keywords
 from lazyllm.tools import SqlManager
-
+from .tools import * # noqa F403
 
 class TestEngine(object):
 
@@ -14,9 +13,12 @@ class TestEngine(object):
 
     def test_intent_classifier(self):
         resources = [dict(id="0", kind="OnlineLLM", name="llm", args=dict(source=None))]
-        music = dict(id='1', kind='Code', name='m1', args='def music(x): return f"Music get {x}"')
-        draw = dict(id='2', kind='Code', name='m2', args='def draw(x): return f"Draw get {x}"')
-        chat = dict(id='3', kind='Code', name='m3', args='def chat(x): return f"Chat get {x}"')
+        music = dict(id='1', kind='Code', name='m1',
+                     args=dict(code='def music(x): return f"Music get {x}"'))
+        draw = dict(id='2', kind='Code', name='m2',
+                    args=dict(code='def draw(x): return f"Draw get {x}"'))
+        chat = dict(id='3', kind='Code', name='m3',
+                    args=dict(code='def chat(x): return f"Chat get {x}"'))
         nodes = [dict(id="4", kind="Intention", name="int1",
                       args=dict(base_model="0", nodes={'music': music, 'draw': draw, 'chat': chat}))]
         edges = [dict(iid="__start__", oid="4"), dict(iid="4", oid="__end__")]
@@ -35,24 +37,36 @@ class TestEngine(object):
         assert '22' in engine.run([dict(name='get_current_weather', arguments=dict(location='Paris'))])[0]
 
     def test_fc(self):
-        resources = [dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm'))]
+        resources = [
+            dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
+            dict(id="1001", kind="Code", name="get_current_weather",
+                 args=(dict(code=get_current_weather_code, # noqa F405
+                            vars_for_code=get_current_weather_vars))), # noqa F405
+            dict(id="1002", kind="Code", name="get_n_day_weather_forecast",
+                 args=dict(code=get_n_day_weather_forecast_code, # noqa F405
+                           vars_for_code=get_current_weather_vars)), # noqa F405
+            dict(id="1003", kind="Code", name="multiply_tool",
+                 args=dict(code=multiply_tool_code)), # noqa F405
+            dict(id="1004", kind="Code", name="add_tool",
+                 args=dict(code=add_tool_code)), # noqa F405
+        ]
         nodes = [dict(id="1", kind="FunctionCall", name="fc",
-                      args=dict(llm='0', tools=['get_current_weather', 'get_n_day_weather_forecast',
-                                                'multiply_tool', 'add_tool']))]
+                      args=dict(llm='0', tools=['1001', '1002', '1003', '1004']))]
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
         assert '10' in engine.run("What's the weather like today in celsius in Tokyo.")
+        assert '22' in engine.run("What will the temperature be in degrees Celsius in Paris tomorrow?")
 
         nodes = [dict(id="2", kind="FunctionCall", name="re",
-                      args=dict(llm='0', tools=['multiply_tool', 'add_tool'], algorithm='React'))]
+                      args=dict(llm='0', tools=['1003', '1004'], algorithm='React'))]
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
         assert '5440' in engine.run("Calculate 20*(45+23)*4, step by step.")
 
         nodes = [dict(id="3", kind="FunctionCall", name="re",
-                      args=dict(llm='0', tools=['multiply_tool', 'add_tool'], algorithm='PlanAndSolve'))]
+                      args=dict(llm='0', tools=['1003', '1004'], algorithm='PlanAndSolve'))]
         edges = [dict(iid="__start__", oid="3"), dict(iid="3", oid="__end__")]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
@@ -135,3 +149,26 @@ class TestEngine(object):
         # 3. Release: delete data and table from database
         for table_name in SqlEgsData.TEST_TABLES:
             rt, err_msg = tmp_sql_manager._drop_table_by_name(table_name)
+
+    def test_register_tools(self):
+        resources = [
+            dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
+            dict(id="3", kind="HttpTool", name="weather_12345",
+                 args=dict(code_str=get_current_weather_code, # noqa F405
+                           vars_for_code=get_current_weather_vars, # noqa F405
+                           doc=get_current_weather_doc)), # noqa F405
+            dict(id="2", kind="HttpTool", name="dummy_111",
+                 args=dict(code_str=dummy_code, doc='dummy')), # noqa F405
+        ]
+        # `tools` in `args` is a list of ids in `resources`
+        nodes = [dict(id="1", kind="FunctionCall", name="fc",
+                      args=dict(llm='0', tools=['3', '2']))]
+        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
+        engine = LightEngine()
+        # TODO handle duplicated node id
+        engine.start(nodes, edges, resources)
+
+        city_name = 'Tokyo'
+        unit = 'Celsius'
+        ret = engine.run(f"What is the temperature in {city_name} today in {unit}?")
+        assert city_name in ret and unit in ret and '10' in ret

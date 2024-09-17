@@ -1,12 +1,11 @@
-from typing import List, Callable, Dict, Type, Optional, Union
+from typing import List, Callable, Dict, Type, Optional, Union, Any
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier
+from lazyllm.common import compile_func
 from .node import all_nodes, Node
-import re
-import ast
 import inspect
-
+import functools
 
 class CodeBlock(object):
     def __init__(self, code):
@@ -180,13 +179,8 @@ def make_subapp(nodes: List[dict], edges: List[dict], resources: List[dict] = []
 
 # Note: It will be very dangerous if provided to C-end users as a SAAS service
 @NodeConstructor.register('Code')
-def make_code(code):
-    fname = re.search(r'def\s+(\w+)\s*\(', code).group(1)
-    module = ast.parse(code)
-    code = compile(module, filename="<ast>", mode="exec")
-    local_dict = {}
-    exec(code, {}, local_dict)
-    return local_dict[fname]
+def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
+    return compile_func(code, vars_for_code)
 
 
 def _build_pipeline(nodes):
@@ -275,12 +269,44 @@ class JoinFormatter(lazyllm.components.FormatterBase):
 def make_join_formatter(type='sum', names=None, symbol=None):
     return JoinFormatter(type, names=names, symbol=symbol)
 
+def return_a_wrapper_func(func):
+    @functools.wraps(func)
+    def wrapper_func(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper_func
+
 @NodeConstructor.register('FunctionCall')
 def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
-    return f(Engine().build_node(llm).func, tools)
+
+    callable_list = []
+    for rid in tools:  # `tools` is a list of ids in engine's resources
+        node = Engine().build_node(rid)
+        func = node.func
+        wrapper_func = return_a_wrapper_func(func)
+        wrapper_func.__name__ = node.name
+        callable_list.append(wrapper_func)
+
+    return f(Engine().build_node(llm).func, callable_list)
+
+@NodeConstructor.register('HttpTool')
+def make_http_tool(method: Optional[str] = None,
+                   url: Optional[str] = None,
+                   params: Optional[Dict[str, str]] = None,
+                   headers: Optional[Dict[str, str]] = None,
+                   body: Optional[str] = None,
+                   timeout: int = 10,
+                   proxies: Optional[Dict[str, str]] = None,
+                   code_str: Optional[str] = None,
+                   vars_for_code: Optional[Dict[str, Any]] = None,
+                   doc: Optional[str] = None):
+    instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies,
+                                      code_str, vars_for_code)
+    if doc:
+        instance.__doc__ = doc
+    return instance
 
 @NodeConstructor.register('SharedLLM')
 def make_shared_llm(llm: str, prompt: Optional[str] = None):

@@ -11,6 +11,7 @@ from .agent import (
 )
 from .classifier import IntentClassifier
 from .sql import SQLiteManger, SqlManager, SqlCall
+from .tools.http_tool import HttpTool
 
 __all__ = [
     "Document",
@@ -30,4 +31,5 @@ __all__ = [
     "SQLiteManger",
     "SqlManager",
     "SqlCall",
+    "HttpTool",
 ]
