@@ -11,7 +11,7 @@ import nltk
 import tiktoken
 
 from .store import DocNode, MetadataMode
-from lazyllm import LOG, TrainableModule
+from lazyllm import LOG, TrainableModule, ThreadPoolExecutor
 
 
 def build_nodes_from_splits(
@@ -47,20 +47,28 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
 
 
 class NodeTransform(ABC):
+    def __init__(self, num_workers: int = 0):
+        self._number_workers = num_workers
 
     def batch_forward(
         self, documents: Union[DocNode, List[DocNode]], node_group: str, **kwargs
     ) -> List[DocNode]:
-        documents = documents if isinstance(documents, list) else [documents]
-        all_nodes: List[DocNode] = []
-        for node in documents:
+        documents: List[DocNode] = documents if isinstance(documents, (tuple, list)) else [documents]
+
+        def impl(node):
             splits = self(node, **kwargs)
             for s in splits:
                 s.parent = node
                 s.group = node_group
             node.children[node_group] = splits
-            all_nodes.extend(splits)
-        return all_nodes
+            return splits
+
+        if self._number_workers > 0:
+            pool = ThreadPoolExecutor(max_workers=self._number_workers)
+            fs = [pool.submit(impl, node) for node in documents]
+            return sum([f.result() for f in fs], [])
+        else:
+            return sum([impl(node) for node in documents], [])
 
     @abstractmethod
     def transform(self, document: DocNode, **kwargs) -> List[str]:

@@ -59,7 +59,7 @@ class Retriever(ModuleBase, _PostProcess):
     def forward(self, query: str) -> Union[List[DocNode], str]:
         nodes = []
         for doc in self._docs:
-            nodes.extends(doc.forward(func_name="retrieve", query=query, group_name=self._group_name,
-                                      similarity=self._similarity, similarity_cut_off=self._similarity_cut_off,
-                                      index=self._index, topk=self._topk, similarity_kws=self._similarity_kw))
+            nodes.extend(doc.forward(func_name="retrieve", query=query, group_name=self._group_name,
+                                     similarity=self._similarity, similarity_cut_off=self._similarity_cut_off,
+                                     index=self._index, topk=self._topk, similarity_kws=self._similarity_kw))
         return self._post_process(nodes)
