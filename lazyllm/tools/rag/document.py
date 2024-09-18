@@ -12,14 +12,28 @@ from .store import LAZY_ROOT_NAME
 
 
 class _DynamicDescriptor:
+    class Impl:
+        def __init__(self, func, instance, owner):
+            self.func = func
+            self.instance = instance
+            self.owner = owner
+
+        def __call__(self, *args, **kw):
+            return self.func(self.instance, *args, **kw) if self.instance else self.func(self.owner, *args, **kw)
+
+        @property
+        def __doc__(self): return self.func.__doc__
+
+        @__doc__.setter
+        def __doc__(self, value): self.func.__doc__ = value
+
+        def __repr__(self): return repr(self.func)
+
     def __init__(self, func):
         self.func = func
 
     def __get__(self, instance, owner):
-        if instance is not None:
-            return lambda *args, **kwargs: self.func(instance, *args, **kwargs)
-        else:
-            return lambda *args, **kwargs: self.func(owner, *args, **kwargs)
+        return _DynamicDescriptor.Impl(self.func, instance, owner)
 
 
 class Document(ModuleBase):
