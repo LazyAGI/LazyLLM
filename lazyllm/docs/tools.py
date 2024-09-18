@@ -53,7 +53,7 @@ Generate a node group produced by the specified rule.
 Args:
     name (str): The name of the node group.
     transform (Callable): The transformation rule that converts a node into a node group. The function prototype is `(DocNode, group_name, **kwargs) -> List[DocNode]`. Currently built-in options include [SentenceSplitter][lazyllm.tools.SentenceSplitter], and users can define their own transformation rules.
-    trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`. 
+    trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`.
     parent (str): The node that needs further transformation. The series of new nodes obtained after transformation will be child nodes of this parent node. If not specified, the transformation starts from the root node.
     kwargs: Parameters related to the specific implementation.
 ''')
@@ -427,7 +427,7 @@ FunctionCall是单轮工具调用类，如果LLM中的信息不足以回答用�
 
 Args:
     llm (ModuleBase): 要使用的LLM可以是TrainableModule或OnlineChatModule。
-    tools (List[str]): LLM使用的工具名称列表。
+    tools (List[Union[str, Callable]]): LLM使用的工具名称或者 Callable 列表
 ''')
 
 add_english_doc('FunctionCall', '''\
@@ -435,7 +435,7 @@ FunctionCall is a single-round tool call class. If the information in LLM is not
 
 Args:
     llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
-    tools (List[str]): A list of tool names for LLM to use.
+    tools (List[Union[str, Callable]]): A list of tool names for LLM to use.
 ''')
 
 add_example('FunctionCall', """\

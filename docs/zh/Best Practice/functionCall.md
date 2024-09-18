@@ -52,6 +52,7 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 ```
 
 为了使大模型可以调用相应的函数以及生成对应的参数，在定义函数时，需要给函数参数添加注解，以及给函数增加功能描述，以便于让大模型知道该函数的功能及什么时候可以调用该函数。
+
 这是第一步，定义工具。第二步我们需要把定义好的工具注册进 LazyLLM 中，以便后面大模型时候时不用再传输函数了。注册方式如下：
 
 ```python
@@ -65,7 +66,36 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 	...
 ```
 
-注册方式很简单，导入 `fc_register` 之后，直接在定义好的函数名之上按照装饰器的方式进行添加即可。这里需要注意，添加的时候要指定默认分组 `tool`。
+注册方式很简单，导入 `fc_register` 之后，直接在定义好的函数名之上按照装饰器的方式进行添加即可。这里需要注意，添加的时候要指定默认分组 `tool`，默认注册的工具名称是所注册的函数名称。
+
+我们也可以把工具注册为不同的名字，在注册的时候填入第二个参数即可，例如：
+
+```python
+from lazyllm.tools import fc_register
+
+def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]="fahrenheit"):
+    ...
+
+fc_register("tool")(get_current_weather, "another_get_current_weather")
+```
+
+这样上面的函数 `get_current_weather` 就被注册成了名为 `another_get_current_weather` 的工具。
+
+如果我们不打算把工具注册为全局可见，也可以在调用 FunctionCall 的时候直接传入工具本身，像这样：
+
+```python
+import lazyllm
+from lazyllm.tools import FunctionCall
+llm = lazyllm.OnlineChatModule()
+tools = [get_current_weather, get_n_day_weather_forecast]
+fc = FunctionCall(llm, tools)
+query = "What's the weather like today in celsius in Tokyo and Paris."
+ret = fc(query)
+print(f"ret: {ret}")
+```
+
+上面的代码把我们之前定义的两个函数作为工具直接传入，它们只在生成的 `fc` 实例中可见，如果在 `fc` 外通过名称获取这两个工具将会报错。
+
 然后我们就可以定义模型，并使用 [FunctionCall][lazyllm.tools.agent.FunctionCall] 了，示例如下：
 
 ```python
