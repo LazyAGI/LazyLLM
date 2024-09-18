@@ -68,7 +68,9 @@ class NodeTransform(ABC):
 
     def __call__(self, node: DocNode, **kwargs: Any) -> List[DocNode]:
         # Parent and child should not be set here.
-        return [DocNode(text=chunk) for chunk in self.transform(node, **kwargs) if chunk]
+        results = self.transform(node, **kwargs)
+        if isinstance(results, (DocNode, str)): results = [results]
+        return [DocNode(text=chunk) if isinstance(chunk, str) else chunk for chunk in results if chunk]
 
 
 class SentenceSplitter(NodeTransform):
@@ -270,9 +272,7 @@ class FuncNodeTransform(NodeTransform):
         self._func, self._trans_node = func, trans_node
 
     def transform(self, node: DocNode, **kwargs) -> List[str]:
-        result = self._func(node if self._trans_node else node.get_text())
-        text_splits = [result] if isinstance(result, (str, DocNode)) else result
-        return text_splits
+        return self._func(node if self._trans_node else node.get_text())
 
 
 en_prompt_template = """

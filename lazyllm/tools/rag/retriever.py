@@ -1,5 +1,6 @@
 from lazyllm import ModuleBase, pipeline
 from .store import DocNode
+from .document import Document
 from typing import List, Optional, Union
 
 class _PostProcess(object):
@@ -42,7 +43,7 @@ class Retriever(ModuleBase, _PostProcess):
         **kwargs,
     ):
         super().__init__()
-        self._doc = doc
+        self._docs = [doc] if isinstance(doc, Document) else doc
         self._group_name = group_name
         self._similarity = similarity  # similarity function str
         self._similarity_cut_off = similarity_cut_off
@@ -55,14 +56,9 @@ class Retriever(ModuleBase, _PostProcess):
         return pipeline(lambda *a: self('Test Query'))
 
     def forward(self, query: str) -> Union[List[DocNode], str]:
-        nodes = self._doc.forward(
-            func_name="retrieve",
-            query=query,
-            group_name=self._group_name,
-            similarity=self._similarity,
-            similarity_cut_off=self._similarity_cut_off,
-            index=self._index,
-            topk=self._topk,
-            similarity_kws=self._similarity_kw,
-        )
+        nodes = []
+        for doc in self._docs:
+            nodes.extends(doc.forward(func_name="retrieve", query=query, group_name=self._group_name,
+                                      similarity=self._similarity, similarity_cut_off=self._similarity_cut_off,
+                                      index=self._index, topk=self._topk, similarity_kws=self._similarity_kw))
         return self._post_process(nodes)
