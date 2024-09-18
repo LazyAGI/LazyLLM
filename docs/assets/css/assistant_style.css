@@ -1,0 +1,444 @@
+#floating-icon {
+    position: fixed;
+    bottom: 100px;
+    right: 40px;
+    width: 105px;
+    height: 100px;
+    border-radius: 50%;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.3);
+    background-color: #ffffff;
+    z-index: 1000;
+}
+
+#floating-icon img {
+    margin: 10%;
+    width: 80%;
+    height: 80%;
+}
+
+#floating-icon:hover{
+    cursor: pointer;
+    opacity: 0.9;
+}
+
+#dialog-box {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+}
+
+.dialog-container {
+    position: fixed;
+    bottom: 50%;
+    left: 50%;
+    width: 800px;
+    transform: translateX(-50%) translateY(50%);
+    padding: 20px;
+    background-color: white;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+    z-index: 1000;
+}
+
+.dialog-container h3 {
+    margin-top: 0;
+}
+
+.dialog{
+    margin: 5px;
+    height: 20px;
+}
+
+.dialog h2 {
+    margin: 0 0 10px;
+    font-size: 18px;
+    color: #333;
+}
+
+.reset {
+    position: fixed;
+    top: 15px;
+    right: 13px;
+    height: 34px;
+    width: 34px;
+    cursor: pointer;
+    background: url(../icon_dialog.png) 0 -125px;
+    background-size: 34px 150px;
+}
+
+.dropdown {
+    position: fixed;
+    top: 15px;
+    display: inline-block;
+}
+
+.dropdown-icon {
+    position: fixed;
+    top: 14px;
+    left: 20px;
+    height: 30px;
+    width: 34px;
+    cursor: pointer;
+    background: url(../icon_dialog.png) 0 -115px;
+    background-size: 34px 170px;
+}
+
+.dropdown-button {
+    padding: 5px 40px;
+    font-size: 18px;
+    border-radius: 5px;
+    cursor: pointer;
+    outline: none;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.close {
+    position: fixed;
+    top: 15px;
+    right: 20px;
+    margin-bottom: 10px;
+    height: 24px;
+    width: 24px;
+    cursor: pointer;
+    background: url(../icon_dialog.png) 0 -109px;
+    background-size: 34px 160px;
+}
+
+.messages {
+    height: 500px;
+    overflow-y: auto;
+    /* border: 1px solid #ddd; */
+    padding: 10px;
+    margin-bottom: 10px;
+    background-color: rgb(249, 250, 251);
+    border-radius: 8px;
+}
+
+.message {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 10px;
+    padding: 10px;
+    border-radius: 12px;
+    font-size: 14px;
+}
+
+.message p {
+    margin: 0;
+    border-radius: 10px;
+    line-height: 1.4;
+    color: #000;
+    font-size: 15px;
+}
+
+.message.received p {
+    padding: 10px;
+}
+
+.message.sent p {
+    padding: 10px;
+    margin-left: 50px;
+    background: #e9e9e9;
+}
+
+.message .avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin: 0 10px 0 0;
+}
+
+.user-message {
+    background-color: #d1e7dd;
+    align-self: flex-end;
+}
+
+.bot-message {
+    background-color: #e2e3e5;
+    align-self: flex-start;
+}
+
+.input-container {
+    display: flex;
+    align-items: center;
+    border-top: 1px solid #ddd;
+    padding-top: 10px;
+}
+
+.input-container input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 14px;
+}
+
+.input-container button {
+    margin-left: 10px;
+}
+
+#send-message {
+    background-color: rgb(68,75,84);
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+#send-message:disabled {
+    cursor: not-allowed;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.content {
+    margin: 0;
+    width: 90%;
+    font-family: "Microsoft YaHei", arial, sans-serif;
+    color: #444444;
+    line-height: 1.4;
+    pointer-events: none;
+}
+
+.content pre {
+    position: relative; 
+    margin: 0 10px;
+    padding: 10px;
+    overflow: auto;
+    background: #eee;
+    pointer-events: auto;
+    code {
+        margin: 0;
+        padding: 0;
+        font-family: initial;
+        pointer-events: none;
+    }
+    code::after{
+        content: '';
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        padding: 0.5em;
+        height: 24px;
+        width: 24px;
+        background: url(../icon_dialog.png) 0 -75px;
+        background-size: 34px 150px;
+        pointer-events: auto;
+        cursor: pointer;
+        opacity: 0.2;
+    }
+    code:hover::after{
+        opacity: 0.6;
+    }
+}
+
+.content code {
+    margin: 0 5px;
+    padding: 0 5px;
+    background: rgb(237 237 237);
+    border-radius: 5%;
+}
+
+.content a {
+    padding: 5px 10px;
+    margin: 10px 10px 0 0;
+    float: left;
+    border: solid 1px #b4b4b4;
+    border-radius: 5px;
+    pointer-events: auto;
+}
+
+.content a:hover {
+    cursor: pointer;
+    background-color: #eee;
+    border: solid 1px #bebebe;
+}
+
+#loader {
+    margin: 10px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #555;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: inline-block;
+    animation: spin 2s linear infinite;
+}
+
+.source-box {
+    padding-left: 10px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+#captcha-box {
+    position: fixed;
+    bottom: 50%;
+    left: 50%;
+    margin: 0;
+    padding: 10px;
+    transform: translateX(-50%) translateY(50%);
+    width: 335px;
+    height: 270px;
+    background: #ffffff;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    z-index: 1001;
+}
+
+.container {
+    width: 310px;
+    margin: 20px 0;
+}
+  
+.block {
+    position: absolute;
+    left: 0;
+    top: 0;
+    cursor: pointer;
+    cursor: grab;
+}
+
+.block:active {
+    cursor: grabbing;
+}
+
+.sliderContainer {
+    position: relative;
+    text-align: center;
+    width: 310px;
+    height: 40px;
+    line-height: 40px;
+    margin-top: 15px;
+    background: #f7f9fa;
+    color: #45494c;
+    border: 1px solid #e4e7eb;
+}
+
+.sliderContainer_active .slider {
+    height: 38px;
+    top: -1px;
+    border: 1px solid #1991FA;
+}
+
+.sliderContainer_active .sliderMask {
+    height: 38px;
+    border-width: 1px;
+}
+
+.sliderContainer_success .slider {
+    height: 38px;
+    top: -1px;
+    border: 1px solid #52CCBA;
+    background-color: #52CCBA !important;
+}
+
+.sliderContainer_success .sliderMask {
+    height: 38px;
+    border: 1px solid #52CCBA;
+    background-color: #D2F4EF;
+}
+
+.sliderContainer_success .sliderIcon {
+    background-position: 0 0 !important;
+}
+
+.sliderContainer_fail .slider {
+    height: 38px;
+    top: -1px;
+    border: 1px solid #f57a7a;
+    background-color: #f57a7a !important;
+}
+
+.sliderContainer_fail .sliderMask {
+    height: 38px;
+    border: 1px solid #f57a7a;
+    background-color: #fce1e1;
+}
+
+.sliderContainer_fail .sliderIcon {
+    top: 14px;
+    background-position: 0 -82px !important;
+}
+
+.sliderContainer_active .sliderText, .sliderContainer_success .sliderText, .sliderContainer_fail .sliderText {
+    display: none;
+}
+
+.sliderMask {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 40px;
+    border: 0 solid #1991FA;
+    background: #D1E9FE;
+}
+
+.slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 40px;
+    height: 40px;
+    background: #fff;
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.3);
+    transition: background .2s linear;
+    cursor: pointer;
+    cursor: grab;
+}
+
+.sliderText {
+    font-size: 15px;
+}
+
+.slider:active {
+    cursor: grabbing;
+}
+
+.slider:hover {
+    background: #1991FA;
+}
+
+.slider:hover .sliderIcon {
+    background-position: 0 -13px;
+}
+
+.close-captcha {
+    position: absolute;
+    top: 11px;
+    right: 11px;
+    width: 15px;
+    height: 15px;
+    background: url(../icon_slider.png) 0 -38px;
+    background-size: 34px 471px;
+}
+
+.sliderIcon {
+    position: absolute;
+    top: 15px;
+    left: 13px;
+    width: 14px;
+    height: 12px;
+    background: url(../icon_slider.png) 0 -25px;
+    background-size: 34px 471px;
+}
+
+.refreshIcon {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 34px;
+    height: 34px;
+    cursor: pointer;
+    background: url(../icon_slider.png) 0 -400px;
+    background-size: 34px 471px;
+}
