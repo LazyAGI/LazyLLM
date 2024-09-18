@@ -25,7 +25,6 @@ pyyaml
 sniffio
 tqdm 
 typing-extensions
-llama_index
 redis
 funasr
 transformers

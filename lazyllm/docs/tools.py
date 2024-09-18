@@ -125,6 +125,132 @@ add_example('Document.find_children', '''
 >>> documents.find_children('parent')
 ''')
 
+add_english_doc('Document.register_global_reader', '''
+Used to specify a file reader, which is visible to all Document objects. The registered file reader must be a Callable object. It can be registered using a decorator or by a function call.
+
+Args:
+    pattern (str): Matching rules applied by the file reader.
+    func (Callable): File reader, must be a Callable object.
+''')
+
+add_chinese_doc('Document.register_global_reader', '''
+用于指定文件读取器，作用范围对于所有的 Document 对象都可见。注册的文件读取器必须是 Callable 对象。可以使用装饰器的方式进行注册，也可以通过函数调用的方式进行注册。
+
+Args:
+    pattern (str): 文件读取器适用的匹配规则
+    func (Callable): 文件读取器，必须是Callable的对象
+''')
+
+add_example('Document.register_global_reader', '''
+>>> from lazyllm.tools.rag import Document, DocNode
+>>> @Document.register_global_reader("**/*.yml")
+>>> def processYml(file, extra_info=None):
+...     with open(file, 'r') as f:
+...         data = f.read()
+...     return [DocNode(text=data, metadata=extra_info or {})]
+... 
+>>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
+>>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
+>>> files = ["your_yml_files"]
+>>> docs1 = doc1._impl._impl.directory_reader.load_data(input_files=files)
+>>> docs2 = doc2._impl._impl.directory_reader.load_data(input_files=files)
+>>> print(docs1[0].text == docs2[0].text)
+# True
+''')
+
+add_english_doc('Document.add_reader', '''
+Used to specify the file reader for an instance. The scope of action is visible only to the registered Document object. The registered file reader must be a Callable object. It can only be registered by calling a function. The priority of the file reader registered by the instance is higher than that of the file reader registered by the class, and the priority of the file reader registered by the instance and class is higher than the system default file reader. That is, the order of priority is: instance file reader > class file reader > system default file reader.
+
+Args:
+    pattern (str): Matching rules applied by the file reader.
+    func (Callable): File reader, must be a Callable object.
+''')
+
+add_chinese_doc('Document.add_reader', '''
+用于实例指定文件读取器，作用范围仅对注册的 Document 对象可见。注册的文件读取器必须是 Callable 对象。只能通过函数调用的方式进行注册。并且通过实例注册的文件读取器的优先级高于通过类注册的文件读取器，并且实例和类注册的文件读取器的优先级高于系统默认的文件读取器。即优先级的顺序是：实例文件读取器 > 类文件读取器 > 系统默认文件读取器。
+
+Args:
+    pattern (str): 文件读取器适用的匹配规则
+    func (Callable): 文件读取器，必须是Callable的对象
+''')
+
+add_example('Document.add_reader', '''
+>>> from lazyllm.tools.rag import Document, DocNode
+>>> from lazyllm.tools.rag.readers import ReaderBase
+>>> class YmlReader(ReaderBase):
+...     def _load_data(self, file, extra_info=None, fs=None):
+...         try:
+...             import yaml
+...         except ImportError:
+...             raise ImportError("yaml is required to read YAML file: `pip install pyyaml`")
+...         with open(file, 'r') as f:
+...             data = yaml.safe_load(f)
+...         print("Call the class YmlReader.")
+...         return [DocNode(text=data, metadata=extra_info or {})]
+... 
+>>> def processYml(file, extra_info=None):
+...     with open(file, 'r') as f:
+...         data = f.read()
+...     print("Call the function processYml.")
+...     return [DocNode(text=data, metadata=extra_info or {})]
+...
+>>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
+>>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
+>>> doc1.add_reader("**/*.yml", YmlReader)
+>>> print(doc1._local_file_reader)
+# {'**/*.yml': <class '__main__.YmlReader'>}
+>>> print(doc2._local_file_reader)
+# {}
+>>> files = ["your_yml_files"]
+>>> Document.register_global_reader("**/*.yml", processYml)
+>>> doc1._impl._impl.directory_reader.load_data(input_files=files)
+# Call the class YmlReader.
+>>> doc2._impl._impl.directory_reader.load_data(input_files=files)
+# Call the function processYml.
+''')
+
+add_english_doc('rag.readers.ReaderBase', '''
+The base class of file readers, which inherits from the ModuleBase base class and has Callable capabilities. Subclasses that inherit from this class only need to implement the _load_data function, and its return parameter type is List[DocNode]. Generally, the input parameters of the _load_data function are file (Path), extra_info(Dict), and fs (AbstractFileSystem).
+
+Args:
+    args (Any): Pass the corresponding position parameters as needed.
+    return_trace (bool): Set whether to record trace logs.
+    kwargs (Dict): Pass the corresponding keyword arguments as needed.
+''')
+
+add_chinese_doc('rag.readers.ReaderBase', '''
+文件读取器的基类，它继承自 ModuleBase 基类，具有 Callable 的能力，继承自该类的子类只需要实现 _load_data 函数即可，它的返回参数类型为 List[DocNode]. 一般 _load_data 函数的入参为 file (Path), extra_info (Dict), fs(AbstractFileSystem) 三个参数。
+
+Args:
+    args (Any): 根据需要传输相应的位置参数
+    return_trace (bool): 设置是否记录trace日志
+    kwargs (Dict): 根据需要传输相应的关键字参数
+''')
+
+add_example('rag.readers.ReaderBase', '''
+>>> from lazyllm.tools.rag.readers import ReaderBase
+>>> from lazyllm.tools.rag import DocNode, Document
+>>> from typing import Dict, Optional, List
+>>> from pathlib import Path
+>>> from fsspec import AbstractFileSystem
+>>> @Document.register_global_reader("**/*.yml")
+>>> class YmlReader(ReaderBase):
+...     def _load_data(self, file: Path, extra_info: Optional[Dict] = None, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+...         try:
+...             import yaml
+...         except ImportError:
+...             raise ImportError("yaml is required to read YAML file: `pip install pyyaml`")
+...         with open(file, 'r') as f:
+...             data = yaml.safe_load(f)
+...         print("Call the class YmlReader.")
+...         return [DocNode(text=data, metadata=extra_info or {})]
+... 
+>>> files = ["your_yml_files"]
+>>> doc = Document(dataset_path="your_files_path", create_ui=False)
+>>> reader = doc._impl._impl.directory_reader.load_data(input_files=files)
+# Call the class YmlReader.
+''')
+
 # ---------------------------------------------------------------------------- #
 
 # rag/rerank.py
