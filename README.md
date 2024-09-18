@@ -17,7 +17,6 @@ LazyLLM is a low-code development tool for building multi-agent LLMs(large langu
 The AI application development process based on LazyLLM follows the **prototype building -> data feedback -> iterative optimization** workflow. This means you can quickly build a prototype application using LazyLLM, then analyze bad cases using task-specific data, and subsequently iterate on algorithms and fine-tune models at critical stages of the application to gradually enhance the overall performance.<br>
 
 **Tutorials**： https://docs.lazyllm.ai/ <br>
-**Recent Plans**: [v0.2 PRD](https://aicarrier.feishu.cn/wiki/H8bIwORVtiAKv2kwRRJcyfwZnAo?from=from_copylink)<br>
 Scan the QR code below with WeChat to join the group chat<br>
 <img src="https://github.com/user-attachments/assets/8ad8fd14-b218-48b3-80a4-7334b2a32c5a" width=250/> <br>
 
@@ -345,29 +344,3 @@ Flow in LazyLLM defines the data stream, describing how data is passed from one 
 1. You can easily combine, add, and replace various modules and components; the design of Flow makes adding new features simple and facilitates collaboration between different modules and even projects.
 2. Through a standardized interface and data flow mechanism, Flow reduces the repetitive work developers face when handling data transfer and transformation. Developers can focus more on core business logic, thus improving overall development efficiency.
 3. Some Flows support asynchronous processing and parallel execution, significantly enhancing response speed and system performance when dealing with large-scale data or complex tasks.
-
-## RoadMap
-
-We plan to support the following features by the end of this year: <br>
-
-RAG
-- [x]  Refactor the RAG module to remove the dependency on llamaindex
-- [ ]  Support online parser
-
-One-Click Deployment of Applications
-- [ ]  Support one-click generation of Docker, one-click application startup, supporting high concurrency and fault tolerance
-
-Model Services
-- [x]  Continue support for pre-training and RLHF
-- [ ]  Support multiple inference services during model inference and achieve load balancing
-- [x]  Support models for text-to-image and image-text QA, including VQA and SD
-- [x]  Support voice models, including TTS and STT
-
-Tools
-- [x]  Support Function-Call & Agent
-- [ ]  Integrate common search engines
-- [ ]  Support common formatters
-- [x]  Provide Prompter templates for common scenarios
-
-User Experience Optimization
-- [x] Optimize the flow of data in flow, support flexible data flow
