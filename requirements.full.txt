@@ -66,3 +66,4 @@ sortedcontainers
 flash-attn
 lightllm
 lazyllm-llamafactory
+psutil
