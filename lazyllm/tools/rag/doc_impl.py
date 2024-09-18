@@ -147,7 +147,7 @@ class DocImpl:
         num_workers = dict(num_workers=num_workers) if num_workers > 0 else dict()
         return (transform(**node_group['transform_kwargs'], **num_workers)
                 if isinstance(transform, type)
-                else FuncNodeTransform(transform, trans_node=trans_node, num_workers=num_workers))
+                else FuncNodeTransform(transform, trans_node=trans_node, **num_workers))
 
     def _dynamic_create_nodes(self, group_name: str, store: BaseStore) -> None:
         if store.has_nodes(group_name):
