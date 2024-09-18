@@ -20,7 +20,7 @@ def processYml(file, extra_info=None):
 class TestRagReader(object):
     @classmethod
     def setup_class(cls):
-        cls.doc = Document(dataset_path="ci_data/rag_reader", create_ui=False)
+        cls.doc = Document(dataset_path="ci_data/rag_reader", manager=False)
         cls.datasets = os.path.join(lazyllm.config['data_path'], "ci_data/rag_reader/default/__data/sources")
 
     def test_reader_file(self):

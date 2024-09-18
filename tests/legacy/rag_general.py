@@ -22,7 +22,7 @@ prompt = '你将扮演一个人工智能问答助手的角色，完成一项对�
 # embed_model = lazyllm.TrainableModule('bge-large-zh-v1.5')
 embed_model = None
 documents = Document(dataset_path='/home/mnt/yewentao/data/develop_data', 
-                     embed=embed_model, create_ui=True)
+                     embed=embed_model, manager=True)
 documents.create_node_group(name='block', transform=lambda t: t.split('。'))
 documents.create_node_group(name='doc-summary', transform=lambda t: t[:10])
 documents.create_node_group(name='block-summary', transform=lambda t: t[:8], parent='block')

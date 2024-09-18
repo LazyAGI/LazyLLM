@@ -76,8 +76,13 @@ class DocImpl:
             chunk_overlap=12,
         )
 
+    @classmethod
+    def create_global_node_group(cls, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
+                                 *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
+        pass
+
     def create_node_group(self, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
-                          trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
+                          *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
         if name in self.node_groups:
             LOG.warning(f"Duplicate group name: {name}")
         if isinstance(transform, str):

@@ -19,14 +19,14 @@ From the principle introduction, it can be seen that the document collection con
 Currently, `Document` only supports extracting document content from a local directory, and users can build a document collection docs from a local directory using the following statement:
 
 ```python
-docs = Document(dataset_path='/path/to/doc/dir', embed=MyEmbeddingModule(), create_ui=False)
+docs = Document(dataset_path='/path/to/doc/dir', embed=MyEmbeddingModule(), manager=False)
 ```
 
 The Document constructor has the following parameters:
 
 * `dataset_path`: Specifies which file directory to build from.
 * `embed`: Uses the specified model to perform text embedding.
-* `create_ui`: Whether to use the UI interface, which will affect the internal processing logic of Document; the default is True.
+* `manager`: Whether to use the UI interface, which will affect the internal processing logic of Document; the default is True.
 * `launcher`: The method of launching the service, which is used in cluster applications; it can be ignored for single-machine applications.
 
 A `Document` instance may be further subdivided into several sets of nodes with different granularities, known as `Node` sets (the `Node Group`), according to specified rules (referred to as `Transformer` in `LazyLLM`). These `Node`s not only contain the document content but also record which `Node` they were split from and which finer-grained `Node`s they themselves were split into. Users can create their own `Node Group` by using the `Document.create_node_group()` method.
