@@ -77,22 +77,21 @@ class DocImpl:
         )
 
     def create_node_group(self, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
-                          trans_node: bool = None, **kwargs) -> None:
+                          trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
         if name in self.node_groups:
             LOG.warning(f"Duplicate group name: {name}")
         if isinstance(transform, str):
             transform = _transmap[transform.lower()]
         if isinstance(transform, type):
-            assert trans_node is None, 'Is not allowed to set `trans_node` when transform is `type`'
+            assert trans_node is None, '`trans_node` is allowed only when transform is callable'
             if not issubclass(type, NodeTransform):
                 LOG.warning('Please note! You are trying to use a completely custom transform class. The relationship '
                             'between nodes may become unreliable, `Document.get_parent/get_child` functions and the '
                             'target parameter of Retriever may have strange anomalies. Please use it at your own risk.')
         else:
             assert callable(transform), "transform should be callable"
-        self.node_groups[name] = dict(
-            transform=transform, trans_node=trans_node, transform_kwargs=kwargs, parent_name=parent
-        )
+        self.node_groups[name] = dict(transform=transform, trans_node=trans_node, num_workers=num_workers,
+                                      transform_kwargs=kwargs, parent_name=parent)
 
     def add_files(self, input_files: List[str]) -> None:
         call_once(self.init_flag, self._lazy_init)
@@ -144,12 +143,11 @@ class DocImpl:
                 "Please check the group name or add a new one through `create_node_group`."
             )
 
-        transform, trans_node = node_group["transform"], node_group["trans_node"]
-        return (
-            transform(**node_group["transform_kwargs"])
-            if isinstance(transform, type)
-            else FuncNodeTransform(transform, trans_node=trans_node)
-        )
+        transform, trans_node, num_workers = node_group['transform'], node_group['trans_node'], node_group['num_workers']
+        num_workers = dict(num_workers=num_workers) if num_workers > 0 else dict()
+        return (transform(**node_group['transform_kwargs'], **num_workers)
+                if isinstance(transform, type)
+                else FuncNodeTransform(transform, trans_node=trans_node, num_workers=num_workers))
 
     def _dynamic_create_nodes(self, group_name: str, store: BaseStore) -> None:
         if store.has_nodes(group_name):

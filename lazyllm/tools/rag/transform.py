@@ -63,7 +63,7 @@ class NodeTransform(ABC):
             node.children[node_group] = splits
             return splits
 
-        if self._number_workers > 0:
+        if getattr(self, '_number_workers', 0) > 0:
             pool = ThreadPoolExecutor(max_workers=self._number_workers)
             fs = [pool.submit(impl, node) for node in documents]
             return sum([f.result() for f in fs], [])
@@ -82,7 +82,8 @@ class NodeTransform(ABC):
 
 
 class SentenceSplitter(NodeTransform):
-    def __init__(self, chunk_size: int = 1024, chunk_overlap: int = 200):
+    def __init__(self, chunk_size: int = 1024, chunk_overlap: int = 200, num_workers: int = 0):
+        super(__class__, self).__init__(num_workers=num_workers)
         if chunk_overlap > chunk_size:
             raise ValueError(
                 f"Got a larger chunk overlap ({chunk_overlap}) than chunk size "
@@ -276,7 +277,8 @@ class FuncNodeTransform(NodeTransform):
     """
 
     def __init__(self, func: Union[Callable[[str], List[str]], Callable[[DocNode], List[DocNode]]],
-                 trans_node: bool = None):
+                 trans_node: bool = None, num_workers: int = 0):
+        super(__class__, self).__init__(num_workers=num_workers)
         self._func, self._trans_node = func, trans_node
 
     def transform(self, node: DocNode, **kwargs) -> List[str]:
@@ -343,7 +345,8 @@ ${input}
 
 
 class LLMParser(NodeTransform):
-    def __init__(self, llm: TrainableModule, language: str, task_type: str) -> None:
+    def __init__(self, llm: TrainableModule, language: str, task_type: str, num_workers: int = 0):
+        super(__class__, self).__init__(num_workers=num_workers)
         assert language in ["en", "zh"], f"Not supported language {language}"
         assert task_type in [
             "summary",
