@@ -43,8 +43,12 @@ class Retriever(ModuleBase, _PostProcess):
         **kwargs,
     ):
         super().__init__()
+
         self._docs = [doc] if isinstance(doc, Document) else doc
-        assert all(isinstance(doc, Document) for doc in self._docs), 'Only Document or List[Document] are supported'
+        for doc in self._docs:
+            assert isinstance(doc, Document), 'Only Document or List[Document] are supported'
+            self._submodules.append(doc)
+
         self._group_name = group_name
         self._similarity = similarity  # similarity function str
         self._similarity_cut_off = similarity_cut_off
