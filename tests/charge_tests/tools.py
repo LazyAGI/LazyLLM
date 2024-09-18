@@ -4,8 +4,42 @@ from typing import Literal
 from lazyllm import fc_register
 import wikipedia
 
+dummy_code = "def Dummy():\n    return None"
+
+get_current_weather_code = '''
+def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "C", "fahrenheit", "celsius"] = 'fahrenheit'):
+    """
+    Get the current weather in a given location
+
+    Args:
+        location (str): The city and state, e.g. San Francisco, CA.
+        unit (str): The temperature unit to use. Infer this from the users location.
+    """
+    if 'tokyo' in location.lower():
+        return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
+    elif 'san francisco' in location.lower():
+        return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit'})
+    elif 'paris' in location.lower():
+        return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
+    else:
+        return json.dumps({'location': location, 'temperature': 'unknown'})
+'''  # noqa E501
+
+get_current_weather_doc = '''
+Get the current weather in a given location
+
+Args:
+    location (str): The city and state, e.g. San Francisco, CA.
+    unit (str): The temperature unit to use. Infer this from the users location.
+'''
+
+get_current_weather_vars = {
+    'Literal': Literal,
+    'json': json,
+}
+
 @fc_register("tool")
-def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 'fahrenheit'):
+def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "C", "fahrenheit", "celsius"] = 'fahrenheit'):  # noqa E501
     """
     Get the current weather in a given location
 
@@ -22,15 +56,15 @@ def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 
     else:
         return json.dumps({'location': location, 'temperature': 'unknown'})
 
-@fc_register("tool")
-def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"] = 'fahrenheit'):
+get_n_day_weather_forecast_code = '''
+def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["Fahrenheit", "Celsius", "C", "celsius", "fahrenheit"] = 'fahrenheit'):
     """
     Get an N-day weather forecast
 
     Args:
         location (str): The city and state, e.g. San Francisco, CA.
         num_days (int): The number of days to forecast.
-        unit (Literal['celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+        unit (Literal["Fahrenheit", "Celsius", "C", 'celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
     """
     if 'tokyo' in location.lower():
         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
@@ -40,6 +74,44 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius', "num_days": num_days})
     else:
         return json.dumps({'location': location, 'temperature': 'unknown'})
+'''  # noqa E501
+
+get_n_day_weather_forecast_vars = {
+    'Literal': Literal,
+    'json': json,
+}
+
+@fc_register("tool")
+def get_n_day_weather_forecast(location: str, num_days: int,
+                               unit: Literal["Fahrenheit", "Celsius", "C", "celsius", "fahrenheit"] = 'fahrenheit'):
+    """
+    Get an N-day weather forecast
+
+    Args:
+        location (str): The city and state, e.g. San Francisco, CA.
+        num_days (int): The number of days to forecast.
+        unit (Literal["Fahrenheit", "Celsius", "C", 'celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+    """  # noqa E501
+    if 'tokyo' in location.lower():
+        return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
+    elif 'san francisco' in location.lower():
+        return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit', "num_days": num_days})
+    elif 'paris' in location.lower():
+        return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius', "num_days": num_days})
+    else:
+        return json.dumps({'location': location, 'temperature': 'unknown'})
+
+multiply_tool_code = '''
+def multiply_tool(a: int, b: int) -> int:
+    """
+    Multiply two integers and return the result integer
+
+    Args:
+        a (int): multiplier
+        b (int): multiplier
+    """
+    return a * b
+'''
 
 @fc_register("tool")
 def multiply_tool(a: int, b: int) -> int:
@@ -51,6 +123,18 @@ def multiply_tool(a: int, b: int) -> int:
         b (int): multiplier
     """
     return a * b
+
+add_tool_code = '''
+def add_tool(a: int, b: int):
+    """
+    Add two integers and returns the result integer
+
+    Args:
+        a (int): addend
+        b (int): addend
+    """
+    return a + b
+'''
 
 @fc_register("tool")
 def add_tool(a: int, b: int):

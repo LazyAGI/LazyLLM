@@ -21,7 +21,7 @@ After the function is called, it returns a decorator which wraps the decorated f
 
 Args:
     cls (str) :The name of the group to which the function will be registered. The group must exist. Default groups include ``finetune`` and ``deploy``. Users can create new groups by calling the ``new_group`` function.
-    rewrite_func (str) :The name of the function to be rewritten after registration. Default is ``apply``. When registering a bash command, you need to pass ``cmd`` as the argument.                
+    rewrite_func (str) :The name of the function to be rewritten after registration. Default is ``apply``. When registering a bash command, you need to pass ``cmd`` as the argument.
 
 **Examples:**\n
 ```python
@@ -32,7 +32,7 @@ Args:
 ...
 >>> lazyllm.mygroup.myfunc()(1)
 1
-```          
+```
 
 <span style="font-size: 20px;">&ensp;**`register.cmd(cls)→ Decorator `**</span>
 
@@ -47,11 +47,11 @@ Args:
 >>> @lazyllm.component_register.cmd('mygroup')
 ... def mycmdfunc(input):
 ...     return f'echo {input}'
-... 
+...
 >>> lazyllm.mygroup.mycmdfunc()(1)
 PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) Command: echo 1
-PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1    
-```                                                 
+PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1
+```
 ''')
 
 add_english_doc('Register.new_group', '''\
@@ -68,3 +68,26 @@ Args:
 # ... def myfunc(input):
 # ...     return input
 # ''')
+
+add_chinese_doc('compile_func', '''
+将一段 python 函数字符串编译成一个可执行函数并返回。
+
+Args:
+    func_code (str): 包含 python 函数代码的字符串
+    global_env (str): 在 python 函数中用到的包和全局变量
+''')
+
+add_english_doc('compile_func', '''
+Compile a Python function string into an executable function and return it.
+
+Args:
+    func_code (str): A string containing Python function code
+    global_env (str): Packages and global variables used in the Python function
+''')
+
+add_example('compile_func', '''
+from lazyllm.common import compile_func
+code_str = 'def Identity(v): return v'
+identity = compile_func(code_str)
+assert identity('hello') == 'hello'
+''')

@@ -7,7 +7,7 @@ from lazyllm.common import LazyLLMRegisterMetaClass
 from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Set
 import inspect
 from pydantic import create_model, BaseModel, ValidationError
-
+from lazyllm import LOG
 
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, verbose: bool = False, return_trace: bool = True):
@@ -19,6 +19,14 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
             else (_ for _ in ()).throw(ValueError("Function must has a docstring"))
 
         self._params_schema = self.load_function_schema(self.__class__.apply)
+
+        self._has_var_args = False
+        signature = inspect.signature(self.__class__.apply)
+        for name, param in signature.parameters.items():
+            if param.kind == inspect.Parameter.VAR_POSITIONAL or\
+               param.kind == inspect.Parameter.VAR_KEYWORD:
+                self._has_var_args = True
+                break
 
     def load_function_schema(self, func: Callable) -> Type[BaseModel]:
         if func.__name__ is None or func.__doc__ is None:
@@ -68,6 +76,9 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         raise NotImplementedError("Implement apply function in subclass")
 
     def _validate_input(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        if self._has_var_args:
+            return tool_input
+
         input_params = self._params_schema
         if isinstance(tool_input, dict):
             if input_params is not None:
@@ -106,21 +117,43 @@ if "tool" not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group("tool")
 
 class ToolManager(ModuleBase):
-    def __init__(self, tools: List[str], return_trace: bool = False):
+    type_any2openai = {
+        'str': 'string',
+        'int': 'integer',
+        'bool': 'boolean',
+    }
+
+    def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._tools = self._load_tools(tools)
         self._format_tools()
+        self._name_of_tools_with_var_args = self._check_var_args_of_tools(self._tools)
         self._tools_desc = self._transform_to_openai_function()
 
-    def _load_tools(self, tools_str: List[str]):
+    def _check_var_args_of_tools(self, tool_list: List[Callable]) -> Set[str]:
+        ret_set = set()
+        for tool in tool_list:
+            for name, param in inspect.signature(tool).parameters.items():
+                if param.kind == inspect.Parameter.VAR_POSITIONAL or\
+                   param.kind == inspect.Parameter.VAR_KEYWORD:
+                    ret_set.add(tool.name)
+                    break
+        return ret_set
+
+    def _load_tools(self, tools: List[Union[str, Callable]]):
+        if "tmp_tool" not in LazyLLMRegisterMetaClass.all_clses:
+            register.new_group('tmp_tool')
+
         _tools = []
-        for tool_str in tools_str:
-            tool_all_str = tool_str + "tool".capitalize()
-            t = lazyllm.tool.get(tool_all_str, None)
-            if t:
-                _tools.append(t())
-            else:
-                raise ValueError(f"Tool {tool_str} has not been registered yet.")
+        for element in tools:
+            if isinstance(element, str):
+                _tools.append(getattr(lazyllm.tool, element)())
+            elif isinstance(element, Callable):
+                # just to convert `element` to the internal type in `Register`
+                register('tmp_tool')(element)
+                _tools.append(getattr(lazyllm.tmp_tool, element.__name__)())
+                lazyllm.tmp_tool.remove(element.__name__)
+
         return _tools
 
     @property
@@ -136,40 +169,74 @@ class ToolManager(ModuleBase):
         return self._tool_call
 
     def _validate_tool(self, tool_name: str, tool_arguments: Dict[str, Any]):
-        # Does the tool exists
         tool = self._tool_call.get(tool_name)
-        if tool: return tool.validate_parameters(tool_arguments)
-        return False
+        if not tool:
+            LOG.error(f'cannot find tool named [{tool_name}]')
+            return False
+
+        # don't check parameters if this function contains '*args' or '**kwargs'
+        if tool.name in self._name_of_tools_with_var_args:
+            return True
+
+        return tool.validate_parameters(tool_arguments)
 
     def _format_tools(self):
         if isinstance(self._tools, List):
             self._tool_call = {tool.name: tool for tool in self._tools}
 
-    def _transform_to_openai_function(self):
+    def _to_openai_type(self, type_str):
+        lower_str = type_str.lower()
+
+        openai_type = self.type_any2openai.get(lower_str, None)
+        if openai_type:
+            return openai_type
+
+        if 'dict' in lower_str:
+            return 'object'
+        if 'list' in lower_str:
+            return 'object'
+        if 'tuple' in lower_str:
+            return 'object'
+
+        return 'string'
+
+    def _transform_to_openai_function(self): # noqa C901
         if isinstance(self._tools, List):
             format_tools = []
             for tool in self._tools:
                 try:
-                    parsed = docstring_parser.parse(tool.description)
-                    tool_args = tool.args
-                    assert len(tool_args) == len(parsed.params), ("The parameter description and the actual "
-                                                                  "number of input parameters are inconsistent.")
-                    args_description = {}
-                    for param in parsed.params:
-                        args_description[param.arg_name] = param.description
                     args = {}
-                    for k, v in tool_args.items():
-                        val = copy.deepcopy(v)
-                        if "title" in val.keys():
-                            del val["title"]
-                        if "default" in val.keys():
-                            del val["default"]
-                        args[k] = val if val else {"type": "string"}
-                        if k in args_description:
-                            args[k].update({"description": args_description[k]})
-                        else:
-                            raise ValueError(f"The actual input parameter {k} is not found "
-                                             "in the parameter description.")
+                    required_arg_list = []
+                    parsed = docstring_parser.parse(tool.description)
+
+                    if tool.name in self._name_of_tools_with_var_args:
+                        for param in parsed.params:
+                            args[param.arg_name] = {
+                                "type": self._to_openai_type(param.type_name),
+                                "description": param.description,
+                            }
+                            if not param.is_optional:
+                                required_arg_list.append(param.arg_name)
+                    else:
+                        tool_args = tool.args
+                        assert len(tool_args) == len(parsed.params), ("The parameter description and the actual "
+                                                                      "number of input parameters are inconsistent.")
+                        args_description = {}
+                        for param in parsed.params:
+                            args_description[param.arg_name] = param.description
+
+                        for k, v in tool_args.items():
+                            val = copy.deepcopy(v)
+                            if "title" in val.keys():
+                                del val["title"]
+                            if "default" in val.keys():
+                                del val["default"]
+                            args[k] = val if val else {"type": "string"}
+                            if k in args_description:
+                                args[k].update({"description": args_description[k]})
+                            else:
+                                raise ValueError(f"The actual input parameter {k} is not found "
+                                                 "in the parameter description.")
                     func = {
                         "type": "function",
                         "function": {

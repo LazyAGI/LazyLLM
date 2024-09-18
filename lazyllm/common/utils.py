@@ -1,6 +1,8 @@
 from os import PathLike, makedirs
 from os.path import expanduser, expandvars, isfile, join, normpath
-from typing import Union
+from typing import Union, Dict, Callable, Any, Optional
+import re
+import ast
 
 def check_path(
     path: Union[str, PathLike],
@@ -23,3 +25,12 @@ def check_path(
         if parents:
             makedirs(dir_path, exist_ok=True)
     return path
+
+
+def compile_func(func_code: str, global_env: Optional[Dict[str, Any]] = None) -> Callable:
+    fname = re.search(r'def\s+(\w+)\s*\(', func_code).group(1)
+    module = ast.parse(func_code)
+    func = compile(module, filename="<ast>", mode="exec")
+    local_dict = {}
+    exec(func, global_env, local_dict)
+    return local_dict[fname]

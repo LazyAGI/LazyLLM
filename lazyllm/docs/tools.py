@@ -7,6 +7,11 @@ add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tools)
 add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools)
 add_example = functools.partial(utils.add_example, module=lazyllm.tools)
 
+# functions for lazyllm.tools.tools
+add_tools_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tools.tools)
+add_tools_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools.tools)
+add_tools_example = functools.partial(utils.add_example, module=lazyllm.tools.tools)
+
 # ---------------------------------------------------------------------------- #
 
 # rag/document.py
@@ -837,3 +842,185 @@ add_example(
     >>> print(sql_module("员工Alice的邮箱地址是什么?"))
 """,
 )
+
+# ---------------------------------------------------------------------------- #
+
+add_chinese_doc("HttpTool", """
+用于访问第三方服务和执行自定义代码的模块。参数中的 `params` 和 `headers` 的 value，以及 `body` 中可以包含形如 `{{variable}}` 这样用两个花括号标记的模板变量，然后在调用的时候通过参数来替换模板中的值。参考 [[lazyllm.tools.HttpTool.forward]] 中的使用说明。
+
+Args:
+    method (str, optional): 指定 http 请求方法，参考 `https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods`。
+    url (str, optional): 要访问的 url。如果该字段为空，则表示该模块不需要访问第三方服务。
+    params (Dict[str, str], optional): 请求 url 需要填充的 params 字段。如果 url 为空，该字段会被忽略。
+    headers (Dict[str, str], optional): 访问 url 需要填充的 header 字段。如果 url 为空，该字段会被忽略。
+    body (Dict[str, str], optional): 请求 url 需要填充的 body 字段。如果 url 为空，该字段会被忽略。
+    timeout (int): 请求超时时间，单位是秒，默认值是 10。
+    proxies (Dict[str, str], optional): 指定请求 url 时所使用的代理。代理格式参考 `https://www.python-httpx.org/advanced/proxies`。
+    code_str (str, optional): 一个字符串，包含用户定义的函数。如果参数 `url` 为空，则直接执行该函数，执行时所有的参数都会转发给该函数；如果 `url` 不为空，该函数的参数为请求 url 返回的结果，此时该函数作为 url 返回后的后处理函数。
+    vars_for_code (Dict[str, Any]): 一个字典，传入运行 code 所需的依赖及变量。
+
+""")
+
+add_english_doc("HttpTool", """
+Module for accessing third-party services and executing custom code. The values in `params` and `headers`, as well as in body, can include template variables marked with double curly braces like `{{variable}}`, which are then replaced with actual values through parameters when called. Refer to the usage instructions in [[lazyllm.tools.HttpTool.forward]].
+
+Args:
+    method (str, optional): Specifies the HTTP request method, refer to `https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods`.
+    url (str, optional): The URL to access. If this field is empty, it indicates that the module does not need to access third-party services.
+    params (Dict[str, str], optional): Params fields to be filled when requesting the URL. If the URL is empty, this field will be ignored.
+    headers (Dict[str, str], optional): Header fields to be filled when accessing the URL. If the URL is empty, this field will be ignored.
+    body (Dict[str, str], optional): Body fields to be filled when requesting the URL. If the URL is empty, this field will be ignored.
+    timeout (int): Request timeout in seconds, default value is 10.
+    proxies (Dict[str, str], optional): Specifies the proxies to be used when requesting the URL. Proxy format refer to `https://www.python-httpx.org/advanced/proxies`.
+    code_str (str, optional): A string containing a user-defined function. If the parameter url is empty, execute this function directly, forwarding all arguments to it; if url is not empty, the parameters of this function are the results returned from the URL request, and in this case, the function serves as a post-processing function for the URL response.
+    vars_for_code (Dict[str, Any]): A dictionary that includes dependencies and variables required for running the code.
+
+""")
+
+add_example("HttpTool", """
+from lazyllm.tools import HttpTool
+
+code_str = "def identity(content): return content"
+tool = HttpTool(method='GET', url='http://www.sensetime.com/', code_str=code_str)
+ret = tool()
+""")
+
+add_chinese_doc("HttpTool.forward", """
+用于执行初始化时指定的操作：请求指定的 url 或者执行传入的函数。一般不直接调用，而是通过基类的 `__call__` 来调用。如果构造函数的 `url` 参数不为空，则传入的所有参数都会作为变量，用于替换在构造函数中使用 `{{}}` 标记的模板参数；如果构造函数的参数 `url` 为空，并且 `code_str` 不为空，则传入的所有参数都会作为 `code_str` 中所定义函数的参数。
+""")
+
+add_english_doc("HttpTool.forward", """
+Used to perform operations specified during initialization: request the specified URL or execute the passed function. Generally not called directly, but through the base class's `__call__`. If the `url` parameter in the constructor is not empty, all passed parameters will be used as variables to replace template parameters marked with `{{}}` in the constructor; if the `url` parameter in the constructor is empty and `code_str` is not empty, all passed parameters will be used as arguments for the function defined in `code_str`.
+""")
+
+add_example("HttpTool.forward", """
+from lazyllm.tools import HttpTool
+
+code_str = "def exp(v, n): return v ** n"
+tool = HttpTool(code_str=code_str)
+assert tool(v=10, n=2) == 100
+""")
+
+add_tools_chinese_doc("Weather", """
+创建用于查询天气的工具。
+""")
+
+add_tools_english_doc("Weather", """
+Create a tool for querying weather.
+""")
+
+add_tools_example("Weather", """
+from lazyllm.tools.tools import Weather
+
+weather = Weather()
+""")
+
+add_tools_chinese_doc("Weather.forward", """
+查询某个城市的天气。接收的城市输入最小范围为地级市，如果是直辖市则最小范围为区。输入的城市或区名称不带后缀的“市”或者“区”。参考下面的例子。
+
+Args:
+    city_name (str): 需要获取天气的城市名称。
+""")
+
+add_tools_english_doc("Weather.forward", """
+Query the weather of a specific city. The minimum input scope for cities is at the prefecture level, and for municipalities, it is at the district level. The input city or district name should not include the suffix "市" (city) or "区" (district). Refer to the examples below.
+
+Args:
+    city_name (str): The name of the city for which weather information is needed.
+""")
+
+add_tools_example("Weather.forward", """
+from lazyllm.tools.tools import Weather
+
+weather = Weather()
+res = weather('海淀')
+""")
+
+add_tools_chinese_doc("GoogleSearch", """
+通过 Google 搜索指定的关键词。
+
+Args:
+    custom_search_api_key (str): 用户申请的 Google API key。
+    search_engine_id (str): 用户创建的用于检索的搜索引擎 id。
+    timeout (int): 搜索请求的超时时间，单位是秒，默认是 10。
+    proxies (Dict[str, str], optional): 请求时所用的代理服务。格式参考 `https://www.python-httpx.org/advanced/proxies`。
+""")
+
+add_tools_english_doc("GoogleSearch", """
+Search for specified keywords through Google.
+
+Args:
+    custom_search_api_key (str): The Google API key applied by the user.
+    search_engine_id (str): The ID of the search engine created by the user for retrieval.
+    timeout (int): The timeout for the search request, in seconds, default is 10.
+    proxies (Dict[str, str], optional): The proxy services used during the request. Format reference `https://www.python-httpx.org/advanced/proxies`.
+""")
+
+add_tools_example("GoogleSearch", """
+from lazyllm.tools.tools import GoogleSearch
+
+key = '<your_google_search_api_key>'
+cx = '<your_search_engine_id>'
+
+google = GoogleSearch(custom_search_api_key=key, search_engine_id=cx)
+""")
+
+add_tools_chinese_doc("GoogleSearch.forward", """
+执行搜索请求。
+
+Args:
+    query (str): 要检索的关键词。
+    date_restrict (str): 要检索内容的时效性。默认检索一个月内的网页（`m1`）。参数格式可以参考 `https://developers.google.com/custom-search/v1/reference/rest/v1/cse/list?hl=zh-cn`。
+    search_engine_id (str, optional): 用于检索的搜索引擎 id。如果该值为空，则使用构造函数中传入的值。
+""")
+
+add_tools_english_doc("GoogleSearch.forward", """
+Execute search request.
+
+Args:
+    query (str): Keywords to retrieve.
+    date_restrict (str): Timeliness of the content to retrieve. Defaults to web pages within one month (m1). Refer to `https://developers.google.com/custom-search/v1/reference/rest/v1/cse/list?hl=zh-cn` for parameter format.
+    search_engine_id (str, optional): Search engine ID for retrieval. If this value is empty, the value passed in the constructor is used.
+""")
+
+add_tools_example("GoogleSearch.forward", """
+from lazyllm.tools.tools import GoogleSearch
+
+key = '<your_google_search_api_key>'
+cx = '<your_search_engine_id>'
+
+google = GoogleSearch(key, cx)
+res = google(query='商汤科技', date_restrict='m1')
+""")
+
+add_tools_chinese_doc('Calculator', '''
+这是一个计算器应用，可以计算用户输入的表达式的值。
+''')
+
+add_tools_english_doc('Calculator', '''
+This is a calculator application that can calculate the value of expressions entered by the user.
+''')
+
+add_tools_example('Calculator', '''
+from lazyllm.tools.tools import Calculator
+calc = Calculator()
+''')
+
+add_tools_chinese_doc('Calculator.forward', '''
+计算用户输入的表达式的值。
+
+Args:
+    exp (str): 需要计算的表达式的值。必须符合 Python 计算表达式的语法。可使用 Python math 库中的数学函数。
+''')
+
+add_tools_english_doc('Calculator.forward', '''
+Calculate the value of the user input expression.
+
+Args:
+    exp (str): The expression to be calculated. It must conform to the syntax for evaluating expressions in Python. Mathematical functions from the Python math library can be used.
+''')
+
+add_tools_example('Calculator.forward', '''
+from lazyllm.tools.tools import Calculator
+calc = Calculator()
+''')
