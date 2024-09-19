@@ -3,37 +3,12 @@ import os
 
 from typing import Callable, Optional, Dict
 import lazyllm
-from lazyllm import ModuleBase, ServerModule, TrainableModule
+from lazyllm import ModuleBase, ServerModule, TrainableModule, DynamicDescriptor
 
 from .web import DocWebModule
 from .doc_manager import DocManager
 from .group_doc import DocGroupImpl, DocImpl
 from .store import LAZY_ROOT_NAME
-
-
-class _DynamicDescriptor:
-    class Impl:
-        def __init__(self, func, instance, owner):
-            self.func = func
-            self.instance = instance
-            self.owner = owner
-
-        def __call__(self, *args, **kw):
-            return self.func(self.instance, *args, **kw) if self.instance else self.func(self.owner, *args, **kw)
-
-        @property
-        def __doc__(self): return self.func.__doc__
-
-        @__doc__.setter
-        def __doc__(self, value): self.func.__doc__ = value
-
-        def __repr__(self): return repr(self.func)
-
-    def __init__(self, func):
-        self.func = func
-
-    def __get__(self, instance, owner):
-        return _DynamicDescriptor.Impl(self.func, instance, owner)
 
 
 class Document(ModuleBase):
@@ -75,7 +50,7 @@ class Document(ModuleBase):
     def __repr__(self):
         return lazyllm.make_repr("Module", "Document", manager=self._manager)
 
-    @_DynamicDescriptor
+    @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
                           trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
         if isinstance(self, type):

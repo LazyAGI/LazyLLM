@@ -6,6 +6,7 @@ from contextlib import contextmanager
 import copy
 import threading
 import types
+import functools
 from ..configs import config
 
 try:
@@ -456,6 +457,7 @@ def once_wrapper(reset_on_pickle):
     def impl(func):
         flag_name = f'_lazyllm_{func.__name__}_once_flag'
 
+        @functools.wraps(func)
         def wrapper(self, *args, **kw):
             if not hasattr(self, flag_name): setattr(self, flag_name, once_flag(flag))
             wrapper.flag = getattr(self, flag_name)
@@ -464,3 +466,28 @@ def once_wrapper(reset_on_pickle):
         return wrapper
 
     return impl if isinstance(reset_on_pickle, bool) else impl(reset_on_pickle)
+
+
+class DynamicDescriptor:
+    class Impl:
+        def __init__(self, func, instance, owner):
+            self.func = func
+            self.instance = instance
+            self.owner = owner
+
+        def __call__(self, *args, **kw):
+            return self.func(self.instance, *args, **kw) if self.instance else self.func(self.owner, *args, **kw)
+
+        @property
+        def __doc__(self): return self.func.__doc__
+
+        @__doc__.setter
+        def __doc__(self, value): self.func.__doc__ = value
+
+        def __repr__(self): return repr(self.func)
+
+    def __init__(self, func):
+        self.func = func
+
+    def __get__(self, instance, owner):
+        return DynamicDescriptor.Impl(self.func, instance, owner)
