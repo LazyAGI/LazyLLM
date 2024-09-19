@@ -3,20 +3,24 @@ import json5 as json
 import lazyllm
 import docstring_parser
 from lazyllm.module import ModuleBase
-from lazyllm.common import LazyLLMRegisterMetaClass
+from lazyllm.common import LazyLLMRegisterMetaClass, compile_func
 from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Set
 import inspect
 from pydantic import create_model, BaseModel, ValidationError
 from lazyllm import LOG
+from typing import *  # noqa F403, to import all types for compile_func(), do not remove
+import time
 
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, verbose: bool = False, return_trace: bool = True):
         super().__init__(return_trace=return_trace)
         self._verbose = verbose
-        self._name = self.apply.__name__ if hasattr(self.apply, "__name__") and self.apply.__name__ is not None \
-            else (_ for _ in ()).throw(ValueError("Function must has a name."))
-        self._description = self.apply.__doc__ if hasattr(self.apply, "__doc__") and self.apply.__doc__ is not None \
-            else (_ for _ in ()).throw(ValueError("Function must has a docstring"))
+        self._name = self.apply.__name__\
+            if hasattr(self.apply, "__name__") and self.apply.__name__ is not None\
+            else (_ for _ in ()).throw(ValueError("Function must have a name."))
+        self._description = self.apply.__doc__\
+            if hasattr(self.apply, "__doc__") and self.apply.__doc__ is not None\
+            else (_ for _ in ()).throw(ValueError("Function must have a docstring"))
 
         self._params_schema = self.load_function_schema(self.__class__.apply)
 
@@ -117,12 +121,6 @@ if "tool" not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group("tool")
 
 class ToolManager(ModuleBase):
-    type_any2openai = {
-        'str': 'string',
-        'int': 'integer',
-        'bool': 'boolean',
-    }
-
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._tools = self._load_tools(tools)
@@ -184,89 +182,123 @@ class ToolManager(ModuleBase):
         if isinstance(self._tools, List):
             self._tool_call = {tool.name: tool for tool in self._tools}
 
-    def _to_openai_type(self, type_str):
-        lower_str = type_str.lower()
+    @staticmethod
+    def _gen_func_prototype_str(parsed_docstring):
+        """
+        returns a function prototype string
+        """
+        func_name = "f" + str(int(time.time()))
+        s = "def " + func_name + "("
+        for param in parsed_docstring.params:
+            s += param.arg_name
+            if param.type_name:
+                s += ":" + param.type_name + ","
+            else:
+                s += ","
+        s += "):\n    pass"
+        return s
 
-        openai_type = self.type_any2openai.get(lower_str, None)
-        if openai_type:
-            return openai_type
+    @staticmethod
+    def _gen_wrapped_moduletool(docstring, parsed_docstring):
+        func_str = ToolManager._gen_func_prototype_str(parsed_docstring)
+        f = compile_func(func_str, globals())
+        f.__doc__ = docstring
 
-        if 'dict' in lower_str:
-            return 'object'
-        if 'list' in lower_str:
-            return 'object'
-        if 'tuple' in lower_str:
-            return 'object'
+        if "tmp_tool" not in LazyLLMRegisterMetaClass.all_clses:
+            register.new_group('tmp_tool')
+        register('tmp_tool')(f)
+        wrapped_module_for_f = getattr(lazyllm.tmp_tool, f.__name__)()
+        lazyllm.tmp_tool.remove(f.__name__)
 
-        return 'string'
+        return wrapped_module_for_f
 
-    def _transform_to_openai_function(self): # noqa C901
-        if isinstance(self._tools, List):
-            format_tools = []
-            for tool in self._tools:
-                try:
-                    args = {}
-                    required_arg_list = []
-                    parsed = docstring_parser.parse(tool.description)
+    @staticmethod
+    def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
+        """
+        returns a dict of param names containing at least
+          1. `type`
+          2. `description` of params
 
-                    if tool.name in self._name_of_tools_with_var_args:
-                        for param in parsed.params:
-                            args[param.arg_name] = {
-                                "type": self._to_openai_type(param.type_name),
-                                "description": param.description,
-                            }
-                            if not param.is_optional:
-                                required_arg_list.append(param.arg_name)
-                    else:
-                        tool_args = tool.args
-                        assert len(tool_args) == len(parsed.params), ("The parameter description and the actual "
-                                                                      "number of input parameters are inconsistent.")
-                        args_description = {}
-                        for param in parsed.params:
-                            args_description[param.arg_name] = param.description
+        for example:
+            args = {
+                "foo": {
+                    "enum": ["baz", "bar"],
+                    "type": "string",
+                    "description": "a string",
+                },
+                "bar": {
+                    "type": "integer",
+                    "description": "an integer",
+                }
+            }
+        """
+        tool_args = tool.args
+        assert len(tool_args) == len(parsed_docstring.params), ("The parameter description and the actual "
+                                                                "number of input parameters are inconsistent.")
 
-                        for k, v in tool_args.items():
-                            val = copy.deepcopy(v)
-                            if "title" in val.keys():
-                                del val["title"]
-                            if "default" in val.keys():
-                                del val["default"]
-                            args[k] = val if val else {"type": "string"}
-                            if k in args_description:
-                                args[k].update({"description": args_description[k]})
-                            else:
-                                raise ValueError(f"The actual input parameter {k} is not found "
-                                                 "in the parameter description.")
-                    func = {
-                        "type": "function",
-                        "function": {
-                            "name": tool.name,
-                            "description": parsed.short_description,
-                            "parameters": {
-                                "type": "object",
-                                "properties": args,
-                                "required": tool.get_params_schema().model_json_schema().get("required", [])
-                            }
+        args_description = {}
+        for param in parsed_docstring.params:
+            args_description[param.arg_name] = param.description
+
+        args = {}
+        for k, v in tool_args.items():
+            val = copy.deepcopy(v)
+            val.pop("title", None)
+            val.pop("default", None)
+            args[k] = val if val else {"type": "string"}
+            desc = args_description.get(k, None)
+            if desc:
+                args[k].update({"description": desc})
+            else:
+                raise ValueError(f"The actual input parameter {k} is not found "
+                                 "in the parameter description.")
+        return args
+
+    def _transform_to_openai_function(self):
+        if not isinstance(self._tools, List):
+            raise TypeError(f"The tools type should be List instead of {type(self._tools)}")
+
+        format_tools = []
+        for tool in self._tools:
+            try:
+                parsed_docstring = docstring_parser.parse(tool.description)
+
+                if tool.name in self._name_of_tools_with_var_args:
+                    tmp_tool = self._gen_wrapped_moduletool(tool.description, parsed_docstring)
+                    args = self._gen_args_info_from_moduletool_and_docstring(tmp_tool, parsed_docstring)
+                    required_arg_list = tmp_tool.get_params_schema().model_json_schema().get("required", [])
+                else:
+                    args = self._gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring)
+                    required_arg_list = tool.get_params_schema().model_json_schema().get("required", [])
+
+                func = {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": parsed_docstring.short_description,
+                        "parameters": {
+                            "type": "object",
+                            "properties": args,
+                            "required": required_arg_list,
                         }
                     }
-                    format_tools.append(func)
-                except Exception:
-                    typehints_template = """
-                    def myfunc(arg1: str, arg2: Dict[str, Any], arg3: Literal["aaa", "bbb", "ccc"]="aaa"):
-                        '''
-                        Function description ...
+                }
+                format_tools.append(func)
+            except Exception:
+                typehints_template = """
+                def myfunc(arg1: str, arg2: Dict[str, Any], arg3: Literal["aaa", "bbb", "ccc"]="aaa"):
+                    '''
+                    Function description ...
 
-                        Args:
-                            arg1 (str): arg1 description.
-                            arg2 (Dict[str, Any]): arg2 description
-                            arg3 (Literal["aaa", "bbb", "ccc"]): arg3 description
-                        '''
-                    """
-                    raise TypeError("Function description must include function description and"
-                                    f"parameter description, the format is as follows: {typehints_template}")
-            return format_tools
-        else:
-            raise TypeError(f"The tools type should be List instead of {type(self._tools)}")
+                    Args:
+                        arg1 (str): arg1 description.
+                        arg2 (Dict[str, Any]): arg2 description
+                        arg3 (Literal["aaa", "bbb", "ccc"]): arg3 description
+                    '''
+                """
+                raise TypeError("Function description must include function description and "
+                                f"parameter description, the format is as follows: {typehints_template}")
+        return format_tools
 
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False):
         tool_calls = [tools,] if isinstance(tools, dict) else tools
