@@ -1,4 +1,4 @@
-from lazyllm import ModuleBase, pipeline
+from lazyllm import ModuleBase, pipeline, once_wrapper
 from .store import DocNode
 from .document import Document, DocImpl
 from typing import List, Optional, Union
@@ -57,17 +57,24 @@ class Retriever(ModuleBase, _PostProcess):
         self._similarity_kw = kwargs  # kw parameters
         _PostProcess.__init__(self, target, output_format, join)
 
-    def _get_post_process_tasks(self):
-        return pipeline(lambda *a: self('Test Query'))
-
-    def forward(self, query: str) -> Union[List[DocNode], str]:
-        nodes = []
+    @once_wrapper
+    def _lazy_init(self):
+        docs = []
         for doc in self._docs:
             if self._group_name not in doc._impl._impl.node_groups and \
                     self._group_name not in DocImpl._builtin_node_groups and \
                     self._group_name not in DocImpl._global_node_groups:
-                if len(self._docs) > 1: continue
-                raise RuntimeError(f'Group {self._group_name} not found in document {doc}')
+                if self._docs <= 1: raise RuntimeError(f'Group {self._group_name} not found in document {doc}')
+            else:
+                docs.append(doc)
+
+    def _get_post_process_tasks(self):
+        return pipeline(lambda *a: self('Test Query'))
+
+    def forward(self, query: str) -> Union[List[DocNode], str]:
+        self._lazy_init()
+        nodes = []
+        for doc in self._docs:
             nodes.extend(doc.forward(func_name="retrieve", query=query, group_name=self._group_name,
                                      similarity=self._similarity, similarity_cut_off=self._similarity_cut_off,
                                      index=self._index, topk=self._topk, similarity_kws=self._similarity_kw))
