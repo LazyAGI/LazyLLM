@@ -5,9 +5,26 @@ import tempfile
 from pathlib import Path
 import uuid
 from .utils import SqlEgsData, get_sql_init_keywords
+import datetime
+import re
 
 
 class TestSqlManager(unittest.TestCase):
+    @classmethod
+    def clean_obsolete_tables(cls, sql_manager):
+        today = datetime.datetime.now()
+        pattern = r"^(?:employee|sales)_(\d{8})_(\w+)"
+        OBSOLETE_DAYS = 2
+        existing_tables = sql_manager.get_all_tables()
+        for table_name in existing_tables:
+            match = re.match(pattern, table_name)
+            if not match:
+                continue
+            table_create_date = datetime.datetime.strptime(match.group(1), "%Y%m%d")
+            delta = (today - table_create_date).days
+            if delta >= OBSOLETE_DAYS:
+                sql_manager._drop_table_by_name(table_name)
+
     @classmethod
     def setUpClass(cls):
         cls.sql_managers: list[SqlManager] = []
@@ -23,6 +40,7 @@ class TestSqlManager(unittest.TestCase):
                 SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)
             )
         for sql_manager in cls.sql_managers:
+            cls.clean_obsolete_tables(sql_manager)
             for table_name in SqlEgsData.TEST_TABLES:
                 rt, err_msg = sql_manager._delete_rows_by_name(table_name)
                 assert rt, err_msg
@@ -58,8 +76,9 @@ class TestSqlManager(unittest.TestCase):
             for table_name in SqlEgsData.TEST_TABLES:
                 rt, err_msg = sql_manager._drop_table_by_name(table_name)
                 assert rt, err_msg
-            existing_tables = sql_manager.get_all_tables()
-            assert len(existing_tables) == 0
+            existing_tables = set(sql_manager.get_all_tables())
+            for table_name in SqlEgsData.TEST_TABLES:
+                assert table_name not in existing_tables
             # 2. create table
             rt, err_msg = sql_manager.reset_tables(SqlEgsData.TEST_TABLES_INFO)
             assert rt, err_msg
