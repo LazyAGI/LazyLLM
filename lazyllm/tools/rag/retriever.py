@@ -67,6 +67,7 @@ class Retriever(ModuleBase, _PostProcess):
                 if self._docs <= 1: raise RuntimeError(f'Group {self._group_name} not found in document {doc}')
             else:
                 docs.append(doc)
+        self._docs = docs
 
     def _get_post_process_tasks(self):
         return pipeline(lambda *a: self('Test Query'))
