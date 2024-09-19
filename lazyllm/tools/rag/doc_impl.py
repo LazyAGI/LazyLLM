@@ -37,14 +37,13 @@ class DocImpl:
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
-        self.store = self._get_store()
-        self.index = DefaultIndex(self.embed, self.store)
-
         node_groups = DocImpl._builtin_node_groups.copy()
         node_groups.update(DocImpl._global_node_groups)
         node_groups.update(self.node_groups)
         self.node_groups = node_groups
 
+        self.store = self._get_store()
+        self.index = DefaultIndex(self.embed, self.store)
         if not self.store.has_nodes(LAZY_ROOT_NAME):
             root_nodes = self.directory_reader.load_data()
             self.store.add_nodes(root_nodes)

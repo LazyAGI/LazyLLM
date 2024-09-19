@@ -6,7 +6,6 @@ from contextlib import contextmanager
 import copy
 import threading
 import types
-import functools
 from ..configs import config
 
 try:
@@ -454,37 +453,49 @@ def call_once(flag, func, *args, **kw):
 def once_wrapper(reset_on_pickle):
     flag = reset_on_pickle if isinstance(reset_on_pickle, bool) else False
 
-    def impl(func):
-        flag_name = f'_lazyllm_{func.__name__}_once_flag'
+    class Wrapper:
+        class Impl:
+            def __init__(self, func, instance):
+                assert instance is not None, f'{func} can only be used as instance method'
+                self._func, self._instance = func, instance
+                flag_name = f'_lazyllm_{func.__name__}_once_flag'
+                if instance and not hasattr(instance, flag_name): setattr(instance, flag_name, once_flag(flag))
 
-        @functools.wraps(func)
-        def wrapper(self, *args, **kw):
-            if not hasattr(self, flag_name): setattr(self, flag_name, once_flag(flag))
-            wrapper.flag = getattr(self, flag_name)
-            return call_once(wrapper.flag, func, self, *args, **kw)
+            def __call__(self, *args, **kw):
+                return call_once(self.flag, self._func, self._instance, *args, **kw)
 
-        return wrapper
+            __doc__ = property(lambda self: self.func.__doc__)
+            def __repr__(self): return repr(self.func)
 
-    return impl if isinstance(reset_on_pickle, bool) else impl(reset_on_pickle)
+            @__doc__.setter
+            def __doc__(self, value): self.func.__doc__ = value
+
+            @property
+            def flag(self):
+                return getattr(self._instance, f'_lazyllm_{self._func.__name__}_once_flag')
+
+        def __init__(self, func):
+            self.func = func
+
+        def __get__(self, instance, _):
+            return Wrapper.Impl(self.func, instance)
+
+    return Wrapper if isinstance(reset_on_pickle, bool) else Wrapper(reset_on_pickle)
 
 
 class DynamicDescriptor:
     class Impl:
         def __init__(self, func, instance, owner):
-            self.func = func
-            self.instance = instance
-            self.owner = owner
+            self.func, self.instance, self.owner = func, instance, owner
 
         def __call__(self, *args, **kw):
             return self.func(self.instance, *args, **kw) if self.instance else self.func(self.owner, *args, **kw)
 
-        @property
-        def __doc__(self): return self.func.__doc__
+        def __repr__(self): return repr(self.func)
+        __doc__ = property(lambda self: self.func.__doc__)
 
         @__doc__.setter
         def __doc__(self, value): self.func.__doc__ = value
-
-        def __repr__(self): return repr(self.func)
 
     def __init__(self, func):
         self.func = func
