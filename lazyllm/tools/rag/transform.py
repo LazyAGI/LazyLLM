@@ -11,7 +11,7 @@ import nltk
 import tiktoken
 
 from .store import DocNode, MetadataMode
-from lazyllm import LOG, TrainableModule
+from lazyllm import LOG, TrainableModule, ThreadPoolExecutor
 
 
 def build_nodes_from_splits(
@@ -47,20 +47,28 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
 
 
 class NodeTransform(ABC):
+    def __init__(self, num_workers: int = 0):
+        self._number_workers = num_workers
 
     def batch_forward(
         self, documents: Union[DocNode, List[DocNode]], node_group: str, **kwargs
     ) -> List[DocNode]:
-        documents = documents if isinstance(documents, list) else [documents]
-        all_nodes: List[DocNode] = []
-        for node in documents:
+        documents: List[DocNode] = documents if isinstance(documents, (tuple, list)) else [documents]
+
+        def impl(node):
             splits = self(node, **kwargs)
             for s in splits:
                 s.parent = node
                 s.group = node_group
             node.children[node_group] = splits
-            all_nodes.extend(splits)
-        return all_nodes
+            return splits
+
+        if getattr(self, '_number_workers', 0) > 0:
+            pool = ThreadPoolExecutor(max_workers=self._number_workers)
+            fs = [pool.submit(impl, node) for node in documents]
+            return sum([f.result() for f in fs], [])
+        else:
+            return sum([impl(node) for node in documents], [])
 
     @abstractmethod
     def transform(self, document: DocNode, **kwargs) -> List[str]:
@@ -68,11 +76,14 @@ class NodeTransform(ABC):
 
     def __call__(self, node: DocNode, **kwargs: Any) -> List[DocNode]:
         # Parent and child should not be set here.
-        return [DocNode(text=chunk) for chunk in self.transform(node, **kwargs) if chunk]
+        results = self.transform(node, **kwargs)
+        if isinstance(results, (DocNode, str)): results = [results]
+        return [DocNode(text=chunk) if isinstance(chunk, str) else chunk for chunk in results if chunk]
 
 
 class SentenceSplitter(NodeTransform):
-    def __init__(self, chunk_size: int = 1024, chunk_overlap: int = 200):
+    def __init__(self, chunk_size: int = 1024, chunk_overlap: int = 200, num_workers: int = 0):
+        super(__class__, self).__init__(num_workers=num_workers)
         if chunk_overlap > chunk_size:
             raise ValueError(
                 f"Got a larger chunk overlap ({chunk_overlap}) than chunk size "
@@ -266,13 +277,12 @@ class FuncNodeTransform(NodeTransform):
     """
 
     def __init__(self, func: Union[Callable[[str], List[str]], Callable[[DocNode], List[DocNode]]],
-                 trans_node: bool = None):
+                 trans_node: bool = None, num_workers: int = 0):
+        super(__class__, self).__init__(num_workers=num_workers)
         self._func, self._trans_node = func, trans_node
 
     def transform(self, node: DocNode, **kwargs) -> List[str]:
-        result = self._func(node if self._trans_node else node.get_text())
-        text_splits = [result] if isinstance(result, (str, DocNode)) else result
-        return text_splits
+        return self._func(node if self._trans_node else node.get_text())
 
 
 en_prompt_template = """
@@ -335,7 +345,8 @@ ${input}
 
 
 class LLMParser(NodeTransform):
-    def __init__(self, llm: TrainableModule, language: str, task_type: str) -> None:
+    def __init__(self, llm: TrainableModule, language: str, task_type: str, num_workers: int = 0):
+        super(__class__, self).__init__(num_workers=num_workers)
         assert language in ["en", "zh"], f"Not supported language {language}"
         assert task_type in [
             "summary",

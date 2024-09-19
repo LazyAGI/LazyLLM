@@ -24,7 +24,7 @@ This constructor initializes a document module that can have an optional user in
 Args:
     dataset_path (str): The path to the dataset directory. This directory should contain the documents to be managed by the document module.
     embed: The object used to generate document embeddings.
-    create_ui (bool, optional): A flag indicating whether to create a user interface for the document module. Defaults to True.
+    manager (bool, optional): A flag indicating whether to create a user interface for the document module. Defaults to False.
     launcher (optional): An object or function responsible for launching the server module. If not provided, the default asynchronous launcher from `lazyllm.launchers` is used (`sync=False`).
 ''')
 
@@ -36,7 +36,7 @@ add_chinese_doc('Document', '''\
 Args:
     dataset_path (str): 数据集目录的路径。此目录应包含要由文档模块管理的文档。
     embed: 用于生成文档embedding的对象。
-    create_ui (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 True。
+    manager (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 False
     launcher (optional): 负责启动服务器模块的对象或函数。如果未提供，则使用 `lazyllm.launchers` 中的默认异步启动器 (`sync=False`)。
 ''')
 
@@ -44,16 +44,17 @@ add_example('Document', '''\
 >>> import lazyllm
 >>> from lazyllm.tools import Document
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 ''')
 
 add_english_doc('Document.create_node_group', '''
 Generate a node group produced by the specified rule.
 
 Args:
-    name (str): The name of the node group.
+    name (str): The name of the node group, cannot be passed in as key-value pairs.
     transform (Callable): The transformation rule that converts a node into a node group. The function prototype is `(DocNode, group_name, **kwargs) -> List[DocNode]`. Currently built-in options include [SentenceSplitter][lazyllm.tools.SentenceSplitter], and users can define their own transformation rules.
     trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`.
+    num_workers (int): number of new threads used for transform. default: 0
     parent (str): The node that needs further transformation. The series of new nodes obtained after transformation will be child nodes of this parent node. If not specified, the transformation starts from the root node.
     kwargs: Parameters related to the specific implementation.
 ''')
@@ -62,9 +63,10 @@ add_chinese_doc('Document.create_node_group', '''
 创建一个由指定规则生成的 node group。
 
 Args:
-    name (str): node group 的名称。
+    name (str): node group 的名称。无法通过键值对传入。
     transform (Callable): 将 node 转换成 node group 的转换规则，函数原型是 `(DocNode, group_name, **kwargs) -> List[DocNode]`。目前内置的有 [SentenceSplitter][lazyllm.tools.SentenceSplitter]。用户也可以自定义转换规则。
     trans_node (bool): 决定了transform的输入和输出是 `DocNode` 还是 `str` ，默认为None。只有在 `transform` 为 `Callable` 时才可以设置为true。
+    num_workers (int): Transform时所用的新线程数量，默认为0
     parent (str): 需要进一步转换的节点。转换之后得到的一系列新的节点将会作为该父节点的子节点。如果不指定则从根节点开始转换。
     kwargs: 和具体实现相关的参数。
 ''')
@@ -73,7 +75,7 @@ add_example('Document.create_node_group', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 ''')
 
@@ -95,7 +97,7 @@ add_example('Document.find_parent', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="parent", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 >>> documents.create_node_group(name="children", transform=SentenceSplitter, parent="parent", chunk_size=1024, chunk_overlap=100)
 >>> documents.find_parent('children')
@@ -119,7 +121,7 @@ add_example('Document.find_children', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="parent", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 >>> documents.create_node_group(name="children", transform=SentenceSplitter, parent="parent", chunk_size=1024, chunk_overlap=100)
 >>> documents.find_children('parent')
@@ -160,7 +162,7 @@ add_example('Reranker', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Document, Reranker, Retriever
 >>> m = lazyllm.OnlineEmbeddingModule()
->>> documents = Document(dataset_path='rag_master', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='rag_master', embed=m, manager=False)
 >>> retriever = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
 >>> reranker = Reranker(name='ModuleReranker', model='bg-reranker-large', topk=1)
 >>> ppl = lazyllm.ActionModule(retriever, reranker)
@@ -215,7 +217,7 @@ add_example('Retriever', '''
 >>> from lazyllm.tools import Retriever
 >>> from lazyllm.tools import Document
 >>> m = lazyllm.OnlineEmbeddingModule()
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
 >>> rm.start()
 >>> print(rm("query"))
@@ -245,7 +247,7 @@ add_example('SentenceSplitter', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 ''')
 
@@ -295,7 +297,7 @@ add_example('LLMParser.transform', '''
 >>> m = lazyllm.TrainableModule("bge-large-zh-v1.5")
 >>> summary_parser = LLMParser(llm, language="en", task_type="summary")
 >>> keywords_parser = LLMParser(llm, language="en", task_type="keywords")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
 >>> summary_result = summary_parser.transform(rm[0])
 >>> keywords_result = keywords_parser.transform(rm[0])
@@ -807,6 +809,208 @@ add_example(
 )
 
 add_chinese_doc(
+    "SqlManager",
+    """\
+SqlManager是与数据库进行交互的专用工具。它提供了连接数据库，设置、创建、检查数据表，插入数据，执行查询的方法。
+
+Arguments:
+    db_type (str): 目前仅支持"PostgreSQL"，后续会增加"MySQL", "MS SQL"
+    user (str): username
+    password (str): password
+    host (str): 主机名或IP
+    port (int): 端口号
+    db_name (str): 数据仓库名
+    tables_info_dict (dict): 数据表的描述
+    options_str (str): k1=v1&k2=v2形式表示的选项设置
+""",
+)
+
+add_english_doc(
+    "SqlManager",
+    """\
+SqlManager is a specialized tool for interacting with databases.
+It provides methods for creating tables, executing queries, and performing updates on databases.
+
+Arguments:
+    db_type (str): Currently only "PostgreSQL" is supported, with "MySQL" and "MS SQL" to be added later.
+    user (str): Username for connection
+    password (str): Password for connection
+    host (str): Hostname or IP
+    port (int): Port number
+    db_name (str): Name of the database
+    tables_info_dict (dict): Description of the data tables
+    options_str (str): Options represented in the format k1=v1&k2=v2
+""",
+)
+
+add_example(
+    "SqlManager",
+    """\
+    >>> from lazyllm.tools import SqlManager
+    >>> import uuid
+    >>> # !!!NOTE!!!: COPY class SqlEgsData definition from tests/charge_tests/utils.py then Paste here.
+    >>> db_filepath = "personal.db"
+    >>> with open(db_filepath, "w") as _:
+        pass
+    >>> sql_manager = SQLiteManger(filepath, SqlEgsData.TEST_TABLES_INFO)
+    >>> # Altert: If using online database, ask administrator about those value: db_type, username, password, host, port, database
+    >>> # sql_manager = SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)
+    >>>
+    >>> for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
+    ...     sql_manager.execute_sql_update(insert_script)
+    >>> str_results = sql_manager.get_query_result_in_json(SqlEgsData.TEST_QUERY_SCRIPTS)
+    >>> print(str_results)
+""",
+)
+
+add_chinese_doc(
+    "SqlManager.reset_tables",
+    """\
+根据描述表结构的字典设置SqlManager所使用的数据表。注意：若表在数据库中不存在将会自动创建，若存在则会校验所有字段的一致性。
+字典格式关键字示例如下。
+
+字典中有3个关键字为可选项：表及列的comment默认为空, is_primary_key默认为False但至少应有一列为True, nullable默认为True
+{"tables":
+    [
+        {
+            "name": f"employee",
+            "comment": "employee information",
+            "columns": [
+                {
+                    "name": "employee_id",
+                    "data_type": "Integer",
+                    "comment": "empoloyee work number",
+                    "nullable": False,
+                    "is_primary_key": True,
+                },
+                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
+                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
+            ],
+        },
+        {
+            ....
+        }
+    ]
+}
+""",
+)
+
+add_english_doc(
+    "SqlManager.reset_tables",
+    """\
+Set the data tables used by SqlManager according to the dictionary describing the table structure.
+Note that if the table does not exist in the database, it will be automatically created, and if it exists, all field consistencies will be checked.
+The dictionary format keyword example is as follows.
+
+There are three optional keywords in the dictionary: "comment" for the table and columns defaults to empty, "is_primary_key" defaults to False,
+but at least one column should be True, and "nullable" defaults to True.
+{"tables":
+    [
+        {
+            "name": f"employee",
+            "comment": "employee information",
+            "columns": [
+                {
+                    "name": "employee_id",
+                    "data_type": "Integer",
+                    "comment": "empoloyee work number",
+                    "nullable": False,
+                    "is_primary_key": True,
+                },
+                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
+                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
+            ],
+        },
+        {
+            ....
+        }
+    ]
+}
+""",
+)
+
+add_chinese_doc(
+    "SqlManager.check_connection",
+    """\
+检查当前SqlManager的连接状态。
+
+**Returns:**\n
+- bool: 连接成功(True), 连接失败(False)
+- str: 连接成功为"Success" 否则为具体的失败信息.
+""",
+)
+
+add_english_doc(
+    "SqlManager.check_connection",
+    """\
+Check the current connection status of the SqlManager.
+
+**Returns:**\n
+- bool: True if the connection is successful, False if it fails.
+- str: "Success" if the connection is successful; otherwise, it provides specific failure information.
+""",
+)
+
+add_chinese_doc(
+    "SqlManager.reset_tables",
+    """\
+根据提供的表结构设置数据库链接。
+若数据库中已存在表项则检查一致性，否则创建数据表
+
+Args:
+    tables_info_dict (dict): 数据表的描述
+
+**Returns:**\n
+- bool: 设置成功(True), 设置失败(False)
+- str: 设置成功为"Success" 否则为具体的失败信息.
+""",
+)
+
+add_english_doc(
+    "SqlManager.reset_tables",
+    """\
+Set database connection based on the provided table structure.
+Check consistency if the table items already exist in the database, otherwise create the data table.
+
+Args:
+    tables_info_dict (dict): Description of the data tables
+
+**Returns:**\n
+- bool: True if set successfully, False if set failed
+- str: "Success" if set successfully, otherwise specific failure information.
+
+""",
+)
+
+add_chinese_doc(
+    "SqlManager.get_query_result_in_json",
+    """\
+执行SQL查询并返回JSON格式的结果。
+""",
+)
+
+add_english_doc(
+    "SqlManager.get_query_result_in_json",
+    """\
+Executes a SQL query and returns the result in JSON format.
+""",
+)
+
+add_chinese_doc(
+    "SqlManager.execute_sql_update",
+    """\
+在SQLite数据库上执行SQL插入或更新脚本。
+""",
+)
+
+add_english_doc(
+    "SqlManager.execute_sql_update",
+    """\
+Execute insert or update script.
+""",
+)
+
+add_chinese_doc(
     "SqlCall",
     """\
 SqlCall 是一个扩展自 ModuleBase 的类,提供了使用语言模型(LLM)生成和执行 SQL 查询的接口。
@@ -814,7 +1018,8 @@ SqlCall 是一个扩展自 ModuleBase 的类,提供了使用语言模型(LLM)生
 
 Arguments:
     llm: 用于生成和解释 SQL 查询及解释的大语言模型。
-    sql_tool (SqlTool): 一个 SqlTool 实例，用于处理与 SQL 数据库的交互。
+    sql_manager (SqlManager): 一个 SqlManager 实例，用于处理与 SQL 数据库的交互。
+    sql_examples (str, 可选): JSON字符串表示的自然语言转到SQL语句的示例，格式为[{"Question": "查询表中与smith同部门的人员名字", "Answer": "SELECT...;"}]
     use_llm_for_sql_result (bool, 可选): 默认值为True。如果设置为False, 则只输出JSON格式表示的sql执行结果；True则会使用LLM对sql执行结果进行解读并返回自然语言结果。
     return_trace (bool, 可选): 如果设置为 True,则将结果记录在trace中。默认为 False。
 """,
@@ -828,7 +1033,8 @@ It is designed to interact with a SQL database, extract SQL queries from LLM res
 
 Arguments:
     llm: A language model to be used for generating and interpreting SQL queries and explanations.
-    sql_tool (SqlTool): An instance of SqlTool that handles interaction with the SQL database.
+    sql_manager (SqlManager): An instance of SqlManager that handles interaction with the SQL database.
+    sql_examples (str, optional): An example of converting natural language represented by a JSON string into an SQL statement, formatted as: [{"Question": "Find the names of people in the same department as Smith", "Answer": "SELECT...;"}]
     use_llm_for_sql_result (bool, optional): Default is True. If set to False, the module will only output raw SQL results in JSON without further processing.
     return_trace (bool, optional): If set to True, the results will be recorded in the trace. Defaults to False.
 """,
@@ -837,13 +1043,13 @@ Arguments:
 add_example(
     "SqlCall",
     """\
-    >>> # First, run SQLiteManger example
+    >>> # First, run SqlManager example
     >>> import lazyllm
     >>> from lazyllm.tools import SQLiteManger, SqlCall
     >>> sql_tool = SQLiteManger("personal.db")
     >>> sql_llm = lazyllm.OnlineChatModule(model="gpt-4o", source="openai", base_url="***")
-    >>> sql_module = SqlCall(sql_llm, sql_tool, use_llm_for_sql_result=True)
-    >>> print(sql_module("员工Alice的邮箱地址是什么?"))
+    >>> sql_call = SqlCall(sql_llm, sql_tool, use_llm_for_sql_result=True)
+    >>> print(sql_call("去年一整年销售额最多的员工是谁?"))
 """,
 )
 
