@@ -2,8 +2,7 @@ import ast
 from collections import defaultdict
 from functools import wraps
 from typing import Callable, Dict, List, Optional, Set, Union
-from lazyllm import LOG, config, once_flag, call_once
-from lazyllm.common import LazyLlmRequest
+from lazyllm import LOG, config, once_wrapper
 from .transform import NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser
 from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, BaseStore
 from .data_loaders import DirectoryReader
@@ -25,17 +24,24 @@ def embed_wrapper(func):
 
 
 class DocImpl:
+    _builtin_node_groups = {}
+    _global_node_groups = {}
+
     def __init__(self, embed, doc_files=Optional[List[str]], local_readers: Optional[Dict] = None,
                  global_readers: Optional[Dict] = None, **kwargs):
         super().__init__()
         self.directory_reader = DirectoryReader(doc_files, local_readers=local_readers, global_readers=global_readers)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
-        self._create_node_group_default()
         self.embed = embed_wrapper(embed)
-        self.init_flag = once_flag()
         self.store = None
 
+    @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
+        node_groups = DocImpl._builtin_node_groups.copy()
+        node_groups.update(DocImpl._global_node_groups)
+        node_groups.update(self.node_groups)
+        self.node_groups = node_groups
+
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
         if not self.store.has_nodes(LAZY_ROOT_NAME):
@@ -56,48 +62,48 @@ class DocImpl:
             )
         return store
 
-    def _create_node_group_default(self):
-        self.create_node_group(
-            name="CoarseChunk",
-            transform=SentenceSplitter,
-            chunk_size=1024,
-            chunk_overlap=100,
-        )
-        self.create_node_group(
-            name="MediumChunk",
-            transform=SentenceSplitter,
-            chunk_size=256,
-            chunk_overlap=25,
-        )
-        self.create_node_group(
-            name="FineChunk",
-            transform=SentenceSplitter,
-            chunk_size=128,
-            chunk_overlap=12,
-        )
-
-    def create_node_group(self, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
-                          trans_node: bool = None, **kwargs) -> None:
-        if name in self.node_groups:
+    @staticmethod
+    def _create_node_group_impl(cls, group_name, name, transform: Union[str, Callable] = None,
+                                parent: str = LAZY_ROOT_NAME, *, trans_node: bool = None,
+                                num_workers: int = 0, **kwargs):
+        groups = getattr(cls, group_name)
+        if name in groups:
             LOG.warning(f"Duplicate group name: {name}")
         if isinstance(transform, str):
             transform = _transmap[transform.lower()]
         if isinstance(transform, type):
-            assert trans_node is None, 'Is not allowed to set `trans_node` when transform is `type`'
-            if not issubclass(type, NodeTransform):
+            assert trans_node is None, '`trans_node` is allowed only when transform is callable'
+            if not issubclass(transform, NodeTransform):
                 LOG.warning('Please note! You are trying to use a completely custom transform class. The relationship '
                             'between nodes may become unreliable, `Document.get_parent/get_child` functions and the '
                             'target parameter of Retriever may have strange anomalies. Please use it at your own risk.')
         else:
             assert callable(transform), "transform should be callable"
-        self.node_groups[name] = dict(
-            transform=transform, trans_node=trans_node, transform_kwargs=kwargs, parent_name=parent
-        )
+        groups[name] = dict(transform=transform, trans_node=trans_node, num_workers=num_workers,
+                            transform_kwargs=kwargs, parent_name=parent)
+
+    @classmethod
+    def _create_builtin_node_group(cls, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
+                                   *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
+        DocImpl._create_node_group_impl(cls, '_builtin_node_groups', name=name, transform=transform, parent=parent,
+                                        trans_node=trans_node, num_workers=num_workers, **kwargs)
+
+    @classmethod
+    def create_global_node_group(cls, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
+                                 *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
+        DocImpl._create_node_group_impl(cls, '_global_node_groups', name=name, transform=transform, parent=parent,
+                                        trans_node=trans_node, num_workers=num_workers, **kwargs)
+
+    def create_node_group(self, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
+                          *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
+        assert not self._lazy_init.flag, 'Cannot add node group after document started'
+        DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
+                                        trans_node=trans_node, num_workers=num_workers, **kwargs)
 
     def add_files(self, input_files: List[str]) -> None:
-        call_once(self.init_flag, self._lazy_init)
         if len(input_files) == 0:
             return
+        self._lazy_init()
         root_nodes = self.directory_reader.load_data(input_files)
         temp_store = self._get_store()
         temp_store.add_nodes(root_nodes)
@@ -110,7 +116,7 @@ class DocImpl:
             LOG.debug(f"Merge {group} with {nodes}")
 
     def delete_files(self, input_files: List[str]) -> None:
-        call_once(self.init_flag, self._lazy_init)
+        self._lazy_init()
         docs = self.store.get_nodes_by_files(input_files)
         LOG.info(f"delete_files: removing documents {input_files} and nodes {docs}")
         if len(docs) == 0:
@@ -144,12 +150,11 @@ class DocImpl:
                 "Please check the group name or add a new one through `create_node_group`."
             )
 
-        transform, trans_node = node_group["transform"], node_group["trans_node"]
-        return (
-            transform(**node_group["transform_kwargs"])
-            if isinstance(transform, type)
-            else FuncNodeTransform(transform, trans_node=trans_node)
-        )
+        transform, trans_node, num_workers = node_group['transform'], node_group['trans_node'], node_group['num_workers']
+        num_workers = dict(num_workers=num_workers) if num_workers > 0 else dict()
+        return (transform(**node_group['transform_kwargs'], **num_workers)
+                if isinstance(transform, type)
+                else FuncNodeTransform(transform, trans_node=trans_node, **num_workers))
 
     def _dynamic_create_nodes(self, group_name: str, store: BaseStore) -> None:
         if store.has_nodes(group_name):
@@ -161,29 +166,16 @@ class DocImpl:
         store.add_nodes(nodes)
         LOG.debug(f"building {group_name} nodes: {nodes}")
 
-    def _get_nodes(
-        self, group_name: str, store: Optional[BaseStore] = None
-    ) -> List[DocNode]:
-        store = self.store if store is None else store
+    def _get_nodes(self, group_name: str, store: Optional[BaseStore] = None) -> List[DocNode]:
+        store = store or self.store
         self._dynamic_create_nodes(group_name, store)
         return store.traverse_nodes(group_name)
 
-    def retrieve(
-        self,
-        query: str,
-        group_name: str,
-        similarity: str,
-        similarity_cut_off: float,
-        index: str,
-        topk: int,
-        similarity_kws: dict,
-    ) -> List[DocNode]:
-        call_once(self.init_flag, self._lazy_init)
+    def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: float,
+                 index: str, topk: int, similarity_kws: dict) -> List[DocNode]:
+        self._lazy_init()
         if index:
             assert index == "default", "we only support default index currently"
-        if isinstance(query, LazyLlmRequest):
-            query = query.input
-
         nodes = self._get_nodes(group_name)
         return self.index.query(
             query, nodes, similarity, similarity_cut_off, topk, **similarity_kws
@@ -256,3 +248,8 @@ class DocImpl:
 
         LOG.debug(f"Found children nodes for {group}: {result}")
         return list(result)
+
+
+DocImpl._create_builtin_node_group(name="CoarseChunk", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+DocImpl._create_builtin_node_group(name="MediumChunk", transform=SentenceSplitter, chunk_size=256, chunk_overlap=25)
+DocImpl._create_builtin_node_group(name="FineChunk", transform=SentenceSplitter, chunk_size=128, chunk_overlap=12)

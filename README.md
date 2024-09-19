@@ -108,7 +108,7 @@ prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue 
 Here is an online deployment example:
 
 ```python
-documents = Document(dataset_path="your data path", embed=lazyllm.OnlineEmbeddingModule(), create_ui=False)
+documents = Document(dataset_path="your data path", embed=lazyllm.OnlineEmbeddingModule(), manager=False)
 documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 with pipeline() as ppl:
     with parallel().sum as ppl.prl:

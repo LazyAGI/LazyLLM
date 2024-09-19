@@ -24,7 +24,7 @@ This constructor initializes a document module that can have an optional user in
 Args:
     dataset_path (str): The path to the dataset directory. This directory should contain the documents to be managed by the document module.
     embed: The object used to generate document embeddings.
-    create_ui (bool, optional): A flag indicating whether to create a user interface for the document module. Defaults to True.
+    manager (bool, optional): A flag indicating whether to create a user interface for the document module. Defaults to False.
     launcher (optional): An object or function responsible for launching the server module. If not provided, the default asynchronous launcher from `lazyllm.launchers` is used (`sync=False`).
 ''')
 
@@ -36,7 +36,7 @@ add_chinese_doc('Document', '''\
 Args:
     dataset_path (str): 数据集目录的路径。此目录应包含要由文档模块管理的文档。
     embed: 用于生成文档embedding的对象。
-    create_ui (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 True。
+    manager (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 False
     launcher (optional): 负责启动服务器模块的对象或函数。如果未提供，则使用 `lazyllm.launchers` 中的默认异步启动器 (`sync=False`)。
 ''')
 
@@ -44,16 +44,17 @@ add_example('Document', '''\
 >>> import lazyllm
 >>> from lazyllm.tools import Document
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 ''')
 
 add_english_doc('Document.create_node_group', '''
 Generate a node group produced by the specified rule.
 
 Args:
-    name (str): The name of the node group.
+    name (str): The name of the node group, cannot be passed in as key-value pairs. 
     transform (Callable): The transformation rule that converts a node into a node group. The function prototype is `(DocNode, group_name, **kwargs) -> List[DocNode]`. Currently built-in options include [SentenceSplitter][lazyllm.tools.SentenceSplitter], and users can define their own transformation rules.
     trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`. 
+    num_workers (int): number of new threads used for transform. default: 0
     parent (str): The node that needs further transformation. The series of new nodes obtained after transformation will be child nodes of this parent node. If not specified, the transformation starts from the root node.
     kwargs: Parameters related to the specific implementation.
 ''')
@@ -62,9 +63,10 @@ add_chinese_doc('Document.create_node_group', '''
 创建一个由指定规则生成的 node group。
 
 Args:
-    name (str): node group 的名称。
+    name (str): node group 的名称。无法通过键值对传入。
     transform (Callable): 将 node 转换成 node group 的转换规则，函数原型是 `(DocNode, group_name, **kwargs) -> List[DocNode]`。目前内置的有 [SentenceSplitter][lazyllm.tools.SentenceSplitter]。用户也可以自定义转换规则。
     trans_node (bool): 决定了transform的输入和输出是 `DocNode` 还是 `str` ，默认为None。只有在 `transform` 为 `Callable` 时才可以设置为true。
+    num_workers (int): Transform时所用的新线程数量，默认为0
     parent (str): 需要进一步转换的节点。转换之后得到的一系列新的节点将会作为该父节点的子节点。如果不指定则从根节点开始转换。
     kwargs: 和具体实现相关的参数。
 ''')
@@ -73,7 +75,7 @@ add_example('Document.create_node_group', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 ''')
 
@@ -95,7 +97,7 @@ add_example('Document.find_parent', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="parent", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 >>> documents.create_node_group(name="children", transform=SentenceSplitter, parent="parent", chunk_size=1024, chunk_overlap=100)
 >>> documents.find_parent('children')
@@ -119,7 +121,7 @@ add_example('Document.find_children', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="parent", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 >>> documents.create_node_group(name="children", transform=SentenceSplitter, parent="parent", chunk_size=1024, chunk_overlap=100)
 >>> documents.find_children('parent')
@@ -160,7 +162,7 @@ add_example('Reranker', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Document, Reranker, Retriever
 >>> m = lazyllm.OnlineEmbeddingModule()
->>> documents = Document(dataset_path='rag_master', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='rag_master', embed=m, manager=False)
 >>> retriever = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
 >>> reranker = Reranker(name='ModuleReranker', model='bg-reranker-large', topk=1)
 >>> ppl = lazyllm.ActionModule(retriever, reranker)
@@ -215,7 +217,7 @@ add_example('Retriever', '''
 >>> from lazyllm.tools import Retriever
 >>> from lazyllm.tools import Document
 >>> m = lazyllm.OnlineEmbeddingModule()
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
 >>> rm.start()
 >>> print(rm("query"))
@@ -245,7 +247,7 @@ add_example('SentenceSplitter', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 ''')
 
@@ -295,7 +297,7 @@ add_example('LLMParser.transform', '''
 >>> m = lazyllm.TrainableModule("bge-large-zh-v1.5")
 >>> summary_parser = LLMParser(llm, language="en", task_type="summary")
 >>> keywords_parser = LLMParser(llm, language="en", task_type="keywords")
->>> documents = Document(dataset_path='your_doc_path', embed=m, create_ui=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
 >>> summary_result = summary_parser.transform(rm[0])
 >>> keywords_result = keywords_parser.transform(rm[0])

@@ -1,7 +1,8 @@
+import lazyllm
 from lazyllm.tools.rag.doc_impl import DocImpl
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import DocNode, LAZY_ROOT_NAME
-from lazyllm import call_once
+from lazyllm.tools.rag import Document, Retriever
 from unittest.mock import MagicMock
 import unittest
 
@@ -19,11 +20,15 @@ class TestDocImpl(unittest.TestCase):
         self.doc_impl.directory_reader = self.mock_directory_reader
 
     def test_create_node_group_default(self):
+        self.doc_impl._create_builtin_node_group('MyChunk', transform=lambda x: ','.split(x))
+        self.doc_impl._lazy_init()
+        assert "MyChunk" in self.doc_impl.node_groups
         assert "CoarseChunk" in self.doc_impl.node_groups
         assert "MediumChunk" in self.doc_impl.node_groups
         assert "FineChunk" in self.doc_impl.node_groups
 
     def test_create_node_group(self):
+        self.doc_impl._lazy_init.flag.reset()
         self.doc_impl.create_node_group(
             name="CustomChunk",
             transform=SentenceSplitter,
@@ -52,7 +57,7 @@ class TestDocImpl(unittest.TestCase):
 
     def test_add_files(self):
         assert self.doc_impl.store is None
-        call_once(self.doc_impl.init_flag, self.doc_impl._lazy_init)
+        self.doc_impl._lazy_init()
         assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
         new_doc.metadata = {"file_name": "new_file.txt"}
@@ -63,6 +68,37 @@ class TestDocImpl(unittest.TestCase):
     def test_delete_files(self):
         self.doc_impl.delete_files(["dummy_file.txt"])
         assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME)) == 0
+
+
+class TestDocument(unittest.TestCase):
+    def test_register_global_and_local(self):
+        Document.create_node_group('Chunk1', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+        Document.create_node_group('Chunk2', transform=SentenceSplitter, chunk_size=256, chunk_overlap=25)
+        doc1, doc2 = Document('rag_master'), Document('rag_master')
+        doc2.create_node_group('Chunk2', transform=SentenceSplitter, chunk_size=128, chunk_overlap=10)
+        doc2.create_node_group('Chunk3', trans_node=True,
+                               transform=lazyllm.pipeline(SentenceSplitter(chunk_size=128, chunk_overlap=10)))
+        doc1._impl._impl._lazy_init()
+        doc2._impl._impl._lazy_init()
+        assert doc1._impl._impl.node_groups['Chunk1']['transform_kwargs']['chunk_size'] == 512
+        assert doc1._impl._impl.node_groups['Chunk2']['transform_kwargs']['chunk_size'] == 256
+        assert doc2._impl._impl.node_groups['Chunk1']['transform_kwargs']['chunk_size'] == 512
+        assert doc2._impl._impl.node_groups['Chunk2']['transform_kwargs']['chunk_size'] == 128
+        assert 'Chunk3' not in doc1._impl._impl.node_groups
+        assert isinstance(doc2._impl._impl.node_groups['Chunk3']['transform'], lazyllm.pipeline)
+        assert doc2._impl._impl.node_groups['Chunk3']['trans_node'] is True
+
+        retriever = Retriever([doc1, doc2], 'Chunk2', similarity='bm25', topk=2)
+        r = retriever('什么是道')
+        assert isinstance(r, list)
+        assert len(r) == 4
+        assert isinstance(r[0], DocNode)
+
+        retriever2 = Retriever([doc1, doc2], 'Chunk3', similarity='bm25', topk=2)
+        r = retriever2('什么是道')
+        assert isinstance(r, list)
+        assert len(r) == 2
+        assert isinstance(r[0], DocNode)
 
 
 if __name__ == "__main__":
