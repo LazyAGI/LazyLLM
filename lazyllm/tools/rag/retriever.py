@@ -1,6 +1,6 @@
 from lazyllm import ModuleBase, pipeline
 from .store import DocNode
-from .document import Document
+from .document import Document, DocImpl
 from typing import List, Optional, Union
 
 class _PostProcess(object):
@@ -63,7 +63,9 @@ class Retriever(ModuleBase, _PostProcess):
     def forward(self, query: str) -> Union[List[DocNode], str]:
         nodes = []
         for doc in self._docs:
-            if self._group_name not in doc._impl._impl.node_groups:
+            if self._group_name not in doc._impl._impl.node_groups and \
+                    self._group_name not in DocImpl._builtin_node_groups and \
+                    self._group_name not in DocImpl._global_node_groups:
                 if len(self._docs) > 1: continue
                 raise RuntimeError(f'Group {self._group_name} not found in document {doc}')
             nodes.extend(doc.forward(func_name="retrieve", query=query, group_name=self._group_name,
