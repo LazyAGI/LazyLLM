@@ -63,6 +63,9 @@ class Retriever(ModuleBase, _PostProcess):
     def forward(self, query: str) -> Union[List[DocNode], str]:
         nodes = []
         for doc in self._docs:
+            if self._group_name not in doc._impl._impl.node_groups:
+                if len(self._docs) > 1: continue
+                raise RuntimeError(f'Group {self._group_name} not found in document {doc}')
             nodes.extend(doc.forward(func_name="retrieve", query=query, group_name=self._group_name,
                                      similarity=self._similarity, similarity_cut_off=self._similarity_cut_off,
                                      index=self._index, topk=self._topk, similarity_kws=self._similarity_kw))

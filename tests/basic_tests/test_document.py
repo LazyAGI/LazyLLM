@@ -1,7 +1,8 @@
+import lazyllm
 from lazyllm.tools.rag.doc_impl import DocImpl
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import DocNode, LAZY_ROOT_NAME
-from lazyllm.tools.rag import Document
+from lazyllm.tools.rag import Document, Retriever
 from unittest.mock import MagicMock
 import unittest
 
@@ -70,17 +71,34 @@ class TestDocImpl(unittest.TestCase):
 
 
 class TestDocument(unittest.TestCase):
-    def test_register_builtin(self):
-        Document.create_node_group("MyChunk1", transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
-        Document.create_node_group("MyChunk2", transform=SentenceSplitter, chunk_size=128, chunk_overlap=10)
+    def test_register_global_and_local(self):
+        Document.create_node_group('Chunk1', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+        Document.create_node_group('Chunk2', transform=SentenceSplitter, chunk_size=256, chunk_overlap=25)
         doc1, doc2 = Document('rag_master'), Document('rag_master')
-        doc2.create_node_group("MyChunk2", transform=SentenceSplitter, chunk_size=64, chunk_overlap=5)
+        doc2.create_node_group('Chunk2', transform=SentenceSplitter, chunk_size=128, chunk_overlap=10)
+        doc2.create_node_group('Chunk3', trans_node=True,
+                               transform=lazyllm.pipeline(SentenceSplitter(chunk_size=128, chunk_overlap=10)))
         doc1._impl._impl._lazy_init()
         doc2._impl._impl._lazy_init()
-        assert doc1._impl._impl.node_groups["MyChunk1"]["transform_kwargs"]['chunk_size'] == 512
-        assert doc1._impl._impl.node_groups["MyChunk2"]["transform_kwargs"]['chunk_size'] == 128
-        assert doc2._impl._impl.node_groups["MyChunk1"]["transform_kwargs"]['chunk_size'] == 512
-        assert doc2._impl._impl.node_groups["MyChunk2"]["transform_kwargs"]['chunk_size'] == 64
+        assert doc1._impl._impl.node_groups['Chunk1']['transform_kwargs']['chunk_size'] == 512
+        assert doc1._impl._impl.node_groups['Chunk2']['transform_kwargs']['chunk_size'] == 256
+        assert doc2._impl._impl.node_groups['Chunk1']['transform_kwargs']['chunk_size'] == 512
+        assert doc2._impl._impl.node_groups['Chunk2']['transform_kwargs']['chunk_size'] == 128
+        assert 'Chunk3' not in doc1._impl._impl.node_groups
+        assert isinstance(doc2._impl._impl.node_groups['Chunk3']['transform'], lazyllm.pipeline)
+        assert doc2._impl._impl.node_groups['Chunk3']['trans_node'] is True
+
+        retriever = Retriever([doc1, doc2], 'Chunk2', similarity='bm25', topk=2)
+        r = retriever('什么是道')
+        assert isinstance(r, list)
+        assert len(r) == 4
+        assert isinstance(r[0], DocNode)
+
+        retriever2 = Retriever([doc1, doc2], 'Chunk3', similarity='bm25', topk=2)
+        r = retriever2('什么是道')
+        assert isinstance(r, list)
+        assert len(r) == 2
+        assert isinstance(r[0], DocNode)
 
 
 if __name__ == "__main__":
