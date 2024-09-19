@@ -40,7 +40,7 @@ llama-index-readers-file = "^0.2.0"
 sentence-transformers = "^3.0.1"
 sentencepiece = "^0.2.0"
 modelscope = "^1.17.1"
-psycopg2 = "^2.9.9"
+psycopg2-binary = "^2.9.9"
 sqlalchemy = "^2.0.34"
 psutil = "^6.0.0"
 redis = { version = ">=5.0.4", optional = true }
