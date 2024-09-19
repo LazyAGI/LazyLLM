@@ -27,6 +27,6 @@ llama-index-readers-file
 sentence-transformers
 sentencepiece
 modelscope
-psycopg2
+psycopg2-binary
 sqlalchemy
 psutil

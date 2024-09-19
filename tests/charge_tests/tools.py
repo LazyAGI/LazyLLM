@@ -31,7 +31,7 @@ Get the current weather in a given location
 Args:
     location (str): The city and state, e.g. San Francisco, CA.
     unit (Literal["Fahrenheit", "Celsius", "C", "fahrenheit", "celsius", "F"]): The temperature unit to use. Infer this from the users location.
-'''
+'''  # noqa E501
 
 get_current_weather_vars = {
     'Literal': Literal,
