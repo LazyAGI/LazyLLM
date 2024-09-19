@@ -59,14 +59,9 @@ class Retriever(ModuleBase, _PostProcess):
 
     @once_wrapper
     def _lazy_init(self):
-        docs = []
-        for doc in self._docs:
-            if self._group_name not in doc._impl._impl.node_groups and \
-                    self._group_name not in DocImpl._builtin_node_groups and \
-                    self._group_name not in DocImpl._global_node_groups:
-                if self._docs <= 1: raise RuntimeError(f'Group {self._group_name} not found in document {doc}')
-            else:
-                docs.append(doc)
+        docs = [doc for doc in self._docs if self._group_name in doc._impl._impl.node_groups or self._group_name
+                in DocImpl._builtin_node_groups or self._group_name in DocImpl._global_node_group]
+        if not docs: raise RuntimeError(f'Group {self._group_name} not found in document {self._docs}')
         self._docs = docs
 
     def _get_post_process_tasks(self):
