@@ -20,8 +20,8 @@ def processYml(file, extra_info=None):
 
 class TestRagReader(object):
     def setup_method(self):
-        self.doc1 = Document(dataset_path="ci_data/rag_reader", create_ui=False)
-        self.doc2 = Document(dataset_path="ci_data/rag_reader", create_ui=False)
+        self.doc1 = Document(dataset_path="ci_data/rag_reader", manager=False)
+        self.doc2 = Document(dataset_path="ci_data/rag_reader", manager=False)
         self.datasets = os.path.join(lazyllm.config['data_path'], "ci_data/rag_reader/default/__data/sources")
 
     def teardown_method(self):
