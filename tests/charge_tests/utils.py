@@ -1,13 +1,15 @@
 import os
 import re
 import uuid
+import datetime
 
 
 UUID_HEX = str(uuid.uuid4().hex)
+CURRENT_DAY = datetime.datetime.now().strftime("%Y%m%d")
 
 
 class SqlEgsData:
-    TEST_TABLES = [f"employee_{UUID_HEX}", f"sales_{UUID_HEX}"]
+    TEST_TABLES = [f"employee_{CURRENT_DAY}_{UUID_HEX}", f"sales_{CURRENT_DAY}_{UUID_HEX}"]
     TEST_TABLES_INFO = {
         "tables": [
             {

@@ -25,5 +25,6 @@ pyjwt>=2.8.0
 sentence-transformers
 sentencepiece
 modelscope
-psycopg2
+psycopg2-binary
 sqlalchemy
+psutil
