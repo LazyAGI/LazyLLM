@@ -36,6 +36,7 @@ class Retriever(ModuleBase, _PostProcess):
         similarity_cut_off: float = float("-inf"),
         index: str = "default",
         topk: int = 6,
+        embed_keys: Optional[List[str]] = None,
         target: Optional[str] = None,
         output_format: Optional[str] = None,
         join: Union[bool, str] = False,
@@ -49,6 +50,7 @@ class Retriever(ModuleBase, _PostProcess):
         self._index = index
         self._topk = topk
         self._similarity_kw = kwargs  # kw parameters
+        self._embed_keys = embed_keys
         _PostProcess.__init__(self, target, output_format, join)
 
     def _get_post_process_tasks(self):
@@ -64,5 +66,6 @@ class Retriever(ModuleBase, _PostProcess):
             index=self._index,
             topk=self._topk,
             similarity_kws=self._similarity_kw,
+            embed_keys=self._embed_keys,
         )
         return self._post_process(nodes)

@@ -1,17 +1,38 @@
+import os
+import shutil
 import unittest
+import lazyllm
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.store import DocNode, ChromadbStore, LAZY_ROOT_NAME
 
+
+def clear_directory(directory_path):
+    if os.path.exists(directory_path):
+        for filename in os.listdir(directory_path):
+            file_path = os.path.join(directory_path, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+            except Exception as e:
+                print(f"Failed to delete {file_path}. Reason: {e}")
+    else:
+        print(f"The directory {directory_path} does not exist.")
 
 # Test class for ChromadbStore
 class TestChromadbStore(unittest.TestCase):
     def setUp(self):
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
-        self.embed = MagicMock(side_effect=lambda text: [0.1, 0.2, 0.3])
+        self.embed = {"default": MagicMock(side_effect=lambda text: [0.1, 0.2, 0.3])}
         self.store = ChromadbStore(self.node_groups, self.embed)
         self.store.add_nodes(
             [DocNode(uid="1", text="text1", group=LAZY_ROOT_NAME, parent=None)],
         )
+
+    @classmethod
+    def tearDownClass(cls):
+        clear_directory(lazyllm.config['rag_persistent_path'])
 
     def test_initialization(self):
         self.assertEqual(set(self.store._collections.keys()), set(self.node_groups))
@@ -28,7 +49,8 @@ class TestChromadbStore(unittest.TestCase):
         node2 = DocNode(uid="2", text="text2", group="group2")
         self.store.add_nodes([node1, node2])
         collection = self.store._collections["group1"]
-        self.assertEqual(collection.peek(collection.count())["ids"], ["1", "2"])
+        node_ids = [item['node_id'] for item in collection.peek(collection.count())['metadatas']]
+        self.assertEqual(node_ids, ["1", "2"])
 
     def test_try_load_store(self):
         # Set up initial data to be loaded

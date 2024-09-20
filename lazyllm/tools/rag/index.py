@@ -1,6 +1,6 @@
 import concurrent
 import os
-from typing import List, Callable, Optional
+from typing import List, Callable, Optional, Dict
 from .store import DocNode, BaseStore
 import numpy as np
 from .component.bm25 import BM25
@@ -20,7 +20,7 @@ class DefaultIndex:
 
     registered_similarity = dict()
 
-    def __init__(self, embed: Callable, store: BaseStore, **kwargs):
+    def __init__(self, embed: Dict[str, Callable], store: BaseStore, **kwargs):
         self.embed = embed
         self.store = store
 
@@ -62,6 +62,7 @@ class DefaultIndex:
         similarity_name: str,
         similarity_cut_off: float,
         topk: int,
+        embed_keys: Optional[List[str]] = None,
         **kwargs,
     ) -> List[DocNode]:
         if similarity_name not in self.registered_similarity:
@@ -74,7 +75,7 @@ class DefaultIndex:
         if mode == "embedding":
             assert self.embed, "Chosen similarity needs embed model."
             assert len(query) > 0, "Query should not be empty."
-            query_embedding = self.embed(query)
+            query_embedding = {k: e(query) for k, e in self.embed.items()}
             nodes = self._parallel_do_embedding(nodes)
             self.store.try_save_nodes(nodes)
             similarities = similarity_func(query_embedding, nodes, topk=topk, **kwargs)
@@ -83,13 +84,24 @@ class DefaultIndex:
         else:
             raise NotImplementedError(f"Mode {mode} is not supported.")
 
-        similarities.sort(key=lambda x: x[1], reverse=descend)
-        if topk is not None:
-            similarities = similarities[:topk]
+        if not isinstance(similarities[0][1], dict):
+            similarities.sort(key=lambda x: x[1], reverse=descend)
+            if topk is not None:
+                similarities = similarities[:topk]
 
-        results = [node for node, score in similarities if score > similarity_cut_off]
-        LOG.debug(f"Retrieving query `{query}` and get results: {results}")
-        return results
+            results = [node for node, score in similarities if score > similarity_cut_off]
+            LOG.debug(f"Retrieving query `{query}` and get results: {results}")
+        else:
+            sort_keys = embed_keys or similarities[0][1].keys()
+            results = []
+            # nodeIds = []
+            for key in sort_keys:
+                sorted_sim = sorted(similarities, key=lambda item: item[1][key], reverse=descend)
+                if topk is not None:
+                    sorted_sim = sorted_sim[:topk]
+
+                results.extend([node for node, score in sorted_sim if score[key] > similarity_cut_off])
+        return list(set(results))
 
 
 @DefaultIndex.register_similarity(mode="text", batch=True)
@@ -105,10 +117,13 @@ def bm25_chinese(query: str, nodes: List[DocNode], **kwargs) -> List:
 
 
 @DefaultIndex.register_similarity(mode="embedding")
-def cosine(query: List[float], node: DocNode, **kwargs) -> float:
-    product = np.dot(query, node.embedding)
-    norm = np.linalg.norm(query) * np.linalg.norm(node.embedding)
-    return product / norm
+def cosine(query: Dict[str, List[float]], node: DocNode, **kwargs) -> Dict[str, float]:
+    similarity = {}
+    for k, q in query.items():
+        product = np.dot(q, node.embedding.get(k))
+        norm = np.linalg.norm(q) * np.linalg.norm(node.embedding.get(k))
+        similarity[k] = product / norm
+    return similarity
 
 
 # User-defined similarity decorator

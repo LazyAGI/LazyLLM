@@ -1,9 +1,9 @@
 from functools import partial
 import os
 
-from typing import Callable, Optional, Dict
+from typing import Callable, Optional, Dict, Union
 import lazyllm
-from lazyllm import ModuleBase, ServerModule, TrainableModule
+from lazyllm import ModuleBase, ServerModule
 
 from .web import DocWebModule
 from .doc_manager import DocManager
@@ -14,7 +14,7 @@ from .store import LAZY_ROOT_NAME
 class Document(ModuleBase):
     _registered_file_reader: Dict[str, Callable] = {}
 
-    def __init__(self, dataset_path: str, embed: Optional[TrainableModule] = None,
+    def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                  create_ui: bool = True, launcher=None):
         super().__init__()
         if not os.path.exists(dataset_path):
@@ -24,8 +24,12 @@ class Document(ModuleBase):
         self._create_ui = create_ui
         launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
         self._local_file_reader: Dict[str, Callable] = {}
+        self._embed = embed if isinstance(embed, dict) else {"default": embed}
+        for embed in self._embed.values():
+            if isinstance(embed, ModuleBase):
+                self._submodules.append(embed)
 
-        self._impl = DocGroupImpl(dataset_path=dataset_path, embed=embed, local_readers=self._local_file_reader,
+        self._impl = DocGroupImpl(dataset_path=dataset_path, embed=self._embed, local_readers=self._local_file_reader,
                                   global_readers=self._registered_file_reader)
         if create_ui:
             doc_manager = DocManager(self._impl)

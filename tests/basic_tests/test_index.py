@@ -11,15 +11,15 @@ class TestDefaultIndex(unittest.TestCase):
         self.mock_store = MagicMock(spec=MapStore)
 
         # Create instance of DefaultIndex
-        self.index = DefaultIndex(embed=self.mock_embed, store=self.mock_store)
+        self.index = DefaultIndex(embed={"default": self.mock_embed}, store=self.mock_store)
 
         # Create mock DocNodes
         self.doc_node_1 = DocNode("text1")
-        self.doc_node_1.embedding = [1, 0, 0]
+        self.doc_node_1.embedding = {"default": [1, 0, 0]}
         self.doc_node_2 = DocNode("text2")
-        self.doc_node_2.embedding = [0, 1, 0]
+        self.doc_node_2.embedding = {"default": [0, 1, 0]}
         self.doc_node_3 = DocNode("text3")
-        self.doc_node_3.embedding = [0, 0, 1]
+        self.doc_node_3.embedding = {"default": [0, 0, 1]}
         self.nodes = [self.doc_node_1, self.doc_node_2, self.doc_node_3]
 
     def delayed_embed(self, text):

@@ -25,13 +25,13 @@ def embed_wrapper(func):
 
 
 class DocImpl:
-    def __init__(self, embed, doc_files=Optional[List[str]], local_readers: Optional[Dict] = None,
-                 global_readers: Optional[Dict] = None, **kwargs):
+    def __init__(self, embed: Dict[str, Callable], doc_files=Optional[List[str]],
+                 local_readers: Optional[Dict] = None, global_readers: Optional[Dict] = None, **kwargs):
         super().__init__()
         self.directory_reader = DirectoryReader(doc_files, local_readers=local_readers, global_readers=global_readers)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self._create_node_group_default()
-        self.embed = embed_wrapper(embed)
+        self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self.init_flag = once_flag()
         self.store = None
 
@@ -177,6 +177,7 @@ class DocImpl:
         index: str,
         topk: int,
         similarity_kws: dict,
+        embed_keys: Optional[List[str]] = None,
     ) -> List[DocNode]:
         call_once(self.init_flag, self._lazy_init)
         if index:
@@ -186,7 +187,7 @@ class DocImpl:
 
         nodes = self._get_nodes(group_name)
         return self.index.query(
-            query, nodes, similarity, similarity_cut_off, topk, **similarity_kws
+            query, nodes, similarity, similarity_cut_off, topk, embed_keys, **similarity_kws
         )
 
     def find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:

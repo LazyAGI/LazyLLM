@@ -28,9 +28,7 @@ class TestRagReader(object):
         reader = SimpleDirectoryReader(input_files=files)
         docs = []
         for doc in reader():
-            print(doc)
             docs.append(doc)
-        print(len(docs))
         assert len(docs) == 3
 
     def test_reader_dir(self):
@@ -39,9 +37,7 @@ class TestRagReader(object):
                                        exclude=["*.jpg", "*.mp3", "*.yml", "*.pdf", ".docx", "*.pptx"])
         docs = []
         for doc in reader():
-            print(doc)
             docs.append(doc)
-        print(len(docs))
         assert len(docs) == 13
 
     def test_register_local_reader(self):

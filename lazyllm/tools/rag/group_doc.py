@@ -10,7 +10,7 @@ DEFAULT_DIR = "default"
 
 
 class DocGroupImpl(lazyllm.ModuleBase):
-    def __init__(self, dataset_path, embed, local_readers: Optional[Dict] = None,
+    def __init__(self, dataset_path, embed: Dict[str, Callable], local_readers: Optional[Dict] = None,
                  global_readers: Optional[Dict] = None) -> None:
         super().__init__()
         self._dataset_path = dataset_path
