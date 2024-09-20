@@ -1,10 +1,10 @@
 import ast
 from collections import defaultdict
 from functools import wraps
-from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Set, Union
 from lazyllm import LOG, config, once_wrapper
-from .transform import NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser, AdaptiveTransform, make_transform
+from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
+                        AdaptiveTransform, make_transform, TransformArgs)
 from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, BaseStore
 from .data_loaders import DirectoryReader
 from .index import DefaultIndex
@@ -22,26 +22,6 @@ def embed_wrapper(func):
         return ast.literal_eval(result) if isinstance(result, str) else result
 
     return wrapper
-
-
-@dataclass
-class TransformArgs():
-    transform: Union[str, Callable]
-    parent: str = LAZY_ROOT_NAME,
-    trans_node: Optional[bool] = None
-    num_workers: int = 0
-    kwargs: Dict = field(default_factory=dict)
-    pattern: Optional[str] = None
-
-    @staticmethod
-    def from_dict(d):
-        return TransformArgs(transform=d['transform'], parent=d.get('parent', LAZY_ROOT_NAME),
-                             trans_node=d.get('trans_node'), num_workers=d.get('num_workers', 0),
-                             kwargs=d.get('kwargs', dict()), pattern=d.get('pattern'))
-
-    def __getitem__(self, key):
-        if key in self.__dict__: return getattr(self, key)
-        raise KeyError(f'Key {key} is not found in transform args')
 
 
 class DocImpl:
@@ -91,30 +71,28 @@ class DocImpl:
 
         if isinstance(transform, (TransformArgs, list)):
             err_msg = '{} should be set in transform when transform is TransformArgs or Dict[TransformArgs]'
-            assert parent == LAZY_ROOT_NAME, err_msg.format('parent')
             assert trans_node is None, err_msg.format('trans_node')
             assert num_workers == 0, err_msg.format('num_workers')
             assert not kwargs, err_msg.format('kwargs')
             transforms = ([TransformArgs.from_dict(t) if isinstance(t, dict) else t for t in transform]
-                          if isinstance(transform, list) else [transform])
+                          if isinstance(transform, list) else transform)
         else:
-            transforms = TransformArgs(transform=transform, parent=parent, trans_node=trans_node,
-                                       num_workers=num_workers, kwargs=kwargs)
+            transforms = TransformArgs(f=transform, trans_node=trans_node, num_workers=num_workers, kwargs=kwargs)
 
         if name in groups:
             LOG.warning(f"Duplicate group name: {name}")
         for t in (transforms if isinstance(transform, list) else [transforms]):
-            if isinstance(t.transform, str):
-                t.transform = _transmap[t.transform.lower()]
-            if isinstance(t.transform, type):
+            if isinstance(t.f, str):
+                t.f = _transmap[t.f.lower()]
+            if isinstance(t.f, type):
                 assert t.trans_node is None, '`trans_node` is allowed only when transform is callable'
-                if not issubclass(t.transform, NodeTransform): LOG.warning(
+                if not issubclass(t.f, NodeTransform): LOG.warning(
                     'Please note! You are trying to use a completely custom transform class. The relationship '
                     'between nodes may become unreliable, `Document.get_parent/get_child` functions and the '
                     'target parameter of Retriever may have strange anomalies. Please use it at your own risk.')
             else:
-                assert callable(t.transform), "transform should be callable"
-        groups[name] = transforms
+                assert callable(t.f), "transform should be callable"
+        groups[name] = dict(transform=transforms, parent=parent)
 
     @classmethod
     def _create_builtin_node_group(cls, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
@@ -176,20 +154,15 @@ class DocImpl:
             self.store.remove_nodes(node_uids)
             LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
-    def _get_transform(self, name):
-        t = self.node_groups.get(name)
-        if t is None:
-            raise ValueError(f"Node group '{name}' does not exist. Please check the group name "
-                             "or add a new one through `create_node_group`.")
-        elif isinstance(t, list):
-            return AdaptiveTransform(t)
-        return make_transform(t)
-
     def _dynamic_create_nodes(self, group_name: str, store: BaseStore) -> None:
         if store.has_nodes(group_name):
             return
         node_group = self.node_groups.get(group_name)
-        transform = self._get_transform(group_name)
+        if node_group is None:
+            raise ValueError(f"Node group '{group_name}' does not exist. Please check the group name "
+                             "or add a new one through `create_node_group`.")
+        t = node_group['transform']
+        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
         parent_nodes = self._get_nodes(node_group["parent"], store)
         nodes = transform.batch_forward(parent_nodes, group_name)
         store.add_nodes(nodes)

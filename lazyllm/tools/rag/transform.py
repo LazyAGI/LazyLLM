@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import requests
 import os
@@ -7,13 +7,35 @@ import fnmatch
 
 from functools import partial
 import re
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple, Union, Optional
 from lazyllm.components import AlpacaPrompter
 import nltk
 import tiktoken
 
 from .store import DocNode, MetadataMode
 from lazyllm import LOG, TrainableModule, ThreadPoolExecutor
+
+
+@dataclass
+class TransformArgs():
+    f: Union[str, Callable]
+    trans_node: Optional[bool] = None
+    num_workers: int = 0
+    kwargs: Dict = field(default_factory=dict)
+    pattern: Optional[str] = None
+
+    @staticmethod
+    def from_dict(d):
+        return TransformArgs(f=d['transform'], trans_node=d.get('trans_node'), num_workers=d.get(
+            'num_workers', 0), kwargs=d.get('kwargs', dict()), pattern=d.get('pattern'))
+
+    def __getitem__(self, key):
+        if key in self.__dict__: return getattr(self, key)
+        raise KeyError(f'Key {key} is not found in transform args')
+
+    def get(self, key):
+        if key in self.__dict__: return getattr(self, key)
+        return None
 
 
 def build_nodes_from_splits(
@@ -84,7 +106,7 @@ class NodeTransform(ABC):
 
 
 def make_transform(t):
-    transform, trans_node, num_workers = t['transform'], t['trans_node'], t['num_workers']
+    transform, trans_node, num_workers = t['f'], t['trans_node'], t['num_workers']
     num_workers = dict(num_workers=num_workers) if num_workers > 0 else dict()
     return (transform(**t['kwargs'], **num_workers)
             if isinstance(transform, type)
@@ -92,8 +114,9 @@ def make_transform(t):
 
 
 class AdaptiveTransform(NodeTransform):
-    def __init__(self, transforms):
+    def __init__(self, transforms: Union[List[TransformArgs], TransformArgs]):
         super().__init__(num_workers=0)
+        if not isinstance(transforms, (tuple, list)): transforms = [transforms]
         self._transformers = [(t.get('pattern'), make_transform(t)) for t in transforms]
 
     def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
