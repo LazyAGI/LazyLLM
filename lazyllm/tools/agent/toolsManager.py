@@ -24,12 +24,12 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         self._params_schema = self.load_function_schema(self.__class__.apply)
 
-        self._has_var_args = False
+        self.has_var_args = False
         signature = inspect.signature(self.__class__.apply)
         for name, param in signature.parameters.items():
             if param.kind == inspect.Parameter.VAR_POSITIONAL or\
                param.kind == inspect.Parameter.VAR_KEYWORD:
-                self._has_var_args = True
+                self.has_var_args = True
                 break
 
     def load_function_schema(self, func: Callable) -> Type[BaseModel]:
@@ -80,7 +80,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         raise NotImplementedError("Implement apply function in subclass")
 
     def _validate_input(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-        if self._has_var_args:
+        if self.has_var_args:
             return tool_input
 
         input_params = self._params_schema
@@ -125,18 +125,7 @@ class ToolManager(ModuleBase):
         super().__init__(return_trace=return_trace)
         self._tools = self._load_tools(tools)
         self._format_tools()
-        self._name_of_tools_with_var_args = self._check_var_args_of_tools(self._tools)
         self._tools_desc = self._transform_to_openai_function()
-
-    def _check_var_args_of_tools(self, tool_list: List[Callable]) -> Set[str]:
-        ret_set = set()
-        for tool in tool_list:
-            for name, param in inspect.signature(tool).parameters.items():
-                if param.kind == inspect.Parameter.VAR_POSITIONAL or\
-                   param.kind == inspect.Parameter.VAR_KEYWORD:
-                    ret_set.add(tool.name)
-                    break
-        return ret_set
 
     def _load_tools(self, tools: List[Union[str, Callable]]):
         if "tmp_tool" not in LazyLLMRegisterMetaClass.all_clses:
@@ -173,7 +162,7 @@ class ToolManager(ModuleBase):
             return False
 
         # don't check parameters if this function contains '*args' or '**kwargs'
-        if tool.name in self._name_of_tools_with_var_args:
+        if tool.has_var_args:
             return True
 
         return tool.validate_parameters(tool_arguments)
@@ -263,7 +252,7 @@ class ToolManager(ModuleBase):
             try:
                 parsed_docstring = docstring_parser.parse(tool.description)
 
-                if tool.name in self._name_of_tools_with_var_args:
+                if tool.has_var_args:
                     tmp_tool = self._gen_wrapped_moduletool(tool.description, parsed_docstring)
                     args = self._gen_args_info_from_moduletool_and_docstring(tmp_tool, parsed_docstring)
                     required_arg_list = tmp_tool.get_params_schema().model_json_schema().get("required", [])
