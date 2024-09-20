@@ -2,7 +2,7 @@ import lazyllm
 from lazyllm.tools.rag.doc_impl import DocImpl
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import DocNode, LAZY_ROOT_NAME
-from lazyllm.tools.rag import Document, Retriever
+from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform
 from unittest.mock import MagicMock
 import unittest
 
@@ -37,9 +37,9 @@ class TestDocImpl(unittest.TestCase):
         )
         assert "CustomChunk" in self.doc_impl.node_groups
         node_group = self.doc_impl.node_groups["CustomChunk"]
-        assert node_group["transform"] == SentenceSplitter
-        assert node_group["transform_kwargs"]["chunk_size"] == 512
-        assert node_group["transform_kwargs"]["chunk_overlap"] == 50
+        assert node_group["transform"].f == SentenceSplitter
+        assert node_group["transform"].kwargs["chunk_size"] == 512
+        assert node_group["transform"]["kwargs"]["chunk_overlap"] == 50
 
     def test_retrieve(self):
         self.mock_embed.return_value = "[0.1, 0.2, 0.3]"
@@ -73,20 +73,22 @@ class TestDocImpl(unittest.TestCase):
 class TestDocument(unittest.TestCase):
     def test_register_global_and_local(self):
         Document.create_node_group('Chunk1', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
-        Document.create_node_group('Chunk2', transform=SentenceSplitter, chunk_size=256, chunk_overlap=25)
+        Document.create_node_group('Chunk2', transform=TransformArgs(
+            f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
         doc1, doc2 = Document('rag_master'), Document('rag_master')
-        doc2.create_node_group('Chunk2', transform=SentenceSplitter, chunk_size=128, chunk_overlap=10)
+        doc2.create_node_group('Chunk2', transform=dict(
+            f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=10)))
         doc2.create_node_group('Chunk3', trans_node=True,
                                transform=lazyllm.pipeline(SentenceSplitter(chunk_size=128, chunk_overlap=10)))
         doc1._impl._impl._lazy_init()
         doc2._impl._impl._lazy_init()
-        assert doc1._impl._impl.node_groups['Chunk1']['transform_kwargs']['chunk_size'] == 512
-        assert doc1._impl._impl.node_groups['Chunk2']['transform_kwargs']['chunk_size'] == 256
-        assert doc2._impl._impl.node_groups['Chunk1']['transform_kwargs']['chunk_size'] == 512
-        assert doc2._impl._impl.node_groups['Chunk2']['transform_kwargs']['chunk_size'] == 128
+        assert doc1._impl._impl.node_groups['Chunk1']['transform']['kwargs']['chunk_size'] == 512
+        assert doc1._impl._impl.node_groups['Chunk2']['transform']['kwargs']['chunk_size'] == 256
+        assert doc2._impl._impl.node_groups['Chunk1']['transform']['kwargs']['chunk_size'] == 512
+        assert doc2._impl._impl.node_groups['Chunk2']['transform']['kwargs']['chunk_size'] == 128
         assert 'Chunk3' not in doc1._impl._impl.node_groups
-        assert isinstance(doc2._impl._impl.node_groups['Chunk3']['transform'], lazyllm.pipeline)
-        assert doc2._impl._impl.node_groups['Chunk3']['trans_node'] is True
+        assert isinstance(doc2._impl._impl.node_groups['Chunk3']['transform']['f'], lazyllm.pipeline)
+        assert doc2._impl._impl.node_groups['Chunk3']['transform']['trans_node'] is True
 
         retriever = Retriever([doc1, doc2], 'Chunk2', similarity='bm25', topk=2)
         r = retriever('什么是道')
@@ -99,6 +101,20 @@ class TestDocument(unittest.TestCase):
         assert isinstance(r, list)
         assert len(r) == 2
         assert isinstance(r[0], DocNode)
+
+    def test_register_with_pattern(self):
+        Document.create_node_group('AdaptiveChunk1', transform=[
+            TransformArgs(f=SentenceSplitter, pattern='*.txt', kwargs=dict(chunk_size=512, chunk_overlap=50)),
+            dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25))])
+        Document.create_node_group('AdaptiveChunk2', transform=AdaptiveTransform([
+            dict(f=SentenceSplitter, pattern='*.txt', kwargs=dict(chunk_size=512, chunk_overlap=50)),
+            TransformArgs(f=SentenceSplitter, pattern=None, kwargs=dict(chunk_size=256, chunk_overlap=25))]))
+        doc = Document('rag_master')
+        doc._impl._impl._lazy_init()
+        retriever = Retriever(doc, 'AdaptiveChunk1', similarity='bm25', topk=2)
+        retriever('什么是道')
+        retriever = Retriever(doc, 'AdaptiveChunk2', similarity='bm25', topk=2)
+        retriever('什么是道')
 
 
 if __name__ == "__main__":
