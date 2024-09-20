@@ -27,7 +27,7 @@ import lazyllm
 
 documents = lazyllm.Document(dataset_path="/path/to/your/doc/dir",
                              embed=lazyllm.OnlineEmbeddingModule(),
-                             create_ui=False)
+                             manager=False)
 
 # Part2
 
@@ -159,7 +159,7 @@ import lazyllm
 
 documents = lazyllm.Document(dataset_path="rag_master",
                              embed=lazyllm.OnlineEmbeddingModule(),
-                             create_ui=False)
+                             manager=False)
 
 documents.create_node_group(name="sentences",
                             transform=lambda s: '。'.split(s))
@@ -230,7 +230,7 @@ import lazyllm
 
 documents = lazyllm.Document(dataset_path="rag_master",
                              embed=lazyllm.OnlineEmbeddingModule(),
-                             create_ui=False)
+                             manager=False)
 
 documents.create_node_group(name="sentences",
                             transform=lambda s: '。'.split(s))

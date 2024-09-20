@@ -27,8 +27,9 @@ llama-index-readers-file
 sentence-transformers
 sentencepiece
 modelscope
-psycopg2
+psycopg2-binary
 sqlalchemy
+psutil
 redis>=5.0.4
 huggingface-hub>=0.23.1
 llama-index>=0.10.25
