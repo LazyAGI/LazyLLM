@@ -1,5 +1,6 @@
 from lazyllm import ModuleBase, pipeline
 from .store import DocNode
+from .document import Document, DocImpl
 from typing import List, Optional, Union
 
 class _PostProcess(object):
@@ -43,7 +44,12 @@ class Retriever(ModuleBase, _PostProcess):
         **kwargs,
     ):
         super().__init__()
-        self._doc = doc
+
+        self._docs = [doc] if isinstance(doc, Document) else doc
+        for doc in self._docs:
+            assert isinstance(doc, Document), 'Only Document or List[Document] are supported'
+            self._submodules.append(doc)
+
         self._group_name = group_name
         self._similarity = similarity  # similarity function str
         self._similarity_cut_off = similarity_cut_off
@@ -57,15 +63,15 @@ class Retriever(ModuleBase, _PostProcess):
         return pipeline(lambda *a: self('Test Query'))
 
     def forward(self, query: str) -> Union[List[DocNode], str]:
-        nodes = self._doc.forward(
-            func_name="retrieve",
-            query=query,
-            group_name=self._group_name,
-            similarity=self._similarity,
-            similarity_cut_off=self._similarity_cut_off,
-            index=self._index,
-            topk=self._topk,
-            similarity_kws=self._similarity_kw,
-            embed_keys=self._embed_keys,
-        )
+        nodes = []
+        for doc in self._docs:
+            if self._group_name not in doc._impl._impl.node_groups and \
+                    self._group_name not in DocImpl._builtin_node_groups and \
+                    self._group_name not in DocImpl._global_node_groups:
+                if len(self._docs) > 1: continue
+                raise RuntimeError(f'Group {self._group_name} not found in document {doc}')
+            nodes.extend(doc.forward(func_name="retrieve", query=query, group_name=self._group_name,
+                                     similarity=self._similarity, similarity_cut_off=self._similarity_cut_off,
+                                     index=self._index, topk=self._topk, similarity_kws=self._similarity_kw,
+                                     embed_keys=self._embed_keys))
         return self._post_process(nodes)

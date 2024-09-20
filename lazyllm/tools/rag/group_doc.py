@@ -154,7 +154,7 @@ class DocGroupImpl(lazyllm.ModuleBase):
     def __repr__(self):
         return lazyllm.make_repr("Module", "DocGroupImpl")
 
-    def create_node_group(
-        self, name: str, transform: Callable, parent: str = LAZY_ROOT_NAME, **kwargs
-    ) -> None:
-        self._impl.create_node_group(name, transform, parent, **kwargs)
+    def create_node_group(self, name: str, transform: Callable, parent: str = LAZY_ROOT_NAME,
+                          *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
+        self._impl.create_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
+                                     num_workers=num_workers, **kwargs)

@@ -13,6 +13,7 @@ from multiprocessing.util import register_after_fork
 from collections import defaultdict
 import uuid
 import copy
+import psutil
 
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final, timeout, LOG
@@ -173,8 +174,18 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             super(__class__, self).__init__(cmd, launcher, sync=sync)
 
         def stop(self):
-            if self.ps and self.status == Status.Running:
-                self.ps.kill()
+            if self.ps:
+                try:
+                    parent = psutil.Process(self.ps.pid)
+                    for child in parent.children(recursive=True):
+                        child.kill()
+                    parent.kill()
+                except psutil.NoSuchProcess:
+                    LOG.warning(f"Process with PID {self.ps.pid} does not exist.")
+                except psutil.AccessDenied:
+                    LOG.warning(f"Permission denied when trying to kill process with PID {self.ps.pid}.")
+                except Exception as e:
+                    LOG.warning(f"An error occurred: {e}")
 
         @property
         def status(self):

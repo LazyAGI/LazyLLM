@@ -2,14 +2,18 @@ document.addEventListener('DOMContentLoaded', function() {
     var script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/showdown/dist/showdown.min.js'
     document.head.appendChild(script);
-    
-    var script = document.createElement('script');
-    script.src = '/assets/js/jigsaw.js'
-    document.head.appendChild(script);
+
+    var logopath = "../../assets/logo.png";
+    let pathName = window.document.location.pathname;  
+    let paths = pathName.replace(/^\/|\/$/g, '').split('/');
+    var versionInfo = '/' + paths.slice(0, 2).join('/');
+    if (paths.length == 2){
+        logopath = "assets/logo.png";
+    } 
     // 对话助手入口
     var floatingIcon = document.createElement('div');
     floatingIcon.id = 'floating-icon';
-    floatingIcon.innerHTML = '<img src="/assets/logo.png" alt="icon">';
+    floatingIcon.innerHTML = `<img src="${logopath}" alt="icon">`;
     document.body.appendChild(floatingIcon);
 
     var language;
@@ -29,14 +33,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // 对话框
     async function initDialogDom() {
         let curVersion = 'stable';
-        let pathName = window.document.location.pathname;  
-        let paths = pathName.replace(/^\/|\/$/g, '').split('/');
         language = paths[0];
         curVersion = paths[1];
 
         try {
             // 发送请求到后端接口
-            const response = await fetch('http://api.lazyllm.top/checkVersion', {
+            const response = await fetch('https://api.lazyllm.top/checkVersion', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -110,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function() {
             let hello = document.createElement('div');
             hello.innerHTML = `
                     <div class="message received">  
-                        <img src="/assets/logo.png" class="avatar"> 
+                        <img src="${logopath}" class="avatar"> 
                         <p>Hello, how can I assist you today ?</p> 
                     </div> `
             messages.appendChild(hello)
@@ -155,7 +157,7 @@ document.addEventListener('DOMContentLoaded', function() {
     async function Verify() {
         let seed = Math.ceil(Math.random()*10000);
         try {
-            const response = await fetch('http://api.lazyllm.top/authorize', {
+            const response = await fetch('https://api.lazyllm.top/authorize', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -210,7 +212,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const botMessage = document.createElement('div');
         botMessage.classList.add('message');
         botMessage.classList.add('received');
-        botMessage.innerHTML = `<img src="/assets/logo.png" alt="机器人头像" class="avatar">
+        botMessage.innerHTML = `<img src="${logopath}" alt="机器人头像" class="avatar">
                                 <div class="content">
                                     <div id="loader"></div>
                                 </div>
@@ -222,7 +224,7 @@ document.addEventListener('DOMContentLoaded', function() {
         messages.scrollTop = messages.scrollHeight; // 滚动到最新消息
 
         try {
-            fetchWithTimeout('http://api.lazyllm.top/chat', { 
+            fetchWithTimeout('https://api.lazyllm.top/chat', { 
                 method: 'POST',  
                 headers: {
                     'Content-Type': 'application/json',
@@ -244,7 +246,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     data.sources.forEach(source => {
                         const link = document.createElement('a');
                         link.textContent = source.text;
-                        link.href = source.href;
+                        link.href = versionInfo + source.href;
                         link.target = '_blank'
                         source_box.appendChild(link);
                     });
