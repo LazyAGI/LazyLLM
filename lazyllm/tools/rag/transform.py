@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import json
 import requests
+import os
+import fnmatch
 
 from functools import partial
 import re
@@ -71,7 +73,7 @@ class NodeTransform(ABC):
             return sum([impl(node) for node in documents], [])
 
     @abstractmethod
-    def transform(self, document: DocNode, **kwargs) -> List[str]:
+    def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
         raise NotImplementedError("Not implemented")
 
     def __call__(self, node: DocNode, **kwargs: Any) -> List[DocNode]:
@@ -79,6 +81,26 @@ class NodeTransform(ABC):
         results = self.transform(node, **kwargs)
         if isinstance(results, (DocNode, str)): results = [results]
         return [DocNode(text=chunk) if isinstance(chunk, str) else chunk for chunk in results if chunk]
+
+
+def make_transform(t):
+    transform, trans_node, num_workers = t['transform'], t['trans_node'], t['num_workers']
+    num_workers = dict(num_workers=num_workers) if num_workers > 0 else dict()
+    return (transform(**t['kwargs'], **num_workers)
+            if isinstance(transform, type)
+            else FuncNodeTransform(transform, trans_node=trans_node, **num_workers))
+
+
+class AdaptiveTransform(NodeTransform):
+    def __init__(self, transforms):
+        super().__init__(num_workers=0)
+        self._transformers = [(t.get('pattern'), make_transform(t)) for t in transforms]
+
+    def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
+        for pt, transform in self._transformers:
+            if not pt or fnmatch.fnmatch(document, pt if pt.startswith("*") else os.path.join(str(os.cwd()), pt)):
+                return transform(document, **kwargs)
+        return []
 
 
 class SentenceSplitter(NodeTransform):
@@ -281,7 +303,7 @@ class FuncNodeTransform(NodeTransform):
         super(__class__, self).__init__(num_workers=num_workers)
         self._func, self._trans_node = func, trans_node
 
-    def transform(self, node: DocNode, **kwargs) -> List[str]:
+    def transform(self, node: DocNode, **kwargs) -> List[Union[str, DocNode]]:
         return self._func(node if self._trans_node else node.get_text())
 
 

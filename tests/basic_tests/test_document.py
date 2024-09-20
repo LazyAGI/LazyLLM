@@ -38,8 +38,8 @@ class TestDocImpl(unittest.TestCase):
         assert "CustomChunk" in self.doc_impl.node_groups
         node_group = self.doc_impl.node_groups["CustomChunk"]
         assert node_group["transform"] == SentenceSplitter
-        assert node_group["transform_kwargs"]["chunk_size"] == 512
-        assert node_group["transform_kwargs"]["chunk_overlap"] == 50
+        assert node_group["kwargs"]["chunk_size"] == 512
+        assert node_group["kwargs"]["chunk_overlap"] == 50
 
     def test_retrieve(self):
         self.mock_embed.return_value = "[0.1, 0.2, 0.3]"
@@ -80,10 +80,10 @@ class TestDocument(unittest.TestCase):
                                transform=lazyllm.pipeline(SentenceSplitter(chunk_size=128, chunk_overlap=10)))
         doc1._impl._impl._lazy_init()
         doc2._impl._impl._lazy_init()
-        assert doc1._impl._impl.node_groups['Chunk1']['transform_kwargs']['chunk_size'] == 512
-        assert doc1._impl._impl.node_groups['Chunk2']['transform_kwargs']['chunk_size'] == 256
-        assert doc2._impl._impl.node_groups['Chunk1']['transform_kwargs']['chunk_size'] == 512
-        assert doc2._impl._impl.node_groups['Chunk2']['transform_kwargs']['chunk_size'] == 128
+        assert doc1._impl._impl.node_groups['Chunk1']['kwargs']['chunk_size'] == 512
+        assert doc1._impl._impl.node_groups['Chunk2']['kwargs']['chunk_size'] == 256
+        assert doc2._impl._impl.node_groups['Chunk1']['kwargs']['chunk_size'] == 512
+        assert doc2._impl._impl.node_groups['Chunk2']['kwargs']['chunk_size'] == 128
         assert 'Chunk3' not in doc1._impl._impl.node_groups
         assert isinstance(doc2._impl._impl.node_groups['Chunk3']['transform'], lazyllm.pipeline)
         assert doc2._impl._impl.node_groups['Chunk3']['trans_node'] is True
