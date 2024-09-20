@@ -28,3 +28,5 @@ modelscope
 psycopg2-binary
 sqlalchemy
 psutil
+pypdf
+pytest

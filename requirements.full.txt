@@ -28,6 +28,8 @@ modelscope
 psycopg2-binary
 sqlalchemy
 psutil
+pypdf
+pytest
 redis>=5.0.4
 huggingface-hub>=0.23.1
 pandas>=2.2.2
@@ -55,6 +57,7 @@ lmdeploy
 timm
 diffusers
 sortedcontainers
-flash-attn
+flash-attn<=2.6.2
 lightllm
 lazyllm-llamafactory
+rotary-embedding-torch
