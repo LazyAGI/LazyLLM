@@ -6,7 +6,6 @@
 - Fine-tuning (based on collie): collie-lm, numpy, peft, torch, transformers, datasets, deepspeed, fire
 - Fine-tuning (based on lightllm): lightllm
 - Fine-tuning (based on vllm): vllm
-- RAG: llama_index, llama-index-retrievers-bm25, llama-index-storage-docstore-redis, llama-index-vector-stores-redis, rank_bm25, redisvl, llama_index, llama-index-embeddings-huggingface
 
 ### Basic Dependencies
 
