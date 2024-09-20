@@ -26,7 +26,7 @@ class TransformArgs():
 
     @staticmethod
     def from_dict(d):
-        return TransformArgs(f=d['transform'], trans_node=d.get('trans_node'), num_workers=d.get(
+        return TransformArgs(f=d['f'], trans_node=d.get('trans_node'), num_workers=d.get(
             'num_workers', 0), kwargs=d.get('kwargs', dict()), pattern=d.get('pattern'))
 
     def __getitem__(self, key):
@@ -106,10 +106,12 @@ class NodeTransform(ABC):
 
 
 def make_transform(t):
+    if isinstance(t, dict): t = TransformArgs.from_dict(t)
     transform, trans_node, num_workers = t['f'], t['trans_node'], t['num_workers']
     num_workers = dict(num_workers=num_workers) if num_workers > 0 else dict()
     return (transform(**t['kwargs'], **num_workers)
             if isinstance(transform, type)
+            else transform if isinstance(transform, NodeTransform)
             else FuncNodeTransform(transform, trans_node=trans_node, **num_workers))
 
 
@@ -121,7 +123,10 @@ class AdaptiveTransform(NodeTransform):
 
     def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
         for pt, transform in self._transformers:
-            if not pt or fnmatch.fnmatch(document, pt if pt.startswith("*") else os.path.join(str(os.cwd()), pt)):
+            if pt and not pt.startswith("*"): pt = os.path.join(str(os.cwd()), pt)
+            if not isinstance(document, DocNode):
+                LOG.warning(f'Invalud document type {type(document)} got')
+            if not pt or fnmatch.fnmatch(document.docpath, pt):
                 return transform(document, **kwargs)
         return []
 

@@ -69,15 +69,18 @@ class DocImpl:
                                 num_workers: int = 0, **kwargs):
         groups = getattr(cls, group_name)
 
-        if isinstance(transform, (TransformArgs, list)):
+        def get_trans(t): return TransformArgs.from_dict(t) if isinstance(t, dict) else t
+
+        if isinstance(transform, (TransformArgs, tuple, list, dict)):
             err_msg = '{} should be set in transform when transform is TransformArgs or Dict[TransformArgs]'
             assert trans_node is None, err_msg.format('trans_node')
             assert num_workers == 0, err_msg.format('num_workers')
             assert not kwargs, err_msg.format('kwargs')
-            transforms = ([TransformArgs.from_dict(t) if isinstance(t, dict) else t for t in transform]
-                          if isinstance(transform, list) else transform)
+            transforms = ([get_trans(t) for t in transform] if isinstance(transform, (list, tuple)) else
+                          get_trans(transform))
         else:
-            transforms = TransformArgs(f=transform, trans_node=trans_node, num_workers=num_workers, kwargs=kwargs)
+            transforms = TransformArgs(f=transform, trans_node=trans_node,
+                                       num_workers=num_workers, kwargs=kwargs)
 
         if name in groups:
             LOG.warning(f"Duplicate group name: {name}")
@@ -91,7 +94,7 @@ class DocImpl:
                     'between nodes may become unreliable, `Document.get_parent/get_child` functions and the '
                     'target parameter of Retriever may have strange anomalies. Please use it at your own risk.')
             else:
-                assert callable(t.f), "transform should be callable"
+                assert callable(t.f), f"transform should be callable, but get {t.f}"
         groups[name] = dict(transform=transforms, parent=parent)
 
     @classmethod
