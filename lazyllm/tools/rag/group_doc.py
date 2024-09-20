@@ -13,7 +13,7 @@ class DocGroupImpl(lazyllm.ModuleBase):
     def __init__(self, dataset_path, embed, local_readers: Optional[Dict] = None,
                  global_readers: Optional[Dict] = None) -> None:
         super().__init__()
-        self._dataset_path = dataset_path
+        self._dataset_path = os.path.normpath(dataset_path)
         self._embed = embed
         assert os.path.exists(self.dataset_path), f"{self.dataset_path} does not exist"
 
