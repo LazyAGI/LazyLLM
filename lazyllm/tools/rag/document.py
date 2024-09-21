@@ -60,13 +60,19 @@ class Document(ModuleBase):
             self._impl.create_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
                                          num_workers=num_workers, **kwargs)
 
-    def add_reader(self, pattern: str, func: Callable):
-        self._local_file_reader[pattern] = func
+    @DynamicDescriptor
+    def add_reader(self, pattern: str, func: Optional[Callable] = None):
+        if isinstance(self, type):
+            return self.register_global_reader(pattern=pattern, func=None)
+        else:
+            assert callable(func), 'func for reader should be callable'
+            self._local_file_reader[pattern] = func
 
     @classmethod
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
         if func is not None:
             cls._registered_file_reader[pattern] = func
+            return None
 
         def decorator(klass):
             if callable(klass): cls._registered_file_reader[pattern] = klass

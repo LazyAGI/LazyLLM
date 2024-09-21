@@ -57,7 +57,7 @@ class TestRagReader(object):
         assert len(docs) == 1
 
     def test_register_local_and_global_reader(self):
-        Document.register_global_reader("**/*.yml", processYml)
+        Document.add_reader("**/*.yml", processYml)
         self.doc.add_reader("**/*.yml", YmlReader)
         files = [os.path.join(self.datasets, "reader_test.yml")]
         docs = self.doc._impl._impl.directory_reader.load_data(input_files=files)
