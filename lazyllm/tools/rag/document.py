@@ -63,7 +63,7 @@ class Document(ModuleBase):
     @DynamicDescriptor
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         if isinstance(self, type):
-            return self.register_global_reader(pattern=pattern, func=None)
+            return self.register_global_reader(pattern=pattern, func=func)
         else:
             assert callable(func), 'func for reader should be callable'
             self._local_file_reader[pattern] = func
