@@ -102,6 +102,10 @@ class TestDocument(unittest.TestCase):
         assert len(r) == 2
         assert isinstance(r[0], DocNode)
 
+    def test_create_document(self):
+        Document('rag_master')
+        Document('rag_master/')
+
     def test_register_with_pattern(self):
         Document.create_node_group('AdaptiveChunk1', transform=[
             TransformArgs(f=SentenceSplitter, pattern='*.txt', kwargs=dict(chunk_size=512, chunk_overlap=50)),

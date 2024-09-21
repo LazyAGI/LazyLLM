@@ -75,7 +75,7 @@ def install_packages(packages):
 def install_full():
     packages = load_packages()
     install_multiple_packages(packages['full'])
-    install_packages("flash-attn>=2.5.8")
+    install_packages("flash-attn<=2.6.2")
 
 def install_standard():
     packages = load_packages()
