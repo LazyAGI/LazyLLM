@@ -475,10 +475,10 @@ def once_wrapper(reset_on_pickle):
                 return getattr(self._instance, f'_lazyllm_{self._func.__name__}_once_flag')
 
         def __init__(self, func):
-            self._func = func
+            self.__func__ = func
 
         def __get__(self, instance, _):
-            return Wrapper.Impl(self._func, instance)
+            return Wrapper.Impl(self.__func__, instance)
 
     return Wrapper if isinstance(reset_on_pickle, bool) else Wrapper(reset_on_pickle)
 
@@ -498,7 +498,7 @@ class DynamicDescriptor:
         def __doc__(self, value): self._func.__doc__ = value
 
     def __init__(self, func):
-        self._func = func
+        self.__func__ = func
 
     def __get__(self, instance, owner):
-        return DynamicDescriptor.Impl(self._func, instance, owner)
+        return DynamicDescriptor.Impl(self.__func__, instance, owner)
