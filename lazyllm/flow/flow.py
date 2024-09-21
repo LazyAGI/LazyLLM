@@ -1,4 +1,5 @@
 import lazyllm
+import builtins
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root
 from lazyllm import Thread, ReadOnlyWrapper, LOG, globals
 from ..common.common import _MetaBind
@@ -25,8 +26,16 @@ class _FuncWrap(object):
         # TODO: add registry message
         return lazyllm.make_repr('Function', self.f.__name__.strip('<>'))
 
+_old_ins = isinstance
+def new_ins(obj, cls):
+    if _old_ins(obj, _FuncWrap): return True if (cls is _FuncWrap or (
+        _old_ins(cls, (tuple, list)) and _FuncWrap in cls)) else _old_ins(obj.f, cls)
+    return _old_ins(obj, cls)
+
+setattr(builtins, 'isinstance', new_ins)
+
 def _is_function(f):
-    return isinstance(f, (types.BuiltinFunctionType, types.FunctionType, _FuncWrap,
+    return isinstance(f, (types.BuiltinFunctionType, types.FunctionType,
                           types.BuiltinMethodType, types.MethodType, types.LambdaType))
 
 class FlowBase(metaclass=_MetaBind):
@@ -46,7 +55,7 @@ class FlowBase(metaclass=_MetaBind):
 
     def _add(self, k, v):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
-        self._items.append(v() if isinstance(v, type) else _FuncWrap(v) if _is_function(v) else v)
+        self._items.append(v() if isinstance(v, type) else _FuncWrap(v) if _is_function(v) or v in self._items else v)
         if isinstance(v, FlowBase): v._father = self
         if k: self._item_names.append(k)
         if self._curr_frame and isinstance(v, FlowBase):
