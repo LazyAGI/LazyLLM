@@ -99,7 +99,9 @@ class TestDocument(unittest.TestCase):
         assert isinstance(r, list)
         assert len(r) == 2
         assert isinstance(r[0], DocNode)
-
+    def test_create_document(self):
+        doc = Document('rag_master')
+        doc = Document('rag_master/')
 
 if __name__ == "__main__":
     unittest.main()
