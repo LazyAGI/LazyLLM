@@ -22,11 +22,11 @@ pystemmer
 nltk
 jieba>=0.42.1
 pyjwt>=2.8.0
-llama-index-core
-llama-index-readers-file
 sentence-transformers
 sentencepiece
 modelscope
 psycopg2-binary
 sqlalchemy
 psutil
+pypdf
+pytest
