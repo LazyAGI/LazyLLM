@@ -101,12 +101,10 @@ class TestDocument(unittest.TestCase):
         assert isinstance(r, list)
         assert len(r) == 2
         assert isinstance(r[0], DocNode)
-<<<<<<< HEAD
         
     def test_create_document(self):
         doc = Document('rag_master')
         doc = Document('rag_master/')
-=======
 
     def test_register_with_pattern(self):
         Document.create_node_group('AdaptiveChunk1', transform=[
@@ -122,7 +120,6 @@ class TestDocument(unittest.TestCase):
         retriever = Retriever(doc, 'AdaptiveChunk2', similarity='bm25', topk=2)
         retriever('什么是道')
 
->>>>>>> upstream/main
 
 if __name__ == "__main__":
     unittest.main()
