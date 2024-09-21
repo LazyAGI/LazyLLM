@@ -103,8 +103,8 @@ class TestDocument(unittest.TestCase):
         assert isinstance(r[0], DocNode)
         
     def test_create_document(self):
-        doc = Document('rag_master')
-        doc = Document('rag_master/')
+        Document('rag_master')
+        Document('rag_master/')
 
     def test_register_with_pattern(self):
         Document.create_node_group('AdaptiveChunk1', transform=[
