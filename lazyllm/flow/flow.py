@@ -10,6 +10,7 @@ import inspect
 import threading
 import traceback
 import sys
+import os
 from typing import Union, Tuple, List, Optional
 import concurrent.futures
 from collections import deque
@@ -26,11 +27,11 @@ class _FuncWrap(object):
         # TODO: add registry message
         return lazyllm.make_repr('Function', self.f.__name__.strip('<>'))
 
-_old_ins = isinstance
+_oldins = isinstance
 def new_ins(obj, cls):
-    if _old_ins(obj, _FuncWrap): return True if (cls is _FuncWrap or (
-        _old_ins(cls, (tuple, list)) and _FuncWrap in cls)) else _old_ins(obj.f, cls)
-    return _old_ins(obj, cls)
+    if _oldins(obj, _FuncWrap) and os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) != 'ON':
+        return True if (cls is _FuncWrap or (_oldins(cls, (tuple, list)) and _FuncWrap in cls)) else _oldins(obj.f, cls)
+    return _oldins(obj, cls)
 
 setattr(builtins, 'isinstance', new_ins)
 
