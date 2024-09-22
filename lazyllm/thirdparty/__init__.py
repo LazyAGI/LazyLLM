@@ -5,17 +5,11 @@ import os
 
 package_name_map = {
     'huggingface_hub': 'huggingface-hub',
-    'llama_index': 'llama-index',
     'jwt': 'PyJWT',
     'rank_bm25': 'rank-bm25',
     'collie': 'collie-lm',
     'faiss': 'faiss-cpu',
     'flash_attn': 'flash-attn',
-    'llama_index.embeddings.huggingface': 'llama-index-embeddings-huggingface',
-    'llama_index.storage.docstore.redis': 'llama-index-storage-docstore-redis',
-    'llama_index.storage.index.store.redis': 'llama-index-storage-index-store-redis',
-    'llama_index.storage.kvstore.redis': 'llama-index-storage-kvstore-redis',
-    'llama_index.retrievers.bm25': 'llama-index-retrievers-bm25',
     'sklearn': 'scikit-learn'
 }
 
@@ -83,10 +77,8 @@ class PackageWrapper(object):
                 err_msg = f'Cannot import module {self._Wrapper__key}'
             raise ImportError(err_msg)
 
-modules = ['redis', 'huggingface_hub', 'jieba', 'llama_index', 'modelscope', 'pandas', 'jwt', 'rank_bm25',
-           'redisvl', 'datasets', 'deepspeed', 'fire', 'numpy', 'peft', 'torch', 'transformers', 'collie',
-           'faiss', 'flash_attn', 'google', 'lightllm', 'llama_index.embeddings.huggingface', 'vllm', 'ChatTTS',
-           'llama_index.storage.docstore.redis', 'llama_index.storage.index.store.redis', 'wandb', 'funasr',
-           'llama_index.storage.kvstore.redis', 'llama_index.retrievers.bm25', 'sklearn', 'torchvision']
+modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', 'rank_bm25', 'redisvl', 'datasets',
+           'deepspeed', 'fire', 'numpy', 'peft', 'torch', 'transformers', 'collie', 'faiss', 'flash_attn', 'google',
+           'lightllm', 'vllm', 'ChatTTS', 'wandb', 'funasr', 'sklearn', 'torchvision']
 for m in modules:
     vars()[m] = PackageWrapper(m)

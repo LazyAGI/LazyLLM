@@ -2,6 +2,10 @@
     members:
     exclude-members:
 
+::: lazyllm.tools.rag.readers.ReaderBase
+    members:
+	exclude-members:
+
 ::: lazyllm.tools.Reranker
     members:
     exclude-members: forward

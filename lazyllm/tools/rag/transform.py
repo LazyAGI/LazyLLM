@@ -1,17 +1,41 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import requests
+import os
+import fnmatch
 
 from functools import partial
 import re
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple, Union, Optional
 from lazyllm.components import AlpacaPrompter
 import nltk
 import tiktoken
 
 from .store import DocNode, MetadataMode
 from lazyllm import LOG, TrainableModule, ThreadPoolExecutor
+
+
+@dataclass
+class TransformArgs():
+    f: Union[str, Callable]
+    trans_node: Optional[bool] = None
+    num_workers: int = 0
+    kwargs: Dict = field(default_factory=dict)
+    pattern: Optional[str] = None
+
+    @staticmethod
+    def from_dict(d):
+        return TransformArgs(f=d['f'], trans_node=d.get('trans_node'), num_workers=d.get(
+            'num_workers', 0), kwargs=d.get('kwargs', dict()), pattern=d.get('pattern'))
+
+    def __getitem__(self, key):
+        if key in self.__dict__: return getattr(self, key)
+        raise KeyError(f'Key {key} is not found in transform args')
+
+    def get(self, key):
+        if key in self.__dict__: return getattr(self, key)
+        return None
 
 
 def build_nodes_from_splits(
@@ -71,7 +95,7 @@ class NodeTransform(ABC):
             return sum([impl(node) for node in documents], [])
 
     @abstractmethod
-    def transform(self, document: DocNode, **kwargs) -> List[str]:
+    def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
         raise NotImplementedError("Not implemented")
 
     def __call__(self, node: DocNode, **kwargs: Any) -> List[DocNode]:
@@ -79,6 +103,32 @@ class NodeTransform(ABC):
         results = self.transform(node, **kwargs)
         if isinstance(results, (DocNode, str)): results = [results]
         return [DocNode(text=chunk) if isinstance(chunk, str) else chunk for chunk in results if chunk]
+
+
+def make_transform(t):
+    if isinstance(t, dict): t = TransformArgs.from_dict(t)
+    transform, trans_node, num_workers = t['f'], t['trans_node'], t['num_workers']
+    num_workers = dict(num_workers=num_workers) if num_workers > 0 else dict()
+    return (transform(**t['kwargs'], **num_workers)
+            if isinstance(transform, type)
+            else transform if isinstance(transform, NodeTransform)
+            else FuncNodeTransform(transform, trans_node=trans_node, **num_workers))
+
+
+class AdaptiveTransform(NodeTransform):
+    def __init__(self, transforms: Union[List[TransformArgs], TransformArgs]):
+        super().__init__(num_workers=0)
+        if not isinstance(transforms, (tuple, list)): transforms = [transforms]
+        self._transformers = [(t.get('pattern'), make_transform(t)) for t in transforms]
+
+    def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
+        for pt, transform in self._transformers:
+            if pt and not pt.startswith("*"): pt = os.path.join(str(os.cwd()), pt)
+            if not isinstance(document, DocNode):
+                LOG.warning(f'Invalud document type {type(document)} got')
+            if not pt or fnmatch.fnmatch(document.docpath, pt):
+                return transform(document, **kwargs)
+        return []
 
 
 class SentenceSplitter(NodeTransform):
@@ -281,7 +331,7 @@ class FuncNodeTransform(NodeTransform):
         super(__class__, self).__init__(num_workers=num_workers)
         self._func, self._trans_node = func, trans_node
 
-    def transform(self, node: DocNode, **kwargs) -> List[str]:
+    def transform(self, node: DocNode, **kwargs) -> List[Union[str, DocNode]]:
         return self._func(node if self._trans_node else node.get_text())
 
 
