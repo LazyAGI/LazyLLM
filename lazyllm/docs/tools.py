@@ -51,9 +51,9 @@ add_english_doc('Document.create_node_group', '''
 Generate a node group produced by the specified rule.
 
 Args:
-    name (str): The name of the node group, cannot be passed in as key-value pairs. 
+    name (str): The name of the node group, cannot be passed in as key-value pairs.
     transform (Callable): The transformation rule that converts a node into a node group. The function prototype is `(DocNode, group_name, **kwargs) -> List[DocNode]`. Currently built-in options include [SentenceSplitter][lazyllm.tools.SentenceSplitter], and users can define their own transformation rules.
-    trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`. 
+    trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`.
     num_workers (int): number of new threads used for transform. default: 0
     parent (str): The node that needs further transformation. The series of new nodes obtained after transformation will be child nodes of this parent node. If not specified, the transformation starts from the root node.
     kwargs: Parameters related to the specific implementation.
@@ -555,15 +555,19 @@ FunctionCall是单轮工具调用类，如果LLM中的信息不足以回答用�
 
 Args:
     llm (ModuleBase): 要使用的LLM可以是TrainableModule或OnlineChatModule。
-    tools (List[str]): LLM使用的工具名称列表。
+    tools (List[Union[str, Callable]]): LLM使用的工具名称或者 Callable 列表
+
+注意：tools 中使用的工具必须带有 `__doc__` 字段，按照 [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) 的要求描述清楚工具的用途和参数。
 ''')
 
 add_english_doc('FunctionCall', '''\
 FunctionCall is a single-round tool call class. If the information in LLM is not enough to answer the uesr's question, it is necessary to combine external knowledge to answer the user's question. If the LLM output required a tool call, the tool call is performed and the tool call result is output. The output result is of List type, including the input, model output, and tool output of the current round. If a tool call is not required, the LLM result is directly output, and the output result is of string type.
 
+Note: The tools used in `tools` must have a `__doc__` field, clearly describing the purpose and parameters of the tool according to the [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) requirements.
+
 Args:
     llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
-    tools (List[str]): A list of tool names for LLM to use.
+    tools (List[Union[str, Callable]]): A list of tool names for LLM to use.
 ''')
 
 add_example('FunctionCall', """\
@@ -938,12 +942,12 @@ SqlManager是与数据库进行交互的专用工具。它提供了连接数据�
 Arguments:
     db_type (str): 目前仅支持"PostgreSQL"，后续会增加"MySQL", "MS SQL"
     user (str): username
-    password (str): password 
+    password (str): password
     host (str): 主机名或IP
     port (int): 端口号
     db_name (str): 数据仓库名
     tables_info_dict (dict): 数据表的描述
-    options_str (str): k1=v1&k2=v2形式表示的选项设置   
+    options_str (str): k1=v1&k2=v2形式表示的选项设置
 """,
 )
 
@@ -992,7 +996,7 @@ add_chinese_doc(
 字典格式关键字示例如下。
 
 字典中有3个关键字为可选项：表及列的comment默认为空, is_primary_key默认为False但至少应有一列为True, nullable默认为True
-{"tables": 
+{"tables":
     [
         {
             "name": f"employee",
@@ -1021,12 +1025,12 @@ add_english_doc(
     "SqlManager.reset_tables",
     """\
 Set the data tables used by SqlManager according to the dictionary describing the table structure.
-Note that if the table does not exist in the database, it will be automatically created, and if it exists, all field consistencies will be checked. 
+Note that if the table does not exist in the database, it will be automatically created, and if it exists, all field consistencies will be checked.
 The dictionary format keyword example is as follows.
 
-There are three optional keywords in the dictionary: "comment" for the table and columns defaults to empty, "is_primary_key" defaults to False, 
+There are three optional keywords in the dictionary: "comment" for the table and columns defaults to empty, "is_primary_key" defaults to False,
 but at least one column should be True, and "nullable" defaults to True.
-{"tables": 
+{"tables":
     [
         {
             "name": f"employee",
@@ -1058,7 +1062,7 @@ add_chinese_doc(
 
 **Returns:**\n
 - bool: 连接成功(True), 连接失败(False)
-- str: 连接成功为"Success" 否则为具体的失败信息. 
+- str: 连接成功为"Success" 否则为具体的失败信息.
 """,
 )
 
@@ -1084,7 +1088,7 @@ Args:
 
 **Returns:**\n
 - bool: 设置成功(True), 设置失败(False)
-- str: 设置成功为"Success" 否则为具体的失败信息. 
+- str: 设置成功为"Success" 否则为具体的失败信息.
 """,
 )
 
