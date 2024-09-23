@@ -43,7 +43,9 @@ lazyllm.config.add('language', str, 'ENGLISH', 'LANGUAGE')
 def add_doc(obj_name, docstr, module, append=''):
     obj = module
     for n in obj_name.split('.'):
-        obj = getattr(obj, n)
+        if isinstance(obj, type): obj = obj.__dict__[n]
+        else: obj = getattr(obj, n)
+    if isinstance(obj, (classmethod, lazyllm.DynamicDescriptor)): obj = obj.__func__
     try:
         if append:
             if isinstance(docstr, str):
