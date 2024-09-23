@@ -47,9 +47,9 @@ class KBFileRecord(DB.Base, DBOperations, metaclass=DBMergeClass, session=DB.ses
         with cls.session() as db_session:
             results = db_session.query(FileRecord.file_name, FileRecord.file_path)\
                                 .join(KBFileRecord, KBFileRecord.file_id == FileRecord.id)\
-                                .filter(kwargs)\
+                                .filter_by(**kwargs)\
                                 .all()
-            files = [os.path.join(file_name, file_path) for file_name, file_path in results]
+            files = [os.path.join(file_path, file_name) for file_name, file_path in results]
         return files
     
     @classmethod
@@ -62,4 +62,5 @@ class KBFileRecord(DB.Base, DBOperations, metaclass=DBMergeClass, session=DB.ses
                                 .join(KBFileRecord, KBFileRecord.file_id == FileRecord.id)\
                                 .filter(KBFileRecord.kb_name == kb_name)\
                                 .all()
+            results = [id for res in results for id in res]
         return results

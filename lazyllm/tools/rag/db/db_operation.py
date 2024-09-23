@@ -167,7 +167,7 @@ class DBOperations(metaclass=CustomMeta):
         with cls.session() as db_session:
             filter_conditions = cls._get_filter_conditions(**kwargs)
             query = db_session.query(cls).filter(and_(*filter_conditions))
-            if order_by:
+            if order_by is not None:
                 query = query.order_by(order_by)
             items = query.offset(skip).limit(limit).all()
             for item in items:
