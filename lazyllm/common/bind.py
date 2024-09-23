@@ -1,6 +1,7 @@
 import copy
 import builtins
 from typing import Callable, Any
+from .globals import globals
 
 
 class AttrTree(object):
@@ -68,7 +69,9 @@ class Bind(object):
     class Input(object):
         class _None: pass
 
-        def __init__(self): self._item_key, self._attr_key = Bind.Input._None, Bind.Input._None
+        def __init__(self, obj):
+            self._item_key, self._attr_key = Bind.Input._None, Bind.Input._None
+            self._obj = obj
 
         def __getitem__(self, key):
             self._item_key = key
@@ -84,7 +87,15 @@ class Bind(object):
         def __setstate__(self, state):
             self._item_key, self._attr_key = state
 
-        def get_input(self, input):
+        def get_input(self, source):
+            target, input = source['source'], source['input']
+            if target != self._obj:
+                if id(target) in globals['bind_args']:
+                    source = globals['bind_args'][id(target)]
+                    target, input = source['source'], source['input']
+                else:
+                    raise RuntimeError(f'input() can only be used in direct member of {self._obj}, '
+                                       f'you are using it in {target}')
             if self._item_key is not Bind.Input._None: return input[self._item_key]
             elif self._attr_key is not Bind.Input._None: return getattr(input, self._attr_key)
             return input
@@ -111,7 +122,7 @@ class Bind(object):
         bind_kwargs = self._kw
 
         def get_bind_args(a):
-            return a.get_input(_bind_args_source['input']) if isinstance(a, Bind.Input) else (
+            return a.get_input(_bind_args_source) if isinstance(a, Bind.Input) else (
                 _bind_args_source['args'][id(a)] if id(a) in _bind_args_source['args'] else a)
 
         if _bind_args_source:

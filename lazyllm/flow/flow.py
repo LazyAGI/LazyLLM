@@ -205,7 +205,7 @@ class Pipeline(LazyLLMFlowsBase):
 
     @property
     def input(self):
-        return bind.Input()
+        return bind.Input(self)
 
     @property
     def _loop_count(self):
@@ -234,7 +234,7 @@ class Pipeline(LazyLLMFlowsBase):
 
     def _run(self, __input, **kw):
         output = __input
-        bind_args_source = dict(input=output, args=dict())
+        bind_args_source = dict(source=self, input=(output if output else kw), args=dict())
         for _ in range(self._loop_count):
             for it in self._items:
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
