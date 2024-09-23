@@ -2,7 +2,7 @@ import lazyllm
 import builtins
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root
 from lazyllm import Thread, ReadOnlyWrapper, LOG, globals
-from ..common.common import _MetaBind
+from ..common.bind import _MetaBind
 from functools import partial
 from enum import Enum
 import types
