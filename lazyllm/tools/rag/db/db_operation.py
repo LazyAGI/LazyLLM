@@ -65,7 +65,8 @@ class DBOperations(metaclass=CustomMeta):
         """
         with cls.session() as db_session:
             # Check if a node matching the filter conditions exists
-            existing_node = db_session.query(cls).filter_by(**kwargs).first()
+            filter_conditions = cls.get_filter_conditions(**kwargs)
+            existing_node = db_session.query(cls).filter(and_(*filter_conditions)).first()
             if existing_node:
                 # Delete the existing node
                 db_session.delete(existing_node)
@@ -88,13 +89,7 @@ class DBOperations(metaclass=CustomMeta):
         """
         with cls.session() as db_session:
             # Create filter conditions based on kwargs
-            filter_conditions = []
-            for key, value in kwargs.items():
-                if isinstance(value, list):
-                    filter_conditions.append(getattr(cls, key).in_(value))
-                else:
-                    filter_conditions.append(getattr(cls, key) == value)
-
+            filter_conditions = cls.get_filter_conditions(**kwargs)
             # Combine all filter conditions using AND
             query = db_session.query(cls).filter(and_(*filter_conditions))
             items = query.all()
@@ -133,7 +128,8 @@ class DBOperations(metaclass=CustomMeta):
             Optional[T]: The retrieved instance or None if not found.
         """
         with cls.session() as db_session:
-            item = db_session.query(cls).filter_by(**kwargs).first()
+            filter_conditions = cls.get_filter_conditions(**kwargs)
+            item = db_session.query(cls).filter(and_(*filter_conditions)).first()
             if item:
                 db_session.expunge(item)
             return item
@@ -150,7 +146,8 @@ class DBOperations(metaclass=CustomMeta):
             List[T]: A list of retrieved instances.
         """
         with cls.session() as db_session:
-            items = db_session.query(cls).filter_by(**kwargs).all()
+            filter_conditions = cls.get_filter_conditions(**kwargs)
+            items = db_session.query(cls).filter(and_(*filter_conditions)).all()
             for item in items:
                 db_session.expunge(item)
             return items
@@ -168,7 +165,8 @@ class DBOperations(metaclass=CustomMeta):
             List[T]: A list of retrieved instances.
         """
         with cls.session() as db_session:
-            query = db_session.query(cls).filter_by(**kwargs)
+            filter_conditions = cls.get_filter_conditions(**kwargs)
+            query = db_session.query(cls).filter(and_(*filter_conditions))
             if order_by:
                 query = query.order_by(order_by)
             items = query.offset(skip).limit(limit).all()
@@ -186,7 +184,8 @@ class DBOperations(metaclass=CustomMeta):
             **kwargs: Filter criteria to query the instance (e.g., column=value pairs).
         """
         with cls.session() as db_session:
-            items = db_session.query(cls).filter_by(**kwargs)
+            filter_conditions = cls.get_filter_conditions(**kwargs)
+            items = db_session.query(cls).filter(and_(*filter_conditions))
             for item in items:
                 fun(item)
             db_session.commit()
@@ -194,3 +193,13 @@ class DBOperations(metaclass=CustomMeta):
     def set(self, **kwargs):
         for key, value in kwargs.items():
             setattr(self, key, value)
+    
+    @classmethod
+    def get_filter_conditions(cls, **kwargs) -> list:
+        filter_conditions = []
+        for key, value in kwargs.items():
+            if isinstance(value, list):
+                filter_conditions.append(getattr(cls, key).in_(value))
+            else:
+                filter_conditions.append(getattr(cls, key) == value)
+        return filter_conditions
