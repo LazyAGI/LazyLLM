@@ -28,7 +28,7 @@ class DocNode:
         group: Optional[str] = None,
         embedding: Optional[List[float]] = None,
         parent: Optional["DocNode"] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None
     ) -> None:
         self.uid: str = uid if uid else str(uuid.uuid4())
         self.text: Optional[str] = text
@@ -42,6 +42,7 @@ class DocNode:
         self.parent: Optional["DocNode"] = parent
         self.children: Dict[str, List["DocNode"]] = defaultdict(list)
         self.is_saved: bool = False
+        self._docpath = None
 
     @property
     def root_node(self) -> Optional["DocNode"]:
@@ -73,6 +74,15 @@ class DocNode:
     @excluded_llm_metadata_keys.setter
     def excluded_llm_metadata_keys(self, excluded_llm_metadata_keys: List) -> None:
         self._excluded_llm_metadata_keys = excluded_llm_metadata_keys
+
+    @property
+    def docpath(self) -> str:
+        return self.root_node._docpath or ''
+
+    @docpath.setter
+    def docpath(self, path):
+        assert not self.parent, 'Only root node can set docpath'
+        self._docpath = str(path)
 
     def get_children_str(self) -> str:
         return str(

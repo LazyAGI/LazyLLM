@@ -51,9 +51,9 @@ add_english_doc('Document.create_node_group', '''
 Generate a node group produced by the specified rule.
 
 Args:
-    name (str): The name of the node group, cannot be passed in as key-value pairs. 
+    name (str): The name of the node group, cannot be passed in as key-value pairs.
     transform (Callable): The transformation rule that converts a node into a node group. The function prototype is `(DocNode, group_name, **kwargs) -> List[DocNode]`. Currently built-in options include [SentenceSplitter][lazyllm.tools.SentenceSplitter], and users can define their own transformation rules.
-    trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`. 
+    trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`.
     num_workers (int): number of new threads used for transform. default: 0
     parent (str): The node that needs further transformation. The series of new nodes obtained after transformation will be child nodes of this parent node. If not specified, the transformation starts from the root node.
     kwargs: Parameters related to the specific implementation.
@@ -125,6 +125,132 @@ add_example('Document.find_children', '''
 >>> documents.create_node_group(name="parent", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 >>> documents.create_node_group(name="children", transform=SentenceSplitter, parent="parent", chunk_size=1024, chunk_overlap=100)
 >>> documents.find_children('parent')
+''')
+
+add_english_doc('Document.register_global_reader', '''
+Used to specify a file reader, which is visible to all Document objects. The registered file reader must be a Callable object. It can be registered using a decorator or by a function call.
+
+Args:
+    pattern (str): Matching rules applied by the file reader.
+    func (Callable): File reader, must be a Callable object.
+''')
+
+add_chinese_doc('Document.register_global_reader', '''
+用于指定文件读取器，作用范围对于所有的 Document 对象都可见。注册的文件读取器必须是 Callable 对象。可以使用装饰器的方式进行注册，也可以通过函数调用的方式进行注册。
+
+Args:
+    pattern (str): 文件读取器适用的匹配规则
+    func (Callable): 文件读取器，必须是Callable的对象
+''')
+
+add_example('Document.register_global_reader', '''
+>>> from lazyllm.tools.rag import Document, DocNode
+>>> @Document.register_global_reader("**/*.yml")
+>>> def processYml(file, extra_info=None):
+...     with open(file, 'r') as f:
+...         data = f.read()
+...     return [DocNode(text=data, metadata=extra_info or {})]
+... 
+>>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
+>>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
+>>> files = ["your_yml_files"]
+>>> docs1 = doc1._impl._impl.directory_reader.load_data(input_files=files)
+>>> docs2 = doc2._impl._impl.directory_reader.load_data(input_files=files)
+>>> print(docs1[0].text == docs2[0].text)
+# True
+''')
+
+add_english_doc('Document.add_reader', '''
+Used to specify the file reader for an instance. The scope of action is visible only to the registered Document object. The registered file reader must be a Callable object. It can only be registered by calling a function. The priority of the file reader registered by the instance is higher than that of the file reader registered by the class, and the priority of the file reader registered by the instance and class is higher than the system default file reader. That is, the order of priority is: instance file reader > class file reader > system default file reader.
+
+Args:
+    pattern (str): Matching rules applied by the file reader.
+    func (Callable): File reader, must be a Callable object.
+''')
+
+add_chinese_doc('Document.add_reader', '''
+用于实例指定文件读取器，作用范围仅对注册的 Document 对象可见。注册的文件读取器必须是 Callable 对象。只能通过函数调用的方式进行注册。并且通过实例注册的文件读取器的优先级高于通过类注册的文件读取器，并且实例和类注册的文件读取器的优先级高于系统默认的文件读取器。即优先级的顺序是：实例文件读取器 > 类文件读取器 > 系统默认文件读取器。
+
+Args:
+    pattern (str): 文件读取器适用的匹配规则
+    func (Callable): 文件读取器，必须是Callable的对象
+''')
+
+add_example('Document.add_reader', '''
+>>> from lazyllm.tools.rag import Document, DocNode
+>>> from lazyllm.tools.rag.readers import ReaderBase
+>>> class YmlReader(ReaderBase):
+...     def _load_data(self, file, extra_info=None, fs=None):
+...         try:
+...             import yaml
+...         except ImportError:
+...             raise ImportError("yaml is required to read YAML file: `pip install pyyaml`")
+...         with open(file, 'r') as f:
+...             data = yaml.safe_load(f)
+...         print("Call the class YmlReader.")
+...         return [DocNode(text=data, metadata=extra_info or {})]
+... 
+>>> def processYml(file, extra_info=None):
+...     with open(file, 'r') as f:
+...         data = f.read()
+...     print("Call the function processYml.")
+...     return [DocNode(text=data, metadata=extra_info or {})]
+...
+>>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
+>>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
+>>> doc1.add_reader("**/*.yml", YmlReader)
+>>> print(doc1._local_file_reader)
+# {'**/*.yml': <class '__main__.YmlReader'>}
+>>> print(doc2._local_file_reader)
+# {}
+>>> files = ["your_yml_files"]
+>>> Document.register_global_reader("**/*.yml", processYml)
+>>> doc1._impl._impl.directory_reader.load_data(input_files=files)
+# Call the class YmlReader.
+>>> doc2._impl._impl.directory_reader.load_data(input_files=files)
+# Call the function processYml.
+''')
+
+add_english_doc('rag.readers.ReaderBase', '''
+The base class of file readers, which inherits from the ModuleBase base class and has Callable capabilities. Subclasses that inherit from this class only need to implement the _load_data function, and its return parameter type is List[DocNode]. Generally, the input parameters of the _load_data function are file (Path), extra_info(Dict), and fs (AbstractFileSystem).
+
+Args:
+    args (Any): Pass the corresponding position parameters as needed.
+    return_trace (bool): Set whether to record trace logs.
+    kwargs (Dict): Pass the corresponding keyword arguments as needed.
+''')
+
+add_chinese_doc('rag.readers.ReaderBase', '''
+文件读取器的基类，它继承自 ModuleBase 基类，具有 Callable 的能力，继承自该类的子类只需要实现 _load_data 函数即可，它的返回参数类型为 List[DocNode]. 一般 _load_data 函数的入参为 file (Path), extra_info (Dict), fs(AbstractFileSystem) 三个参数。
+
+Args:
+    args (Any): 根据需要传输相应的位置参数
+    return_trace (bool): 设置是否记录trace日志
+    kwargs (Dict): 根据需要传输相应的关键字参数
+''')
+
+add_example('rag.readers.ReaderBase', '''
+>>> from lazyllm.tools.rag.readers import ReaderBase
+>>> from lazyllm.tools.rag import DocNode, Document
+>>> from typing import Dict, Optional, List
+>>> from pathlib import Path
+>>> from fsspec import AbstractFileSystem
+>>> @Document.register_global_reader("**/*.yml")
+>>> class YmlReader(ReaderBase):
+...     def _load_data(self, file: Path, extra_info: Optional[Dict] = None, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+...         try:
+...             import yaml
+...         except ImportError:
+...             raise ImportError("yaml is required to read YAML file: `pip install pyyaml`")
+...         with open(file, 'r') as f:
+...             data = yaml.safe_load(f)
+...         print("Call the class YmlReader.")
+...         return [DocNode(text=data, metadata=extra_info or {})]
+... 
+>>> files = ["your_yml_files"]
+>>> doc = Document(dataset_path="your_files_path", create_ui=False)
+>>> reader = doc._impl._impl.directory_reader.load_data(input_files=files)
+# Call the class YmlReader.
 ''')
 
 # ---------------------------------------------------------------------------- #
@@ -429,15 +555,19 @@ FunctionCall是单轮工具调用类，如果LLM中的信息不足以回答用�
 
 Args:
     llm (ModuleBase): 要使用的LLM可以是TrainableModule或OnlineChatModule。
-    tools (List[str]): LLM使用的工具名称列表。
+    tools (List[Union[str, Callable]]): LLM使用的工具名称或者 Callable 列表
+
+注意：tools 中使用的工具必须带有 `__doc__` 字段，按照 [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) 的要求描述清楚工具的用途和参数。
 ''')
 
 add_english_doc('FunctionCall', '''\
 FunctionCall is a single-round tool call class. If the information in LLM is not enough to answer the uesr's question, it is necessary to combine external knowledge to answer the user's question. If the LLM output required a tool call, the tool call is performed and the tool call result is output. The output result is of List type, including the input, model output, and tool output of the current round. If a tool call is not required, the LLM result is directly output, and the output result is of string type.
 
+Note: The tools used in `tools` must have a `__doc__` field, clearly describing the purpose and parameters of the tool according to the [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) requirements.
+
 Args:
     llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
-    tools (List[str]): A list of tool names for LLM to use.
+    tools (List[Union[str, Callable]]): A list of tool names for LLM to use.
 ''')
 
 add_example('FunctionCall', """\
@@ -812,12 +942,12 @@ SqlManager是与数据库进行交互的专用工具。它提供了连接数据�
 Arguments:
     db_type (str): 目前仅支持"PostgreSQL"，后续会增加"MySQL", "MS SQL"
     user (str): username
-    password (str): password 
+    password (str): password
     host (str): 主机名或IP
     port (int): 端口号
     db_name (str): 数据仓库名
     tables_info_dict (dict): 数据表的描述
-    options_str (str): k1=v1&k2=v2形式表示的选项设置   
+    options_str (str): k1=v1&k2=v2形式表示的选项设置
 """,
 )
 
@@ -866,7 +996,7 @@ add_chinese_doc(
 字典格式关键字示例如下。
 
 字典中有3个关键字为可选项：表及列的comment默认为空, is_primary_key默认为False但至少应有一列为True, nullable默认为True
-{"tables": 
+{"tables":
     [
         {
             "name": f"employee",
@@ -895,12 +1025,12 @@ add_english_doc(
     "SqlManager.reset_tables",
     """\
 Set the data tables used by SqlManager according to the dictionary describing the table structure.
-Note that if the table does not exist in the database, it will be automatically created, and if it exists, all field consistencies will be checked. 
+Note that if the table does not exist in the database, it will be automatically created, and if it exists, all field consistencies will be checked.
 The dictionary format keyword example is as follows.
 
-There are three optional keywords in the dictionary: "comment" for the table and columns defaults to empty, "is_primary_key" defaults to False, 
+There are three optional keywords in the dictionary: "comment" for the table and columns defaults to empty, "is_primary_key" defaults to False,
 but at least one column should be True, and "nullable" defaults to True.
-{"tables": 
+{"tables":
     [
         {
             "name": f"employee",
@@ -932,7 +1062,7 @@ add_chinese_doc(
 
 **Returns:**\n
 - bool: 连接成功(True), 连接失败(False)
-- str: 连接成功为"Success" 否则为具体的失败信息. 
+- str: 连接成功为"Success" 否则为具体的失败信息.
 """,
 )
 
@@ -958,7 +1088,7 @@ Args:
 
 **Returns:**\n
 - bool: 设置成功(True), 设置失败(False)
-- str: 设置成功为"Success" 否则为具体的失败信息. 
+- str: 设置成功为"Success" 否则为具体的失败信息.
 """,
 )
 

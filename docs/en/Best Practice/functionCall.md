@@ -65,7 +65,36 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 	...
 ```
 
-The registration method is very simple. After importing `fc_register`, you can add it directly on the defined function name as a decorator. It should be noted here that the default group `tool` should be specified when adding.
+The registration method is very simple. After importing `fc_register`, you can add it directly above the predefined function name in the manner of a decorator. Note that when adding, you need to specify the default group `tool`, and the default registered tool name is the name of the function being registered.
+
+We can also register the tool under a different name by filling in the second parameter during registration, for example:
+
+```python
+from lazyllm.tools import fc_register
+
+def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]="fahrenheit"):
+    ...
+
+fc_register("tool")(get_current_weather, "another_get_current_weather")
+```
+
+Thus, the function `get_current_weather` is registered as a tool named `another_get_current_weather`.
+
+If we do not intend to register the tool as globally visible, we can also pass the tool itself directly when calling FunctionCall, like this:
+
+```python
+import lazyllm
+from lazyllm.tools import FunctionCall
+llm = lazyllm.OnlineChatModule()
+tools = [get_current_weather, get_n_day_weather_forecast]
+fc = FunctionCall(llm, tools)
+query = "What's the weather like today in celsius in Tokyo and Paris."
+ret = fc(query)
+print(f"ret: {ret}")
+```
+
+The code above directly passes the two functions we previously defined as tools, which are only visible within the generated `fc` instance. If you try to access these tools by name outside of `fc`, it will result in an error.
+
 Then we can define the model and use [FunctionCall][lazyllm.tools.agent.FunctionCall], as shown below:
 
 ```python
@@ -175,7 +204,7 @@ The design process of [FunctionCall][lazyllm.tools.agent.FunctionCall] is carrie
 '\nI need to use the "get_current_weather" function to get the current weather in Tokyo and Paris. I will call the function twice, once for Tokyo and once for Paris.<|action_start|><|plugin|>\n{"name": "get_current_weather", "parameters": {"location": "Tokyo"}}<|action_end|><|im_end|>'
 ```
 
-3. Then parse the model output through extractor, get the content field and the `name` and `arguments` fields of tool_calls, and then splice the results and output them in the format of: 
+3. Then parse the model output through extractor, get the content field and the `name` and `arguments` fields of tool_calls, and then splice the results and output them in the format of:
 ```text
 content<|tool_calls|>tool_calls
 ```
