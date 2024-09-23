@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# flake8: noqa: F501
 
 import lazyllm
 from lazyllm import pipeline, warp, bind
@@ -35,7 +34,7 @@ Example output:
     }
 ]
 User input is as follows:
-"""
+"""  # noqa: E501
 
 completion_prompt = """
 You are now an intelligent assistant. Your task is to receive a dictionary containing `title` and `describe`, and expand the writing according to the guidance in `describe`.
@@ -50,14 +49,14 @@ Output(Do not repeat "title"):
 This is the expanded content for writing.
 Receive as follows:
 
-"""
+"""  # noqa: E501
 
 writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "describe": {describe}}'}
 
 with pipeline() as ppl:
     ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output("outline_writer"))  # noqa: E501
 
 if __name__ == '__main__':
     lazyllm.WebModule(ppl, port=range(23467, 24000)).start().wait()

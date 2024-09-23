@@ -201,7 +201,7 @@ class TestFlowBind(object):
                 p.f2 = add_one
                 p.f3 = add_one
                 with parallel().sum as p.subp:
-                    p.subp.f3 = xy2z | bind(y=p.input, z=p.output('f1'))
+                    p.subp.f3 = xy2z | bind(y=p.input, z=p.output(p.f1))
                     p.subp.f4 = xy2z | bind(y=p.input, z=p.output('f2'))
 
         assert p(3) == 36  # (6 + 3 + 8) + (6 + 3 + 10)
