@@ -123,7 +123,6 @@ class ThreadSafeDict(dict):
 class Globals(object):
     __global_attrs__ = ThreadSafeDict(chat_history={}, global_parameters={},
                                       bind_args={}, tool_delimiter="<|tool_calls|>")
-    __exclude_keys__ = 'bind_args'
 
     def __init__(self):
         self.__data = ThreadSafeDict()
@@ -156,7 +155,12 @@ class Globals(object):
         if rois:
             assert isinstance(rois, (tuple, list))
             return {k: v for k, v in self.__data[self._sid].items() if k in rois}
-        return {k: v for k, v in self.__data[self._sid].items() if k not in __class__.__exclude_keys__}
+        return self.__data[self._sid]
+
+    @property
+    def _pickle_data(self):
+        exclude_keys = ['bind_args',]
+        return {k: v for k, v in self._data.items() if k not in exclude_keys}
 
     def _update(self, d: Optional[Dict]) -> None:
         if d:
@@ -190,6 +194,9 @@ class Globals(object):
 
     def __contains__(self, item):
         return item in self.__data[self._sid]
+
+    def pop(self, *args, **kw):
+        return self._data.pop(*args, **kw)
 
 globals = Globals()
 
