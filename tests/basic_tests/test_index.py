@@ -8,18 +8,23 @@ from lazyllm.tools.rag.index import DefaultIndex, register_similarity
 class TestDefaultIndex(unittest.TestCase):
     def setUp(self):
         self.mock_embed = MagicMock(side_effect=self.delayed_embed)
+        self.mock_embed1 = MagicMock(return_value=[0, 1, 0])
+        self.mock_embed2 = MagicMock(return_value=[0, 0, 1])
         self.mock_store = MagicMock(spec=MapStore)
 
         # Create instance of DefaultIndex
-        self.index = DefaultIndex(embed={"default": self.mock_embed}, store=self.mock_store)
+        self.index = DefaultIndex(embed={"default": self.mock_embed,
+                                         "test1": self.mock_embed1,
+                                         "test2": self.mock_embed2},
+                                  store=self.mock_store)
 
         # Create mock DocNodes
         self.doc_node_1 = DocNode("text1")
-        self.doc_node_1.embedding = {"default": [1, 0, 0]}
+        self.doc_node_1.embedding = {"default": [1, 0, 0], "test1": [1, 0, 0], "test2": [1, 0, 0]}
         self.doc_node_2 = DocNode("text2")
-        self.doc_node_2.embedding = {"default": [0, 1, 0]}
+        self.doc_node_2.embedding = {"default": [0, 1, 0], "test1": [0, 1, 0], "test2": [0, 1, 0]}
         self.doc_node_3 = DocNode("text3")
-        self.doc_node_3.embedding = {"default": [0, 0, 1]}
+        self.doc_node_3.embedding = {"default": [0, 0, 1], "test1": [0, 0, 1], "test2": [0, 0, 1]}
         self.nodes = [self.doc_node_1, self.doc_node_2, self.doc_node_3]
 
     def delayed_embed(self, text):
@@ -44,6 +49,7 @@ class TestDefaultIndex(unittest.TestCase):
             similarity_name="cosine",
             similarity_cut_off=0.0,
             topk=2,
+            embed_keys=["default"]
         )
         self.assertEqual(len(results), 2)
         self.assertIn(self.doc_node_1, results)
@@ -57,6 +63,7 @@ class TestDefaultIndex(unittest.TestCase):
                 similarity_name="invalid_similarity",
                 similarity_cut_off=0.0,
                 topk=2,
+                embed_keys=["default"]
             )
 
     def test_parallel_do_embedding(self):
@@ -66,6 +73,17 @@ class TestDefaultIndex(unittest.TestCase):
         self.index._parallel_do_embedding(self.nodes)
         assert time.time() - start_time < 4, "Parallel not used!"
 
+    def test_query_multi_embed_similarity(self):
+        results = self.index.query(
+            query="test",
+            nodes=self.nodes,
+            similarity_name="cosine",
+            similarity_cut_off={"default": 0.8, "test1": 0.8, "test2": 0.8},
+            topk=2,
+        )
+        self.assertEqual(len(results), 2)
+        self.assertIn(self.doc_node_2, results)
+        self.assertIn(self.doc_node_3, results)
 
 if __name__ == "__main__":
     unittest.main()

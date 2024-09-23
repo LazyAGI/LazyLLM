@@ -9,6 +9,7 @@ from chromadb.api.models.Collection import Collection
 
 
 LAZY_ROOT_NAME = "lazyllm_root"
+EMBED_DEFAULT_KEY = '__default__'
 config.add("rag_store_type", str, "map", "RAG_STORE_TYPE")  # "map", "chroma"
 config.add("rag_persistent_path", str, "./lazyllm_chroma", "RAG_PERSISTENT_PATH")
 
@@ -93,20 +94,24 @@ class DocNode:
 
     def __eq__(self, other):
         if isinstance(other, DocNode):
-            return self.uid == other.uid and self.group == other.group and self.get_text() == other.get_text() \
-                and self.get_parent_id() == other.get_parent_id() and self.has_embedding() == other.has_embedding() \
-                and self.get_children_str() == other.get_children_str()
+            return self.uid == other.uid
         return False
 
     def __hash__(self):
-        return hash((self.uid, self.group, self.get_text(), self.get_children_str(),
-                     self.has_embedding(), self.get_parent_id()))
+        return hash(self.uid)
 
-    def has_embedding(self) -> bool:
-        return self.embedding and next(iter(self.embedding.values()))[0] != -1  # placeholder
+    def has_embedding(self, embed_keys: Optional[List[str]] = None) -> bool:
+        if self.embedding is None: return False
+        keys = embed_keys or self.embedding.keys()
+        return all(self.embedding.get(key, [-1])[0] != -1 for key in keys)
+
+    def get_keys_without_embeddings(self, embed_keys: List[str]) -> List[str]:
+        if self.embedding is None: return embed_keys
+        return [k for k in embed_keys if k not in self.embedding.keys() or self.embedding.get(k, [-1])[0] == -1]
 
     def do_embedding(self, embed: Dict[str, Callable]) -> None:
-        self.embedding = {k: e(self.get_text(MetadataMode.EMBED)) for k, e in embed.items()}
+        self.embedding = self.embedding or {}
+        self.embedding = {**self.embedding, **{k: e(self.get_text(MetadataMode.EMBED)) for k, e in embed.items()}}
         self.is_saved = False
 
     def get_content(self) -> str:
@@ -225,7 +230,7 @@ class ChromadbStore(BaseStore):
             group: self._db_client.get_or_create_collection(group)
             for group in node_groups
         }
-        self._placeholder = {k: [-1] * len(e("a")) for k, e in embed.items()} if embed else {"default": []}
+        self._placeholder = {k: [-1] * len(e("a")) for k, e in embed.items()} if embed else {EMBED_DEFAULT_KEY: []}
 
     def try_load_store(self) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:
@@ -263,7 +268,9 @@ class ChromadbStore(BaseStore):
             if node.is_saved:
                 continue
             if not node.has_embedding():
-                node.embedding = self._placeholder
+                miss_keys = node.get_keys_without_embeddings(self._placeholder.keys())
+                node.embedding = node.embedding or {}
+                node.embedding = {**node.embedding, **{k: self._placeholder[k] for k in miss_keys}}
             metadata = self._make_chroma_metadata(node)
             for key, embed in node.embedding.items():
                 ids.append(node.uid + key)

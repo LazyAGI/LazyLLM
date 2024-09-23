@@ -8,7 +8,7 @@ from lazyllm import ModuleBase, ServerModule, DynamicDescriptor
 from .web import DocWebModule
 from .doc_manager import DocManager
 from .group_doc import DocGroupImpl, DocImpl
-from .store import LAZY_ROOT_NAME
+from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 
 
 class Document(ModuleBase):
@@ -26,7 +26,7 @@ class Document(ModuleBase):
         self._manager = create_ui or manager
         launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
         self._local_file_reader: Dict[str, Callable] = {}
-        self._embed = embed if isinstance(embed, dict) else {"default": embed}
+        self._embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed}
         for embed in self._embed.values():
             if isinstance(embed, ModuleBase):
                 self._submodules.append(embed)

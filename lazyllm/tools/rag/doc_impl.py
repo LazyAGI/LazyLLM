@@ -171,7 +171,7 @@ class DocImpl:
         self._dynamic_create_nodes(group_name, store)
         return store.traverse_nodes(group_name)
 
-    def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: float,
+    def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None) -> List[DocNode]:
         self._lazy_init()
         if index:

@@ -19,8 +19,21 @@ class TestDocNode:
     def test_do_embedding(self):
         """Test that do_embedding passes the correct content to the embed function."""
         mock_embed = MagicMock(return_value=[0.4, 0.5, 0.6])
-        self.node.do_embedding({"default": mock_embed})
+        self.node.do_embedding({"mock": mock_embed})
         mock_embed.assert_called_once_with(self.node.get_text(MetadataMode.EMBED))
+
+    def test_multi_embedding(self):
+        mock_embed1 = MagicMock(return_value=[0.11, 0.12, 0.13])
+        mock_embed2 = MagicMock(return_value=[0.21, 0.22, 0.23])
+        embed = {"test1": mock_embed1, "test2": mock_embed2}
+        assert "test1" not in self.node.embedding.keys()
+        assert "test2" not in self.node.embedding.keys()
+        if not self.node.has_embedding(embed.keys()):
+            miss_keys = self.node.get_keys_without_embeddings(embed.keys())
+            node_embed = {k: e for k, e in embed.items() if k in miss_keys}
+            self.node.do_embedding(node_embed)
+        assert "test1" in self.node.embedding.keys()
+        assert "test2" in self.node.embedding.keys()
 
     def test_node_creation(self):
         """Test the creation of a DocNode."""

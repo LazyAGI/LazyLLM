@@ -1,7 +1,7 @@
 from lazyllm import ModuleBase, pipeline
 from .store import DocNode
 from .document import Document, DocImpl
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 
 class _PostProcess(object):
     def __init__(self, target: Optional[str] = None,
@@ -34,7 +34,7 @@ class Retriever(ModuleBase, _PostProcess):
         doc: object,
         group_name: str,
         similarity: str = "dummy",
-        similarity_cut_off: float = float("-inf"),
+        similarity_cut_off: Union[float, Dict[str, float]] = float("-inf"),
         index: str = "default",
         topk: int = 6,
         embed_keys: Optional[List[str]] = None,
