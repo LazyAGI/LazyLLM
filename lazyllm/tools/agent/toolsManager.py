@@ -24,12 +24,12 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         self._params_schema = self.load_function_schema(self.__class__.apply)
 
-        self.has_var_args = False
+        self._has_var_args = False
         signature = inspect.signature(self.__class__.apply)
         for name, param in signature.parameters.items():
             if param.kind == inspect.Parameter.VAR_POSITIONAL or\
                param.kind == inspect.Parameter.VAR_KEYWORD:
-                self.has_var_args = True
+                self._has_var_args = True
                 break
 
     def load_function_schema(self, func: Callable) -> Type[BaseModel]:
@@ -80,7 +80,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         raise NotImplementedError("Implement apply function in subclass")
 
     def _validate_input(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-        if self.has_var_args:
+        if self._has_var_args:
             return tool_input
 
         input_params = self._params_schema
@@ -162,7 +162,7 @@ class ToolManager(ModuleBase):
             return False
 
         # don't check parameters if this function contains '*args' or '**kwargs'
-        if tool.has_var_args:
+        if tool._has_var_args:
             return True
 
         return tool.validate_parameters(tool_arguments)
@@ -252,7 +252,7 @@ class ToolManager(ModuleBase):
             try:
                 parsed_docstring = docstring_parser.parse(tool.description)
 
-                if tool.has_var_args:
+                if tool._has_var_args:
                     tmp_tool = self._gen_wrapped_moduletool(tool.description, parsed_docstring)
                     args = self._gen_args_info_from_moduletool_and_docstring(tmp_tool, parsed_docstring)
                     required_arg_list = tmp_tool.get_params_schema().model_json_schema().get("required", [])
