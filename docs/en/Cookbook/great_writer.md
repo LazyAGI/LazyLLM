@@ -105,7 +105,7 @@ Let's assemble the above modules with control flow.
 with pipeline() as ppl:
     ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
 ```
 
 In the above code, in addition to the commonly used [Pipeline][lazyllm.flow.Pipeline] control flow (Similar applications can be found at: [Master Painter](painting_master.md#use-pipeline)),
@@ -119,7 +119,7 @@ It accepts any number of inputs and then sends them in parallel to the same bran
 And it is generally multiple different outputs. As the next level of content generation robot, each input needs to be processed, so using [Warp][lazyllm.flow.Warp] is very appropriate.
 
 ```python
-ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
 ```
 
 [](){#use-bind}
@@ -191,6 +191,6 @@ writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "descr
 with pipeline() as ppl:
     ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
 lazyllm.WebModule(ppl, port=23466).start().wait()
 ```

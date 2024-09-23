@@ -356,7 +356,7 @@ class SqlCall(ModuleBase):
             raise ValueError(f"Unexpected type for input: {type(input)}")
         assert "root_input" in globals and self._llm_answer._module_id in globals["root_input"]
         user_query = globals["root_input"][self._llm_answer._module_id]
-        globals._data.pop("root_input")
+        globals.pop("root_input")
         history_info = chat_history_to_str(history, user_query)
         return (
             dict(history_info=history_info, sql_query=input[0], sql_result=input[1], explain_query=explain_query),

@@ -1,17 +1,21 @@
 import lazyllm
-from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root
+import builtins
+from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root, config
 from lazyllm import Thread, ReadOnlyWrapper, LOG, globals
-from ..common.common import _MetaBind
+from ..common.bind import _MetaBind
 from functools import partial
+from contextlib import contextmanager
 from enum import Enum
 import types
 import inspect
 import threading
 import traceback
 import sys
+import os
 from typing import Union, Tuple, List, Optional
 import concurrent.futures
 from collections import deque
+import uuid
 
 
 class _FuncWrap(object):
@@ -25,17 +29,26 @@ class _FuncWrap(object):
         # TODO: add registry message
         return lazyllm.make_repr('Function', self.f.__name__.strip('<>'))
 
+_oldins = isinstance
+def new_ins(obj, cls):
+    if _oldins(obj, _FuncWrap) and os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) != 'ON':
+        return True if (cls is _FuncWrap or (_oldins(cls, (tuple, list)) and _FuncWrap in cls)) else _oldins(obj.f, cls)
+    return _oldins(obj, cls)
+
+setattr(builtins, 'isinstance', new_ins)
+
 def _is_function(f):
-    return isinstance(f, (types.BuiltinFunctionType, types.FunctionType, _FuncWrap,
+    return isinstance(f, (types.BuiltinFunctionType, types.FunctionType,
                           types.BuiltinMethodType, types.MethodType, types.LambdaType))
 
 class FlowBase(metaclass=_MetaBind):
     def __init__(self, *items, item_names=[], auto_capture=False) -> None:
         self._father = None
-        self._items, self._item_names = [], []
+        self._items, self._item_names, self._item_ids = [], [], []
         self._auto_capture = auto_capture
         self._capture = True
         self._curr_frame = None
+        self._flow_id = str(uuid.uuid4().hex)
 
         for k, v in zip(item_names if item_names else [None] * len(items), items):
             self._add(k, v)
@@ -46,7 +59,8 @@ class FlowBase(metaclass=_MetaBind):
 
     def _add(self, k, v):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
-        self._items.append(v() if isinstance(v, type) else _FuncWrap(v) if _is_function(v) else v)
+        self._items.append(v() if isinstance(v, type) else _FuncWrap(v) if _is_function(v) or v in self._items else v)
+        self._item_ids.append(str(uuid.uuid4().hex))
         if isinstance(v, FlowBase): v._father = self
         if k: self._item_names.append(k)
         if self._curr_frame and isinstance(v, FlowBase):
@@ -88,6 +102,11 @@ class FlowBase(metaclass=_MetaBind):
             return self._items[self._item_names.index(name)]
         raise AttributeError(f'{self.__class__} object has no attribute {name}')
 
+    def id(self, module=None):
+        if isinstance(module, str):
+            return self._item_ids[self._item_names.index(module)] if module else self._flow_id
+        return self._item_ids[self._items.index(module)] if module else self._flow_id
+
     @property
     def is_root(self):
         return self._father is None
@@ -103,7 +122,6 @@ class FlowBase(metaclass=_MetaBind):
                 item.for_each(filter, action)
             elif filter(item):
                 action(item)
-
 
 def _bind_enter(self):
     assert isinstance(self._f, FlowBase)
@@ -169,7 +187,10 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 it._args = [a.get_from(self.ancestor) if isinstance(a, type(root)) else a for a in it._args]
                 it._kw = {k: v.get_from(self.ancestor) if isinstance(v, type(root)) else v for k, v in it._kw.items()}
                 it._has_root = False
-            if bind_args_source: it = bind(it, _bind_args_source=bind_args_source)
+            if isinstance(self, Pipeline):
+                it._args = [self.output(a) if a in self._items else a for a in it._args]
+                it._kw = {k: self.output(v) if v in self._items else v for k, v in it._kw.items()}
+            kw['_bind_args_source'] = bind_args_source
         try:
             if not isinstance(it, LazyLLMFlowsBase) and isinstance(__input, (package, kwargs)):
                 return it(*__input, **kw) if isinstance(__input, package) else it(**__input, **kw)
@@ -192,10 +213,11 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
 #                                               \> post-action
 # TODO(wangzhihong): support mult-input and output
 class Pipeline(LazyLLMFlowsBase):
+    g_save_flow_result = None
 
-    @property
-    def input(self):
-        return bind.Input()
+    def __init__(self, *args, post_action=None, auto_capture=False, **kw):
+        super().__init__(*args, post_action=post_action, auto_capture=auto_capture, **kw)
+        self.save_flow_result = __class__.g_save_flow_result
 
     @property
     def _loop_count(self):
@@ -222,21 +244,39 @@ class Pipeline(LazyLLMFlowsBase):
     def _judge_on_full_input(self, judge):
         self._judge_on_full_input_var = judge
 
+    @property
+    def input(self): return bind.Args(self.id())
+    def output(self, module): return bind.Args(self.id(), self.id(module))
+
     def _run(self, __input, **kw):
         output = __input
-        bind_args_source = dict(input=output, args=dict())
+        bind_args_source = dict(source=self.id(), input=(output if output else kw))
+        if config['save_flow_result'] or __class__.g_save_flow_result or (
+                self.save_flow_result and __class__.g_save_flow_result is not False):
+            globals['bind_args'][self.id()] = bind_args_source
         for _ in range(self._loop_count):
             for it in self._items:
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
                 kw.clear()
-                bind_args_source['args'][id(it)] = output
+                bind_args_source[self.id(it)] = output
             exp = output
             if not self._judge_on_full_input:
                 assert isinstance(output, tuple) and len(output) >= 2
                 exp = output[0]
                 output = output[1:]
             if callable(self._stop_condition) and self.invoke(self._stop_condition, exp): break
+        globals['bind_args'].pop(self.id(), None)
         return output
+
+
+config.add('save_flow_result', bool, False, 'SAVE_FLOW_RESULT')
+
+@contextmanager
+def save_pipeline_result(flag: bool = True):
+    old_flag = Pipeline.g_save_flow_result
+    Pipeline.g_save_flow_result = flag
+    yield
+    Pipeline.g_save_flow_result = old_flag
 
 
 _barr = threading.local()
