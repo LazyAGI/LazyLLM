@@ -8,6 +8,12 @@ from lazyllm import FastapiApp as app
 
 from ..utils import BaseResponse
 
+def doc_creater():
+    pass
+
+def query_pipeline_creater():
+    pass
+
 class ChatServer(lazyllm.ModuleBase):
     """
     Chat server for managing knowledge bases and handling file uploads.

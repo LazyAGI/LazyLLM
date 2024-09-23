@@ -32,7 +32,7 @@ class KBServer(lazyllm.ModuleBase):
         """
         Creates a new knowledge base.
         """
-        KBInfoRecord.create_kb(kb_name=kb_name, kb_info=kb_info)
+        KBInfoRecord.create(kb_name=kb_name, kb_info=kb_info)
         return BaseResponse(msg=f"create {kb_name} success")
 
     @app.post("/delete_knowledge_base")
@@ -65,7 +65,7 @@ class KBServer(lazyllm.ModuleBase):
         for file_name in overwritten_files:
             file_id = FileRecord.first(file_name=file_name).id
             KBFileRecord.update(
-                update_func=lambda x: x.update(state=FileState.WAIT_DELETE), 
+                func=lambda x: x.set(state=FileState.WAIT_DELETE), 
                 file_id=file_id
             )
 
@@ -95,7 +95,7 @@ class KBServer(lazyllm.ModuleBase):
         Deletes a file from a knowledge base.
         """
         KBFileRecord.update(
-            update_func=lambda x: x.update(state=FileState.WAIT_DELETE), 
+            func=lambda x: x.set(state=FileState.WAIT_DELETE), 
             kb_name=kb_name, 
             file_name=file_name
         )
@@ -105,8 +105,7 @@ class KBServer(lazyllm.ModuleBase):
         """
         Forwards a function call to the underlying implementation.
         """
-        func_name = kwargs.pop("func_name")
-        return getattr(self._impl, func_name)(*args, **kwargs)
+        pass
 
     def __repr__(self):
         """

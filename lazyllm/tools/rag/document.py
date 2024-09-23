@@ -6,7 +6,8 @@ from lazyllm import ModuleBase, TrainableModule, DynamicDescriptor
 
 from .doc_impl import DocImpl
 from .store import LAZY_ROOT_NAME
-from .db import KBFileRecord
+from .db import KBFileRecord, FileState
+from .doc_polling import DocPolling
 
 
 class Document(ModuleBase):
@@ -16,14 +17,19 @@ class Document(ModuleBase):
         super().__init__()
 
         self._local_file_reader: Dict[str, Callable] = {}
-        files = KBFileRecord.get_file_path_by_kb_name(kb_name=doc_name) if not clear_cache else []
         self._doc_name = doc_name
-        self._impl = DocImpl(doc_files=files, embed=embed, local_readers=self._local_file_reader,
-                                  global_readers=self._registered_file_reader)
-        
+
         if clear_cache:
-            file_ids = KBFileRecord.get_file_id_by_kb_name(kb_name=doc_name)
-            KBFileRecord.del_node(file_id=file_ids)
+            KBFileRecord.del_node(kb_name=doc_name)
+
+        files = KBFileRecord.get_file_path_by_kb_name(kb_name=doc_name, file_state=FileState.PARSED)
+        self._impl = DocImpl(
+            doc_files=files, 
+            embed=embed, 
+            local_readers=self._local_file_reader,
+            global_readers=self._registered_file_reader
+        )
+        DocPolling.start_polling(kb_name=doc_name, doc_impl=self._impl)
 
     @property
     def doc_name(self):

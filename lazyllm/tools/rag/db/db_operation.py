@@ -156,18 +156,22 @@ class DBOperations(metaclass=CustomMeta):
             return items
 
     @classmethod
-    def filter_by(cls: Type[T], skip: int = 0, limit: int = 10, **kwargs) -> List[T]:
+    def filter_by(cls: Type[T], skip: int = 0, limit: int = 10, order_by = None, **kwargs) -> List[T]:
         """
         Retrieve multiple instances of the model based on the provided filters.
 
         Args:
             **kwargs: Arbitrary keyword arguments for filtering the query.
+            order_by: Order by clause. User.name.asc()
 
         Returns:
             List[T]: A list of retrieved instances.
         """
         with cls.session() as db_session:
-            items = db_session.query(cls).filter_by(**kwargs).offset(skip).limit(limit).all()
+            query = db_session.query(cls).filter_by(**kwargs)
+            if order_by:
+                query = query.order_by(order_by)
+            items = query.offset(skip).limit(limit).all()
             for item in items:
                 db_session.expunge(item)
             return items

@@ -10,11 +10,8 @@ DBManager.create_db_tables()
 
 user = User.create(username='alice', email='alice@example.com')
 first = User.first(username="alice")
-User.update(update_fun=lambda x: x.set(email='EMAIL'), username="alice")
-
-
-item = User.get(username="alice")
-
-tweets = User.filter(username="alice")
+User.update(fun=lambda x: x.set(email='EMAIL'), username="alice")
+item = User.first(username="alice")
+tweets = User.all(username="alice")
 for tweet in tweets:
     print(tweet)
