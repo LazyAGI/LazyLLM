@@ -42,8 +42,6 @@ def _is_function(f):
                           types.BuiltinMethodType, types.MethodType, types.LambdaType))
 
 class FlowBase(metaclass=_MetaBind):
-    save_flow_result = False
-
     def __init__(self, *items, item_names=[], auto_capture=False) -> None:
         self._father = None
         self._items, self._item_names, self._item_ids = [], [], []
@@ -105,6 +103,8 @@ class FlowBase(metaclass=_MetaBind):
         raise AttributeError(f'{self.__class__} object has no attribute {name}')
 
     def id(self, module=None):
+        if isinstance(module, str):
+            return self._item_ids[self._item_names.index(module)] if module else self._flow_id
         return self._item_ids[self._items.index(module)] if module else self._flow_id
 
     @property
@@ -133,16 +133,6 @@ def _bind_exit(self, exc_type, exc_val, exc_tb):
 
 setattr(bind, '__enter__', _bind_enter)
 setattr(bind, '__exit__', _bind_exit)
-
-
-config.add('save_flow_result', bool, False, 'SAVE_FLOW_RESULT')
-
-@contextmanager
-def save_flow_result():
-    flag = FlowBase.save_flow_result
-    FlowBase.save_flow_result = True
-    yield
-    FlowBase.save_flow_result = flag
 
 
 # TODO(wangzhihong): support workflow launcher.
@@ -178,13 +168,6 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         self._sync = sync
         return self
 
-    @property
-    def input(self):
-        return bind.Args(self.id())
-
-    def output(self, module):
-        return bind.Args(self.id(), self.id(module))
-
     def __repr__(self):
         subs = [repr(it) for it in self._items]
         if self.post_action is not None:
@@ -204,8 +187,9 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 it._args = [a.get_from(self.ancestor) if isinstance(a, type(root)) else a for a in it._args]
                 it._kw = {k: v.get_from(self.ancestor) if isinstance(v, type(root)) else v for k, v in it._kw.items()}
                 it._has_root = False
-            it._args = [self.output(a) if a in self._items else a for a in it._args]
-            it._kw = {k: self.output(v) if v in self._items else v for k, v in it._kw.items()}
+            if isinstance(self, Pipeline):
+                it._args = [self.output(a) if a in self._items else a for a in it._args]
+                it._kw = {k: self.output(v) if v in self._items else v for k, v in it._kw.items()}
             kw['_bind_args_source'] = bind_args_source
         try:
             if not isinstance(it, LazyLLMFlowsBase) and isinstance(__input, (package, kwargs)):
@@ -229,6 +213,11 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
 #                                               \> post-action
 # TODO(wangzhihong): support mult-input and output
 class Pipeline(LazyLLMFlowsBase):
+    g_save_flow_result = None
+
+    def __init__(self, *args, post_action=None, auto_capture=False, **kw):
+        super().__init__(*args, post_action=post_action, auto_capture=auto_capture, **kw)
+        self.save_flow_result = __class__.g_save_flow_result
 
     @property
     def _loop_count(self):
@@ -255,10 +244,15 @@ class Pipeline(LazyLLMFlowsBase):
     def _judge_on_full_input(self, judge):
         self._judge_on_full_input_var = judge
 
+    @property
+    def input(self): return bind.Args(self.id())
+    def output(self, module): return bind.Args(self.id(), self.id(module))
+
     def _run(self, __input, **kw):
         output = __input
         bind_args_source = dict(source=self.id(), input=(output if output else kw))
-        if config['save_flow_result'] or FlowBase.save_flow_result:
+        if config['save_flow_result'] or __class__.g_save_flow_result or (
+                self.save_flow_result and __class__.g_save_flow_result is not False):
             globals['bind_args'][self.id()] = bind_args_source
         for _ in range(self._loop_count):
             for it in self._items:
@@ -273,6 +267,16 @@ class Pipeline(LazyLLMFlowsBase):
             if callable(self._stop_condition) and self.invoke(self._stop_condition, exp): break
         globals['bind_args'].pop(self.id(), None)
         return output
+
+
+config.add('save_flow_result', bool, False, 'SAVE_FLOW_RESULT')
+
+@contextmanager
+def save_pipeline_result(flag: bool = True):
+    old_flag = Pipeline.g_save_flow_result
+    Pipeline.g_save_flow_result = flag
+    yield
+    Pipeline.g_save_flow_result = old_flag
 
 
 _barr = threading.local()
@@ -336,8 +340,6 @@ class Parallel(LazyLLMFlowsBase):
         return cls(*args, _concurrent=False, **kw)
 
     def _run(self, __input, items=None, **kw):
-        bind_args_source = dict(source=self.id(), input=(__input if __input else kw))
-        kw['bind_args_source'] = bind_args_source
         if items is None:
             items = self._items
             size = len(items)
@@ -348,9 +350,6 @@ class Parallel(LazyLLMFlowsBase):
         else:
             inputs = __input
 
-        if config['save_flow_result'] or FlowBase.save_flow_result:
-            globals['bind_args'][self.id()] = bind_args_source
-
         if self._concurrent:
             nthreads = len(items)
             impl = threading.Barrier(nthreads)
@@ -360,8 +359,6 @@ class Parallel(LazyLLMFlowsBase):
             r = package(t.get_result() for t in ts)
         else:
             r = package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
-        bind_args_source.update({k: v for k, v in zip(self._item_ids, r)})
-        globals['bind_args'].pop(self.id(), None)
         return r
 
     def _post_process(self, output):
@@ -402,10 +399,6 @@ class Warp(Parallel):
     @property
     def asdict(self): raise NotImplementedError
 
-    @property
-    def input(self): raise NotImplementedError('Cannot get input of warp items')
-    def output(self, _): raise NotImplementedError('Cannot get output of warp items')
-
 # switch(conversion(input)):
 #     case cond1: input -> module11 -> ... -> module1N -> out; break
 #     case cond2: input -> module21 -> ... -> module2N -> out; break
@@ -422,8 +415,6 @@ class Switch(LazyLLMFlowsBase):
         self._judge_on_full_input = judge_on_full_input
         self._set_conversion(conversion)
 
-    def output(self, _): raise NotImplementedError('Cannot get output of warp items')
-
     def _set_conversion(self, conversion):
         self._conversion = conversion
 
@@ -435,17 +426,10 @@ class Switch(LazyLLMFlowsBase):
             __input = __input[1] if len(__input) == 2 else __input[1:]
         if self._conversion: exp = self._conversion(exp)
 
-        bind_args_source = dict(source=self.id(), input=(__input if __input else kw))
-        if config['save_flow_result'] or FlowBase.save_flow_result:
-            globals['bind_args'][self.id()] = bind_args_source
-
-        try:
-            for idx, cond in enumerate(self.conds):
-                if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or (
-                        exp == package((cond,))) or cond == 'default':
-                    return self.invoke(self._items[idx], __input, **kw)
-        finally:
-            globals['bind_args'].pop(self.id(), None)
+        for idx, cond in enumerate(self.conds):
+            if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or (
+                    exp == package((cond,))) or cond == 'default':
+                return self.invoke(self._items[idx], __input, **kw)
 
     class Case:
         def __init__(self, m) -> None: self._m = m
@@ -475,18 +459,9 @@ class IFS(LazyLLMFlowsBase):
     def __init__(self, cond, tpath, fpath, post_action=None):
         super().__init__(cond, tpath, fpath, post_action=post_action)
 
-    def output(self, _): raise NotImplementedError('Cannot get output of warp items')
-
     def _run(self, __input, **kw):
         cond, tpath, fpath = self._items
-        bind_args_source = dict(source=self.id(), input=(__input if __input else kw))
-        if config['save_flow_result'] or FlowBase.save_flow_result:
-            globals['bind_args'][self.id()] = bind_args_source
-
-        try:
-            return self.invoke(tpath if self.invoke(cond, __input) else fpath, __input, **kw)
-        finally:
-            globals['bind_args'].pop(self.id(), None)
+        return self.invoke(tpath if self.invoke(cond, __input) else fpath, __input, **kw)
 
 
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out

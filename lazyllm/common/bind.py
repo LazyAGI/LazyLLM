@@ -89,8 +89,11 @@ class Bind(object):
 
         def get_arg(self, source):
             if self._source_id in globals['bind_args']: source = globals['bind_args'][self._source_id]
+            if not source or source['source'] != self._source_id:
+                raise RuntimeError('Unable to find the bound parameter, possibly due to pipeline.input/output can only '
+                                   'be bind in direct member of pipeline! You may solve this by defining the pipeline '
+                                   'in a `with lazyllm.save_pipeline_result():` block.')
             source, input = source['source'], source[self._target_id]
-            assert source == self._source_id, ('pipeline.input/output can only be bind in direct member of pipeline!')
             if self._item_key is not Bind.Args._None: return input[self._item_key]
             elif self._attr_key is not Bind.Args._None: return getattr(input, self._attr_key)
             return input
@@ -114,15 +117,11 @@ class Bind(object):
         assert len(keys) == 0, f'Keys `{keys}` are already bind!'
         bind_args = args if len(self._args) == 0 else (
             [args[a.idx] if isinstance(a, Placeholder) else a for a in self._args])
-        bind_kwargs = self._kw
+        kwargs = self._kw
 
-        def get_bind_args(a):
-            return a.get_arg(_bind_args_source) if isinstance(a, Bind.Args) else a
-
-        if _bind_args_source:
-            bind_args = [get_bind_args(a) for a in bind_args]
-            bind_kwargs = {k: get_bind_args(v) for k, v in bind_kwargs.items()}
-        return self._f(*bind_args, **bind_kwargs, **kw)
+        bind_args = [a.get_arg(_bind_args_source) if isinstance(a, Bind.Args) else a for a in bind_args]
+        kwargs = {k: v.get_arg(_bind_args_source) if isinstance(v, Bind.Args) else v for k, v in kwargs.items()}
+        return self._f(*bind_args, **kwargs, **kw)
 
     # TODO: modify it
     def __repr__(self) -> str:

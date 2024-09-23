@@ -2,6 +2,7 @@ import lazyllm
 from lazyllm import pipeline, parallel, diverter, warp, switch, ifs, loop, graph
 from lazyllm import barrier, bind
 import time
+import pytest
 
 def add_one(x): return x + 1
 def xy2z(x, y, z=0): return x + y + 2 * z
@@ -165,3 +166,64 @@ class TestFlow(object):
         g.add_edge('concat', g.end_node_name)
 
         assert g(1) == ['1 get 1;2 get 1;', '3 get 1;']
+
+
+class TestFlowBind(object):
+    def test_bind_pipeline_basic(self):
+        with pipeline() as p:
+            p.f1 = add_one
+            p.f2 = add_one
+            p.f3 = xy2z | bind(y=p.input, z=p.f1)
+        assert p(2) == 12  # 4 + 2 + 2 * 3
+
+        with pipeline() as p:
+            p.f1 = add_one
+            p.f2 = add_one
+            p.f3 = xy2z | bind(y=p.input, z=p.output('f1'))
+        assert p(3) == 16  # 5 + 3 + 2 * 4
+
+    def test_bind_pipeline_nested(self):
+        with pipeline() as p:
+            p.f1 = add_one
+            p.f2 = add_one
+            with pipeline() as p.subp:
+                p.subp.f3 = xy2z | bind(y=p.input, z=p.output('f1'))
+
+        with pytest.raises(RuntimeError, match='pipeline.input/output can only be bind in direct member of pipeline!'):
+            p(3)
+
+        with lazyllm.save_pipeline_result():
+            assert p(3) == 16
+
+        with lazyllm.save_pipeline_result():
+            with pipeline() as p:
+                p.f1 = add_one
+                p.f2 = add_one
+                p.f3 = add_one
+                with parallel().sum as p.subp:
+                    p.subp.f3 = xy2z | bind(y=p.input, z=p.output('f1'))
+                    p.subp.f4 = xy2z | bind(y=p.input, z=p.output('f2'))
+
+        assert p(3) == 36  # (6 + 3 + 8) + (6 + 3 + 10)
+
+        with lazyllm.save_pipeline_result(False):
+            with pytest.raises(RuntimeError,
+                               match='pipeline.input/output can only be bind in direct member of pipeline!'):
+                p(3)
+
+    def test_bind_pipeline_nested_server(self):
+        def add_one(x): return x + 1
+        def xy2z(x, y, z=0): return x + y + 2 * z
+
+        with lazyllm.save_pipeline_result():
+            with pipeline() as p:
+                p.f1 = add_one
+                p.f2 = add_one
+                p.f3 = add_one
+                with parallel().sum as p.subp:
+                    p.subp.f3 = xy2z | bind(y=p.input, z=p.output('f1'))
+                    p.subp.f4 = xy2z | bind(y=p.input, z=p.output('f2'))
+
+        s = lazyllm.ServerModule(p)
+        s.start()
+        assert s(3) == 36  # (6 + 3 + 8) + (6 + 3 + 10)
