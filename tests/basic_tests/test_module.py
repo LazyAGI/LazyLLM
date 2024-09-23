@@ -149,3 +149,28 @@ class TestModule:
         self.test_WebModule()
         if m != 'spawn':
             multiprocessing.set_start_method(m, force=True)
+
+    def test_custom_module(self):
+        class MyModule(lazyllm.ModuleBase):
+            def forward(self, a, b):
+                return a + b
+
+        assert MyModule()(1, 2) == 3
+        assert lazyllm.pipeline(MyModule)(1, 2) == 3
+        assert lazyllm.pipeline(MyModule())(1, 2) == 3
+
+        class MyModule(lazyllm.ModuleBase):
+            def forward(self, a):
+                return a['a'] + a['b']
+
+        with lazyllm.parallel().sum as prl:
+            prl.m1 = MyModule
+            prl.m2 = MyModule()
+
+        assert prl(dict(a=1, b=2)) == 6
+
+        with lazyllm.warp().sum as prl:
+            prl.m1 = MyModule
+
+        assert prl([dict(a=1, b=2), dict(a=3, b=4)]) == 10
+        assert prl(dict(a=1, b=2), dict(a=3, b=4)) == 10
