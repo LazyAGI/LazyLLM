@@ -117,8 +117,7 @@ class Bind(object):
         bind_kwargs = self._kw
 
         def get_bind_args(a):
-            return a.get_arg(_bind_args_source) if isinstance(a, Bind.Args) else (
-                _bind_args_source['args'][id(a)] if id(a) in _bind_args_source['args'] else a)
+            return a.get_arg(_bind_args_source) if isinstance(a, Bind.Args) else a
 
         if _bind_args_source:
             bind_args = [get_bind_args(a) for a in bind_args]
