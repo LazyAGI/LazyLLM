@@ -24,14 +24,6 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         self._params_schema = self.load_function_schema(self.__class__.apply)
 
-        self._has_var_args = False
-        signature = inspect.signature(self.__class__.apply)
-        for name, param in signature.parameters.items():
-            if param.kind == inspect.Parameter.VAR_POSITIONAL or\
-               param.kind == inspect.Parameter.VAR_KEYWORD:
-                self._has_var_args = True
-                break
-
     def load_function_schema(self, func: Callable) -> Type[BaseModel]:
         if func.__name__ is None or func.__doc__ is None:
             raise ValueError(f"Function {func} must have a name and docstring.")
@@ -39,6 +31,15 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self._description = func.__doc__
         signature = inspect.signature(func)
         type_hints = get_type_hints(func, globals(), locals())
+
+        self._has_var_args = False
+        for name, param in signature.parameters.items():
+            if param.kind == inspect.Parameter.VAR_POSITIONAL or\
+               param.kind == inspect.Parameter.VAR_KEYWORD:
+                self._has_var_args = True
+                break
+
+        self._return_type = type_hints.get('return') if type_hints else None
 
         fields = {
             name: (type_hints.get(name, Any), param.default if param.default is not inspect.Parameter.empty else ...)
@@ -172,10 +173,11 @@ class ToolManager(ModuleBase):
             self._tool_call = {tool.name: tool for tool in self._tools}
 
     @staticmethod
-    def _gen_func_prototype_str(parsed_docstring):
+    def _gen_empty_func_str_from_parsed_docstring(parsed_docstring):
         """
         returns a function prototype string
         """
+
         func_name = "f" + str(int(time.time()))
         s = "def " + func_name + "("
         for param in parsed_docstring.params:
@@ -184,22 +186,30 @@ class ToolManager(ModuleBase):
                 s += ":" + param.type_name + ","
             else:
                 s += ","
-        s += "):\n    pass"
+        s += ")"
+
+        if parsed_docstring.returns and parsed_docstring.returns.type_name:
+            s += '->' + parsed_docstring.returns.type_name
+        s += ":\n    pass"
+
         return s
 
     @staticmethod
-    def _gen_wrapped_moduletool(docstring, parsed_docstring):
-        func_str = ToolManager._gen_func_prototype_str(parsed_docstring)
-        f = compile_func(func_str, globals())
-        f.__doc__ = docstring
+    def _gen_func_from_str(func_str, orig_docstring, global_env=None):
+        if not global_env:
+            global_env = globals()
+        f = compile_func(func_str, global_env)
+        f.__doc__ = orig_docstring
+        return f
 
+    @staticmethod
+    def _gen_wrapped_moduletool(func):
         if "tmp_tool" not in LazyLLMRegisterMetaClass.all_clses:
             register.new_group('tmp_tool')
-        register('tmp_tool')(f)
-        wrapped_module_for_f = getattr(lazyllm.tmp_tool, f.__name__)()
-        lazyllm.tmp_tool.remove(f.__name__)
-
-        return wrapped_module_for_f
+        register('tmp_tool')(func)
+        wrapped_module = getattr(lazyllm.tmp_tool, func.__name__)()
+        lazyllm.tmp_tool.remove(func.__name__)
+        return wrapped_module
 
     @staticmethod
     def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
@@ -243,6 +253,12 @@ class ToolManager(ModuleBase):
                                  "in the parameter description.")
         return args
 
+    @staticmethod
+    def _check_return_info_is_the_same(func, tool) -> bool:
+        type_hints = get_type_hints(func, globals(), locals())
+        return_type = type_hints.get('return') if type_hints else None
+        return return_type == tool._return_type
+
     def _transform_to_openai_function(self):
         if not isinstance(self._tools, List):
             raise TypeError(f"The tools type should be List instead of {type(self._tools)}")
@@ -251,14 +267,18 @@ class ToolManager(ModuleBase):
         for tool in self._tools:
             try:
                 parsed_docstring = docstring_parser.parse(tool.description)
+                func_str_from_doc = self._gen_empty_func_str_from_parsed_docstring(parsed_docstring)
+                func_from_doc = self._gen_func_from_str(func_str_from_doc, tool.description)
 
                 if tool._has_var_args:
-                    tmp_tool = self._gen_wrapped_moduletool(tool.description, parsed_docstring)
+                    tmp_tool = self._gen_wrapped_moduletool(func_from_doc)
                     args = self._gen_args_info_from_moduletool_and_docstring(tmp_tool, parsed_docstring)
                     required_arg_list = tmp_tool.get_params_schema().model_json_schema().get("required", [])
                 else:
                     args = self._gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring)
                     required_arg_list = tool.get_params_schema().model_json_schema().get("required", [])
+                    if not self._check_return_info_is_the_same(func_from_doc, tool):
+                        raise ValueError("return info in docstring is different from that in function prototype.")
 
                 func = {
                     "type": "function",
