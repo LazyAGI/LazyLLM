@@ -43,10 +43,11 @@ def _is_function(f):
 class FlowBase(metaclass=_MetaBind):
     def __init__(self, *items, item_names=[], auto_capture=False) -> None:
         self._father = None
-        self._items, self._item_names = [], []
+        self._items, self._item_names, self._item_ids = [], [], []
         self._auto_capture = auto_capture
         self._capture = True
         self._curr_frame = None
+        self._flow_id = str(uuid.uuid4().hex)
 
         for k, v in zip(item_names if item_names else [None] * len(items), items):
             self._add(k, v)
@@ -58,6 +59,7 @@ class FlowBase(metaclass=_MetaBind):
     def _add(self, k, v):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
         self._items.append(v() if isinstance(v, type) else _FuncWrap(v) if _is_function(v) or v in self._items else v)
+        self._item_ids.append(str(uuid.uuid4().hex))
         if isinstance(v, FlowBase): v._father = self
         if k: self._item_names.append(k)
         if self._curr_frame and isinstance(v, FlowBase):
@@ -98,6 +100,9 @@ class FlowBase(metaclass=_MetaBind):
         if '_item_names' in self.__dict__ and name in self._item_names:
             return self._items[self._item_names.index(name)]
         raise AttributeError(f'{self.__class__} object has no attribute {name}')
+
+    def id(self, module=None):
+        return self._item_ids[self._items.index(module)] if module else self._flow_id
 
     @property
     def is_root(self):
@@ -140,7 +145,6 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self._sync = False
-        self._flow_id = str(uuid.uuid4().hex)
 
     def __call__(self, *args, **kw):
         output = self._run(args[0] if len(args) == 1 else package(args), **kw)
@@ -207,10 +211,10 @@ class Pipeline(LazyLLMFlowsBase):
 
     @property
     def input(self):
-        return bind.Args(self._flow_id)
+        return bind.Args(self.id())
 
-    def result(self, module):
-        return bind.Args(self._flow_id, id(module))
+    def output(self, module):
+        return bind.Args(self.id(), self.id(module))
 
     @property
     def _loop_count(self):
@@ -239,7 +243,7 @@ class Pipeline(LazyLLMFlowsBase):
 
     def _run(self, __input, **kw):
         output = __input
-        bind_args_source = dict(source=self._flow_id, input=(output if output else kw), args=dict())
+        bind_args_source = dict(source=self.id(), input=(output if output else kw), args=dict())
         for _ in range(self._loop_count):
             for it in self._items:
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
