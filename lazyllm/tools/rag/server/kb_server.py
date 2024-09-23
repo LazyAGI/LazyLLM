@@ -4,16 +4,16 @@ from fastapi import Body, UploadFile
 from fastapi.responses import RedirectResponse
 
 import lazyllm
+from lazyllm import ServerModule
 from lazyllm import FastapiApp as app
 from lazyllm.tools.rag.utils import BaseResponse, save_files_in_threads
 from lazyllm.tools.rag.db import KBInfoRecord, KBFileRecord, FileRecord, FileState
-from lazyllm.tools.rag.document import Document
 
 class KBServer(lazyllm.ModuleBase):
     """
     Document server for managing knowledge bases and file uploads.
     """
-    def __init__(self, doc_list: List[Document], override: bool) -> None:
+    def __init__(self) -> None:
         super().__init__()
 
     @app.get("/", response_model=BaseResponse, summary="docs")
@@ -58,7 +58,7 @@ class KBServer(lazyllm.ModuleBase):
         """
         already_exist_files, new_add_files, overwritten_files = save_files_in_threads(
             files=files,
-            source_path=self._impl.get_group_source_path(group_name=kb_name),
+            source_path="",
             override=override,
         )
 
@@ -112,3 +112,9 @@ class KBServer(lazyllm.ModuleBase):
         String representation of the DocumentServer instance.
         """
         return lazyllm.make_repr("Module", "DocManager")
+    
+    @staticmethod
+    def start_server(launcher=None):
+        launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
+        doc_server = ServerModule(KBServer(), launcher=launcher)
+        doc_server.start()
