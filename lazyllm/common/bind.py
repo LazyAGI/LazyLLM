@@ -66,12 +66,12 @@ class _MetaBind(type):
 class Bind(object):
     class _None: pass
 
-    class Input(object):
+    class Args(object):
         class _None: pass
 
-        def __init__(self, obj):
-            self._item_key, self._attr_key = Bind.Input._None, Bind.Input._None
-            self._obj = obj
+        def __init__(self, source_id, target_id='input'):
+            self._item_key, self._attr_key = Bind.Args._None, Bind.Args._None
+            self._source_id, self._target_id = source_id, target_id
 
         def __getitem__(self, key):
             self._item_key = key
@@ -82,22 +82,17 @@ class Bind(object):
             return self
 
         def __getstate__(self):
-            return self._item_key, self._attr_key
+            return self._item_key, self._attr_key, self._source_id, self._target_id
 
         def __setstate__(self, state):
-            self._item_key, self._attr_key = state
+            self._item_key, self._attr_key, self._source_id, self._target_id = state
 
-        def get_input(self, source):
-            target, input = source['source'], source['input']
-            if target != self._obj:
-                if id(target) in globals['bind_args']:
-                    source = globals['bind_args'][id(target)]
-                    target, input = source['source'], source['input']
-                else:
-                    raise RuntimeError(f'input() can only be used in direct member of {self._obj}, '
-                                       f'you are using it in {target}')
-            if self._item_key is not Bind.Input._None: return input[self._item_key]
-            elif self._attr_key is not Bind.Input._None: return getattr(input, self._attr_key)
+        def get_arg(self, source):
+            if self._source_id in globals['bind_args']: source = globals['bind_args'][self._source_id]
+            source, input = source['source'], source[self._target_id]
+            assert source == self._source_id, ('pipeline.input/output can only be bind in direct member of pipeline!')
+            if self._item_key is not Bind.Args._None: return input[self._item_key]
+            elif self._attr_key is not Bind.Args._None: return getattr(input, self._attr_key)
             return input
 
     def __init__(self, __bind_func=_None, *args, **kw):
@@ -122,7 +117,7 @@ class Bind(object):
         bind_kwargs = self._kw
 
         def get_bind_args(a):
-            return a.get_input(_bind_args_source) if isinstance(a, Bind.Input) else (
+            return a.get_arg(_bind_args_source) if isinstance(a, Bind.Args) else (
                 _bind_args_source['args'][id(a)] if id(a) in _bind_args_source['args'] else a)
 
         if _bind_args_source:

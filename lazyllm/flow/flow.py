@@ -14,6 +14,7 @@ import os
 from typing import Union, Tuple, List, Optional
 import concurrent.futures
 from collections import deque
+import uuid
 
 
 class _FuncWrap(object):
@@ -139,6 +140,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self._sync = False
+        self._flow_id = str(uuid.uuid4().hex)
 
     def __call__(self, *args, **kw):
         output = self._run(args[0] if len(args) == 1 else package(args), **kw)
@@ -205,7 +207,10 @@ class Pipeline(LazyLLMFlowsBase):
 
     @property
     def input(self):
-        return bind.Input(self)
+        return bind.Args(self._flow_id)
+
+    def result(self, module):
+        return bind.Args(self._flow_id, id(module))
 
     @property
     def _loop_count(self):
@@ -234,7 +239,7 @@ class Pipeline(LazyLLMFlowsBase):
 
     def _run(self, __input, **kw):
         output = __input
-        bind_args_source = dict(source=self, input=(output if output else kw), args=dict())
+        bind_args_source = dict(source=self._flow_id, input=(output if output else kw), args=dict())
         for _ in range(self._loop_count):
             for it in self._items:
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
