@@ -1,45 +1,36 @@
 from functools import partial
-import os
 
 from typing import Callable, Optional, Dict
 import lazyllm
-from lazyllm import ModuleBase, ServerModule, TrainableModule, DynamicDescriptor
+from lazyllm import ModuleBase, TrainableModule, DynamicDescriptor
 
-from .web import DocWebModule
-from .doc_manager import DocManager
-from .group_doc import DocGroupImpl, DocImpl
+from .doc_impl import DocImpl
 from .store import LAZY_ROOT_NAME
+from .db import KBFileRecord
 
 
 class Document(ModuleBase):
     _registered_file_reader: Dict[str, Callable] = {}
 
-    def __init__(self, dataset_path: str, embed: Optional[TrainableModule] = None,
-                 create_ui: bool = False, manager: bool = False, launcher=None):
+    def __init__(self, doc_name: str, embed: Optional[TrainableModule] = None, clear_cache: bool = False):
         super().__init__()
-        if not os.path.exists(dataset_path):
-            defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)
-            if os.path.exists(defatult_path):
-                dataset_path = defatult_path
-        if create_ui:
-            lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
-        self._manager = create_ui or manager
-        launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
-        self._local_file_reader: Dict[str, Callable] = {}
 
-        self._impl = DocGroupImpl(dataset_path=dataset_path, embed=embed, local_readers=self._local_file_reader,
+        self._local_file_reader: Dict[str, Callable] = {}
+        files = KBFileRecord.get_file_path_by_kb_name(kb_name=doc_name) if not clear_cache else []
+        self._doc_name = doc_name
+        self._impl = DocImpl(doc_files=files, embed=embed, local_readers=self._local_file_reader,
                                   global_readers=self._registered_file_reader)
-        if self._manager:
-            doc_manager = DocManager(self._impl)
-            self.doc_server = ServerModule(doc_manager, launcher=launcher)
-            self.web = DocWebModule(doc_server=self.doc_server)
+        
+        if clear_cache:
+            file_ids = KBFileRecord.get_file_id_by_kb_name(kb_name=doc_name)
+            KBFileRecord.del_node(file_id=file_ids)
+
+    @property
+    def doc_name(self):
+        return self._doc_name
 
     def forward(self, func_name: str, *args, **kwargs):
-        if self._manager:
-            kwargs["func_name"] = func_name
-            return self.doc_server.forward(*args, **kwargs)
-        else:
-            return getattr(self._impl, func_name)(*args, **kwargs)
+        return getattr(self._impl, func_name)(*args, **kwargs)
 
     def find_parent(self, group: str) -> Callable:
         return partial(self.forward, "find_parent", group=group)
