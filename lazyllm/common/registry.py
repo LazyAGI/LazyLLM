@@ -2,7 +2,7 @@ import builtins
 import functools
 import lazyllm
 import re
-from .common import _MetaBind
+from .bind import _MetaBind
 from ..configs import config
 
 # Special Dict for lazy programmer. Suppose we have a LazyDict as follows：
