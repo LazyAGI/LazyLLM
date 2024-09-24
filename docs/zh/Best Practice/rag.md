@@ -108,7 +108,7 @@ retriever = Retriever(documents, group_name="sentence", similarity="cosine", top
 * `doc`：要从哪个 `Document` 中检索文档；
 * `group_name`：要使用文档的哪个 `Node Group` 来检索，使用 `LAZY_ROOT_NAME` 表示在原始文档内容中进行检索；
 * `similarity`：指定用来计算 `Node` 和用户查询内容之间的相似度的函数名称，`LazyLLM` 内置的相似度计算函数有 `bm25`，`bm25_chinese` 和 `cosine`，用户也可以自定义自己的计算函数；
-* `similarity_cut_off`：丢弃相似度小于指定值的结果，默认为 `-inf`，表示不丢弃, 在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则该参数需要以字典的方式指定，key 表示指定的是哪个 embedding， value 表示相应的阈值。如果所有 embedding 使用同一个阈值，则此参数只传一个数值即可；
+* `similarity_cut_off`：丢弃相似度小于指定值的结果，默认为 `-inf`，表示不丢弃。 在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则该参数需要以字典的方式指定，key 表示指定的是哪个 embedding， value 表示相应的阈值。如果所有 embedding 使用同一个阈值，则此参数只传一个数值即可；
 * `index`：在哪个索引上进行查找，目前只支持 `default`；
 * `topk`：表示返回最相关的文档数，默认值为 6；
 * `embed_keys`：表示通过哪些 embedding 做检索，不指定表示用全部 embedding 进行检索:

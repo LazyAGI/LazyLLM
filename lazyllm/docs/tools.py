@@ -46,7 +46,7 @@ add_example('Document', '''\
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> m1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
->>> document1 = Document(dataset_pat='your_doc_path', embed={"online": m, "local": m1}, manager=False)
+>>> document1 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, manager=False)
 ''')
 
 add_english_doc('Document.create_node_group', '''
@@ -351,10 +351,10 @@ add_example('Retriever', '''
 >>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
 >>> rm.start()
 >>> print(rm("query"))
->>> m1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
->>> document1 = Document(dataset_path='your_doc_path', embed={"online":m , "local": m1}, manager=False)
->>> document1.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
->>> retriver = Retriever(document1, group_name="sentences", similarity="cosine", similarity_cut_off=0.4, embed_keys=["local"], topk=3)
+>>> m1 = lazyllm.TrainableModule('bge-large-zh-v1.5').start()
+>>> document1 = Document(dataset_path='your_doc_path', embed={'online':m , 'local': m1}, manager=False)
+>>> document1.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+>>> retriver = Retriever(document1, group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
 >>> print(retriver("query"))
 ''')
 
