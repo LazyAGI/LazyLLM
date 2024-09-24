@@ -13,7 +13,7 @@ def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "C
 
     Args:
         location (str): The city and state, e.g. San Francisco, CA.
-        unit (str): The temperature unit to use. Infer this from the users location.
+        unit (Literal["Fahrenheit", "Celsius", "C", "fahrenheit", "celsius", "F"]): The temperature unit to use. Infer this from the users location.
     """
     if 'tokyo' in location.lower():
         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
@@ -23,7 +23,7 @@ def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "C
         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
     else:
         return json.dumps({'location': location, 'temperature': 'unknown'})
-'''
+'''  # noqa E501
 
 get_current_weather_doc = '''
 Get the current weather in a given location
@@ -45,8 +45,8 @@ def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "C
 
     Args:
         location (str): The city and state, e.g. San Francisco, CA.
-        unit (Literal["Fahrenheit", "Celsius", "C", "fahrenheit", "celsius", "F"]): The temperature unit to use. Infer this from the users location.
-    """  # noqa E501
+        unit (str): The temperature unit to use. Infer this from the users location.
+    """
     if 'tokyo' in location.lower():
         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
     elif 'san francisco' in location.lower():
