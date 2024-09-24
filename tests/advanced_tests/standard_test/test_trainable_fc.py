@@ -18,8 +18,8 @@ def get_current_weather(location: str,
 
     Args:
         location (str): The city and state, e.g. San Francisco, CA.
-        unit (str): The temperature unit to use. Infer this from the users location.
-    """
+        unit (Literal["Fahrenheit", "Celsius", "fahrenheit", "celsius", "C", "F"]): The temperature unit to use. Infer this from the users location.
+    """  # noqa E501
     if 'tokyo' in location.lower():
         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
     elif 'san francisco' in location.lower():
@@ -61,6 +61,9 @@ def multiply_tool(a: int, b: int) -> int:
     Args:
         a (int): multiplier
         b (int): multiplier
+
+    Returns:
+        int: result
     """
     return a * b
 
