@@ -23,7 +23,7 @@ def get_current_weather(location: str, unit: Literal["Fahrenheit", "Celsius", "C
         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
     else:
         return json.dumps({'location': location, 'temperature': 'unknown'})
-'''  # noqa E501
+'''
 
 get_current_weather_doc = '''
 Get the current weather in a given location
