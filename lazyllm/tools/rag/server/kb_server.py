@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Union, Tuple, Callable
 
 from fastapi import Body, UploadFile
 from fastapi.responses import RedirectResponse
@@ -6,10 +6,14 @@ from fastapi.responses import RedirectResponse
 import lazyllm
 from lazyllm import ServerModule
 from lazyllm import FastapiApp as app
-from lazyllm.tools.rag.utils import BaseResponse, save_files_in_threads
-from lazyllm.tools.rag.db import KBInfoRecord, KBFileRecord, FileRecord, FileState
 
-class KBServer(lazyllm.ModuleBase):
+from ..utils import BaseResponse, save_files_in_threads
+from ..db import KBInfoRecord, KBFileRecord, FileRecord, FileState
+from ..document import Document
+
+DocCreater = Callable[[str], Document]
+
+class KBServerBase(lazyllm.ModuleBase):
     """
     Document server for managing knowledge bases and file uploads.
     """
@@ -22,26 +26,6 @@ class KBServer(lazyllm.ModuleBase):
         Redirects to the documentation page.
         """
         return RedirectResponse(url="/docs")
-
-    @app.post("/create_knowledge_base")
-    def create_knowledge_base(
-        self, 
-        kb_name: str = Body(..., examples=["samples"]),
-        kb_info: str = Body(..., examples=["samples info"])
-    ):
-        """
-        Creates a new knowledge base.
-        """
-        KBInfoRecord.create(kb_name=kb_name, kb_info=kb_info)
-        return BaseResponse(msg=f"create {kb_name} success")
-
-    @app.post("/delete_knowledge_base")
-    def delete_knowledge_base(self, kb_name: str):
-        """
-        Deletes an existing knowledge base.
-        """
-        KBInfoRecord.del_node(kb_name=kb_name)
-        return BaseResponse(msg=f"delete {kb_name} success")
 
     @app.get("/list_knowledge_bases")
     def list_knowledge_bases(self):
@@ -101,20 +85,48 @@ class KBServer(lazyllm.ModuleBase):
         )
         return BaseResponse(msg=f"delete {file_name} success")
 
-    def forward(self, *args, **kwargs):
-        """
-        Forwards a function call to the underlying implementation.
-        """
-        pass
-
     def __repr__(self):
         """
         String representation of the DocumentServer instance.
         """
         return lazyllm.make_repr("Module", "DocManager")
     
-    @staticmethod
-    def start_server(launcher=None):
+    @classmethod
+    def start_server(cls, launcher=None, **kwargs):
         launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
-        doc_server = ServerModule(KBServer(), launcher=launcher)
+        doc_server = ServerModule(cls(**kwargs), launcher=launcher)
         doc_server.start()
+
+class KBServer(KBServerBase):
+    """
+    Document server for managing knowledge bases and file uploads.
+    """
+    def __init__(self, doc_creater: DocCreater) -> None:
+        super().__init__()
+        self._doc_creater = doc_creater
+        self._doc_dict = {}
+
+    @app.post("/create_knowledge_base")
+    def create_knowledge_base(
+        self, 
+        kb_name: str = Body(..., examples=["samples"]),
+        kb_info: str = Body(..., examples=["samples info"])
+    ):
+        """
+        Creates a new knowledge base.
+        """
+        assert KBInfoRecord.all(kb_name=kb_name) == [], f"kb_name {kb_name} already exist"
+
+        doc = self._doc_creater(kb_name)
+        self._doc_dict[kb_name] = doc
+        
+        KBInfoRecord.create(kb_name=kb_name, kb_info=kb_info)
+        return BaseResponse(msg=f"create {kb_name} success")
+
+    @app.post("/delete_knowledge_base")
+    def delete_knowledge_base(self, kb_name: str):
+        """
+        Deletes an existing knowledge base.
+        """
+        KBInfoRecord.del_node(kb_name=kb_name)
+        return BaseResponse(msg=f"delete {kb_name} success")

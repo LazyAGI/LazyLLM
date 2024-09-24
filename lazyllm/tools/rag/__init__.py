@@ -7,7 +7,11 @@ from .store import DocNode
 from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader, EpubReader,
                       MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader)
 from .dataReader import SimpleDirectoryReader
-
+from .server import (
+    ChatServer,
+    FileServer,
+    KBServer,
+)
 
 __all__ = [
     "Document",
@@ -34,4 +38,7 @@ __all__ = [
     "PandasExcelReader",
     "VideoAudioReader",
     "SimpleDirectoryReader",
+    "ChatServer",
+    "FileServer",
+    "KBServer",
 ]
