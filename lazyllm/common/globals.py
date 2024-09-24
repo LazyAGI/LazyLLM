@@ -122,7 +122,7 @@ class ThreadSafeDict(dict):
 
 class Globals(object):
     __global_attrs__ = ThreadSafeDict(chat_history={}, global_parameters={},
-                                      tool_delimiter="<|tool_calls|>")
+                                      bind_args={}, tool_delimiter="<|tool_calls|>")
 
     def __init__(self):
         self.__data = ThreadSafeDict()
@@ -136,25 +136,31 @@ class Globals(object):
             except Exception:
                 sid = f'tid-{hex(threading.get_ident())}'
         self.__sid.set(sid)
+        return sid
 
     @property
     def _sid(self) -> str:
         try:
-            return self.__sid.get()
+            sid = self.__sid.get()
         except Exception:
-            self._init_sid()
-        return self.__sid.get()
+            sid = self._init_sid()
+        if sid not in self.__data:
+            self.__data[sid] = copy.deepcopy(__class__.__global_attrs__)
+        return sid
 
     @property
     def _data(self): return self._get_data()
 
     def _get_data(self, rois: Optional[List[str]] = None) -> dict:
-        if self._sid not in self.__data:
-            self.__data[self._sid] = copy.deepcopy(__class__.__global_attrs__)
         if rois:
             assert isinstance(rois, (tuple, list))
             return {k: v for k, v in self.__data[self._sid].items() if k in rois}
         return self.__data[self._sid]
+
+    @property
+    def _pickle_data(self):
+        exclude_keys = ['bind_args',]
+        return {k: v for k, v in self._data.items() if k not in exclude_keys}
 
     def _update(self, d: Optional[Dict]) -> None:
         if d:
@@ -187,7 +193,10 @@ class Globals(object):
         self.__data.clear()
 
     def __contains__(self, item):
-        return item in self._data
+        return item in self.__data[self._sid]
+
+    def pop(self, *args, **kw):
+        return self._data.pop(*args, **kw)
 
 globals = Globals()
 
