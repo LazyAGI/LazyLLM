@@ -25,7 +25,7 @@ docs = Document(dataset_path='/path/to/doc/dir', embed=MyEmbeddingModule(), mana
 从本地目录构建一个文档集合 `docs`。其中 `Document` 的构造函数有以下参数：
 
 * `dataset_path`：指定从哪个文件目录构建；
-* `embed`：使用指定的模型来对文本进行 embedding；
+* `embed`：使用指定的模型来对文本进行 embedding。 如果需要对文本生成多个 embedding，此处需要通过字典的方式指定，key 标识 embedding 的名字，value 为对应的 embedding 模型；
 * `manager`：是否使用 ui 界面会影响 `Document` 内部的处理逻辑，默认为 `False`；
 * `launcher`：启动服务的方式，集群应用会用到这个参数，单机应用可以忽略。
 
@@ -108,9 +108,10 @@ retriever = Retriever(documents, group_name="sentence", similarity="cosine", top
 * `doc`：要从哪个 `Document` 中检索文档；
 * `group_name`：要使用文档的哪个 `Node Group` 来检索，使用 `LAZY_ROOT_NAME` 表示在原始文档内容中进行检索；
 * `similarity`：指定用来计算 `Node` 和用户查询内容之间的相似度的函数名称，`LazyLLM` 内置的相似度计算函数有 `bm25`，`bm25_chinese` 和 `cosine`，用户也可以自定义自己的计算函数；
-* `similarity_cut_off`：丢弃相似度小于指定值的结果，默认为 `-inf`，表示不丢弃；
+* `similarity_cut_off`：丢弃相似度小于指定值的结果，默认为 `-inf`，表示不丢弃, 在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则该参数需要以字典的方式指定，key 表示指定的是哪个 embedding， value 表示相应的阈值。如果所有 embedding 使用同一个阈值，则此参数只传一个数值即可；
 * `index`：在哪个索引上进行查找，目前只支持 `default`；
 * `topk`：表示返回最相关的文档数，默认值为 6；
+* `embed_keys`：表示通过哪些 embedding 做检索，不指定表示用全部 embedding 进行检索:
 * `similarity_kw`：需要透传给 `similarity` 函数的参数。
 
 用户可以通过使用 `LazyLLM` 提供的 `register_similarity()` 函数来注册自己的相似度计算函数。`register_similarity()` 有以下参数：
