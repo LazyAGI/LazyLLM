@@ -116,7 +116,7 @@ with pipeline() as p:
     p.f1 = f1
     p.f2 = f2
     p.f3 = f3
-    p.f4 = f4 | bind(p.input, _0, p.f2)
+    p.f4 = f4 | bind(p.input, _0, p.output("f2"))
 assert p(1) == 'get [1], [f3-5], [5]'
 ```
 

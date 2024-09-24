@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Ensure the directory exists
-FILE_STORAGE_DIR = ""
+FILE_STORAGE_DIR = "/yhm/jisiyuan/LazyLLM/dataset/kb_server_tset"
 
 def ensure_directory_exists(directory: str):
     """
