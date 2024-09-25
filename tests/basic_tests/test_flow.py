@@ -211,6 +211,31 @@ class TestFlowBind(object):
                                match='pipeline.input/output can only be bind in direct member of pipeline!'):
                 p(3)
 
+    def test_bind_pipeline_nested_kwargs(self):
+        with pipeline() as p:
+            p.f1 = add_one
+            p.f2 = add_one
+            with pipeline() as p.subp:
+                p.subp.f3 = xy2z | bind(y=p.kwargs['x'], z=p.output('f1'))
+
+        with pytest.raises(RuntimeError, match='pipeline.input/output can only be bind in direct member of pipeline!'):
+            p(x=3)
+
+        with lazyllm.save_pipeline_result():
+            assert p(x=3) == 16
+
+        def add(x, y): return x + y
+        with lazyllm.save_pipeline_result():
+            with pipeline() as p:
+                p.f1 = add
+                p.f2 = add_one
+                p.f3 = add_one
+                with parallel().sum as p.subp:
+                    p.subp.f3 = xy2z | bind(y=p.input, z=p.output(p.f1))
+                    p.subp.f4 = xy2z | bind(y=p.kwargs['y'], z=p.output('f2'))
+
+        assert p(1, y=3) == 34  # (6 + 1 + 8) + (6 + 3 + 10)
+
     def test_bind_pipeline_nested_server(self):
         def add_one(x): return x + 1
         def xy2z(x, y, z=0): return x + y + 2 * z
