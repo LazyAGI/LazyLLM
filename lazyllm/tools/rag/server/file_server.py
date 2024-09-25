@@ -59,6 +59,29 @@ fs = s3fs.S3FileSystem(
 # file_url = f"{minio_endpoint}/{minio_bucket}/{relative_path}"
 
 
+if STORE_MODE == "local":
+    import fsspec
+    from fsspec.implementations.local import LocalFileSystem
+    fs = LocalFileSystem()
+    # base_name = "kb_server_test"
+elif STORE_MODE == "minio":
+    import s3fs
+    # MinIO 配置
+    minio_endpoint = "http://103.177.28.196:9000"
+    minio_access_key = "ROOTNAME"
+    minio_secret_key = "CHANGEME123"
+    # minio_bucket = "jsytest"
+
+    # 配置 s3fs
+    fs = s3fs.S3FileSystem(
+        key=minio_access_key,
+        secret=minio_secret_key,
+        client_kwargs={'endpoint_url': minio_endpoint}
+    )
+    # base_name = "kb_server_test"
+
+
+
 class FileServer:
     """
     File server for managing file operations.
@@ -73,13 +96,11 @@ class FileServer:
         # folder_name = validate_folder_name(folder_name)
        
         try:
-            
+            real_folder_path = os.path.join(base_name, folder_path)
             if STORE_MODE == "local":
-                real_folder_path = os.path.join(FILE_STORAGE_DIR, base_name, folder_path)
-                os.makedirs(real_folder_path)
-            elif STORE_MODE == "minio":
-                if not fs.exists(base_name):
-                    fs.mkdir(base_name) 
+                real_folder_path = os.path.join(FILE_STORAGE_DIR, real_folder_path)
+            if not fs.exists(real_folder_path):
+                fs.mkdir(real_folder_path) 
 
             _location = os.path.join(base_name, folder_path)
             node = FileRecord.create(
@@ -108,30 +129,25 @@ class FileServer:
             
             if file_info and is_overwrite:
                 FileRecord.del_node(file_path=_location)
-
+            
+            
+            file_path = f"{base_name}/{target_path}/{file.filename}"
             if STORE_MODE == "local":
-                # 删除文件
-                file_location = os.path.join(FILE_STORAGE_DIR, base_name, target_path, file.filename) if target_path else os.path.join(FILE_STORAGE_DIR, base_name, file.filename)
-                if os.path.exists(file_location):
-                    os.remove(file_location)
-                # 保存文件
-                ensure_directory_exists(os.path.dirname(file_location))
-                with open(file_location, "wb+") as file_object:
-                    file_object.write(file.file.read())
-            elif STORE_MODE == "minio":
-                # 删除文件
-                file_path = f"{base_name}/{target_path}/{file.filename}"
-                if fs.exists(file_path):
-                    fs.rm(file_path)
-                    print(f"remove {file.filename} from bucket {base_name}/{target_path}")
-                # 保存文件
-                fs.put(file.file, f"{base_name}/{target_path}/{file.filename}")
+                file_path = os.path.join(FILE_STORAGE_DIR, file_path)
+            if fs.exists(file_path):
+                fs.rm(file_path)
+                # print(f"remove {file.filename} from  {base_name}/{target_path}")
+            # 保存文件
+            cache_location = os.path.join(FILE_STORAGE_DIR, ".cache", file.filename)
+            with open(cache_location, "wb+") as file_object:
+                file_object.write(file.file.read())
+            fs.put_file(cache_location, file_path)
 
             file_info = FileRecord(
-                file_name=os.path.basename(file_location),
+                file_name=file.filename,
                 file_path=_location,
                 file_type=os.path.splitext(file.filename)[1][1:].upper(),
-                file_size=os.path.getsize(file_location)
+                file_size=file.size
             )
             FileRecord.add_node(file_info)
             return BaseResponse(msg=f"File '{file.filename}' uploaded successfully.")
@@ -156,15 +172,12 @@ class FileServer:
         
         if not file_record:
             raise HTTPException(status_code=404, detail="File not found")
-        # return file_record
+
         if file_record.file_type != FORDER_TYPE:
-            if STORE_MODE == "local":
-                return FileResponse(path=os.path.join(FILE_STORAGE_DIR, file_record.file_path), filename=file_record.file_name)
-            elif STORE_MODE == "minio":
-                # with fs.open(file_record.file_path, 'r') as f:
-                #     file_content = f.read()
-                file_url = f"{minio_endpoint}/{file_record.file_path}"
-                return FileResponse(path=file_url, filename=file_record.file_name)
+            real_file_path = os.path.join(FILE_STORAGE_DIR, file_record.file_path) if STORE_MODE == "local" else file_record.file_path
+            cache_file_path = os.path.join(FILE_STORAGE_DIR, ".cache", file_record.file_name)
+            fs.get_file(real_file_path, cache_file_path)
+            return FileResponse(path=cache_file_path, filename=file_record.file_name)
         else:
             files = FileRecord.filter_by_conditions(FileRecord.file_path.startswith(file_record.file_path))
             return self.build_file_tree(files)

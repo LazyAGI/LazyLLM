@@ -74,7 +74,7 @@ class DBManager:
         """
         import os
         db_name = db_name or "default.db"
-        database_url = os.path.join("/yhm/sunshangbin/data_path", db_name)
+        database_url = os.path.join("/yhm/jisiyuan/LazyLLM/dataset", db_name)
         database_url = f"sqlite:///{database_url}"
 
         if database_url not in DBManager._instances:
