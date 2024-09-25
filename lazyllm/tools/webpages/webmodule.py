@@ -75,7 +75,7 @@ class WebModule(ModuleBase):
         return cach_path
 
     def init_web(self, component_descs):
-        with gr.Blocks(css=css, title=self.title) as demo:
+        with gr.Blocks(css=css, title=self.title, analytics_enabled=False) as demo:
             sess_data = gr.State(value={
                 'sess_titles': [''],
                 'sess_logs': {},
