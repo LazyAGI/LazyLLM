@@ -224,16 +224,17 @@ class TestFlowBind(object):
         with lazyllm.save_pipeline_result():
             assert p(x=3) == 16
 
+        def add(x, y): return x + y
         with lazyllm.save_pipeline_result():
             with pipeline() as p:
-                p.f1 = add_one
+                p.f1 = add
                 p.f2 = add_one
                 p.f3 = add_one
                 with parallel().sum as p.subp:
-                    p.subp.f3 = xy2z | bind(y=p.kwargs['x'], z=p.output(p.f1))
-                    p.subp.f4 = xy2z | bind(y=p.kwargs['x'], z=p.output('f2'))
+                    p.subp.f3 = xy2z | bind(y=p.input, z=p.output(p.f1))
+                    p.subp.f4 = xy2z | bind(y=p.kwargs['y'], z=p.output('f2'))
 
-        assert p(x=3) == 36  # (6 + 3 + 8) + (6 + 3 + 10)
+        assert p(1, y=3) == 34  # (6 + 1 + 8) + (6 + 3 + 10)
 
     def test_bind_pipeline_nested_server(self):
         def add_one(x): return x + 1
