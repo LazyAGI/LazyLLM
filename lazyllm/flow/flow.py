@@ -60,9 +60,11 @@ class FlowBase(metaclass=_MetaBind):
     def _add(self, k, v):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
         self._items.append(v() if isinstance(v, type) else _FuncWrap(v) if _is_function(v) or v in self._items else v)
-        self._item_ids.append(str(uuid.uuid4().hex))
+        self._item_ids.append(k or str(uuid.uuid4().hex))
         if isinstance(v, FlowBase): v._father = self
-        if k: self._item_names.append(k)
+        if k:
+            assert k not in self._item_names, f'Duplicated names {k}'
+            self._item_names.append(k)
         if self._curr_frame and isinstance(v, FlowBase):
             if k:
                 if k not in self._curr_frame.f_locals:
@@ -103,8 +105,7 @@ class FlowBase(metaclass=_MetaBind):
         raise AttributeError(f'{self.__class__} object has no attribute {name}')
 
     def id(self, module=None):
-        if isinstance(module, str):
-            return self._item_ids[self._item_names.index(module)] if module else self._flow_id
+        if isinstance(module, str): return module
         return self._item_ids[self._items.index(module)] if module else self._flow_id
 
     @property
@@ -246,11 +247,13 @@ class Pipeline(LazyLLMFlowsBase):
 
     @property
     def input(self): return bind.Args(self.id())
+    @property
+    def kwargs(self): return bind.Args(self.id(), 'kwargs')
     def output(self, module): return bind.Args(self.id(), self.id(module))
 
     def _run(self, __input, **kw):
         output = __input
-        bind_args_source = dict(source=self.id(), input=(output if output else kw))
+        bind_args_source = dict(source=self.id(), input=output, kwargs=kw.copy())
         if config['save_flow_result'] or __class__.g_save_flow_result or (
                 self.save_flow_result and __class__.g_save_flow_result is not False):
             globals['bind_args'][self.id()] = bind_args_source
