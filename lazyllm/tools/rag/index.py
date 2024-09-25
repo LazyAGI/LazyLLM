@@ -1,7 +1,7 @@
 import concurrent
 import os
 from typing import List, Callable, Optional, Dict, Union, Tuple
-from .store import DocNode, BaseStore, LOCK
+from .store import DocNode, BaseStore
 import numpy as np
 from .component.bm25 import BM25
 from lazyllm import LOG, config, ThreadPoolExecutor
@@ -62,7 +62,7 @@ class DefaultIndex:
                 if not miss_keys:
                     continue
                 for k in miss_keys:
-                    with LOCK:
+                    with node._lock:
                         if node.embedding is None or k not in node.embedding.keys() or (node.embedding[k][0] == -1
                            and not isinstance(node.embedding[k][1], concurrent.futures.Future)):
                             future = executor.submit(node.do_embedding, {k: self.embed[k]})

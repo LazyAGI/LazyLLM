@@ -15,7 +15,6 @@ EMBED_DEFAULT_KEY = '__default__'
 config.add("rag_store_type", str, "map", "RAG_STORE_TYPE")  # "map", "chroma"
 config.add("rag_persistent_path", str, "./lazyllm_chroma", "RAG_PERSISTENT_PATH")
 
-LOCK = threading.Lock()
 
 class MetadataMode(str, Enum):
     ALL = auto()
@@ -47,6 +46,7 @@ class DocNode:
         self.children: Dict[str, List["DocNode"]] = defaultdict(list)
         self.is_saved: bool = False
         self._docpath = None
+        self._lock = threading.Lock()
 
     @property
     def root_node(self) -> Optional["DocNode"]:
@@ -121,7 +121,7 @@ class DocNode:
 
     def do_embedding(self, embed: Dict[str, Callable]) -> None:
         generate_embed = {k: e(self.get_text(MetadataMode.EMBED)) for k, e in embed.items()}
-        with LOCK:
+        with self._lock:
             self.embedding = self.embedding or {}
             self.embedding = {**self.embedding, **generate_embed}
         self.is_saved = False
