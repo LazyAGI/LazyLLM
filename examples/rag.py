@@ -20,7 +20,7 @@ prompt = (
 #   3. Directly pass the absolute path to TrainableModule:
 #           `path/to/modelazoo/internlm2-chat-7b`
 embed_model = lazyllm.TrainableModule("bge-large-zh-v1.5")
-documents = Document(dataset_path="rag_master", embed=embed_model, create_ui=False)
+documents = Document(dataset_path="rag_master", embed=embed_model, manager=False)
 documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 
 with pipeline() as ppl:

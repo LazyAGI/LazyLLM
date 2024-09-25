@@ -108,7 +108,7 @@ prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue 
 Here is an online deployment example:
 
 ```python
-documents = Document(dataset_path="your data path", embed=lazyllm.OnlineEmbeddingModule(), create_ui=False)
+documents = Document(dataset_path="your data path", embed=lazyllm.OnlineEmbeddingModule(), manager=False)
 documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 with pipeline() as ppl:
     with parallel().sum as ppl.prl:
@@ -202,7 +202,7 @@ Here is an online deployment example:
 with pipeline() as ppl:
     ppl.outline_writer = lazyllm.OnlineChatModule(stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(lazyllm.OnlineChatModule(stream=False).prompt(writer_prompt))
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
 lazyllm.WebModule(ppl, port=23466).start().wait()
 ```
 
@@ -212,7 +212,7 @@ Here is an example of a local deployment:
 with pipeline() as ppl:
     ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
 lazyllm.WebModule(ppl, port=23466).start().wait()
 ```
 

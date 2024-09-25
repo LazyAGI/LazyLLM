@@ -106,7 +106,7 @@ prompt = '你将扮演一个人工智能问答助手的角色，完成一项对�
 这是一个在线部署示例：
 
 ```python
-documents = Document(dataset_path="file/to/yourpath", embed=lazyllm.OnlineEmbeddingModule(), create_ui=False)
+documents = Document(dataset_path="file/to/yourpath", embed=lazyllm.OnlineEmbeddingModule(), manager=False)
 documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 with pipeline() as ppl:
     with parallel().sum as ppl.prl:
@@ -198,7 +198,7 @@ writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "descr
 with pipeline() as ppl:
     ppl.outline_writer = lazyllm.OnlineChatModule(stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(lazyllm.OnlineChatModule(stream=False).prompt(writer_prompt))
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
 lazyllm.WebModule(ppl, port=23466).start().wait()
 ```
 
@@ -208,7 +208,7 @@ lazyllm.WebModule(ppl, port=23466).start().wait()
 with pipeline() as ppl:
     ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
 lazyllm.WebModule(ppl, port=23466).start().wait()
 ```
 

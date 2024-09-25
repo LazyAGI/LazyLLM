@@ -27,7 +27,7 @@ from lazyllm import pipeline, parallel, bind, SentenceSplitter, Document, Retrie
 
 prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task. In this task, you need to provide your answer based on the given context and question.'
 
-documents = Document(dataset_path="rag_master", embed=lazyllm.OnlineEmbeddingModule(), create_ui=False)
+documents = Document(dataset_path="rag_master", embed=lazyllm.OnlineEmbeddingModule(), manager=False)
 documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 
 with pipeline() as ppl:

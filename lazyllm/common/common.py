@@ -105,142 +105,6 @@ class arguments(object):
 setattr(builtins, 'package', package)
 
 
-class AttrTree(object):
-    def __init__(self, name=None, pres=[]):
-        self._path = copy.deepcopy(pres)
-        if name is not None:
-            self._path.append(name)
-
-    def __str__(self):
-        return '.'.join(self._path)
-
-    def __getattr__(self, name):
-        v = __class__(name, pres=self._path)
-        setattr(self, name, v)
-        return v
-
-    def get_from(self, obj):
-        v = obj
-        for name in self._path:
-            v = getattr(v, name)
-        return v
-
-    def __deepcopy__(self, memo):
-        return self
-
-root = AttrTree()
-
-
-class Placeholder(object):
-    _pool = dict()
-
-    def __new__(cls, idx):
-        if idx not in Placeholder._pool:
-            Placeholder._pool[idx] = super().__new__(cls)
-        return Placeholder._pool[idx]
-
-    def __init__(self, idx):
-        assert isinstance(idx, int)
-        self.idx = idx
-
-    def __deepcopy__(self, memo=None):
-        return self
-
-    def __repr__(self):
-        return f'placeholder._{self.idx}'
-
-for i in range(10):
-    vars()[f'_{i}'] = Placeholder(i)
-
-def _setattr(self, key, v):
-    raise RuntimeError('Cannot set attr for Placeholder')
-setattr(Placeholder, '__setattr__', _setattr)
-
-
-class _MetaBind(type):
-    def __instancecheck__(self, __instance):
-        if isinstance(__instance, Bind) and isinstance(__instance._f, self):
-            return True
-        return super(__class__, self).__instancecheck__(__instance)
-
-
-class Bind(object):
-    class _None: pass
-
-    class Input(object):
-        class _None: pass
-
-        def __init__(self): self._item_key, self._attr_key = Bind.Input._None, Bind.Input._None
-
-        def __getitem__(self, key):
-            self._item_key = key
-            return self
-
-        def __getattr__(self, key):
-            self._attr_key = key
-            return self
-
-        def __getstate__(self):
-            return self._item_key, self._attr_key
-
-        def __setstate__(self, state):
-            self._item_key, self._attr_key = state
-
-        def get_input(self, input):
-            if self._item_key is not Bind.Input._None: return input[self._item_key]
-            elif self._attr_key is not Bind.Input._None: return getattr(input, self._attr_key)
-            return input
-
-    def __init__(self, __bind_func=_None, *args, **kw):
-        self._f = __bind_func() if isinstance(__bind_func, type) and __bind_func is not Bind._None else __bind_func
-        self._args = args
-        self._kw = kw
-        self._has_root = any([isinstance(a, AttrTree) for a in args])
-        self._has_root = self._has_root or any([isinstance(v, AttrTree) for k, v in kw.items()])
-
-    def __ror__(self, __value: Callable):
-        if self._f is not Bind._None: self._args = (self._f,) + self._args
-        self._f = __value
-        return self
-
-    # _bind_args_source: dict(input=input, args=dict(key=value))
-    def __call__(self, *args, _bind_args_source=None, **kw):
-        if self._f is None: return None
-        keys = set(kw.keys()).intersection(set(self._kw.keys()))
-        assert len(keys) == 0, f'Keys `{keys}` are already bind!'
-        bind_args = args if len(self._args) == 0 else (
-            [args[a.idx] if isinstance(a, Placeholder) else a for a in self._args])
-        bind_kwargs = self._kw
-
-        def get_bind_args(a):
-            return a.get_input(_bind_args_source['input']) if isinstance(a, Bind.Input) else (
-                _bind_args_source['args'][id(a)] if id(a) in _bind_args_source['args'] else a)
-
-        if _bind_args_source:
-            bind_args = [get_bind_args(a) for a in bind_args]
-            bind_kwargs = {k: get_bind_args(v) for k, v in bind_kwargs.items()}
-        return self._f(*bind_args, **bind_kwargs, **kw)
-
-    # TODO: modify it
-    def __repr__(self) -> str:
-        return self._f.__repr__() + '(bind args:{})'.format(
-            ', '.join([repr(a) if a is not self else 'self' for a in self._args]))
-
-    def __getattr__(self, name):
-        # name will be '_f' in copy.deepcopy
-        if name != '_f':
-            return getattr(self._f, name)
-        return super(__class__, self).__getattr__(name)
-
-    def __setattr__(self, __name: str, __value: Any) -> None:
-        if __name not in ('_f', '_args', '_kw', '_has_root'):
-            return setattr(self._f, __name, __value)
-        return super(__class__, self).__setattr__(__name, __value)
-
-
-setattr(builtins, 'bind', Bind)
-
-
 class LazyLLMCMD(object):
     def __init__(self, cmd, *, return_value=None, checkf=(lambda *a: True), no_displays=None):
         if isinstance(cmd, (tuple, list)):
@@ -453,14 +317,52 @@ def call_once(flag, func, *args, **kw):
 def once_wrapper(reset_on_pickle):
     flag = reset_on_pickle if isinstance(reset_on_pickle, bool) else False
 
-    def impl(func):
-        flag_name = f'_lazyllm_{func.__name__}_once_flag'
+    class Wrapper:
+        class Impl:
+            def __init__(self, func, instance):
+                self._func, self._instance = func, instance
+                flag_name = f'_lazyllm_{func.__name__}_once_flag'
+                if instance and not hasattr(instance, flag_name): setattr(instance, flag_name, once_flag(flag))
 
-        def wrapper(self, *args, **kw):
-            if not hasattr(self, flag_name): setattr(self, flag_name, once_flag(flag))
-            wrapper.flag = getattr(self, flag_name)
-            return call_once(wrapper.flag, func, self, *args, **kw)
+            def __call__(self, *args, **kw):
+                assert self._instance is not None, f'{self._func} can only be used as instance method'
+                return call_once(self.flag, self._func, self._instance, *args, **kw)
 
-        return wrapper
+            __doc__ = property(lambda self: self._func.__doc__)
+            def __repr__(self): return repr(self._func)
 
-    return impl if isinstance(reset_on_pickle, bool) else impl(reset_on_pickle)
+            @__doc__.setter
+            def __doc__(self, value): self._func.__doc__ = value
+
+            @property
+            def flag(self):
+                return getattr(self._instance, f'_lazyllm_{self._func.__name__}_once_flag')
+
+        def __init__(self, func):
+            self.__func__ = func
+
+        def __get__(self, instance, _):
+            return Wrapper.Impl(self.__func__, instance)
+
+    return Wrapper if isinstance(reset_on_pickle, bool) else Wrapper(reset_on_pickle)
+
+
+class DynamicDescriptor:
+    class Impl:
+        def __init__(self, func, instance, owner):
+            self._func, self._instance, self._owner = func, instance, owner
+
+        def __call__(self, *args, **kw):
+            return self._func(self._instance, *args, **kw) if self._instance else self._func(self._owner, *args, **kw)
+
+        def __repr__(self): return repr(self._func)
+        __doc__ = property(lambda self: self._func.__doc__)
+
+        @__doc__.setter
+        def __doc__(self, value): self._func.__doc__ = value
+
+    def __init__(self, func):
+        self.__func__ = func
+
+    def __get__(self, instance, owner):
+        return DynamicDescriptor.Impl(self.__func__, instance, owner)

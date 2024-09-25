@@ -3,11 +3,11 @@ import os
 
 from typing import Callable, Optional, Dict
 import lazyllm
-from lazyllm import ModuleBase, ServerModule, TrainableModule
+from lazyllm import ModuleBase, ServerModule, TrainableModule, DynamicDescriptor
 
 from .web import DocWebModule
 from .doc_manager import DocManager
-from .group_doc import DocGroupImpl
+from .group_doc import DocGroupImpl, DocImpl
 from .store import LAZY_ROOT_NAME
 
 
@@ -15,25 +15,27 @@ class Document(ModuleBase):
     _registered_file_reader: Dict[str, Callable] = {}
 
     def __init__(self, dataset_path: str, embed: Optional[TrainableModule] = None,
-                 create_ui: bool = True, launcher=None):
+                 create_ui: bool = False, manager: bool = False, launcher=None):
         super().__init__()
         if not os.path.exists(dataset_path):
             defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)
             if os.path.exists(defatult_path):
                 dataset_path = defatult_path
-        self._create_ui = create_ui
+        if create_ui:
+            lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
+        self._manager = create_ui or manager
         launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
         self._local_file_reader: Dict[str, Callable] = {}
 
         self._impl = DocGroupImpl(dataset_path=dataset_path, embed=embed, local_readers=self._local_file_reader,
                                   global_readers=self._registered_file_reader)
-        if create_ui:
+        if self._manager:
             doc_manager = DocManager(self._impl)
             self.doc_server = ServerModule(doc_manager, launcher=launcher)
             self.web = DocWebModule(doc_server=self.doc_server)
 
     def forward(self, func_name: str, *args, **kwargs):
-        if self._create_ui:
+        if self._manager:
             kwargs["func_name"] = func_name
             return self.doc_server.forward(*args, **kwargs)
         else:
@@ -46,20 +48,31 @@ class Document(ModuleBase):
         return partial(self.forward, "find_children", group=group)
 
     def __repr__(self):
-        return lazyllm.make_repr("Module", "Document", create_ui=self._create_ui)
+        return lazyllm.make_repr("Module", "Document", manager=self._manager)
 
-    def create_node_group(
-        self, name: str, transform: Callable, parent: str = LAZY_ROOT_NAME, **kwargs
-    ) -> None:
-        self._impl.create_node_group(name, transform, parent, **kwargs)
+    @DynamicDescriptor
+    def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
+                          trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
+        if isinstance(self, type):
+            DocImpl.create_global_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
+                                             num_workers=num_workers, **kwargs)
+        else:
+            self._impl.create_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
+                                         num_workers=num_workers, **kwargs)
 
-    def add_reader(self, pattern: str, func: Callable):
-        self._local_file_reader[pattern] = func
+    @DynamicDescriptor
+    def add_reader(self, pattern: str, func: Optional[Callable] = None):
+        if isinstance(self, type):
+            return self.register_global_reader(pattern=pattern, func=func)
+        else:
+            assert callable(func), 'func for reader should be callable'
+            self._local_file_reader[pattern] = func
 
     @classmethod
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
         if func is not None:
             cls._registered_file_reader[pattern] = func
+            return None
 
         def decorator(klass):
             if callable(klass): cls._registered_file_reader[pattern] = klass

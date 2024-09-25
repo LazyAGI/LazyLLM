@@ -6,7 +6,6 @@
 - 微调（基于collie）: collie-lm, numpy, peft, torch, transformers, datasets, deepspeed, fire
 - 推理（基于lightllm）: lightllm
 - 推理（基于vllm）: vllm
-- RAG: llama_index, llama-index-retrievers-bm25, llama-index-storage-docstore-redis, llama-index-vector-stores-redis, rank_bm25, redisvl, llama_index, llama-index-embeddings-huggingface
 
 ### 基础依赖
 

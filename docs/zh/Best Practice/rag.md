@@ -19,14 +19,14 @@
 目前 `Document` 只支持从本地目录中提取文档内容，用户可以用以下语句
 
 ```python
-docs = Document(dataset_path='/path/to/doc/dir', embed=MyEmbeddingModule(), create_ui=False)
+docs = Document(dataset_path='/path/to/doc/dir', embed=MyEmbeddingModule(), manager=False)
 ```
 
 从本地目录构建一个文档集合 `docs`。其中 `Document` 的构造函数有以下参数：
 
 * `dataset_path`：指定从哪个文件目录构建；
 * `embed`：使用指定的模型来对文本进行 embedding；
-* `create_ui`：是否使用 ui 界面会影响 `Document` 内部的处理逻辑，默认为 `True`；
+* `manager`：是否使用 ui 界面会影响 `Document` 内部的处理逻辑，默认为 `False`；
 * `launcher`：启动服务的方式，集群应用会用到这个参数，单机应用可以忽略。
 
 一个 `Document` 实例可能会按照指定的规则（在 `LazyLLM` 中被称为 `Transformer`），被进一步细分成若干粒度不同的被称为 `Node` 的节点集合（`Node Group`）。这些 `Node` 除了包含的文档内容外，还记录了自己是从哪一个`Node` 拆分而来，以及本身又被拆分成哪些更细粒度的 `Node`这些信息。用户可以通过 `Document.create_node_group()` 来创建自己的 `Node Group`。
