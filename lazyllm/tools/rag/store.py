@@ -2,10 +2,12 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from enum import Enum, auto
 import uuid
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 import chromadb
 from lazyllm import LOG, config
 from chromadb.api.models.Collection import Collection
+import threading
+import json
 
 
 LAZY_ROOT_NAME = "lazyllm_root"
@@ -13,6 +15,7 @@ EMBED_DEFAULT_KEY = '__default__'
 config.add("rag_store_type", str, "map", "RAG_STORE_TYPE")  # "map", "chroma"
 config.add("rag_persistent_path", str, "./lazyllm_chroma", "RAG_PERSISTENT_PATH")
 
+LOCK = threading.Lock()
 
 class MetadataMode(str, Enum):
     ALL = auto()
@@ -95,8 +98,8 @@ class DocNode:
 
     def __str__(self) -> str:
         return (
-            f"DocNode(id: {self.uid}, group: {self.group}, text: {self.get_text()}) parent: "
-            f"{self.get_parent_id()}, children: {self.get_children_str()} is_embed: {self.has_embedding()}"
+            f"DocNode(id: {self.uid}, group: {self.group}, text: {self.get_text()}) parent: {self.get_parent_id()}, "
+            f"children: {self.get_children_str()} is_embed: {not bool(self.has_missing_embedding([]))}"
         )
 
     def __repr__(self) -> str:
@@ -110,18 +113,17 @@ class DocNode:
     def __hash__(self):
         return hash(self.uid)
 
-    def has_embedding(self, embed_keys: Optional[List[str]] = None) -> bool:
-        if self.embedding is None: return False
-        keys = embed_keys or self.embedding.keys()
-        return all(self.embedding.get(key, [-1])[0] != -1 for key in keys)
-
-    def get_keys_without_embeddings(self, embed_keys: List[str]) -> List[str]:
-        if self.embedding is None: return embed_keys
+    def has_missing_embedding(self, embed_keys: Union[str, List[str]]) -> List[str]:
+        if isinstance(embed_keys, str): embed_keys = [embed_keys]
+        if self.embedding is None: return embed_keys if embed_keys else [EMBED_DEFAULT_KEY]
+        if len(embed_keys) == 0: embed_keys = self.embedding.keys()
         return [k for k in embed_keys if k not in self.embedding.keys() or self.embedding.get(k, [-1])[0] == -1]
 
     def do_embedding(self, embed: Dict[str, Callable]) -> None:
-        self.embedding = self.embedding or {}
-        self.embedding = {**self.embedding, **{k: e(self.get_text(MetadataMode.EMBED)) for k, e in embed.items()}}
+        generate_embed = {k: e(self.get_text(MetadataMode.EMBED)) for k, e in embed.items()}
+        with LOCK:
+            self.embedding = self.embedding or {}
+            self.embedding = {**self.embedding, **generate_embed}
         self.is_saved = False
 
     def get_content(self) -> str:
@@ -277,17 +279,15 @@ class ChromadbStore(BaseStore):
         for node in nodes:
             if node.is_saved:
                 continue
-            if not node.has_embedding():
-                miss_keys = node.get_keys_without_embeddings(self._placeholder.keys())
+            if miss_keys := node.has_missing_embedding(self._placeholder.keys()):
                 node.embedding = node.embedding or {}
                 node.embedding = {**node.embedding, **{k: self._placeholder[k] for k in miss_keys}}
             metadata = self._make_chroma_metadata(node)
-            for key, embed in node.embedding.items():
-                ids.append(node.uid + key)
-                embeddings.append(embed)
-                metadata["node_id"] = node.uid
-                metadatas.append(metadata)
-                documents.append(node.get_text())
+            metadata["embedding"] = json.dumps(node.embedding)
+            ids.append(node.uid)
+            embeddings.append([item for subembed in node.embedding.values() for item in subembed])
+            metadatas.append(metadata)
+            documents.append(node.get_text())
             node.is_saved = True
         if ids:
             collection.upsert(
@@ -308,24 +308,18 @@ class ChromadbStore(BaseStore):
         raise ValueError(f"UID {uid} not found in store.")
 
     def _build_nodes_from_chroma(self, results: Dict[str, List]) -> List[DocNode]:
-        nodesMap: Dict[str, DocNode] = {}
-        for i, id in enumerate(results['ids']):
+        nodes: List[DocNode] = []
+        for i, uid in enumerate(results['ids']):
             chroma_metadata = results['metadatas'][i]
-            uid = chroma_metadata.get("node_id", "")
-            embed_key = id[len(uid):]
-            if uid not in nodesMap.keys():
-                node = DocNode(
-                    uid=uid,
-                    text=results["documents"][i],
-                    group=chroma_metadata["group"],
-                    embedding={embed_key: results['embeddings'][i]},
-                    parent=chroma_metadata["parent"],
-                )
-                node.is_saved = True
-                nodesMap[uid] = node
-            else:
-                nodesMap[uid].embedding[embed_key] = results['embeddings'][i]
-        nodes: List[DocNode] = [node for k, node in nodesMap.items()]
+            node = DocNode(
+                uid=uid,
+                text=results["documents"][i],
+                group=chroma_metadata["group"],
+                embedding=json.loads(chroma_metadata['embedding']),
+                parent=chroma_metadata["parent"],
+            )
+            node.is_saved = True
+            nodes.append(node)
         return nodes
 
     def _make_chroma_metadata(self, node: DocNode) -> Dict[str, Any]:

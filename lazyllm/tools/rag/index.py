@@ -1,7 +1,7 @@
 import concurrent
 import os
 from typing import List, Callable, Optional, Dict, Union, Tuple
-from .store import DocNode, BaseStore
+from .store import DocNode, BaseStore, LOCK
 import numpy as np
 from .component.bm25 import BM25
 from lazyllm import LOG, config, ThreadPoolExecutor
@@ -58,13 +58,23 @@ class DefaultIndex:
         with ThreadPoolExecutor(config["max_embedding_workers"]) as executor:
             futures = {}
             for node in nodes:
-                if node.has_embedding():
+                miss_keys = node.has_missing_embedding(self.embed.keys())
+                if not miss_keys:
                     continue
-                miss_keys = node.get_keys_without_embeddings(self.embed.keys())
-                node_embed = {k: embed for k, embed in self.embed.items() if k in miss_keys}
-                futures[executor.submit(node.do_embedding, node_embed)] = node
-            for future in concurrent.futures.as_completed(futures):
-                future.result()
+                for k in miss_keys:
+                    with LOCK:
+                        if node.embedding is None or k not in node.embedding.keys() or (node.embedding[k][0] == -1
+                           and not isinstance(node.embedding[k][1], concurrent.futures.Future)):
+                            future = executor.submit(node.do_embedding, {k: self.embed[k]})
+                            node.embedding = node.embedding or {}
+                            node.embedding[k] = [-1, future]
+                            futures[future] = node
+                            continue
+                        elif isinstance(node.embedding[k][1], concurrent.futures.Future):
+                            futures[node.embedding[k][1]] = node
+            if len(futures) > 0:
+                for future in concurrent.futures.as_completed(futures):
+                    future.result()
         return nodes
 
     def query(
@@ -87,7 +97,8 @@ class DefaultIndex:
         if mode == "embedding":
             assert self.embed, "Chosen similarity needs embed model."
             assert len(query) > 0, "Query should not be empty."
-            query_embedding = {k: e(query) for k, e in self.embed.items()}
+            keys = embed_keys or self.embed.keys()
+            query_embedding = {k: self.embed[k](query) for k in keys}
             nodes = self._parallel_do_embedding(nodes)
             self.store.try_save_nodes(nodes)
             similarities = similarity_func(query_embedding, nodes, topk=topk, **kwargs)

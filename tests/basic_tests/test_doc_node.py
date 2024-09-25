@@ -28,8 +28,7 @@ class TestDocNode:
         embed = {"test1": mock_embed1, "test2": mock_embed2}
         assert "test1" not in self.node.embedding.keys()
         assert "test2" not in self.node.embedding.keys()
-        if not self.node.has_embedding(embed.keys()):
-            miss_keys = self.node.get_keys_without_embeddings(embed.keys())
+        if miss_keys := self.node.has_missing_embedding(embed.keys()):
             node_embed = {k: e for k, e in embed.items() if k in miss_keys}
             self.node.do_embedding(node_embed)
         assert "test1" in self.node.embedding.keys()

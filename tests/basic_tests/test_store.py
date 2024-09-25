@@ -49,8 +49,7 @@ class TestChromadbStore(unittest.TestCase):
         node2 = DocNode(uid="2", text="text2", group="group2")
         self.store.add_nodes([node1, node2])
         collection = self.store._collections["group1"]
-        node_ids = [item['node_id'] for item in collection.peek(collection.count())['metadatas']]
-        self.assertEqual(node_ids, ["1", "2"])
+        self.assertEqual(collection.peek(collection.count())["ids"], ["1", "2"])
 
     def test_try_load_store(self):
         # Set up initial data to be loaded

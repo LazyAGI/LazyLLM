@@ -85,5 +85,18 @@ class TestDefaultIndex(unittest.TestCase):
         self.assertIn(self.doc_node_2, results)
         self.assertIn(self.doc_node_3, results)
 
+    def test_query_multi_embed_one_thresholds(self):
+        results = self.index.query(
+            query="test",
+            nodes=self.nodes,
+            similarity_name="cosine",
+            similarity_cut_off=0.8,
+            embed_keys=["default", "test1"],
+            topk=2,
+        )
+        print(f"results: {results}")
+        self.assertEqual(len(results), 1)
+        self.assertIn(self.doc_node_2, results)
+
 if __name__ == "__main__":
     unittest.main()
