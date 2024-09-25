@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# flake8: noqa: F501
 
 import lazyllm
 from lazyllm import pipeline, warp, bind
@@ -7,7 +6,7 @@ from lazyllm.components.formatter import JsonFormatter
 
 # Before running, set the environment variable:
 #
-# 1. `export LAZYLLM_GLM_API_KEY=xxxx`: the API key of Zhipu AI, default model "glm-4", `source="glm"`. 
+# 1. `export LAZYLLM_GLM_API_KEY=xxxx`: the API key of Zhipu AI, default model "glm-4", `source="glm"`.
 #     You can apply for the API key at https://open.bigmodel.cn/
 #     Also supports other API keys:
 #       - LAZYLLM_OPENAI_API_KEY: the API key of OpenAI, default model "gpt-3.5-turbo", `source="openai"`.
@@ -42,7 +41,7 @@ Example output:
     }
 ]
 User input is as follows:
-"""
+"""  # noqa: E50E
 
 completion_prompt = """
 You are now an intelligent assistant. Your task is to receive a dictionary containing `title` and `describe`, and expand the writing according to the guidance in `describe`.
@@ -57,14 +56,14 @@ Output(Do not repeat "title"):
 This is the expanded content for writing.
 Receive as follows:
 
-"""
+"""  # noqa: E50E
 
 writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "describe": {describe}}'}
 
 with pipeline() as ppl:
     ppl.outline_writer = lazyllm.OnlineChatModule(stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(lazyllm.OnlineChatModule(stream=False).prompt(writer_prompt))
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))  # noqa: E50E
 
 if __name__ == '__main__':
     lazyllm.WebModule(ppl, port=range(23467, 24000)).start().wait()

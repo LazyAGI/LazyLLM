@@ -109,6 +109,9 @@ def multiply_tool(a: int, b: int) -> int:
     Args:
         a (int): multiplier
         b (int): multiplier
+
+    Returns:
+        int: result
     """
     return a * b
 '''
@@ -121,6 +124,9 @@ def multiply_tool(a: int, b: int) -> int:
     Args:
         a (int): multiplier
         b (int): multiplier
+
+    Returns:
+        int: result
     """
     return a * b
 
