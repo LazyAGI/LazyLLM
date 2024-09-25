@@ -72,7 +72,7 @@ class DocImpl:
         def get_trans(t): return TransformArgs.from_dict(t) if isinstance(t, dict) else t
 
         if isinstance(transform, (TransformArgs, tuple, list, dict)):
-            err_msg = '{} should be set in transform when transform is TransformArgs or Dict[TransformArgs]'
+            err_msg = '{} should be set in transform when transform is Dict, TransformArgs or List[TransformArgs]'
             assert trans_node is None, err_msg.format('trans_node')
             assert num_workers == 0, err_msg.format('num_workers')
             assert not kwargs, err_msg.format('kwargs')

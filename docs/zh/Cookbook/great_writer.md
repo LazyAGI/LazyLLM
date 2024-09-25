@@ -103,7 +103,7 @@ story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter(
 with pipeline() as ppl:
     ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
 ```
 
 上面代码中，除了常用的 [Pipeline][lazyllm.flow.Pipeline] 控制流(类似应用见：[绘画大师](painting_master.md#use-pipeline))，
@@ -117,7 +117,7 @@ warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
 而且一般是多个不同的输出。作为下一级的内容生成机器人，每个输入都需要进行处理，所以用 [Warp][lazyllm.flow.Warp] 就再合适不过了。
 
 ```python
-ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
 ```
 
 [](){#use-bind}
@@ -187,6 +187,6 @@ writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "descr
 with pipeline() as ppl:
     ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.outline_writer)
+    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
 lazyllm.WebModule(ppl, port=23466).start().wait()
 ```

@@ -63,7 +63,7 @@ class TestRagReader(object):
 
         docs1 = self.doc1._impl._impl.directory_reader.load_data(input_files=files)
         assert docs1[0].text != "Call the class YmlReader." and docs1[0].text != "Call the function processYml."
-        Document.register_global_reader("**/*.yml", processYml)
+        Document.add_reader("**/*.yml", processYml)
         self.doc1.add_reader("**/*.yml", YmlReader)
         docs1 = self.doc1._impl._impl.directory_reader.load_data(input_files=files)
         docs2 = self.doc2._impl._impl.directory_reader.load_data(input_files=files)
