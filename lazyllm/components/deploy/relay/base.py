@@ -28,12 +28,13 @@ class RelayServer(LazyLLMDeployBase):
     message_format = None
 
     def __init__(self, port=None, *, func=None, pre_func=None, post_func=None,
-                 launcher=launchers.remote(sync=False)):
+                 pythonpath=None, launcher=launchers.remote(sync=False)):
         # func must dump in __call__ to wait for dependancies.
         self.func = func
         self.pre = dump_func(pre_func)
         self.post = dump_func(post_func)
         self.port, self.real_port = port, None
+        self.pythonpath = pythonpath
         super().__init__(launcher=launcher)
 
     def cmd(self, func=None):
@@ -49,6 +50,8 @@ class RelayServer(LazyLLMDeployBase):
                 cmd += f'--before_function="{self.pre}" '
             if self.post:
                 cmd += f'--after_function="{self.post}" '
+            if self.pythonpath:
+                cmd += f'--pythonpath="{self.pythonpath}" '
             return cmd
 
         return LazyLLMCMD(cmd=impl, return_value=self.geturl, checkf=verify_fastapi_func,
@@ -90,7 +93,7 @@ class FastapiApp(object):
     def update():
         for f, method, path, kw in FastapiApp.__relay_services__:
             cls = inspect._findclass(f)
-            if '__relay_services__' not in dir(cls):
+            if '__relay_services__' not in cls.__dict__:
                 cls.__relay_services__ = dict()
             cls.__relay_services__[method, path] = ([f.__name__, kw])
         FastapiApp.__relay_services__.clear()
