@@ -344,7 +344,7 @@ class WebModule(ModuleBase):
             assert self._verify_port_access(port), f'port {port} is occupied'
 
         self.url = f'http://0.0.0.0:{port}'
-        def _impl(): self.demo.queue().launch(server_name='0.0.0.0', server_port=port)
+        def _impl(): self.demo.queue().launch(server_name='0.0.0.0', server_port=port, prevent_thread_lock=True)
         if platform.system() == 'Darwin':
             _impl()
         else:
