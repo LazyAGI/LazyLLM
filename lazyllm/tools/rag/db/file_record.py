@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, func
+from sqlalchemy import Column, Integer, String, DateTime, func, Enum
 
 from .db_manager import DBManager
 from .db_operation import DBMergeClass, DBOperations
@@ -17,7 +17,7 @@ class FileRecord(DATABASE.Base, DBOperations, metaclass=DBMergeClass, session=DA
     id = Column(Integer, primary_key=True, index=True, comment='Unique identifier for the file record')
     file_name = Column(String(255), nullable=False, comment='Name of the file')
     file_path = Column(String(255), nullable=False, comment='Path to the file')
-    file_type = Column(String(50), nullable=False, comment='Type of the file')
+    file_type = Column(Enum('TXT', 'PDF', 'XLSX','DOC','DOCX','JSON', 'forder', name='file_type'), nullable=False, comment='Type of the file')
     file_size = Column(Integer, nullable=False, comment='Size of the file in bytes')
     upload_time = Column(DateTime, default=func.now(), comment='Time when the file was uploaded')
     description = Column(String(255), nullable=True, comment='Description of the file')

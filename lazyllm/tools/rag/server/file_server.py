@@ -15,7 +15,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Ensure the directory exists
-FILE_STORAGE_DIR = ""
+FILE_STORAGE_DIR = "/yhm/jisiyuan/LazyLLM/dataset/kb_server_test"
+STORE_MODE = "minio"
 
 def ensure_directory_exists(directory: str):
     """
@@ -41,57 +42,95 @@ def validate_folder_name(folder_name: str) -> str:
         raise HTTPException(status_code=400, detail="Folder name can only contain letters, numbers, hyphens, and underscores.")
     return folder_name
 
+import s3fs
+# MinIO 配置
+minio_endpoint = "http://103.177.28.196:9000"
+minio_access_key = "ROOTNAME"
+minio_secret_key = "CHANGEME123"
+# minio_bucket = "jsytest"
+
+# 配置 s3fs
+fs = s3fs.S3FileSystem(
+    key=minio_access_key,
+    secret=minio_secret_key,
+    client_kwargs={'endpoint_url': minio_endpoint}
+)
+
+# file_url = f"{minio_endpoint}/{minio_bucket}/{relative_path}"
+
 
 class FileServer:
     """
     File server for managing file operations.
     """
 
-    @app.post("/create_folder", response_model=BaseResponse)
-    async def create_folder(target_path: str = '', folder_name: str = None) -> BaseResponse:
+    @app.post("/create_folder")
+    def create_folder(self, base_name: str = '', folder_path: str = None) -> BaseResponse:
+    # def create_folder(self, target_path: str = '', folder_name: str = None) -> BaseResponse:
         """
         Create a new folder.
         """
-        folder_name = validate_folder_name(folder_name)
-        folder_path = os.path.join(FILE_STORAGE_DIR, target_path, folder_name)
+        # folder_name = validate_folder_name(folder_name)
+       
         try:
-            os.mkdir(folder_path)
-            _location = os.path.join(target_path, folder_name)
+            
+            if STORE_MODE == "local":
+                real_folder_path = os.path.join(FILE_STORAGE_DIR, base_name, folder_path)
+                os.makedirs(real_folder_path)
+            elif STORE_MODE == "minio":
+                if not fs.exists(base_name):
+                    fs.mkdir(base_name) 
+
+            _location = os.path.join(base_name, folder_path)
             node = FileRecord.create(
-                file_name=folder_name,
+                file_name=folder_path,
                 file_path=_location,
                 file_type=FORDER_TYPE,
                 file_size=0
             )
-            return BaseResponse(msg=f"Folder '{folder_name}' created successfully.", data=node.id)
+            return BaseResponse(msg=f"Folder '{folder_path}' created successfully.", data_id=node.id)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    @app.post("/upload_file", response_model=BaseResponse)
-    async def upload_file(file: UploadFile = File(...), target_path: str = '', is_overwrite: bool = True) -> BaseResponse:
+    @app.post("/upload_file")
+    async def upload_file(self, file: UploadFile = File(...), base_name: str = '', target_path: str = '', is_overwrite: bool = True) -> BaseResponse:
+    # async def upload_file(self, file: UploadFile = File(...), target_path: str = '', is_overwrite: bool = True) -> BaseResponse:
         """
         Upload a file to the server.
         """
-        file_location = os.path.join(FILE_STORAGE_DIR, target_path, file.filename) if target_path else os.path.join(FILE_STORAGE_DIR, file.filename)
+        # file_location = os.path.join(FILE_STORAGE_DIR, target_path, file.filename) if target_path else os.path.join(FILE_STORAGE_DIR, file.filename)
         
         try:
-            _location = os.path.join(target_path, file.filename)
+            _location = os.path.join(base_name, target_path, file.filename)
             file_info = FileRecord.first(file_path=_location)
             if file_info and not is_overwrite:
                 return BaseResponse(msg="File already exists and will not be overwritten.")
             
             if file_info and is_overwrite:
                 FileRecord.del_node(file_path=_location)
-                os.remove(file_location)
 
-            ensure_directory_exists(os.path.dirname(file_location))
-            with open(file_location, "wb+") as file_object:
-                file_object.write(file.file.read())
+            if STORE_MODE == "local":
+                # 删除文件
+                file_location = os.path.join(FILE_STORAGE_DIR, base_name, target_path, file.filename) if target_path else os.path.join(FILE_STORAGE_DIR, base_name, file.filename)
+                if os.path.exists(file_location):
+                    os.remove(file_location)
+                # 保存文件
+                ensure_directory_exists(os.path.dirname(file_location))
+                with open(file_location, "wb+") as file_object:
+                    file_object.write(file.file.read())
+            elif STORE_MODE == "minio":
+                # 删除文件
+                file_path = f"{base_name}/{target_path}/{file.filename}"
+                if fs.exists(file_path):
+                    fs.rm(file_path)
+                    print(f"remove {file.filename} from bucket {base_name}/{target_path}")
+                # 保存文件
+                fs.put(file.file, f"{base_name}/{target_path}/{file.filename}")
 
             file_info = FileRecord(
                 file_name=os.path.basename(file_location),
                 file_path=_location,
-                file_type=file.content_type,
+                file_type=os.path.splitext(file.filename)[1][1:].upper(),
                 file_size=os.path.getsize(file_location)
             )
             FileRecord.add_node(file_info)
@@ -99,26 +138,39 @@ class FileServer:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    @app.get("/list_files", response_model=BaseResponse)
-    def list_files(skip: int = 0, limit: int = 10) -> BaseResponse:
+    @app.get("/list_files")
+    def list_files(self, skip: int = 0, limit: int = 10) -> BaseResponse:
         """
         List files with pagination.
         """
         files = FileRecord.filter_by(skip=skip, limit=limit)
+        files = [repr(file) for file in files]
         return BaseResponse(data=files)
 
-    @app.get("/get_file/{file_id}", response_class=FileResponse)
-    def get_file(file_id: int):
+    @app.get("/get_file")
+    def get_file(self, file_id: int):
         """
         Download a file by its ID.
         """
         file_record = FileRecord.first(id=file_id)
+        
         if not file_record:
             raise HTTPException(status_code=404, detail="File not found")
-        return FileResponse(path=file_record.file_path, filename=file_record.file_name)
+        # return file_record
+        if file_record.file_type != FORDER_TYPE:
+            if STORE_MODE == "local":
+                return FileResponse(path=os.path.join(FILE_STORAGE_DIR, file_record.file_path), filename=file_record.file_name)
+            elif STORE_MODE == "minio":
+                # with fs.open(file_record.file_path, 'r') as f:
+                #     file_content = f.read()
+                file_url = f"{minio_endpoint}/{file_record.file_path}"
+                return FileResponse(path=file_url, filename=file_record.file_name)
+        else:
+            files = FileRecord.filter_by_conditions(FileRecord.file_path.startswith(file_record.file_path))
+            return self.build_file_tree(files)
 
-    @app.delete("/delete_file/{file_id}", response_model=BaseResponse)
-    def delete_file(file_id: int) -> BaseResponse:
+    @app.get("/delete_file")
+    def delete_file(self, file_id: int) -> BaseResponse:
         """
         Delete a file by its ID.
         """
@@ -138,31 +190,35 @@ class FileServer:
 
         return BaseResponse(msg=f"File ID {file_id} deleted successfully.")
 
-    @app.get("/get_file_tree", response_model=BaseResponse)
-    def get_file_tree() -> BaseResponse:
+    # @app.get("/get_file_tree")
+    def build_file_tree(self, all_files) -> BaseResponse:
         """
         Get the file tree structure.
         """
-        def _build_file_tree():
-            all_files = FileRecord.all()  # Get all file information
-            files_dict = {}
-            for file in all_files:
-                files_dict[file.file_path] = {
-                    "name": file.file_name,
-                    "type": "folder" if file.file_type == "folder" else "file",
-                    "children": []
-                }
 
-            file_tree = []
-            for file in all_files:
-                parent_path = os.path.dirname(file.file_path)
-                if parent_path in files_dict:
-                    files_dict[parent_path]["children"].append(files_dict[file.file_path])
-                else:
-                    file_tree.append(files_dict[file.file_path])
-            return file_tree
-        return BaseResponse(data=_build_file_tree())
+        files_dict = {}
+        for file in all_files:
+            files_dict[file.file_path] = {
+                "name": file.file_name,
+                "type": "folder" if file.file_type == "folder" else "file",
+                "children": []
+            }
+
+        file_tree = []
+        for file in all_files:
+            parent_path = os.path.dirname(file.file_path)
+            if parent_path in files_dict:
+                files_dict[parent_path]["children"].append(files_dict[file.file_path])
+            else:
+                file_tree.append(files_dict[file.file_path])
+        return file_tree
+    
+    @app.get("/get_file_tree")
+    def get_file_tree(self):
+        all_files = FileRecord.all()  # Get all file information
+        data=self.build_file_tree(all_files)
+        return BaseResponse(data=data)
     
 
-m = lazyllm.ServerModule(FileServer(), launcher=lazyllm.launchers.empty(sync=False))
-m.start()
+# m = lazyllm.ServerModule(FileServer(), launcher=lazyllm.launchers.empty(sync=False))
+# m.start()

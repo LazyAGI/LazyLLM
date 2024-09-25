@@ -33,6 +33,7 @@ class KBServerBase(lazyllm.ModuleBase):
         Lists all knowledge bases.
         """
         kbs = KBInfoRecord.all()
+        kbs = [repr(kb) for kb in kbs]
         return BaseResponse(data=kbs)
 
     @app.post("/upload_files")
@@ -42,7 +43,7 @@ class KBServerBase(lazyllm.ModuleBase):
         """
         already_exist_files, new_add_files, overwritten_files = save_files_in_threads(
             files=files,
-            source_path="",
+            source_path="/yhm/jisiyuan/LazyLLM/dataset/kb_server_test",
             override=override,
         )
 
@@ -71,19 +72,20 @@ class KBServerBase(lazyllm.ModuleBase):
         Lists all files in a knowledge base.
         """
         file_list = KBFileRecord.all(kb_name=kb_name)
+        file_list = [repr(file) for file in file_list]
         return BaseResponse(data=file_list)
 
     @app.post("/delete_file")
-    def delete_file(self, kb_name: str, file_name: str):
+    def delete_file(self, kb_name: str, file_id: str):
         """
         Deletes a file from a knowledge base.
         """
         KBFileRecord.update(
-            func=lambda x: x.set(state=FileState.WAIT_DELETE), 
+            fun=lambda x: x.set(state=FileState.WAIT_DELETE), 
             kb_name=kb_name, 
-            file_name=file_name
+            file_id=file_id
         )
-        return BaseResponse(msg=f"delete {file_name} success")
+        return BaseResponse(msg=f"delete {file_id} success")
 
     def __repr__(self):
         """
@@ -92,9 +94,9 @@ class KBServerBase(lazyllm.ModuleBase):
         return lazyllm.make_repr("Module", "DocManager")
     
     @classmethod
-    def start_server(cls, launcher=None, **kwargs):
+    def start_server(cls, launcher=None, port=None,**kwargs):
         launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
-        doc_server = ServerModule(cls(**kwargs), launcher=launcher)
+        doc_server = ServerModule(cls(**kwargs), port=port, launcher=launcher)
         doc_server.start()
 
 class KBServer(KBServerBase):

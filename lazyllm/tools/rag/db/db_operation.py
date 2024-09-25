@@ -49,6 +49,7 @@ class DBOperations(metaclass=CustomMeta):
         """
         with cls.session() as db_session:
             db_session.add(node)
+            db_session.commit()
 
     @classmethod
     def add_or_replace_node(cls, node: T, **kwargs):
@@ -114,6 +115,7 @@ class DBOperations(metaclass=CustomMeta):
             db_session.add(instance)
             db_session.commit()
             db_session.refresh(instance)
+            db_session.expunge(instance)
             return instance
 
     @classmethod
@@ -174,6 +176,23 @@ class DBOperations(metaclass=CustomMeta):
                 db_session.expunge(item)
             return items
 
+    @classmethod
+    def filter_by_conditions(cls: Type[T], *args) -> List[T]:
+        """
+        Retrieve multiple instances of the model based on the provided filters.
+
+        Args:
+            **kwargs: Arbitrary keyword arguments for filtering the query.
+
+        Returns:
+            List[T]: A list of retrieved instances.
+        """
+        with cls.session() as db_session:
+            items = db_session.query(cls).filter(*args).all()
+            for item in items:
+                db_session.expunge(item)
+            return items
+    
     @classmethod
     def update(cls: Type[T], fun: Callable[[T], None], **kwargs) -> None:
         """
