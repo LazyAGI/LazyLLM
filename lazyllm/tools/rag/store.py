@@ -8,6 +8,7 @@ from lazyllm import LOG, config
 from chromadb.api.models.Collection import Collection
 import threading
 import json
+import time
 
 
 LAZY_ROOT_NAME = "lazyllm_root"
@@ -47,6 +48,7 @@ class DocNode:
         self.is_saved: bool = False
         self._docpath = None
         self._lock = threading.Lock()
+        self.embedding_state = set()
 
     @property
     def root_node(self) -> Optional["DocNode"]:
@@ -99,7 +101,7 @@ class DocNode:
     def __str__(self) -> str:
         return (
             f"DocNode(id: {self.uid}, group: {self.group}, text: {self.get_text()}) parent: {self.get_parent_id()}, "
-            f"children: {self.get_children_str()} is_embed: {not bool(self.has_missing_embedding([]))}"
+            f"children: {self.get_children_str()}"
         )
 
     def __repr__(self) -> str:
@@ -115,8 +117,8 @@ class DocNode:
 
     def has_missing_embedding(self, embed_keys: Union[str, List[str]]) -> List[str]:
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
-        if self.embedding is None: return embed_keys if embed_keys else [EMBED_DEFAULT_KEY]
-        if len(embed_keys) == 0: embed_keys = self.embedding.keys()
+        assert len(embed_keys) > 0, "The ebmed_keys to be checked must be passed in."
+        if self.embedding is None: return embed_keys
         return [k for k in embed_keys if k not in self.embedding.keys() or self.embedding.get(k, [-1])[0] == -1]
 
     def do_embedding(self, embed: Dict[str, Callable]) -> None:
@@ -125,6 +127,14 @@ class DocNode:
             self.embedding = self.embedding or {}
             self.embedding = {**self.embedding, **generate_embed}
         self.is_saved = False
+
+    def check_embedding_state(self, embed_key: str) -> None:
+        while True:
+            with self._lock:
+                if not self.has_missing_embedding(embed_key):
+                    self.embedding_state.discard(embed_key)
+                    break
+            time.sleep(1)
 
     def get_content(self) -> str:
         return self.get_text(MetadataMode.LLM)

@@ -34,12 +34,13 @@ class DefaultIndex:
     ) -> Callable:
         def decorator(f):
             def wrapper(query, nodes, **kwargs):
-                if not isinstance(query, dict):
+                if mode != "embedding":
                     if batch:
                         return f(query, nodes, **kwargs)
                     else:
                         return [(node, f(query, node, **kwargs)) for node in nodes]
                 else:
+                    assert isinstance(query, dict), "query must be of dict type, used for similarity calculation."
                     similarity = {}
                     if batch:
                         for key, val in query.items():
@@ -56,22 +57,17 @@ class DefaultIndex:
 
     def _parallel_do_embedding(self, nodes: List[DocNode]) -> List[DocNode]:
         with ThreadPoolExecutor(config["max_embedding_workers"]) as executor:
-            futures = {}
+            futures = []
             for node in nodes:
                 miss_keys = node.has_missing_embedding(self.embed.keys())
                 if not miss_keys:
                     continue
                 for k in miss_keys:
                     with node._lock:
-                        if node.embedding is None or k not in node.embedding.keys() or (node.embedding[k][0] == -1
-                           and not isinstance(node.embedding[k][1], concurrent.futures.Future)):
-                            future = executor.submit(node.do_embedding, {k: self.embed[k]})
-                            node.embedding = node.embedding or {}
-                            node.embedding[k] = [-1, future]
-                            futures[future] = node
-                            continue
-                        elif isinstance(node.embedding[k][1], concurrent.futures.Future):
-                            futures[node.embedding[k][1]] = node
+                        if node.has_missing_embedding(k):
+                            future = executor.submit(node.do_embedding, {k: self.embed[k]}) \
+                                if k not in node.embedding_state else executor.submit(node.check_embedding_state, k)
+                            futures.append(future)
             if len(futures) > 0:
                 for future in concurrent.futures.as_completed(futures):
                     future.result()
@@ -97,8 +93,7 @@ class DefaultIndex:
         if mode == "embedding":
             assert self.embed, "Chosen similarity needs embed model."
             assert len(query) > 0, "Query should not be empty."
-            keys = embed_keys or self.embed.keys()
-            query_embedding = {k: self.embed[k](query) for k in keys}
+            query_embedding = {k: self.embed[k](query) for k in (embed_keys or self.embed.keys())}
             nodes = self._parallel_do_embedding(nodes)
             self.store.try_save_nodes(nodes)
             similarities = similarity_func(query_embedding, nodes, topk=topk, **kwargs)
@@ -110,10 +105,8 @@ class DefaultIndex:
         if not isinstance(similarities, dict):
             results = self._filter_nodes_by_score(similarities, topk, similarity_cut_off, descend)
         else:
-            sort_keys = embed_keys or similarities.keys()
             results = []
-            # nodeIds = []
-            for key in sort_keys:
+            for key in (embed_keys or similarities.keys()):
                 sims = similarities[key]
                 sim_cut_off = similarity_cut_off if isinstance(similarity_cut_off, float) else similarity_cut_off[key]
                 results.extend(self._filter_nodes_by_score(sims, topk, sim_cut_off, descend))
