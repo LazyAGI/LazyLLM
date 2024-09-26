@@ -70,8 +70,8 @@
     options:
       heading_level: 3
 	  members:
-	    - child_method
-		- method
+	    - generate_prompt
+		- get_response
 
 ::: lazyllm.components.ChatPrompter
     options:
