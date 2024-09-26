@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var language;
     var userQuery = '';
     var botReply = '';
+    var sessionid = '';
     var isWaiting = false;
     var firstHello = true;
     var dialogInit = true;
@@ -106,7 +107,6 @@ document.addEventListener('DOMContentLoaded', function() {
     async function sendFeedback(e, feedback, state) {
         let message_id = e.target.dataset.id;
         let like = state==0 ? feedback.slice(0, -7) : feedback;
-        console.log(feedback, state, message_id)
         try {
             // 发送请求到后端接口
             const response = await fetch('https://api.lazyllm.top/feedback', {
@@ -131,7 +131,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function clickFeedback(e) {
-        console.log(e)
         let state = e.target.classList[0];
         if (state.includes('normal')) {
             if (state.includes('notuseful')) {
@@ -216,6 +215,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function resetDialog(){
         messages.innerHTML = '';
         setMessageState(false);
+        sessionid = '';
         firstHello = true;
         setTimeout(popHelloMessage, 100);
     }
@@ -292,9 +292,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     source_box.appendChild(link);
                 });
                 domElement.children[1].appendChild(source_box);
+                sessionid = data.session_id;
                 initFeedbackDom(data.stable_id, domElement);
             } else if (data.errmsg == 102 || data.errmsg==103){
-                // 触发敏感词或无关问题
+                // 触发敏感词或无关问题, 不计入某段session
                 domElement.children[1].innerHTML = converter.makeHtml(data.message.response);
                 setMessageState(false);
             } else if (data.errmsg == 101) {
@@ -342,7 +343,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     'Accept': 'text/event-stream',
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ query: userQuery, token: sessionStorage.getItem('jigsaw_token') }),})
+                body: JSON.stringify({ query: userQuery, token: sessionStorage.getItem('jigsaw_token'), sessionid: sessionid }),})
                 .then(response => {
                     const reader = response.body.getReader();
                     const decoder = new TextDecoder('utf-8');
