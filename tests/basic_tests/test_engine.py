@@ -117,6 +117,18 @@ class TestEngine(object):
         assert engine.run(1) == '1[2, 4]1'
         assert engine.run(2) == '2[4, 8]4'
 
+    def test_engine_formatter_start(self):
+        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int): return x'),
+                 dict(id='2', kind='Code', name='m2', args='def test(x: int): return 2 * x'),
+                 dict(id='3', kind='Code', name='m3', args='def test(x, y): return x + y')]
+        edges = [dict(iid='__start__', oid='1', formatter='[0]'), dict(iid='__start__', oid='2', formatter='[1]'),
+                 dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
+
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        assert engine.run(3, 1) == 5
+        assert engine.run(5, 3, 1) == 11
+
     def test_engine_join_stack(self):
         nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
                  dict(id='1', kind='JoinFormatter', name='join', args=dict(type='stack'))]

@@ -549,7 +549,7 @@ class Graph(LazyLLMFlowsBase):
                         intermediate_results['values'][name] = r
             r = intermediate_results['values'][name]
             if node.inputs[name]:
-                r = node.inputs[name](r)
+                r = node.inputs[name]((r.args or r.kw) if isinstance(r, arguments) else r)
             return r
 
         kw = {}
