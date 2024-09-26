@@ -1,3 +1,4 @@
+import lazyllm
 from lazyllm.engine import LightEngine
 import pytest
 from .utils import SqlEgsData, get_sql_init_keywords
@@ -10,6 +11,8 @@ class TestEngine(object):
     def run_around_tests(self):
         yield
         LightEngine().reset()
+        lazyllm.FileSystemQueue().dequeue()
+        lazyllm.FileSystemQueue(klass="lazy_trace").dequeue()
 
     def test_intent_classifier(self):
         resources = [dict(id="0", kind="OnlineLLM", name="llm", args=dict(source=None))]
