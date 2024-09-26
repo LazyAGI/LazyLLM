@@ -13,10 +13,9 @@ from PIL import Image
 from io import BytesIO
 import numpy as np
 import re
-import platform
 
 import lazyllm
-from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule, ForkProcess, pipeline
+from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule, pipeline
 from ...module.module import ModuleBase
 
 
@@ -75,7 +74,7 @@ class WebModule(ModuleBase):
         return cach_path
 
     def init_web(self, component_descs):
-        with gr.Blocks(css=css, title=self.title) as demo:
+        with gr.Blocks(css=css, title=self.title, analytics_enabled=False) as demo:
             sess_data = gr.State(value={
                 'sess_titles': [''],
                 'sess_logs': {},
@@ -344,12 +343,7 @@ class WebModule(ModuleBase):
             assert self._verify_port_access(port), f'port {port} is occupied'
 
         self.url = f'http://0.0.0.0:{port}'
-        def _impl(): self.demo.queue().launch(server_name='0.0.0.0', server_port=port)
-        if platform.system() == 'Darwin':
-            _impl()
-        else:
-            self.p = ForkProcess(target=_impl)
-            self.p.start()
+        self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True)
 
     def _update(self, *, mode=None, recursive=True):
         super(__class__, self)._update(mode=mode, recursive=recursive)
@@ -360,13 +354,13 @@ class WebModule(ModuleBase):
         return pipeline(self._print_url)
 
     def wait(self):
-        if hasattr(self, 'p'):
-            return self.p.join()
+        self.demo.block_thread()
 
     def stop(self):
-        if hasattr(self, 'p') and self.p.is_alive():
-            self.p.terminate()
-            self.p.join()
+        if self.demo:
+            self.demo.close()
+            del self.demo
+            self.demo = None
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Web', name=self._module_name, subs=[repr(self.m)])
