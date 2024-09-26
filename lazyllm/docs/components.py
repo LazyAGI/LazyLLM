@@ -956,7 +956,7 @@ Args:
     return_dict (bool): Flag indicating whether to return a dict, generally set to True when using ``OnlineChatModule``. If returning a dict, only the ``instruction`` will be filled. Defaults to False.
 ''')
 
-add_english_doc('prompter.prompterbase.get_response', '''\
+add_english_doc('prompter.PrompterBase.get_response', '''\
 Used to truncate the Prompt, keeping only valuable output.
 
 Args:
