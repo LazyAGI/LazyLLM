@@ -901,7 +901,7 @@ Args:
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input'}]}
 ```
 
-<span style="font-size: 10px;">**`generate_prompt(input: str | Dict[str, str] | None = None, history: List[List[str] | Dict[str, Any]] | None = None, tools: List[Dict[str, Any]] | None = None, label: str | None = None, *, show: bool = False, return_dict: bool = False)→ str | Dict `**</span>
+<span style="font-size: 15px;">**`generate_prompt(input: str | Dict[str, str] | None = None, history: List[List[str] | Dict[str, Any]] | None = None, tools: List[Dict[str, Any]] | None = None, label: str | None = None, *, show: bool = False, return_dict: bool = False)→ str | Dict `**</span>
 
 Based on the user's input, generate the corresponding Prompt.
 
@@ -912,7 +912,7 @@ Args:
     tools (Option[list]): Tool-set which is provived for LLMs, default is None.\n
 
 
-<span style="font-size: 10px;">**`get_response(output: str, input: str | None = None)→ str`**</span>
+<span style="font-size: 15px;">**`get_response(output: str, input: str | None = None)→ str`**</span>
 
 Used to truncate the Prompt, only retaining valuable outputs.
 
