@@ -105,6 +105,7 @@ plugins:
           docstring_section_style: list
           show_symbol_type_toc: true
           show_symbol_type_heading: true
+          show_root: true
 - autorefs:
 markdown_extensions:
   - pymdownx.highlight:

@@ -67,10 +67,11 @@
       heading_level: 3
 
 ::: lazyllm.components.AlpacaPrompter
-    members:
-	inherited-members:
     options:
       heading_level: 3
+	  members:
+	    - child_method
+		- method
 
 ::: lazyllm.components.ChatPrompter
     options:
