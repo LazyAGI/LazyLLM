@@ -23,7 +23,7 @@ This constructor initializes a document module that can have an optional user in
 
 Args:
     dataset_path (str): The path to the dataset directory. This directory should contain the documents to be managed by the document module.
-    embed: The object used to generate document embeddings.
+    embed: The object used to generate document embeddings. It can be a single embedding object or multiple embedding objects in dictionary form.
     manager (bool, optional): A flag indicating whether to create a user interface for the document module. Defaults to False.
     launcher (optional): An object or function responsible for launching the server module. If not provided, the default asynchronous launcher from `lazyllm.launchers` is used (`sync=False`).
 ''')
@@ -35,7 +35,7 @@ add_chinese_doc('Document', '''\
 
 Args:
     dataset_path (str): 数据集目录的路径。此目录应包含要由文档模块管理的文档。
-    embed: 用于生成文档embedding的对象。
+    embed: 用于生成文档embedding的对象。可以是单个生成embedding的对象，也可以是字典形式的多个生成embedding的对象。
     manager (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 False
     launcher (optional): 负责启动服务器模块的对象或函数。如果未提供，则使用 `lazyllm.launchers` 中的默认异步启动器 (`sync=False`)。
 ''')
@@ -44,7 +44,7 @@ add_example('Document', '''\
 >>> import lazyllm
 >>> from lazyllm.tools import Document
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)  # or documents = Document(dataset_path='your_doc_path', embed={"key": m}, manager=False)
 ''')
 
 add_english_doc('Document.create_node_group', '''

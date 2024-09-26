@@ -28,12 +28,12 @@ class DocImpl:
     _builtin_node_groups = {}
     _global_node_groups = {}
 
-    def __init__(self, embed, doc_files=Optional[List[str]], local_readers: Optional[Dict] = None,
-                 global_readers: Optional[Dict] = None, **kwargs):
+    def __init__(self, embed: Dict[str, Callable], doc_files=Optional[List[str]],
+                 local_readers: Optional[Dict] = None, global_readers: Optional[Dict] = None, **kwargs):
         super().__init__()
         self.directory_reader = DirectoryReader(doc_files, local_readers=local_readers, global_readers=global_readers)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
-        self.embed = embed_wrapper(embed)
+        self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self.store = None
 
     @once_wrapper(reset_on_pickle=True)
@@ -176,14 +176,14 @@ class DocImpl:
         self._dynamic_create_nodes(group_name, store)
         return store.traverse_nodes(group_name)
 
-    def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: float,
-                 index: str, topk: int, similarity_kws: dict) -> List[DocNode]:
+    def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
+                 index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None) -> List[DocNode]:
         self._lazy_init()
         if index:
             assert index == "default", "we only support default index currently"
         nodes = self._get_nodes(group_name)
         return self.index.query(
-            query, nodes, similarity, similarity_cut_off, topk, **similarity_kws
+            query, nodes, similarity, similarity_cut_off, topk, embed_keys, **similarity_kws
         )
 
     def find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
