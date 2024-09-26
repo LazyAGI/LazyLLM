@@ -33,7 +33,8 @@
     position: fixed;
     bottom: 50%;
     left: 50%;
-    width: 800px;
+    min-width: 40%;
+    max-width: 800px;
     transform: translateX(-50%) translateY(50%);
     padding: 20px;
     background-color: white;
@@ -64,8 +65,8 @@
     height: 34px;
     width: 34px;
     cursor: pointer;
-    background: url(../icon_dialog.png) 0 -125px;
-    background-size: 34px 150px;
+    background: url(../icon_dialog.png) 0 -78px;
+    background-size: 34px 240px;
 }
 
 .dropdown {
@@ -81,8 +82,8 @@
     height: 30px;
     width: 34px;
     cursor: pointer;
-    background: url(../icon_dialog.png) 0 -115px;
-    background-size: 34px 170px;
+    background: url(../icon_dialog.png) 0 -60px;
+    background-size: 34px 260px;
 }
 
 .dropdown-button {
@@ -228,8 +229,8 @@
         padding: 0.5em;
         height: 24px;
         width: 24px;
-        background: url(../icon_dialog.png) 0 -75px;
-        background-size: 34px 150px;
+        background: url(../icon_dialog.png) 0 -25px;
+        background-size: 34px 240px;
         pointer-events: auto;
         cursor: pointer;
         opacity: 0.2;
@@ -247,12 +248,16 @@
 }
 
 .content a {
-    padding: 5px 10px;
+    padding: 5px 10px 5px 15px;
     margin: 10px 10px 0 0;
     float: left;
+    width: 45%;
     border: solid 1px #b4b4b4;
     border-radius: 5px;
     pointer-events: auto;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: revert;
 }
 
 .content a:hover {
@@ -274,6 +279,53 @@
 
 .source-box {
     padding-left: 10px;
+    height: 100px;
+}
+
+.util-box {
+    margin-top: 20px;
+    margin-left: 2px;
+    width: 80px;
+    height: 30px;
+    pointer-events: auto;
+}
+
+.util-box button {
+    height: 30px;
+    width: 34px;
+    cursor: pointer;
+}
+
+.useful-normal {
+    background: url(../icon_dialog.png) 0 -101px;
+    background-size: 34px 230px;
+    opacity: 0.4;
+}
+
+.useful-normal:hover {
+    opacity: 0.8;
+}
+
+.notuseful-normal {
+    background: url(../icon_dialog.png) 0 -153px;
+    background-size: 34px 230px;
+    opacity: 0.4;
+}
+
+.notuseful-normal:hover {
+    opacity: 0.8;
+}
+
+.useful {
+    background: url(../icon_dialog.png) 0 -125px;
+    background-size: 34px 230px;
+    opacity: 1;
+}
+
+.notuseful {
+    background: url(../icon_dialog.png) 0 -177px;
+    background-size: 34px 230px;
+    opacity: 1;
 }
 
 @keyframes spin {
