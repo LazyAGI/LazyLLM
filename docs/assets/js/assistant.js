@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     var language;
     var userQuery = '';
+    var botReply = '';
     var isWaiting = false;
     var firstHello = true;
     var dialogInit = true;
@@ -102,6 +103,70 @@ document.addEventListener('DOMContentLoaded', function() {
         closeCaptchaButton.addEventListener('click', closeCaptcha);
     }
 
+    async function sendFeedback(e, feedback, state) {
+        let message_id = e.target.dataset.id;
+        let like = state==0 ? feedback.slice(0, -7) : feedback;
+        console.log(feedback, state, message_id)
+        try {
+            // 发送请求到后端接口
+            const response = await fetch('https://api.lazyllm.top/feedback', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ type: like, state: state, message_id: message_id }),
+            });
+
+            data = await response.json();
+            if (state==1) {
+                let feedback_box = e.target.parentNode;
+                feedback_box.children[0].className = data.stateu;
+                feedback_box.children[1].className = data.staten;
+            } else {
+                e.target.className = like == 'useful' ? 'useful-normal' : 'notuseful-normal';
+            }
+        } catch (error) {
+            
+        }
+    }
+
+    function clickFeedback(e) {
+        console.log(e)
+        let state = e.target.classList[0];
+        if (state.includes('normal')) {
+            if (state.includes('notuseful')) {
+                sendFeedback(e, 'notuseful', 1);
+            } else {
+                sendFeedback(e, 'useful', 1);
+            }
+        } else {
+            if (state.includes('notuseful')) {
+                sendFeedback(e, 'notuseful-normal', 0);
+            } else {
+                sendFeedback(e, 'useful-normal', 0);
+            }
+        }
+    }
+
+    function initFeedbackDom(message_id, domElement) {
+        var util_box = document.createElement('div');
+        util_box.classList.add('util-box');
+
+        var likeButton = document.createElement('button');
+        likeButton.className = 'useful-normal';
+        likeButton.setAttribute('data-id', message_id);
+        likeButton.addEventListener('click', clickFeedback);
+        util_box.appendChild(likeButton);
+
+        var dislikeButton = document.createElement('button');
+        dislikeButton.className = 'notuseful-normal';
+        dislikeButton.setAttribute('data-id', message_id);
+        dislikeButton.addEventListener('click', clickFeedback);
+        util_box.appendChild(dislikeButton);
+
+        domElement.children[1].appendChild(util_box);
+    }
+
     function setMessageState(state) {
         isWaiting = state;
         sendMessageButton.disabled = state;
@@ -129,6 +194,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function switchDialobBoxDisplay() {
         if (dialogInit) {
+            dialogInit = false;
             initDialogDom();
             initCaptchaDom();
             converter = new showdown.Converter();
@@ -138,7 +204,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (dialogBox.style.display === 'none') {
             dialogBox.style.display = 'block';
             window.addEventListener('click', handleClickOutside);
-            setTimeout(popHelloMessage, 1000);
+            setTimeout(popHelloMessage, 100);
             userInput.focus();
         } else {
             dialogBox.style.display = 'none';
@@ -151,7 +217,7 @@ document.addEventListener('DOMContentLoaded', function() {
         messages.innerHTML = '';
         setMessageState(false);
         firstHello = true;
-        setTimeout(popHelloMessage, 1000);
+        setTimeout(popHelloMessage, 100);
     }
 
     async function Verify() {
@@ -208,6 +274,52 @@ document.addEventListener('DOMContentLoaded', function() {
         return Promise.race([fetchPromise, timeoutPromise]);
     }
 
+    function stream_response_handler(data, domElement) {
+        data = data.data[0];
+        if (data.state == 'success') {
+            if (data.errmsg == 200) {
+                if (botReply==''){
+                    domElement.children[1].innerHTML = converter.makeHtml(data.message.response);
+                }
+                var source_box = document.createElement('div');
+                source_box.classList.add('source-box');
+                source_box.style = `height: ${data.message.sources.length>2 ? 80 : 40}px`
+                data.message.sources.forEach(source => {
+                    const link = document.createElement('a');
+                    link.textContent = source.text;
+                    link.href = versionInfo + source.href;
+                    link.target = '_blank'
+                    source_box.appendChild(link);
+                });
+                domElement.children[1].appendChild(source_box);
+                initFeedbackDom(data.stable_id, domElement);
+            } else if (data.errmsg == 102 || data.errmsg==103){
+                // 触发敏感词或无关问题
+                domElement.children[1].innerHTML = converter.makeHtml(data.message.response);
+                setMessageState(false);
+            } else if (data.errmsg == 101) {
+                // token 过期
+                messages.removeChild(messages.lastChild);
+                showCaptcha();
+            } else {
+                domElement.children[1].innerHTML = converter.makeHtml("Something went wrong, please try again later.");
+                setMessageState(false);
+            }
+            messages.scrollTop = messages.scrollHeight; 
+            return true;
+        }
+
+        botReply += data.response;
+        if (data.state == 'codeblock'){
+            domElement.children[1].innerHTML = converter.makeHtml(botReply + '\n```');
+        } else {
+            domElement.children[1].innerHTML = converter.makeHtml(botReply);
+        }
+        
+        messages.scrollTop = messages.scrollHeight; 
+        return false;
+    }
+
     async function getChatContent() {
         const botMessage = document.createElement('div');
         botMessage.classList.add('message');
@@ -224,57 +336,50 @@ document.addEventListener('DOMContentLoaded', function() {
         messages.scrollTop = messages.scrollHeight; // 滚动到最新消息
 
         try {
-            fetchWithTimeout('https://api.lazyllm.top/chat', { 
+            fetchWithTimeout('https://api.lazyllm.top/chatStream', { 
                 method: 'POST',  
                 headers: {
+                    'Accept': 'text/event-stream',
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({ query: userQuery, token: sessionStorage.getItem('jigsaw_token') }),})
-            .then(response => {
-                if (!response.ok) {
-                    botMessage.children[1].innerHTML = converter.makeHtml('请求失败');
+                .then(response => {
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder('utf-8');
+                    var resFin = false;
+                    // 启动递归读取流
+                    function readStream() {
+                        // 读取流中的一段数据
+                        return reader.read().then(result => {
+                            // 解码接收到的数据块
+                            const chunk = decoder.decode(result.value, { stream: true });
+                            
+                            // 逐行解析 JSON 数据并显示
+                            chunk.split('\n').forEach(line => {
+                                if (line.trim()) {  // 跳过空行
+                                    // console.log(line)
+                                    resFin = stream_response_handler(JSON.parse(line), botMessage)
+                                }
+                            });
+                            if (resFin) {
+                                return;
+                            }
+                            // 递归调用以继续读取下一段数据
+                            return readStream();
+                        });
+                    }
+                    readStream();
                     setMessageState(false);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.errmsg == 200){
-                    botMessage.children[1].innerHTML = converter.makeHtml(data.reply);
-                    
-                    var source_box = document.createElement('div');
-                    source_box.classList.add('source-box');
-                    data.sources.forEach(source => {
-                        const link = document.createElement('a');
-                        link.textContent = source.text;
-                        link.href = versionInfo + source.href;
-                        link.target = '_blank'
-                        source_box.appendChild(link);
-                    });
-                    botMessage.children[1].appendChild(source_box);
+                })
+                .catch(error => {
+                    // 500 404等
+                    botMessage.children[1].innerHTML = converter.makeHtml("Request failed, please try again later.");
                     setMessageState(false);
-                } else if (data.errmsg == 102 || data.errmsg==103){
-                    // 触发敏感词或无关问题
-                    botMessage.children[1].innerHTML = converter.makeHtml(data.reply);
-                    setMessageState(false);
-                } else if (data.errmsg == 101) {
-                    // token 过期
-                    messages.removeChild(messages.lastChild);
-                    showCaptcha();
-                } else {
-                    botMessage.children[1].innerHTML = converter.makeHtml("未能获取回复，请稍后再试");
-                    setMessageState(false);
-                }
-            })
-            .catch(error => {
-                // 500 404等
-                botMessage.children[1].innerHTML = converter.makeHtml("未能获取回复，请稍后再试");
-                setMessageState(false);
-            });
+                });
         } catch (error) {
-            botMessage.children[1].innerHTML = converter.makeHtml('请求失败');
+            botMessage.children[1].innerHTML = converter.makeHtml("Something went wrong, please try again later");
             setMessageState(false);
         }
-        messages.scrollTop = messages.scrollHeight; // 滚动到最新消息
     }
     
     function sendMessage() {
@@ -293,6 +398,7 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
             messages.appendChild(userMessage);
             userQuery = text;
+            botReply = '';
             userInput.value = '';
             
             setMessageState(true);
