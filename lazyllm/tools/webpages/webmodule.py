@@ -344,12 +344,8 @@ class WebModule(ModuleBase):
             assert self._verify_port_access(port), f'port {port} is occupied'
 
         self.url = f'http://0.0.0.0:{port}'
-        def _impl(): self.demo.queue().launch(server_name='0.0.0.0', server_port=port, prevent_thread_lock=True)
-        if platform.system() == 'Darwin':
-            _impl()
-        else:
-            self.p = ForkProcess(target=_impl)
-            self.p.start()
+
+        self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True)
         LOG.success(f'LazyLLM webmodule launched successfully: Running on local URL: {self.url}', flush=True)
 
     def _update(self, *, mode=None, recursive=True):
@@ -358,13 +354,13 @@ class WebModule(ModuleBase):
         return self
 
     def wait(self):
-        if hasattr(self, 'p'):
-            return self.p.join()
+        self.demo.block_thread()
 
     def stop(self):
-        if hasattr(self, 'p') and self.p.is_alive():
-            self.p.terminate()
-            self.p.join()
+        if self.demo:
+            self.demo.close()
+            del self.demo
+            self.demo = None
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Web', name=self._module_name, subs=[repr(self.m)])
