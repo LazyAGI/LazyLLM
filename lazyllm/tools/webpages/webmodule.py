@@ -13,10 +13,9 @@ from PIL import Image
 from io import BytesIO
 import numpy as np
 import re
-import platform
 
 import lazyllm
-from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule, ForkProcess
+from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule
 from ...module.module import ModuleBase
 
 
