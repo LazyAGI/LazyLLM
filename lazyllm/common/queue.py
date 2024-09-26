@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from .globals import globals
 from ..configs import config
 import os
+from redis import StrictRedis
+from typing import Type
 
 class FileSystemQueue(ABC):
 
@@ -17,7 +19,7 @@ class FileSystemQueue(ABC):
         klass = kw.get('klass', '__default__')
         if klass not in __class__.__queue_pool__:
             if cls is __class__:
-                __class__.__queue_pool__[klass] = SQLiteQueue(*args, **kw)
+                __class__.__queue_pool__[klass] = cls.__default_queue__()
             else:
                 __class__.__queue_pool__[klass] = super().__new__(cls)
         return __class__.__queue_pool__[klass]
@@ -26,6 +28,10 @@ class FileSystemQueue(ABC):
     def get_instance(cls, klass):
         assert isinstance(klass, str) and klass != '__default__'
         return cls(klass=klass)
+
+    @classmethod
+    def set_default(cls, queue: Type):
+        cls.__default_queue__ = queue
 
     @property
     def sid(self):
@@ -141,3 +147,48 @@ class SQLiteQueue(FileSystemQueue):
                 DELETE FROM queue WHERE id = ?
                 ''', (id,))
                 conn.commit()
+
+class RedisQueue(FileSystemQueue):  
+    def __init__(self, klass='__default__'):
+        super(__class__, self).__init__(klass=klass)
+        self.db_config = {
+            'host': os.getenv('LAZYLLM_REDISQUEUE_HOST', 'localhost'),
+            'port': os.getenv('LAZYLLM_REDISQUEUE_PORT', 6379),
+            'password': os.getenv('LAZYLLM_REDISQUEUE_PWD', None),
+            'db': os.getenv('LAZYLLM_REDISQUEUE_db', 0),
+            'decode_responses': True }
+        self._lock = threading.Lock()
+
+    def _enqueue(self, id, message):
+        with self._lock:	
+            conn = StrictRedis(**self.db_config)
+            conn.rpush(id, message)
+
+    def _dequeue(self, id, limit=None):
+        with self._lock:
+            if limit:
+                value = conn.lrange(id, 0, limit)
+            else:
+                value = conn.lpop(id)
+            return value
+
+    def _peek(self, id):
+        with self._lock:	
+            conn = StrictRedis(**self.db_config)
+            value = conn.lindex(id, 0)
+            if value==None:
+                return None
+            return value
+
+    def _size(self, id):
+        with self._lock:	
+            conn = StrictRedis(**self.db_config)
+            rsize = conn.llen(id)
+            return rsize
+
+    def _clear(self, id):
+        with self._lock:	
+            conn = StrictRedis(**self.db_config)
+            conn.delete(id)
+
+FileSystemQueue.set_default(locals().get(os.getenv('LAZYLLM_DEFAULT_FSQUEUE', 'SQLiteQueue')))
