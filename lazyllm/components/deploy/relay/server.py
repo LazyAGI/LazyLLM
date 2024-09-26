@@ -32,10 +32,14 @@ parser.add_argument("--open_port", type=int, default=17782,
 parser.add_argument("--function", required=True)
 parser.add_argument("--before_function")
 parser.add_argument("--after_function")
+parser.add_argument("--pythonpath")
 args = parser.parse_args()
 
 def load_func(f):
     return cloudpickle.loads(base64.b64decode(f.encode('utf-8')))
+
+if args.pythonpath:
+    sys.path.append(args.pythonpath)
 
 func = load_func(args.function)
 if args.before_function:
@@ -114,9 +118,16 @@ async def generate(request: Request): # noqa C901
         globals.clear()
 
 
-if '__relay_services__' in dir(func.__class__):
-    for (method, path), (name, kw) in func.__class__.__relay_services__.items():
-        getattr(app, method)(path, **kw)(getattr(func, name))
+def find_services(cls):
+    if '__relay_services__' not in dir(cls): return
+    if '__relay_services__' in cls.__dict__:
+        for (method, path), (name, kw) in cls.__relay_services__.items():
+            if getattr(func.__class__, name) is getattr(cls, name):
+                getattr(app, method)(path, **kw)(getattr(func, name))
+    for base in cls.__bases__:
+        find_services(base)
+
+find_services(func.__class__)
 
 if __name__ == "__main__":
     uvicorn.run(app, host=args.open_ip, port=args.open_port)
