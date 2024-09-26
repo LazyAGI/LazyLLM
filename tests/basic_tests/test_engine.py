@@ -11,7 +11,7 @@ class TestEngine(object):
         yield
         LightEngine().reset()
         lazyllm.FileSystemQueue().dequeue()
-        lazyllm.FileSystemQueue.get_instance("lazy_trace").dequeue()
+        lazyllm.FileSystemQueue(klass="lazy_trace").dequeue()
 
     def test_engine_subgraph(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
