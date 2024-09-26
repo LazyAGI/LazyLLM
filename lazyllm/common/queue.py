@@ -57,10 +57,18 @@ class FileSystemQueue(ABC):
 
 
 class SQLiteQueue(FileSystemQueue):
+    _initialized = False
+
     def __init__(self, klass='__default__'):
         super(__class__, self).__init__(klass=klass)
         self.db_path = os.path.expanduser(os.path.join(config['home'], '.lazyllm_filesystem_queue.db'))
         self._lock = threading.Lock()
+        with self._lock:
+            if not SQLiteQueue._initialized:
+                SQLiteQueue._initialized = True
+                with open(self.db_path, "w") as _:
+                    pass
+            pass
         self._initialize_db()
 
     def _initialize_db(self):
