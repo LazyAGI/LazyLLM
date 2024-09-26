@@ -67,7 +67,7 @@
       heading_level: 3
 
 ::: lazyllm.components.AlpacaPrompter
-    members: generate_prompt, generate_response
+    members:
 	inherited-members:
     options:
       heading_level: 3

@@ -902,27 +902,6 @@ add_example('AlpacaPrompter', '''\
 
 ''')
 
-add_english_doc('prompter.AlpacaPrompter.generate_prompt', '''\
-
-Based on the user's input, generate the corresponding Prompt.
-
-Args:
-    input (Option[str | Dict]): The input from the prompter, if it's a dict, it will be filled into the slots of the instruction; if it's a str, it will be used as input.
-    history (Option[List[List | Dict]]): Historical conversation, can be ``[[u, s], [u, s]]`` or in openai's history format, defaults to None.
-    tools (Option[List[Dict]]): A collection of tools that can be used, used when the large model performs FunctionCall, defaults to None.
-    label (Option[str]): Label, used during fine-tuning or training, defaults to None.
-    show (bool): Flag indicating whether to print the generated Prompt, defaults to False.
-    return_dict (bool): Flag indicating whether to return a dict, generally set to True when using ``OnlineChatModule``. If returning a dict, only the ``instruction`` will be filled. Defaults to False.
-''')
-
-add_english_doc('prompter.AlpacaPrompter.get_response', '''\
-Used to truncate the Prompt, keeping only valuable output.
-
-Args:
-        output (str): The output of the large model.
-        input (Option[str]): The input of the large model. If this parameter is specified, any part of the output that includes the input will be completely truncated. Defaults to None.
-''')
-
 add_chinese_doc('ChatPrompter', '''\
 多轮对话的Prompt，支持工具调用和历史对话
 
