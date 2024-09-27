@@ -56,11 +56,13 @@ jobs:
 
       - name: basic_tests
         run : |
+         git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git /tmp/lazyllm/data
          pip install -r tests/requirements.txt
-         git clone https://github.com/lwj-st/lazyllm_data.git /tmp/lazyllm/data
          export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
          python -m pytest -v  --reruns=2 tests/basic_tests/
         timeout-minutes: 20
+        env :
+         GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}       
 
   macos-charge_tests:
     runs-on: macos-13
@@ -101,7 +103,7 @@ jobs:
 
       - name: charge_tests
         run : |
-         git clone https://github.com/lwj-st/lazyllm_data.git /tmp/lazyllm/data
+         git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git /tmp/lazyllm/data
          pip install -r tests/requirements.txt
          export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
          python -m pytest -v --reruns=2 tests/charge_tests
@@ -112,6 +114,7 @@ jobs:
          LAZYLLM_SENSENOVA_API_KEY: ${{ secrets.LAZYLLM_SENSENOVA_API_KEY }}
          LAZYLLM_SENSENOVA_SECRET_KEY: ${{ secrets.LAZYLLM_SENSENOVA_SECRET_KEY }}
          LAZYLLM_PostgreSQL_URL: ${{ secrets.LAZYLLM_PostgreSQL_URL }}
+         GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         timeout-minutes: 20
 
     
