@@ -259,7 +259,7 @@ class WebModule(ModuleBase):
                     globals['chat_history'][h] = history
 
             if FileSystemQueue().size() > 0: FileSystemQueue().clear()
-            kw = dict(stream_output=stream_output) if isinstance(self.m, TrainableModule) else {}
+            kw = dict(stream_output=stream_output)
             func_future = self.pool.submit(self.m, input, **kw)
             while True:
                 if value := FileSystemQueue().dequeue():
