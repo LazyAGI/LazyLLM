@@ -11,7 +11,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self,
                  base_url: str = "https://open.bigmodel.cn/api/paas/v4",
-                 model: str = "glm-4",
+                 model: str = "GLM-4-Flash",
                  stream: str = True,
                  return_trace: bool = False,
                  **kwargs):
