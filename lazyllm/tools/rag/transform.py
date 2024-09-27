@@ -79,13 +79,15 @@ class NodeTransform(ABC):
     ) -> List[DocNode]:
         documents: List[DocNode] = documents if isinstance(documents, (tuple, list)) else [documents]
 
-        def impl(node):
-            splits = self(node, **kwargs)
-            for s in splits:
-                s.parent = node
-                s.group = node_group
-            node.children[node_group] = splits
-            return splits
+        def impl(node: DocNode):
+            with node._lock:
+                if node_group in node.children: return []
+                splits = self(node, **kwargs)
+                for s in splits:
+                    s.parent = node
+                    s.group = node_group
+                node.children[node_group] = splits
+                return splits
 
         if getattr(self, '_number_workers', 0) > 0:
             pool = ThreadPoolExecutor(max_workers=self._number_workers)

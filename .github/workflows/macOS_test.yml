@@ -1,0 +1,120 @@
+name: Test on macOS 
+
+on:
+  push:
+    branches:
+      - main
+  pull_request_target:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  POETRY_VERSION: "1.8.3"
+  
+jobs:
+  macos-basic_tests:
+    runs-on: macos-13
+
+    strategy:
+      matrix:
+        python-version: ['3.10', 3.11, 3.12]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Copy poetry.lock to root directory
+        run: cp LazyLLM-Env/poetry.lock .
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+
+      - name: Build project with Poetry
+        run: |
+          poetry build
+
+      - name: List dist directory
+        run: ls dist
+
+      - name: Install the built package
+        run: |
+          pip install dist/lazyllm*.whl
+
+      - name: basic_tests
+        run : |
+         git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git /tmp/lazyllm/data
+         pip install -r tests/requirements.txt
+         export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
+         python -m pytest -v  --reruns=2 tests/basic_tests/
+        timeout-minutes: 20
+        env :
+         GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}       
+
+  macos-charge_tests:
+    runs-on: macos-13
+
+    strategy:
+      matrix:
+        python-version: ['3.10', 3.11, 3.12]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Copy poetry.lock to root directory
+        run: cp LazyLLM-Env/poetry.lock .
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+
+      - name: Build project with Poetry
+        run: |
+          poetry build
+
+      - name: List dist directory
+        run: ls dist
+
+      - name: Install the built package
+        run: |
+          pip install dist/lazyllm*.whl
+
+      - name: charge_tests
+        run : |
+         git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git /tmp/lazyllm/data
+         pip install -r tests/requirements.txt
+         export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
+         python -m pytest -v --reruns=2 tests/charge_tests
+        env :
+         LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
+         LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
+         LAZYLLM_QWEN_API_KEY: ${{ secrets.LAZYLLM_QWEN_API_KEY }}
+         LAZYLLM_SENSENOVA_API_KEY: ${{ secrets.LAZYLLM_SENSENOVA_API_KEY }}
+         LAZYLLM_SENSENOVA_SECRET_KEY: ${{ secrets.LAZYLLM_SENSENOVA_SECRET_KEY }}
+         LAZYLLM_PostgreSQL_URL: ${{ secrets.LAZYLLM_PostgreSQL_URL }}
+         GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+        timeout-minutes: 20
+
+    

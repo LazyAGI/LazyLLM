@@ -69,10 +69,18 @@
 ::: lazyllm.components.AlpacaPrompter
     options:
       heading_level: 3
+	  inherited_members:
+	    - generate_prompt
+	    - get_response
+      members: false
 
 ::: lazyllm.components.ChatPrompter
     options:
       heading_level: 3
+	  inherited_members:
+	    - generate_prompt
+	    - get_response
+      members: false
 
 ---
 
