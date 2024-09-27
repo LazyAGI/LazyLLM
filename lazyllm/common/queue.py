@@ -7,7 +7,7 @@ import os
 from typing import Type
 from lazyllm.thirdparty import redis
 
-config.add("default_fsqueue", str, "", "DEFAULT_FSQUEUE")
+config.add("default_fsqueue", str, "sqlite", "DEFAULT_FSQUEUE")
 config.add("fsqredis_url", str, "", "FSQREDIS_URL")
 
 class FileSystemQueue(ABC):
@@ -151,6 +151,7 @@ class SQLiteQueue(FileSystemQueue):
                 ''', (id,))
                 conn.commit()
 
+
 class RedisQueue(FileSystemQueue):  
     def __init__(self, klass='__default__'):
         super(__class__, self).__init__(klass=klass)
@@ -210,4 +211,4 @@ fsquemap = {
     'redis': RedisQueue
 }
 
-FileSystemQueue.set_default(fsquemap.get(config['default_fsqueue'].lower(), 'sqlite'))
+FileSystemQueue.set_default(fsquemap.get(config['default_fsqueue'].lower()))
