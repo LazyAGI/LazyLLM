@@ -44,7 +44,7 @@ add_example('Document', '''\
 >>> import lazyllm
 >>> from lazyllm.tools import Document
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)  # or documents = Document(dataset_path='your_doc_path', embed={"key": m}, manager=False)
 >>> m1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
 >>> document1 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, manager=False)
 ''')

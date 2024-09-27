@@ -1,6 +1,6 @@
 import concurrent
 import os
-from typing import List, Callable, Optional
+from typing import List, Callable, Optional, Dict, Union, Tuple
 from .store import DocNode, BaseStore
 import numpy as np
 from .component.bm25 import BM25
@@ -20,7 +20,7 @@ class DefaultIndex:
 
     registered_similarity = dict()
 
-    def __init__(self, embed: Callable, store: BaseStore, **kwargs):
+    def __init__(self, embed: Dict[str, Callable], store: BaseStore, **kwargs):
         self.embed = embed
         self.store = store
 
@@ -34,11 +34,22 @@ class DefaultIndex:
     ) -> Callable:
         def decorator(f):
             def wrapper(query, nodes, **kwargs):
-                if batch:
-                    return f(query, nodes, **kwargs)
+                if mode != "embedding":
+                    if batch:
+                        return f(query, nodes, **kwargs)
+                    else:
+                        return [(node, f(query, node, **kwargs)) for node in nodes]
                 else:
-                    return [(node, f(query, node, **kwargs)) for node in nodes]
-
+                    assert isinstance(query, dict), "query must be of dict type, used for similarity calculation."
+                    similarity = {}
+                    if batch:
+                        for key, val in query.items():
+                            nodes_embed = [node.embedding[key] for node in nodes]
+                            similarity[key] = f(val, nodes_embed, **kwargs)
+                    else:
+                        for key, val in query.items():
+                            similarity[key] = [(node, f(val, node.embedding[key], **kwargs)) for node in nodes]
+                    return similarity
             cls.registered_similarity[f.__name__] = (wrapper, mode, descend)
             return wrapper
 
@@ -46,13 +57,21 @@ class DefaultIndex:
 
     def _parallel_do_embedding(self, nodes: List[DocNode]) -> List[DocNode]:
         with ThreadPoolExecutor(config["max_embedding_workers"]) as executor:
-            futures = {
-                executor.submit(node.do_embedding, self.embed): node
-                for node in nodes
-                if not node.has_embedding()
-            }
-            for future in concurrent.futures.as_completed(futures):
-                future.result()
+            futures = []
+            for node in nodes:
+                miss_keys = node.has_missing_embedding(self.embed.keys())
+                if not miss_keys:
+                    continue
+                for k in miss_keys:
+                    with node._lock:
+                        if node.has_missing_embedding(k):
+                            future = executor.submit(node.do_embedding, {k: self.embed[k]}) \
+                                if k not in node.embedding_state else executor.submit(node.check_embedding_state, k)
+                            node.embedding_state.add(k)
+                            futures.append(future)
+            if len(futures) > 0:
+                for future in concurrent.futures.as_completed(futures):
+                    future.result()
         return nodes
 
     def query(
@@ -60,8 +79,9 @@ class DefaultIndex:
         query: str,
         nodes: List[DocNode],
         similarity_name: str,
-        similarity_cut_off: float,
+        similarity_cut_off: Union[float, Dict[str, float]],
         topk: int,
+        embed_keys: Optional[List[str]] = None,
         **kwargs,
     ) -> List[DocNode]:
         if similarity_name not in self.registered_similarity:
@@ -74,7 +94,7 @@ class DefaultIndex:
         if mode == "embedding":
             assert self.embed, "Chosen similarity needs embed model."
             assert len(query) > 0, "Query should not be empty."
-            query_embedding = self.embed(query)
+            query_embedding = {k: self.embed[k](query) for k in (embed_keys or self.embed.keys())}
             nodes = self._parallel_do_embedding(nodes)
             self.store.try_save_nodes(nodes)
             similarities = similarity_func(query_embedding, nodes, topk=topk, **kwargs)
@@ -83,14 +103,25 @@ class DefaultIndex:
         else:
             raise NotImplementedError(f"Mode {mode} is not supported.")
 
+        if not isinstance(similarities, dict):
+            results = self._filter_nodes_by_score(similarities, topk, similarity_cut_off, descend)
+        else:
+            results = []
+            for key in (embed_keys or similarities.keys()):
+                sims = similarities[key]
+                sim_cut_off = similarity_cut_off if isinstance(similarity_cut_off, float) else similarity_cut_off[key]
+                results.extend(self._filter_nodes_by_score(sims, topk, sim_cut_off, descend))
+        results = list(set(results))
+        LOG.debug(f"Retrieving query `{query}` and get results: {results}")
+        return results
+
+    def _filter_nodes_by_score(self, similarities: List[Tuple[DocNode, float]], topk: int,
+                               similarity_cut_off: float, descend) -> List[DocNode]:
         similarities.sort(key=lambda x: x[1], reverse=descend)
         if topk is not None:
             similarities = similarities[:topk]
 
-        results = [node for node, score in similarities if score > similarity_cut_off]
-        LOG.debug(f"Retrieving query `{query}` and get results: {results}")
-        return results
-
+        return [node for node, score in similarities if score > similarity_cut_off]
 
 @DefaultIndex.register_similarity(mode="text", batch=True)
 def bm25(query: str, nodes: List[DocNode], **kwargs) -> List:
@@ -105,9 +136,9 @@ def bm25_chinese(query: str, nodes: List[DocNode], **kwargs) -> List:
 
 
 @DefaultIndex.register_similarity(mode="embedding")
-def cosine(query: List[float], node: DocNode, **kwargs) -> float:
-    product = np.dot(query, node.embedding)
-    norm = np.linalg.norm(query) * np.linalg.norm(node.embedding)
+def cosine(query: List[float], node: List[float], **kwargs) -> float:
+    product = np.dot(query, node)
+    norm = np.linalg.norm(query) * np.linalg.norm(node)
     return product / norm
 
 

@@ -118,8 +118,8 @@ class TestOnlineChatFunctionCall(object):
     def setup_class(self):
         self.https_proxy_bak = os.environ.get("https_proxy", '')
         self.http_proxy_bak = os.environ.get("http_proxy", '')
-        os.environ['https_proxy'] = "http://wangzhihong:4b2ffc8c@10.54.0.93:3128"
-        os.environ['http_proxy'] = "http://wangzhihong:4b2ffc8c@10.54.0.93:3128"
+        os.environ['https_proxy'] = lazyllm.config['https_proxy']
+        os.environ['http_proxy'] = lazyllm.config['https_proxy']
 
     def teardown_class(self):
         os.environ['https_proxy'] = self.https_proxy_bak

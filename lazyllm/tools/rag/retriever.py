@@ -1,7 +1,7 @@
 from lazyllm import ModuleBase, pipeline, once_wrapper
 from .store import DocNode
 from .document import Document, DocImpl
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 
 class _PostProcess(object):
     def __init__(self, target: Optional[str] = None,
@@ -34,9 +34,10 @@ class Retriever(ModuleBase, _PostProcess):
         doc: object,
         group_name: str,
         similarity: str = "dummy",
-        similarity_cut_off: float = float("-inf"),
+        similarity_cut_off: Union[float, Dict[str, float]] = float("-inf"),
         index: str = "default",
         topk: int = 6,
+        embed_keys: Optional[List[str]] = None,
         target: Optional[str] = None,
         output_format: Optional[str] = None,
         join: Union[bool, str] = False,
@@ -55,6 +56,7 @@ class Retriever(ModuleBase, _PostProcess):
         self._index = index
         self._topk = topk
         self._similarity_kw = kwargs  # kw parameters
+        self._embed_keys = embed_keys
         _PostProcess.__init__(self, target, output_format, join)
 
     @once_wrapper
@@ -73,5 +75,6 @@ class Retriever(ModuleBase, _PostProcess):
         for doc in self._docs:
             nodes.extend(doc.forward(func_name="retrieve", query=query, group_name=self._group_name,
                                      similarity=self._similarity, similarity_cut_off=self._similarity_cut_off,
-                                     index=self._index, topk=self._topk, similarity_kws=self._similarity_kw))
+                                     index=self._index, topk=self._topk, similarity_kws=self._similarity_kw,
+                                     embed_keys=self._embed_keys))
         return self._post_process(nodes)
