@@ -184,7 +184,7 @@ class RedisQueue(FileSystemQueue):
                 vals = conn.lrange(id, 1, -1)
                 conn.ltrim(id, 0, 0)
             if not vals:
-                return None
+                return []
             return [val.decode('utf-8') for val in vals]
 
     def _peek(self, id):
@@ -199,7 +199,7 @@ class RedisQueue(FileSystemQueue):
         with self._lock:
             conn = redis.Redis.from_url(self.redis_url)
             rsize = conn.llen(id)
-            return rsize - 1
+            return rsize - 1  # empty : [ <start> ]
 
     def _clear(self, id):
         with self._lock:
