@@ -152,7 +152,7 @@ class SQLiteQueue(FileSystemQueue):
                 conn.commit()
 
 
-class RedisQueue(FileSystemQueue):  
+class RedisQueue(FileSystemQueue):
     def __init__(self, klass='__default__'):
         super(__class__, self).__init__(klass=klass)
         self.redis_url = config["fsqredis_url"]
@@ -169,7 +169,7 @@ class RedisQueue(FileSystemQueue):
                 conn.rpush(self.sid, '<start>')
 
     def _enqueue(self, id, message):
-        with self._lock:	
+        with self._lock:
             conn = redis.Redis.from_url(self.redis_url)
             conn.rpush(id, message)
 
@@ -188,21 +188,21 @@ class RedisQueue(FileSystemQueue):
             return [val.decode('utf-8') for val in vals]
 
     def _peek(self, id):
-        with self._lock:	
+        with self._lock:
             conn = redis.Redis.from_url(self.redis_url)
             val = conn.lindex(id, 1)
-            if val==None:
+            if val is None:
                 return None
             return val.decode('utf-8')
 
     def _size(self, id):
-        with self._lock:	
+        with self._lock:
             conn = redis.Redis.from_url(self.redis_url)
             rsize = conn.llen(id)
             return rsize - 1
 
     def _clear(self, id):
-        with self._lock:	
+        with self._lock:
             conn = redis.Redis.from_url(self.redis_url)
             conn.delete(id)
 
