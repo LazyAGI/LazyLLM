@@ -432,14 +432,31 @@ def call_once(flag, func, *args, **kw):
 def once_wrapper(reset_on_pickle):
     flag = reset_on_pickle if isinstance(reset_on_pickle, bool) else False
 
-    def impl(func):
-        flag_name = f'_lazyllm_{func.__name__}_once_flag'
+    class Wrapper:
+        class Impl:
+            def __init__(self, func, instance):
+                self._func, self._instance = func, instance
+                flag_name = f'_lazyllm_{func.__name__}_once_flag'
+                if instance and not hasattr(instance, flag_name): setattr(instance, flag_name, once_flag(flag))
 
-        def wrapper(self, *args, **kw):
-            if not hasattr(self, flag_name): setattr(self, flag_name, once_flag(flag))
-            wrapper.flag = getattr(self, flag_name)
-            return call_once(wrapper.flag, func, self, *args, **kw)
+            def __call__(self, *args, **kw):
+                assert self._instance is not None, f'{self._func} can only be used as instance method'
+                return call_once(self.flag, self._func, self._instance, *args, **kw)
 
-        return wrapper
+            __doc__ = property(lambda self: self._func.__doc__)
+            def __repr__(self): return repr(self._func)
 
-    return impl if isinstance(reset_on_pickle, bool) else impl(reset_on_pickle)
+            @__doc__.setter
+            def __doc__(self, value): self._func.__doc__ = value
+
+            @property
+            def flag(self):
+                return getattr(self._instance, f'_lazyllm_{self._func.__name__}_once_flag')
+
+        def __init__(self, func):
+            self.__func__ = func
+
+        def __get__(self, instance, _):
+            return Wrapper.Impl(self.__func__, instance)
+
+    return Wrapper if isinstance(reset_on_pickle, bool) else Wrapper(reset_on_pickle)
