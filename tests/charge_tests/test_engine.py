@@ -15,15 +15,16 @@ class TestEngine(object):
         lazyllm.FileSystemQueue(klass="lazy_trace").dequeue()
 
     def test_intent_classifier(self):
-        resources = [dict(id="0", kind="OnlineLLM", name="llm", args=dict(source=None))]
+        resources = [dict(id='0', kind='OnlineLLM', name='llm', args=dict(source=None))]
         music = dict(id='1', kind='Code', name='m1',
                      args=dict(code='def music(x): return f"Music get {x}"'))
         draw = dict(id='2', kind='Code', name='m2',
                     args=dict(code='def draw(x): return f"Draw get {x}"'))
         chat = dict(id='3', kind='Code', name='m3',
                     args=dict(code='def chat(x): return f"Chat get {x}"'))
-        nodes = [dict(id="4", kind="Intention", name="int1",
-                      args=dict(base_model="0", nodes={'music': music, 'draw': draw, 'chat': chat}))]
+        nodes = [dict(id='4', kind='Intention', name='int1',
+                      args=dict(base_model='0', prompt='', constrain='', attention='',
+                                nodes={'music': music, 'draw': draw, 'chat': chat}))]
         edges = [dict(iid="__start__", oid="4"), dict(iid="4", oid="__end__")]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
