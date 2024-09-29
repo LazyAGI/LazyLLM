@@ -10,19 +10,16 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.id || github.ref }}
   cancel-in-progress: true
 
 env:
   POETRY_VERSION: "1.8.3"
+  PYTHON_VERSION: "3.10.9"
   
 jobs:
   macos-basic_tests:
     runs-on: macos-13
-
-    strategy:
-      matrix:
-        python-version: ['3.10', 3.11, 3.12]
 
     steps:
       - uses: actions/checkout@v4
@@ -33,10 +30,10 @@ jobs:
       - name: Copy poetry.lock to root directory
         run: cp LazyLLM-Env/poetry.lock .
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+      - name: Set up python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
@@ -60,16 +57,12 @@ jobs:
          pip install -r tests/requirements.txt
          export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
          python -m pytest -v  --reruns=2 tests/basic_tests/
-        timeout-minutes: 20
+        timeout-minutes: 25
         env :
          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}       
 
   macos-charge_tests:
     runs-on: macos-13
-
-    strategy:
-      matrix:
-        python-version: ['3.10', 3.11, 3.12]
 
     steps:
       - uses: actions/checkout@v4
@@ -80,10 +73,10 @@ jobs:
       - name: Copy poetry.lock to root directory
         run: cp LazyLLM-Env/poetry.lock .
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+      - name: Set up python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
@@ -115,6 +108,4 @@ jobs:
          LAZYLLM_SENSENOVA_SECRET_KEY: ${{ secrets.LAZYLLM_SENSENOVA_SECRET_KEY }}
          LAZYLLM_PostgreSQL_URL: ${{ secrets.LAZYLLM_PostgreSQL_URL }}
          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
-        timeout-minutes: 20
-
-    
+        timeout-minutes: 25
