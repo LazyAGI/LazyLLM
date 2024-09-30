@@ -86,13 +86,6 @@ all_nodes['Formatter'] = dict(
     )
 )
 
-all_nodes['ToolsForLLM'] = dict(
-    module=lazyllm.tools.ToolManager,
-    init_arguments=dict(
-        tools=NodeArgs(list)
-    )
-)
-
 all_nodes['Retriever'] = dict(
     module=lazyllm.tools.rag.Retriever,
     init_arguments=dict(

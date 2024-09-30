@@ -277,21 +277,25 @@ def return_a_wrapper_func(func):
         return func(*args, **kwargs)
     return wrapper_func
 
+def _get_tools(tools):
+    callable_list = []
+    for rid in tools:  # `tools` is a list of ids in engine's resources
+        node = Engine().build_node(rid)
+        wrapper_func = return_a_wrapper_func(node.func)
+        wrapper_func.__name__ = node.name
+        callable_list.append(wrapper_func)
+    return callable_list
+
+@NodeConstructor.register('ToolsForLLM')
+def make_tools_for_llm(tools: List[str]):
+    return lazyllm.tools.ToolManager(_get_tools(tools))
+
 @NodeConstructor.register('FunctionCall')
 def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
-
-    callable_list = []
-    for rid in tools:  # `tools` is a list of ids in engine's resources
-        node = Engine().build_node(rid)
-        func = node.func
-        wrapper_func = return_a_wrapper_func(func)
-        wrapper_func.__name__ = node.name
-        callable_list.append(wrapper_func)
-
-    return f(Engine().build_node(llm).func, callable_list)
+    return f(Engine().build_node(llm).func, _get_tools(tools))
 
 @NodeConstructor.register('HttpTool')
 def make_http_tool(method: Optional[str] = None,
