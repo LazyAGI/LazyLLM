@@ -94,6 +94,9 @@ class JsonLikeFormatter(LazyLLMFormatterBase):
         else: return self._parse_py_data_by_formatter(_impl(data, curr_slice), slices=slices[1:])
 
 
+class PythonFormatter(JsonLikeFormatter): pass
+
+
 class EmptyFormatter(LazyLLMFormatterBase):
     def _parse_py_data_by_formatter(self, msg: str):
         return msg
