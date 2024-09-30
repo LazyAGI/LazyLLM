@@ -3,8 +3,8 @@ from lazyllm.engine import LightEngine
 import pytest
 from .utils import SqlEgsData, get_sql_init_keywords
 from lazyllm.tools import SqlManager
-from .tools import (get_current_weather_code, get_current_weather_vars,
-                    get_n_day_weather_forecast_code, multiply_tool_code, add_tool_code)
+from .tools import (get_current_weather_code, get_current_weather_vars, get_current_weather_doc,
+                    get_n_day_weather_forecast_code, multiply_tool_code, add_tool_code, dummy_code)
 
 class TestEngine(object):
 
@@ -148,14 +148,7 @@ class TestEngine(object):
             ),
             dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="sensenova")),
         ]
-        nodes = [
-            dict(
-                id="2",
-                kind="SqlCall",
-                name="sql_call",
-                args=dict(sql_manager="0", llm="1", sql_examples=""),
-            )
-        ]
+        nodes = [dict(id="2", kind="SqlCall", name="sql_call", args=dict(sql_manager="0", llm="1", sql_examples=""))]
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
@@ -170,11 +163,11 @@ class TestEngine(object):
         resources = [
             dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
             dict(id="3", kind="HttpTool", name="weather_12345",
-                 args=dict(code_str=get_current_weather_code, # noqa F405
-                           vars_for_code=get_current_weather_vars, # noqa F405
-                           doc=get_current_weather_doc)), # noqa F405
+                 args=dict(code_str=get_current_weather_code,
+                           vars_for_code=get_current_weather_vars,
+                           doc=get_current_weather_doc)),
             dict(id="2", kind="HttpTool", name="dummy_111",
-                 args=dict(code_str=dummy_code, doc='dummy')), # noqa F405
+                 args=dict(code_str=dummy_code, doc='dummy')),
         ]
         # `tools` in `args` is a list of ids in `resources`
         nodes = [dict(id="1", kind="FunctionCall", name="fc",
