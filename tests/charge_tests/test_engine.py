@@ -3,7 +3,8 @@ from lazyllm.engine import LightEngine
 import pytest
 from .utils import SqlEgsData, get_sql_init_keywords
 from lazyllm.tools import SqlManager
-from .tools import * # noqa F403
+from .tools import (get_current_weather_code, get_current_weather_vars, get_current_weather_doc,
+                    get_n_day_weather_forecast_code, multiply_tool_code, add_tool_code, dummy_code)
 
 class TestEngine(object):
 
@@ -15,15 +16,16 @@ class TestEngine(object):
         lazyllm.FileSystemQueue(klass="lazy_trace").dequeue()
 
     def test_intent_classifier(self):
-        resources = [dict(id="0", kind="OnlineLLM", name="llm", args=dict(source=None))]
+        resources = [dict(id='0', kind='OnlineLLM', name='llm', args=dict(source=None))]
         music = dict(id='1', kind='Code', name='m1',
                      args=dict(code='def music(x): return f"Music get {x}"'))
         draw = dict(id='2', kind='Code', name='m2',
                     args=dict(code='def draw(x): return f"Draw get {x}"'))
         chat = dict(id='3', kind='Code', name='m3',
                     args=dict(code='def chat(x): return f"Chat get {x}"'))
-        nodes = [dict(id="4", kind="Intention", name="int1",
-                      args=dict(base_model="0", nodes={'music': music, 'draw': draw, 'chat': chat}))]
+        nodes = [dict(id='4', kind='Intention', name='int1',
+                      args=dict(base_model='0', prompt='', constrain='', attention='',
+                                nodes={'music': music, 'draw': draw, 'chat': chat}))]
         edges = [dict(iid="__start__", oid="4"), dict(iid="4", oid="__end__")]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
@@ -31,27 +33,38 @@ class TestEngine(object):
         assert engine.run("draw a hourse") == 'Draw get draw a hourse'
 
     def test_toolsforllm(self):
+        resources = [
+            dict(id="1001", kind="Code", name="get_current_weather",
+                 args=(dict(code=get_current_weather_code,
+                            vars_for_code=get_current_weather_vars))),
+            dict(id="1002", kind="Code", name="get_n_day_weather_forecast",
+                 args=dict(code=get_n_day_weather_forecast_code,
+                           vars_for_code=get_current_weather_vars)),
+            dict(id="1003", kind="Code", name="multiply_tool",
+                 args=dict(code=multiply_tool_code)),
+            dict(id="1004", kind="Code", name="add_tool",
+                 args=dict(code=add_tool_code)),
+        ]
         nodes = [dict(id="1", kind="ToolsForLLM", name="fc",
-                      args=dict(tools=['get_current_weather', 'get_n_day_weather_forecast',
-                                       'multiply_tool', 'add_tool']))]
+                      args=dict(tools=['1001', '1002', '1003', '1004']))]
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
-        engine.start(nodes, edges)
+        engine.start(nodes, edges, resources)
         assert '22' in engine.run([dict(name='get_current_weather', arguments=dict(location='Paris'))])[0]
 
     def test_fc(self):
         resources = [
             dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
             dict(id="1001", kind="Code", name="get_current_weather",
-                 args=(dict(code=get_current_weather_code, # noqa F405
-                            vars_for_code=get_current_weather_vars))), # noqa F405
+                 args=(dict(code=get_current_weather_code,
+                            vars_for_code=get_current_weather_vars))),
             dict(id="1002", kind="Code", name="get_n_day_weather_forecast",
-                 args=dict(code=get_n_day_weather_forecast_code, # noqa F405
-                           vars_for_code=get_current_weather_vars)), # noqa F405
+                 args=dict(code=get_n_day_weather_forecast_code,
+                           vars_for_code=get_current_weather_vars)),
             dict(id="1003", kind="Code", name="multiply_tool",
-                 args=dict(code=multiply_tool_code)), # noqa F405
+                 args=dict(code=multiply_tool_code)),
             dict(id="1004", kind="Code", name="add_tool",
-                 args=dict(code=add_tool_code)), # noqa F405
+                 args=dict(code=add_tool_code)),
         ]
         nodes = [dict(id="1", kind="FunctionCall", name="fc",
                       args=dict(llm='0', tools=['1001', '1002', '1003', '1004']))]
@@ -135,14 +148,7 @@ class TestEngine(object):
             ),
             dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="sensenova")),
         ]
-        nodes = [
-            dict(
-                id="2",
-                kind="SqlCall",
-                name="sql_call",
-                args=dict(sql_manager="0", llm="1", sql_examples=""),
-            )
-        ]
+        nodes = [dict(id="2", kind="SqlCall", name="sql_call", args=dict(sql_manager="0", llm="1", sql_examples=""))]
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
@@ -157,11 +163,11 @@ class TestEngine(object):
         resources = [
             dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
             dict(id="3", kind="HttpTool", name="weather_12345",
-                 args=dict(code_str=get_current_weather_code, # noqa F405
-                           vars_for_code=get_current_weather_vars, # noqa F405
-                           doc=get_current_weather_doc)), # noqa F405
+                 args=dict(code_str=get_current_weather_code,
+                           vars_for_code=get_current_weather_vars,
+                           doc=get_current_weather_doc)),
             dict(id="2", kind="HttpTool", name="dummy_111",
-                 args=dict(code_str=dummy_code, doc='dummy')), # noqa F405
+                 args=dict(code_str=dummy_code, doc='dummy')),
         ]
         # `tools` in `args` is a list of ids in `resources`
         nodes = [dict(id="1", kind="FunctionCall", name="fc",

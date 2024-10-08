@@ -218,8 +218,10 @@ def make_ifs(cond: str, true: List[dict], false: List[dict], judge_on_full_input
 
 
 @NodeConstructor.register('Intention')
-def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
-    with IntentClassifier(Engine().build_node(base_model).func) as ic:
+def make_intention(base_model: str, nodes: Dict[str, List[dict]],
+                   prompt: str = '', constrain: str = '', attention: str = ''):
+    with IntentClassifier(Engine().build_node(base_model).func,
+                          prompt=prompt, constrain=constrain, attention=attention) as ic:
         for cond, nodes in nodes.items():
             if isinstance(nodes, list) and len(nodes) > 1:
                 f = pipeline([Engine().build_node(node).func for node in nodes])
@@ -269,27 +271,35 @@ class JoinFormatter(lazyllm.components.FormatterBase):
 def make_join_formatter(type='sum', names=None, symbol=None):
     return JoinFormatter(type, names=names, symbol=symbol)
 
+@NodeConstructor.register('Formatter')
+def make_formatter(ftype, rule):
+    return getattr(lazyllm.formatter, ftype)(formatter=rule)
+
 def return_a_wrapper_func(func):
     @functools.wraps(func)
     def wrapper_func(*args, **kwargs):
         return func(*args, **kwargs)
     return wrapper_func
 
+def _get_tools(tools):
+    callable_list = []
+    for rid in tools:  # `tools` is a list of ids in engine's resources
+        node = Engine().build_node(rid)
+        wrapper_func = return_a_wrapper_func(node.func)
+        wrapper_func.__name__ = node.name
+        callable_list.append(wrapper_func)
+    return callable_list
+
+@NodeConstructor.register('ToolsForLLM')
+def make_tools_for_llm(tools: List[str]):
+    return lazyllm.tools.ToolManager(_get_tools(tools))
+
 @NodeConstructor.register('FunctionCall')
 def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
-
-    callable_list = []
-    for rid in tools:  # `tools` is a list of ids in engine's resources
-        node = Engine().build_node(rid)
-        func = node.func
-        wrapper_func = return_a_wrapper_func(func)
-        wrapper_func.__name__ = node.name
-        callable_list.append(wrapper_func)
-
-    return f(Engine().build_node(llm).func, callable_list)
+    return f(Engine().build_node(llm).func, _get_tools(tools))
 
 @NodeConstructor.register('HttpTool')
 def make_http_tool(method: Optional[str] = None,

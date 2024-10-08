@@ -1,5 +1,5 @@
 import json
-from .formatterBase import JsonLikeFormatter
+from .formatterbase import JsonLikeFormatter
 import lazyllm
 
 class JsonFormatter(JsonLikeFormatter):

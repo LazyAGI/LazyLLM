@@ -122,14 +122,14 @@ class OnlineChatModuleBase(ModuleBase):
     def _convert_msg_format(self, msg: Dict[str, Any]):
         return msg
 
-    def _str_to_json(self, msg: str):
+    def _str_to_json(self, msg: str, stream_output: bool):
         if isinstance(msg, bytes):
             pattern = re.compile(r"^data:\s*")
             msg = re.sub(pattern, "", msg.decode('utf-8'))
         try:
             chunk = json.loads(msg)
             message = self._convert_msg_format(chunk)
-            if self._stream:
+            if stream_output:
                 for item in message.get("choices", []):
                     delta = item.get("delta", {})
                     content = delta.get("content", '')
@@ -235,8 +235,9 @@ class OnlineChatModuleBase(ModuleBase):
         else:
             raise TypeError(f"The elements in list {src} are of inconsistent types.")
 
-    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, **kw):  # noqa C901
+    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, stream_output: bool = False, **kw):  # noqa C901
         """LLM inference interface"""
+        stream_output = stream_output or self._stream
         params = {"input": __input, "history": llm_chat_history}
         if tools:
             params["tools"] = tools
@@ -244,20 +245,20 @@ class OnlineChatModuleBase(ModuleBase):
         data = self._prompt.generate_prompt(**params)
 
         data["model"] = self._model_name
-        data["stream"] = self._stream
+        data["stream"] = stream_output
         if len(kw) > 0:
             data.update(kw)
 
         if len(self._model_optional_params) > 0:
             data.update(self._model_optional_params)
 
-        with requests.post(self._url, json=data, headers=self._headers, stream=self._stream) as r:
+        with requests.post(self._url, json=data, headers=self._headers, stream=stream_output) as r:
             if r.status_code != 200:  # request error
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
-                    if self._stream else requests.RequestException(r.text)
+                    if stream_output else requests.RequestException(r.text)
 
-            msg_json = list(filter(lambda x: x, [self._str_to_json(line) for line in r.iter_lines()
-                                                 if len(line)] if self._stream else [self._str_to_json(r.text)]))
+            msg_json = list(filter(lambda x: x, [self._str_to_json(line, stream_output) for line in r.iter_lines()
+                                   if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]))
             extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
 
             return self._formatter.format(extractor) if extractor else ""

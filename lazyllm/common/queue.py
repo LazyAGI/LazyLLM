@@ -4,6 +4,11 @@ from abc import ABC, abstractmethod
 from .globals import globals
 from ..configs import config
 import os
+from typing import Type
+from lazyllm.thirdparty import redis
+
+config.add("default_fsqueue", str, "sqlite", "DEFAULT_FSQUEUE")
+config.add("fsqredis_url", str, "", "FSQREDIS_URL")
 
 class FileSystemQueue(ABC):
 
@@ -17,7 +22,7 @@ class FileSystemQueue(ABC):
         klass = kw.get('klass', '__default__')
         if klass not in __class__.__queue_pool__:
             if cls is __class__:
-                __class__.__queue_pool__[klass] = SQLiteQueue(*args, **kw)
+                __class__.__queue_pool__[klass] = cls.__default_queue__(*args, **kw)
             else:
                 __class__.__queue_pool__[klass] = super().__new__(cls)
         return __class__.__queue_pool__[klass]
@@ -26,6 +31,10 @@ class FileSystemQueue(ABC):
     def get_instance(cls, klass):
         assert isinstance(klass, str) and klass != '__default__'
         return cls(klass=klass)
+
+    @classmethod
+    def set_default(cls, queue: Type):
+        cls.__default_queue__ = queue
 
     @property
     def sid(self):
@@ -141,3 +150,65 @@ class SQLiteQueue(FileSystemQueue):
                 DELETE FROM queue WHERE id = ?
                 ''', (id,))
                 conn.commit()
+
+
+class RedisQueue(FileSystemQueue):
+    def __init__(self, klass='__default__'):
+        super(__class__, self).__init__(klass=klass)
+        self.redis_url = config["fsqredis_url"]
+        self._lock = threading.Lock()
+        self._initialize_db()
+
+    def _initialize_db(self):
+        with self._lock:
+            conn = redis.Redis.from_url(self.redis_url)
+            assert (
+                conn.ping()
+            ), "Found fsque reids config but can not connect, please check your config `LAZYLLM_FSQREDIS_URL`."
+            if not conn.exists(self.sid):
+                conn.rpush(self.sid, '<start>')
+
+    def _enqueue(self, id, message):
+        with self._lock:
+            conn = redis.Redis.from_url(self.redis_url)
+            conn.rpush(id, message)
+
+    def _dequeue(self, id, limit=None):
+        with self._lock:
+            conn = redis.Redis.from_url(self.redis_url)
+            if limit:
+                limit = limit + 1
+                vals = conn.lrange(id, 1, limit)
+                conn.ltrim(id, limit, -1)
+            else:
+                vals = conn.lrange(id, 1, -1)
+                conn.ltrim(id, 0, 0)
+            if not vals:
+                return []
+            return [val.decode('utf-8') for val in vals]
+
+    def _peek(self, id):
+        with self._lock:
+            conn = redis.Redis.from_url(self.redis_url)
+            val = conn.lindex(id, 1)
+            if val is None:
+                return None
+            return val.decode('utf-8')
+
+    def _size(self, id):
+        with self._lock:
+            conn = redis.Redis.from_url(self.redis_url)
+            rsize = conn.llen(id)
+            return rsize - 1  # empty : [ <start> ]
+
+    def _clear(self, id):
+        with self._lock:
+            conn = redis.Redis.from_url(self.redis_url)
+            conn.delete(id)
+
+fsquemap = {
+    'sqlite': SQLiteQueue,
+    'redis': RedisQueue
+}
+
+FileSystemQueue.set_default(fsquemap.get(config['default_fsqueue'].lower()))
