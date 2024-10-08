@@ -30,7 +30,7 @@ sqlalchemy
 psutil
 pypdf
 pytest
-numpy=1.26.4
+numpy==1.26.4
 redis>=5.0.4
 huggingface-hub>=0.23.1
 pandas>=2.2.2
