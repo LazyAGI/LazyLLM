@@ -79,20 +79,6 @@ all_nodes['HttpTool'] = dict(
     other_arguments=dict()
 )
 
-all_nodes['Formatter'] = dict(
-    module=partial(getattr, lazyllm.formatter),
-    init_arguments=dict(
-        formatter=NodeArgs(str),
-    )
-)
-
-all_nodes['ToolsForLLM'] = dict(
-    module=lazyllm.tools.ToolManager,
-    init_arguments=dict(
-        tools=NodeArgs(list)
-    )
-)
-
 all_nodes['Retriever'] = dict(
     module=lazyllm.tools.rag.Retriever,
     init_arguments=dict(

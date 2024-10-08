@@ -106,6 +106,24 @@ class TestEngine(object):
         assert engine.run(2, 3, 4, 5) == (4, 9, 16, 25)
 
     def test_engine_formatter(self):
+        nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='python', rule='[:]'))]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        assert engine.run([1, 2]) == [1, 2]
+
+        engine.reset()
+        nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='json', rule='{a, c}'))]
+        engine.start(nodes, edges)
+        assert engine.run('{"a": 1, "b": 2, "c": 3}') == dict(a=1, c=3)
+
+        engine.reset()
+        nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='yaml', rule='[:]{a}'))]
+        engine.start(nodes, edges)
+        assert engine.run('- a: 1\n  b: 2\n- a: 3\n  d: 4\n') == [dict(a=1), dict(a=3)]
+
+    def test_engine_edge_formatter(self):
         nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
                  dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),
                  dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return dict(a=1, b=x * x)\n'),
@@ -119,7 +137,7 @@ class TestEngine(object):
         assert engine.run(1) == '1[2, 4]1'
         assert engine.run(2) == '2[4, 8]4'
 
-    def test_engine_formatter_start(self):
+    def test_engine_edge_formatter_start(self):
         nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int): return x'),
                  dict(id='2', kind='Code', name='m2', args='def test(x: int): return 2 * x'),
                  dict(id='3', kind='Code', name='m3', args='def test(x, y): return x + y')]

@@ -1,6 +1,6 @@
 import importlib
 import pkg_resources
-from lazyllm import LOG
+from lazyllm.common import LOG
 import os
 
 package_name_map = {
