@@ -30,3 +30,4 @@ sqlalchemy
 psutil
 pypdf
 pytest
+numpy<2.0.0
