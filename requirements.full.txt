@@ -15,7 +15,7 @@ setuptools<70.0.0
 docstring-parser
 json5
 tiktoken
-spacy
+spacy<=3.7.5
 chromadb
 bm25s
 pystemmer
