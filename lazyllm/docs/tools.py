@@ -53,7 +53,7 @@ add_english_doc('Document.create_node_group', '''
 Generate a node group produced by the specified rule.
 
 Args:
-    name (str): The name of the node group, cannot be passed in as key-value pairs.
+    name (str): The name of the node group.
     transform (Callable): The transformation rule that converts a node into a node group. The function prototype is `(DocNode, group_name, **kwargs) -> List[DocNode]`. Currently built-in options include [SentenceSplitter][lazyllm.tools.SentenceSplitter], and users can define their own transformation rules.
     trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`.
     num_workers (int): number of new threads used for transform. default: 0
@@ -65,7 +65,7 @@ add_chinese_doc('Document.create_node_group', '''
 创建一个由指定规则生成的 node group。
 
 Args:
-    name (str): node group 的名称。无法通过键值对传入。
+    name (str): node group 的名称。
     transform (Callable): 将 node 转换成 node group 的转换规则，函数原型是 `(DocNode, group_name, **kwargs) -> List[DocNode]`。目前内置的有 [SentenceSplitter][lazyllm.tools.SentenceSplitter]。用户也可以自定义转换规则。
     trans_node (bool): 决定了transform的输入和输出是 `DocNode` 还是 `str` ，默认为None。只有在 `transform` 为 `Callable` 时才可以设置为true。
     num_workers (int): Transform时所用的新线程数量，默认为0
@@ -306,7 +306,7 @@ add_english_doc('Retriever', '''
 Create a retrieval module for document querying and retrieval. This constructor initializes a retrieval module that configures the document retrieval process based on the specified similarity metric.
 
 Args:
-    doc: An instance of the document module.
+    doc: An instance of the document module. The document module can be a single instance or a list of instances. If it is a single instance, it means searching for a single Document, and if it is a list of instances, it means searching for multiple Documents.
     group_name: The name of the node group on which to perform the retrieval.
     similarity: The similarity function to use for setting up document retrieval. Defaults to 'dummy'. Candidates include ["bm25", "bm25_chinese", "cosine"].
     similarity_cut_off: Discard the document when the similarity is below the specified value. In a multi-embedding scenario, if you need to specify different values for different embeddings, you need to specify them in a dictionary, where the key indicates which embedding is specified and the value indicates the corresponding threshold. If all embeddings use the same threshold, you only need to specify one value.
@@ -326,7 +326,7 @@ add_chinese_doc('Retriever', '''
 创建一个用于文档查询和检索的检索模块。此构造函数初始化一个检索模块，该模块根据指定的相似度度量配置文档检索过程。
 
 Args:
-    doc: 文档模块实例。
+    doc: 文档模块实例。该文档模块可以是单个实例，也可以是一个实例的列表。如果是单个实例，表示对单个Document进行检索，如果是实例的列表，则表示对多个Document进行检索。
     group_name: 在哪个 node group 上进行检索。
     similarity: 用于设置文档检索的相似度函数。默认为 'dummy'。候选集包括 ["bm25", "bm25_chinese", "cosine"]。
     similarity_cut_off: 当相似度低于指定值时丢弃该文档。在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则需要使用字典的方式指定，key 表示指定的是哪个 embedding，value 表示相应的阈值。如果所有的 embedding 使用同一个阈值，则只指定一个数值即可。 
@@ -344,8 +344,7 @@ Args:
 
 add_example('Retriever', '''
 >>> import lazyllm
->>> from lazyllm.tools import Retriever
->>> from lazyllm.tools import Document
+>>> from lazyllm.tools import Retriever, Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule()
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
@@ -354,8 +353,12 @@ add_example('Retriever', '''
 >>> m1 = lazyllm.TrainableModule('bge-large-zh-v1.5').start()
 >>> document1 = Document(dataset_path='your_doc_path', embed={'online':m , 'local': m1}, manager=False)
 >>> document1.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
->>> retriver = Retriever(document1, group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
->>> print(retriver("query"))
+>>> retriever = Retriever(document1, group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
+>>> print(retriever("query"))
+>>> document2 = Document(dataset_path='your_doc_path', embed={'online':m , 'local': m1}, manager=False)
+>>> document2.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+>>> retriever2 = Retriever([document1, document2], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
+>>> print(retriever2("query"))
 ''')
 
 # ---------------------------------------------------------------------------- #

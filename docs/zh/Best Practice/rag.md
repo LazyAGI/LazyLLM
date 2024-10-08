@@ -98,14 +98,14 @@ docs.create_node_group(name='sentence-len',
 例如，用户可以这样创建一个 `Retriever` 实例：
 
 ```python
-retriever = Retriever(documents, group_name="sentence", similarity="cosine", topk=3)
+retriever = Retriever(documents, group_name="sentence", similarity="cosine", topk=3)  # or retriever = Retriever([document1, document2, ...], group_name="sentence", similarity="cosine", topk=3)
 ```
 
 表示在 `sentence` 这个 `Node Group` 中使用 `cosine` 作为相似度计算函数，计算用户查询的内容 `query` 和每个 `Node` 的相似度。`topk` 表示最多取最相近的多少篇文档。
 
 `Retriever` 的构造函数有以下参数：
 
-* `doc`：要从哪个 `Document` 中检索文档；
+* `doc`：要从哪个 `Document` 中检索文档，或者要从哪些 `Document` 列表中检索文档；
 * `group_name`：要使用文档的哪个 `Node Group` 来检索，使用 `LAZY_ROOT_NAME` 表示在原始文档内容中进行检索；
 * `similarity`：指定用来计算 `Node` 和用户查询内容之间的相似度的函数名称，`LazyLLM` 内置的相似度计算函数有 `bm25`，`bm25_chinese` 和 `cosine`，用户也可以自定义自己的计算函数；
 * `similarity_cut_off`：丢弃相似度小于指定值的结果，默认为 `-inf`，表示不丢弃。 在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则该参数需要以字典的方式指定，key 表示指定的是哪个 embedding， value 表示相应的阈值。如果所有 embedding 使用同一个阈值，则此参数只传一个数值即可；
