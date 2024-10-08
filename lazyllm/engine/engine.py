@@ -271,6 +271,10 @@ class JoinFormatter(lazyllm.components.FormatterBase):
 def make_join_formatter(type='sum', names=None, symbol=None):
     return JoinFormatter(type, names=names, symbol=symbol)
 
+@NodeConstructor.register('Formatter')
+def make_formatter(ftype, rule):
+    return getattr(lazyllm.formatter, ftype)(formatter=rule)
+
 def return_a_wrapper_func(func):
     @functools.wraps(func)
     def wrapper_func(*args, **kwargs):
