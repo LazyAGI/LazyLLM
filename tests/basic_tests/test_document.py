@@ -3,6 +3,7 @@ from lazyllm.tools.rag.doc_impl import DocImpl
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import DocNode, LAZY_ROOT_NAME
 from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform
+from lazyllm.launcher import cleanup
 from unittest.mock import MagicMock
 import unittest
 
@@ -71,6 +72,15 @@ class TestDocImpl(unittest.TestCase):
 
 
 class TestDocument(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.embed_model1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
+        cls.embed_model2 = lazyllm.TrainableModule("bge-m3").start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cleanup()
+
     def test_register_global_and_local(self):
         Document.create_node_group('Chunk1', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
         Document.create_node_group('Chunk2', transform=TransformArgs(
@@ -119,6 +129,26 @@ class TestDocument(unittest.TestCase):
         retriever('什么是道')
         retriever = Retriever(doc, 'AdaptiveChunk2', similarity='bm25', topk=2)
         retriever('什么是道')
+
+    def test_multi_embedding_with_document(self):
+        document1 = Document(dataset_path="rag_master", embed=self.embed_model1)
+        document1.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+        retriever1 = Retriever(document1, group_name="sentences", similarity="cosine", topk=10)
+        nodes1 = retriever1("何为天道?")
+        assert len(nodes1) == 10
+
+        document2 = Document(dataset_path="rag_master", embed={"m1": self.embed_model1, "m2": self.embed_model2})
+        document2.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+        retriever2 = Retriever(document2, group_name="sentences", similarity="cosine", topk=10)
+        nodes2 = retriever2("何为天道?")
+        assert len(nodes2) == 11
+
+        document3 = Document(dataset_path="rag_master", embed={"m1": self.embed_model1, "m2": self.embed_model2})
+        document3.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+        retriever3 = Retriever(document3, group_name="sentences", similarity="cosine",
+                               similarity_cut_off={"m1": 0.5, "m2": 0.55}, topk=10)
+        nodes3 = retriever3("何为天道?")
+        assert len(nodes3) == 3
 
 
 if __name__ == "__main__":
