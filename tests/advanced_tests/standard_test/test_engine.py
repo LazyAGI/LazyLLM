@@ -2,14 +2,14 @@ from lazyllm.engine import LightEngine
 
 class TestEngine(object):
     # This test requires 4 GPUs and takes about 4 minutes to execute, skip this test to save time.
-    def test_vqa(self):
+    def _test_vqa(self):
         resource = [dict(id='0', kind='web', name='web', args=dict(port=None, title='多模态聊天机器人', history=[], audio=True))]
         node = [dict(id='1', kind='VQA', name='vqa', args=dict(base_model='Mini-InternVL-Chat-2B-V1-5'))]
         edge = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
         engine.start(node, edge, resource)
 
-    def test_multimedia(self):
+    def _test_multimedia(self):
         painter_p = 'Now you are a master of drawing prompts, capable of converting any Chinese content entered by the user into English drawing prompts. In this task, you need to convert any input content into English drawing prompts, and you can enrich and expand the prompt content.'  # noqa E501
         musician_p = 'Now you are a master of music composition prompts, capable of converting any Chinese content entered by the user into English music composition prompts. In this task, you need to convert any input content into English music composition prompts, and you can enrich and expand the prompt content.'    # noqa E501
 
