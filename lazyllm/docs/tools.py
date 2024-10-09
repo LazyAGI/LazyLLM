@@ -23,7 +23,7 @@ This constructor initializes a document module that can have an optional user in
 
 Args:
     dataset_path (str): The path to the dataset directory. This directory should contain the documents to be managed by the document module.
-    embed: The object used to generate document embeddings. It can be a single embedding object or multiple embedding objects in dictionary form.
+    embed (Optional[Union[Callable, Dict[str, Callable]]]): The object used to generate document embeddings. If you need to generate multiple embeddings for the text, you need to specify multiple embedding models in a dictionary format. The key identifies the name corresponding to the embedding, and the value is the corresponding embedding model.
     manager (bool, optional): A flag indicating whether to create a user interface for the document module. Defaults to False.
     launcher (optional): An object or function responsible for launching the server module. If not provided, the default asynchronous launcher from `lazyllm.launchers` is used (`sync=False`).
 ''')
@@ -35,7 +35,7 @@ add_chinese_doc('Document', '''\
 
 Args:
     dataset_path (str): 数据集目录的路径。此目录应包含要由文档模块管理的文档。
-    embed: 用于生成文档embedding的对象。可以是单个生成embedding的对象，也可以是字典形式的多个生成embedding的对象。
+    embed (Optional[Union[Callable, Dict[str, Callable]]]): 用于生成文档 embedding 的对象。如果需要对文本生成多个 embedding，此处需要通过字典的方式指定多个 embedding 模型，key 标识 embedding 对应的名字, value 为对应的 embedding 模型。
     manager (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 False
     launcher (optional): 负责启动服务器模块的对象或函数。如果未提供，则使用 `lazyllm.launchers` 中的默认异步启动器 (`sync=False`)。
 ''')
@@ -45,13 +45,15 @@ add_example('Document', '''\
 >>> from lazyllm.tools import Document
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)  # or documents = Document(dataset_path='your_doc_path', embed={"key": m}, manager=False)
+>>> m1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
+>>> document1 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, manager=False)
 ''')
 
 add_english_doc('Document.create_node_group', '''
 Generate a node group produced by the specified rule.
 
 Args:
-    name (str): The name of the node group, cannot be passed in as key-value pairs.
+    name (str): The name of the node group.
     transform (Callable): The transformation rule that converts a node into a node group. The function prototype is `(DocNode, group_name, **kwargs) -> List[DocNode]`. Currently built-in options include [SentenceSplitter][lazyllm.tools.SentenceSplitter], and users can define their own transformation rules.
     trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`.
     num_workers (int): number of new threads used for transform. default: 0
@@ -63,7 +65,7 @@ add_chinese_doc('Document.create_node_group', '''
 创建一个由指定规则生成的 node group。
 
 Args:
-    name (str): node group 的名称。无法通过键值对传入。
+    name (str): node group 的名称。
     transform (Callable): 将 node 转换成 node group 的转换规则，函数原型是 `(DocNode, group_name, **kwargs) -> List[DocNode]`。目前内置的有 [SentenceSplitter][lazyllm.tools.SentenceSplitter]。用户也可以自定义转换规则。
     trans_node (bool): 决定了transform的输入和输出是 `DocNode` 还是 `str` ，默认为None。只有在 `transform` 为 `Callable` 时才可以设置为true。
     num_workers (int): Transform时所用的新线程数量，默认为0
@@ -304,12 +306,13 @@ add_english_doc('Retriever', '''
 Create a retrieval module for document querying and retrieval. This constructor initializes a retrieval module that configures the document retrieval process based on the specified similarity metric.
 
 Args:
-    doc: An instance of the document module.
+    doc: An instance of the document module. The document module can be a single instance or a list of instances. If it is a single instance, it means searching for a single Document, and if it is a list of instances, it means searching for multiple Documents.
     group_name: The name of the node group on which to perform the retrieval.
     similarity: The similarity function to use for setting up document retrieval. Defaults to 'dummy'. Candidates include ["bm25", "bm25_chinese", "cosine"].
-    similarity_cut_off: Discard the document when the similarity is below the specified value.
+    similarity_cut_off: Discard the document when the similarity is below the specified value. In a multi-embedding scenario, if you need to specify different values for different embeddings, you need to specify them in a dictionary, where the key indicates which embedding is specified and the value indicates the corresponding threshold. If all embeddings use the same threshold, you only need to specify one value.
     index: The type of index to use for document retrieval. Currently, only 'default' is supported.
     topk: The number of documents to retrieve with the highest similarity.
+    embed_keys: Indicates which embeddings are used for retrieval. If not specified, all embeddings are used for retrieval.
     similarity_kw: Additional parameters to pass to the similarity calculation function.
 
 The `group_name` has three built-in splitting strategies, all of which use `SentenceSplitter` for splitting, with the difference being in the chunk size:
@@ -323,12 +326,13 @@ add_chinese_doc('Retriever', '''
 创建一个用于文档查询和检索的检索模块。此构造函数初始化一个检索模块，该模块根据指定的相似度度量配置文档检索过程。
 
 Args:
-    doc: 文档模块实例。
+    doc: 文档模块实例。该文档模块可以是单个实例，也可以是一个实例的列表。如果是单个实例，表示对单个Document进行检索，如果是实例的列表，则表示对多个Document进行检索。
     group_name: 在哪个 node group 上进行检索。
     similarity: 用于设置文档检索的相似度函数。默认为 'dummy'。候选集包括 ["bm25", "bm25_chinese", "cosine"]。
-    similarity_cut_off: 当相似度低于指定值时丢弃该文档。
+    similarity_cut_off: 当相似度低于指定值时丢弃该文档。在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则需要使用字典的方式指定，key 表示指定的是哪个 embedding，value 表示相应的阈值。如果所有的 embedding 使用同一个阈值，则只指定一个数值即可。 
     index: 用于文档检索的索引类型。目前仅支持 'default'。
     topk: 表示取相似度最高的多少篇文档。
+    embed_keys: 表示通过哪些 embedding 做检索，不指定表示用全部 embedding 进行检索。
     similarity_kw: 传递给 similarity 计算函数的其它参数。
 
 其中 `group_name` 有三个内置的切分策略，都是使用 `SentenceSplitter` 做切分，区别在于块大小不同：
@@ -340,13 +344,21 @@ Args:
 
 add_example('Retriever', '''
 >>> import lazyllm
->>> from lazyllm.tools import Retriever
->>> from lazyllm.tools import Document
+>>> from lazyllm.tools import Retriever, Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule()
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
 >>> rm.start()
 >>> print(rm("query"))
+>>> m1 = lazyllm.TrainableModule('bge-large-zh-v1.5').start()
+>>> document1 = Document(dataset_path='your_doc_path', embed={'online':m , 'local': m1}, manager=False)
+>>> document1.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+>>> retriever = Retriever(document1, group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
+>>> print(retriever("query"))
+>>> document2 = Document(dataset_path='your_doc_path', embed={'online':m , 'local': m1}, manager=False)
+>>> document2.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+>>> retriever2 = Retriever([document1, document2], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
+>>> print(retriever2("query"))
 ''')
 
 # ---------------------------------------------------------------------------- #
