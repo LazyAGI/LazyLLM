@@ -1,13 +1,13 @@
 from functools import partial
 import os
 
-from typing import Callable, Optional, Dict, Union
+from typing import Callable, Optional, Dict, Union, List
 import lazyllm
-from lazyllm import ModuleBase, DynamicDescriptor, ServerModule
+from lazyllm import ModuleBase, ServerModule, DynamicDescriptor
 
 from .doc_manager import DocManager
 from .doc_impl import DocImpl
-from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
+from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY, DocNode
 import copy
 
 
@@ -74,11 +74,14 @@ class Document(ModuleBase):
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
         return cls.add_reader(pattern, func)
 
-    def find_parent(self, group: str) -> Callable:
-        return partial(self._impl.forward, "find_parent", group=group)
+    def find_parent(self) -> Callable:
+        return partial(self._impl.forward, "find_parent")
 
-    def find_children(self, group: str) -> Callable:
-        return partial(self._impl.forward, "find_children", group=group)
+    def find_children(self) -> Callable:
+        return partial(self._impl.forward, "find_children")
+
+    def forward(self, *args, **kw) -> List[DocNode]:
+        return self._impl.forward("retrieve", *args, **kw)
 
     def __repr__(self):
         return lazyllm.make_repr("Module", "Document", manager=bool(self._manager))

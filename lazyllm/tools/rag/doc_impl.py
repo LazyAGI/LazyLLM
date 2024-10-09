@@ -33,7 +33,7 @@ class DocImpl:
     def __init__(self, dataset_path: str, embed: Dict[str, Callable], kb_group_name: str = None):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
-        self.kb_group_name = kb_group_name or DocImpl.DEDAULT_GROUP_NAME
+        self._kb_group_name = kb_group_name or DocImpl.DEDAULT_GROUP_NAME
         self._dataset_path = dataset_path
         self._reader = DirectoryReader(self._list_files(), self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
