@@ -8,45 +8,50 @@ from lazyllm import ModuleBase, DynamicDescriptor, ServerModule
 from .doc_manager import DocManager
 from .doc_impl import DocImpl
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
+import copy
 
 
 class Document(ModuleBase):
-    _registered_file_reader: Dict[str, Callable] = {}
+    class _Impl(ModuleBase):
+        def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
+                     manager: bool = False, server: bool = False, launcher=None):
+            super().__init__()
+            if not os.path.exists(dataset_path):
+                defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)
+                if os.path.exists(defatult_path):
+                    dataset_path = defatult_path
+            launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
+            self._dataset_path = dataset_path
+            self._embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed}
+            for embed in self._embed.values():
+                if isinstance(embed, ModuleBase):
+                    self._submodules.append(embed)
+            self._kbs = {DocImpl.DEDAULT_GROUP_NAME: DocImpl(dataset_path=dataset_path, embed=self._embed)}
+            if manager: self._manager = DocManager(dataset_path)
+            if server: self._doc = ServerModule(self._doc)
+
+        def forward(self, func_name: str, *args, **kwargs):
+            return getattr(self._impl, func_name)(*args, **kwargs)
+
+        def add_kb_group(self, name): self._kbs[name] = DocImpl(dataset_path=self.dataset_path, embed=self._embed)
+        def get_doc_by_kb_group(self, name): return self._kbs[name]
 
     def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                  create_ui: bool = False, manager: bool = False, server: bool = False, launcher=None):
         super().__init__()
-        if not os.path.exists(dataset_path):
-            defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)
-            if os.path.exists(defatult_path):
-                dataset_path = defatult_path
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
-        launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
-        self._local_file_reader: Dict[str, Callable] = {}
-        self._embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed}
-        for embed in self._embed.values():
-            if isinstance(embed, ModuleBase):
-                self._submodules.append(embed)
+        self._impls = Document._Impl(dataset_path, embed, create_ui or manager, server, launcher)
+        self._curr_group = DocImpl.DEDAULT_GROUP_NAME
 
-        self._impl = DocImpl(dataset_path=dataset_path, embed=self._embed, local_readers=self._local_file_reader,
-                             global_readers=self._registered_file_reader)
-        if create_ui or manager: self._manager = DocManager(dataset_path)
-        if server: self._impl = ServerModule(self._impl)
+    def create_kb_group(self, name: str) -> "Document":
+        self._impls.add_kb_group(name)
+        doc = copy.copy(self)
+        doc._curr_group = name
+        return doc
 
-    def forward(self, func_name: str, *args, **kwargs):
-        return getattr(self._impl, func_name)(*args, **kwargs)
-
-    def find_parent(self, group: str) -> Callable:
-        return partial(self.forward, "find_parent", group=group)
-
-    def find_children(self, group: str) -> Callable:
-        return partial(self.forward, "find_children", group=group)
-
-    def __repr__(self):
-        return lazyllm.make_repr("Module", "Document", manager=bool(self._manager))
-
-    def create_kb_group(self, group_name: str) -> "Document": pass
+    @property
+    def _impl(self): return self._impls.get_doc_by_kb_group(self._curr_group)
 
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
@@ -61,19 +66,19 @@ class Document(ModuleBase):
     @DynamicDescriptor
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         if isinstance(self, type):
-            return self.register_global_reader(pattern=pattern, func=func)
+            return DocImpl.register_global_reader(pattern=pattern, func=func)
         else:
-            assert callable(func), 'func for reader should be callable'
-            self._local_file_reader[pattern] = func
+            self._impl.add_reader(pattern, func)
 
     @classmethod
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
-        if func is not None:
-            cls._registered_file_reader[pattern] = func
-            return None
+        return cls.add_reader(pattern, func)
 
-        def decorator(klass):
-            if callable(klass): cls._registered_file_reader[pattern] = klass
-            else: raise TypeError(f"The registered object {klass} is not a callable object.")
-            return klass
-        return decorator
+    def find_parent(self, group: str) -> Callable:
+        return partial(self._impl.forward, "find_parent", group=group)
+
+    def find_children(self, group: str) -> Callable:
+        return partial(self._impl.forward, "find_children", group=group)
+
+    def __repr__(self):
+        return lazyllm.make_repr("Module", "Document", manager=bool(self._manager))

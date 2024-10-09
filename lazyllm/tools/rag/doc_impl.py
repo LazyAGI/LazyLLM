@@ -25,13 +25,17 @@ def embed_wrapper(func):
 
 
 class DocImpl:
-    _builtin_node_groups = {}
-    _global_node_groups = {}
+    DEDAULT_GROUP_NAME = '__default__'
+    _builtin_node_groups: Dict[str, Dict] = {}
+    _global_node_groups: Dict[str, Dict] = {}
+    _registered_file_reader: Dict[str, Callable] = {}
 
-    def __init__(self, embed: Dict[str, Callable], doc_files=Optional[List[str]],
-                 local_readers: Optional[Dict] = None, global_readers: Optional[Dict] = None, **kwargs):
+    def __init__(self, dataset_path: str, embed: Dict[str, Callable], kb_group_name: str = None):
         super().__init__()
-        self.directory_reader = DirectoryReader(doc_files, local_readers=local_readers, global_readers=global_readers)
+        self._local_file_reader: Dict[str, Callable] = {}
+        self.kb_group_name = kb_group_name or DocImpl.DEDAULT_GROUP_NAME
+        self._dataset_path = dataset_path
+        self._reader = DirectoryReader(self._list_files(), self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self.store = None
@@ -46,7 +50,7 @@ class DocImpl:
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
         if not self.store.has_nodes(LAZY_ROOT_NAME):
-            root_nodes = self.directory_reader.load_data()
+            root_nodes = self._reader.load_data()
             self.store.add_nodes(root_nodes)
             LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
 
@@ -115,11 +119,30 @@ class DocImpl:
         DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, **kwargs)
 
-    def add_files(self, input_files: List[str]) -> None:
+    @classmethod
+    def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
+        if func is not None:
+            cls._registered_file_reader[pattern] = func
+            return None
+
+        def decorator(klass):
+            if callable(klass): cls._registered_file_reader[pattern] = klass
+            else: raise TypeError(f"The registered object {klass} is not a callable object.")
+            return klass
+        return decorator
+
+    def add_reader(self, pattern: str, func: Optional[Callable] = None):
+        assert callable(func), 'func for reader should be callable'
+        self._local_file_reader[pattern] = func
+
+    def _list_files(self) -> List[str]:
+        return []
+
+    def _add_files(self, input_files: List[str]):
         if len(input_files) == 0:
             return
         self._lazy_init()
-        root_nodes = self.directory_reader.load_data(input_files)
+        root_nodes = self._reader.load_data(input_files)
         temp_store = self._get_store()
         temp_store.add_nodes(root_nodes)
         active_groups = self.store.active_groups()
@@ -130,7 +153,7 @@ class DocImpl:
             self.store.add_nodes(nodes)
             LOG.debug(f"Merge {group} with {nodes}")
 
-    def delete_files(self, input_files: List[str]) -> None:
+    def _delete_files(self, input_files: List[str]) -> None:
         self._lazy_init()
         docs = self.store.get_nodes_by_files(input_files)
         LOG.info(f"delete_files: removing documents {input_files} and nodes {docs}")

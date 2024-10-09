@@ -63,11 +63,11 @@ class TestDocImpl(unittest.TestCase):
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
         new_doc.metadata = {"file_name": "new_file.txt"}
         self.mock_directory_reader.load_data.return_value = [new_doc]
-        self.doc_impl.add_files(["new_file.txt"])
+        self.doc_impl._add_files(["new_file.txt"])
         assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME)) == 2
 
     def test_delete_files(self):
-        self.doc_impl.delete_files(["dummy_file.txt"])
+        self.doc_impl._delete_files(["dummy_file.txt"])
         assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME)) == 0
 
 
