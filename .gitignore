@@ -1,6 +1,7 @@
 __pycache__
 *.pyc
 test/
+test2
 dist/
 tmp/
 .vscode
