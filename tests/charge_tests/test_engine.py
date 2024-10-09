@@ -143,6 +143,7 @@ class TestEngine(object):
                     host=host,
                     port=port,
                     db_name=database,
+                    options_str="",
                     tables_info_dict=SqlEgsData.TEST_TABLES_INFO,
                 ),
             ),
