@@ -29,3 +29,25 @@ class TestEngine(object):
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
+
+    def test_http(self):
+        nodes = [
+            dict(
+                id="1",
+                kind="HTTP",
+                name="visit_sensetime",
+                args=dict(
+                    method="GET",
+                    url="https://www.sensetime.com/cn",
+                    api_key=None,
+                    headers=None,
+                    params=None,
+                    body=None,
+                )
+            )
+        ]
+        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        ret = engine.run()
+        assert '商汤科技' in ret['content']

@@ -65,7 +65,7 @@ all_nodes['SD'] = all_nodes['TTS'] = all_nodes['STT'] = dict(
     init_arguments=dict(base_model=NodeArgs(str))
 )
 
-all_nodes['HttpTool'] = dict(
+all_nodes['HTTP'] = dict(
     module=HttpRequest,
     init_arguments=dict(
         method=NodeArgs(str),
