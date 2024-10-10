@@ -31,11 +31,13 @@ class DocImpl:
     _global_node_groups: Dict[str, Dict] = {}
     _registered_file_reader: Dict[str, Callable] = {}
 
-    def __init__(self, dataset_path: str, embed: Dict[str, Callable], kb_group_name: str = None):
+    def __init__(self, embed: Dict[str, Callable], dataset_path: Optional[str] = None,
+                 doc_files: Optional[str] = None, kb_group_name: str = None):
         super().__init__()
+        assert (dataset_path is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or DocImpl.DEDAULT_GROUP_NAME
-        self._dataset_path = dataset_path
+        self._dataset_path, self._doc_files = dataset_path, doc_files
         self._reader = DirectoryReader(self._list_files(), self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
@@ -138,6 +140,7 @@ class DocImpl:
 
     # TODO(wangzhihong): modify here to fit kb-groups
     def _list_files(self) -> List[str]:
+        if self._doc_files: return self._doc_files
         if not os.path.isabs(self._dataset_path):
             raise ValueError("directory must be an absolute path")
 
