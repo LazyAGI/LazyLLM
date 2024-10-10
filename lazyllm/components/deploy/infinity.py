@@ -6,7 +6,7 @@ import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
 
-lazyllm.config.add("default_embedding_engine", str, "infinity", "DEFAULT_EMBEDDING_ENGINE")
+lazyllm.config.add("default_embedding_engine", str, "", "DEFAULT_EMBEDDING_ENGINE")
 
 class Infinity(LazyLLMDeployBase):
     keys_name_handle = keys_name_handle = {
