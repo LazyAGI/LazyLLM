@@ -1,4 +1,3 @@
-from functools import partial
 import os
 
 from typing import Callable, Optional, Dict, Union, List
@@ -71,14 +70,11 @@ class Document(ModuleBase):
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
         return cls.add_reader(pattern, func)
 
-    def _find(self, func_name: str, *args, **kwargs):
-        return getattr(self._impl, func_name)(*args, **kwargs)
-
     def find_parent(self) -> Callable:
-        return partial(self._find, "find_parent")
+        return self._impl.find_parent
 
     def find_children(self) -> Callable:
-        return partial(self._find, "find_children")
+        return self._impl.find_children
 
     def forward(self, *args, **kw) -> List[DocNode]:
         return self._impl.retrieve(*args, **kw)
