@@ -8,6 +8,7 @@ from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMP
 from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, BaseStore
 from .data_loaders import DirectoryReader
 from .index import DefaultIndex
+import os
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
@@ -135,8 +136,22 @@ class DocImpl:
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
 
+    # TODO(wangzhihong): modify here to fit kb-groups
     def _list_files(self) -> List[str]:
-        return []
+        if not os.path.isabs(self._dataset_path):
+            raise ValueError("directory must be an absolute path")
+
+        try:
+            files_list = []
+
+            for root, _, files in os.walk(self._dataset_path):
+                files = [os.path.join(root, file_path) for file_path in files]
+                files_list.extend(files)
+
+            return files_list
+        except Exception as e:
+            LOG.error(f"Error while listing files in {self._dataset_path}: {e}")
+            return []
 
     def _add_files(self, input_files: List[str]):
         if len(input_files) == 0:

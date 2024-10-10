@@ -30,9 +30,6 @@ class Document(ModuleBase):
             if manager: self._manager = DocManager(dataset_path)
             if server: self._doc = ServerModule(self._doc)
 
-        def forward(self, func_name: str, *args, **kwargs):
-            return getattr(self._impl, func_name)(*args, **kwargs)
-
         def add_kb_group(self, name): self._kbs[name] = DocImpl(dataset_path=self.dataset_path, embed=self._embed)
         def get_doc_by_kb_group(self, name): return self._kbs[name]
 
@@ -74,14 +71,17 @@ class Document(ModuleBase):
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
         return cls.add_reader(pattern, func)
 
+    def _find(self, func_name: str, *args, **kwargs):
+        return getattr(self._impl, func_name)(*args, **kwargs)
+
     def find_parent(self) -> Callable:
-        return partial(self._impl.forward, "find_parent")
+        return partial(self._find, "find_parent")
 
     def find_children(self) -> Callable:
-        return partial(self._impl.forward, "find_children")
+        return partial(self._find, "find_children")
 
     def forward(self, *args, **kw) -> List[DocNode]:
-        return self._impl.forward("retrieve", *args, **kw)
+        return self._impl.retrieve(*args, **kw)
 
     def __repr__(self):
         return lazyllm.make_repr("Module", "Document", manager=bool(self._manager))
