@@ -78,7 +78,7 @@ class Vllm(LazyLLMDeployBase):
             return f'http://{job.get_jobip()}:{self.kw["port"]}/generate'
 
     @staticmethod
-    def extract_result(x):
+    def extract_result(x, inputs):
         return json.loads(x)['text'][0]
 
     @staticmethod

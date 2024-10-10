@@ -2,6 +2,7 @@ import lazyllm
 from lazyllm import launchers, finetune
 from ..finetune.base import LazyLLMFinetuneBase
 from .configure import get_configer
+from .dependencies.requirements import requirements
 from .auto_helper import model_map, get_model_name, get_configs, check_requirements
 from ..utils.downloader import ModelManager
 
@@ -24,7 +25,7 @@ class AutoFinetune(LazyLLMFinetuneBase):
             if k not in kw: kw[k] = v
 
         for c in candidates:
-            if check_requirements(c.framework.lower()):
+            if check_requirements(requirements[c.framework.lower()]):
                 finetune_cls = getattr(finetune, c.framework.lower())
                 for key, value in finetune_cls.auto_map.items():
                     if value:

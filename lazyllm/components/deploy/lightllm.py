@@ -84,7 +84,7 @@ class Lightllm(LazyLLMDeployBase):
             return f'http://{job.get_jobip()}:{self.kw["port"]}/generate'
 
     @staticmethod
-    def extract_result(x):
+    def extract_result(x, inputs):
         try:
             if x.startswith("data:"): return json.loads(x[len("data:"):])['token']['text']
             else: return json.loads(x)['generated_text'][0]

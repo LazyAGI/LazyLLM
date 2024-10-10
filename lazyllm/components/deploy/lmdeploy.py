@@ -87,7 +87,7 @@ class LMDeploy(LazyLLMDeployBase):
             return f'http://{job.get_jobip()}:{self.kw["server-port"]}/v1/chat/interactive'
 
     @staticmethod
-    def extract_result(x):
+    def extract_result(x, inputs):
         return json.loads(x)['text']
 
     @staticmethod
