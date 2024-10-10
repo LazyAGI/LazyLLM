@@ -66,8 +66,8 @@ class DefaultIndex:
                     with node._lock:
                         if node.has_missing_embedding(k):
                             future = executor.submit(node.do_embedding, {k: self.embed[k]}) \
-                                if k not in node.embedding_state else executor.submit(node.check_embedding_state, k)
-                            node.embedding_state.add(k)
+                                if k not in node._embedding_state else executor.submit(node.check_embedding_state, k)
+                            node._embedding_state.add(k)
                             futures.append(future)
             if len(futures) > 0:
                 for future in concurrent.futures.as_completed(futures):

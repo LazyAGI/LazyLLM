@@ -25,9 +25,9 @@ class TestRagReader(object):
         self.datasets = os.path.join(lazyllm.config['data_path'], "ci_data/rag_reader/default/__data/sources")
 
     def teardown_method(self):
-        self.doc1._local_file_reader = {}
-        self.doc2._local_file_reader = {}
-        Document._registered_file_reader = {}
+        self.doc1._impl._local_file_reader = {}
+        self.doc2._impl._local_file_reader = {}
+        type(self.doc1._impl)._registered_file_reader = {}
 
     def test_reader_file(self):
         files = [os.path.join(self.datasets, "联网搜索.pdf"), os.path.join(self.datasets, "说明文档测试.docx")]
@@ -49,22 +49,22 @@ class TestRagReader(object):
     def test_register_local_reader(self):
         self.doc1.add_reader("**/*.yml", processYml)
         files = [os.path.join(self.datasets, "reader_test.yml")]
-        docs = self.doc1._impl._impl.directory_reader.load_data(input_files=files)
+        docs = self.doc1._impl._reader.load_data(input_files=files)
         assert docs[0].text == "Call the function processYml."
 
     def test_register_global_reader(self):
         Document.register_global_reader("**/*.yml", processYml)
         files = [os.path.join(self.datasets, "reader_test.yml")]
-        docs = self.doc1._impl._impl.directory_reader.load_data(input_files=files)
+        docs = self.doc1._impl._reader.load_data(input_files=files)
         assert docs[0].text == "Call the function processYml."
 
     def test_register_local_and_global_reader(self):
         files = [os.path.join(self.datasets, "reader_test.yml")]
 
-        docs1 = self.doc1._impl._impl.directory_reader.load_data(input_files=files)
+        docs1 = self.doc1._impl._reader.load_data(input_files=files)
         assert docs1[0].text != "Call the class YmlReader." and docs1[0].text != "Call the function processYml."
         Document.add_reader("**/*.yml", processYml)
         self.doc1.add_reader("**/*.yml", YmlReader)
-        docs1 = self.doc1._impl._impl.directory_reader.load_data(input_files=files)
-        docs2 = self.doc2._impl._impl.directory_reader.load_data(input_files=files)
+        docs1 = self.doc1._impl._reader.load_data(input_files=files)
+        docs2 = self.doc2._impl._reader.load_data(input_files=files)
         assert docs1[0].text == "Call the class YmlReader." and docs2[0].text == "Call the function processYml."

@@ -156,8 +156,8 @@ add_example('Document.register_global_reader', '''
 >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
 >>> files = ["your_yml_files"]
->>> docs1 = doc1._impl._impl.directory_reader.load_data(input_files=files)
->>> docs2 = doc2._impl._impl.directory_reader.load_data(input_files=files)
+>>> docs1 = doc1._impl._reader.load_data(input_files=files)
+>>> docs2 = doc2._impl._reader.load_data(input_files=files)
 >>> print(docs1[0].text == docs2[0].text)
 # True
 ''')
@@ -207,9 +207,9 @@ add_example('Document.add_reader', '''
 # {}
 >>> files = ["your_yml_files"]
 >>> Document.register_global_reader("**/*.yml", processYml)
->>> doc1._impl._impl.directory_reader.load_data(input_files=files)
+>>> doc1._impl._reader.load_data(input_files=files)
 # Call the class YmlReader.
->>> doc2._impl._impl.directory_reader.load_data(input_files=files)
+>>> doc2._impl._reader.load_data(input_files=files)
 # Call the function processYml.
 ''')
 
@@ -251,7 +251,7 @@ add_example('rag.readers.ReaderBase', '''
 ... 
 >>> files = ["your_yml_files"]
 >>> doc = Document(dataset_path="your_files_path", create_ui=False)
->>> reader = doc._impl._impl.directory_reader.load_data(input_files=files)
+>>> reader = doc._impl._reader.load_data(input_files=files)
 # Call the class YmlReader.
 ''')
 
