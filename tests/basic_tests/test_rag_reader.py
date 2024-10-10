@@ -25,9 +25,9 @@ class TestRagReader(object):
         self.datasets = os.path.join(lazyllm.config['data_path'], "ci_data/rag_reader/default/__data/sources")
 
     def teardown_method(self):
-        self.doc1._local_file_reader = {}
-        self.doc2._local_file_reader = {}
-        Document._registered_file_reader = {}
+        self.doc1._impl._local_file_reader = {}
+        self.doc2._impl._local_file_reader = {}
+        type(self.doc1._impl)._registered_file_reader = {}
 
     def test_reader_file(self):
         files = [os.path.join(self.datasets, "联网搜索.pdf"), os.path.join(self.datasets, "说明文档测试.docx")]
