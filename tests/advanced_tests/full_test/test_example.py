@@ -110,7 +110,7 @@ class TestExamples(object):
 
     @pytest.mark.parametrize('set_enviroment',
                              [('LAZYLLM_DEFAULT_EMBEDDING_ENGINE', ''),
-                              ('LAZYLLM_DEFAULT_EMBEDDING_ENGINE', 'infinity')],
+                              ('LAZYLLM_DEFAULT_EMBEDDING_ENGINE', 'transformers')],
                              indirect=True)
     def test_rag(self, set_enviroment):
         from examples.rag import ppl

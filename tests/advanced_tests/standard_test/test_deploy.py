@@ -79,7 +79,7 @@ class TestDeploy(object):
 
     @pytest.mark.parametrize('set_enviroment',
                              [('LAZYLLM_DEFAULT_EMBEDDING_ENGINE', ''),
-                              ('LAZYLLM_DEFAULT_EMBEDDING_ENGINE', 'infinity')],
+                              ('LAZYLLM_DEFAULT_EMBEDDING_ENGINE', 'transformers')],
                              indirect=True)
     def test_embedding(self, set_enviroment):
         m = lazyllm.TrainableModule('bge-large-zh-v1.5').deploy_method(deploy.AutoDeploy)
