@@ -23,6 +23,7 @@ class Infinity(LazyLLMDeployBase):
                  ):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
+            'host': '0.0.0.0',
             'port': None,
             'batch-size': 256,
         })
