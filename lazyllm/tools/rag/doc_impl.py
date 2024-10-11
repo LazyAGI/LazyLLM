@@ -144,7 +144,8 @@ class DocImpl:
         if not os.path.isabs(self._dataset_path):
             raise ValueError("directory must be an absolute path")
 
-        path = os.path.join(self._dataset_path, self._kb_group_name) if self._kb_group_name else self._dataset_path
+        path = (os.path.join(self._dataset_path, self._kb_group_name)
+                if self._kb_group_name != DocImpl.DEDAULT_GROUP_NAME else self._dataset_path)
 
         try:
             files_list = []
