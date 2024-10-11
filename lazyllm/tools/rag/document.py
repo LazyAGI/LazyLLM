@@ -71,10 +71,10 @@ class Document(ModuleBase):
         return cls.add_reader(pattern, func)
 
     def find_parent(self) -> Callable:
-        return self._impl.find_parent
+        return DocImpl.find_parent
 
     def find_children(self) -> Callable:
-        return self._impl.find_children
+        return DocImpl.find_children
 
     def forward(self, *args, **kw) -> List[DocNode]:
         return self._impl.retrieve(*args, **kw)

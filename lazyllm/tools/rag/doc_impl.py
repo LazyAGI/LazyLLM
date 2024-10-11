@@ -227,7 +227,8 @@ class DocImpl:
             query, nodes, similarity, similarity_cut_off, topk, embed_keys, **similarity_kws
         )
 
-    def find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
+    @staticmethod
+    def find_parent(nodes: List[DocNode], group: str) -> List[DocNode]:
         def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
             if node.parent:
                 if node.parent.group == group:
@@ -244,13 +245,8 @@ class DocImpl:
         LOG.debug(f"Found parent node for {group}: {result}")
         return list(result)
 
-    def find_children(self, nodes: List[DocNode], group: str) -> List[DocNode]:
-        active_groups = self.store.active_groups()
-        if group not in active_groups:
-            raise ValueError(
-                f"group {group} not found in active groups {active_groups}, please retrieve the group first."
-            )
-
+    @staticmethod
+    def find_children(nodes: List[DocNode], group: str) -> List[DocNode]:
         def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
             if group in node.children:
                 visited.update(node.children[group])
