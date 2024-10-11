@@ -38,7 +38,7 @@ class DocImpl:
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or DocImpl.DEDAULT_GROUP_NAME
         self._dataset_path, self._doc_files = dataset_path, doc_files
-        self._reader = DirectoryReader(self._list_files(), self._local_file_reader, DocImpl._registered_file_reader)
+        self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self.store = None
@@ -53,7 +53,7 @@ class DocImpl:
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
         if not self.store.has_nodes(LAZY_ROOT_NAME):
-            root_nodes = self._reader.load_data()
+            root_nodes = self._reader.load_data(self._list_files())
             self.store.add_nodes(root_nodes)
             LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
 
@@ -144,16 +144,18 @@ class DocImpl:
         if not os.path.isabs(self._dataset_path):
             raise ValueError("directory must be an absolute path")
 
+        path = os.path.join(self._dataset_path, self._kb_group_name) if self._kb_group_name else self._dataset_path
+
         try:
             files_list = []
 
-            for root, _, files in os.walk(self._dataset_path):
+            for root, _, files in os.walk(path):
                 files = [os.path.join(root, file_path) for file_path in files]
                 files_list.extend(files)
 
             return files_list
         except Exception as e:
-            LOG.error(f"Error while listing files in {self._dataset_path}: {e}")
+            LOG.error(f"Error while listing files in {path}: {e}")
             return []
 
     def _add_files(self, input_files: List[str]):
