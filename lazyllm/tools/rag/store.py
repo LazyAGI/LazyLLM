@@ -25,15 +25,9 @@ class MetadataMode(str, Enum):
 
 
 class DocNode:
-    def __init__(
-        self,
-        uid: Optional[str] = None,
-        text: Optional[str] = None,
-        group: Optional[str] = None,
-        embedding: Optional[Dict[str, List[float]]] = None,
-        parent: Optional["DocNode"] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> None:
+    def __init__(self, uid: Optional[str] = None, text: Optional[str] = None, group: Optional[str] = None,
+                 embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
+                 metadata: Optional[Dict[str, Any]] = None, classfication: Optional[str] = None):
         self.uid: str = uid if uid else str(uuid.uuid4())
         self.text: Optional[str] = text
         self.group: Optional[str] = group
@@ -48,7 +42,9 @@ class DocNode:
         self.is_saved: bool = False
         self._docpath = None
         self._lock = threading.Lock()
-        self.embedding_state = set()
+        self._embedding_state = set()
+        # store will create index cache for classfication to speed up retrieve
+        self._classfication = classfication
 
     @property
     def root_node(self) -> Optional["DocNode"]:
@@ -132,7 +128,7 @@ class DocNode:
         while True:
             with self._lock:
                 if not self.has_missing_embedding(embed_key):
-                    self.embedding_state.discard(embed_key)
+                    self._embedding_state.discard(embed_key)
                     break
             time.sleep(1)
 
