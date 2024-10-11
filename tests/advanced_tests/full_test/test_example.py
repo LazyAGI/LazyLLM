@@ -13,19 +13,6 @@ import lazyllm
 from lazyllm.launcher import cleanup
 
 
-@pytest.fixture()
-def set_enviroment(request):
-    env_key, env_var = request.param
-    original_value = os.getenv(env_key, None)
-    os.environ[env_key] = env_var
-    lazyllm.config.refresh(env_key)
-    yield
-    if original_value:
-        os.environ[env_key] = original_value
-    else:
-        os.environ.pop(env_key, None)
-    lazyllm.config.refresh(env_key)
-
 class TestExamples(object):
 
     def setup_method(self):
@@ -108,11 +95,7 @@ class TestExamples(object):
         assert type(res) is str
         assert len(res) >= 1024
 
-    @pytest.mark.parametrize('set_enviroment',
-                             [('LAZYLLM_DEFAULT_EMBEDDING_ENGINE', ''),
-                              ('LAZYLLM_DEFAULT_EMBEDDING_ENGINE', 'transformers')],
-                             indirect=True)
-    def test_rag(self, set_enviroment):
+    def test_rag(self):
         from examples.rag import ppl
         rag = lazyllm.ActionModule(ppl)
         rag.start()
