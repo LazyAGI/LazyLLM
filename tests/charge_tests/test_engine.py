@@ -96,13 +96,14 @@ class TestEngine(object):
                   "道德修养和社会实践达到最高的善治状态。\n注意以上仅为示例，禁止在下面任务中提取或使用上述示例已知国学篇章。"
                   "\n现在，请对比以下给定的国学篇章和给出的问题。如果已知国学篇章中有该问题相关的原文，请提取相关原文出来。\n"
                   "已知国学篇章：{context_str}\n")
-        resources = [dict(id='0', kind='Document', name='d1', args=dict(
-            dataset_path='rag_master', node_group=[dict(name='sentence', transform='SentenceSplitter',
-                                                        chunk_size=100, chunk_overlap=10)]))]
+        resources = [
+            dict(id='00', kind='OnlineEmbedding', name='e1', args=dict(source='glm')),
+            dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', embed='00', node_group=[
+                dict(name='sentence', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))]
         nodes = [dict(id='1', kind='Retriever', name='ret1',
                       args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
                  dict(id='2', kind='Retriever', name='ret2',
-                      args=dict(doc='0', group_name='sentence', similarity='bm25', topk=3)),
+                      args=dict(doc='0', group_name='sentence', similarity='cosine', topk=3)),
                  dict(id='3', kind='JoinFormatter', name='c', args=dict(type='sum')),
                  dict(id='4', kind='Reranker', name='rek1',
                       args=dict(type='ModuleReranker', output_format='content', join=True,
@@ -117,7 +118,8 @@ class TestEngine(object):
                  dict(iid='6', oid='__end__')]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
-        assert '观天之道，执天之行' in engine.run('何为天道?')
+        r = engine.run('何为天道?')
+        assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
 
     def test_sql_call(self):
         db_type = "PostgreSQL"

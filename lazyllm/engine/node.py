@@ -54,10 +54,25 @@ all_nodes['OnlineLLM'] = dict(
     init_arguments=dict(
         source=NodeArgs(str),
         base_model=NodeArgs(str),
+        base_url=NodeArgs(str),
         stream=NodeArgs(bool, True),
         return_trace=NodeArgs(bool, False)),
     builder_argument=dict(
         prompt=NodeArgs(str)),
+)
+
+all_nodes['LocalEmbedding'] = dict(
+    module=lazyllm.TrainableModule,
+    init_arguments=dict(base_model=NodeArgs(str)),
+    builder_argument=dict(deploy_method=NodeArgs(str, 'infinity', getattr_f=partial(getattr, lazyllm.deploy)))
+)
+
+all_nodes['OnlineEmbedding'] = dict(
+    module=lazyllm.OnlineEmbeddingModule,
+    init_arguments=dict(
+        source=NodeArgs(str),
+        embed_model_name=NodeArgs(str),
+        embed_url=NodeArgs(str))
 )
 
 all_nodes['SD'] = all_nodes['TTS'] = all_nodes['STT'] = dict(
