@@ -543,10 +543,6 @@ Keyword Args:
     host (str): 服务的IP地址，默认为 ``0.0.0.0``。
     port (int): 服务的端口号，默认为 ``None``,此情况下LazyLLM会自动生成随机端口号。
     batch-size (int): 最大batch数， 默认为 ``256``。
-
-Notes:
-    使用 [TrainableModule][lazyllm.module.TrainableModule] 来加载 Embedding 模型时候，如果要使用 Infinity 需要在 `import lazyllm` 之前设置环境变量：`export LAZYLLM_DEFAULT_EMBEDDING_ENGINE=infinity`，并且确保已安装了 Infinity 的相关依赖。
-
 ''')
 
 add_english_doc('deploy.Infinity', '''\
@@ -562,10 +558,6 @@ Keyword Args:
     host (str): The IP address of the service, defaulting to ``0.0.0.0``.
     port (int): The port number of the service, defaulting to ``None``, in which case LazyLLM will automatically generate a random port number.
     batch-size (int): The maximum batch size, defaulting to ``256``.
-
-Notes:
-    When loading the Embedding model with [TrainableModule][lazyllm.module.TrainableModule], if you intend to use Infinity, you must set the environment variable before `import lazyllm`: `export LAZYLLM_DEFAULT_EMBEDDING_ENGINE=infinity`, and ensure that the dependencies for Infinity are properly installed.
-
 ''')
 
 add_example('deploy.Infinity', '''\
