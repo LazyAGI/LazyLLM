@@ -20,7 +20,7 @@ class AutoDeploy(LazyLLMDeployBase):
         base_model = ModelManager(source).download(base_model)
         model_name = get_model_name(base_model)
         if type == 'embed' or ModelManager.get_model_type(model_name) == 'embed':
-            if check_requirements('infinity_emb') and lazyllm.config['default_embedding_engine'] == 'infinity':
+            if lazyllm.config['default_embedding_engine'] == 'infinity':
                 return deploy.Infinity(launcher)
             else:
                 return EmbeddingDeploy(launcher)
