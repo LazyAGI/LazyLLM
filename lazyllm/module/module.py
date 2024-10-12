@@ -229,7 +229,7 @@ class UrlModule(ModuleBase, UrlTemplate):
         self._stream = stream
         # Set for request by specific deploy:
         UrlTemplate.__init__(self)
-        self._extract_result_func = lambda x: x
+        self._extract_result_func = lambda x, inputs: x
         self._stream_parse_parameters = {}
         self._stream_url_suffix = ''
         __class__.prompt(self)
@@ -305,7 +305,7 @@ class UrlModule(ModuleBase, UrlTemplate):
                         line = pickle.loads(codecs.decode(line, "base64"))
                     except Exception:
                         line = line.decode('utf-8')
-                    chunk = self._prompt.get_response(self._extract_result_func(line))
+                    chunk = self._prompt.get_response(self._extract_result_func(line, data))
                     if isinstance(chunk, str):
                         if chunk.startswith(messages): chunk = chunk[len(messages):]
                         messages += chunk
