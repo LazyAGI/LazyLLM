@@ -5,10 +5,10 @@ fastapi>=0.111.0
 loguru>=0.7.2
 pydantic>=2.5.0
 requests>=2.32.2
-uvicorn<0.29.0
+uvicorn
 cloudpickle>=3.0.0
 flake8>=7.0.0
-gradio>=3.48.0
+gradio<5.0.0
 gradio-client>=0.6.1
 protobuf>=3.20.1
 setuptools<70.0.0
@@ -58,6 +58,10 @@ timm
 diffusers
 sortedcontainers
 flash-attn<=2.6.2
-lightllm
 lazyllm-llamafactory
 rotary-embedding-torch
+lightllm
+infinity-emb
+ctranslate2
+optimum>=1.16.2
+typer
