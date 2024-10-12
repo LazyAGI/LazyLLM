@@ -19,6 +19,9 @@ env:
   
 jobs:
   macos-basic_tests:
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
     runs-on: macos-13
 
     steps:
@@ -86,6 +89,9 @@ jobs:
          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}       
 
   macos-charge_tests:
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
     runs-on: macos-13
 
     steps:

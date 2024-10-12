@@ -36,7 +36,7 @@ class DocListManager(object):
             self.add_files_to_kb_group(files_list, group=DocListManager.DEDAULT_GROUP_NAME)
         return self
 
-    def list_files(self, limit: Optional[int] = None, details: bool = False): pass
+    def list_files(self, limit: Optional[int] = None, details: bool = False, status: str = 'all'): pass
     def list_all_kb_group(self): pass
     def list_kb_group_files(self, group: str, limit: Optional[int] = None, details: bool = False): pass
     def add_files(self, files: List[str], metadatas: Optional[List] = None): pass
@@ -46,7 +46,7 @@ class DocListManager(object):
     def delete_files_from_kb_group(self, files: List[str], group: str): pass
     def get_file_status(self, fileid: str): pass
     def update_file_status(self, fileid: str, status: str): pass
-    def update_kb_group_file_status(self, group: str, fileid: str, status: str): pass
+    def update_kb_group_file_status(self, group: str, file_ids: str, status: str): pass
 
 
 class BaseResponse(BaseModel):

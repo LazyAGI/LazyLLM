@@ -1,7 +1,7 @@
 import ast
 from collections import defaultdict
 from functools import wraps
-from typing import Callable, Dict, List, Optional, Set, Union
+from typing import Callable, Dict, List, Optional, Set, Union, Tuple
 from lazyllm import LOG, config, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
@@ -9,6 +9,8 @@ from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, BaseStore
 from .data_loaders import DirectoryReader
 from .index import DefaultIndex
 from .utils import DocListManager
+import threading
+import time
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
@@ -52,9 +54,16 @@ class DocImpl:
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
         if not self.store.has_nodes(LAZY_ROOT_NAME):
-            root_nodes = self._reader.load_data(self._list_files())
+            ids, pathes = self._list_files()
+            root_nodes = self._reader.load_data(pathes)
             self.store.add_nodes(root_nodes)
+            self._dlm.update_kb_group_file_status(self._kb_group_name, ids, 'success')
             LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
+
+        if self._dlm:
+            self._daemon = threading.Thread(target=self.worker)
+            self._daemon.setDaemon(True)
+            self._daemon.start()
 
     def _get_store(self) -> BaseStore:
         rag_store_type = config["rag_store_type"]
@@ -137,10 +146,18 @@ class DocImpl:
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
 
-    # TODO(wangzhihong): modify here to fit kb-groups
-    def _list_files(self) -> List[str]:
+    def worker(self):
+        while True:
+            ids, files = self._list_files(status='waiting')
+            if files:
+                self._dlm.update_kb_group_file_status(self._kb_group_name, ids, 'processing')
+                self._add_files(files)
+                self._dlm.update_kb_group_file_status(self._kb_group_name, ids, 'success')
+            time.sleep(10)
+
+    def _list_files(self, status: str = 'all') -> Tuple[List[str], List[str]]:
         if self._doc_files: return self._doc_files
-        return self._dlm.list_files()
+        return self._dlm.list_files(status=status)
 
     def _add_files(self, input_files: List[str]):
         if len(input_files) == 0:
