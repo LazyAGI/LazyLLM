@@ -148,6 +148,13 @@ class DocImpl:
 
     def worker(self):
         while True:
+            ids, files = self._list_files(status='delete')
+            if files:
+                self._dlm.update_kb_group_file_status(self._kb_group_name, ids, 'deleting')
+                self._delete_files(files)
+                self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
+                continue
+
             ids, files = self._list_files(status='waiting')
             if files:
                 self._dlm.update_kb_group_file_status(self._kb_group_name, ids, 'processing')

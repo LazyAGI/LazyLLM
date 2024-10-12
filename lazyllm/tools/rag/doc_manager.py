@@ -21,27 +21,35 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.get("/list_kb_groups")
     def list_kb_groups(self):
-        pass
+        return BaseResponse(data=self._manager.list_all_kb_group())
 
     @app.post("/upload_files")
     def upload_files(self, files: List[UploadFile], override: bool):
-        pass
+        self._manager.add_files(files)
+        return BaseResponse()
 
     @app.get("/list_files")
     def list_files(self, group_name: str):
-        pass
+        return BaseResponse(data=self._manager.list_files())
+
+    @app.get("/list_files_in_group")
+    def list_files_in_group(self, group_name: str):
+        return BaseResponse(data=self._manager.list_kb_group_files(group_name, details=True))
 
     @app.post("/add_files_to_group")
     def add_files_to_group(self, files: List[UploadFile], group_name: str):
-        pass
+        self._manager.add_files_to_kb_group(files, group_name)
+        return BaseResponse()
 
     @app.post("/delete_files")
     def delete_file(self, file_names: str):
-        pass
+        self._manager.delete_files(file_names)
+        return BaseResponse()
 
     @app.post("/delete_files_from_group")
     def delete_files_from_group(self, group_name: str, file_names: str):
-        pass
+        self._manager.delete_files_from_kb_group(file_names, group_name)
+        return BaseResponse()
 
     def __repr__(self):
         return lazyllm.make_repr("Module", "DocManager")
