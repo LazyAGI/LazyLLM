@@ -5,14 +5,15 @@ from fastapi import UploadFile
 
 import lazyllm
 from lazyllm import FastapiApp as app
+from .utils import DocListManager
 
 from .utils import BaseResponse
 
 
 class DocManager(lazyllm.ModuleBase):
-    def __init__(self, root: str) -> None:
+    def __init__(self, dlm: DocListManager) -> None:
         super().__init__()
-        self._root = root
+        self._manager = dlm
 
     @app.get("/", response_model=BaseResponse, summary="docs")
     def document(self):

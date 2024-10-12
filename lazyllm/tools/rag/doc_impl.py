@@ -8,7 +8,7 @@ from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMP
 from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, BaseStore
 from .data_loaders import DirectoryReader
 from .index import DefaultIndex
-import os
+from .utils import DocListManager
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
@@ -26,18 +26,17 @@ def embed_wrapper(func):
 
 
 class DocImpl:
-    DEDAULT_GROUP_NAME = '__default__'
     _builtin_node_groups: Dict[str, Dict] = {}
     _global_node_groups: Dict[str, Dict] = {}
     _registered_file_reader: Dict[str, Callable] = {}
 
-    def __init__(self, embed: Dict[str, Callable], dataset_path: Optional[str] = None,
+    def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: str = None):
         super().__init__()
-        assert (dataset_path is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
+        assert (dlm is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
         self._local_file_reader: Dict[str, Callable] = {}
-        self._kb_group_name = kb_group_name or DocImpl.DEDAULT_GROUP_NAME
-        self._dataset_path, self._doc_files = dataset_path, doc_files
+        self._kb_group_name = kb_group_name or DocListManager.DEDAULT_GROUP_NAME
+        self._dlm, self._doc_files = dlm, doc_files
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
@@ -141,23 +140,7 @@ class DocImpl:
     # TODO(wangzhihong): modify here to fit kb-groups
     def _list_files(self) -> List[str]:
         if self._doc_files: return self._doc_files
-        if not os.path.isabs(self._dataset_path):
-            raise ValueError("directory must be an absolute path")
-
-        path = (os.path.join(self._dataset_path, self._kb_group_name)
-                if self._kb_group_name != DocImpl.DEDAULT_GROUP_NAME else self._dataset_path)
-
-        try:
-            files_list = []
-
-            for root, _, files in os.walk(path):
-                files = [os.path.join(root, file_path) for file_path in files]
-                files_list.extend(files)
-
-            return files_list
-        except Exception as e:
-            LOG.error(f"Error while listing files in {path}: {e}")
-            return []
+        return self._dlm.list_files()
 
     def _add_files(self, input_files: List[str]):
         if len(input_files) == 0:

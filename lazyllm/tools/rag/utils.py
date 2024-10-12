@@ -1,6 +1,6 @@
 import os
 import shutil
-from typing import List, Callable, Generator, Dict, Any
+from typing import List, Callable, Generator, Dict, Any, Optional
 
 import pydantic
 from pydantic import BaseModel
@@ -8,6 +8,45 @@ from fastapi import UploadFile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import lazyllm
+
+
+@lazyllm.singleton
+class DocListManager(object):
+    DEDAULT_GROUP_NAME = '__default__'
+
+    def __init__(self, path, name):
+        self._path = path
+        self._name = name
+        self._id = path + name
+        if not os.path.isabs(path):
+            raise ValueError("directory must be an absolute path")
+
+    def table_inited(self): return False
+
+    def init_tables(self) -> 'DocListManager':
+        if not self.table_inited():
+            # init tables
+
+            # add files to tables
+            files_list = []
+            for root, _, files in os.walk(self._path):
+                files = [os.path.join(root, file_path) for file_path in files]
+                files_list.extend(files)
+            self.add_files(files_list)
+            self.add_files_to_kb_group(files_list, group=DocListManager.DEDAULT_GROUP_NAME)
+        return self
+
+    def list_files(self, limit: Optional[int] = None, details: bool = False): pass
+    def list_all_kb_group(self): pass
+    def list_kb_group_files(self, group: str, limit: Optional[int] = None, details: bool = False): pass
+    def add_files(self, files: List[str], metadatas: Optional[List] = None): pass
+    def update_file_message(self, fileid: str, **kw): pass
+    def add_files_to_kb_group(self, files: List[str], group: str): pass
+    def delete_files(self, files: List[str]): pass
+    def delete_files_from_kb_group(self, files: List[str], group: str): pass
+    def get_file_status(self, fileid: str): pass
+    def update_file_status(self, fileid: str, status: str): pass
+    def update_kb_group_file_status(self, group: str, fileid: str, status: str): pass
 
 
 class BaseResponse(BaseModel):
