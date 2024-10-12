@@ -18,10 +18,10 @@ fastapi = ">=0.111.0"
 loguru = ">=0.7.2"
 pydantic = ">=2.5.0"
 requests = ">=2.32.2"
-uvicorn = "<0.29.0"
+uvicorn = "^0.23.2"
 cloudpickle = ">=3.0.0"
 flake8 = ">=7.0.0"
-gradio = ">=3.48.0"
+gradio = "<5.0.0"
 gradio-client = ">=0.6.1"
 protobuf = ">=3.20.1"
 setuptools = "<70.0.0"
@@ -74,6 +74,10 @@ flash-attn = {version = "<=2.6.2", optional = true}
 lightllm = {version = "^0.0.1", optional = true}
 lazyllm-llamafactory = {version = "^0.8.3.dev0", optional = true}
 rotary-embedding-torch = {version = "^0.8.3", optional = true}
+infinity-emb = {version = "^0.0.63", optional = true}
+ctranslate2 = {version = "^4.0.0", optional = true}
+optimum = {version = ">=1.16.2", optional = true}
+typer = {version = "^0.12.5", optional = true}
 
 [tool.poetry.extras]
 standard = [
@@ -97,7 +101,11 @@ standard = [
     "timm",
     "diffusers",
     "lazyllm-llamafactory",
-    "rotary-embedding-torch"
+    "rotary-embedding-torch",
+    "infinity-emb",
+    "ctranslate2",
+    "optimum",
+    "typer"
 ]
 full = [
     "datasets",
@@ -129,7 +137,11 @@ full = [
     "flash-attn",
     "lazyllm-llamafactory",
     "rotary-embedding-torch",
-    "lightllm"
+    "lightllm",
+    "infinity-emb",
+    "ctranslate2",
+    "optimum",
+    "typer"
 ]
 
 [build-system]
