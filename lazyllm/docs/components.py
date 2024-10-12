@@ -529,6 +529,44 @@ add_example('deploy.LMDeploy', '''\
 >>> res = chat('What is it?')
 ''')
 
+# Deploy-Infinity
+add_chinese_doc('deploy.Infinity', '''\
+此类是 ``LazyLLMDeployBase`` 的子类，基于 [Infinity](https://github.com/michaelfeil/infinity) 框架提供的高性能文本嵌入、重排序和CLIP等能力。
+
+Args:
+    launcher (lazyllm.launcher): Infinity 的启动器，默认为 ``launchers.remote(ngpus=1)``。
+    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
+
+此类的关键字参数及其默认值如下：
+
+Keyword Args: 
+    host (str): 服务的IP地址，默认为 ``0.0.0.0``。
+    port (int): 服务的端口号，默认为 ``None``,此情况下LazyLLM会自动生成随机端口号。
+    batch-size (int): 最大batch数， 默认为 ``256``。
+''')
+
+add_english_doc('deploy.Infinity', '''\
+This class is a subclass of ``LazyLLMDeployBase``, providing high-performance text-embeddings, reranking, and CLIP capabilities based on the [Infinity](https://github.com/michaelfeil/infinity) framework.
+
+Args:
+    launcher (lazyllm.launcher): The launcher for Infinity, defaulting to ``launchers.remote(ngpus=1)``.
+    kw: Keyword arguments for updating default training parameters. Note that no additional keyword arguments can be passed here except those listed below.
+
+The keyword arguments and their default values for this class are as follows:
+
+Keyword Args: 
+    host (str): The IP address of the service, defaulting to ``0.0.0.0``.
+    port (int): The port number of the service, defaulting to ``None``, in which case LazyLLM will automatically generate a random port number.
+    batch-size (int): The maximum batch size, defaulting to ``256``.
+''')
+
+add_example('deploy.Infinity', '''\
+>>> import lazyllm
+>>> from lazyllm import deploy
+>>> deploy.Infinity()
+<lazyllm.llm.deploy type=Infinity>
+''')
+
 # Deploy-Auto
 add_chinese_doc('auto.AutoDeploy', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，可根据输入的参数自动选择合适的推理框架和参数，以对大语言模型进行推理。

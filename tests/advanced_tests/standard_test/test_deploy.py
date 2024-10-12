@@ -10,6 +10,20 @@ import lazyllm
 from lazyllm import deploy, globals
 from lazyllm.launcher import cleanup
 
+
+@pytest.fixture()
+def set_enviroment(request):
+    env_key, env_var = request.param
+    original_value = os.getenv(env_key, None)
+    os.environ[env_key] = env_var
+    lazyllm.config.refresh(env_key)
+    yield
+    if original_value:
+        os.environ[env_key] = original_value
+    else:
+        os.environ.pop(env_key, None)
+    lazyllm.config.refresh(env_key)
+
 class TestDeploy(object):
 
     def setup_method(self):
@@ -63,7 +77,11 @@ class TestDeploy(object):
         m.eval()
         assert len(m.eval_result) == len(self.inputs)
 
-    def test_embedding(self):
+    @pytest.mark.parametrize('set_enviroment',
+                             [('LAZYLLM_DEFAULT_EMBEDDING_ENGINE', ''),
+                              ('LAZYLLM_DEFAULT_EMBEDDING_ENGINE', 'transformers')],
+                             indirect=True)
+    def test_embedding(self, set_enviroment):
         m = lazyllm.TrainableModule('bge-large-zh-v1.5').deploy_method(deploy.AutoDeploy)
         m.update_server()
         res = m('你好')
