@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Dict
 
 from starlette.responses import RedirectResponse
 from fastapi import UploadFile
@@ -27,24 +27,26 @@ class DocManager(lazyllm.ModuleBase):
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/upload_files")
-    def upload_files(self, files: List[UploadFile], override: bool):
+    def upload_files(self, files: List[UploadFile], override: bool, metadatas: List[Dict]):
         try:
-            self._manager.add_files(files)
+            self._manager.add_files(files, metadatas=metadatas, status=DocListManager.Status.waiting)
+            # upload
+            self._manager.update_file_status(files, status=DocListManager.Status.success)
             return BaseResponse()
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.get("/list_files")
-    def list_files(self, group_name: str):
+    def list_files(self, limit: Optional[int] = None, details: bool = True):
         try:
-            return BaseResponse(data=self._manager.list_files())
+            return BaseResponse(data=self._manager.list_files(limit=limit, details=details))
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.get("/list_files_in_group")
-    def list_files_in_group(self, group_name: str):
+    def list_files_in_group(self, group_name: str, limit: Optional[int] = None):
         try:
-            return BaseResponse(data=self._manager.list_kb_group_files(group_name, details=True))
+            return BaseResponse(data=self._manager.list_kb_group_files(group_name, limit, details=True))
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 

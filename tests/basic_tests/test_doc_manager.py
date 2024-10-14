@@ -26,7 +26,7 @@ class TestDocListManager(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(str(self.test_dir))
-        self.manager.close()
+        self.manager.release()
 
     def test_init_tables(self):
         self.manager.init_tables()

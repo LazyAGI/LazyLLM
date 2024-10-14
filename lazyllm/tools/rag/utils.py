@@ -89,7 +89,7 @@ class DocListManager(ABC):
     @abstractmethod
     def update_kb_group_file_status(self, group: str, file_ids: Union[str, List[str]], status: str): pass
     @abstractmethod
-    def close(self): pass
+    def release(self): pass
 
 
 class SqliteDocListManager(DocListManager):
@@ -250,7 +250,7 @@ class SqliteDocListManager(DocListManager):
             raise RuntimeError(f'{e}\n args are:\n    {status}({type(status)}), {group}({type(group)}),'
                                f'{file_ids}({type(file_ids)})')
 
-    def close(self):
+    def release(self):
         self._conn.close()
         os.system(f'rm {self._db_path}')
 
