@@ -173,6 +173,23 @@ class EmptyLauncher(LazyLLMLaunchersBase):
         def __init__(self, cmd, launcher, *, sync=True):
             super(__class__, self).__init__(cmd, launcher, sync=sync)
 
+        def _wrap_cmd(self, cmd):
+            gpus = self.launcher._get_idle_gpus()
+            if gpus:
+                if self.launcher.ngpus in (None, 0):
+                    empty_cmd = f'export CUDA_VISIBLE_DEVICES={gpus[0]} && '
+                elif self.launcher.ngpus <= len(gpus):
+                    empty_cmd = 'export CUDA_VISIBLE_DEVICES=' + \
+                                ','.join([str(n) for n in gpus[:self.launcher.ngpus]]) + ' && '
+                else:
+                    error_info = (f'Not enough GPUs available. Requested {self.launcher.ngpus} GPUs, '
+                                  f'but only {len(gpus)} are available.')
+                    LOG.error(error_info)
+                    raise error_info
+            else:
+                empty_cmd = ''
+            return empty_cmd + cmd
+
         def stop(self):
             if self.ps:
                 try:
@@ -230,6 +247,23 @@ class EmptyLauncher(LazyLLMLaunchersBase):
         else:
             raise RuntimeError('Invalid cmd given, please check the return value of cmd.')
 
+    def _get_idle_gpus(self):
+        try:
+            order_list = subprocess.check_output(
+                ['nvidia-smi', '--query-gpu=index,memory.free', '--format=csv,noheader,nounits'],
+                encoding='utf-8'
+            )
+        except Exception as e:
+            LOG.error(f"An error occurred: {e}")
+            return []
+        lines = order_list.strip().split('\n')
+        gpu_info = []
+        for line in lines:
+            index, memory_free = line.split(', ')
+            gpu_info.append((int(index), int(memory_free)))
+        gpu_info.sort(key=lambda x: x[1], reverse=True)
+        LOG.info('Memory left:\n' + '\n'.join([f'{item[0]} GPU, left: {item[1]} MiB' for item in gpu_info]))
+        return [info[0] for info in gpu_info]
 
 @final
 class SlurmLauncher(LazyLLMLaunchersBase):
