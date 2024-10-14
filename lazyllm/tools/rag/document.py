@@ -32,7 +32,10 @@ class Document(ModuleBase):
             if manager: self._manager = DocManager(self._dlm)
             if server: self._doc = ServerModule(self._doc)
 
-        def add_kb_group(self, name): self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name)
+        def add_kb_group(self, name):
+            self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name)
+            self._dlm.add_kb_group(name)
+
         def get_doc_by_kb_group(self, name): return self._kbs[name]
 
     def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,

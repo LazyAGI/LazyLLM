@@ -44,6 +44,7 @@ class DocListManager(ABC):
                 files = [os.path.join(root, file_path) for file_path in files]
                 files_list.extend(files)
             self.add_files(files_list)
+            self.add_kb_group(DocListManager.DEDAULT_GROUP_NAME)
             self.add_files_to_kb_group(files_list, group=DocListManager.DEDAULT_GROUP_NAME)
         return self
 
@@ -55,6 +56,8 @@ class DocListManager(ABC):
     def list_files(self, limit: Optional[int] = None, details: bool = False, status: str = 'all'): pass
     @abstractmethod
     def list_all_kb_group(self): pass
+    @abstractmethod
+    def add_kb_group(self, name): pass
 
     @abstractmethod
     def list_kb_group_files(self, group: str, limit: Optional[int] = None,
@@ -107,7 +110,7 @@ class SqliteDocListManager(DocListManager):
             """)
             self._conn.execute("""
                 CREATE TABLE IF NOT EXISTS document_groups (
-                    group_id TEXT PRIMARY KEY,
+                    group_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     group_name TEXT NOT NULL
                 )
             """)
@@ -143,6 +146,10 @@ class SqliteDocListManager(DocListManager):
     def list_all_kb_group(self):
         cursor = self._conn.execute("SELECT group_name FROM document_groups")
         return [row[0] for row in cursor]
+
+    def add_kb_group(self, name):
+        with self._conn:
+            self._conn.execute('INSERT OR IGNORE INTO document_groups (group_name) VALUES (?)', (name,))
 
     def list_kb_group_files(self, group: str, limit: Optional[int] = None, details: bool = False, status: str = 'all'):
         query = """

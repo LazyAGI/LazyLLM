@@ -50,6 +50,15 @@ class TestDocListManager(unittest.TestCase):
         files_list = self.manager.list_kb_group_files(DocListManager.DEDAULT_GROUP_NAME, details=True)
         assert len(files_list) == 4
 
+    def test_list_kb_groups(self):
+        self.manager.init_tables()
+        assert len(self.manager.list_all_kb_group()) == 1
+
+        self.manager.add_kb_group('group1')
+        self.manager.add_kb_group('group2')
+        r = self.manager.list_all_kb_group()
+        assert len(r) == 3 and self.manager.DEDAULT_GROUP_NAME in r and 'group2' in r
+
     def test_delete_files(self):
         self.manager.init_tables()
 
