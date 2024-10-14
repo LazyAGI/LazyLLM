@@ -72,6 +72,8 @@ class DocListManager(ABC):
     def update_file_status(self, fileid: str, status: str): pass
     @abstractmethod
     def update_kb_group_file_status(self, group: str, file_ids: str, status: str): pass
+    @abstractmethod
+    def close(self): pass
 
 
 class SqliteDocListManager(DocListManager):
@@ -146,12 +148,16 @@ class SqliteDocListManager(DocListManager):
         with self._conn:
             for i, file_path in enumerate(files):
                 filename = os.path.basename(file_path)
-                metadata = metadatas[i] if metadatas else None
+                metadata = metadatas[i] if metadatas else ''
                 doc_id = hashlib.sha256(f'{filename}@+@{file_path}'.encode()).hexdigest()
-                self._conn.execute("""
-                    INSERT OR IGNORE INTO documents (doc_id, filename, path, metadata, status, count)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (doc_id, filename, file_path, metadata, 'uploaded', 1))
+                try:
+                    self._conn.execute("""
+                        INSERT OR IGNORE INTO documents (doc_id, filename, path, metadata, status, count)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (doc_id, filename, file_path, metadata, 'uploaded', 1))
+                except sqlite3.InterfaceError as e:
+                    raise RuntimeError(f'{e}\n args are:\n    {doc_id}({type(doc_id)}), {filename}({type(filename)}),'
+                                       f'{file_path}({type(file_path)}), {metadata}({type(metadata)})')
 
     def update_file_message(self, fileid: str, **kw):
         set_clause = ", ".join([f"{k} = ?" for k in kw.keys()])
@@ -195,6 +201,10 @@ class SqliteDocListManager(DocListManager):
         with self._conn:
             self._conn.execute("UPDATE kb_group_documents SET status = ? WHERE group_name = ? AND doc_id = ?",
                                (status, group, file_ids))
+
+    def close(self):
+        self._conn.close()
+        os.system(f'rm {self._db_path}')
 
 
 DocListManager.__pool__ = dict(sqlite=SqliteDocListManager)
