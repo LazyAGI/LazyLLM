@@ -62,7 +62,8 @@ lazyllm.config.add('partition', str, 'your_part', 'SLURM_PART')
 lazyllm.config.add('sco.workspace', str, 'your_workspace', 'SCO_WORKSPACE')
 lazyllm.config.add('sco_env_name', str, '', 'SCO_ENV_NAME')
 lazyllm.config.add('sco_keep_record', bool, False, 'SCO_KEEP_RECORD')
-lazyllm.config.add("sco_resource_type", str, "N3lS.Ii.I60", "SCO_RESOURCE_TYPE")
+lazyllm.config.add('sco_resource_type', str, 'N3lS.Ii.I60', 'SCO_RESOURCE_TYPE')
+lazyllm.config.add('cuda_visible', bool, False, 'CUDA_VISIBLE')
 
 
 # store cmd, return message and command output.
@@ -175,11 +176,11 @@ class EmptyLauncher(LazyLLMLaunchersBase):
 
         def _wrap_cmd(self, cmd):
             gpus = self.launcher._get_idle_gpus()
-            if gpus:
+            if gpus and lazyllm.config['cuda_visible']:
                 if self.launcher.ngpus in (None, 0):
-                    empty_cmd = f'export CUDA_VISIBLE_DEVICES={gpus[0]} && '
+                    empty_cmd = f'CUDA_VISIBLE_DEVICES={gpus[0]} && '
                 elif self.launcher.ngpus <= len(gpus):
-                    empty_cmd = 'export CUDA_VISIBLE_DEVICES=' + \
+                    empty_cmd = 'CUDA_VISIBLE_DEVICES=' + \
                                 ','.join([str(n) for n in gpus[:self.launcher.ngpus]]) + ' && '
                 else:
                     error_info = (f'Not enough GPUs available. Requested {self.launcher.ngpus} GPUs, '
@@ -257,10 +258,16 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             LOG.error(f"An error occurred: {e}")
             return []
         lines = order_list.strip().split('\n')
+
+        str_num = os.getenv('CUDA_VISIBLE_DEVICES', None)
+        if str_num:
+            sub_gpus = [int(x) for x in str_num.strip().split(',')]
+
         gpu_info = []
         for line in lines:
             index, memory_free = line.split(', ')
-            gpu_info.append((int(index), int(memory_free)))
+            if not str_num or int(index) in sub_gpus:
+                gpu_info.append((int(index), int(memory_free)))
         gpu_info.sort(key=lambda x: x[1], reverse=True)
         LOG.info('Memory left:\n' + '\n'.join([f'{item[0]} GPU, left: {item[1]} MiB' for item in gpu_info]))
         return [info[0] for info in gpu_info]
