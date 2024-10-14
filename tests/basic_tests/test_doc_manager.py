@@ -72,7 +72,7 @@ class TestDocListManager(unittest.TestCase):
         self.manager.init_tables()
 
         self.manager.add_files([self.test_file_1])
-        file_id = hashlib.sha256(f'test1.txt@+@{self.test_file_1}'.encode()).hexdigest()
+        file_id = hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()
         self.manager.update_file_message(file_id, metadata="New metadata", status="processed")
 
         conn = sqlite3.connect(self.manager._db_path)
@@ -83,22 +83,20 @@ class TestDocListManager(unittest.TestCase):
         assert row[0] == "New metadata"
         assert row[1] == "processed"
 
-    def test_get_file_status(self):
+    def test_get_and_update_file_status(self):
         self.manager.init_tables()
 
-        self.manager.add_files([self.test_file_1])
-        file_id = hashlib.sha256(f'test1.txt@+@{self.test_file_1}'.encode()).hexdigest()
+        file_id = hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()
         status = self.manager.get_file_status(file_id)
-        assert status[0] == "uploaded"
+        assert status[0] == DocListManager.Status.success
 
-    def test_update_file_status(self):
-        self.manager.init_tables()
-
-        self.manager.add_files([self.test_file_1])
-        file_id = hashlib.sha256(f'test1.txt@+@{self.test_file_1}'.encode()).hexdigest()
-        self.manager.update_file_status(file_id, "parsed")
+        self.manager.add_files([self.test_file_1], status=DocListManager.Status.waiting)
         status = self.manager.get_file_status(file_id)
-        assert status[0] == "parsed"
+        assert status[0] == DocListManager.Status.success
+
+        self.manager.update_file_status(file_id, DocListManager.Status.waiting)
+        status = self.manager.get_file_status(file_id)
+        assert status[0] == DocListManager.Status.waiting
 
     def test_add_files_to_kb_group(self):
         self.manager.init_tables()

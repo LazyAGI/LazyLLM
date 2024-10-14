@@ -21,6 +21,15 @@ class DocListManager(ABC):
     DEDAULT_GROUP_NAME = '__default__'
     __pool__ = dict()
 
+    class Status:
+        all = 'all'
+        waiting = 'waiting'
+        working = 'working'
+        success = 'success'
+        failed = 'failed'
+        deleting = 'deleting'
+        deleting = 'deleted'
+
     def __init__(self, path, name):
         self._path = path
         self._name = name
@@ -43,7 +52,7 @@ class DocListManager(ABC):
             for root, _, files in os.walk(self._path):
                 files = [os.path.join(root, file_path) for file_path in files]
                 files_list.extend(files)
-            self.add_files(files_list)
+            self.add_files(files_list, status=DocListManager.Status.success)
             self.add_kb_group(DocListManager.DEDAULT_GROUP_NAME)
             self.add_files_to_kb_group(files_list, group=DocListManager.DEDAULT_GROUP_NAME)
         return self
@@ -53,7 +62,7 @@ class DocListManager(ABC):
     @abstractmethod
     def _init_tables(self): pass
     @abstractmethod
-    def list_files(self, limit: Optional[int] = None, details: bool = False, status: str = 'all'): pass
+    def list_files(self, limit: Optional[int] = None, details: bool = False, status: str = Status.all): pass
     @abstractmethod
     def list_all_kb_group(self): pass
     @abstractmethod
@@ -61,10 +70,10 @@ class DocListManager(ABC):
 
     @abstractmethod
     def list_kb_group_files(self, group: str, limit: Optional[int] = None,
-                            details: bool = False, status: str = 'all'): pass
+                            details: bool = False, status: str = Status.all): pass
 
     @abstractmethod
-    def add_files(self, files: List[str], metadatas: Optional[List] = None): pass
+    def add_files(self, files: List[str], metadatas: Optional[List] = None, status: Optional[str] = None): pass
     @abstractmethod
     def update_file_message(self, fileid: str, **kw): pass
     @abstractmethod
@@ -131,7 +140,7 @@ class SqliteDocListManager(DocListManager):
         cursor = self._conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='documents'")
         return cursor.fetchone() is not None
 
-    def list_files(self, limit: Optional[int] = None, details: bool = False, status: str = 'all'):
+    def list_files(self, limit: Optional[int] = None, details: bool = False, status: str = DocListManager.Status.all):
         query = "SELECT * FROM documents"
         params = []
         if status != 'all':
@@ -151,17 +160,20 @@ class SqliteDocListManager(DocListManager):
         with self._conn:
             self._conn.execute('INSERT OR IGNORE INTO document_groups (group_name) VALUES (?)', (name,))
 
-    def list_kb_group_files(self, group: str, limit: Optional[int] = None, details: bool = False, status: str = 'all'):
+    def list_kb_group_files(self, group: str, limit: Optional[int] = None, details: bool = False,
+                            status: str = DocListManager.Status.all):
         query = """
             SELECT kb_group_documents.doc_id, documents.path, kb_group_documents.group_name,
                    kb_group_documents.classification, kb_group_documents.status, kb_group_documents.log
             FROM kb_group_documents
             JOIN documents ON kb_group_documents.doc_id = documents.doc_id
-            WHERE kb_group_documents.group_name = ?
         """
-        params = [group]
+        params = []
+        if group:
+            query += " WHERE kb_group_documents.group_name = ?"
+            params.append(group)
 
-        if status != 'all':
+        if status != DocListManager.Status.all:
             query += " AND kb_group_documents.status = ?"
             params.append(status)
 
@@ -176,21 +188,22 @@ class SqliteDocListManager(DocListManager):
         if not details: return [row[:2] for row in rows]
         return rows
 
-    def add_files(self, files: List[str], metadatas: Optional[List] = None):
+    def add_files(self, files: List[str], metadatas: Optional[List] = None, status: Optional[str] = None):
         with self._conn:
             for i, file_path in enumerate(files):
                 filename = os.path.basename(file_path)
                 metadata = metadatas[i] if metadatas else ''
-                doc_id = hashlib.sha256(f'{filename}@+@{file_path}'.encode()).hexdigest()
+                doc_id = hashlib.sha256(f'{file_path}'.encode()).hexdigest()
                 try:
                     self._conn.execute("""
                         INSERT OR IGNORE INTO documents (doc_id, filename, path, metadata, status, count)
                         VALUES (?, ?, ?, ?, ?, ?)
-                    """, (doc_id, filename, file_path, metadata, 'uploaded', 1))
+                    """, (doc_id, filename, file_path, metadata, status or DocListManager.Status.waiting, 1))
                 except sqlite3.InterfaceError as e:
                     raise RuntimeError(f'{e}\n args are:\n    {doc_id}({type(doc_id)}), {filename}({type(filename)}),'
                                        f'{file_path}({type(file_path)}), {metadata}({type(metadata)})')
 
+    # TODO(wangzhihong): set to metadatas
     def update_file_message(self, fileid: str, **kw):
         set_clause = ", ".join([f"{k} = ?" for k in kw.keys()])
         params = list(kw.values()) + [fileid]
@@ -200,25 +213,22 @@ class SqliteDocListManager(DocListManager):
     def add_files_to_kb_group(self, files: List[str], group: str):
         with self._conn:
             for file_path in files:
-                filename = os.path.basename(file_path)
-                doc_id = hashlib.sha256(f'{filename}@+@{file_path}'.encode()).hexdigest()
+                doc_id = hashlib.sha256(f'{file_path}'.encode()).hexdigest()
                 self._conn.execute("""
                     INSERT OR IGNORE INTO kb_group_documents (doc_id, group_name, status)
                     VALUES (?, ?, ?)
-                """, (doc_id, group, 'pending'))
+                """, (doc_id, group, DocListManager.Status.waiting))
 
     def delete_files(self, files: List[str]):
         with self._conn:
             for file_path in files:
-                filename = os.path.basename(file_path)
-                doc_id = hashlib.sha256(f'{filename}@+@{file_path}'.encode()).hexdigest()
+                doc_id = hashlib.sha256(f'{file_path}'.encode()).hexdigest()
                 self._conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
 
     def delete_files_from_kb_group(self, files: List[str], group: str):
         with self._conn:
             for file_path in files:
-                filename = os.path.basename(file_path)
-                doc_id = hashlib.sha256(f'{filename}@+@{file_path}'.encode()).hexdigest()
+                doc_id = hashlib.sha256(f'{file_path}'.encode()).hexdigest()
                 self._conn.execute("DELETE FROM kb_group_documents WHERE doc_id = ? AND group_name = ?", (doc_id, group))
 
     def get_file_status(self, fileid: str):

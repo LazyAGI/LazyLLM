@@ -57,7 +57,7 @@ class DocImpl:
             ids, pathes = self._list_files()
             root_nodes = self._reader.load_data(pathes)
             self.store.add_nodes(root_nodes)
-            if self._dlm: self._dlm.update_kb_group_file_status(self._kb_group_name, ids, 'success')
+            if self._dlm: self._dlm.update_kb_group_file_status(self._kb_group_name, ids, DocListManager.Status.success)
             LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
 
         if self._dlm:
@@ -150,16 +150,16 @@ class DocImpl:
         while True:
             ids, files = self._list_files(status='delete')
             if files:
-                self._dlm.update_kb_group_file_status(self._kb_group_name, ids, 'deleting')
+                self._dlm.update_kb_group_file_status(self._kb_group_name, ids, DocListManager.Status.deleting)
                 self._delete_files(files)
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
                 continue
 
             ids, files = self._list_files(status='waiting')
             if files:
-                self._dlm.update_kb_group_file_status(self._kb_group_name, ids, 'processing')
+                self._dlm.update_kb_group_file_status(self._kb_group_name, ids, DocListManager.Status.working)
                 self._add_files(files)
-                self._dlm.update_kb_group_file_status(self._kb_group_name, ids, 'success')
+                self._dlm.update_kb_group_file_status(self._kb_group_name, ids, DocListManager.Status.success)
             time.sleep(10)
 
     def _list_files(self, status: str = 'all') -> Tuple[List[str], List[str]]:
