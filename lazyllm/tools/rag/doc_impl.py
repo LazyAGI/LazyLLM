@@ -57,7 +57,7 @@ class DocImpl:
             ids, pathes = self._list_files()
             root_nodes = self._reader.load_data(pathes)
             self.store.add_nodes(root_nodes)
-            self._dlm.update_kb_group_file_status(self._kb_group_name, ids, 'success')
+            if self._dlm: self._dlm.update_kb_group_file_status(self._kb_group_name, ids, 'success')
             LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
 
         if self._dlm:
@@ -163,7 +163,7 @@ class DocImpl:
             time.sleep(10)
 
     def _list_files(self, status: str = 'all') -> Tuple[List[str], List[str]]:
-        if self._doc_files: return self._doc_files
+        if self._doc_files: return None, self._doc_files
         ids, paths = [], []
         for row in self._dlm.list_kb_group_files(group=self._kb_group_name, status=status, details=True):
             ids.append(row[0])
