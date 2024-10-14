@@ -14,8 +14,11 @@ import lazyllm
 from lazyllm import config
 
 
+config.add("default_dlmanager", str, "sqlite", "DEFAULT_DOCLIST_MANAGER")
+
 class DocListManager(ABC):
     DEDAULT_GROUP_NAME = '__default__'
+    __pool__ = dict()
 
     def __init__(self, path, name):
         self._path = path
@@ -23,6 +26,11 @@ class DocListManager(ABC):
         self._id = hashlib.sha256(f'{name}@+@{path}'.encode()).hexdigest()
         if not os.path.isabs(path):
             raise ValueError("directory must be an absolute path")
+
+    def __new__(cls, *args, **kw):
+        if cls is not DocListManager:
+            return super().__new__(cls)
+        return __class__.__pool__[config['default_dlmanager']](*args, **kw)
 
     def init_tables(self) -> 'DocListManager':
         if not self.table_inited():
@@ -189,6 +197,9 @@ class SqliteDocListManager(DocListManager):
                                (status, group, file_ids))
 
 
+DocListManager.__pool__ = dict(sqlite=SqliteDocListManager)
+
+
 class BaseResponse(BaseModel):
     code: int = pydantic.Field(200, description="API status code")
     msg: str = pydantic.Field("success", description="API status message")
@@ -315,12 +326,3 @@ def save_files_in_threads(
     if os.path.exists(cache_dir):
         shutil.rmtree(cache_dir)
     return (already_exist_files, new_add_files, overwritten_files)
-
-
-def rename_file(source, target):
-    try:
-        os.rename(source, target)
-    except FileNotFoundError:
-        lazyllm.LOG.error(f"file {source} not found")
-    except Exception as e:
-        lazyllm.LOG.error(f"error when batch rename file：{e}")
