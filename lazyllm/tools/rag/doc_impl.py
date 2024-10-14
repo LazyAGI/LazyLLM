@@ -53,7 +53,7 @@ class DocImpl:
 
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
-        if not self.store.has_group(LAZY_ROOT_NAME):
+        if not self.store.has_node(LAZY_ROOT_NAME):
             ids, pathes = self._list_files()
             root_nodes = self._reader.load_data(pathes)
             self.store.update_nodes(root_nodes)
@@ -176,9 +176,11 @@ class DocImpl:
         root_nodes = self._reader.load_data(input_files)
         temp_store = self._get_store()
         temp_store.update_nodes(root_nodes)
-        active_groups = self.store.active_groups()
-        LOG.info(f"add_files: Trying to merge store with {active_groups}")
-        for group in active_groups:
+        all_groups = self.store.all_groups()
+        LOG.info(f"add_files: Trying to merge store with {all_groups}")
+        for group in all_groups:
+            if not self.store.has_node(group):
+                continue
             # Duplicate group will be discarded automatically
             nodes = self._get_nodes(group, temp_store)
             self.store.update_nodes(nodes)
@@ -212,7 +214,7 @@ class DocImpl:
             LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
     def _dynamic_create_nodes(self, group_name: str, store: BaseStore) -> None:
-        if store.has_group(group_name):
+        if store.has_node(group_name):
             return
         node_group = self.node_groups.get(group_name)
         if node_group is None:
@@ -228,7 +230,7 @@ class DocImpl:
     def _get_nodes(self, group_name: str, store: Optional[BaseStore] = None) -> List[DocNode]:
         store = store or self.store
         self._dynamic_create_nodes(group_name, store)
-        return store.traverse_nodes(group_name)
+        return store.get_nodes(group_name)
 
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None) -> List[DocNode]:
