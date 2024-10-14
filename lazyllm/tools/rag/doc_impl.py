@@ -62,7 +62,7 @@ class DocImpl:
 
         if self._dlm:
             self._daemon = threading.Thread(target=self.worker)
-            self._daemon.setDaemon(True)
+            self._daemon.daemon = True
             self._daemon.start()
 
     def _get_store(self) -> BaseStore:

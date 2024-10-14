@@ -1,7 +1,7 @@
 import os
 import shutil
 import hashlib
-from typing import List, Callable, Generator, Dict, Any, Optional
+from typing import List, Callable, Generator, Dict, Any, Optional, Union
 from abc import ABC, abstractmethod
 
 import pydantic
@@ -9,6 +9,7 @@ import sqlite3
 from pydantic import BaseModel
 from fastapi import UploadFile
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 import lazyllm
 from lazyllm import config
@@ -74,7 +75,7 @@ class DocListManager(ABC):
     @abstractmethod
     def update_file_status(self, fileid: str, status: str): pass
     @abstractmethod
-    def update_kb_group_file_status(self, group: str, file_ids: str, status: str): pass
+    def update_kb_group_file_status(self, group: str, file_ids: Union[str, List[str]], status: str): pass
     @abstractmethod
     def close(self): pass
 
@@ -85,7 +86,12 @@ class SqliteDocListManager(DocListManager):
         root_dir = os.path.expanduser(os.path.join(config['home'], '.dbs'))
         os.system(f'mkdir -p {root_dir}')
         self._db_path = os.path.join(root_dir, f'.lazyllm_dlmanager.{self._id}.db')
-        self._conn = sqlite3.connect(self._db_path)
+        self._conns = threading.local()
+
+    @property
+    def _conn(self):
+        if not hasattr(self._conns, 'impl'): self._conns.impl = sqlite3.connect(self._db_path)
+        return self._conns.impl
 
     def _init_tables(self):
         with self._conn:
@@ -216,10 +222,16 @@ class SqliteDocListManager(DocListManager):
         with self._conn:
             self._conn.execute("UPDATE documents SET status = ? WHERE doc_id = ?", (status, fileid))
 
-    def update_kb_group_file_status(self, group: str, file_ids: str, status: str):
-        with self._conn:
-            self._conn.execute("UPDATE kb_group_documents SET status = ? WHERE group_name = ? AND doc_id = ?",
-                               (status, group, file_ids))
+    def update_kb_group_file_status(self, group: str, file_ids: Union[str, List[str]], status: str):
+        if isinstance(file_ids, str): file_ids = [file_ids]
+        query = ('UPDATE kb_group_documents SET status = ? WHERE group_name = ? AND doc_id IN '
+                 f'({",".join("?" * len(file_ids))})')
+        try:
+            with self._conn:
+                self._conn.execute(query, [status, group] + file_ids)
+        except sqlite3.InterfaceError as e:
+            raise RuntimeError(f'{e}\n args are:\n    {status}({type(status)}), {group}({type(group)}),'
+                               f'{file_ids}({type(file_ids)})')
 
     def close(self):
         self._conn.close()
