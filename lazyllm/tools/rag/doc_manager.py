@@ -21,35 +21,56 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.get("/list_kb_groups")
     def list_kb_groups(self):
-        return BaseResponse(data=self._manager.list_all_kb_group())
+        try:
+            return BaseResponse(data=self._manager.list_all_kb_group())
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/upload_files")
     def upload_files(self, files: List[UploadFile], override: bool):
-        self._manager.add_files(files)
-        return BaseResponse()
+        try:
+            self._manager.add_files(files)
+            return BaseResponse()
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.get("/list_files")
     def list_files(self, group_name: str):
-        return BaseResponse(data=self._manager.list_files())
+        try:
+            return BaseResponse(data=self._manager.list_files())
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.get("/list_files_in_group")
     def list_files_in_group(self, group_name: str):
-        return BaseResponse(data=self._manager.list_kb_group_files(group_name, details=True))
+        try:
+            return BaseResponse(data=self._manager.list_kb_group_files(group_name, details=True))
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/add_files_to_group")
     def add_files_to_group(self, files: List[UploadFile], group_name: str):
-        self._manager.add_files_to_kb_group(files, group_name)
-        return BaseResponse()
+        try:
+            self._manager.add_files_to_kb_group(files, group_name)
+            return BaseResponse()
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/delete_files")
     def delete_file(self, file_names: str):
-        self._manager.delete_files(file_names)
-        return BaseResponse()
+        try:
+            self._manager.delete_files(file_names)
+            return BaseResponse()
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/delete_files_from_group")
     def delete_files_from_group(self, group_name: str, file_names: str):
-        self._manager.delete_files_from_kb_group(file_names, group_name)
-        return BaseResponse()
+        try:
+            self._manager.delete_files_from_kb_group(file_names, group_name)
+            return BaseResponse()
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
 
     def __repr__(self):
         return lazyllm.make_repr("Module", "DocManager")
