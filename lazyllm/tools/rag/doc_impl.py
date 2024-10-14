@@ -53,10 +53,10 @@ class DocImpl:
 
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
-        if not self.store.has_nodes(LAZY_ROOT_NAME):
+        if not self.store.has_group(LAZY_ROOT_NAME):
             ids, pathes = self._list_files()
             root_nodes = self._reader.load_data(pathes)
-            self.store.add_nodes(root_nodes)
+            self.store.update_nodes(root_nodes)
             if self._dlm: self._dlm.update_kb_group_file_status(self._kb_group_name, ids, 'success')
             LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
 
@@ -71,7 +71,6 @@ class DocImpl:
             store = MapStore(node_groups=self.node_groups.keys())
         elif rag_store_type == "chroma":
             store = ChromadbStore(node_groups=self.node_groups.keys(), embed=self.embed)
-            store.try_load_store()
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {rag_store_type}"
@@ -176,13 +175,13 @@ class DocImpl:
         self._lazy_init()
         root_nodes = self._reader.load_data(input_files)
         temp_store = self._get_store()
-        temp_store.add_nodes(root_nodes)
+        temp_store.update_nodes(root_nodes)
         active_groups = self.store.active_groups()
         LOG.info(f"add_files: Trying to merge store with {active_groups}")
         for group in active_groups:
             # Duplicate group will be discarded automatically
             nodes = self._get_nodes(group, temp_store)
-            self.store.add_nodes(nodes)
+            self.store.update_nodes(nodes)
             LOG.debug(f"Merge {group} with {nodes}")
 
     def _delete_files(self, input_files: List[str]) -> None:
@@ -213,7 +212,7 @@ class DocImpl:
             LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
     def _dynamic_create_nodes(self, group_name: str, store: BaseStore) -> None:
-        if store.has_nodes(group_name):
+        if store.has_group(group_name):
             return
         node_group = self.node_groups.get(group_name)
         if node_group is None:
@@ -223,7 +222,7 @@ class DocImpl:
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
         parent_nodes = self._get_nodes(node_group["parent"], store)
         nodes = transform.batch_forward(parent_nodes, group_name)
-        store.add_nodes(nodes)
+        store.update_nodes(nodes)
         LOG.debug(f"building {group_name} nodes: {nodes}")
 
     def _get_nodes(self, group_name: str, store: Optional[BaseStore] = None) -> List[DocNode]:
