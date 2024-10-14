@@ -54,8 +54,11 @@ class DocListManager(ABC):
     def list_files(self, limit: Optional[int] = None, details: bool = False, status: str = 'all'): pass
     @abstractmethod
     def list_all_kb_group(self): pass
+
     @abstractmethod
-    def list_kb_group_files(self, group: str, limit: Optional[int] = None, details: bool = False): pass
+    def list_kb_group_files(self, group: str, limit: Optional[int] = None,
+                            details: bool = False, status: str = 'all'): pass
+
     @abstractmethod
     def add_files(self, files: List[str], metadatas: Optional[List] = None): pass
     @abstractmethod
@@ -135,14 +138,30 @@ class SqliteDocListManager(DocListManager):
         cursor = self._conn.execute("SELECT group_name FROM document_groups")
         return [row[0] for row in cursor]
 
-    def list_kb_group_files(self, group: str, limit: Optional[int] = None, details: bool = False):
-        query = "SELECT * FROM kb_group_documents WHERE group_name = ?"
+    def list_kb_group_files(self, group: str, limit: Optional[int] = None, details: bool = False, status: str = 'all'):
+        query = """
+            SELECT kb_group_documents.doc_id, documents.path, kb_group_documents.group_name,
+                   kb_group_documents.classification, kb_group_documents.status, kb_group_documents.log
+            FROM kb_group_documents
+            JOIN documents ON kb_group_documents.doc_id = documents.doc_id
+            WHERE kb_group_documents.group_name = ?
+        """
         params = [group]
+
+        if status != 'all':
+            query += " AND kb_group_documents.status = ?"
+            params.append(status)
+
         if limit:
             query += " LIMIT ?"
             params.append(limit)
-        cursor = self._conn.execute(query, params)
-        return cursor.fetchall() if details else [row[1] for row in cursor]
+
+        with self._conn:
+            cursor = self._conn.execute(query, params)
+            rows = cursor.fetchall()
+
+        if not details: return [row[:2] for row in rows]
+        return rows
 
     def add_files(self, files: List[str], metadatas: Optional[List] = None):
         with self._conn:

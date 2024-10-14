@@ -164,7 +164,11 @@ class DocImpl:
 
     def _list_files(self, status: str = 'all') -> Tuple[List[str], List[str]]:
         if self._doc_files: return self._doc_files
-        return self._dlm.list_files(status=status)
+        ids, paths = [], []
+        for row in self._dlm.list_kb_group_files(group=self._kb_group_name, status=status, details=True):
+            ids.append(row[0])
+            paths.append(row[1])
+        return ids, paths
 
     def _add_files(self, input_files: List[str]):
         if len(input_files) == 0:
