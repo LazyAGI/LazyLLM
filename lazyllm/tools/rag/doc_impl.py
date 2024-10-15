@@ -53,7 +53,7 @@ class DocImpl:
 
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
-        if not self.store.has_node(LAZY_ROOT_NAME):
+        if not self.store.has_nodes(LAZY_ROOT_NAME):
             ids, pathes = self._list_files()
             root_nodes = self._reader.load_data(pathes)
             self.store.update_nodes(root_nodes)
@@ -179,7 +179,7 @@ class DocImpl:
         all_groups = self.store.all_groups()
         LOG.info(f"add_files: Trying to merge store with {all_groups}")
         for group in all_groups:
-            if not self.store.has_node(group):
+            if not self.store.has_nodes(group):
                 continue
             # Duplicate group will be discarded automatically
             nodes = self._get_nodes(group, temp_store)
@@ -214,7 +214,7 @@ class DocImpl:
             LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
     def _dynamic_create_nodes(self, group_name: str, store: BaseStore) -> None:
-        if store.has_node(group_name):
+        if store.has_nodes(group_name):
             return
         node_group = self.node_groups.get(group_name)
         if node_group is None:

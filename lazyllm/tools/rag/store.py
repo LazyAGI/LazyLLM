@@ -182,7 +182,7 @@ class BaseStore(ABC):
         raise NotImplementedError("not implemented yet.")
 
     @abstractmethod
-    def has_node(self, group_name: str) -> bool:
+    def has_nodes(self, group_name: str) -> bool:
         raise NotImplementedError("not implemented yet.")
 
     @abstractmethod
@@ -221,7 +221,7 @@ class MapStore(BaseStore):
             self._group2docs[node.group].pop(node.uid, None)
 
     # override
-    def has_node(self, group_name: str) -> bool:
+    def has_nodes(self, group_name: str) -> bool:
         docs = self._group2docs.get(group_name)
         return True if docs else False
 
@@ -278,8 +278,8 @@ class ChromadbStore(BaseStore):
         return self._map_store.remove_nodes(nodes)
 
     # override
-    def has_node(self, group_name: str) -> bool:
-        return self._map_store.has_node(group_name)
+    def has_nodes(self, group_name: str) -> bool:
+        return self._map_store.has_nodes(group_name)
 
     # override
     def get_nodes(self, group_name: str) -> List[DocNode]:
@@ -302,13 +302,14 @@ class ChromadbStore(BaseStore):
 
         # Rebuild relationships
         for group_name in self._map_store.all_groups():
-            for node in self._map_store.get_nodes(group_name):
+            nodes = self._map_store.get_nodes(group_name)
+            for node in nodes:
                 if node.parent:
                     parent_uid = node.parent
                     parent_node = self._map_store.find_node_by_uid(parent_uid)
                     node.parent = parent_node
                     parent_node.children[node.group].append(node)
-            LOG.debug(f"build {group} nodes from chromadb: {nodes_dict.values()}")
+            LOG.debug(f"build {group} nodes from chromadb: {nodes}")
         LOG.success("Successfully Built nodes from chromadb.")
 
     def _save_nodes(self, nodes: List[DocNode]) -> None:
@@ -425,8 +426,8 @@ class MilvusStore(BaseStore):
             self._full_data_store.remove_nodes(nodes)
 
     # override
-    def has_node(self, group_name: str) -> bool:
-        return self._full_data_store.has_node(group_name)
+    def has_nodes(self, group_name: str) -> bool:
+        return self._full_data_store.has_nodes(group_name)
 
     # override
     def get_nodes(self, group_name: str) -> List[DocNode]:

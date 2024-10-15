@@ -82,8 +82,8 @@ class TestChromadbStore(unittest.TestCase):
         node1 = DocNode(uid="1", text="text1", group="group1", parent=None)
         node2 = DocNode(uid="2", text="text2", group="group1", parent=node1)
         self.store.update_nodes([node1, node2])
-        self.assertEqual(self.store.has_node("group1"), True)
-        self.assertEqual(self.store.has_node("group2"), True)
+        self.assertEqual(self.store.has_nodes("group1"), True)
+        self.assertEqual(self.store.has_nodes("group2"), True)
 
 class TestMapStore(unittest.TestCase):
     def setUp(self):
@@ -134,8 +134,8 @@ class TestMapStore(unittest.TestCase):
 
     def test_group_others(self):
         self.store.update_nodes([self.node1, self.node2])
-        self.assertEqual(self.store.has_node("group1"), True)
-        self.assertEqual(self.store.has_node("group2"), False)
+        self.assertEqual(self.store.has_nodes("group1"), True)
+        self.assertEqual(self.store.has_nodes("group2"), False)
 
 class TestMilvusStore(unittest.TestCase):
     def setUp(self):
@@ -210,8 +210,8 @@ class TestMilvusStore(unittest.TestCase):
 
     def test_group_others(self):
         self.store.update_nodes([self.node1, self.node2])
-        self.assertEqual(self.store.has_node("group1"), True)
-        self.assertEqual(self.store.has_node("group2"), False)
+        self.assertEqual(self.store.has_nodes("group1"), True)
+        self.assertEqual(self.store.has_nodes("group2"), False)
 
 if __name__ == "__main__":
     unittest.main()
