@@ -175,9 +175,11 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             super(__class__, self).__init__(cmd, launcher, sync=sync)
 
         def _wrap_cmd(self, cmd):
+            if self.launcher.ngpus == 0:
+                return cmd
             gpus = self.launcher._get_idle_gpus()
             if gpus and lazyllm.config['cuda_visible']:
-                if self.launcher.ngpus in (None, 0):
+                if self.launcher.ngpus is None:
                     empty_cmd = f'CUDA_VISIBLE_DEVICES={gpus[0]} '
                 elif self.launcher.ngpus <= len(gpus):
                     empty_cmd = 'CUDA_VISIBLE_DEVICES=' + \
