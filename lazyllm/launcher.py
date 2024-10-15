@@ -178,10 +178,10 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             gpus = self.launcher._get_idle_gpus()
             if gpus and lazyllm.config['cuda_visible']:
                 if self.launcher.ngpus in (None, 0):
-                    empty_cmd = f'CUDA_VISIBLE_DEVICES={gpus[0]} && '
+                    empty_cmd = f'CUDA_VISIBLE_DEVICES={gpus[0]} '
                 elif self.launcher.ngpus <= len(gpus):
                     empty_cmd = 'CUDA_VISIBLE_DEVICES=' + \
-                                ','.join([str(n) for n in gpus[:self.launcher.ngpus]]) + ' && '
+                                ','.join([str(n) for n in gpus[:self.launcher.ngpus]]) + ' '
                 else:
                     error_info = (f'Not enough GPUs available. Requested {self.launcher.ngpus} GPUs, '
                                   f'but only {len(gpus)} are available.')
