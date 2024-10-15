@@ -184,6 +184,7 @@ class SqliteDocListManager(DocListManager):
 
         if upload_status != DocListManager.Status.all:
             conds.append('documents.status = ?')
+            params.append(upload_status)
 
         if conds: query += ' WHERE ' + ' AND '.join(conds)
 
@@ -249,11 +250,11 @@ class SqliteDocListManager(DocListManager):
 
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
         if isinstance(file_ids, str): file_ids = [file_ids]
-        query, params = 'UPDATE kb_group_documents SET status = ? WHERE', [status]
+        query, params = 'UPDATE kb_group_documents SET status = ? WHERE ', [status]
         if group:
             query += 'group_name = ? AND '
             params.append(group)
-        query += f' doc_id IN ({",".join("?" * len(file_ids))})'
+        query += f'doc_id IN ({",".join("?" * len(file_ids))})'
         try:
             with self._conn:
                 self._conn.execute(query, (params + file_ids))
