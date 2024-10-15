@@ -19,16 +19,18 @@ class AutoDeploy(LazyLLMDeployBase):
                 launcher=launchers.remote(ngpus=1), stream=False, type=None, **kw):
         base_model = ModelManager(source).download(base_model)
         model_name = get_model_name(base_model)
-        if type == 'embed' or ModelManager.get_model_type(model_name) == 'embed':
+        if not type:
+            type = ModelManager.get_model_type(model_name)
+        if type in ('embed', 'reranker'):
             if lazyllm.config['default_embedding_engine'] == 'transformers' or not check_requirements('infinity_emb'):
-                return EmbeddingDeploy(launcher)
+                return EmbeddingDeploy(launcher, model_type=type)
             else:
-                return deploy.Infinity(launcher)
-        elif type == 'sd' or ModelManager.get_model_type(model_name) == 'sd':
+                return deploy.Infinity(launcher, model_type=type)
+        elif type == 'sd':
             return StableDiffusionDeploy(launcher)
-        elif type == 'stt' or ModelManager.get_model_type(model_name) == 'stt':
+        elif type == 'stt':
             return SenseVoiceDeploy(launcher)
-        elif type == 'tts' or ModelManager.get_model_type(model_name) == 'tts':
+        elif type == 'tts':
             return TTSDeploy(model_name, launcher=launcher)
         map_name = model_map(model_name)
         candidates = get_configer().query_deploy(lazyllm.config['gpu_type'], launcher.ngpus,
