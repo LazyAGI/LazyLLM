@@ -45,7 +45,7 @@ class Retriever(ModuleBase, _PostProcess):
     ):
         super().__init__()
 
-        self._docs = [doc] if isinstance(doc, Document) else doc
+        self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
         for doc in self._docs:
             assert isinstance(doc, Document), 'Only Document or List[Document] are supported'
             self._submodules.append(doc)

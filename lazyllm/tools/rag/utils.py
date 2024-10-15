@@ -52,9 +52,9 @@ class DocListManager(ABC):
             for root, _, files in os.walk(self._path):
                 files = [os.path.join(root, file_path) for file_path in files]
                 files_list.extend(files)
-            self.add_files(files_list, status=DocListManager.Status.success)
+            ids = self.add_files(files_list, status=DocListManager.Status.success)
             self.add_kb_group(DocListManager.DEDAULT_GROUP_NAME)
-            self.add_files_to_kb_group(files_list, group=DocListManager.DEDAULT_GROUP_NAME)
+            self.add_files_to_kb_group(ids, group=DocListManager.DEDAULT_GROUP_NAME)
         return self
 
     def delete_files(self, file_ids: List[str]):
@@ -73,15 +73,17 @@ class DocListManager(ABC):
     def add_kb_group(self, name): pass
 
     @abstractmethod
-    def list_kb_group_files(self, group: str, limit: Optional[int] = None, details: bool = False,
+    def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
                             status: str = Status.all, upload_status: str = Status.all): pass
 
     @abstractmethod
-    def add_files(self, files: List[str], metadatas: Optional[List] = None, status: Optional[str] = None): pass
+    def add_files(self, files: List[str], metadatas: Optional[List] = None,
+                  status: Optional[str] = None) -> List[str]: pass
+
     @abstractmethod
     def update_file_message(self, fileid: str, **kw): pass
     @abstractmethod
-    def add_files_to_kb_group(self, files: List[str], group: str): pass
+    def add_files_to_kb_group(self, file_ids: List[str], group: str): pass
     @abstractmethod
     def _delete_files(self, file_ids: List[str]): pass
     @abstractmethod
@@ -154,7 +156,7 @@ class SqliteDocListManager(DocListManager):
             query += " LIMIT ?"
             params.append(limit)
         cursor = self._conn.execute(query, params)
-        return cursor.fetchall() if details else [row[1] for row in cursor]
+        return cursor.fetchall() if details else [row[0] for row in cursor]
 
     def list_all_kb_group(self):
         cursor = self._conn.execute("SELECT group_name FROM document_groups")
@@ -164,7 +166,7 @@ class SqliteDocListManager(DocListManager):
         with self._conn:
             self._conn.execute('INSERT OR IGNORE INTO document_groups (group_name) VALUES (?)', (name,))
 
-    def list_kb_group_files(self, group: str, limit: Optional[int] = None, details: bool = False,
+    def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
                             status: str = DocListManager.Status.all, upload_status: str = DocListManager.Status.all):
         query = """
             SELECT documents.doc_id, documents.path, documents.status,
@@ -201,6 +203,7 @@ class SqliteDocListManager(DocListManager):
 
     def add_files(self, files: List[str], metadatas: Optional[List] = None, status: Optional[str] = None):
         with self._conn:
+            ids = []
             for i, file_path in enumerate(files):
                 filename = os.path.basename(file_path)
                 metadata = metadatas[i] if metadatas else ''
@@ -208,11 +211,13 @@ class SqliteDocListManager(DocListManager):
                 try:
                     self._conn.execute("""
                         INSERT OR IGNORE INTO documents (doc_id, filename, path, metadata, status, count)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?) RETURNING doc_id;
                     """, (doc_id, filename, file_path, metadata, status or DocListManager.Status.waiting, 1))
                 except sqlite3.InterfaceError as e:
                     raise RuntimeError(f'{e}\n args are:\n    {doc_id}({type(doc_id)}), {filename}({type(filename)}),'
                                        f'{file_path}({type(file_path)}), {metadata}({type(metadata)})')
+                ids.append(doc_id)
+            return ids
 
     # TODO(wangzhihong): set to metadatas
     def update_file_message(self, fileid: str, **kw):
@@ -221,10 +226,9 @@ class SqliteDocListManager(DocListManager):
         with self._conn:
             self._conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
 
-    def add_files_to_kb_group(self, files: List[str], group: str):
+    def add_files_to_kb_group(self, file_ids: List[str], group: str):
         with self._conn:
-            for file_path in files:
-                doc_id = hashlib.sha256(f'{file_path}'.encode()).hexdigest()
+            for doc_id in file_ids:
                 self._conn.execute("""
                     INSERT OR IGNORE INTO kb_group_documents (doc_id, group_name, status)
                     VALUES (?, ?, ?)
@@ -265,6 +269,9 @@ class SqliteDocListManager(DocListManager):
     def release(self):
         self._conn.close()
         os.system(f'rm {self._db_path}')
+
+    def __reduce__(self):
+        return (__class__, (self._path, self._name))
 
 
 DocListManager.__pool__ = dict(sqlite=SqliteDocListManager)

@@ -179,6 +179,8 @@ class ModuleBase(object):
     def restart(self): return self.start()
     def wait(self): pass
 
+    def stop(self): raise NotImplementedError(f'Function stop is not implemented in {self.__class__}!')
+
     @property
     def options(self):
         options = self._options.copy()
@@ -430,8 +432,11 @@ class _ServerModuleImpl(ModuleBase):
                                        pythonpath=self._pythonpath, post_func=self._post_func, launcher=self._launcher),
             self._set_url_f)
 
-    def __del__(self):
+    def stop(self):
         self._launcher.cleanup()
+
+    def __del__(self):
+        self.stop()
 
 
 class ServerModule(UrlModule):
@@ -451,6 +456,9 @@ class ServerModule(UrlModule):
 
     def wait(self):
         self._impl._launcher.wait()
+
+    def stop(self):
+        self._impl.stop()
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,

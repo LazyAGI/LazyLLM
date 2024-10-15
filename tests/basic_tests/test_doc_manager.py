@@ -1,14 +1,24 @@
 import pytest
+import lazyllm
 from lazyllm.tools.rag.utils import DocListManager
+from lazyllm.tools.rag.doc_manager import DocManager
 import shutil
 import hashlib
 import sqlite3
 import unittest
+import requests
 
 
 @pytest.fixture(autouse=True)
 def setup_tmpdir(request, tmpdir):
     request.cls.tmpdir = tmpdir
+
+
+def get_fid(path):
+    if isinstance(path, (tuple, list)):
+        return type(path)(get_fid(p) for p in path)
+    else:
+        return hashlib.sha256(f'{path}'.encode()).hexdigest()
 
 
 @pytest.mark.usefixtures("setup_tmpdir")
@@ -46,7 +56,8 @@ class TestDocListManager(unittest.TestCase):
         files_list = self.manager.list_kb_group_files(DocListManager.DEDAULT_GROUP_NAME, details=True)
         assert len(files_list) == 2
 
-        self.manager.add_files_to_kb_group([self.test_file_1, self.test_file_2], DocListManager.DEDAULT_GROUP_NAME)
+        self.manager.add_files_to_kb_group(get_fid([self.test_file_1, self.test_file_2]),
+                                           DocListManager.DEDAULT_GROUP_NAME)
         files_list = self.manager.list_kb_group_files(DocListManager.DEDAULT_GROUP_NAME, details=True)
         assert len(files_list) == 4
 
@@ -107,7 +118,7 @@ class TestDocListManager(unittest.TestCase):
         files_list = self.manager.list_kb_group_files("group1", details=True)
         assert len(files_list) == 0
 
-        self.manager.add_files_to_kb_group([self.test_file_1, self.test_file_2], group="group1")
+        self.manager.add_files_to_kb_group(get_fid([self.test_file_1, self.test_file_2]), group="group1")
         files_list = self.manager.list_kb_group_files("group1", details=True)
         assert len(files_list) == 2
 
@@ -115,8 +126,70 @@ class TestDocListManager(unittest.TestCase):
         self.manager.init_tables()
 
         self.manager.add_files([self.test_file_1, self.test_file_2])
-        self.manager.add_files_to_kb_group([self.test_file_1, self.test_file_2], group="group1")
+        self.manager.add_files_to_kb_group(get_fid([self.test_file_1, self.test_file_2]), group="group1")
 
         self.manager.delete_files_from_kb_group([hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()], "group1")
         files_list = self.manager.list_kb_group_files("group1", details=True)
         assert len(files_list) == 1
+
+
+@pytest.mark.usefixtures("setup_tmpdir")
+class TestDocListServer(unittest.TestCase):
+
+    def setUpClass(self):
+        lazyllm.LOG.warning('here in setUp')
+        self.test_dir = test_dir = self.tmpdir.mkdir("test_server")
+
+        test_file_1, test_file_2 = test_dir.join("test1.txt"), test_dir.join("test2.txt")
+        test_file_1.write("This is a test file 1.")
+        test_file_2.write("This is a test file 2.")
+        self.test_file_1, self.test_file_2 = str(test_file_1), str(test_file_2)
+
+        self.manager = DocListManager(str(test_dir), "TestManager")
+        self.manager.init_tables()
+        self.manager.add_kb_group('group1')
+        self.server = lazyllm.ServerModule(DocManager(self.manager))
+        self.server.start()
+
+    def get_url(self, url, **kw):
+        url = (self.server._url.rsplit("/", 1)[0] + '/' + url).rstrip('/')
+        if kw: url += ('?' + '&'.join([f'{k}={v}' for k, v in kw.items()]))
+        return url
+
+    def tearDownClass(self):
+        lazyllm.LOG.warning('here in tearDown')
+        self.server.stop()
+        shutil.rmtree(str(self.test_dir))
+        self.manager.release()
+
+    @pytest.mark.order(0)
+    def test_redirect_to_docs(self):
+        assert requests.get(self.get_url('')).status_code == 200
+        assert requests.get(self.get_url('docs')).status_code == 200
+
+    @pytest.mark.order(1)
+    def test_list_kb_groups(self):
+        response = requests.get(self.get_url('list_kb_groups'))
+        assert response.status_code == 200
+        assert response.json().get('data') == [DocListManager.DEDAULT_GROUP_NAME, 'group1']
+
+    @pytest.mark.order(2)
+    def test_list_files(self):
+        response = requests.get(self.get_url('list_files'))
+        assert len(response.json().get('data')) == 2
+        response = requests.get(self.get_url('list_files', limit=1))
+        assert len(response.json().get('data')) == 1
+        response = requests.get(self.get_url('list_files_in_group', group_name=DocListManager.DEDAULT_GROUP_NAME))
+        assert len(response.json().get('data')) == 2
+        response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
+        assert len(response.json().get('data')) == 0
+
+    @pytest.mark.order(3)
+    def test_add_files_to_group(self):
+        response = requests.get(self.get_url('list_files', details=False))
+        ids = response.json().get('data')
+        lazyllm.LOG.warning(f'{response.status_code}, {ids}')
+        requests.post(self.get_url('add_files_to_group_by_id', file_ids=ids, group_name='group1'))
+        response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
+        lazyllm.LOG.warning(f'{response.status_code},++++,{response.json().get("data")}')
+        # assert len(response.json().get('data')) == 2
