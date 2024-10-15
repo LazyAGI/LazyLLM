@@ -57,6 +57,10 @@ class DocListManager(ABC):
             self.add_files_to_kb_group(files_list, group=DocListManager.DEDAULT_GROUP_NAME)
         return self
 
+    def delete_files(self, file_ids: List[str]):
+        self.update_kb_group_file_status(file_ids=file_ids, status=DocListManager.Status.deleting)
+        self._delete_files(file_ids)
+
     @abstractmethod
     def table_inited(self): pass
     @abstractmethod
@@ -69,8 +73,8 @@ class DocListManager(ABC):
     def add_kb_group(self, name): pass
 
     @abstractmethod
-    def list_kb_group_files(self, group: str, limit: Optional[int] = None,
-                            details: bool = False, status: str = Status.all): pass
+    def list_kb_group_files(self, group: str, limit: Optional[int] = None, details: bool = False,
+                            status: str = Status.all, upload_status: str = Status.all): pass
 
     @abstractmethod
     def add_files(self, files: List[str], metadatas: Optional[List] = None, status: Optional[str] = None): pass
@@ -79,15 +83,15 @@ class DocListManager(ABC):
     @abstractmethod
     def add_files_to_kb_group(self, files: List[str], group: str): pass
     @abstractmethod
-    def delete_files(self, files: List[str]): pass
+    def _delete_files(self, file_ids: List[str]): pass
     @abstractmethod
-    def delete_files_from_kb_group(self, files: List[str], group: str): pass
+    def delete_files_from_kb_group(self, file_ids: List[str], group: str): pass
     @abstractmethod
     def get_file_status(self, fileid: str): pass
     @abstractmethod
     def update_file_status(self, fileid: str, status: str): pass
     @abstractmethod
-    def update_kb_group_file_status(self, group: str, file_ids: Union[str, List[str]], status: str): pass
+    def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str]): pass
     @abstractmethod
     def release(self): pass
 
@@ -161,24 +165,30 @@ class SqliteDocListManager(DocListManager):
             self._conn.execute('INSERT OR IGNORE INTO document_groups (group_name) VALUES (?)', (name,))
 
     def list_kb_group_files(self, group: str, limit: Optional[int] = None, details: bool = False,
-                            status: str = DocListManager.Status.all):
+                            status: str = DocListManager.Status.all, upload_status: str = DocListManager.Status.all):
         query = """
-            SELECT kb_group_documents.doc_id, documents.path, kb_group_documents.group_name,
-                   kb_group_documents.classification, kb_group_documents.status, kb_group_documents.log
+            SELECT documents.doc_id, documents.path, documents.status,
+                   kb_group_documents.group_name, kb_group_documents.classification,
+                   kb_group_documents.status, kb_group_documents.log
             FROM kb_group_documents
             JOIN documents ON kb_group_documents.doc_id = documents.doc_id
         """
-        params = []
+        conds, params = [], []
         if group:
-            query += " WHERE kb_group_documents.group_name = ?"
+            conds.append('kb_group_documents.group_name = ?')
             params.append(group)
 
         if status != DocListManager.Status.all:
-            query += " AND kb_group_documents.status = ?"
+            conds.append('kb_group_documents.status = ?')
             params.append(status)
 
+        if upload_status != DocListManager.Status.all:
+            conds.append('documents.status = ?')
+
+        if conds: query += ' WHERE ' + ' AND '.join(conds)
+
         if limit:
-            query += " LIMIT ?"
+            query += ' LIMIT ?'
             params.append(limit)
 
         with self._conn:
@@ -219,16 +229,14 @@ class SqliteDocListManager(DocListManager):
                     VALUES (?, ?, ?)
                 """, (doc_id, group, DocListManager.Status.waiting))
 
-    def delete_files(self, files: List[str]):
+    def _delete_files(self, file_ids: List[str]):
         with self._conn:
-            for file_path in files:
-                doc_id = hashlib.sha256(f'{file_path}'.encode()).hexdigest()
+            for doc_id in file_ids:
                 self._conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
 
-    def delete_files_from_kb_group(self, files: List[str], group: str):
+    def delete_files_from_kb_group(self, file_ids: List[str], group: str):
         with self._conn:
-            for file_path in files:
-                doc_id = hashlib.sha256(f'{file_path}'.encode()).hexdigest()
+            for doc_id in file_ids:
                 self._conn.execute("DELETE FROM kb_group_documents WHERE doc_id = ? AND group_name = ?", (doc_id, group))
 
     def get_file_status(self, fileid: str):
@@ -239,13 +247,16 @@ class SqliteDocListManager(DocListManager):
         with self._conn:
             self._conn.execute("UPDATE documents SET status = ? WHERE doc_id = ?", (status, fileid))
 
-    def update_kb_group_file_status(self, group: str, file_ids: Union[str, List[str]], status: str):
+    def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
         if isinstance(file_ids, str): file_ids = [file_ids]
-        query = ('UPDATE kb_group_documents SET status = ? WHERE group_name = ? AND doc_id IN '
-                 f'({",".join("?" * len(file_ids))})')
+        query, params = 'UPDATE kb_group_documents SET status = ? WHERE', [status]
+        if group:
+            query += 'group_name = ? AND '
+            params.append(group)
+        query += f' doc_id IN ({",".join("?" * len(file_ids))})'
         try:
             with self._conn:
-                self._conn.execute(query, [status, group] + file_ids)
+                self._conn.execute(query, (params + file_ids))
         except sqlite3.InterfaceError as e:
             raise RuntimeError(f'{e}\n args are:\n    {status}({type(status)}), {group}({type(group)}),'
                                f'{file_ids}({type(file_ids)})')

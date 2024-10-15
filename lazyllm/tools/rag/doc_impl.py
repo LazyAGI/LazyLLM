@@ -57,7 +57,8 @@ class DocImpl:
             ids, pathes = self._list_files()
             root_nodes = self._reader.load_data(pathes)
             self.store.add_nodes(root_nodes)
-            if self._dlm: self._dlm.update_kb_group_file_status(self._kb_group_name, ids, DocListManager.Status.success)
+            if self._dlm: self._dlm.update_kb_group_file_status(
+                ids, DocListManager.Status.success, group=self._kb_group_name)
             LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
 
         if self._dlm:
@@ -148,24 +149,26 @@ class DocImpl:
 
     def worker(self):
         while True:
-            ids, files = self._list_files(status='delete')
+            ids, files = self._list_files(status=DocListManager.Status.deleting)
             if files:
-                self._dlm.update_kb_group_file_status(self._kb_group_name, ids, DocListManager.Status.deleting)
                 self._delete_files(files)
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
                 continue
 
-            ids, files = self._list_files(status='waiting')
+            ids, files = self._list_files(status=DocListManager.Status.waiting,
+                                          upload_status=DocListManager.Status.success)
             if files:
-                self._dlm.update_kb_group_file_status(self._kb_group_name, ids, DocListManager.Status.working)
+                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
                 self._add_files(files)
-                self._dlm.update_kb_group_file_status(self._kb_group_name, ids, DocListManager.Status.success)
+                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
             time.sleep(10)
 
-    def _list_files(self, status: str = 'all') -> Tuple[List[str], List[str]]:
+    def _list_files(self, status: str = DocListManager.Status.all, upload_status: str = DocListManager.Status.all
+                    ) -> Tuple[List[str], List[str]]:
         if self._doc_files: return None, self._doc_files
         ids, paths = [], []
-        for row in self._dlm.list_kb_group_files(group=self._kb_group_name, status=status, details=True):
+        for row in self._dlm.list_kb_group_files(group=self._kb_group_name, status=status,
+                                                 upload_status=upload_status, details=True):
             ids.append(row[0])
             paths.append(row[1])
         return ids, paths

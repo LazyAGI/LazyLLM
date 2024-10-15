@@ -63,7 +63,7 @@ class TestDocListManager(unittest.TestCase):
         self.manager.init_tables()
 
         self.manager.add_files([self.test_file_1, self.test_file_2])
-        self.manager.delete_files([self.test_file_1])
+        self.manager.delete_files([hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()])
         files_list = self.manager.list_files(details=True)
         assert len(files_list) == 1
         assert not any(self.test_file_1.endswith(row[1]) for row in files_list)
@@ -117,6 +117,6 @@ class TestDocListManager(unittest.TestCase):
         self.manager.add_files([self.test_file_1, self.test_file_2])
         self.manager.add_files_to_kb_group([self.test_file_1, self.test_file_2], group="group1")
 
-        self.manager.delete_files_from_kb_group([self.test_file_1], "group1")
+        self.manager.delete_files_from_kb_group([hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()], "group1")
         files_list = self.manager.list_kb_group_files("group1", details=True)
         assert len(files_list) == 1
