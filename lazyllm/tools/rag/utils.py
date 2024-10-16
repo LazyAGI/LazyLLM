@@ -68,7 +68,9 @@ class DocListManager(ABC):
     def _init_tables(self): pass
 
     @abstractmethod
-    def list_files(self, limit: Optional[int] = None, details: bool = False, status: str = Status.all): pass
+    def list_files(self, limit: Optional[int] = None, details: bool = False,
+                   status: Union[str, List[str]] = Status.all,
+                   exclude_status: Optional[Union[str, List[str]]] = None): pass
 
     @abstractmethod
     def list_all_kb_group(self): pass
@@ -78,7 +80,10 @@ class DocListManager(ABC):
 
     @abstractmethod
     def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
-                            status: str = Status.all, upload_status: str = Status.all): pass
+                            status: Union[str, List[str]] = Status.all,
+                            exclude_status: Optional[Union[str, List[str]]] = None,
+                            upload_status: str = Status.all,
+                            exclude_upload_status: Optional[Union[str, List[str]]] = None): pass
 
     @abstractmethod
     def add_files(self, files: List[str], metadatas: Optional[List] = None,
@@ -158,12 +163,39 @@ class SqliteDocListManager(DocListManager):
         cursor = self._conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='documents'")
         return cursor.fetchone() is not None
 
-    def list_files(self, limit: Optional[int] = None, details: bool = False, status: str = DocListManager.Status.all):
+    @staticmethod
+    def get_status_cond_and_params(status: Union[str, List[str]],
+                                   exclude_status: Optional[Union[str, List[str]]] = None,
+                                   prefix: str = None):
+        conds, params = [], []
+        prefix = f'{prefix}.' if prefix else ''
+        if isinstance(status, str):
+            if status != DocListManager.Status.all:
+                conds.append('{prefix}status = ?')
+                params.append(status)
+        elif isinstance(status, (tuple, list)):
+            conds.append(f'{prefix}status IN ({",".join("?" * len(status))})')
+            params.extend(status)
+
+        if isinstance(exclude_status, str):
+            assert exclude_status != DocListManager.Status.all, 'Invalid status provided'
+            conds.append('{prefix}status != ?')
+            params.append(exclude_status)
+        elif isinstance(exclude_status, (tuple, list)):
+            conds.append(f'{prefix}status NOT IN ({",".join("?" * len(exclude_status))})')
+            params.extend(exclude_status)
+
+        return ' AND '.join(conds), params
+
+    def list_files(self, limit: Optional[int] = None, details: bool = False,
+                   status: Union[str, List[str]] = DocListManager.Status.all,
+                   exclude_status: Optional[Union[str, List[str]]] = None):
         query = "SELECT * FROM documents"
         params = []
-        if status != 'all':
-            query += " WHERE status = ?"
-            params.append(status)
+        status_cond, status_params = self.get_status_cond_and_params(status, exclude_status, prefix=None)
+        if status_cond:
+            query += f' WHERE {status_cond}'
+            params.extend(status_params)
         if limit:
             query += " LIMIT ?"
             params.append(limit)
@@ -179,7 +211,10 @@ class SqliteDocListManager(DocListManager):
             self._conn.execute('INSERT OR IGNORE INTO document_groups (group_name) VALUES (?)', (name,))
 
     def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
-                            status: str = DocListManager.Status.all, upload_status: str = DocListManager.Status.all):
+                            status: Union[str, List[str]] = DocListManager.Status.all,
+                            exclude_status: Optional[Union[str, List[str]]] = None,
+                            upload_status: str = DocListManager.Status.all,
+                            exclude_upload_status: Optional[Union[str, List[str]]] = None):
         query = """
             SELECT documents.doc_id, documents.path, documents.status,
                    kb_group_documents.group_name, kb_group_documents.classification,
@@ -192,13 +227,16 @@ class SqliteDocListManager(DocListManager):
             conds.append('kb_group_documents.group_name = ?')
             params.append(group)
 
-        if status != DocListManager.Status.all:
-            conds.append('kb_group_documents.status = ?')
-            params.append(status)
+        status_cond, status_params = self.get_status_cond_and_params(status, exclude_status, prefix='kb_group_documents')
+        if status_cond:
+            conds.append(status_cond)
+            params.extend(status_params)
 
-        if upload_status != DocListManager.Status.all:
-            conds.append('documents.status = ?')
-            params.append(upload_status)
+        status_cond, status_params = self.get_status_cond_and_params(
+            upload_status, exclude_upload_status, prefix='documents')
+        if status_cond:
+            conds.append(status_cond)
+            params.extend(status_params)
 
         if conds: query += ' WHERE ' + ' AND '.join(conds)
 

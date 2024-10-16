@@ -143,7 +143,6 @@ class TestDocListServer(object):
 
     @classmethod
     def setup_class(cls):
-        lazyllm.LOG.warning('here in setUp')
         cls.test_dir = test_dir = cls.tmpdir.mkdir("test_server")
 
         test_file_1, test_file_2 = test_dir.join("test1.txt"), test_dir.join("test2.txt")
@@ -164,7 +163,6 @@ class TestDocListServer(object):
         return url
 
     def teardown_class(cls):
-        lazyllm.LOG.warning('here in tearDown')
         cls.server.stop()
         shutil.rmtree(str(cls.test_dir))
         cls.manager.release()
@@ -192,13 +190,20 @@ class TestDocListServer(object):
         assert len(response.json().get('data')) == 0
 
     @pytest.mark.order(3)
-    def test_add_files_to_group(self):
+    def test_upload_files(self):
+        pass
+
+    @pytest.mark.order(4)
+    def test_add_files_to_group_and_delete_files_from_group(self):
         response = requests.get(self.get_url('list_files', details=False))
         ids = response.json().get('data')
         assert response.status_code == 200 and len(ids) == 2
         requests.post(self.get_url('add_files_to_group_by_id'), json=dict(file_ids=ids, group_name='group1'))
         response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
         assert response.status_code == 200 and len(response.json().get('data')) == 2
+
         requests.post(self.get_url('delete_files_from_group'), json=dict(file_ids=ids[:1], group_name='group1'))
         response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
+        assert response.status_code == 200 and len(response.json().get('data')) == 2
+        response = requests.get(self.get_url('list_files_in_group', group_name='group1', alive=True))
         assert response.status_code == 200 and len(response.json().get('data')) == 1

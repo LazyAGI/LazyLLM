@@ -60,12 +60,15 @@ class DocManager(lazyllm.ModuleBase):
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.get("/list_files_in_group")
-    def list_files_in_group(self, group_name: str, limit: Optional[int] = None):
+    def list_files_in_group(self, group_name: str, limit: Optional[int] = None, alive: Optional[bool] = None):
         try:
             if group_name == '__None__': group_name = None
-            return BaseResponse(data=self._manager.list_kb_group_files(group_name, limit, details=True))
+            Status = DocListManager.Status
+            status = [Status.success, Status.waiting, Status.working] if alive else Status.all
+            return BaseResponse(data=self._manager.list_kb_group_files(group_name, limit, details=True, status=status))
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            import traceback
+            return BaseResponse(code=500, msg=str(e) + '\ntraceback:\n' + str(traceback.format_exc()), data=None)
 
     class FileGroupRequest(BaseModel):
         file_ids: List[str]
