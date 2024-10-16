@@ -105,7 +105,7 @@ class TestDocListManager(unittest.TestCase):
         status = self.manager.get_file_status(file_id)
         assert status[0] == DocListManager.Status.success
 
-        self.manager.update_file_status(file_id, DocListManager.Status.waiting)
+        self.manager.update_file_status([file_id], DocListManager.Status.waiting)
         status = self.manager.get_file_status(file_id)
         assert status[0] == DocListManager.Status.waiting
 
@@ -133,34 +133,41 @@ class TestDocListManager(unittest.TestCase):
         assert len(files_list) == 1
 
 
-@pytest.mark.usefixtures("setup_tmpdir")
-class TestDocListServer(unittest.TestCase):
+@pytest.fixture(scope="class", autouse=True)
+def setup_tmpdir_class(request, tmpdir_factory):
+    request.cls.tmpdir = tmpdir_factory.mktemp("class_tmpdir")
 
-    def setUpClass(self):
+
+@pytest.mark.usefixtures("setup_tmpdir_class")
+class TestDocListServer(object):
+
+    @classmethod
+    def setup_class(cls):
         lazyllm.LOG.warning('here in setUp')
-        self.test_dir = test_dir = self.tmpdir.mkdir("test_server")
+        cls.test_dir = test_dir = cls.tmpdir.mkdir("test_server")
 
         test_file_1, test_file_2 = test_dir.join("test1.txt"), test_dir.join("test2.txt")
         test_file_1.write("This is a test file 1.")
         test_file_2.write("This is a test file 2.")
-        self.test_file_1, self.test_file_2 = str(test_file_1), str(test_file_2)
+        cls.test_file_1, cls.test_file_2 = str(test_file_1), str(test_file_2)
 
-        self.manager = DocListManager(str(test_dir), "TestManager")
-        self.manager.init_tables()
-        self.manager.add_kb_group('group1')
-        self.server = lazyllm.ServerModule(DocManager(self.manager))
-        self.server.start()
+        cls.manager = DocListManager(str(test_dir), "TestManager")
+        cls.manager.init_tables()
+        cls.manager.add_kb_group('group1')
+        cls.server = lazyllm.ServerModule(DocManager(cls.manager))
+        cls.server.start()
+        cls._test_inited = True
 
     def get_url(self, url, **kw):
         url = (self.server._url.rsplit("/", 1)[0] + '/' + url).rstrip('/')
         if kw: url += ('?' + '&'.join([f'{k}={v}' for k, v in kw.items()]))
         return url
 
-    def tearDownClass(self):
+    def teardown_class(cls):
         lazyllm.LOG.warning('here in tearDown')
-        self.server.stop()
-        shutil.rmtree(str(self.test_dir))
-        self.manager.release()
+        cls.server.stop()
+        shutil.rmtree(str(cls.test_dir))
+        cls.manager.release()
 
     @pytest.mark.order(0)
     def test_redirect_to_docs(self):
@@ -188,8 +195,10 @@ class TestDocListServer(unittest.TestCase):
     def test_add_files_to_group(self):
         response = requests.get(self.get_url('list_files', details=False))
         ids = response.json().get('data')
-        lazyllm.LOG.warning(f'{response.status_code}, {ids}')
-        requests.post(self.get_url('add_files_to_group_by_id', file_ids=ids, group_name='group1'))
+        assert response.status_code == 200 and len(ids) == 2
+        requests.post(self.get_url('add_files_to_group_by_id'), json=dict(file_ids=ids, group_name='group1'))
         response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
-        lazyllm.LOG.warning(f'{response.status_code},++++,{response.json().get("data")}')
-        # assert len(response.json().get('data')) == 2
+        assert response.status_code == 200 and len(response.json().get('data')) == 2
+        requests.post(self.get_url('delete_files_from_group'), json=dict(file_ids=ids[:1], group_name='group1'))
+        response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
+        assert response.status_code == 200 and len(response.json().get('data')) == 1

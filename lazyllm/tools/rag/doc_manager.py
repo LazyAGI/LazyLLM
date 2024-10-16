@@ -1,6 +1,7 @@
 import os
 import hashlib
 from typing import List, Optional, Dict
+from pydantic import BaseModel
 
 from starlette.responses import RedirectResponse
 from fastapi import UploadFile
@@ -27,8 +28,8 @@ class DocManager(lazyllm.ModuleBase):
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/upload_files")
-    async def upload_files(self, files: List[UploadFile], override: bool,
-                           metadatas: Optional[List[Dict]], user_path: Optional[str] = None):
+    def upload_files(self, files: List[UploadFile], override: bool,
+                     metadatas: Optional[List[Dict]], user_path: Optional[str] = None):
         try:
             assert user_path is None or not user_path.startswith('/'), 'Cannot give absolute path'
             assert not metadatas or len(files) == len(metadatas), 'Length of files and metadatas should be the same'
@@ -36,7 +37,7 @@ class DocManager(lazyllm.ModuleBase):
             ids = self._manager.add_files(file_paths, metadatas=metadatas, status=DocListManager.Status.working)
             results = []
             for file, path in zip(files, file_paths):
-                content = await file.read()
+                content = file.file.read()
                 if os.path.exists(path):
                     if not override:
                         results.append('Duplicated')
@@ -44,7 +45,7 @@ class DocManager(lazyllm.ModuleBase):
                 with open(path, 'wb') as f:
                     f.write(content)
                 file_id = hashlib.sha256(path.encode()).hexdigest()
-                self._manager.update_file_status(file_id, status=DocListManager.Status.success)
+                self._manager.update_file_status([file_id], status=DocListManager.Status.success)
                 results.append('Success')
 
             return BaseResponse(data=[ids, results])
@@ -66,36 +67,42 @@ class DocManager(lazyllm.ModuleBase):
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
+    class FileGroupRequest(BaseModel):
+        file_ids: List[str]
+        group_name: str
+
     @app.post("/add_files_to_group_by_id")
-    def add_files_to_group_by_id(self, file_ids: List[UploadFile], group_name: str):
+    def add_files_to_group_by_id(self, request: FileGroupRequest):
         try:
-            self._manager.add_files_to_kb_group(file_ids, group_name)
+            self._manager.add_files_to_kb_group(request.file_ids, request.group_name)
             return BaseResponse()
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/add_files_to_group")
-    async def add_files_to_group(self, files: List[UploadFile], group_name: str,
-                                 override: bool = False, metadatas: Optional[List[Dict]] = None):
+    def add_files_to_group(self, files: List[UploadFile], group_name: str,
+                           override: bool = False, metadatas: Optional[List[Dict]] = None):
         try:
-            ids = (await self.upload_files(files, override=override, metadatas=metadatas))[0]
+            ids = self.upload_files(files, override=override, metadatas=metadatas)[0]
             self._manager.add_files_to_kb_group(ids, group_name)
             return BaseResponse(data=ids)
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/delete_files")
-    def delete_files(self, file_ids: str):
+    def delete_files(self, file_ids: List[str]):
         try:
-            self._manager.delete_files(file_ids)
+            self._manager.update_kb_group_file_status(file_ids=file_ids, status=DocListManager.Status.deleting)
+            self._manager.update_file_status(file_ids=file_ids, status=DocListManager.Status.deleting)
             return BaseResponse()
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/delete_files_from_group")
-    def delete_files_from_group(self, group_name: str, file_ids: str):
+    def delete_files_from_group(self, request: FileGroupRequest):
         try:
-            self._manager.delete_files_from_kb_group(file_ids, group_name)
+            self._manager.update_kb_group_file_status(
+                file_ids=request.file_ids, status=DocListManager.Status.deleting, group=request.group_name)
             return BaseResponse()
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)

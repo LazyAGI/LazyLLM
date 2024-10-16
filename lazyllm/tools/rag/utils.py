@@ -63,12 +63,16 @@ class DocListManager(ABC):
 
     @abstractmethod
     def table_inited(self): pass
+
     @abstractmethod
     def _init_tables(self): pass
+
     @abstractmethod
     def list_files(self, limit: Optional[int] = None, details: bool = False, status: str = Status.all): pass
+
     @abstractmethod
     def list_all_kb_group(self): pass
+
     @abstractmethod
     def add_kb_group(self, name): pass
 
@@ -82,18 +86,26 @@ class DocListManager(ABC):
 
     @abstractmethod
     def update_file_message(self, fileid: str, **kw): pass
+
     @abstractmethod
     def add_files_to_kb_group(self, file_ids: List[str], group: str): pass
+
     @abstractmethod
     def _delete_files(self, file_ids: List[str]): pass
+
     @abstractmethod
     def delete_files_from_kb_group(self, file_ids: List[str], group: str): pass
+
     @abstractmethod
     def get_file_status(self, fileid: str): pass
+
     @abstractmethod
-    def update_file_status(self, fileid: str, status: str): pass
+    def update_file_status(self, file_ids: List[str], status: str): pass
+
     @abstractmethod
-    def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str]): pass
+    def update_kb_group_file_status(self, file_ids: Union[str, List[str]],
+                                    status: str, group: Optional[str] = None): pass
+
     @abstractmethod
     def release(self): pass
 
@@ -248,9 +260,10 @@ class SqliteDocListManager(DocListManager):
         cursor = self._conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
         return cursor.fetchone()
 
-    def update_file_status(self, fileid: str, status: str):
+    def update_file_status(self, file_ids: List[str], status: str):
         with self._conn:
-            self._conn.execute("UPDATE documents SET status = ? WHERE doc_id = ?", (status, fileid))
+            for fileid in file_ids:
+                self._conn.execute("UPDATE documents SET status = ? WHERE doc_id = ?", (status, fileid))
 
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
         if isinstance(file_ids, str): file_ids = [file_ids]
