@@ -2,7 +2,7 @@ import os
 import hashlib
 import json
 from typing import List, Optional, Dict
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from starlette.responses import RedirectResponse
 from fastapi import UploadFile
@@ -63,9 +63,11 @@ class DocManager(lazyllm.ModuleBase):
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.get("/list_files")
-    def list_files(self, limit: Optional[int] = None, details: bool = True):
+    def list_files(self, limit: Optional[int] = None, details: bool = True, alive: Optional[bool] = None):
         try:
-            return BaseResponse(data=self._manager.list_files(limit=limit, details=details))
+            Status = DocListManager.Status
+            status = [Status.success, Status.waiting, Status.working] if alive else Status.all
+            return BaseResponse(data=self._manager.list_files(limit=limit, details=details, status=status))
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
@@ -82,7 +84,7 @@ class DocManager(lazyllm.ModuleBase):
 
     class FileGroupRequest(BaseModel):
         file_ids: List[str]
-        group_name: str
+        group_name: Optional[str] = Field(None)
 
     @app.post("/add_files_to_group_by_id")
     def add_files_to_group_by_id(self, request: FileGroupRequest):
@@ -93,21 +95,27 @@ class DocManager(lazyllm.ModuleBase):
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/add_files_to_group")
-    def add_files_to_group(self, files: List[UploadFile], group_name: str,
-                           override: bool = False, metadatas: Optional[str] = None):
+    def add_files_to_group(self, files: List[UploadFile], group_name: str, override: bool = False,
+                           metadatas: Optional[str] = None, user_path: Optional[str] = None):
         try:
-            ids = self.upload_files(files, override=override, metadatas=metadatas)[0]
+            response = self.upload_files(files, override=override, metadatas=metadatas, user_path=user_path)
+            if response.code != 200: return response
+            ids = response.data[0]
             self._manager.add_files_to_kb_group(ids, group_name)
             return BaseResponse(data=ids)
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/delete_files")
-    def delete_files(self, file_ids: List[str]):
+    def delete_files(self, request: FileGroupRequest):
         try:
-            self._manager.update_kb_group_file_status(file_ids=file_ids, status=DocListManager.Status.deleting)
-            self._manager.update_file_status(file_ids=file_ids, status=DocListManager.Status.deleting)
-            return BaseResponse()
+            if request.group_name:
+                return self.delete_files_from_group(request)
+            else:
+                self._manager.update_kb_group_file_status(
+                    file_ids=request.file_ids, status=DocListManager.Status.deleting)
+                self._manager.update_file_status(file_ids=request.file_ids, status=DocListManager.Status.deleting)
+                return BaseResponse()
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 

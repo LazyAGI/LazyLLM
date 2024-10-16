@@ -205,24 +205,47 @@ class TestDocListServer(object):
         assert response.status_code == 200 and len(ids) == 4
 
         # add_files_to_group
-        pass
+        files = [('files', ('test3.txt', io.BytesIO(b"file3 content"), 'text/plain'))]
+        data = dict(override='false', metadatas=json.dumps([{"key": "value"}]), group_name='group1')
+        response = requests.post(self.get_url('add_files_to_group', **data), files=files)
+        assert response.status_code == 200
+
+        response = requests.get(self.get_url('list_files', details=True))
+        assert response.status_code == 200 and len(response.json().get('data')) == 5
+        response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
+        assert response.status_code == 200 and len(response.json().get('data')) == 1
 
     @pytest.mark.order(4)
     def test_add_files_to_group_and_delete_files_from_group(self):
         response = requests.get(self.get_url('list_files', details=False))
         ids = response.json().get('data')
-        assert response.status_code == 200 and len(ids) == 4
-        requests.post(self.get_url('add_files_to_group_by_id'), json=dict(file_ids=ids, group_name='group1'))
+        assert response.status_code == 200 and len(ids) == 5
+        requests.post(self.get_url('add_files_to_group_by_id'), json=dict(file_ids=ids[:2], group_name='group1'))
         response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
-        assert response.status_code == 200 and len(response.json().get('data')) == 4
+        assert response.status_code == 200 and len(response.json().get('data')) == 3
 
         requests.post(self.get_url('delete_files_from_group'), json=dict(file_ids=ids[:1], group_name='group1'))
         response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
-        assert response.status_code == 200 and len(response.json().get('data')) == 4
-        response = requests.get(self.get_url('list_files_in_group', group_name='group1', alive=True))
         assert response.status_code == 200 and len(response.json().get('data')) == 3
+        response = requests.get(self.get_url('list_files_in_group', group_name='group1', alive=True))
+        assert response.status_code == 200 and len(response.json().get('data')) == 2
 
     @pytest.mark.order(5)
     def test_delete_files(self):
-        # delete_files
-        pass
+        response = requests.get(self.get_url('list_files', details=False))
+        ids = response.json().get('data')
+        assert response.status_code == 200 and len(ids) == 5
+
+        response = requests.post(self.get_url('delete_files'), json=dict(file_ids=ids[-1:]))
+        lazyllm.LOG.warning(response.json())
+        assert response.status_code == 200 and response.json().get('code') == 200
+
+        response = requests.get(self.get_url('list_files'))
+        assert response.status_code == 200 and len(response.json().get('data')) == 5
+        response = requests.get(self.get_url('list_files', alive=True))
+        assert response.status_code == 200 and len(response.json().get('data')) == 4
+
+        response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
+        assert response.status_code == 200 and len(response.json().get('data')) == 3
+        response = requests.get(self.get_url('list_files_in_group', group_name='group1', alive=True))
+        assert response.status_code == 200 and len(response.json().get('data')) == 1
