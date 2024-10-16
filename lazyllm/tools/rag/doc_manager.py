@@ -1,5 +1,6 @@
 import os
 import hashlib
+import json
 from typing import List, Optional, Dict
 from pydantic import BaseModel
 
@@ -28,20 +29,29 @@ class DocManager(lazyllm.ModuleBase):
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/upload_files")
-    def upload_files(self, files: List[UploadFile], override: bool,
-                     metadatas: Optional[List[Dict]], user_path: Optional[str] = None):
+    def upload_files(self, files: List[UploadFile], override: bool = False,
+                     metadatas: Optional[str] = None, user_path: Optional[str] = None):
         try:
             assert user_path is None or not user_path.startswith('/'), 'Cannot give absolute path'
-            assert not metadatas or len(files) == len(metadatas), 'Length of files and metadatas should be the same'
+            if metadatas:
+                metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)
+                assert len(files) == len(metadatas), 'Length of files and metadatas should be the same'
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
+            lazyllm.LOG.warning(user_path)
+            lazyllm.LOG.warning(file_paths)
             ids = self._manager.add_files(file_paths, metadatas=metadatas, status=DocListManager.Status.working)
             results = []
             for file, path in zip(files, file_paths):
-                content = file.file.read()
                 if os.path.exists(path):
                     if not override:
                         results.append('Duplicated')
                         continue
+
+                content = file.file.read()
+                directory = os.path.dirname(path)
+                if directory:
+                    os.makedirs(directory, exist_ok=True)
+
                 with open(path, 'wb') as f:
                     f.write(content)
                 file_id = hashlib.sha256(path.encode()).hexdigest()
@@ -84,7 +94,7 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post("/add_files_to_group")
     def add_files_to_group(self, files: List[UploadFile], group_name: str,
-                           override: bool = False, metadatas: Optional[List[Dict]] = None):
+                           override: bool = False, metadatas: Optional[str] = None):
         try:
             ids = self.upload_files(files, override=override, metadatas=metadatas)[0]
             self._manager.add_files_to_kb_group(ids, group_name)

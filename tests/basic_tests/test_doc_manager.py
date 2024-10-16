@@ -7,6 +7,8 @@ import hashlib
 import sqlite3
 import unittest
 import requests
+import io
+import json
 
 
 @pytest.fixture(autouse=True)
@@ -190,20 +192,37 @@ class TestDocListServer(object):
         assert len(response.json().get('data')) == 0
 
     @pytest.mark.order(3)
-    def test_upload_files(self):
+    def test_upload_files_and_upload_files_to_kb(self):
+        files = [('files', ('test1.txt', io.BytesIO(b"file1 content"), 'text/plain')),
+                 ('files', ('test2.txt', io.BytesIO(b"file2 content"), 'text/plain'))]
+
+        data = dict(override='false', metadatas=json.dumps([{"key": "value"}, {"key": "value2"}]), user_path='path')
+        response = requests.post(self.get_url('upload_files', **data), files=files)
+        assert response.status_code == 200 and len(response.json().get('data')[0]) == 2
+
+        response = requests.get(self.get_url('list_files', details=False))
+        ids = response.json().get('data')
+        assert response.status_code == 200 and len(ids) == 4
+
+        # add_files_to_group
         pass
 
     @pytest.mark.order(4)
     def test_add_files_to_group_and_delete_files_from_group(self):
         response = requests.get(self.get_url('list_files', details=False))
         ids = response.json().get('data')
-        assert response.status_code == 200 and len(ids) == 2
+        assert response.status_code == 200 and len(ids) == 4
         requests.post(self.get_url('add_files_to_group_by_id'), json=dict(file_ids=ids, group_name='group1'))
         response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
-        assert response.status_code == 200 and len(response.json().get('data')) == 2
+        assert response.status_code == 200 and len(response.json().get('data')) == 4
 
         requests.post(self.get_url('delete_files_from_group'), json=dict(file_ids=ids[:1], group_name='group1'))
         response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
-        assert response.status_code == 200 and len(response.json().get('data')) == 2
+        assert response.status_code == 200 and len(response.json().get('data')) == 4
         response = requests.get(self.get_url('list_files_in_group', group_name='group1', alive=True))
-        assert response.status_code == 200 and len(response.json().get('data')) == 1
+        assert response.status_code == 200 and len(response.json().get('data')) == 3
+
+    @pytest.mark.order(5)
+    def test_delete_files(self):
+        # delete_files
+        pass

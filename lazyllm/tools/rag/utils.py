@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from fastapi import UploadFile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+import json
 
 import lazyllm
 from lazyllm import config
@@ -256,7 +257,7 @@ class SqliteDocListManager(DocListManager):
             ids = []
             for i, file_path in enumerate(files):
                 filename = os.path.basename(file_path)
-                metadata = metadatas[i] if metadatas else ''
+                metadata = json.dumps(metadatas[i]) if metadatas else ''
                 doc_id = hashlib.sha256(f'{file_path}'.encode()).hexdigest()
                 try:
                     self._conn.execute("""
@@ -264,8 +265,8 @@ class SqliteDocListManager(DocListManager):
                         VALUES (?, ?, ?, ?, ?, ?) RETURNING doc_id;
                     """, (doc_id, filename, file_path, metadata, status or DocListManager.Status.waiting, 1))
                 except sqlite3.InterfaceError as e:
-                    raise RuntimeError(f'{e}\n args are:\n    {doc_id}({type(doc_id)}), {filename}({type(filename)}),'
-                                       f'{file_path}({type(file_path)}), {metadata}({type(metadata)})')
+                    raise RuntimeError(f'{e}\n args are:\n  {doc_id}({type(doc_id)})\n,  {filename}({type(filename)}),\n'
+                                       f'  {file_path}({type(file_path)}),\n  {metadata}({type(metadata)})')
                 ids.append(doc_id)
             return ids
 
