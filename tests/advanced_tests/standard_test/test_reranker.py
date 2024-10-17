@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from lazyllm.tools.rag.store import DocNode
+from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.rerank import Reranker, register_reranker
 
 

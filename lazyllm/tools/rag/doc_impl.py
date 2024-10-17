@@ -8,11 +8,37 @@ from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMP
 from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, BaseStore
 from .data_loaders import DirectoryReader
 from .index import DefaultIndex
+from .base_index import BaseIndex
 from .utils import DocListManager
 import threading
 import time
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
+
+class FileNodeIndex(BaseIndex):
+    def __init__(self):
+        self._file_node_map = {}
+
+    # override
+    def update(self, nodes: List[DocNode]) -> None:
+        for node in nodes:
+            if node.group != LAZY_ROOT_NAME:
+                continue
+            file_name = node.metadata.get("file_name")
+            if file_name:
+                self._file_node_map[file_name] = node
+
+    # override
+    def remove(self, uids: List[str]) -> None:
+        left = {k: v for k, v in self._file_node_map.items() if v.uid not in uids}
+        self._file_node_map = left
+
+    # override
+    def query(self, files: List[str]) -> List[DocNode]:
+        ret = []
+        for file in files:
+            ret.append(self._file_node_map.get(file))
+        return ret
 
 
 def embed_wrapper(func):
@@ -44,6 +70,12 @@ class DocImpl:
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self.store = None
 
+    def _create_file_node_index(self, store) -> FileNodeIndex:
+        index = FileNodeIndex()
+        for group in store.all_groups():
+            index.update(store.get_nodes(group))
+        return index
+
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
         node_groups = DocImpl._builtin_node_groups.copy()
@@ -52,7 +84,9 @@ class DocImpl:
         self.node_groups = node_groups
 
         self.store = self._get_store()
-        self.index = DefaultIndex(self.embed, self.store)
+        self.store.register_index(type='default', index=DefaultIndex(self.embed, self.store))
+        self.store.register_index(type='file_node_map', index=self._create_file_node_index(self.store))
+
         if not self.store.has_nodes(LAZY_ROOT_NAME):
             ids, pathes = self._list_files()
             root_nodes = self._reader.load_data(pathes)
@@ -191,28 +225,28 @@ class DocImpl:
 
     def _delete_files(self, input_files: List[str]) -> None:
         self._lazy_init()
-        docs = self.store.get_nodes_by_files(input_files)
+        docs = self.store.get_index('file_node_map').query(input_files)
         LOG.info(f"delete_files: removing documents {input_files} and nodes {docs}")
         if len(docs) == 0:
             return
         self._delete_nodes_recursively(docs)
 
     def _delete_nodes_recursively(self, root_nodes: List[DocNode]) -> None:
-        nodes_to_delete = defaultdict(list)
-        nodes_to_delete[LAZY_ROOT_NAME] = root_nodes
+        uids_to_delete = defaultdict(list)
+        uids_to_delete[LAZY_ROOT_NAME] = [node.uid for node in root_nodes]
 
         # Gather all nodes to be deleted including their children
         def gather_children(node: DocNode):
             for children_group, children_list in node.children.items():
                 for child in children_list:
-                    nodes_to_delete[children_group].append(child)
+                    uids_to_delete[children_group].append(child.uid)
                     gather_children(child)
 
         for node in root_nodes:
             gather_children(node)
 
         # Delete nodes in all groups
-        for group, node_uids in nodes_to_delete.items():
+        for group, node_uids in uids_to_delete.items():
             self.store.remove_nodes(node_uids)
             LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
@@ -241,7 +275,7 @@ class DocImpl:
         if index:
             assert index == "default", "we only support default index currently"
         nodes = self._get_nodes(group_name)
-        return self.index.query(
+        return self.store.get_index('default').query(
             query, nodes, similarity, similarity_cut_off, topk, embed_keys, **similarity_kws
         )
 

@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 from fsspec import AbstractFileSystem
 
 from .readerBase import LazyLLMReaderBase
-from ..store import DocNode
+from ..doc_node import DocNode
 from lazyllm import LOG
 
 class EpubReader(LazyLLMReaderBase):

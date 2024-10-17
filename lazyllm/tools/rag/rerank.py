@@ -1,8 +1,8 @@
 from functools import lru_cache
 from typing import Callable, List, Optional, Union
 from lazyllm import ModuleBase, config, LOG
-from lazyllm.tools.rag.store import DocNode, MetadataMode
 from lazyllm.components.utils.downloader import ModelManager
+from .doc_node import DocNode, MetadataMode
 from .retriever import _PostProcess
 import numpy as np
 

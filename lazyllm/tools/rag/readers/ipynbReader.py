@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 from fsspec import AbstractFileSystem
 
 from .readerBase import LazyLLMReaderBase
-from ..store import DocNode
+from ..doc_node import DocNode
 
 class IPYNBReader(LazyLLMReaderBase):
     def __init__(self, parser_config: Optional[Dict] = None, concatenate: bool = False, return_trace: bool = True):

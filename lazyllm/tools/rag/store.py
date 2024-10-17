@@ -1,197 +1,18 @@
-from abc import ABC, abstractmethod
-from collections import defaultdict
-from enum import Enum, auto
-import uuid
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 import chromadb
 from lazyllm import LOG, config
 from chromadb.api.models.Collection import Collection
-import pymilvus
-import threading
+from .base_store import BaseStore
+from .base_index import BaseIndex
+from .doc_node import DocNode
 import json
-import time
 
+# ---------------------------------------------------------------------------- #
 
 LAZY_ROOT_NAME = "lazyllm_root"
 EMBED_DEFAULT_KEY = '__default__'
 config.add("rag_store_type", str, "map", "RAG_STORE_TYPE")  # "map", "chroma"
 config.add("rag_persistent_path", str, "./lazyllm_chroma", "RAG_PERSISTENT_PATH")
-
-
-class MetadataMode(str, Enum):
-    ALL = auto()
-    EMBED = auto()
-    LLM = auto()
-    NONE = auto()
-
-
-class DocNode:
-    def __init__(self, uid: Optional[str] = None, text: Optional[str] = None, group: Optional[str] = None,
-                 embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
-                 metadata: Optional[Dict[str, Any]] = None, classfication: Optional[str] = None):
-        self.uid: str = uid if uid else str(uuid.uuid4())
-        self.text: Optional[str] = text
-        self.group: Optional[str] = group
-        self.embedding: Optional[Dict[str, List[float]]] = embedding or None
-        self._metadata: Dict[str, Any] = metadata or {}
-        # Metadata keys that are excluded from text for the embed model.
-        self._excluded_embed_metadata_keys: List[str] = []
-        # Metadata keys that are excluded from text for the LLM.
-        self._excluded_llm_metadata_keys: List[str] = []
-        self.parent: Optional["DocNode"] = parent
-        self.children: Dict[str, List["DocNode"]] = defaultdict(list)
-        self.is_saved: bool = False
-        self._docpath = None
-        self._lock = threading.Lock()
-        self._embedding_state = set()
-        # store will create index cache for classfication to speed up retrieve
-        self._classfication = classfication
-
-    @property
-    def root_node(self) -> Optional["DocNode"]:
-        root = self.parent
-        while root and root.parent:
-            root = root.parent
-        return root or self
-
-    @property
-    def metadata(self) -> Dict:
-        return self.root_node._metadata
-
-    @metadata.setter
-    def metadata(self, metadata: Dict) -> None:
-        self._metadata = metadata
-
-    @property
-    def excluded_embed_metadata_keys(self) -> List:
-        return self.root_node._excluded_embed_metadata_keys
-
-    @excluded_embed_metadata_keys.setter
-    def excluded_embed_metadata_keys(self, excluded_embed_metadata_keys: List) -> None:
-        self._excluded_embed_metadata_keys = excluded_embed_metadata_keys
-
-    @property
-    def excluded_llm_metadata_keys(self) -> List:
-        return self.root_node._excluded_llm_metadata_keys
-
-    @excluded_llm_metadata_keys.setter
-    def excluded_llm_metadata_keys(self, excluded_llm_metadata_keys: List) -> None:
-        self._excluded_llm_metadata_keys = excluded_llm_metadata_keys
-
-    @property
-    def docpath(self) -> str:
-        return self.root_node._docpath or ''
-
-    @docpath.setter
-    def docpath(self, path):
-        assert not self.parent, 'Only root node can set docpath'
-        self._docpath = str(path)
-
-    def get_children_str(self) -> str:
-        return str(
-            {key: [node.uid for node in nodes] for key, nodes in self.children.items()}
-        )
-
-    def get_parent_id(self) -> str:
-        return self.parent.uid if self.parent else ""
-
-    def __str__(self) -> str:
-        return (
-            f"DocNode(id: {self.uid}, group: {self.group}, text: {self.get_text()}) parent: {self.get_parent_id()}, "
-            f"children: {self.get_children_str()}"
-        )
-
-    def __repr__(self) -> str:
-        return str(self) if config["debug"] else f'<Node id={self.uid}>'
-
-    def __eq__(self, other):
-        if isinstance(other, DocNode):
-            return self.uid == other.uid
-        return False
-
-    def __hash__(self):
-        return hash(self.uid)
-
-    def has_missing_embedding(self, embed_keys: Union[str, List[str]]) -> List[str]:
-        if isinstance(embed_keys, str): embed_keys = [embed_keys]
-        assert len(embed_keys) > 0, "The ebmed_keys to be checked must be passed in."
-        if self.embedding is None: return embed_keys
-        return [k for k in embed_keys if k not in self.embedding.keys() or self.embedding.get(k, [-1])[0] == -1]
-
-    def do_embedding(self, embed: Dict[str, Callable]) -> None:
-        generate_embed = {k: e(self.get_text(MetadataMode.EMBED)) for k, e in embed.items()}
-        with self._lock:
-            self.embedding = self.embedding or {}
-            self.embedding = {**self.embedding, **generate_embed}
-        self.is_saved = False
-
-    def check_embedding_state(self, embed_key: str) -> None:
-        while True:
-            with self._lock:
-                if not self.has_missing_embedding(embed_key):
-                    self._embedding_state.discard(embed_key)
-                    break
-            time.sleep(1)
-
-    def get_content(self) -> str:
-        return self.get_text(MetadataMode.LLM)
-
-    def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
-        """Metadata info string."""
-        if mode == MetadataMode.NONE:
-            return ""
-
-        metadata_keys = set(self.metadata.keys())
-        if mode == MetadataMode.LLM:
-            for key in self.excluded_llm_metadata_keys:
-                if key in metadata_keys:
-                    metadata_keys.remove(key)
-        elif mode == MetadataMode.EMBED:
-            for key in self.excluded_embed_metadata_keys:
-                if key in metadata_keys:
-                    metadata_keys.remove(key)
-
-        return "\n".join([f"{key}: {self.metadata[key]}" for key in metadata_keys])
-
-    def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
-        metadata_str = self.get_metadata_str(metadata_mode).strip()
-        if not metadata_str:
-            return self.text if self.text else ""
-        return f"{metadata_str}\n\n{self.text}".strip()
-
-    def to_dict(self) -> Dict:
-        return dict(text=self.text, embedding=self.embedding, metadata=self.metadata)
-
-# ---------------------------------------------------------------------------- #
-
-class BaseStore(ABC):
-    @abstractmethod
-    def update_nodes(self, nodes: List[DocNode]) -> None:
-        raise NotImplementedError("not implemented yet.")
-
-    @abstractmethod
-    def get_node(self, group_name: str, node_id: str) -> Optional[DocNode]:
-        raise NotImplementedError("not implemented yet.")
-
-    @abstractmethod
-    def get_nodes(self, group_name: str) -> List[DocNode]:
-        raise NotImplementedError("not implemented yet.")
-
-    @abstractmethod
-    def remove_nodes(self, nodes: List[DocNode]) -> None:
-        raise NotImplementedError("not implemented yet.")
-
-    @abstractmethod
-    def has_nodes(self, group_name: str) -> bool:
-        raise NotImplementedError("not implemented yet.")
-
-    @abstractmethod
-    def all_groups(self) -> List[str]:
-        raise NotImplementedError("not implemented yet.")
-
-    @abstractmethod
-    def get_nodes_by_files(self, files: List[str]) -> List[DocNode]:
-        raise NotImplementedError("not implemented yet.")
 
 # ---------------------------------------------------------------------------- #
 
@@ -201,24 +22,26 @@ class MapStore(BaseStore):
         self._group2docs: Dict[str, Dict[str, DocNode]] = {
             group: {} for group in node_groups
         }
-        self._file_node_map = {}
+        self._name2index = {}
 
     # override
     def update_nodes(self, nodes: List[DocNode]) -> None:
         for node in nodes:
-            if node.group == LAZY_ROOT_NAME and "file_name" in node.metadata:
-                self._file_node_map[node.metadata["file_name"]] = node
             self._group2docs[node.group][node.uid] = node
+
+        self._update_indices(self._name2index, nodes)
 
     # override
     def get_node(self, group_name: str, node_id: str) -> Optional[DocNode]:
         return self._group2docs.get(group_name, {}).get(node_id)
 
     # override
-    def remove_nodes(self, nodes: List[DocNode]) -> None:
-        for node in nodes:
-            assert node.group in self._group2docs, f"Unexpected node group {node.group}"
-            self._group2docs[node.group].pop(node.uid, None)
+    def remove_nodes(self, uids: List[str]) -> None:
+        for _, docs in self._group2docs.items():
+            for uid in uids:
+                docs.pop(uid, None)
+
+        self._remove_from_indices(self._name2index, uids)
 
     # override
     def has_nodes(self, group_name: str) -> bool:
@@ -234,12 +57,16 @@ class MapStore(BaseStore):
         return [group for group, nodes in self._group2docs.items()]
 
     # override
-    def get_nodes_by_files(self, files: List[str]) -> List[DocNode]:
-        nodes = []
-        for file in files:
-            if file in self._file_node_map:
-                nodes.append(self._file_node_map[file])
-        return nodes
+    def register_index(self, type: str, index: BaseIndex) -> None:
+        self._name2index[type] = index
+
+    # override
+    def remove_index(self, type: str) -> None:
+        self._name2index.pop(type, None)
+
+    # override
+    def get_index(self, type: str) -> Optional[BaseIndex]:
+        return self._name2index.get(type)
 
     def find_node_by_uid(self, uid: str) -> Optional[DocNode]:
         for docs in self._group2docs.values():
@@ -274,8 +101,8 @@ class ChromadbStore(BaseStore):
         return self._map_store.get_node(group_name, node_id)
 
     # override
-    def remove_nodes(self, nodes: List[DocNode]) -> None:
-        return self._map_store.remove_nodes(nodes)
+    def remove_nodes(self, uids: List[str]) -> None:
+        return self._map_store.remove_nodes(uids)
 
     # override
     def has_nodes(self, group_name: str) -> bool:
@@ -288,6 +115,18 @@ class ChromadbStore(BaseStore):
     # override
     def all_groups(self) -> List[str]:
         return self._map_store.all_groups()
+
+    # override
+    def register_index(self, type: str, index: BaseIndex) -> None:
+        self._map_store.register_index(type, index)
+
+    # override
+    def remove_index(self, type: str) -> Optional[BaseIndex]:
+        return self._map_store.remove_index(type)
+
+    # override
+    def get_index(self, type: str) -> Optional[BaseIndex]:
+        return self._map_store.get_index(type)
 
     def _load_store(self) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:
@@ -344,10 +183,6 @@ class ChromadbStore(BaseStore):
             )
             LOG.debug(f"Saved {group} nodes {ids} to chromadb.")
 
-    # override
-    def get_nodes_by_files(self, files: List[str]) -> List[DocNode]:
-        return self._map_store.get_nodes_by_files(files)
-
     def _build_nodes_from_chroma(self, results: Dict[str, List]) -> List[DocNode]:
         nodes: List[DocNode] = []
         for i, uid in enumerate(results['ids']):
@@ -374,76 +209,3 @@ class ChromadbStore(BaseStore):
         assert group in self._collections, f"group {group} not found."
         collection = self._collections[group]
         return collection.peek(collection.count())
-
-# ---------------------------------------------------------------------------- #
-
-class MilvusEmbeddingIndexField:
-    def __init__(self, name: str = "", dim: int = 0, type: int = pymilvus.DataType.FLOAT_VECTOR):
-        self.name = name
-        self.dim: int = dim
-        self.type: int = type
-
-class MilvusStore(BaseStore):
-    def __init__(self, node_groups: List[str], uri: str,
-                 embedding_index_info: List[MilvusEmbeddingIndexField],  # fields to be indexed by Milvus
-                 full_data_store: BaseStore):
-        self._full_data_store = full_data_store
-
-        self._primary_key = 'uid'
-        self._client = pymilvus.MilvusClient(uri=uri)
-
-        schema = self._client.create_schema(auto_id=False, enable_dynamic_field=True)
-        schema.add_field(
-            field_name=self._primary_key,
-            datatype=pymilvus.DataType.VARCHAR,
-            max_length=128,
-            is_primary=True,
-        )
-        for field in embedding_index_info:
-            schema.add_field(
-                field_name=field.name,
-                datatype=field.type,
-                dim=field.dim)
-
-        for group in node_groups:
-            if group not in self._client.list_collections():
-                self._client.create_collection(collection_name=group, schema=schema)
-
-    # override
-    def update_nodes(self, nodes: List[DocNode]) -> None:
-        self._save_nodes(nodes)
-        self._full_data_store.update_nodes(nodes)
-
-    # override
-    def get_node(self, group_name: str, node_id: str) -> Optional[DocNode]:
-        return self._full_data_store.get_node(group_name, node_id)
-
-    # override
-    def remove_nodes(self, nodes: List[DocNode]) -> None:
-        for node in nodes:
-            self._client.delete(collection_name=node.group,
-                                filter=f'{self._primary_key} in ["{node.uid}"]')
-            self._full_data_store.remove_nodes(nodes)
-
-    # override
-    def has_nodes(self, group_name: str) -> bool:
-        return self._full_data_store.has_nodes(group_name)
-
-    # override
-    def get_nodes(self, group_name: str) -> List[DocNode]:
-        return self._full_data_store.get_nodes(group_name)
-
-    # override
-    def all_groups(self) -> List[str]:
-        return self._full_data_store.all_groups()
-
-    # override
-    def get_nodes_by_files(self, files: List[str]) -> List[DocNode]:
-        return self._full_data_store.get_nodes_by_files(files)
-
-    def _save_nodes(self, nodes: List[DocNode]) -> None:
-        for node in nodes:
-            if node.embedding:
-                data = node.embedding.copy()
-                data[self._primary_key] = node.uid
-                self._client.upsert(collection_name=node.group, data=data)

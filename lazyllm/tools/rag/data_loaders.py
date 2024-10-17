@@ -1,5 +1,6 @@
 from typing import List, Optional, Dict
-from .store import DocNode, LAZY_ROOT_NAME
+from .doc_node import DocNode
+from .store import LAZY_ROOT_NAME
 from lazyllm import LOG
 from .dataReader import SimpleDirectoryReader
 

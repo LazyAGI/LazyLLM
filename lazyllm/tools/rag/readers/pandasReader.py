@@ -5,7 +5,7 @@ import importlib
 import pandas as pd
 
 from .readerBase import LazyLLMReaderBase
-from ..store import DocNode
+from ..doc_node import DocNode
 
 class PandasCSVReader(LazyLLMReaderBase):
     def __init__(self, concat_rows: bool = True, col_joiner: str = ", ", row_joiner: str = "\n",

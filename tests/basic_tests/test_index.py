@@ -1,8 +1,12 @@
+import os
 import time
 import unittest
+import tempfile
+import pymilvus
 from unittest.mock import MagicMock
-from lazyllm.tools.rag.store import DocNode, MapStore
-from lazyllm.tools.rag.index import DefaultIndex, register_similarity
+from lazyllm.tools.rag.store import MapStore, LAZY_ROOT_NAME
+from lazyllm.tools.rag.doc_node import DocNode
+from lazyllm.tools.rag.index import DefaultIndex, register_similarity, MilvusIndex, MilvusEmbeddingField
 
 
 class TestDefaultIndex(unittest.TestCase):
@@ -97,6 +101,61 @@ class TestDefaultIndex(unittest.TestCase):
         print(f"results: {results}")
         self.assertEqual(len(results), 1)
         self.assertIn(self.doc_node_2, results)
+
+class TestMilvusIndex(unittest.TestCase):
+    def setUp(self):
+        embedding_fields = [
+            MilvusEmbeddingField(name="vec1", dim=3, data_type=pymilvus.DataType.FLOAT_VECTOR,
+                                 index_type="HNSW", metric_type="IP"),
+            MilvusEmbeddingField(name="vec2", dim=5, data_type=pymilvus.DataType.FLOAT_VECTOR,
+                                 index_type="HNSW", metric_type="IP"),
+        ]
+        group_embedding_fields = {
+            "group1": embedding_fields,
+            "group2": embedding_fields,
+        }
+
+        self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
+        _, self.store_file = tempfile.mkstemp(suffix=".db")
+
+        self.map_store = MapStore(self.node_groups)
+        self.index = MilvusIndex(group_embedding_fields=group_embedding_fields,
+                                 uri=self.store_file, full_data_store=self.map_store)
+        self.map_store.register_index(type='milvus', index=self.index)
+
+        self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
+                             embedding={"vec1": [1.0, 2.0, 3.0], "vec2": [4.0, 5.0, 6.0, 7.0, 8.0]})
+        self.node2 = DocNode(uid="2", text="text2", group="group1", parent=self.node1,
+                             embedding={"vec1": [100.0, 200.0, 300.0], "vec2": [400.0, 500.0, 600.0, 700.0, 800.0]})
+
+    def tearDown(self):
+        os.remove(self.store_file)
+
+    def test_update_and_query(self):
+        self.map_store.update_nodes([self.node1])
+        ret = self.index.query(group_name='group1', data=[100.0, 200.0, 300.0], limit=1,
+                               anns_field='vec1')
+        self.assertEqual(len(ret), 1)
+        self.assertEqual(ret[0].uid, self.node1.uid)
+
+        self.map_store.update_nodes([self.node2])
+        ret = self.index.query(group_name='group1', data=[100.0, 200.0, 300.0], limit=1,
+                               anns_field='vec1')
+        self.assertEqual(len(ret), 1)
+        self.assertEqual(ret[0].uid, self.node2.uid)
+
+    def test_remove_and_query(self):
+        self.map_store.update_nodes([self.node1, self.node2])
+        ret = self.index.query(group_name='group1', data=[100.0, 200.0, 300.0], limit=1,
+                               anns_field='vec1')
+        self.assertEqual(len(ret), 1)
+        self.assertEqual(ret[0].uid, self.node2.uid)
+
+        self.map_store.remove_nodes([self.node2.uid])
+        ret = self.index.query(group_name='group1', data=[100.0, 200.0, 300.0], limit=1,
+                               anns_field='vec1')
+        self.assertEqual(len(ret), 1)
+        self.assertEqual(ret[0].uid, self.node1.uid)
 
 if __name__ == "__main__":
     unittest.main()
