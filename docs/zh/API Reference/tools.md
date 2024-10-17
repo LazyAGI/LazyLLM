@@ -14,6 +14,10 @@
     members:
     exclude-members: forward
 
+::: lazyllm.tools.rag.DocManager
+    members:
+	exclude-members:
+
 ::: lazyllm.tools.SentenceSplitter
     members:
     exclude-members:
