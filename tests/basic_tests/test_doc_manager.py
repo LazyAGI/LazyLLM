@@ -57,11 +57,17 @@ class TestDocListManager(unittest.TestCase):
         self.manager.init_tables()
         files_list = self.manager.list_kb_group_files(DocListManager.DEDAULT_GROUP_NAME, details=True)
         assert len(files_list) == 2
+        files_list = self.manager.list_kb_group_files('group1', details=True)
+        assert len(files_list) == 0
 
         self.manager.add_files_to_kb_group(get_fid([self.test_file_1, self.test_file_2]),
                                            DocListManager.DEDAULT_GROUP_NAME)
         files_list = self.manager.list_kb_group_files(DocListManager.DEDAULT_GROUP_NAME, details=True)
-        assert len(files_list) == 4
+        assert len(files_list) == 2
+
+        self.manager.add_files_to_kb_group(get_fid([self.test_file_1, self.test_file_2]), 'group1')
+        files_list = self.manager.list_kb_group_files('group1', details=True)
+        assert len(files_list) == 2
 
     def test_list_kb_groups(self):
         self.manager.init_tables()

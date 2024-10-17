@@ -274,7 +274,6 @@ class SqliteDocListManager(DocListManager):
         params = list(kw.values()) + [fileid]
         with self._conn:
             self._conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
-        raise NotImplementedError('')
 
     def add_files_to_kb_group(self, file_ids: List[str], group: str):
         with self._conn:
