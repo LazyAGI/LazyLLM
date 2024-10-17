@@ -7,7 +7,7 @@ from fsspec import AbstractFileSystem
 from PIL import Image
 
 from .readerBase import LazyLLMReaderBase, infer_torch_device
-from ..store import DocNode
+from ..doc_node import DocNode
 
 def img_2_b64(image: Image, format: str = "JPEG") -> str:
     buff = BytesIO()

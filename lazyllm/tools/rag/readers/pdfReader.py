@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 from fsspec import AbstractFileSystem
 
 from .readerBase import LazyLLMReaderBase, get_default_fs, is_default_fs
-from ..store import DocNode
+from ..doc_node import DocNode
 
 RETRY_TIMES = 3
 

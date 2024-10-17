@@ -14,7 +14,7 @@ from typing import Dict, Optional, List, Callable, Type
 from pathlib import Path, PurePosixPath, PurePath
 from fsspec import AbstractFileSystem
 from lazyllm import ModuleBase, LOG
-from .store import DocNode
+from .doc_node import DocNode
 from .readers import (ReaderBase, PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader,
                       EpubReader, MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
                       get_default_fs, is_default_fs)

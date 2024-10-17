@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional, Dict, List
 
 from .readerBase import LazyLLMReaderBase, infer_torch_device
-from ..store import DocNode
+from ..doc_node import DocNode
 
 class PPTXReader(LazyLLMReaderBase):
     def __init__(self, return_trace: bool = True) -> None:

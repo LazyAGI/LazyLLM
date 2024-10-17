@@ -12,7 +12,7 @@ from lazyllm.components import AlpacaPrompter
 import nltk
 import tiktoken
 
-from .store import DocNode, MetadataMode
+from .doc_node import DocNode, MetadataMode
 from lazyllm import LOG, TrainableModule, ThreadPoolExecutor
 
 
