@@ -30,6 +30,8 @@ class AutoDeploy(LazyLLMDeployBase):
             return SenseVoiceDeploy(launcher)
         elif type == 'tts' or ModelManager.get_model_type(model_name) == 'tts':
             return TTSDeploy(model_name, launcher=launcher)
+        elif type == 'vlm' or ModelManager.get_model_type(model_name) == 'vlm':
+            return deploy.LMDeploy(launcher)
         map_name = model_map(model_name)
         candidates = get_configer().query_deploy(lazyllm.config['gpu_type'], launcher.ngpus,
                                                  map_name, max_token_num)
