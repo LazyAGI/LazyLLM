@@ -1,5 +1,5 @@
 from .engine import Engine, Node
-from lazyllm import ActionModule, once_wrapper
+from lazyllm import once_wrapper
 from typing import List, Dict, Optional
 import uuid
 
@@ -34,10 +34,13 @@ class LightEngine(Engine):
 
     def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
               gid: Optional[str] = None, name: Optional[str] = None):
-        node = Node(id=gid or str(uuid.uuid4().hex), kind='Graph',
-                    name=name or str(uuid.uuid4().hex), args=dict(nodes=nodes, edges=edges, resources=resources))
-        self.graph = self.build_node(node).func
-        self.graph.start()
+        gid, name = gid or str(uuid.uuid4().hex), name or str(uuid.uuid4().hex)
+        node = Node(id=gid, kind='Graph', name=name, args=dict(nodes=nodes, edges=edges, resources=resources))
+        self.build_node(node).func.start()
+        return gid
+
+    def stop(self, id):
+        pass
 
     def update(self, nodes: List[Dict] = [], changed_nodes: List[Dict] = [],
                edges: List[Dict] = [], changed_resources: List[Dict] = [],
@@ -47,10 +50,9 @@ class LightEngine(Engine):
                 raise NotImplementedError('Web and Api server are not allowed now')
             self.update_node(r)
         for n in changed_nodes: self.update_node(n)
-        node = Node(id=gid or str(uuid.uuid4().hex), kind='Graph',
-                    name=name or str(uuid.uuid4().hex), args=dict(nodes=nodes, edges=edges))
-        self.graph = self.update_node(node).func
-        ActionModule(self.graph).start()
+        gid, name = gid or str(uuid.uuid4().hex), name or str(uuid.uuid4().hex)
+        node = Node(id=gid, kind='Graph', name=name, args=dict(nodes=nodes, edges=edges))
+        self.update_node(node).func.start()
 
-    def run(self, *args, **kw):
-        return self.graph(*args, **kw)
+    def run(self, id: str, *args, **kw):
+        return self.build_node(id).func(*args, **kw)
