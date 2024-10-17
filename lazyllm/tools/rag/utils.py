@@ -144,7 +144,7 @@ class SqliteDocListManager(DocListManager):
             self._conn.execute("""
                 CREATE TABLE IF NOT EXISTS document_groups (
                     group_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    group_name TEXT NOT NULL
+                    group_name TEXT NOT NULL UNIQUE
                 )
             """)
             self._conn.execute("""
@@ -155,6 +155,7 @@ class SqliteDocListManager(DocListManager):
                     classification TEXT,
                     status TEXT,
                     log TEXT,
+                    UNIQUE (doc_id, group_name),
                     FOREIGN KEY(doc_id) REFERENCES documents(doc_id),
                     FOREIGN KEY(group_name) REFERENCES document_groups(group_name)
                 )
@@ -259,23 +260,21 @@ class SqliteDocListManager(DocListManager):
                 filename = os.path.basename(file_path)
                 metadata = json.dumps(metadatas[i]) if metadatas else ''
                 doc_id = hashlib.sha256(f'{file_path}'.encode()).hexdigest()
-                try:
+                with self._conn:
                     self._conn.execute("""
                         INSERT OR IGNORE INTO documents (doc_id, filename, path, metadata, status, count)
                         VALUES (?, ?, ?, ?, ?, ?) RETURNING doc_id;
                     """, (doc_id, filename, file_path, metadata, status or DocListManager.Status.waiting, 1))
-                except sqlite3.InterfaceError as e:
-                    raise RuntimeError(f'{e}\n args are:\n  {doc_id}({type(doc_id)})\n,  {filename}({type(filename)}),\n'
-                                       f'  {file_path}({type(file_path)}),\n  {metadata}({type(metadata)})')
                 ids.append(doc_id)
             return ids
 
-    # TODO(wangzhihong): set to metadatas
+    # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):
         set_clause = ", ".join([f"{k} = ?" for k in kw.keys()])
         params = list(kw.values()) + [fileid]
         with self._conn:
             self._conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
+        raise NotImplementedError('')
 
     def add_files_to_kb_group(self, file_ids: List[str], group: str):
         with self._conn:
@@ -296,7 +295,8 @@ class SqliteDocListManager(DocListManager):
                 self._conn.execute("DELETE FROM kb_group_documents WHERE doc_id = ? AND group_name = ?", (doc_id, group))
 
     def get_file_status(self, fileid: str):
-        cursor = self._conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
+        with self._conn:
+            cursor = self._conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
         return cursor.fetchone()
 
     def update_file_status(self, file_ids: List[str], status: str):
@@ -311,12 +311,8 @@ class SqliteDocListManager(DocListManager):
             query += 'group_name = ? AND '
             params.append(group)
         query += f'doc_id IN ({",".join("?" * len(file_ids))})'
-        try:
-            with self._conn:
-                self._conn.execute(query, (params + file_ids))
-        except sqlite3.InterfaceError as e:
-            raise RuntimeError(f'{e}\n args are:\n    {status}({type(status)}), {group}({type(group)}),'
-                               f'{file_ids}({type(file_ids)})')
+        with self._conn:
+            self._conn.execute(query, (params + file_ids))
 
     def release(self):
         self._conn.close()
