@@ -3,3 +3,4 @@ docx2txt
 olefile
 pytest-rerunfailures
 pytest-order
+pymilvus

@@ -56,7 +56,7 @@ class DocImpl:
         if not self.store.has_nodes(LAZY_ROOT_NAME):
             ids, pathes = self._list_files()
             root_nodes = self._reader.load_data(pathes)
-            self.store.add_nodes(root_nodes)
+            self.store.update_nodes(root_nodes)
             if self._dlm: self._dlm.update_kb_group_file_status(
                 ids, DocListManager.Status.success, group=self._kb_group_name)
             LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
@@ -72,7 +72,6 @@ class DocImpl:
             store = MapStore(node_groups=self.node_groups.keys())
         elif rag_store_type == "chroma":
             store = ChromadbStore(node_groups=self.node_groups.keys(), embed=self.embed)
-            store.try_load_store()
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {rag_store_type}"
@@ -179,13 +178,15 @@ class DocImpl:
         self._lazy_init()
         root_nodes = self._reader.load_data(input_files)
         temp_store = self._get_store()
-        temp_store.add_nodes(root_nodes)
-        active_groups = self.store.active_groups()
-        LOG.info(f"add_files: Trying to merge store with {active_groups}")
-        for group in active_groups:
+        temp_store.update_nodes(root_nodes)
+        all_groups = self.store.all_groups()
+        LOG.info(f"add_files: Trying to merge store with {all_groups}")
+        for group in all_groups:
+            if not self.store.has_nodes(group):
+                continue
             # Duplicate group will be discarded automatically
             nodes = self._get_nodes(group, temp_store)
-            self.store.add_nodes(nodes)
+            self.store.update_nodes(nodes)
             LOG.debug(f"Merge {group} with {nodes}")
 
     def _delete_files(self, input_files: List[str]) -> None:
@@ -226,13 +227,13 @@ class DocImpl:
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
         parent_nodes = self._get_nodes(node_group["parent"], store)
         nodes = transform.batch_forward(parent_nodes, group_name)
-        store.add_nodes(nodes)
+        store.update_nodes(nodes)
         LOG.debug(f"building {group_name} nodes: {nodes}")
 
     def _get_nodes(self, group_name: str, store: Optional[BaseStore] = None) -> List[DocNode]:
         store = store or self.store
         self._dynamic_create_nodes(group_name, store)
-        return store.traverse_nodes(group_name)
+        return store.get_nodes(group_name)
 
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None) -> List[DocNode]:

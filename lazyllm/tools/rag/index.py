@@ -96,7 +96,7 @@ class DefaultIndex:
             assert len(query) > 0, "Query should not be empty."
             query_embedding = {k: self.embed[k](query) for k in (embed_keys or self.embed.keys())}
             nodes = self._parallel_do_embedding(nodes)
-            self.store.try_save_nodes(nodes)
+            self.store.update_nodes(nodes)
             similarities = similarity_func(query_embedding, nodes, topk=topk, **kwargs)
         elif mode == "text":
             similarities = similarity_func(query, nodes, topk=topk, **kwargs)

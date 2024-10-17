@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import chromadb
 from lazyllm import LOG, config
 from chromadb.api.models.Collection import Collection
+import pymilvus
 import threading
 import json
 import time
@@ -161,60 +162,78 @@ class DocNode:
     def to_dict(self) -> Dict:
         return dict(text=self.text, embedding=self.embedding, metadata=self.metadata)
 
+# ---------------------------------------------------------------------------- #
 
 class BaseStore(ABC):
-    def __init__(self, node_groups: List[str]) -> None:
-        self._store: Dict[str, Dict[str, DocNode]] = {
+    @abstractmethod
+    def update_nodes(self, nodes: List[DocNode]) -> None:
+        raise NotImplementedError("not implemented yet.")
+
+    @abstractmethod
+    def get_node(self, group_name: str, node_id: str) -> Optional[DocNode]:
+        raise NotImplementedError("not implemented yet.")
+
+    @abstractmethod
+    def get_nodes(self, group_name: str) -> List[DocNode]:
+        raise NotImplementedError("not implemented yet.")
+
+    @abstractmethod
+    def remove_nodes(self, nodes: List[DocNode]) -> None:
+        raise NotImplementedError("not implemented yet.")
+
+    @abstractmethod
+    def has_nodes(self, group_name: str) -> bool:
+        raise NotImplementedError("not implemented yet.")
+
+    @abstractmethod
+    def all_groups(self) -> List[str]:
+        raise NotImplementedError("not implemented yet.")
+
+    @abstractmethod
+    def get_nodes_by_files(self, files: List[str]) -> List[DocNode]:
+        raise NotImplementedError("not implemented yet.")
+
+# ---------------------------------------------------------------------------- #
+
+class MapStore(BaseStore):
+    def __init__(self, node_groups: List[str]):
+        # Dict[group_name, Dict[uuid, DocNode]]
+        self._group2docs: Dict[str, Dict[str, DocNode]] = {
             group: {} for group in node_groups
         }
         self._file_node_map = {}
 
-    def _add_nodes(self, nodes: List[DocNode]) -> None:
+    # override
+    def update_nodes(self, nodes: List[DocNode]) -> None:
         for node in nodes:
             if node.group == LAZY_ROOT_NAME and "file_name" in node.metadata:
                 self._file_node_map[node.metadata["file_name"]] = node
-            self._store[node.group][node.uid] = node
+            self._group2docs[node.group][node.uid] = node
 
-    def add_nodes(self, nodes: List[DocNode]) -> None:
-        self._add_nodes(nodes)
-        self.try_save_nodes(nodes)
+    # override
+    def get_node(self, group_name: str, node_id: str) -> Optional[DocNode]:
+        return self._group2docs.get(group_name, {}).get(node_id)
 
-    def has_nodes(self, group: str) -> bool:
-        return len(self._store[group]) > 0
-
-    def get_node(self, group: str, node_id: str) -> Optional[DocNode]:
-        return self._store.get(group, {}).get(node_id)
-
-    def traverse_nodes(self, group: str) -> List[DocNode]:
-        return list(self._store.get(group, {}).values())
-
-    @abstractmethod
-    def try_save_nodes(self, nodes: List[DocNode]) -> None:
-        # try save nodes to persistent source
-        raise NotImplementedError("Not implemented yet.")
-
-    @abstractmethod
-    def try_load_store(self) -> None:
-        # try load nodes from persistent source
-        raise NotImplementedError("Not implemented yet.")
-
-    @abstractmethod
-    def try_remove_nodes(self, nodes: List[DocNode]) -> None:
-        # try remove nodes in persistent source
-        raise NotImplementedError("Not implemented yet.")
-
-    def active_groups(self) -> List:
-        return [group for group, nodes in self._store.items() if nodes]
-
-    def _remove_nodes(self, nodes: List[DocNode]) -> None:
-        for node in nodes:
-            assert node.group in self._store, f"Unexpected node group {node.group}"
-            self._store[node.group].pop(node.uid, None)
-
+    # override
     def remove_nodes(self, nodes: List[DocNode]) -> None:
-        self._remove_nodes(nodes)
-        self.try_remove_nodes(nodes)
+        for node in nodes:
+            assert node.group in self._group2docs, f"Unexpected node group {node.group}"
+            self._group2docs[node.group].pop(node.uid, None)
 
+    # override
+    def has_nodes(self, group_name: str) -> bool:
+        docs = self._group2docs.get(group_name)
+        return True if docs else False
+
+    # override
+    def get_nodes(self, group_name: str) -> List[DocNode]:
+        return list(self._group2docs.get(group_name, {}).values())
+
+    # override
+    def all_groups(self) -> List[str]:
+        return [group for group, nodes in self._group2docs.items()]
+
+    # override
     def get_nodes_by_files(self, files: List[str]) -> List[DocNode]:
         nodes = []
         for file in files:
@@ -222,26 +241,20 @@ class BaseStore(ABC):
                 nodes.append(self._file_node_map[file])
         return nodes
 
+    def find_node_by_uid(self, uid: str) -> Optional[DocNode]:
+        for docs in self._group2docs.values():
+            doc = docs.get(uid)
+            if doc:
+                return doc
+        return None
 
-class MapStore(BaseStore):
-    def __init__(self, node_groups: List[str], *args, **kwargs):
-        super().__init__(node_groups, *args, **kwargs)
-
-    def try_save_nodes(self, nodes: List[DocNode]) -> None:
-        pass
-
-    def try_load_store(self) -> None:
-        pass
-
-    def try_remove_nodes(self, nodes: List[DocNode]) -> None:
-        pass
-
+# ---------------------------------------------------------------------------- #
 
 class ChromadbStore(BaseStore):
     def __init__(
-        self, node_groups: List[str], embed: Dict[str, Callable], *args, **kwargs
+        self, node_groups: List[str], embed: Dict[str, Callable]
     ) -> None:
-        super().__init__(node_groups, *args, **kwargs)
+        self._map_store = MapStore(node_groups)
         self._db_client = chromadb.PersistentClient(path=config["rag_persistent_path"])
         LOG.success(f"Initialzed chromadb in path: {config['rag_persistent_path']}")
         self._collections: Dict[str, Collection] = {
@@ -249,8 +262,34 @@ class ChromadbStore(BaseStore):
             for group in node_groups
         }
         self._placeholder = {k: [-1] * len(e("a")) for k, e in embed.items()} if embed else {EMBED_DEFAULT_KEY: []}
+        self._load_store()
 
-    def try_load_store(self) -> None:
+    # override
+    def update_nodes(self, nodes: List[DocNode]) -> None:
+        self._map_store.update_nodes(nodes)
+        self._save_nodes(nodes)
+
+    # override
+    def get_node(self, group_name: str, node_id: str) -> Optional[DocNode]:
+        return self._map_store.get_node(group_name, node_id)
+
+    # override
+    def remove_nodes(self, nodes: List[DocNode]) -> None:
+        return self._map_store.remove_nodes(nodes)
+
+    # override
+    def has_nodes(self, group_name: str) -> bool:
+        return self._map_store.has_nodes(group_name)
+
+    # override
+    def get_nodes(self, group_name: str) -> List[DocNode]:
+        return self._map_store.get_nodes(group_name)
+
+    # override
+    def all_groups(self) -> List[str]:
+        return self._map_store.all_groups()
+
+    def _load_store(self) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:
             LOG.info("No persistent data found, skip the rebuilding phrase.")
             return
@@ -259,20 +298,21 @@ class ChromadbStore(BaseStore):
         for group in self._collections.keys():
             results = self._peek_all_documents(group)
             nodes = self._build_nodes_from_chroma(results)
-            self._add_nodes(nodes)
+            self._map_store.update_nodes(nodes)
 
         # Rebuild relationships
-        for group, nodes_dict in self._store.items():
-            for node in nodes_dict.values():
+        for group_name in self._map_store.all_groups():
+            nodes = self._map_store.get_nodes(group_name)
+            for node in nodes:
                 if node.parent:
                     parent_uid = node.parent
-                    parent_node = self._find_node_by_uid(parent_uid)
+                    parent_node = self._map_store.find_node_by_uid(parent_uid)
                     node.parent = parent_node
                     parent_node.children[node.group].append(node)
-            LOG.debug(f"build {group} nodes from chromadb: {nodes_dict.values()}")
+            LOG.debug(f"build {group} nodes from chromadb: {nodes}")
         LOG.success("Successfully Built nodes from chromadb.")
 
-    def try_save_nodes(self, nodes: List[DocNode]) -> None:
+    def _save_nodes(self, nodes: List[DocNode]) -> None:
         if not nodes:
             return
         # Note: It's caller's duty to make sure this batch of nodes has the same group.
@@ -304,14 +344,9 @@ class ChromadbStore(BaseStore):
             )
             LOG.debug(f"Saved {group} nodes {ids} to chromadb.")
 
-    def try_remove_nodes(self, nodes: List[DocNode]) -> None:
-        pass
-
-    def _find_node_by_uid(self, uid: str) -> Optional[DocNode]:
-        for nodes_by_category in self._store.values():
-            if uid in nodes_by_category:
-                return nodes_by_category[uid]
-        raise ValueError(f"UID {uid} not found in store.")
+    # override
+    def get_nodes_by_files(self, files: List[str]) -> List[DocNode]:
+        return self._map_store.get_nodes_by_files(files)
 
     def _build_nodes_from_chroma(self, results: Dict[str, List]) -> List[DocNode]:
         nodes: List[DocNode] = []
@@ -339,3 +374,76 @@ class ChromadbStore(BaseStore):
         assert group in self._collections, f"group {group} not found."
         collection = self._collections[group]
         return collection.peek(collection.count())
+
+# ---------------------------------------------------------------------------- #
+
+class MilvusEmbeddingIndexField:
+    def __init__(self, name: str = "", dim: int = 0, type: int = pymilvus.DataType.FLOAT_VECTOR):
+        self.name = name
+        self.dim: int = dim
+        self.type: int = type
+
+class MilvusStore(BaseStore):
+    def __init__(self, node_groups: List[str], uri: str,
+                 embedding_index_info: List[MilvusEmbeddingIndexField],  # fields to be indexed by Milvus
+                 full_data_store: BaseStore):
+        self._full_data_store = full_data_store
+
+        self._primary_key = 'uid'
+        self._client = pymilvus.MilvusClient(uri=uri)
+
+        schema = self._client.create_schema(auto_id=False, enable_dynamic_field=True)
+        schema.add_field(
+            field_name=self._primary_key,
+            datatype=pymilvus.DataType.VARCHAR,
+            max_length=128,
+            is_primary=True,
+        )
+        for field in embedding_index_info:
+            schema.add_field(
+                field_name=field.name,
+                datatype=field.type,
+                dim=field.dim)
+
+        for group in node_groups:
+            if group not in self._client.list_collections():
+                self._client.create_collection(collection_name=group, schema=schema)
+
+    # override
+    def update_nodes(self, nodes: List[DocNode]) -> None:
+        self._save_nodes(nodes)
+        self._full_data_store.update_nodes(nodes)
+
+    # override
+    def get_node(self, group_name: str, node_id: str) -> Optional[DocNode]:
+        return self._full_data_store.get_node(group_name, node_id)
+
+    # override
+    def remove_nodes(self, nodes: List[DocNode]) -> None:
+        for node in nodes:
+            self._client.delete(collection_name=node.group,
+                                filter=f'{self._primary_key} in ["{node.uid}"]')
+            self._full_data_store.remove_nodes(nodes)
+
+    # override
+    def has_nodes(self, group_name: str) -> bool:
+        return self._full_data_store.has_nodes(group_name)
+
+    # override
+    def get_nodes(self, group_name: str) -> List[DocNode]:
+        return self._full_data_store.get_nodes(group_name)
+
+    # override
+    def all_groups(self) -> List[str]:
+        return self._full_data_store.all_groups()
+
+    # override
+    def get_nodes_by_files(self, files: List[str]) -> List[DocNode]:
+        return self._full_data_store.get_nodes_by_files(files)
+
+    def _save_nodes(self, nodes: List[DocNode]) -> None:
+        for node in nodes:
+            if node.embedding:
+                data = node.embedding.copy()
+                data[self._primary_key] = node.uid
+                self._client.upsert(collection_name=node.group, data=data)
