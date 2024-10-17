@@ -443,6 +443,457 @@ add_example('LLMParser.transform', '''
 
 # ---------------------------------------------------------------------------- #
 
+# rag/doc_manager.py
+
+add_chinese_doc('rag.DocManager', """
+DocManager类管理文档列表及相关操作，并通过API提供文档上传、删除、分组等功能。
+
+Args:
+    dlm (DocListManager): 文档列表管理器，用于处理具体的文档操作。
+
+""")
+
+add_chinese_doc('rag.DocManager.document', """
+提供默认文档页面的重定向接口。
+
+**Returns:**\n
+- RedirectResponse: 重定向到 `/docs` 页面。
+""")
+
+add_chinese_doc('rag.DocManager.list_kb_groups', """
+列出所有文档分组的接口。
+
+**Returns:**\n
+- BaseResponse: 包含所有文档分组的数据。
+""")
+
+add_chinese_doc('rag.DocManager.upload_files', """
+上传文件并更新其状态的接口。可以同时上传多个文件。
+
+Args:
+    files (List[UploadFile]): 上传的文件列表。
+    override (bool): 是否覆盖已存在的文件。默认为False。
+    metadatas (Optional[str]): 文件的元数据，JSON格式。
+    user_path (Optional[str]): 用户自定义的文件上传路径。
+
+**Returns:**\n
+- BaseResponse: 上传结果和文件ID。
+""")
+
+add_chinese_doc('rag.DocManager.list_files', """
+列出已上传文件的接口。
+
+Args:
+    limit (Optional[int]): 返回的文件数量限制。默认为None。
+    details (bool): 是否返回详细信息。默认为True。
+    alive (Optional[bool]): 如果为True，只返回未删除的文件。默认为None。
+
+**Returns:**\n
+- BaseResponse: 文件列表数据。
+""")
+
+add_chinese_doc('rag.DocManager.list_files_in_group', """
+列出指定分组中文件的接口。
+
+Args:
+    group_name (Optional[str]): 文件分组名称。
+    limit (Optional[int]): 返回的文件数量限制。默认为None。
+    alive (Optional[bool]): 是否只返回未删除的文件。
+
+**Returns:**\n
+- BaseResponse: 分组文件列表。
+""")
+
+add_chinese_doc('rag.DocManager.add_files_to_group_by_id', """
+通过文件ID将文件添加到指定分组的接口。
+
+Args:
+    request (FileGroupRequest): 包含文件ID和分组名称的请求。
+
+**Returns:**\n
+- BaseResponse: 操作结果。
+""")
+
+add_chinese_doc('rag.DocManager.add_files_to_group', """
+将文件上传后直接添加到指定分组的接口。
+
+Args:
+    files (List[UploadFile]): 上传的文件列表。
+    group_name (str): 要添加到的分组名称。
+    override (bool): 是否覆盖已存在的文件。默认为False。
+    metadatas (Optional[str]): 文件元数据，JSON格式。
+    user_path (Optional[str]): 用户自定义的文件上传路径。
+
+**Returns:**\n
+- BaseResponse: 操作结果和文件ID。
+""")
+
+add_chinese_doc('rag.DocManager.delete_files', """
+删除指定文件的接口。
+
+Args:
+    request (FileGroupRequest): 包含文件ID和分组名称的请求。
+
+**Returns:**\n
+- BaseResponse: 删除操作结果。
+""")
+
+add_english_doc('rag.DocManager', """
+The `DocManager` class manages document lists and related operations, providing APIs for uploading, deleting, and grouping documents.
+
+Args:
+    dlm (DocListManager): Document list manager responsible for handling document-related operations.
+
+""")
+
+add_english_doc('rag.DocManager.document', """
+An endpoint to redirect to the default documentation page.
+
+**Returns:**\n
+- RedirectResponse: Redirects to the `/docs` page.
+""")
+
+add_english_doc('rag.DocManager.list_kb_groups', """
+An endpoint to list all document groups.
+
+**Returns:**\n
+- BaseResponse: Contains the data of all document groups.
+""")
+
+add_english_doc('rag.DocManager.upload_files', """
+An endpoint to upload files and update their status. Multiple files can be uploaded at once.
+
+Args:
+    files (List[UploadFile]): List of files to upload.
+    override (bool): Whether to overwrite existing files. Default is False.
+    metadatas (Optional[str]): Metadata for the files in JSON format.
+    user_path (Optional[str]): User-defined path for file uploads.
+
+**Returns:**\n
+- BaseResponse: Upload results and file IDs.
+""")
+
+add_english_doc('rag.DocManager.list_files', """
+An endpoint to list uploaded files.
+
+Args:
+    limit (Optional[int]): Limit on the number of files returned. Default is None.
+    details (bool): Whether to return detailed information. Default is True.
+    alive (Optional[bool]): If True, only returns non-deleted files. Default is None.
+
+**Returns:**\n
+- BaseResponse: File list data.
+""")
+
+add_english_doc('rag.DocManager.list_files_in_group', """
+An endpoint to list files in a specific group.
+
+Args:
+    group_name (Optional[str]): The name of the file group.
+    limit (Optional[int]): Limit on the number of files returned. Default is None.
+    alive (Optional[bool]): Whether to return only non-deleted files.
+
+**Returns:**\n
+- BaseResponse: List of files in the group.
+""")
+
+add_english_doc('rag.DocManager.add_files_to_group_by_id', """
+An endpoint to add files to a specific group by file IDs.
+
+Args:
+    request (FileGroupRequest): Request containing file IDs and group name.
+
+**Returns:**\n
+- BaseResponse: Operation result.
+""")
+
+add_english_doc('rag.DocManager.add_files_to_group', """
+An endpoint to upload files and directly add them to a specified group.
+
+Args:
+    files (List[UploadFile]): List of files to upload.
+    group_name (str): Name of the group to add the files to.
+    override (bool): Whether to overwrite existing files. Default is False.
+    metadatas (Optional[str]): Metadata for the files in JSON format.
+    user_path (Optional[str]): User-defined path for file uploads.
+
+**Returns:**\n
+- BaseResponse: Operation result and file IDs.
+""")
+
+add_english_doc('rag.DocManager.delete_files', """
+An endpoint to delete specified files.
+
+Args:
+    request (FileGroupRequest): Request containing file IDs and group name.
+
+**Returns:**\n
+- BaseResponse: Deletion operation result.
+""")
+
+# ---------------------------------------------------------------------------- #
+
+# rag/utils.py
+
+add_chinese_doc('rag.DocListManager.table_inited', """\
+检查数据库表是否已初始化。
+
+**Returns:**
+- bool: 如果表已初始化，则返回True；否则返回False。
+""")
+
+add_chinese_doc('rag.DocListManager._init_tables', """\
+初始化数据库表。此方法应在未初始化表时调用，用于创建必要的表结构。
+""")
+
+add_chinese_doc('rag.DocListManager.list_files', """\
+列出符合条件的文件。
+
+Args:
+    limit (int, optional): 要返回的文件数限制。
+    details (bool): 如果为True，则返回文件的详细信息。
+    status (str or list of str, optional): 要筛选的文件状态。
+    exclude_status (str or list of str, optional): 要排除的文件状态。
+
+**Returns:**
+- list: 文件列表。
+""")
+
+add_chinese_doc('rag.DocListManager.list_all_kb_group', """\
+列出所有知识库分组的名称。
+
+**Returns:**
+- list: 知识库分组名称列表。
+""")
+
+add_chinese_doc('rag.DocListManager.add_kb_group', """\
+添加一个新的知识库分组。
+
+Args:
+    name (str): 要添加的分组名称。
+""")
+
+add_chinese_doc('rag.DocListManager.list_kb_group_files', """\
+列出指定知识库分组中的文件。
+
+Args:
+    group (str, optional): 分组名称。默认为None，表示所有分组。
+    limit (int, optional): 要返回的文件数限制。
+    details (bool): 如果为True，则返回文件的详细信息。
+    status (str or list of str, optional): 要筛选的文件状态。
+    exclude_status (str or list of str, optional): 要排除的文件状态。
+    upload_status (str, optional): 要筛选的上传状态。
+    exclude_upload_status (str or list of str, optional): 要排除的上传状态。
+
+**Returns:**
+- list: 文件列表。
+""")
+
+add_chinese_doc('rag.DocListManager.add_files', """\
+将文件添加到数据库中。
+
+Args:
+    files (list of str): 要添加的文件路径列表。
+    metadatas (list, optional): 与文件相关的元数据。
+    status (str, optional): 文件状态。
+
+**Returns:**
+- list: 文件的ID列表。
+""")
+
+add_chinese_doc('rag.DocListManager.update_file_message', """\
+更新指定文件的消息。
+
+Args:
+    fileid (str): 文件ID。
+    **kw: 需要更新的其他键值对。
+""")
+
+add_chinese_doc('rag.DocListManager.add_files_to_kb_group', """\
+将文件添加到指定的知识库分组中。
+
+Args:
+    file_ids (list of str): 要添加的文件ID列表。
+    group (str): 要添加的分组名称。
+""")
+
+add_chinese_doc('rag.DocListManager._delete_files', """\
+从数据库中删除指定的文件。
+
+Args:
+    file_ids (list of str): 要删除的文件ID列表。
+""")
+
+add_chinese_doc('rag.DocListManager.delete_files_from_kb_group', """\
+从指定的知识库分组中删除文件。
+
+Args:
+    file_ids (list of str): 要删除的文件ID列表。
+    group (str): 分组名称。
+""")
+
+add_chinese_doc('rag.DocListManager.get_file_status', """\
+获取指定文件的状态。
+
+Args:
+    fileid (str): 文件ID。
+
+**Returns:**
+- str: 文件的当前状态。
+""")
+
+add_chinese_doc('rag.DocListManager.update_file_status', """\
+更新指定文件的状态。
+
+Args:
+    file_ids (list of str): 要更新状态的文件ID列表。
+    status (str): 新的文件状态。
+""")
+
+add_chinese_doc('rag.DocListManager.update_kb_group_file_status', """\
+更新指定知识库分组中文件的状态。
+
+Args:
+    file_ids (str or list of str): 文件ID列表。
+    status (str): 新的文件状态。
+    group (str, optional): 知识库分组名称。默认为None。
+""")
+
+add_chinese_doc('rag.DocListManager.release', """\
+释放当前管理器的资源。
+
+""")
+
+add_english_doc('rag.DocListManager.table_inited', """\
+Checks if the database tables have been initialized.
+
+**Returns:**
+- bool: True if the tables have been initialized, False otherwise.
+""")
+
+add_english_doc('rag.DocListManager._init_tables', """\
+Initializes the database tables. This method should be called when the tables have not been initialized yet, creating the necessary table structures.
+""")
+
+add_english_doc('rag.DocListManager.list_files', """\
+Lists files that meet the specified criteria.
+
+Args:
+    limit (int, optional): Limit on the number of files to return.
+    details (bool): If True, return detailed file information.
+    status (str or list of str, optional): Filter files by status.
+    exclude_status (str or list of str, optional): Exclude files with these statuses.
+
+**Returns:**
+- list: List of files.
+""")
+
+add_english_doc('rag.DocListManager.list_all_kb_group', """\
+Lists all the knowledge base group names.
+
+**Returns:**
+- list: List of knowledge base group names.
+""")
+
+add_english_doc('rag.DocListManager.add_kb_group', """\
+Adds a new knowledge base group.
+
+Args:
+    name (str): Name of the group to add.
+""")
+
+add_english_doc('rag.DocListManager.list_kb_group_files', """\
+Lists files in the specified knowledge base group.
+
+Args:
+    group (str, optional): Group name. Defaults to None, meaning all groups.
+    limit (int, optional): Limit on the number of files to return.
+    details (bool): If True, return detailed file information.
+    status (str or list of str, optional): Filter files by status.
+    exclude_status (str or list of str, optional): Exclude files with these statuses.
+    upload_status (str, optional): Filter by upload status.
+    exclude_upload_status (str or list of str, optional): Exclude files with these upload statuses.
+
+**Returns:**
+- list: List of files.
+""")
+
+add_english_doc('rag.DocListManager.add_files', """\
+Adds files to the database.
+
+Args:
+    files (list of str): List of file paths to add.
+    metadatas (list, optional): Metadata associated with the files.
+    status (str, optional): File status.
+
+**Returns:**
+- list: List of file IDs.
+""")
+
+add_english_doc('rag.DocListManager.update_file_message', """\
+Updates the message for a specified file.
+
+Args:
+    fileid (str): File ID.
+    **kw: Additional key-value pairs to update.
+""")
+
+add_english_doc('rag.DocListManager.add_files_to_kb_group', """\
+Adds files to the specified knowledge base group.
+
+Args:
+    file_ids (list of str): List of file IDs to add.
+    group (str): Name of the group to add the files to.
+""")
+
+add_english_doc('rag.DocListManager._delete_files', """\
+Deletes specified files from the database.
+
+Args:
+    file_ids (list of str): List of file IDs to delete.
+""")
+
+add_english_doc('rag.DocListManager.delete_files_from_kb_group', """\
+Deletes files from the specified knowledge base group.
+
+Args:
+    file_ids (list of str): List of file IDs to delete.
+    group (str): Name of the group.
+""")
+
+add_english_doc('rag.DocListManager.get_file_status', """\
+Retrieves the status of a specified file.
+
+Args:
+    fileid (str): File ID.
+
+**Returns:**
+- str: The current status of the file.
+""")
+
+add_english_doc('rag.DocListManager.update_file_status', """\
+Updates the status of specified files.
+
+Args:
+    file_ids (list of str): List of file IDs to update.
+    status (str): The new file status.
+""")
+
+add_english_doc('rag.DocListManager.update_kb_group_file_status', """\
+Updates the status of files in a specified knowledge base group.
+
+Args:
+    file_ids (str or list of str): List of file IDs.
+    status (str): The new file status.
+    group (str, optional): Name of the knowledge base group. Defaults to None.
+""")
+
+add_english_doc('rag.DocListManager.release', """\
+Releases the resources of the current manager.
+""")
+
+# ---------------------------------------------------------------------------- #
+
 add_chinese_doc('WebModule', '''\
 WebModule是LazyLLM为开发者提供的基于Web的交互界面。在初始化并启动一个WebModule之后，开发者可以从页面上看到WebModule背后的模块结构，并将Chatbot组件的输入传输给自己开发的模块进行处理。
 模块返回的结果和日志会直接显示在网页的“处理日志”和Chatbot组件上。除此之外，WebModule支持在网页上动态加入Checkbox或Text组件用于向模块发送额外的参数。
