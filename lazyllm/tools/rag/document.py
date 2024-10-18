@@ -80,7 +80,4 @@ class Document(ModuleBase):
         return self._impl.retrieve(*args, **kw)
 
     def __repr__(self):
-        if hasattr(self, '_manager'):
-            return lazyllm.make_repr("Module", "Document", manager=bool(self._manager))
-        else:
-            return lazyllm.make_repr("Module", "Document")
+        return lazyllm.make_repr("Module", "Document", manager=hasattr(self, '_manager'))
