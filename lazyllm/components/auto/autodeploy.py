@@ -1,3 +1,4 @@
+# flake8: noqa: C901
 import lazyllm
 from lazyllm import launchers, deploy, LOG
 from ..deploy.base import LazyLLMDeployBase
@@ -32,7 +33,7 @@ class AutoDeploy(LazyLLMDeployBase):
             return SenseVoiceDeploy(launcher)
         elif type == 'tts':
             return TTSDeploy(model_name, launcher=launcher)
-        elif type == 'vlm' or ModelManager.get_model_type(model_name) == 'vlm':
+        elif type == 'vlm':
             return deploy.LMDeploy(launcher, stream=stream, **kw)
         map_name = model_map(model_name)
         candidates = get_configer().query_deploy(lazyllm.config['gpu_type'], launcher.ngpus,
