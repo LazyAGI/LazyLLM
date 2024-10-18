@@ -111,7 +111,7 @@ class TestDeploy(object):
         m = lazyllm.TrainableModule('bark')
         m.update_server()
         res = m('你好啊，很高兴认识你。')
-        assert "sounds" in json.loads(res)
+        assert "lazyllm_sounds" in json.loads(res)
 
     @reset_env
     def test_AutoModel(self):

@@ -290,12 +290,12 @@ class WebModule(ModuleBase):
                                     s = delta["content"]
                                 else:
                                     s = ""
-                        elif 'images_base64' in r:
-                            image_data = r.pop('images_base64')[0]
+                        elif 'lazyllm_images' in r:
+                            image_data = r.pop('lazyllm_images')[0]
                             image = Image.open(BytesIO(base64.b64decode(image_data)))
                             return "The image is: ", "".join(log_history), {'img': image}
-                        elif 'sounds' in r:
-                            sound_data = r.pop('sounds')
+                        elif 'lazyllm_sounds' in r:
+                            sound_data = r.pop('lazyllm_sounds')
                             sound_data = (sound_data[0], np.array(sound_data[1]).astype(np.int16))
                             return "The Audio is: ", "".join(log_history), {'audio': sound_data}
                         else:

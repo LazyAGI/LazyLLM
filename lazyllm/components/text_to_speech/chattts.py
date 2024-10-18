@@ -56,7 +56,7 @@ class ChatTTSModule(object):
                                   params_refine_text=params_refine_text,
                                   params_infer_code=params_infer_code,
                                 )
-        res = {'sounds': (24000, (speech[0].squeeze() * 32767).tolist())}
+        res = {'lazyllm_sounds': (24000, (speech[0].squeeze() * 32767).tolist())}
         return json.dumps(res)
 
     @classmethod

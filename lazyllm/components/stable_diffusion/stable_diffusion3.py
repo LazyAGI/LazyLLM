@@ -55,7 +55,7 @@ class StableDiffusion3(object):
             max_sequence_length=512,
         ).images
         img_base64_list = StableDiffusion3.images_to_base64(imgs)
-        res = {"images_base64": img_base64_list}
+        res = {"lazyllm_images": img_base64_list}
         return json.dumps(res)
 
     @classmethod
