@@ -1,14 +1,16 @@
 import ast
 from collections import defaultdict
 from functools import wraps
-from typing import Callable, Dict, List, Optional, Set, Union
+from typing import Callable, Dict, List, Optional, Set, Union, Tuple
 from lazyllm import LOG, config, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
 from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, BaseStore
 from .data_loaders import DirectoryReader
 from .index import DefaultIndex
-import os
+from .utils import DocListManager
+import threading
+import time
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
@@ -26,18 +28,17 @@ def embed_wrapper(func):
 
 
 class DocImpl:
-    DEDAULT_GROUP_NAME = '__default__'
     _builtin_node_groups: Dict[str, Dict] = {}
     _global_node_groups: Dict[str, Dict] = {}
     _registered_file_reader: Dict[str, Callable] = {}
 
-    def __init__(self, embed: Dict[str, Callable], dataset_path: Optional[str] = None,
+    def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: str = None):
         super().__init__()
-        assert (dataset_path is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
+        assert (dlm is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
         self._local_file_reader: Dict[str, Callable] = {}
-        self._kb_group_name = kb_group_name or DocImpl.DEDAULT_GROUP_NAME
-        self._dataset_path, self._doc_files = dataset_path, doc_files
+        self._kb_group_name = kb_group_name or DocListManager.DEDAULT_GROUP_NAME
+        self._dlm, self._doc_files = dlm, doc_files
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
@@ -53,9 +54,17 @@ class DocImpl:
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
         if not self.store.has_nodes(LAZY_ROOT_NAME):
-            root_nodes = self._reader.load_data(self._list_files())
+            ids, pathes = self._list_files()
+            root_nodes = self._reader.load_data(pathes)
             self.store.add_nodes(root_nodes)
+            if self._dlm: self._dlm.update_kb_group_file_status(
+                ids, DocListManager.Status.success, group=self._kb_group_name)
             LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
+
+        if self._dlm:
+            self._daemon = threading.Thread(target=self.worker)
+            self._daemon.daemon = True
+            self._daemon.start()
 
     def _get_store(self) -> BaseStore:
         rag_store_type = config["rag_store_type"]
@@ -138,26 +147,31 @@ class DocImpl:
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
 
-    # TODO(wangzhihong): modify here to fit kb-groups
-    def _list_files(self) -> List[str]:
-        if self._doc_files: return self._doc_files
-        if not os.path.isabs(self._dataset_path):
-            raise ValueError("directory must be an absolute path")
+    def worker(self):
+        while True:
+            ids, files = self._list_files(status=DocListManager.Status.deleting)
+            if files:
+                self._delete_files(files)
+                self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
+                continue
 
-        path = (os.path.join(self._dataset_path, self._kb_group_name)
-                if self._kb_group_name != DocImpl.DEDAULT_GROUP_NAME else self._dataset_path)
+            ids, files = self._list_files(status=DocListManager.Status.waiting,
+                                          upload_status=DocListManager.Status.success)
+            if files:
+                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
+                self._add_files(files)
+                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
+            time.sleep(10)
 
-        try:
-            files_list = []
-
-            for root, _, files in os.walk(path):
-                files = [os.path.join(root, file_path) for file_path in files]
-                files_list.extend(files)
-
-            return files_list
-        except Exception as e:
-            LOG.error(f"Error while listing files in {path}: {e}")
-            return []
+    def _list_files(self, status: str = DocListManager.Status.all, upload_status: str = DocListManager.Status.all
+                    ) -> Tuple[List[str], List[str]]:
+        if self._doc_files: return None, self._doc_files
+        ids, paths = [], []
+        for row in self._dlm.list_kb_group_files(group=self._kb_group_name, status=status,
+                                                 upload_status=upload_status, details=True):
+            ids.append(row[0])
+            paths.append(row[1])
+        return ids, paths
 
     def _add_files(self, input_files: List[str]):
         if len(input_files) == 0:

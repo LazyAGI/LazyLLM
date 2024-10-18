@@ -18,7 +18,7 @@ class _PostProcess(object):
     def _post_process(self, nodes):
         if self._target:
             # TODO(wangzhihong): search relationship and add find_child
-            nodes = self._doc.find_parent(self._target)(nodes)
+            nodes = DocImpl.find_parent(self._target)(nodes)
         if self._output_format == 'content':
             nodes = [node.get_content() for node in nodes]
             if isinstance(self._join, str): nodes = self._join.join(nodes)
@@ -45,7 +45,7 @@ class Retriever(ModuleBase, _PostProcess):
     ):
         super().__init__()
 
-        self._docs = [doc] if isinstance(doc, Document) else doc
+        self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
         for doc in self._docs:
             assert isinstance(doc, Document), 'Only Document or List[Document] are supported'
             self._submodules.append(doc)

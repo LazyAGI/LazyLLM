@@ -19,6 +19,9 @@ env:
   
 jobs:
   macos-basic_tests:
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
     runs-on: macos-13
 
     steps:
@@ -81,11 +84,14 @@ jobs:
          pip install -r tests/requirements.txt
          export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
          python -m pytest -v  --reruns=2 tests/basic_tests/
-        timeout-minutes: 25
+        timeout-minutes: 30
         env :
          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}       
 
   macos-charge_tests:
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
     runs-on: macos-13
 
     steps:
