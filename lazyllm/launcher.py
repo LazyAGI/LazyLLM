@@ -32,7 +32,6 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
     Status = Status
 
     def __init__(self) -> None:
-        self.status = Status.TBSubmitted
         self._id = str(uuid.uuid4().hex)
 
     def makejob(self, cmd):

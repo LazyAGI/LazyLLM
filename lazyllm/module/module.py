@@ -14,11 +14,11 @@ from typing import Dict, List, Any, Union, Optional
 
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals
-from ..launcher import LazyLLMLaunchersBase as Launcher
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.formatter import FormatterBase, EmptyFormatter
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
+from ..launcher import LazyLLMLaunchersBase as Launcher
 import uuid
 from ..client import get_redis, redis_client
 
