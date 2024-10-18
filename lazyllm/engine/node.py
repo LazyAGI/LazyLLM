@@ -36,17 +36,7 @@ all_nodes['LocalLLM'] = dict(
     builder_argument=dict(
         trainset=NodeArgs(str),
         prompt=NodeArgs(str),
-        finetune_method=NodeArgs(str, getattr_f=partial(getattr, lazyllm.finetune)),
-        deploy_method=NodeArgs(str, 'vllm', getattr_f=partial(getattr, lazyllm.deploy))),
-    other_arguments=dict(
-        finetune_method=dict(
-            batch_size=NodeArgs(int, 16),
-            micro_batch_size=NodeArgs(int, 2),
-            num_epochs=NodeArgs(int, 3),
-            learning_rate=NodeArgs(float, 5e-4),
-            lora_r=NodeArgs(int, 8),
-            lora_alpha=NodeArgs(int, 32),
-            lora_dropout=NodeArgs(float, 0.05)))
+        deploy_method=NodeArgs(str, 'vllm', getattr_f=partial(getattr, lazyllm.deploy)))
 )
 
 all_nodes['OnlineLLM'] = dict(

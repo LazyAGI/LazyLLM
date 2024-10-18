@@ -29,8 +29,9 @@ class Status(Enum):
 
 
 class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
+    Status = Status
+
     def __init__(self) -> None:
-        self.status = Status.TBSubmitted
         self._id = str(uuid.uuid4().hex)
 
     def makejob(self, cmd):
@@ -44,6 +45,12 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
             v.stop()
             LOG.info(f"killed job:{k}")
         self.all_processes.pop(self._id)
+        self.wait()
+
+    @property
+    def status(self):
+        assert len(self.all_processes[self._id]) == 1
+        return self.all_processes[self._id][0].status
 
     def wait(self):
         for _, v in self.all_processes[self._id]:
@@ -257,7 +264,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
                 encoding='utf-8'
             )
         except Exception as e:
-            LOG.error(f"An error occurred: {e}")
+            LOG.warning(f"Get idle gpus failed: {e}, if you have no gpu-driver, ignor it.")
             return []
         lines = order_list.strip().split('\n')
 
@@ -316,6 +323,8 @@ class SlurmLauncher(LazyLLMLaunchersBase):
                 cmd = f"scancel --quiet {self.jobid}"
                 subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                  encoding='utf-8', executable='/bin/bash')
+                self.jobid = None
+
             if self.ps:
                 self.ps.terminate()
                 self.queue = Queue()
@@ -541,6 +550,8 @@ class ScoLauncher(LazyLLMLaunchersBase):
                 self.queue = Queue()
                 self.output_thread_event.set()
                 self.output_thread.join()
+
+            self.jobid = None
 
         def wait(self):
             if self.ps:
