@@ -47,6 +47,11 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
             LOG.info(f"killed job:{k}")
         self.all_processes.pop(self._id)
 
+    @property
+    def status(self):
+        assert len(self.all_processes[self._id]) == 1
+        return self.all_processes[self._id][0].status
+
     def wait(self):
         for _, v in self.all_processes[self._id]:
             v.wait()

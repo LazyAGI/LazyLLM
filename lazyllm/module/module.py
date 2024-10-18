@@ -492,8 +492,9 @@ class _TrainableModuleImpl(ModuleBase):
         if len(set(args.keys()).intersection(set(disable))) > 0:
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
                              '{arg_cls}_args, please pass them from Module.__init__()')
-        args['launcher'] = args['launcher'].clone() if args.get('launcher') else launchers.remote(sync=False)
-        self._launchers['default'][arg_cls] = args['launcher']
+        if 'url' not in args:
+            args['launcher'] = args['launcher'].clone() if args.get('launcher') else launchers.remote(sync=False)
+            self._launchers['default'][arg_cls] = args['launcher']
         return args
 
     def _get_train_tasks_impl(self, mode: Optional[str] = None, **kw):
@@ -665,6 +666,10 @@ class TrainableModule(UrlModule):
     def stop(self, task_name: Optional[str] = None):
         launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
         launcher.cleanup()
+
+    def status(self, task_name: Optional[str] = None):
+        launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
+        return launcher.status
 
     # modify default value to ''
     def prompt(self, prompt=''):

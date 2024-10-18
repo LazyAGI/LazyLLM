@@ -39,8 +39,13 @@ class LightEngine(Engine):
         self.build_node(node).func.start()
         return gid
 
-    def stop(self, id, task_name: Optional[str] = None):
-        node = self.build_node(id)
+    def status(self, node_id: str, task_name: Optional[str] = None):
+        node = self.build_node(node_id)
+        assert node.kind in ('LocalLLM')
+        return node.func.status(task_name=task_name)
+
+    def stop(self, node_id: str, task_name: Optional[str] = None):
+        node = self.build_node(node_id)
         if task_name:
             assert node.kind in ('LocalLLM')
             node.func.stop(task_name=task_name)
