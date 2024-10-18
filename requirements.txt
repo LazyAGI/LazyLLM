@@ -17,6 +17,7 @@ json5
 tiktoken
 spacy<=3.7.5
 chromadb
+pymilvus
 bm25s
 pystemmer
 nltk
