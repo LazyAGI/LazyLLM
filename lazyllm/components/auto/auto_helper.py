@@ -1,5 +1,6 @@
 import re
 import pkg_resources
+import functools
 from packaging import version
 
 from .dependencies.modelsconfig import models_config
@@ -27,6 +28,7 @@ def compare_versions(version1, version2):
     else:
         return 0
 
+@functools.lru_cache
 def check_requirements(requirements):
     packages = [line.strip() for line in requirements.split('\n') if line.strip()]
 
