@@ -32,29 +32,42 @@ class MapStore(BaseStore):
         self._update_indices(self._name2index, nodes)
 
     # override
-    def get_node(self, group_name: str, node_id: str) -> Optional[DocNode]:
-        return self._group2docs.get(group_name, {}).get(node_id)
+    def get_group_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
+        docs = self._group2docs.get(group_name)
+        if not docs:
+            return []
+
+        if not uids:
+            return list(docs.values())
+
+        ret = []
+        for uid in uids:
+            doc = docs.get(uid)
+            if doc:
+                ret.append(doc)
+        return ret
 
     # override
-    def remove_nodes(self, uids: List[str]) -> None:
-        for _, docs in self._group2docs.items():
-            for uid in uids:
-                docs.pop(uid, None)
-
-        self._remove_from_indices(self._name2index, uids)
+    def remove_group_nodes(self, group_name: str, uids: List[str] = None) -> None:
+        if uids:
+            docs = self._group2docs.get(group_name)
+            if docs:
+                self._remove_from_indices(self._name2index, uids)
+                for uid in uids:
+                    docs.pop(uid, None)
+        else:
+            docs = self._group2docs.pop(group_name, None)
+            if docs:
+                self._remove_from_indices(self._name2index, [doc.uid for doc in docs])
 
     # override
-    def has_nodes(self, group_name: str) -> bool:
+    def group_is_active(self, group_name: str) -> bool:
         docs = self._group2docs.get(group_name)
         return True if docs else False
 
     # override
-    def get_nodes(self, group_name: str) -> List[DocNode]:
-        return list(self._group2docs.get(group_name, {}).values())
-
-    # override
-    def all_groups(self) -> List[str]:
-        return [group for group, nodes in self._group2docs.items()]
+    def group_names(self) -> List[str]:
+        return self._group2docs.keys()
 
     # override
     def register_index(self, type: str, index: BaseIndex) -> None:
@@ -97,24 +110,24 @@ class ChromadbStore(BaseStore):
         self._save_nodes(nodes)
 
     # override
-    def get_node(self, group_name: str, node_id: str) -> Optional[DocNode]:
-        return self._map_store.get_node(group_name, node_id)
+    def get_group_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
+        return self._map_store.get_group_nodes(group_name, uids)
 
     # override
-    def remove_nodes(self, uids: List[str]) -> None:
-        return self._map_store.remove_nodes(uids)
+    def remove_group_nodes(self, group_name: str, uids: List[str]) -> None:
+        if uids:
+            self._delete_group_nodes(group_name, uids)
+        else:
+            self._db_client.delete_collection(name=group_name)
+        return self._map_store.remove_group_nodes(group_name, uids)
 
     # override
-    def has_nodes(self, group_name: str) -> bool:
-        return self._map_store.has_nodes(group_name)
+    def group_is_active(self, group_name: str) -> bool:
+        return self._map_store.group_is_active(group_name)
 
     # override
-    def get_nodes(self, group_name: str) -> List[DocNode]:
-        return self._map_store.get_nodes(group_name)
-
-    # override
-    def all_groups(self) -> List[str]:
-        return self._map_store.all_groups()
+    def group_names(self) -> List[str]:
+        return self._map_store.group_names()
 
     # override
     def register_index(self, type: str, index: BaseIndex) -> None:
@@ -140,8 +153,8 @@ class ChromadbStore(BaseStore):
             self._map_store.update_nodes(nodes)
 
         # Rebuild relationships
-        for group_name in self._map_store.all_groups():
-            nodes = self._map_store.get_nodes(group_name)
+        for group_name in self._map_store.group_names():
+            nodes = self._map_store.get_group_nodes(group_name)
             for node in nodes:
                 if node.parent:
                     parent_uid = node.parent
@@ -182,6 +195,11 @@ class ChromadbStore(BaseStore):
                 documents=documents,
             )
             LOG.debug(f"Saved {group} nodes {ids} to chromadb.")
+
+    def _delete_group_nodes(self, group_name: str, uids: List[str]) -> None:
+        collection = self._collections.get(group_name)
+        if collection:
+            collection.delete(ids=uids)
 
     def _build_nodes_from_chroma(self, results: Dict[str, List]) -> List[DocNode]:
         nodes: List[DocNode] = []

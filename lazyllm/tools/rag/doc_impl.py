@@ -72,8 +72,8 @@ class DocImpl:
 
     def _create_file_node_index(self, store) -> FileNodeIndex:
         index = FileNodeIndex()
-        for group in store.all_groups():
-            index.update(store.get_nodes(group))
+        for group in store.group_names():
+            index.update(store.get_group_nodes(group))
         return index
 
     @once_wrapper(reset_on_pickle=True)
@@ -87,7 +87,7 @@ class DocImpl:
         self.store.register_index(type='default', index=DefaultIndex(self.embed, self.store))
         self.store.register_index(type='file_node_map', index=self._create_file_node_index(self.store))
 
-        if not self.store.has_nodes(LAZY_ROOT_NAME):
+        if not self.store.group_is_active(LAZY_ROOT_NAME):
             ids, pathes = self._list_files()
             root_nodes = self._reader.load_data(pathes)
             self.store.update_nodes(root_nodes)
@@ -213,10 +213,10 @@ class DocImpl:
         root_nodes = self._reader.load_data(input_files)
         temp_store = self._get_store()
         temp_store.update_nodes(root_nodes)
-        all_groups = self.store.all_groups()
-        LOG.info(f"add_files: Trying to merge store with {all_groups}")
-        for group in all_groups:
-            if not self.store.has_nodes(group):
+        group_names = self.store.group_names()
+        LOG.info(f"add_files: Trying to merge store with {group_names}")
+        for group in group_names:
+            if not self.store.group_is_active(group):
                 continue
             # Duplicate group will be discarded automatically
             nodes = self._get_nodes(group, temp_store)
@@ -247,11 +247,11 @@ class DocImpl:
 
         # Delete nodes in all groups
         for group, node_uids in uids_to_delete.items():
-            self.store.remove_nodes(node_uids)
+            self.store.remove_group_nodes(group, node_uids)
             LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
     def _dynamic_create_nodes(self, group_name: str, store: BaseStore) -> None:
-        if store.has_nodes(group_name):
+        if store.group_is_active(group_name):
             return
         node_group = self.node_groups.get(group_name)
         if node_group is None:
@@ -267,7 +267,7 @@ class DocImpl:
     def _get_nodes(self, group_name: str, store: Optional[BaseStore] = None) -> List[DocNode]:
         store = store or self.store
         self._dynamic_create_nodes(group_name, store)
-        return store.get_nodes(group_name)
+        return store.get_group_nodes(group_name)
 
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None) -> List[DocNode]:

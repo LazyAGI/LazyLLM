@@ -6,7 +6,7 @@ import pymilvus
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.store import MapStore, LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.index import DefaultIndex, register_similarity, MilvusIndex, MilvusEmbeddingField
+from lazyllm.tools.rag.index import DefaultIndex, register_similarity, MilvusIndex, MilvusEmbeddingField, parallel_do_embedding
 
 
 class TestDefaultIndex(unittest.TestCase):
@@ -74,7 +74,7 @@ class TestDefaultIndex(unittest.TestCase):
         for node in self.nodes:
             node.has_embedding = MagicMock(return_value=False)
         start_time = time.time()
-        self.index._parallel_do_embedding(self.nodes)
+        parallel_do_embedding(self.index.embed, self.nodes)
         assert time.time() - start_time < 4, "Parallel not used!"
 
     def test_query_multi_embed_similarity(self):
@@ -115,11 +115,14 @@ class TestMilvusIndex(unittest.TestCase):
             "group2": embedding_fields,
         }
 
+        self.mock_embed = MagicMock(return_value=[0, 0, 0])  # unused
+
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
         _, self.store_file = tempfile.mkstemp(suffix=".db")
 
         self.map_store = MapStore(self.node_groups)
-        self.index = MilvusIndex(group_embedding_fields=group_embedding_fields,
+        self.index = MilvusIndex(embed={"vec1": self.mock_embed, "vec2": self.mock_embed},
+                                 group_embedding_fields=group_embedding_fields,
                                  uri=self.store_file, full_data_store=self.map_store)
         self.map_store.register_index(type='milvus', index=self.index)
 
@@ -151,7 +154,7 @@ class TestMilvusIndex(unittest.TestCase):
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0].uid, self.node2.uid)
 
-        self.map_store.remove_nodes([self.node2.uid])
+        self.map_store.remove_group_nodes("group1", [self.node2.uid])
         ret = self.index.query(group_name='group1', data=[100.0, 200.0, 300.0], limit=1,
                                anns_field='vec1')
         self.assertEqual(len(ret), 1)
