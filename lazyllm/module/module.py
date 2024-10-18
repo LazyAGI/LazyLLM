@@ -14,6 +14,7 @@ from typing import Dict, List, Any, Union, Optional
 
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals
+from ..launcher import LazyLLMLaunchersBase as Launcher
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.formatter import FormatterBase, EmptyFormatter
 from ..components.utils import ModelManager
@@ -479,7 +480,7 @@ class _TrainableModuleImpl(ModuleBase):
         self._train, self._finetune, self._deploy = train, finetune, deploy
         self._stream = stream
         self._father = []
-        self._launchers = dict(default=dict(), manual=dict())
+        self._launchers: Dict[str, Dict[str, Launcher]] = dict(default=dict(), manual=dict())
         self._deployer = None
         self._specific_target_path = None
 
@@ -495,7 +496,7 @@ class _TrainableModuleImpl(ModuleBase):
         self._launchers['default'][arg_cls] = args['launcher']
         return args
 
-    def _get_train_tasks_impl(self, mode: Optional[str], **kw):
+    def _get_train_tasks_impl(self, mode: Optional[str] = None, **kw):
         mode = mode or self._mode
         assert mode in ('train', 'finetune'), 'mode must be train or finetune'
 
@@ -660,6 +661,10 @@ class TrainableModule(UrlModule):
         # TODO(wangzhihong): Split finetune launcher and deploy launcher; Only one deploy launcher is allowed.
         for launcher in self._impl._launchers:
             launcher.wait()
+
+    def stop(self, task_name: Optional[str] = None):
+        launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
+        launcher.cleanup()
 
     # modify default value to ''
     def prompt(self, prompt=''):

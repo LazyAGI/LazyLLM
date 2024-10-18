@@ -39,8 +39,14 @@ class LightEngine(Engine):
         self.build_node(node).func.start()
         return gid
 
-    def stop(self, id):
-        pass
+    def stop(self, id, task_name: Optional[str] = None):
+        node = self.build_node(id)
+        if task_name:
+            assert node.kind in ('LocalLLM')
+            node.func.stop(task_name=task_name)
+        else:
+            assert node.kind in ('Graph', 'LocalLLM', 'LocalEmbedding', 'SD', 'TTS', 'STT')
+            node.func.stop()
 
     def update(self, nodes: List[Dict] = [], changed_nodes: List[Dict] = [],
                edges: List[Dict] = [], changed_resources: List[Dict] = [],
