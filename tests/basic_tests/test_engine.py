@@ -161,8 +161,8 @@ class TestEngine(object):
                  dict(iid='1', oid='__end__')]
 
         engine = LightEngine()
-        engine.start(nodes, edges)
-        r = engine.run(1)
+        gid = engine.start(nodes, edges)
+        r = engine.run(gid, 1)
         print(r, type(r))
         print(isinstance(r, lazyllm.package))
 
@@ -174,8 +174,8 @@ class TestEngine(object):
         edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='2', oid='3'),
                  dict(iid='1', oid='3'), dict(iid='3', oid='__end__', formatter='*[a, b]')]
         engine = LightEngine()
-        engine.start(nodes, edges)
-        r = engine.run(1)
+        gid = engine.start(nodes, edges)
+        r = engine.run(gid, 1)
         print(r, type(r))
         print(isinstance(r, lazyllm.package))
 
@@ -283,9 +283,7 @@ class TestEngine(object):
         assert 'reply for You are an AI-Agent developed by LazyLLM' in r
         assert '1234' in r
 
-        time.sleep(1)
         engine.stop('0')
-        time.sleep(1)
 
         with pytest.raises((TimeoutException, urllib3.exceptions.NewConnectionError, RuntimeError)):
             with lazyllm.timeout(3):
@@ -295,7 +293,7 @@ class TestEngine(object):
         r = engine.run(gid, '12345')
         assert 'reply for You are an AI-Agent developed by LazyLLM' in r
         assert '12345' in r
-        engine.stop('0')
+        engine.stop(gid)
 
 class TestEngineRAG(object):
 
