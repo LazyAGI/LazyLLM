@@ -161,7 +161,8 @@ def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [],
 
     with graph() as g:
         for node in nodes:
-            setattr(g, node.name, (node.func, node.arg_names))
+            setattr(g, node.name, node.func)
+    g.set_node_arg_name([node.arg_names for node in nodes])
 
     for edge in edges:
         if formatter := edge.get('formatter'):

@@ -485,7 +485,7 @@ class Graph(LazyLLMFlowsBase):
 
     class Node:
         def __init__(self, func, name, arg_names=None):
-            self.func, self.name, self.arg_names = func, name, arg_names
+            self.func, self.name, self.arg_names = func, name, None
             self.inputs, self.outputs = dict(), []
 
         def __repr__(self): return lazyllm.make_repr('Flow', 'Node', name=self.name)
@@ -494,11 +494,15 @@ class Graph(LazyLLMFlowsBase):
         super(__class__, self).__init__(post_action=post_action, auto_capture=auto_capture, **kw)
 
     def __post_init__(self):
-        self._nodes = {n: Graph.Node(f, n, a) for (f, a), n in zip(self._items, self._item_names)}
+        self._nodes = {n: Graph.Node(f, n) for f, n in zip(self._items, self._item_names)}
         self._nodes[Graph.start_node_name] = Graph.Node(None, Graph.start_node_name)
         self._nodes[Graph.end_node_name] = Graph.Node(lazyllm.Identity(), Graph.end_node_name)
         self._in_degree = {node: 0 for node in self._nodes.values()}
         self._sorted_nodes = None
+
+    def set_node_arg_name(self, arg_names):
+        for node_name, name in zip(self._item_names, arg_names):
+            self._nodes[node_name].arg_names = name
 
     @property
     def start_node(self): return self._nodes[Graph.start_node_name]

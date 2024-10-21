@@ -173,7 +173,7 @@ class SqliteDocListManager(DocListManager):
         prefix = f'{prefix}.' if prefix else ''
         if isinstance(status, str):
             if status != DocListManager.Status.all:
-                conds.append('{prefix}status = ?')
+                conds.append(f'{prefix}status = ?')
                 params.append(status)
         elif isinstance(status, (tuple, list)):
             conds.append(f'{prefix}status IN ({",".join("?" * len(status))})')
