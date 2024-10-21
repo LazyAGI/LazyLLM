@@ -66,7 +66,7 @@ class NodeConstructor(object):
                 r = NodeConstructor.builder_methods[node.kind](**node.args)
             else:
                 r = NodeConstructor.builder_methods[node.kind](node.args)
-            node.func, node.arg_names = (r if isinstance(node.func, tuple) else (r, None))
+            node.func, node.arg_names = (r if isinstance(r, tuple) else (r, None))
             return node
 
         node_msgs = all_nodes[node.kind]
