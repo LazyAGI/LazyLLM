@@ -553,7 +553,8 @@ class Graph(LazyLLMFlowsBase):
                         intermediate_results['values'][name] = r
             r = intermediate_results['values'][name]
             if node.inputs[name]:
-                assert (len(r.args) == 0 ^ len(r.kw) == 0), 'Only one of args and kwargs can be given with formatter.'
+                if isinstance(r, arguments) and not ((len(r.args) == 0) ^ (len(r.kw) == 0)):
+                    raise RuntimeError('Only one of args and kwargs can be given with formatter.')
                 r = node.inputs[name]((r.args or r.kw) if isinstance(r, arguments) else r)
             return r
 

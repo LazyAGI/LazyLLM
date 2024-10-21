@@ -253,7 +253,7 @@ class TestEngine(object):
             dict(id='1', kind='Code', name='code2', args='def p2(): return "bar"'),
             dict(id='2', kind='Code', name='code3', args='def h1(): return "baz"'),
             dict(id='3', kind='HttpTool', name='http', args=dict(
-                method='GET', url=url, params=params, headers=headers, _args_names=['p1', 'p2', 'h1']))
+                method='GET', url=url, params=params, headers=headers, _lazyllm_arg_names=['p1', 'p2', 'h1']))
         ]
         edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
                  dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]

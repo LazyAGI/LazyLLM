@@ -59,6 +59,7 @@ class NodeConstructor(object):
     def build(self, node: Node):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
+        args_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
         if node.kind in NodeConstructor.builder_methods:
             createf = NodeConstructor.builder_methods[node.kind]
             r = inspect.getfullargspec(createf)
@@ -66,7 +67,7 @@ class NodeConstructor(object):
                 r = NodeConstructor.builder_methods[node.kind](**node.args)
             else:
                 r = NodeConstructor.builder_methods[node.kind](node.args)
-            node.func, node.arg_names = (r if isinstance(r, tuple) else (r, None))
+            node.func, node.arg_names = r, args_names
             return node
 
         node_msgs = all_nodes[node.kind]
@@ -93,7 +94,7 @@ class NodeConstructor(object):
         module = node_msgs['module'](**init_args)
         for key, value in build_args.items():
             module = getattr(module, key)(value, **other_args.get(key, dict()))
-        node.func = module
+        node.func, node.arg_names = module, args_names
         return node
 
 
@@ -314,13 +315,12 @@ def make_http_tool(method: Optional[str] = None,
                    proxies: Optional[Dict[str, str]] = None,
                    code_str: Optional[str] = None,
                    vars_for_code: Optional[Dict[str, Any]] = None,
-                   doc: Optional[str] = None,
-                   _args_names: Optional[str] = None):
+                   doc: Optional[str] = None):
     instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies,
                                       code_str, vars_for_code)
     if doc:
         instance.__doc__ = doc
-    return instance, _args_names
+    return instance
 
 @NodeConstructor.register('SharedLLM')
 def make_shared_llm(llm: str, prompt: Optional[str] = None):
