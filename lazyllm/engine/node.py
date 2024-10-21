@@ -74,7 +74,9 @@ all_nodes['OnlineEmbedding'] = dict(
     init_arguments=dict(
         source=NodeArgs(str),
         embed_model_name=NodeArgs(str),
-        embed_url=NodeArgs(str))
+        embed_url=NodeArgs(str),
+        api_key=NodeArgs(str, None),
+        secret_key=NodeArgs(str, None))
 )
 
 all_nodes['SD'] = all_nodes['TTS'] = all_nodes['STT'] = dict(
