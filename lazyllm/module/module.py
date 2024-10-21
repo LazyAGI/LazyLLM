@@ -437,6 +437,7 @@ class _ServerModuleImpl(ModuleBase):
 
     def stop(self):
         self._launcher.cleanup()
+        self._get_deploy_tasks.flag.reset()
 
     def __del__(self):
         self.stop()
