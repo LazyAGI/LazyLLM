@@ -95,19 +95,19 @@ class TestDeploy(object):
         m = lazyllm.TrainableModule('stable-diffusion-3-medium')
         m.update_server()
         res = m('a little cat')
-        assert "images_base64" in json.loads(res)
+        assert "lazyllm_images" in json.loads(res)
 
     def test_musicgen(self):
         m = lazyllm.TrainableModule('musicgen-small')
         m.update_server()
         res = m('lo-fi music with a soothing melody')
-        assert "sounds" in json.loads(res)
+        assert "lazyllm_sounds" in json.loads(res)
 
     def test_chattts(self):
         m = lazyllm.TrainableModule('ChatTTS')
         m.update_server()
         res = m('你好啊，很高兴认识你。')
-        assert "sounds" in json.loads(res)
+        assert "lazyllm_sounds" in json.loads(res)
 
     def test_stt_sensevoice(self):
         chat = lazyllm.TrainableModule('sensevoicesmall')
@@ -140,7 +140,7 @@ class TestDeploy(object):
         assert "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported." == res
 
     def test_vlm_and_lmdeploy(self):
-        chat = lazyllm.TrainableModule('internvl-chat-2b-v1-5').deploy_method(deploy.LMDeploy)
+        chat = lazyllm.TrainableModule('Mini-InternVL-Chat-2B-V1-5')
         m = lazyllm.ServerModule(chat)
         m.update_server()
         query = '这是啥？'

@@ -181,7 +181,7 @@ class SqliteDocListManager(DocListManager):
 
         if isinstance(exclude_status, str):
             assert exclude_status != DocListManager.Status.all, 'Invalid status provided'
-            conds.append('{prefix}status != ?')
+            conds.append(f'{prefix}status != ?')
             params.append(exclude_status)
         elif isinstance(exclude_status, (tuple, list)):
             conds.append(f'{prefix}status NOT IN ({",".join("?" * len(exclude_status))})')
