@@ -530,6 +530,30 @@ class ScoLauncher(LazyLLMLaunchersBase):
             else:
                 raise RuntimeError("Cannot get IP.", f"JobID: {self.jobid}")
 
+        def _scancel_job(self, cmd, max_retries=3):
+            retries = 0
+            while retries < max_retries:
+                ps = subprocess.Popen(
+                    cmd, shell=True, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    encoding='utf-8', executable='/bin/bash')
+                try:
+                    stdout, stderr = ps.communicate(timeout=3)
+                    if stdout:
+                        LOG.info(stdout)
+                        if 'success scancel' in stdout:
+                            break
+                    if stderr:
+                        LOG.error(stderr)
+                except subprocess.TimeoutExpired:
+                    ps.kill()
+                    LOG.warning(f"Command timed out, retrying... (Attempt {retries + 1}/{max_retries})")
+                except Exception as e:
+                    LOG.error("Try to scancel, but meet: ", e)
+                retries += 1
+            if retries == max_retries:
+                LOG.error(f"Command failed after {max_retries} attempts.")
+
         def stop(self):
             if self.jobid:
                 cmd = f"scancel --workspace-id={self.workspace_name} {self.jobid}"
@@ -540,12 +564,10 @@ class ScoLauncher(LazyLLMLaunchersBase):
                         f"To delete by terminal, you can execute: `{cmd}`"
                     )
                 else:
-                    subprocess.Popen(
-                        cmd, shell=True, stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        encoding='utf-8', executable='/bin/bash')
+                    self._scancel_job(cmd)
+                    time.sleep(0.5)  # Avoid the execution of scancel and scontrol too close together.
 
-            with lazyllm.timeout(10):
+            with lazyllm.timeout(25):
                 while self.status not in (Status.Done, Status.Cancelled, Status.Failed):
                     time.sleep(1)
 
