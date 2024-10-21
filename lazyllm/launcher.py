@@ -545,6 +545,10 @@ class ScoLauncher(LazyLLMLaunchersBase):
                         stderr=subprocess.STDOUT,
                         encoding='utf-8', executable='/bin/bash')
 
+            with lazyllm.timeout(10):
+                while self.status not in (Status.Done, Status.Cancelled, Status.Failed):
+                    time.sleep(1)
+
             if self.ps:
                 self.ps.terminate()
                 self.queue = Queue()
@@ -563,18 +567,24 @@ class ScoLauncher(LazyLLMLaunchersBase):
                 try:
                     id_str = subprocess.check_output(['scontrol', f'--workspace-id={self.workspace_name}',
                                                       'show', 'job', str(self.jobid)]).decode("utf-8")
+                    if 'Error: get no resource from higg service' in id_str:
+                        return Status.Cancelled
                     id_json = json.loads(id_str)
                     job_state = id_json['status_phase'].strip().lower()
                     if job_state == 'running':
                         return Status.Running
-                    elif job_state in ['tbsubmitted', 'suspending', 'suspended']:
+                    elif job_state in ['tbsubmitted', 'suspending']:
                         return Status.TBSubmitted
                     elif job_state in ['waiting', 'init', 'queueing', 'creating',
                                        'restarting', 'recovering', 'starting']:
                         return Status.InQueue
+                    elif job_state in ['suspended']:
+                        return Status.Cancelled
                     elif job_state == 'succeeded':
                         return Status.Done
-                except Exception:
+                    LOG.warning(f'unexpected job_state: {job_state}')
+                except Exception as e:
+                    LOG.warning(f'Error: {str(e)}')
                     pass
             return Status.Failed
 

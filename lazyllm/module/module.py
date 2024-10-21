@@ -665,6 +665,7 @@ class TrainableModule(UrlModule):
 
     def stop(self, task_name: Optional[str] = None):
         launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
+        if not task_name: self._impl._get_deploy_tasks.flag.reset()
         launcher.cleanup()
 
     def status(self, task_name: Optional[str] = None):

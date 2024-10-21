@@ -1,6 +1,6 @@
 from .engine import Engine, Node
 from lazyllm import once_wrapper
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, overload
 import uuid
 
 
@@ -32,12 +32,23 @@ class LightEngine(Engine):
         self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]
 
+    @overload
+    def start(self, nodes: str) -> None:
+        ...
+
+    @overload
     def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
-              gid: Optional[str] = None, name: Optional[str] = None):
-        gid, name = gid or str(uuid.uuid4().hex), name or str(uuid.uuid4().hex)
-        node = Node(id=gid, kind='Graph', name=name, args=dict(nodes=nodes, edges=edges, resources=resources))
-        self.build_node(node).func.start()
-        return gid
+              gid: Optional[str] = None, name: Optional[str] = None) -> str:
+        ...
+
+    def start(self, nodes=[], edges=[], resources=[], gid=None, name=None):
+        if isinstance(nodes, str):
+            self.build_node(nodes).func.start()
+        else:
+            gid, name = gid or str(uuid.uuid4().hex), name or str(uuid.uuid4().hex)
+            node = Node(id=gid, kind='Graph', name=name, args=dict(nodes=nodes, edges=edges, resources=resources))
+            self.build_node(node).func.start()
+            return gid
 
     def status(self, node_id: str, task_name: Optional[str] = None):
         node = self.build_node(node_id)

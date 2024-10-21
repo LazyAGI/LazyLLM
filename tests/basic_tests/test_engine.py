@@ -3,6 +3,8 @@ import pytest
 import time
 from gradio_client import Client
 import lazyllm
+import urllib3
+from lazyllm.common.common import TimeoutException
 
 class TestEngine(object):
 
@@ -242,6 +244,29 @@ class TestEngine(object):
         lazyllm.launcher.cleanup()
         web.stop()
 
+    def test_engine_stop_and_restart():
+        resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
+        nodes = [dict(id='1', kind='SharedLLM', name='s1', args=dict(llm='0', prompt=None))]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+
+        engine = LightEngine()
+        gid = engine.start(nodes, edges, resources)
+        r = engine.run(gid, '1234')
+        assert 'reply for You are an AI-Agent developed by LazyLLM' in r
+        assert '1234' in r
+
+        time.sleep(1)
+        engine.stop('0')
+        time.sleep(1)
+
+        with pytest.raises((TimeoutException, urllib3.exceptions.NewConnectionError, RuntimeError)):
+            with lazyllm.timeout(3):
+                engine.run(gid, '1234567')
+
+        engine.start('0')
+        r = engine.run(gid, '12345')
+        assert 'reply for You are an AI-Agent developed by LazyLLM' in r
+        assert '12345' in r
 
 class TestEngineRAG(object):
 
