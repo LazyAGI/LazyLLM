@@ -567,8 +567,6 @@ class ScoLauncher(LazyLLMLaunchersBase):
                 try:
                     id_str = subprocess.check_output(['scontrol', f'--workspace-id={self.workspace_name}',
                                                       'show', 'job', str(self.jobid)]).decode("utf-8")
-                    if 'Error: get no resource from higg service' in id_str:
-                        return Status.Cancelled
                     id_json = json.loads(id_str)
                     job_state = id_json['status_phase'].strip().lower()
                     if job_state == 'running':
@@ -582,9 +580,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
                         return Status.Cancelled
                     elif job_state == 'succeeded':
                         return Status.Done
-                    LOG.warning(f'unexpected job_state: {job_state}')
-                except Exception as e:
-                    LOG.warning(f'Error: {str(e)}')
+                except Exception:
                     pass
             return Status.Failed
 

@@ -244,7 +244,7 @@ class TestEngine(object):
         lazyllm.launcher.cleanup()
         web.stop()
 
-    def test_engine_stop_and_restart():
+    def test_engine_stop_and_restart(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
         nodes = [dict(id='1', kind='SharedLLM', name='s1', args=dict(llm='0', prompt=None))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
