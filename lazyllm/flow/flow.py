@@ -484,8 +484,8 @@ class Graph(LazyLLMFlowsBase):
     start_node_name, end_node_name = '__start__', '__end__'
 
     class Node:
-        def __init__(self, func, name):
-            self.func, self.name = func, name
+        def __init__(self, func, name, arg_names=None):
+            self.func, self.name, self.arg_names = func, name, arg_names
             self.inputs, self.outputs = dict(), []
 
         def __repr__(self): return lazyllm.make_repr('Flow', 'Node', name=self.name)
@@ -494,7 +494,7 @@ class Graph(LazyLLMFlowsBase):
         super(__class__, self).__init__(post_action=post_action, auto_capture=auto_capture, **kw)
 
     def __post_init__(self):
-        self._nodes = {n: Graph.Node(f, n) for f, n in zip(self._items, self._item_names)}
+        self._nodes = {n: Graph.Node(f, n, a) for (f, a), n in zip(self._items, self._item_names)}
         self._nodes[Graph.start_node_name] = Graph.Node(None, Graph.start_node_name)
         self._nodes[Graph.end_node_name] = Graph.Node(lazyllm.Identity(), Graph.end_node_name)
         self._in_degree = {node: 0 for node in self._nodes.values()}
@@ -549,6 +549,7 @@ class Graph(LazyLLMFlowsBase):
                         intermediate_results['values'][name] = r
             r = intermediate_results['values'][name]
             if node.inputs[name]:
+                assert (len(r.args) == 0 ^ len(r.kw) == 0), 'Only one of args and kwargs can be given with formatter.'
                 r = node.inputs[name]((r.args or r.kw) if isinstance(r, arguments) else r)
             return r
 
@@ -565,6 +566,10 @@ class Graph(LazyLLMFlowsBase):
         if isinstance(input, arguments):
             kw = input.kw
             input = input.args
+
+        if node.arg_names:
+            kw.update({name: value for name, value in zip(node.arg_names, input)})
+            input = package()
 
         return self.invoke(node.func, input, **kw)
 
