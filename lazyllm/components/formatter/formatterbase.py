@@ -30,7 +30,14 @@ class JsonLikeFormatter(LazyLLMFormatterBase):
     class _DictKeys(tuple): pass
 
     def __init__(self, formatter: str = None):
-        self._formatter = formatter
+        if formatter.startswith('*['):
+            self._return_package = True
+            self._formatter = formatter.strip('*')
+        else:
+            self._return_package = False
+            self._formatter = formatter
+
+        assert '*' not in self._formatter, '`*` can only be used before `[` in the beginning'
         if self._formatter:
             self._formatter = self._formatter.strip().replace('{', '[{').replace('}', '}]')
             self._parse_formatter()
@@ -82,14 +89,14 @@ class JsonLikeFormatter(LazyLLMFormatterBase):
                 assert curr_slice.start is None and curr_slice.stop is None and curr_slice.step is None, (
                     'Only {:} and [:] is supported in dict slice')
                 curr_slice = __class__._ListIdxes(data.keys())
-            elif isinstance(data, list):
+            elif isinstance(data, (tuple, list)):
                 return type(data)(self._parse_py_data_by_formatter(d, slices=slices[1:])
                                   for d in _impl(data, curr_slice))
         if isinstance(curr_slice, __class__._DictKeys):
             return {k: self._parse_py_data_by_formatter(v, slices=slices[1:])
                     for k, v in _impl(data, curr_slice).items()}
         elif isinstance(curr_slice, __class__._ListIdxes):
-            tp = list if isinstance(data, dict) else type(data)
+            tp = package if self._return_package else list if isinstance(data, dict) else type(data)
             return tp(self._parse_py_data_by_formatter(r, slices=slices[1:]) for r in _impl(data, curr_slice))
         else: return self._parse_py_data_by_formatter(_impl(data, curr_slice), slices=slices[1:])
 
