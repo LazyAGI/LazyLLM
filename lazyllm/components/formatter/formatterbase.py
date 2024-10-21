@@ -38,8 +38,8 @@ class JsonLikeFormatter(LazyLLMFormatterBase):
             self._return_package = False
             self._formatter = formatter
 
-        assert '*' not in self._formatter, '`*` can only be used before `[` in the beginning'
         if self._formatter:
+            assert '*' not in self._formatter, '`*` can only be used before `[` in the beginning'
             self._formatter = self._formatter.strip().replace('{', '[{').replace('}', '}]')
             self._parse_formatter()
         else:
