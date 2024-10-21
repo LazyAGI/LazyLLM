@@ -24,7 +24,7 @@ class MusicGen(object):
         lazyllm.call_once(self.init_flag, self.load_tts)
         speech = self.model(string, forward_params={"do_sample": True})
         speech['audio'] = (speech['audio'].flatten() * 32767).astype(np.int16).tolist()
-        res = {'sounds': (speech['sampling_rate'], speech['audio'])}
+        res = {'lazyllm_sounds': (speech['sampling_rate'], speech['audio'])}
         return json.dumps(res)
 
     @classmethod

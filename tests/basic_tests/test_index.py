@@ -6,7 +6,11 @@ import pymilvus
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.store import MapStore, LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.index import DefaultIndex, register_similarity, MilvusIndex, MilvusEmbeddingField, parallel_do_embedding
+from lazyllm.tools.rag.index import (
+    DefaultIndex,
+    register_similarity,
+    MilvusIndex, MilvusEmbeddingField,
+    parallel_do_embedding)
 
 
 class TestDefaultIndex(unittest.TestCase):
