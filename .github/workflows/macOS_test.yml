@@ -19,6 +19,9 @@ env:
   
 jobs:
   macos-basic_tests:
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
     runs-on: macos-13
 
     steps:
@@ -27,8 +30,32 @@ jobs:
           submodules: true
           fetch-depth: 0
 
+      - name: Fetch PR source branch
+        if: github.event_name == 'pull_request_target'
+        run: |
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo  ${{ github.event.pull_request.head.repo.clone_url }}
+            echo ${{ github.event.pull_request.head.ref }}
+            git remote add external_repo ${{ github.event.pull_request.head.repo.clone_url }}
+            git fetch external_repo ${{ github.event.pull_request.head.ref }}:pr_branch
+          else
+            echo ${{ github.event.pull_request.head.ref }}
+            git fetch origin ${{ github.event.pull_request.head.ref }}:pr_branch
+          fi
+          
+      - name: Merge PR branch into main
+        if: github.event_name == 'pull_request_target'
+        run: |
+          git checkout main
+          git merge --no-ff pr_branch
+          git submodule update --init
+          
       - name: Copy poetry.lock to root directory
-        run: cp LazyLLM-Env/poetry.lock .
+        run: |
+          git branch
+          cd LazyLLM-Env &&git branch 
+          cd ..
+          cp LazyLLM-Env/poetry.lock .
 
       - name: Set up python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
@@ -57,11 +84,14 @@ jobs:
          pip install -r tests/requirements.txt
          export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
          python -m pytest -v  --reruns=2 tests/basic_tests/
-        timeout-minutes: 25
+        timeout-minutes: 30
         env :
          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}       
 
   macos-charge_tests:
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
     runs-on: macos-13
 
     steps:
@@ -70,8 +100,32 @@ jobs:
           submodules: true
           fetch-depth: 0
 
+      - name: Merge PR branch into main
+        if: github.event_name == 'pull_request_target'
+        run: |
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo  ${{ github.event.pull_request.head.repo.clone_url }}
+            echo ${{ github.event.pull_request.head.ref }}
+            git remote add external_repo ${{ github.event.pull_request.head.repo.clone_url }}
+            git fetch external_repo ${{ github.event.pull_request.head.ref }}:pr_branch
+          else
+            echo ${{ github.event.pull_request.head.ref }}
+            git fetch origin ${{ github.event.pull_request.head.ref }}:pr_branch
+          fi
+          
+      - name: Merge PR branch into main
+        if: github.event_name == 'pull_request_target'
+        run: |
+          git checkout main
+          git merge --no-ff pr_branch 
+          git submodule update --init
+          
       - name: Copy poetry.lock to root directory
-        run: cp LazyLLM-Env/poetry.lock .
+        run: |
+          git branch
+          cd LazyLLM-Env &&git branch 
+          cd ..
+          cp LazyLLM-Env/poetry.lock .
 
       - name: Set up python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5

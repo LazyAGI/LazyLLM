@@ -4,7 +4,7 @@ from lazyllm import LOG
 from .dataReader import SimpleDirectoryReader
 
 class DirectoryReader:
-    def __init__(self, input_files: List[str], local_readers: Optional[Dict] = None,
+    def __init__(self, input_files: Optional[List[str]], local_readers: Optional[Dict] = None,
                  global_readers: Optional[Dict] = None) -> None:
         self._input_files = input_files
         self._local_readers = local_readers

@@ -39,7 +39,7 @@ class Bark(object):
             raise TypeError(f"Not support input type:{type(string)}, requires str or dict.")
         inputs = self.processor(query, voice_preset=voice_preset).to(self.device)
         speech = self.bark.generate(**inputs) * 32767
-        res = {'sounds': (
+        res = {'lazyllm_sounds': (
             self.bark.generation_config.sample_rate,
             speech.cpu().numpy().squeeze().tolist()
         )}

@@ -25,7 +25,7 @@ docs = Document(dataset_path='/path/to/doc/dir', embed=MyEmbeddingModule(), mana
 The Document constructor has the following parameters:
 
 * `dataset_path`: Specifies which file directory to build from.
-* `embed`: Uses the specified model to perform text embedding.
+* `embed`: Uses the specified model to perform text embedding. If you need to generate multiple embeddings for the text, you need to specify them in a dictionary, where the key identifies the name of the embedding and the value is the corresponding embedding model.
 * `manager`: Whether to use the UI interface, which will affect the internal processing logic of Document; the default is True.
 * `launcher`: The method of launching the service, which is used in cluster applications; it can be ignored for single-machine applications.
 
@@ -98,19 +98,20 @@ The documents in the document collection may not all be relevant to the content 
 For example, a user can create a `Retriever` instance like this:
 
 ```python
-retriever = Retriever(documents, group_name="sentence", similarity="cosine", topk=3)
+retriever = Retriever(documents, group_name="sentence", similarity="cosine", topk=3)  # retriever = Retriever([document1, document2, ...], group_name="sentence", similarity="cosine", topk=3)
 ```
 
 This indicates that within the `Node Group` named `sentence`, the `cosine` similarity function will be used to calculate the similarity between the user's query content `query` and each `Node`. The `topk` parameter specifies that the top k most similar nodes should be selected, in this case, the top 3.
 
 The constructor of the `Retriever` has the following parameters:
 
-* `doc`: Specifies which `Document` to retrieve documents from.
+* `doc`: Specifies which `Document` to retrieve documents from. Or which `Document` list to retrieve documents from.
 * `group_name`: Specifies which `Node Group` of the document to use for retrieval. Use `LAZY_ROOT_NAME` to indicate that the retrieval should be performed on the original document content.
 * `similarity`: Specifies the name of the function to calculate the similarity between a `Node` and the user's query content. The similarity calculation functions built into `LazyLLM` include `bm25`, `bm25_chinese`, and `cosine`. Users can also define their own calculation functions.
-* `similarity_cut_off`: Discards results with a similarity less than the specified value. The default is `-inf`, which means no results are discarded.
+* `similarity_cut_off`: Discards results with a similarity less than the specified value. The default is `-inf`, which means no results are discarded. In a multi-embedding scenario, if you need to specify different values for different embeddings, this parameter needs to be specified in a dictionary format, where the key indicates which embedding is specified and the value indicates the corresponding threshold. If all embeddings use the same threshold, this parameter only needs to pass a single value.
 * `index`: Specifies on which index to perform the search. Currently, only `default` is supported.
 * `topk`: Specifies the number of most relevant documents to return. The default value is 6.
+* `embed_keys`: Indicates which embeddings to use for retrieval. If not specified, all embeddings will be used for retrieval.
 * `similarity_kw`: Parameters that need to be passed through to the `similarity` function.
 
 Users can register their own similarity calculation functions by using the `register_similarity()` function provided by `LazyLLM`. The `register_similarity()` function has the following parameters:
