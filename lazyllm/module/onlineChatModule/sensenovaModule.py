@@ -11,15 +11,20 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ["nova-ptc-s-v2"]
 
     def __init__(self,
-                 base_url="https://api.sensenova.cn/v1/llm",
-                 model="SenseChat-5",
-                 stream=True,
-                 return_trace=False,
+                 base_url: str = "https://api.sensenova.cn/v1/llm",
+                 model: str = "SenseChat-5",
+                 api_key: str = None,
+                 secret_key: str = None,
+                 stream: bool = True,
+                 return_trace: bool = False,
                  **kwargs):
+        jwt_api_key = None
+        if api_key and secret_key:
+            jwt_api_key = SenseNovaModule.encode_jwt_token(api_key, secret_key)
         OnlineChatModuleBase.__init__(self,
                                       model_series="SENSENOVA",
-                                      api_key=SenseNovaModule.encode_jwt_token(lazyllm.config['sensenova_api_key'],
-                                                                               lazyllm.config['sensenova_secret_key']),
+                                      api_key=jwt_api_key or SenseNovaModule.encode_jwt_token(
+                                          lazyllm.config['sensenova_api_key'], lazyllm.config['sensenova_secret_key']),
                                       base_url=base_url,
                                       model_name=model,
                                       stream=stream,
