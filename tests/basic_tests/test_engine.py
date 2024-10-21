@@ -149,6 +149,34 @@ class TestEngine(object):
         assert engine.run(3, 1) == 5
         assert engine.run(5, 3, 1) == 11
 
+    def test_engine_formatter_end(self):
+        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
+                 dict(id='2', kind='Code', name='m2', args='def test1(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),
+                 # two unused node
+                 dict(id='3', kind='Code', name='m3', args='def test2(x: int):\n    return dict(a=1, b=x * x)\n'),
+                 dict(id='4', kind='Code', name='m4', args='def test3(x, y, z):\n    return f"{x}{y}{z}"\n')]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__'),
+                 dict(iid='1', oid='__end__')]
+
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        r = engine.run(1)
+        print(r, type(r))
+        print(isinstance(r, lazyllm.package))
+
+        engine.reset()
+
+        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
+                 dict(id='2', kind='Code', name='m2', args='def test1(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),
+                 dict(id='3', kind='JoinFormatter', name='join', args=dict(type='to_dict', names=['a', 'b']))]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='2', oid='3'),
+                 dict(iid='1', oid='3'), dict(iid='3', oid='__end__', formatter='*[a, b]')]
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        r = engine.run(1)
+        print(r, type(r))
+        print(isinstance(r, lazyllm.package))
+
     def test_engine_join_stack(self):
         nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
                  dict(id='1', kind='JoinFormatter', name='join', args=dict(type='stack'))]

@@ -523,7 +523,7 @@ class Graph(LazyLLMFlowsBase):
     def topological_sort(self):
         in_degree = self._in_degree.copy()
         queue = deque([node for node in self._nodes.values() if in_degree[node] == 0])
-        sorted_nodes = []
+        sorted_nodes: List[Graph.Node] = []
 
         while queue:
             node = queue.popleft()
@@ -536,7 +536,7 @@ class Graph(LazyLLMFlowsBase):
         if len(sorted_nodes) != len(self._nodes):
             raise ValueError("Graph has a cycle")
 
-        return sorted_nodes
+        return [n for n in sorted_nodes if (self._in_degree[n] > 0 or n.name == Graph.start_node_name)]
 
     def compute_node(self, sid, node, intermediate_results, futures):
         globals._init_sid(sid)
@@ -548,6 +548,7 @@ class Graph(LazyLLMFlowsBase):
                     if name not in intermediate_results['values']:
                         intermediate_results['values'][name] = r
             r = intermediate_results['values'][name]
+            if isinstance(r, Exception): raise r
             if node.inputs[name]:
                 r = node.inputs[name]((r.args or r.kw) if isinstance(r, arguments) else r)
             return r
