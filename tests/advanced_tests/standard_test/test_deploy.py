@@ -10,6 +10,20 @@ import lazyllm
 from lazyllm import deploy, globals
 from lazyllm.launcher import cleanup
 
+
+@pytest.fixture()
+def set_enviroment(request):
+    env_key, env_var = request.param
+    original_value = os.getenv(env_key, None)
+    os.environ[env_key] = env_var
+    lazyllm.config.refresh(env_key)
+    yield
+    if original_value:
+        os.environ[env_key] = original_value
+    else:
+        os.environ.pop(env_key, None)
+    lazyllm.config.refresh(env_key)
+
 class TestDeploy(object):
 
     def setup_method(self):
@@ -63,7 +77,11 @@ class TestDeploy(object):
         m.eval()
         assert len(m.eval_result) == len(self.inputs)
 
-    def test_embedding(self):
+    @pytest.mark.parametrize('set_enviroment',
+                             [('LAZYLLM_DEFAULT_EMBEDDING_ENGINE', ''),
+                              ('LAZYLLM_DEFAULT_EMBEDDING_ENGINE', 'transformers')],
+                             indirect=True)
+    def test_embedding(self, set_enviroment):
         m = lazyllm.TrainableModule('bge-large-zh-v1.5').deploy_method(deploy.AutoDeploy)
         m.update_server()
         res = m('你好')
@@ -77,19 +95,19 @@ class TestDeploy(object):
         m = lazyllm.TrainableModule('stable-diffusion-3-medium')
         m.update_server()
         res = m('a little cat')
-        assert "images_base64" in json.loads(res)
+        assert "lazyllm_images" in json.loads(res)
 
     def test_musicgen(self):
         m = lazyllm.TrainableModule('musicgen-small')
         m.update_server()
         res = m('lo-fi music with a soothing melody')
-        assert "sounds" in json.loads(res)
+        assert "lazyllm_sounds" in json.loads(res)
 
     def test_chattts(self):
         m = lazyllm.TrainableModule('ChatTTS')
         m.update_server()
         res = m('你好啊，很高兴认识你。')
-        assert "sounds" in json.loads(res)
+        assert "lazyllm_sounds" in json.loads(res)
 
     def test_stt_sensevoice(self):
         chat = lazyllm.TrainableModule('sensevoicesmall')
@@ -122,7 +140,7 @@ class TestDeploy(object):
         assert "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported." == res
 
     def test_vlm_and_lmdeploy(self):
-        chat = lazyllm.TrainableModule('internvl-chat-2b-v1-5').deploy_method(deploy.LMDeploy)
+        chat = lazyllm.TrainableModule('Mini-InternVL-Chat-2B-V1-5')
         m = lazyllm.ServerModule(chat)
         m.update_server()
         query = '这是啥？'

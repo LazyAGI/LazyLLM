@@ -18,7 +18,7 @@ class _PostProcess(object):
     def _post_process(self, nodes):
         if self._target:
             # TODO(wangzhihong): search relationship and add find_child
-            nodes = self._doc.find_parent(self._target)(nodes)
+            nodes = DocImpl.find_parent(self._target)(nodes)
         if self._output_format == 'content':
             nodes = [node.get_content() for node in nodes]
             if isinstance(self._join, str): nodes = self._join.join(nodes)
@@ -45,7 +45,7 @@ class Retriever(ModuleBase, _PostProcess):
     ):
         super().__init__()
 
-        self._docs = [doc] if isinstance(doc, Document) else doc
+        self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
         for doc in self._docs:
             assert isinstance(doc, Document), 'Only Document or List[Document] are supported'
             self._submodules.append(doc)
@@ -61,7 +61,7 @@ class Retriever(ModuleBase, _PostProcess):
 
     @once_wrapper
     def _lazy_init(self):
-        docs = [doc for doc in self._docs if self._group_name in doc._impl._impl.node_groups or self._group_name
+        docs = [doc for doc in self._docs if self._group_name in doc._impl.node_groups or self._group_name
                 in DocImpl._builtin_node_groups or self._group_name in DocImpl._global_node_groups]
         if not docs: raise RuntimeError(f'Group {self._group_name} not found in document {self._docs}')
         self._docs = docs
@@ -73,8 +73,7 @@ class Retriever(ModuleBase, _PostProcess):
         self._lazy_init()
         nodes = []
         for doc in self._docs:
-            nodes.extend(doc.forward(func_name="retrieve", query=query, group_name=self._group_name,
-                                     similarity=self._similarity, similarity_cut_off=self._similarity_cut_off,
-                                     index=self._index, topk=self._topk, similarity_kws=self._similarity_kw,
-                                     embed_keys=self._embed_keys))
+            nodes.extend(doc.forward(query=query, group_name=self._group_name, similarity=self._similarity,
+                                     similarity_cut_off=self._similarity_cut_off, index=self._index,
+                                     topk=self._topk, similarity_kws=self._similarity_kw, embed_keys=self._embed_keys))
         return self._post_process(nodes)

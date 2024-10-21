@@ -2,6 +2,7 @@ import lazyllm
 from lazyllm import launchers, deploy, LOG
 from ..deploy.base import LazyLLMDeployBase
 from .configure import get_configer
+from .dependencies.requirements import requirements
 from .auto_helper import model_map, get_model_name, check_requirements
 from lazyllm.components.embedding.embed import EmbeddingDeploy
 from lazyllm.components.stable_diffusion.stable_diffusion3 import StableDiffusionDeploy
@@ -19,19 +20,24 @@ class AutoDeploy(LazyLLMDeployBase):
         base_model = ModelManager(source).download(base_model)
         model_name = get_model_name(base_model)
         if type == 'embed' or ModelManager.get_model_type(model_name) == 'embed':
-            return EmbeddingDeploy(launcher)
+            if lazyllm.config['default_embedding_engine'] == 'transformers' or not check_requirements('infinity_emb'):
+                return EmbeddingDeploy(launcher)
+            else:
+                return deploy.Infinity(launcher)
         elif type == 'sd' or ModelManager.get_model_type(model_name) == 'sd':
             return StableDiffusionDeploy(launcher)
         elif type == 'stt' or ModelManager.get_model_type(model_name) == 'stt':
             return SenseVoiceDeploy(launcher)
         elif type == 'tts' or ModelManager.get_model_type(model_name) == 'tts':
             return TTSDeploy(model_name, launcher=launcher)
+        elif type == 'vlm' or ModelManager.get_model_type(model_name) == 'vlm':
+            return deploy.LMDeploy(launcher, stream=stream, **kw)
         map_name = model_map(model_name)
         candidates = get_configer().query_deploy(lazyllm.config['gpu_type'], launcher.ngpus,
                                                  map_name, max_token_num)
 
         for c in candidates:
-            if check_requirements(c.framework.lower()):
+            if check_requirements(requirements[c.framework.lower()]):
                 deploy_cls = getattr(deploy, c.framework.lower())
             else:
                 continue

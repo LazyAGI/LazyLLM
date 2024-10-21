@@ -23,7 +23,7 @@ This constructor initializes a document module that can have an optional user in
 
 Args:
     dataset_path (str): The path to the dataset directory. This directory should contain the documents to be managed by the document module.
-    embed: The object used to generate document embeddings. It can be a single embedding object or multiple embedding objects in dictionary form.
+    embed (Optional[Union[Callable, Dict[str, Callable]]]): The object used to generate document embeddings. If you need to generate multiple embeddings for the text, you need to specify multiple embedding models in a dictionary format. The key identifies the name corresponding to the embedding, and the value is the corresponding embedding model.
     manager (bool, optional): A flag indicating whether to create a user interface for the document module. Defaults to False.
     launcher (optional): An object or function responsible for launching the server module. If not provided, the default asynchronous launcher from `lazyllm.launchers` is used (`sync=False`).
 ''')
@@ -35,7 +35,7 @@ add_chinese_doc('Document', '''\
 
 Args:
     dataset_path (str): 数据集目录的路径。此目录应包含要由文档模块管理的文档。
-    embed: 用于生成文档embedding的对象。可以是单个生成embedding的对象，也可以是字典形式的多个生成embedding的对象。
+    embed (Optional[Union[Callable, Dict[str, Callable]]]): 用于生成文档 embedding 的对象。如果需要对文本生成多个 embedding，此处需要通过字典的方式指定多个 embedding 模型，key 标识 embedding 对应的名字, value 为对应的 embedding 模型。
     manager (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 False
     launcher (optional): 负责启动服务器模块的对象或函数。如果未提供，则使用 `lazyllm.launchers` 中的默认异步启动器 (`sync=False`)。
 ''')
@@ -45,13 +45,15 @@ add_example('Document', '''\
 >>> from lazyllm.tools import Document
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)  # or documents = Document(dataset_path='your_doc_path', embed={"key": m}, manager=False)
+>>> m1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
+>>> document1 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, manager=False)
 ''')
 
 add_english_doc('Document.create_node_group', '''
 Generate a node group produced by the specified rule.
 
 Args:
-    name (str): The name of the node group, cannot be passed in as key-value pairs.
+    name (str): The name of the node group.
     transform (Callable): The transformation rule that converts a node into a node group. The function prototype is `(DocNode, group_name, **kwargs) -> List[DocNode]`. Currently built-in options include [SentenceSplitter][lazyllm.tools.SentenceSplitter], and users can define their own transformation rules.
     trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`.
     num_workers (int): number of new threads used for transform. default: 0
@@ -63,7 +65,7 @@ add_chinese_doc('Document.create_node_group', '''
 创建一个由指定规则生成的 node group。
 
 Args:
-    name (str): node group 的名称。无法通过键值对传入。
+    name (str): node group 的名称。
     transform (Callable): 将 node 转换成 node group 的转换规则，函数原型是 `(DocNode, group_name, **kwargs) -> List[DocNode]`。目前内置的有 [SentenceSplitter][lazyllm.tools.SentenceSplitter]。用户也可以自定义转换规则。
     trans_node (bool): 决定了transform的输入和输出是 `DocNode` 还是 `str` ，默认为None。只有在 `transform` 为 `Callable` 时才可以设置为true。
     num_workers (int): Transform时所用的新线程数量，默认为0
@@ -154,8 +156,8 @@ add_example('Document.register_global_reader', '''
 >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
 >>> files = ["your_yml_files"]
->>> docs1 = doc1._impl._impl.directory_reader.load_data(input_files=files)
->>> docs2 = doc2._impl._impl.directory_reader.load_data(input_files=files)
+>>> docs1 = doc1._impl._reader.load_data(input_files=files)
+>>> docs2 = doc2._impl._reader.load_data(input_files=files)
 >>> print(docs1[0].text == docs2[0].text)
 # True
 ''')
@@ -205,9 +207,9 @@ add_example('Document.add_reader', '''
 # {}
 >>> files = ["your_yml_files"]
 >>> Document.register_global_reader("**/*.yml", processYml)
->>> doc1._impl._impl.directory_reader.load_data(input_files=files)
+>>> doc1._impl._reader.load_data(input_files=files)
 # Call the class YmlReader.
->>> doc2._impl._impl.directory_reader.load_data(input_files=files)
+>>> doc2._impl._reader.load_data(input_files=files)
 # Call the function processYml.
 ''')
 
@@ -249,7 +251,7 @@ add_example('rag.readers.ReaderBase', '''
 ... 
 >>> files = ["your_yml_files"]
 >>> doc = Document(dataset_path="your_files_path", create_ui=False)
->>> reader = doc._impl._impl.directory_reader.load_data(input_files=files)
+>>> reader = doc._impl._reader.load_data(input_files=files)
 # Call the class YmlReader.
 ''')
 
@@ -304,12 +306,13 @@ add_english_doc('Retriever', '''
 Create a retrieval module for document querying and retrieval. This constructor initializes a retrieval module that configures the document retrieval process based on the specified similarity metric.
 
 Args:
-    doc: An instance of the document module.
+    doc: An instance of the document module. The document module can be a single instance or a list of instances. If it is a single instance, it means searching for a single Document, and if it is a list of instances, it means searching for multiple Documents.
     group_name: The name of the node group on which to perform the retrieval.
     similarity: The similarity function to use for setting up document retrieval. Defaults to 'dummy'. Candidates include ["bm25", "bm25_chinese", "cosine"].
-    similarity_cut_off: Discard the document when the similarity is below the specified value.
+    similarity_cut_off: Discard the document when the similarity is below the specified value. In a multi-embedding scenario, if you need to specify different values for different embeddings, you need to specify them in a dictionary, where the key indicates which embedding is specified and the value indicates the corresponding threshold. If all embeddings use the same threshold, you only need to specify one value.
     index: The type of index to use for document retrieval. Currently, only 'default' is supported.
     topk: The number of documents to retrieve with the highest similarity.
+    embed_keys: Indicates which embeddings are used for retrieval. If not specified, all embeddings are used for retrieval.
     similarity_kw: Additional parameters to pass to the similarity calculation function.
 
 The `group_name` has three built-in splitting strategies, all of which use `SentenceSplitter` for splitting, with the difference being in the chunk size:
@@ -323,12 +326,13 @@ add_chinese_doc('Retriever', '''
 创建一个用于文档查询和检索的检索模块。此构造函数初始化一个检索模块，该模块根据指定的相似度度量配置文档检索过程。
 
 Args:
-    doc: 文档模块实例。
+    doc: 文档模块实例。该文档模块可以是单个实例，也可以是一个实例的列表。如果是单个实例，表示对单个Document进行检索，如果是实例的列表，则表示对多个Document进行检索。
     group_name: 在哪个 node group 上进行检索。
     similarity: 用于设置文档检索的相似度函数。默认为 'dummy'。候选集包括 ["bm25", "bm25_chinese", "cosine"]。
-    similarity_cut_off: 当相似度低于指定值时丢弃该文档。
+    similarity_cut_off: 当相似度低于指定值时丢弃该文档。在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则需要使用字典的方式指定，key 表示指定的是哪个 embedding，value 表示相应的阈值。如果所有的 embedding 使用同一个阈值，则只指定一个数值即可。 
     index: 用于文档检索的索引类型。目前仅支持 'default'。
     topk: 表示取相似度最高的多少篇文档。
+    embed_keys: 表示通过哪些 embedding 做检索，不指定表示用全部 embedding 进行检索。
     similarity_kw: 传递给 similarity 计算函数的其它参数。
 
 其中 `group_name` 有三个内置的切分策略，都是使用 `SentenceSplitter` 做切分，区别在于块大小不同：
@@ -340,13 +344,21 @@ Args:
 
 add_example('Retriever', '''
 >>> import lazyllm
->>> from lazyllm.tools import Retriever
->>> from lazyllm.tools import Document
+>>> from lazyllm.tools import Retriever, Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule()
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
 >>> rm.start()
 >>> print(rm("query"))
+>>> m1 = lazyllm.TrainableModule('bge-large-zh-v1.5').start()
+>>> document1 = Document(dataset_path='your_doc_path', embed={'online':m , 'local': m1}, manager=False)
+>>> document1.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+>>> retriever = Retriever(document1, group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
+>>> print(retriever("query"))
+>>> document2 = Document(dataset_path='your_doc_path', embed={'online':m , 'local': m1}, manager=False)
+>>> document2.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+>>> retriever2 = Retriever([document1, document2], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
+>>> print(retriever2("query"))
 ''')
 
 # ---------------------------------------------------------------------------- #
@@ -428,6 +440,457 @@ add_example('LLMParser.transform', '''
 >>> summary_result = summary_parser.transform(rm[0])
 >>> keywords_result = keywords_parser.transform(rm[0])
 ''')
+
+# ---------------------------------------------------------------------------- #
+
+# rag/doc_manager.py
+
+add_chinese_doc('rag.DocManager', """
+DocManager类管理文档列表及相关操作，并通过API提供文档上传、删除、分组等功能。
+
+Args:
+    dlm (DocListManager): 文档列表管理器，用于处理具体的文档操作。
+
+""")
+
+add_chinese_doc('rag.DocManager.document', """
+提供默认文档页面的重定向接口。
+
+**Returns:**\n
+- RedirectResponse: 重定向到 `/docs` 页面。
+""")
+
+add_chinese_doc('rag.DocManager.list_kb_groups', """
+列出所有文档分组的接口。
+
+**Returns:**\n
+- BaseResponse: 包含所有文档分组的数据。
+""")
+
+add_chinese_doc('rag.DocManager.upload_files', """
+上传文件并更新其状态的接口。可以同时上传多个文件。
+
+Args:
+    files (List[UploadFile]): 上传的文件列表。
+    override (bool): 是否覆盖已存在的文件。默认为False。
+    metadatas (Optional[str]): 文件的元数据，JSON格式。
+    user_path (Optional[str]): 用户自定义的文件上传路径。
+
+**Returns:**\n
+- BaseResponse: 上传结果和文件ID。
+""")
+
+add_chinese_doc('rag.DocManager.list_files', """
+列出已上传文件的接口。
+
+Args:
+    limit (Optional[int]): 返回的文件数量限制。默认为None。
+    details (bool): 是否返回详细信息。默认为True。
+    alive (Optional[bool]): 如果为True，只返回未删除的文件。默认为None。
+
+**Returns:**\n
+- BaseResponse: 文件列表数据。
+""")
+
+add_chinese_doc('rag.DocManager.list_files_in_group', """
+列出指定分组中文件的接口。
+
+Args:
+    group_name (Optional[str]): 文件分组名称。
+    limit (Optional[int]): 返回的文件数量限制。默认为None。
+    alive (Optional[bool]): 是否只返回未删除的文件。
+
+**Returns:**\n
+- BaseResponse: 分组文件列表。
+""")
+
+add_chinese_doc('rag.DocManager.add_files_to_group_by_id', """
+通过文件ID将文件添加到指定分组的接口。
+
+Args:
+    request (FileGroupRequest): 包含文件ID和分组名称的请求。
+
+**Returns:**\n
+- BaseResponse: 操作结果。
+""")
+
+add_chinese_doc('rag.DocManager.add_files_to_group', """
+将文件上传后直接添加到指定分组的接口。
+
+Args:
+    files (List[UploadFile]): 上传的文件列表。
+    group_name (str): 要添加到的分组名称。
+    override (bool): 是否覆盖已存在的文件。默认为False。
+    metadatas (Optional[str]): 文件元数据，JSON格式。
+    user_path (Optional[str]): 用户自定义的文件上传路径。
+
+**Returns:**\n
+- BaseResponse: 操作结果和文件ID。
+""")
+
+add_chinese_doc('rag.DocManager.delete_files', """
+删除指定文件的接口。
+
+Args:
+    request (FileGroupRequest): 包含文件ID和分组名称的请求。
+
+**Returns:**\n
+- BaseResponse: 删除操作结果。
+""")
+
+add_english_doc('rag.DocManager', """
+The `DocManager` class manages document lists and related operations, providing APIs for uploading, deleting, and grouping documents.
+
+Args:
+    dlm (DocListManager): Document list manager responsible for handling document-related operations.
+
+""")
+
+add_english_doc('rag.DocManager.document', """
+An endpoint to redirect to the default documentation page.
+
+**Returns:**\n
+- RedirectResponse: Redirects to the `/docs` page.
+""")
+
+add_english_doc('rag.DocManager.list_kb_groups', """
+An endpoint to list all document groups.
+
+**Returns:**\n
+- BaseResponse: Contains the data of all document groups.
+""")
+
+add_english_doc('rag.DocManager.upload_files', """
+An endpoint to upload files and update their status. Multiple files can be uploaded at once.
+
+Args:
+    files (List[UploadFile]): List of files to upload.
+    override (bool): Whether to overwrite existing files. Default is False.
+    metadatas (Optional[str]): Metadata for the files in JSON format.
+    user_path (Optional[str]): User-defined path for file uploads.
+
+**Returns:**\n
+- BaseResponse: Upload results and file IDs.
+""")
+
+add_english_doc('rag.DocManager.list_files', """
+An endpoint to list uploaded files.
+
+Args:
+    limit (Optional[int]): Limit on the number of files returned. Default is None.
+    details (bool): Whether to return detailed information. Default is True.
+    alive (Optional[bool]): If True, only returns non-deleted files. Default is None.
+
+**Returns:**\n
+- BaseResponse: File list data.
+""")
+
+add_english_doc('rag.DocManager.list_files_in_group', """
+An endpoint to list files in a specific group.
+
+Args:
+    group_name (Optional[str]): The name of the file group.
+    limit (Optional[int]): Limit on the number of files returned. Default is None.
+    alive (Optional[bool]): Whether to return only non-deleted files.
+
+**Returns:**\n
+- BaseResponse: List of files in the group.
+""")
+
+add_english_doc('rag.DocManager.add_files_to_group_by_id', """
+An endpoint to add files to a specific group by file IDs.
+
+Args:
+    request (FileGroupRequest): Request containing file IDs and group name.
+
+**Returns:**\n
+- BaseResponse: Operation result.
+""")
+
+add_english_doc('rag.DocManager.add_files_to_group', """
+An endpoint to upload files and directly add them to a specified group.
+
+Args:
+    files (List[UploadFile]): List of files to upload.
+    group_name (str): Name of the group to add the files to.
+    override (bool): Whether to overwrite existing files. Default is False.
+    metadatas (Optional[str]): Metadata for the files in JSON format.
+    user_path (Optional[str]): User-defined path for file uploads.
+
+**Returns:**\n
+- BaseResponse: Operation result and file IDs.
+""")
+
+add_english_doc('rag.DocManager.delete_files', """
+An endpoint to delete specified files.
+
+Args:
+    request (FileGroupRequest): Request containing file IDs and group name.
+
+**Returns:**\n
+- BaseResponse: Deletion operation result.
+""")
+
+# ---------------------------------------------------------------------------- #
+
+# rag/utils.py
+
+add_chinese_doc('rag.DocListManager.table_inited', """\
+检查数据库表是否已初始化。
+
+**Returns:**
+- bool: 如果表已初始化，则返回True；否则返回False。
+""")
+
+add_chinese_doc('rag.DocListManager._init_tables', """\
+初始化数据库表。此方法应在未初始化表时调用，用于创建必要的表结构。
+""")
+
+add_chinese_doc('rag.DocListManager.list_files', """\
+列出符合条件的文件。
+
+Args:
+    limit (int, optional): 要返回的文件数限制。
+    details (bool): 如果为True，则返回文件的详细信息。
+    status (str or list of str, optional): 要筛选的文件状态。
+    exclude_status (str or list of str, optional): 要排除的文件状态。
+
+**Returns:**
+- list: 文件列表。
+""")
+
+add_chinese_doc('rag.DocListManager.list_all_kb_group', """\
+列出所有知识库分组的名称。
+
+**Returns:**
+- list: 知识库分组名称列表。
+""")
+
+add_chinese_doc('rag.DocListManager.add_kb_group', """\
+添加一个新的知识库分组。
+
+Args:
+    name (str): 要添加的分组名称。
+""")
+
+add_chinese_doc('rag.DocListManager.list_kb_group_files', """\
+列出指定知识库分组中的文件。
+
+Args:
+    group (str, optional): 分组名称。默认为None，表示所有分组。
+    limit (int, optional): 要返回的文件数限制。
+    details (bool): 如果为True，则返回文件的详细信息。
+    status (str or list of str, optional): 要筛选的文件状态。
+    exclude_status (str or list of str, optional): 要排除的文件状态。
+    upload_status (str, optional): 要筛选的上传状态。
+    exclude_upload_status (str or list of str, optional): 要排除的上传状态。
+
+**Returns:**
+- list: 文件列表。
+""")
+
+add_chinese_doc('rag.DocListManager.add_files', """\
+将文件添加到数据库中。
+
+Args:
+    files (list of str): 要添加的文件路径列表。
+    metadatas (list, optional): 与文件相关的元数据。
+    status (str, optional): 文件状态。
+
+**Returns:**
+- list: 文件的ID列表。
+""")
+
+add_chinese_doc('rag.DocListManager.update_file_message', """\
+更新指定文件的消息。
+
+Args:
+    fileid (str): 文件ID。
+    **kw: 需要更新的其他键值对。
+""")
+
+add_chinese_doc('rag.DocListManager.add_files_to_kb_group', """\
+将文件添加到指定的知识库分组中。
+
+Args:
+    file_ids (list of str): 要添加的文件ID列表。
+    group (str): 要添加的分组名称。
+""")
+
+add_chinese_doc('rag.DocListManager._delete_files', """\
+从数据库中删除指定的文件。
+
+Args:
+    file_ids (list of str): 要删除的文件ID列表。
+""")
+
+add_chinese_doc('rag.DocListManager.delete_files_from_kb_group', """\
+从指定的知识库分组中删除文件。
+
+Args:
+    file_ids (list of str): 要删除的文件ID列表。
+    group (str): 分组名称。
+""")
+
+add_chinese_doc('rag.DocListManager.get_file_status', """\
+获取指定文件的状态。
+
+Args:
+    fileid (str): 文件ID。
+
+**Returns:**
+- str: 文件的当前状态。
+""")
+
+add_chinese_doc('rag.DocListManager.update_file_status', """\
+更新指定文件的状态。
+
+Args:
+    file_ids (list of str): 要更新状态的文件ID列表。
+    status (str): 新的文件状态。
+""")
+
+add_chinese_doc('rag.DocListManager.update_kb_group_file_status', """\
+更新指定知识库分组中文件的状态。
+
+Args:
+    file_ids (str or list of str): 文件ID列表。
+    status (str): 新的文件状态。
+    group (str, optional): 知识库分组名称。默认为None。
+""")
+
+add_chinese_doc('rag.DocListManager.release', """\
+释放当前管理器的资源。
+
+""")
+
+add_english_doc('rag.DocListManager.table_inited', """\
+Checks if the database tables have been initialized.
+
+**Returns:**
+- bool: True if the tables have been initialized, False otherwise.
+""")
+
+add_english_doc('rag.DocListManager._init_tables', """\
+Initializes the database tables. This method should be called when the tables have not been initialized yet, creating the necessary table structures.
+""")
+
+add_english_doc('rag.DocListManager.list_files', """\
+Lists files that meet the specified criteria.
+
+Args:
+    limit (int, optional): Limit on the number of files to return.
+    details (bool): If True, return detailed file information.
+    status (str or list of str, optional): Filter files by status.
+    exclude_status (str or list of str, optional): Exclude files with these statuses.
+
+**Returns:**
+- list: List of files.
+""")
+
+add_english_doc('rag.DocListManager.list_all_kb_group', """\
+Lists all the knowledge base group names.
+
+**Returns:**
+- list: List of knowledge base group names.
+""")
+
+add_english_doc('rag.DocListManager.add_kb_group', """\
+Adds a new knowledge base group.
+
+Args:
+    name (str): Name of the group to add.
+""")
+
+add_english_doc('rag.DocListManager.list_kb_group_files', """\
+Lists files in the specified knowledge base group.
+
+Args:
+    group (str, optional): Group name. Defaults to None, meaning all groups.
+    limit (int, optional): Limit on the number of files to return.
+    details (bool): If True, return detailed file information.
+    status (str or list of str, optional): Filter files by status.
+    exclude_status (str or list of str, optional): Exclude files with these statuses.
+    upload_status (str, optional): Filter by upload status.
+    exclude_upload_status (str or list of str, optional): Exclude files with these upload statuses.
+
+**Returns:**
+- list: List of files.
+""")
+
+add_english_doc('rag.DocListManager.add_files', """\
+Adds files to the database.
+
+Args:
+    files (list of str): List of file paths to add.
+    metadatas (list, optional): Metadata associated with the files.
+    status (str, optional): File status.
+
+**Returns:**
+- list: List of file IDs.
+""")
+
+add_english_doc('rag.DocListManager.update_file_message', """\
+Updates the message for a specified file.
+
+Args:
+    fileid (str): File ID.
+    **kw: Additional key-value pairs to update.
+""")
+
+add_english_doc('rag.DocListManager.add_files_to_kb_group', """\
+Adds files to the specified knowledge base group.
+
+Args:
+    file_ids (list of str): List of file IDs to add.
+    group (str): Name of the group to add the files to.
+""")
+
+add_english_doc('rag.DocListManager._delete_files', """\
+Deletes specified files from the database.
+
+Args:
+    file_ids (list of str): List of file IDs to delete.
+""")
+
+add_english_doc('rag.DocListManager.delete_files_from_kb_group', """\
+Deletes files from the specified knowledge base group.
+
+Args:
+    file_ids (list of str): List of file IDs to delete.
+    group (str): Name of the group.
+""")
+
+add_english_doc('rag.DocListManager.get_file_status', """\
+Retrieves the status of a specified file.
+
+Args:
+    fileid (str): File ID.
+
+**Returns:**
+- str: The current status of the file.
+""")
+
+add_english_doc('rag.DocListManager.update_file_status', """\
+Updates the status of specified files.
+
+Args:
+    file_ids (list of str): List of file IDs to update.
+    status (str): The new file status.
+""")
+
+add_english_doc('rag.DocListManager.update_kb_group_file_status', """\
+Updates the status of files in a specified knowledge base group.
+
+Args:
+    file_ids (str or list of str): List of file IDs.
+    status (str): The new file status.
+    group (str, optional): Name of the knowledge base group. Defaults to None.
+""")
+
+add_english_doc('rag.DocListManager.release', """\
+Releases the resources of the current manager.
+""")
 
 # ---------------------------------------------------------------------------- #
 

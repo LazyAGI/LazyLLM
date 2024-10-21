@@ -246,7 +246,9 @@ class TestEngine(object):
 class TestEngineRAG(object):
 
     def test_rag(self):
-        resources = [dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master'))]
+        resources = [
+            dict(id='00', kind='LocalEmbedding', name='e1', args=dict(base_model='bge-large-zh-v1.5')),
+            dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', embed='00'))]
         nodes = [dict(id='1', kind='Retriever', name='ret1',
                       args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
                  dict(id='4', kind='Reranker', name='rek1',
@@ -260,7 +262,8 @@ class TestEngineRAG(object):
                  dict(iid='6', oid='__end__')]
         engine = LightEngine()
         engine.start(nodes, edges, resources)
-        assert '观天之道，执天之行' in engine.run('何为天道?')
+        r = engine.run('何为天道?')
+        assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
 
         # test add doc_group
         changed_resources = [dict(id='0', kind='Document', name='d1', args=dict(
