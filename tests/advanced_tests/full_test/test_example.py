@@ -126,8 +126,8 @@ class TestExamples(object):
         res = painting(query)
         assert type(res) is str
         imgs_bs64 = json.loads(res)
-        assert "images_base64" in imgs_bs64
-        image = Image.open(BytesIO(base64.b64decode(imgs_bs64["images_base64"][0])))
+        assert "lazyllm_images" in imgs_bs64
+        image = Image.open(BytesIO(base64.b64decode(imgs_bs64["lazyllm_images"][0])))
         assert image.size == (1024, 1024)
 
         # test painting warpped in web
