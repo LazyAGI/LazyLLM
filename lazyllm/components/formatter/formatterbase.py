@@ -1,4 +1,5 @@
 from ...common import LazyLLMRegisterMetaClass, package
+from typing import Optional
 
 def is_number(s: str):
     try:
@@ -29,8 +30,8 @@ class JsonLikeFormatter(LazyLLMFormatterBase):
     class _ListIdxes(tuple): pass
     class _DictKeys(tuple): pass
 
-    def __init__(self, formatter: str = None):
-        if formatter.startswith('*['):
+    def __init__(self, formatter: Optional[str] = None):
+        if formatter and formatter.startswith('*['):
             self._return_package = True
             self._formatter = formatter.strip('*')
         else:

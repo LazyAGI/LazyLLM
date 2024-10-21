@@ -164,7 +164,7 @@ def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [],
 
     for edge in edges:
         if formatter := edge.get('formatter'):
-            assert formatter.startswith(('*[', '[', '}')) or formatter.endswith((']', '}'))
+            assert formatter.startswith(('*[', '[', '}')) and formatter.endswith((']', '}'))
             formatter = lazyllm.formatter.JsonLike(formatter)
         g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name, formatter)
 
