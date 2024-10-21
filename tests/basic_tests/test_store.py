@@ -43,7 +43,7 @@ class TestChromadbStore(unittest.TestCase):
         node2 = DocNode(uid="2", text="text2", group="group2")
         self.store.update_nodes([node1, node2])
         collection = self.store._collections["group1"]
-        self.assertEqual(collection.peek(collection.count())["ids"], ["1", "2"])
+        self.assertEqual(set(collection.peek(collection.count())["ids"]), set(["1", "2"]))
         nodes = self.store.get_group_nodes("group1")
         self.assertEqual(nodes, [node1])
 
