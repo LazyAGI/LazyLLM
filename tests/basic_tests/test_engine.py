@@ -267,6 +267,7 @@ class TestEngine(object):
         r = engine.run(gid, '12345')
         assert 'reply for You are an AI-Agent developed by LazyLLM' in r
         assert '12345' in r
+        engine.stop('0')
 
 class TestEngineRAG(object):
 
