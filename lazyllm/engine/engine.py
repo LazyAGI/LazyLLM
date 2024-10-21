@@ -314,12 +314,13 @@ def make_http_tool(method: Optional[str] = None,
                    proxies: Optional[Dict[str, str]] = None,
                    code_str: Optional[str] = None,
                    vars_for_code: Optional[Dict[str, Any]] = None,
-                   doc: Optional[str] = None):
+                   doc: Optional[str] = None,
+                   _args_names: Optional[str] = None):
     instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies,
                                       code_str, vars_for_code)
     if doc:
         instance.__doc__ = doc
-    return instance
+    return instance, _args_names
 
 @NodeConstructor.register('SharedLLM')
 def make_shared_llm(llm: str, prompt: Optional[str] = None):
