@@ -33,13 +33,19 @@ def rag(llm, docpath):
 
     lazyllm.WebModule(ppl, port=range(20000, 25000)).start().wait()
 
-def graph(json_file, input):
+def graph(json_file):
     with open(json_file) as fp:
         engine_conf = json.load(fp)
-        engine = LightEngine()
-        engine.start(engine_conf.get('nodes', []), engine_conf.get('edges', []),
-                     engine_conf.get('resources', []))
-        engine.run(input)
+
+    engine = LightEngine()
+    engine.start(engine_conf.get('nodes', []), engine_conf.get('edges', []),
+                 engine_conf.get('resources', []))
+    while True:
+        query = input("query(enter 'quit' to exit): ")
+        if query == 'quit':
+            break
+        res = engine.run(query)
+        print(f'answer: {res}')
 
 def run(commands):
     if not commands:
@@ -68,9 +74,7 @@ def run(commands):
         elif args.command == 'rag':
             rag(llm, args.documents)
     elif args.command.endswith('.json'):
-        parser.add_argument('--input', type=str, default='')
-        args = parser.parse_args(commands)
-        graph(args.command, args.input)
+        graph(args.command)
     else:
         print('lazyllm run is not ready yet.')
         sys.exit(0)
