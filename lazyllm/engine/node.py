@@ -14,6 +14,7 @@ class Node():
     name: str
     args: Optional[Dict] = None
     func: Optional[Callable] = None
+    arg_names: Optional[List[str]] = None
 
 
 @dataclass
@@ -36,17 +37,7 @@ all_nodes['LocalLLM'] = dict(
     builder_argument=dict(
         trainset=NodeArgs(str),
         prompt=NodeArgs(str),
-        finetune_method=NodeArgs(str, getattr_f=partial(getattr, lazyllm.finetune)),
-        deploy_method=NodeArgs(str, 'vllm', getattr_f=partial(getattr, lazyllm.deploy))),
-    other_arguments=dict(
-        finetune_method=dict(
-            batch_size=NodeArgs(int, 16),
-            micro_batch_size=NodeArgs(int, 2),
-            num_epochs=NodeArgs(int, 3),
-            learning_rate=NodeArgs(float, 5e-4),
-            lora_r=NodeArgs(int, 8),
-            lora_alpha=NodeArgs(int, 32),
-            lora_dropout=NodeArgs(float, 0.05)))
+        deploy_method=NodeArgs(str, 'vllm', getattr_f=partial(getattr, lazyllm.deploy)))
 )
 
 all_nodes['OnlineLLM'] = dict(
@@ -55,6 +46,8 @@ all_nodes['OnlineLLM'] = dict(
         source=NodeArgs(str),
         base_model=NodeArgs(str),
         base_url=NodeArgs(str),
+        api_key=NodeArgs(str, None),
+        secret_key=NodeArgs(str, None),
         stream=NodeArgs(bool, True),
         return_trace=NodeArgs(bool, False)),
     builder_argument=dict(
@@ -72,7 +65,9 @@ all_nodes['OnlineEmbedding'] = dict(
     init_arguments=dict(
         source=NodeArgs(str),
         embed_model_name=NodeArgs(str),
-        embed_url=NodeArgs(str))
+        embed_url=NodeArgs(str),
+        api_key=NodeArgs(str, None),
+        secret_key=NodeArgs(str, None))
 )
 
 all_nodes['SD'] = all_nodes['TTS'] = all_nodes['STT'] = dict(

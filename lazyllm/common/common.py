@@ -335,7 +335,7 @@ def once_wrapper(reset_on_pickle):
             def __doc__(self, value): self._func.__doc__ = value
 
             @property
-            def flag(self):
+            def flag(self) -> once_flag:
                 return getattr(self._instance, f'_lazyllm_{self._func.__name__}_once_flag')
 
         def __init__(self, func):

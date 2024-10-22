@@ -1,6 +1,6 @@
 from .engine import Engine, Node
-from lazyllm import ActionModule, once_wrapper
-from typing import List, Dict, Optional
+from lazyllm import once_wrapper
+from typing import List, Dict, Optional, overload
 import uuid
 
 
@@ -32,12 +32,37 @@ class LightEngine(Engine):
         self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]
 
+    @overload
+    def start(self, nodes: str) -> None:
+        ...
+
+    @overload
     def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
-              gid: Optional[str] = None, name: Optional[str] = None):
-        node = Node(id=gid or str(uuid.uuid4().hex), kind='Graph',
-                    name=name or str(uuid.uuid4().hex), args=dict(nodes=nodes, edges=edges, resources=resources))
-        self.graph = self.build_node(node).func
-        self.graph.start()
+              gid: Optional[str] = None, name: Optional[str] = None) -> str:
+        ...
+
+    def start(self, nodes=[], edges=[], resources=[], gid=None, name=None):
+        if isinstance(nodes, str):
+            self.build_node(nodes).func.start()
+        else:
+            gid, name = gid or str(uuid.uuid4().hex), name or str(uuid.uuid4().hex)
+            node = Node(id=gid, kind='Graph', name=name, args=dict(nodes=nodes, edges=edges, resources=resources))
+            self.build_node(node).func.start()
+            return gid
+
+    def status(self, node_id: str, task_name: Optional[str] = None):
+        node = self.build_node(node_id)
+        assert node.kind in ('LocalLLM')
+        return node.func.status(task_name=task_name)
+
+    def stop(self, node_id: str, task_name: Optional[str] = None):
+        node = self.build_node(node_id)
+        if task_name:
+            assert node.kind in ('LocalLLM')
+            node.func.stop(task_name=task_name)
+        else:
+            assert node.kind in ('Graph', 'LocalLLM', 'LocalEmbedding', 'SD', 'TTS', 'STT')
+            node.func.stop()
 
     def update(self, nodes: List[Dict] = [], changed_nodes: List[Dict] = [],
                edges: List[Dict] = [], changed_resources: List[Dict] = [],
@@ -47,10 +72,9 @@ class LightEngine(Engine):
                 raise NotImplementedError('Web and Api server are not allowed now')
             self.update_node(r)
         for n in changed_nodes: self.update_node(n)
-        node = Node(id=gid or str(uuid.uuid4().hex), kind='Graph',
-                    name=name or str(uuid.uuid4().hex), args=dict(nodes=nodes, edges=edges))
-        self.graph = self.update_node(node).func
-        ActionModule(self.graph).start()
+        gid, name = gid or str(uuid.uuid4().hex), name or str(uuid.uuid4().hex)
+        node = Node(id=gid, kind='Graph', name=name, args=dict(nodes=nodes, edges=edges))
+        self.update_node(node).func.start()
 
-    def run(self, *args, **kw):
-        return self.graph(*args, **kw)
+    def run(self, id: str, *args, **kw):
+        return self.build_node(id).func(*args, **kw)
