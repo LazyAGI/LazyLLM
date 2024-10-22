@@ -14,6 +14,7 @@ class Node():
     name: str
     args: Optional[Dict] = None
     func: Optional[Callable] = None
+    arg_names: Optional[List[str]] = None
 
 
 @dataclass

@@ -3,6 +3,7 @@ import pytest
 import time
 from gradio_client import Client
 import lazyllm
+import json
 
 class TestEngine(object):
 
@@ -270,6 +271,28 @@ class TestEngine(object):
         lazyllm.launcher.cleanup()
         web.stop()
 
+    def test_engine_httptool(self):
+        params = {'p1': '{{p1}}', 'p2': '{{p2}}'}
+        headers = {'h1': '{{h1}}'}
+        url = 'https://postman-echo.com/get'
+
+        nodes = [
+            dict(id='0', kind='Code', name='code1', args='def p1(): return "foo"'),
+            dict(id='1', kind='Code', name='code2', args='def p2(): return "bar"'),
+            dict(id='2', kind='Code', name='code3', args='def h1(): return "baz"'),
+            dict(id='3', kind='HttpTool', name='http', args=dict(
+                method='GET', url=url, params=params, headers=headers, _lazyllm_arg_names=['p1', 'p2', 'h1']))
+        ]
+        edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
+                 dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
+
+        engine = LightEngine()
+        engine.start(nodes, edges, gid='graph-1')
+        res = engine.run()
+        content = json.loads(res['content'])
+
+        assert content['headers']['h1'] == 'baz'
+        assert content['url'] == f'{url}?p1=foo&p2=bar'
 
 class TestEngineRAG(object):
 
