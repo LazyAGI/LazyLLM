@@ -181,7 +181,7 @@ class ModuleBase(object):
     def wait(self): pass
 
     def stop(self):
-        for m in self._submodules:
+        for m in self.submodules:
             m.stop()
 
     @property
