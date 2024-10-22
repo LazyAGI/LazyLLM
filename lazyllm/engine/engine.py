@@ -56,16 +56,18 @@ class NodeConstructor(object):
         return impl
 
     # build node recursively
-    def build(self, node):
+    def build(self, node: Node):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
+        args_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
         if node.kind in NodeConstructor.builder_methods:
             createf = NodeConstructor.builder_methods[node.kind]
             r = inspect.getfullargspec(createf)
             if isinstance(node.args, dict) and set(node.args.keys()).issubset(set(r.args)):
-                node.func = NodeConstructor.builder_methods[node.kind](**node.args)
+                r = NodeConstructor.builder_methods[node.kind](**node.args)
             else:
-                node.func = NodeConstructor.builder_methods[node.kind](node.args)
+                r = NodeConstructor.builder_methods[node.kind](node.args)
+            node.func, node.arg_names = r, args_names
             return node
 
         node_msgs = all_nodes[node.kind]
@@ -92,7 +94,7 @@ class NodeConstructor(object):
         module = node_msgs['module'](**init_args)
         for key, value in build_args.items():
             module = getattr(module, key)(value, **other_args.get(key, dict()))
-        node.func = module
+        node.func, node.arg_names = module, args_names
         return node
 
 
@@ -156,11 +158,12 @@ def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [],
                                                       name=resource['name'], args=resource['args'])
 
     resources = [engine.build_node(resource) for resource in resources if resource['kind'] not in server_resources]
-    nodes = [engine.build_node(node) for node in nodes]
+    nodes: List[Node] = [engine.build_node(node) for node in nodes]
 
     with graph() as g:
         for node in nodes:
             setattr(g, node.name, node.func)
+    g.set_node_arg_name([node.arg_names for node in nodes])
 
     for edge in edges:
         if formatter := edge.get('formatter'):

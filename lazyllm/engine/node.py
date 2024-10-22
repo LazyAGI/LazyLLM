@@ -14,6 +14,7 @@ class Node():
     name: str
     args: Optional[Dict] = None
     func: Optional[Callable] = None
+    arg_names: Optional[List[str]] = None
 
 
 @dataclass
@@ -45,6 +46,8 @@ all_nodes['OnlineLLM'] = dict(
         source=NodeArgs(str),
         base_model=NodeArgs(str),
         base_url=NodeArgs(str),
+        api_key=NodeArgs(str, None),
+        secret_key=NodeArgs(str, None),
         stream=NodeArgs(bool, True),
         return_trace=NodeArgs(bool, False)),
     builder_argument=dict(
@@ -62,7 +65,9 @@ all_nodes['OnlineEmbedding'] = dict(
     init_arguments=dict(
         source=NodeArgs(str),
         embed_model_name=NodeArgs(str),
-        embed_url=NodeArgs(str))
+        embed_url=NodeArgs(str),
+        api_key=NodeArgs(str, None),
+        secret_key=NodeArgs(str, None))
 )
 
 all_nodes['SD'] = all_nodes['TTS'] = all_nodes['STT'] = dict(

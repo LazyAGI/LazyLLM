@@ -23,21 +23,26 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
 
     @staticmethod
     def _encapsulate_parameters(embed_url: str,
-                                embed_model_name: str) -> Dict[str, Any]:
+                                embed_model_name: str,
+                                **kwargs) -> Dict[str, Any]:
         params = {}
         if embed_url is not None:
             params["embed_url"] = embed_url
         if embed_model_name is not None:
             params["embed_model_name"] = embed_model_name
+        params.update(kwargs)
         return params
 
     def __new__(self,
                 source: str = None,
                 embed_url: str = None,
-                embed_model_name: str = None):
-        params = OnlineEmbeddingModule._encapsulate_parameters(embed_url, embed_model_name)
+                embed_model_name: str = None,
+                **kwargs):
+        params = OnlineEmbeddingModule._encapsulate_parameters(embed_url, embed_model_name, **kwargs)
 
         if source is None:
+            if "api_key" in kwargs and kwargs["api_key"]:
+                raise ValueError("No source is given but an api_key is provided.")
             for source in OnlineEmbeddingModule.MODELS.keys():
                 if lazyllm.config[f'{source}_api_key']: break
             else:
