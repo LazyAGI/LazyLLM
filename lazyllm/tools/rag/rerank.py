@@ -12,11 +12,9 @@ class Reranker(ModuleBase, _PostProcess):
 
     def __new__(cls, name: str = "ModuleReranker", *args, **kwargs):
         assert name in cls.registered_reranker, f"Reranker: {name} is not registered, please register first."
-        if name == "ModuleReranker":
-            subclass = cls.registered_reranker[name]
-            assert isinstance(subclass, type), f"{subclass} must be a class"
-            assert issubclass(subclass, Reranker), f"{subclass.__name__} must be a subclass of Reranker"
-            return super(Reranker, cls).__new__(subclass)
+        item = cls.registered_reranker[name]
+        if isinstance(item, type) and issubclass(item, Reranker):
+            return super(Reranker, cls).__new__(item)
         else:
             return super(Reranker, cls).__new__(cls)
 
