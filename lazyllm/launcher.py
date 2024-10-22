@@ -29,8 +29,9 @@ class Status(Enum):
 
 
 class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
+    Status = Status
+
     def __init__(self) -> None:
-        self.status = Status.TBSubmitted
         self._id = str(uuid.uuid4().hex)
 
     def makejob(self, cmd):
@@ -44,6 +45,12 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
             v.stop()
             LOG.info(f"killed job:{k}")
         self.all_processes.pop(self._id)
+        self.wait()
+
+    @property
+    def status(self):
+        assert len(self.all_processes[self._id]) == 1
+        return self.all_processes[self._id][0].status
 
     def wait(self):
         for _, v in self.all_processes[self._id]:
@@ -257,7 +264,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
                 encoding='utf-8'
             )
         except Exception as e:
-            LOG.error(f"An error occurred: {e}")
+            LOG.warning(f"Get idle gpus failed: {e}, if you have no gpu-driver, ignor it.")
             return []
         lines = order_list.strip().split('\n')
 
@@ -316,6 +323,8 @@ class SlurmLauncher(LazyLLMLaunchersBase):
                 cmd = f"scancel --quiet {self.jobid}"
                 subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                  encoding='utf-8', executable='/bin/bash')
+                self.jobid = None
+
             if self.ps:
                 self.ps.terminate()
                 self.queue = Queue()
@@ -521,6 +530,30 @@ class ScoLauncher(LazyLLMLaunchersBase):
             else:
                 raise RuntimeError("Cannot get IP.", f"JobID: {self.jobid}")
 
+        def _scancel_job(self, cmd, max_retries=3):
+            retries = 0
+            while retries < max_retries:
+                ps = subprocess.Popen(
+                    cmd, shell=True, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    encoding='utf-8', executable='/bin/bash')
+                try:
+                    stdout, stderr = ps.communicate(timeout=3)
+                    if stdout:
+                        LOG.info(stdout)
+                        if 'success scancel' in stdout:
+                            break
+                    if stderr:
+                        LOG.error(stderr)
+                except subprocess.TimeoutExpired:
+                    ps.kill()
+                    LOG.warning(f"Command timed out, retrying... (Attempt {retries + 1}/{max_retries})")
+                except Exception as e:
+                    LOG.error("Try to scancel, but meet: ", e)
+                retries += 1
+            if retries == max_retries:
+                LOG.error(f"Command failed after {max_retries} attempts.")
+
         def stop(self):
             if self.jobid:
                 cmd = f"scancel --workspace-id={self.workspace_name} {self.jobid}"
@@ -531,16 +564,20 @@ class ScoLauncher(LazyLLMLaunchersBase):
                         f"To delete by terminal, you can execute: `{cmd}`"
                     )
                 else:
-                    subprocess.Popen(
-                        cmd, shell=True, stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        encoding='utf-8', executable='/bin/bash')
+                    self._scancel_job(cmd)
+                    time.sleep(0.5)  # Avoid the execution of scancel and scontrol too close together.
+
+            with lazyllm.timeout(25):
+                while self.status not in (Status.Done, Status.Cancelled, Status.Failed):
+                    time.sleep(1)
 
             if self.ps:
                 self.ps.terminate()
                 self.queue = Queue()
                 self.output_thread_event.set()
                 self.output_thread.join()
+
+            self.jobid = None
 
         def wait(self):
             if self.ps:
@@ -556,11 +593,13 @@ class ScoLauncher(LazyLLMLaunchersBase):
                     job_state = id_json['status_phase'].strip().lower()
                     if job_state == 'running':
                         return Status.Running
-                    elif job_state in ['tbsubmitted', 'suspending', 'suspended']:
+                    elif job_state in ['tbsubmitted', 'suspending']:
                         return Status.TBSubmitted
                     elif job_state in ['waiting', 'init', 'queueing', 'creating',
                                        'restarting', 'recovering', 'starting']:
                         return Status.InQueue
+                    elif job_state in ['suspended']:
+                        return Status.Cancelled
                     elif job_state == 'succeeded':
                         return Status.Done
                 except Exception:

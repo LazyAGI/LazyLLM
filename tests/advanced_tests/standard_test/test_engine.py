@@ -48,6 +48,6 @@ class TestEngine(object):
         ]
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
-        engine.start(nodes, edges)
-        ret = engine.run()
+        gid = engine.start(nodes, edges)
+        ret = engine.run(gid)
         assert '商汤科技' in ret['content']

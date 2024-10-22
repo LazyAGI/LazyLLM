@@ -10,7 +10,7 @@ import inspect
 import functools
 from datetime import datetime
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
-from typing import Dict, List, Any, Union
+from typing import Dict, List, Any, Union, Optional
 
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals
@@ -18,6 +18,7 @@ from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.formatter import FormatterBase, EmptyFormatter
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
+from ..launcher import LazyLLMLaunchersBase as Launcher
 import uuid
 from ..client import get_redis, redis_client
 
@@ -179,7 +180,9 @@ class ModuleBase(object):
     def restart(self): return self.start()
     def wait(self): pass
 
-    def stop(self): raise NotImplementedError(f'Function stop is not implemented in {self.__class__}!')
+    def stop(self):
+        for m in self.submodules:
+            m.stop()
 
     @property
     def options(self):
@@ -434,6 +437,7 @@ class _ServerModuleImpl(ModuleBase):
 
     def stop(self):
         self._launcher.cleanup()
+        self._get_deploy_tasks.flag.reset()
 
     def __del__(self):
         self.stop()
@@ -477,42 +481,53 @@ class _TrainableModuleImpl(ModuleBase):
         self._train, self._finetune, self._deploy = train, finetune, deploy
         self._stream = stream
         self._father = []
-        self._launchers = []
+        self._launchers: Dict[str, Dict[str, Launcher]] = dict(default=dict(), manual=dict())
         self._deployer = None
         self._specific_target_path = None
 
     def _add_father(self, father):
         if father not in self._father: self._father.append(father)
 
-    def _get_args(self, arg_cls, disable=[]):
-        args = getattr(self, f'_{arg_cls}_args', dict())
+    def _get_train_or_deploy_args(self, arg_cls: str, disable: List[str] = []):
+        args = getattr(self, f'_{arg_cls}_args', dict()).copy()
         if len(set(args.keys()).intersection(set(disable))) > 0:
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
                              '{arg_cls}_args, please pass them from Module.__init__()')
-        if 'launcher' in args:
-            args['launcher'] = args['launcher'].clone() if args['launcher'] else launchers.remote(sync=False)
-            self._launchers.append(args['launcher'])
+        if 'url' not in args:
+            args['launcher'] = args['launcher'].clone() if args.get('launcher') else launchers.remote(sync=False)
+            self._launchers['default'][arg_cls] = args['launcher']
         return args
 
-    def _get_train_tasks(self):
-        trainset_getf = lambda: lazyllm.package(self._trainset, None) \
-            if isinstance(self._trainset, str) else self._trainset  # noqa E731
+    def _get_train_tasks_impl(self, mode: Optional[str] = None, **kw):
+        mode = mode or self._mode
+        assert mode in ('train', 'finetune'), 'mode must be train or finetune'
+
+        trainset_getf = (lambda: lazyllm.package(self._trainset, None)) if isinstance(
+            self._trainset, str) else self._trainset
         target_path = self._generate_target_path()
         if not os.path.exists(target_path):
             os.system(f'mkdir -p {target_path}')
-        if self._mode == 'train':
-            args = self._get_args('train', disable=['base_model', 'target_path'])
-            train = self._train(base_model=self._base_model, target_path=target_path, **args)
-        elif self._mode == 'finetune':
-            args = self._get_args('finetune', disable=['base_model', 'target_path'])
-            train = self._finetune(base_model=self._base_model, target_path=target_path, **args)
-        else:
-            raise RuntimeError('mode must be train or finetune')
 
+        kw = kw or self._get_train_or_deploy_args(mode, disable=['base_model', 'target_path'])
+        task = getattr(self, f'_{mode}')(base_model=self._base_model, target_path=target_path, **kw)
+        return [trainset_getf, task]
+
+    def _get_train_tasks(self):
         def after_train(real_target_path):
             self._finetuned_model_path = real_target_path
             return real_target_path
-        return Pipeline(trainset_getf, train, after_train)
+        return Pipeline(*self._get_train_tasks_impl(), after_train)
+
+    def _trian(self, name: str, ngpus: int = 1, mode: str = None, batch_size: int = 16,
+               micro_batch_size: int = 2, num_epochs: int = 3, learning_rate: float = 5e-4,
+               lora_r: int = 8, lora_alpha: int = 32, lora_dropout: float = 0.05, **kw):
+        assert name and isinstance(name, str), 'Invalid name: {name}, expect a valid string'
+        assert name not in self._launchers['manual'], 'Duplicate name: {name}'
+        self._launchers['manual'][name] = kw['launcher'] = launchers.remote(sync=False, ngpus=ngpus)
+
+        Pipeline(*self._get_train_tasks_impl(
+            mode=mode, batch_size=batch_size, micro_batch_size=micro_batch_size, num_epochs=num_epochs,
+            learning_rate=learning_rate, lora_r=lora_r, lora_alpha=lora_alpha, lora_dropout=lora_dropout, **kw))()
 
     def _get_all_finetuned_models(self):
         valid_paths = []
@@ -578,7 +593,7 @@ class _TrainableModuleImpl(ModuleBase):
                 f._stream_url_suffix = deployer.stream_url_suffix()
 
     def _deploy_setter_hook(self):
-        self._deploy_args = self._get_args('deploy', disable=['target_path'])
+        self._deploy_args = self._get_train_or_deploy_args('deploy', disable=['target_path'])
         if self._deploy is not lazyllm.deploy.AutoDeploy:
             self._set_template(self._deploy)
             if url := self._deploy_args.get('url', None):
@@ -588,8 +603,7 @@ class _TrainableModuleImpl(ModuleBase):
                 self._get_deploy_tasks.flag.set()
 
     def __del__(self):
-        for launcher in self._launchers:
-            launcher.cleanup()
+        [[launcher.cleanup() for launcher in group.values()] for group in self._launchers.values()]
 
     def _generate_target_path(self):
         base_model_name = os.path.basename(self._base_model)
@@ -649,6 +663,15 @@ class TrainableModule(UrlModule):
         # TODO(wangzhihong): Split finetune launcher and deploy launcher; Only one deploy launcher is allowed.
         for launcher in self._impl._launchers:
             launcher.wait()
+
+    def stop(self, task_name: Optional[str] = None):
+        launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
+        if not task_name: self._impl._get_deploy_tasks.flag.reset()
+        launcher.cleanup()
+
+    def status(self, task_name: Optional[str] = None):
+        launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
+        return launcher.status
 
     # modify default value to ''
     def prompt(self, prompt=''):
