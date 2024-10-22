@@ -3,6 +3,7 @@ import pytest
 import time
 from gradio_client import Client
 import lazyllm
+import json
 
 class TestEngine(object):
 
@@ -149,6 +150,34 @@ class TestEngine(object):
         assert engine.run(3, 1) == 5
         assert engine.run(5, 3, 1) == 11
 
+    def test_engine_formatter_end(self):
+        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
+                 dict(id='2', kind='Code', name='m2', args='def test1(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),
+                 # two unused node
+                 dict(id='3', kind='Code', name='m3', args='def test2(x: int):\n    return dict(a=1, b=x * x)\n'),
+                 dict(id='4', kind='Code', name='m4', args='def test3(x, y, z):\n    return f"{x}{y}{z}"\n')]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__'),
+                 dict(iid='1', oid='__end__')]
+
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        r = engine.run(1)
+        print(r, type(r))
+        print(isinstance(r, lazyllm.package))
+
+        engine.reset()
+
+        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
+                 dict(id='2', kind='Code', name='m2', args='def test1(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),
+                 dict(id='3', kind='JoinFormatter', name='join', args=dict(type='to_dict', names=['a', 'b']))]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='2', oid='3'),
+                 dict(iid='1', oid='3'), dict(iid='3', oid='__end__', formatter='*[a, b]')]
+        engine = LightEngine()
+        engine.start(nodes, edges)
+        r = engine.run(1)
+        print(r, type(r))
+        print(isinstance(r, lazyllm.package))
+
     def test_engine_join_stack(self):
         nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
                  dict(id='1', kind='JoinFormatter', name='join', args=dict(type='stack'))]
@@ -242,6 +271,28 @@ class TestEngine(object):
         lazyllm.launcher.cleanup()
         web.stop()
 
+    def test_engine_httptool(self):
+        params = {'p1': '{{p1}}', 'p2': '{{p2}}'}
+        headers = {'h1': '{{h1}}'}
+        url = 'https://postman-echo.com/get'
+
+        nodes = [
+            dict(id='0', kind='Code', name='code1', args='def p1(): return "foo"'),
+            dict(id='1', kind='Code', name='code2', args='def p2(): return "bar"'),
+            dict(id='2', kind='Code', name='code3', args='def h1(): return "baz"'),
+            dict(id='3', kind='HttpTool', name='http', args=dict(
+                method='GET', url=url, params=params, headers=headers, _lazyllm_arg_names=['p1', 'p2', 'h1']))
+        ]
+        edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
+                 dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
+
+        engine = LightEngine()
+        engine.start(nodes, edges, gid='graph-1')
+        res = engine.run()
+        content = json.loads(res['content'])
+
+        assert content['headers']['h1'] == 'baz'
+        assert content['url'] == f'{url}?p1=foo&p2=bar'
 
 class TestEngineRAG(object):
 

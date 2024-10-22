@@ -51,6 +51,8 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
         params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace, **kwargs)
 
         if source is None:
+            if "api_key" in kwargs and kwargs["api_key"]:
+                raise ValueError("No source is given but an api_key is provided.")
             for source in OnlineChatModule.MODELS.keys():
                 if lazyllm.config[f'{source}_api_key']: break
             else:
