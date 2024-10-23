@@ -52,7 +52,7 @@ class DocImpl:
         node_groups.update(self.node_groups)
         self.node_groups = node_groups
 
-        self._embed_dim = {k: len(e('a')) for k, e in self._embed.items()}
+        self._embed_dim = {k: len(e('a')) for k, e in self.embed.items()}
 
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
