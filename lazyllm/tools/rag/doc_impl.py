@@ -32,7 +32,7 @@ class DocImpl:
     _global_node_groups: Dict[str, Dict] = {}
     _registered_file_reader: Dict[str, Callable] = {}
 
-    def __init__(self, embed: Dict[str, Callable], embed_dim: Dict[str, int], dlm: Optional[DocListManager] = None,
+    def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: str = None):
         super().__init__()
         assert (dlm is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
@@ -42,7 +42,7 @@ class DocImpl:
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
-        self._embed_dim = embed_dim
+        self._embed_dim = None
         self.store = None
 
     @once_wrapper(reset_on_pickle=True)
@@ -51,6 +51,8 @@ class DocImpl:
         node_groups.update(DocImpl._global_node_groups)
         node_groups.update(self.node_groups)
         self.node_groups = node_groups
+
+        self._embed_dim = {k: len(e('a')) for k, e in self._embed.items()}
 
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
