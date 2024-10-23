@@ -24,17 +24,18 @@ class Document(ModuleBase):
             launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
             self._dataset_path = dataset_path
             self._embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed}
+            self._embed_dim = {k: len(e('a')) for k, e in self._embed.items()}
             self.name = name
             for embed in self._embed.values():
                 if isinstance(embed, ModuleBase):
                     self._submodules.append(embed)
             self._dlm = DocListManager(dataset_path, name).init_tables()
-            self._kbs = {DocListManager.DEDAULT_GROUP_NAME: DocImpl(embed=self._embed, dlm=self._dlm)}
+            self._kbs = {DocListManager.DEDAULT_GROUP_NAME: DocImpl(embed=self._embed, embed_dim=self._embed_dim, dlm=self._dlm)}
             if manager: self._manager = DocManager(self._dlm)
             if server: self._doc = ServerModule(self._doc)
 
         def add_kb_group(self, name):
-            self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name)
+            self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, embed_dim=self._embed_dim, kb_group_name=name)
             self._dlm.add_kb_group(name)
 
         def get_doc_by_kb_group(self, name): return self._kbs[name]

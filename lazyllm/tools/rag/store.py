@@ -239,7 +239,7 @@ class MapStore(BaseStore):
 
 class ChromadbStore(BaseStore):
     def __init__(
-        self, node_groups: List[str], embed: Dict[str, Callable], *args, **kwargs
+        self, node_groups: List[str], embed_dim: Dict[str, int], *args, **kwargs
     ) -> None:
         super().__init__(node_groups, *args, **kwargs)
         self._db_client = chromadb.PersistentClient(path=config["rag_persistent_path"])
@@ -248,6 +248,7 @@ class ChromadbStore(BaseStore):
             group: self._db_client.get_or_create_collection(group)
             for group in node_groups
         }
+        self._embed_dim = embed_dim
 
     def try_load_store(self) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:
@@ -321,17 +322,22 @@ class ChromadbStore(BaseStore):
                 parent=chroma_metadata["parent"],
             )
 
-            # XXX workaround: json doesn't allow integer keys. if an embedding is a dict,
-            # its key is converted to a string after serialization. we need to convert
-            # that key back to integer.
-            new_embedding_dict = {}
-            for key, embedding in node.embedding.items():
-                if isinstance(embedding, dict):
-                    new_embedding = {int(k): v for k, v in embedding.items()}
-                    new_embedding_dict[key] = new_embedding
-                else:
-                    new_embedding_dict[key] = embedding
-            node.embedding = new_embedding_dict
+            if node.embedding:
+                # convert sparse embedding to List[float]
+                new_embedding_dict = {}
+                for key, embedding in node.embedding.items():
+                    dim = self._embed_dim.get(key)
+                    if not dim:
+                        raise ValueError(f'dim of embed [{key}] is not determined.')
+
+                    if isinstance(embedding, dict):
+                        new_embedding = [0] * dim
+                        for idx, val in embedding.items():
+                            new_embedding[int(idx)] = val
+                        new_embedding_dict[key] = new_embedding
+                    else:
+                        new_embedding_dict[key] = embedding
+                node.embedding = new_embedding_dict
 
             node.is_saved = True
             nodes.append(node)
