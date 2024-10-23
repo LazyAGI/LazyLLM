@@ -67,6 +67,26 @@ class TestChromadbStore(unittest.TestCase):
         self.assertEqual(nodes[1].uid, "2")
         self.assertEqual(nodes[1].parent.uid, "1")
 
+    def test_insert_dict_as_sparse_embedding(self):
+        node1 = DocNode(uid="1", text="text1", group="group1", embedding={'e1': {1: 10, 2: 20}})
+        node2 = DocNode(uid="2", text="text2", group="group1", embedding={'e1': [30, 40]})
+        orig_nodes_dict = {
+            node1.uid: node1,
+            node2.uid: node2,
+        }
+        self.store.add_nodes([node1, node2])
+
+        results = self.store._peek_all_documents('group1')
+        nodes = self.store._build_nodes_from_chroma(results)
+        nodes_dict = {
+            node.uid: node for node in nodes
+        }
+
+        assert nodes_dict.keys() == orig_nodes_dict.keys()
+        for uid, node in nodes_dict.items():
+            orig_node = orig_nodes_dict.get(uid)
+            assert node.embedding['e1'] == orig_node.embedding['e1']
+
 
 if __name__ == "__main__":
     unittest.main()

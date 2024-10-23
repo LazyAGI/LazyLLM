@@ -115,7 +115,7 @@ class DocNode:
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
         assert len(embed_keys) > 0, "The ebmed_keys to be checked must be passed in."
         if self.embedding is None: return embed_keys
-        return [k for k in embed_keys if k not in self.embedding.keys() or self.embedding.get(k, [-1])[0] == -1]
+        return [k for k in embed_keys if k not in self.embedding]
 
     def do_embedding(self, embed: Dict[str, Callable]) -> None:
         generate_embed = {k: e(self.get_text(MetadataMode.EMBED)) for k, e in embed.items()}
@@ -291,7 +291,7 @@ class ChromadbStore(BaseStore):
             metadata = self._make_chroma_metadata(node)
             metadata["embedding"] = json.dumps(node.embedding)
             ids.append(node.uid)
-            embeddings.append([item for subembed in node.embedding.values() for item in subembed])
+            embeddings.append([0])  # we don't use chroma for retrieving
             metadatas.append(metadata)
             documents.append(node.get_text())
             node.is_saved = True
@@ -324,6 +324,19 @@ class ChromadbStore(BaseStore):
                 embedding=json.loads(chroma_metadata['embedding']),
                 parent=chroma_metadata["parent"],
             )
+
+            # XXX workaround: json doesn't allow integer keys. if an embedding is a dict,
+            # its key is converted to a string after serialization. we need to convert
+            # that key back to integer.
+            new_embedding_dict = {}
+            for key, embedding in node.embedding.items():
+                if isinstance(embedding, dict):
+                    new_embedding = {int(k): v for k, v in embedding.items()}
+                    new_embedding_dict[key] = new_embedding
+                else:
+                    new_embedding_dict[key] = embedding
+            node.embedding = new_embedding_dict
+
             node.is_saved = True
             nodes.append(node)
         return nodes
