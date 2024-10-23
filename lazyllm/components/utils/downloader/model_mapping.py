@@ -122,7 +122,7 @@ model_name_mapping = {
             "huggingface": "BAAI/bge-reranker-large",
             "modelscope": "Xorbits/bge-reranker-large"
         },
-        "type": "embed"
+        "type": "reranker"
     },
     "chattts": {
         "source": {

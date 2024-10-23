@@ -18,12 +18,15 @@ from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.formatter import FormatterBase, EmptyFormatter
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
+from ..common.bind import _MetaBind
 from ..launcher import LazyLLMLaunchersBase as Launcher
 import uuid
 from ..client import get_redis, redis_client
 
-
-class ModuleBase(object):
+# use _MetaBind:
+# if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
+# example: ActionModule.submodules:: isinstance(x, ModuleBase) will add submodule.
+class ModuleBase(metaclass=_MetaBind):
     builder_keys = []  # keys in builder support Option by default
 
     def __new__(cls, *args, **kw):
