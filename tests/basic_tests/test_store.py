@@ -2,7 +2,6 @@ import os
 import shutil
 import unittest
 import lazyllm
-from unittest.mock import MagicMock
 from lazyllm.tools.rag.store import DocNode, ChromadbStore, LAZY_ROOT_NAME
 
 
@@ -69,7 +68,7 @@ class TestChromadbStore(unittest.TestCase):
 
     def test_insert_dict_as_sparse_embedding(self):
         node1 = DocNode(uid="1", text="text1", group="group1", embedding={'default': {1: 10, 2: 20}})
-        node2 = DocNode(uid="2", text="text2", group="group1", embedding={'default': {0:30, 2: 50}})
+        node2 = DocNode(uid="2", text="text2", group="group1", embedding={'default': {0: 30, 2: 50}})
         orig_embedding_dict = {
             node1.uid: [0, 10, 20],
             node2.uid: [30, 0, 50],

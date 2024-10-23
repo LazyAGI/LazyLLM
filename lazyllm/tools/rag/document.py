@@ -23,7 +23,7 @@ class Document(ModuleBase):
                     dataset_path = defatult_path
             launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
             self._dataset_path = dataset_path
-            self._embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed}
+            self._embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}
             self.name = name
             for embed in self._embed.values():
                 if isinstance(embed, ModuleBase):
