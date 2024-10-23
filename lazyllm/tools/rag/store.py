@@ -248,7 +248,6 @@ class ChromadbStore(BaseStore):
             group: self._db_client.get_or_create_collection(group)
             for group in node_groups
         }
-        self._placeholder = {k: [-1] * len(e("a")) for k, e in embed.items()} if embed else {EMBED_DEFAULT_KEY: []}
 
     def try_load_store(self) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:
@@ -285,9 +284,6 @@ class ChromadbStore(BaseStore):
         for node in nodes:
             if node.is_saved:
                 continue
-            if miss_keys := node.has_missing_embedding(self._placeholder.keys()):
-                node.embedding = node.embedding or {}
-                node.embedding = {**node.embedding, **{k: self._placeholder[k] for k in miss_keys}}
             metadata = self._make_chroma_metadata(node)
             metadata["embedding"] = json.dumps(node.embedding)
             ids.append(node.uid)

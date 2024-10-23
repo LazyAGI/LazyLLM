@@ -9,6 +9,7 @@ from .doc_impl import DocImpl
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY, DocNode
 from .utils import DocListManager
 import copy
+import functools
 
 
 class Document(ModuleBase):
@@ -77,11 +78,11 @@ class Document(ModuleBase):
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
         return cls.add_reader(pattern, func)
 
-    def find_parent(self) -> Callable:
-        return DocImpl.find_parent
+    def find_parent(self, target) -> Callable:
+        return functools.partial(DocImpl.find_parent, group=target)
 
-    def find_children(self) -> Callable:
-        return DocImpl.find_children
+    def find_children(self, target) -> Callable:
+        return functools.partial(DocImpl.find_children, group=target)
 
     def forward(self, *args, **kw) -> List[DocNode]:
         return self._impl.retrieve(*args, **kw)
