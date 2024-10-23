@@ -326,11 +326,10 @@ class ChromadbStore(BaseStore):
                 # convert sparse embedding to List[float]
                 new_embedding_dict = {}
                 for key, embedding in node.embedding.items():
-                    dim = self._embed_dim.get(key)
-                    if not dim:
-                        raise ValueError(f'dim of embed [{key}] is not determined.')
-
                     if isinstance(embedding, dict):
+                        dim = self._embed_dim.get(key)
+                        if not dim:
+                            raise ValueError(f'dim of embed [{key}] is not determined.')
                         new_embedding = [0] * dim
                         for idx, val in embedding.items():
                             new_embedding[int(idx)] = val
