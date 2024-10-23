@@ -643,7 +643,8 @@ class RemoteLauncher(LazyLLMLaunchersBase):
 def cleanup():
     # empty
     for m in (EmptyLauncher, SlurmLauncher, ScoLauncher):
-        for vs in m.all_processes.values():
+        while m.all_processes:
+            _, vs = m.all_processes.popitem()
             for k, v in vs:
                 v.stop()
                 LOG.info(f"killed job:{k}")
