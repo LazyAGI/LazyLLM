@@ -45,17 +45,15 @@ class DocListManager(ABC):
 
     def init_tables(self) -> 'DocListManager':
         if not self.table_inited():
-            # init tables
             self._init_tables()
-
-            # add files to tables
-            files_list = []
-            for root, _, files in os.walk(self._path):
-                files = [os.path.join(root, file_path) for file_path in files]
-                files_list.extend(files)
-            ids = self.add_files(files_list, status=DocListManager.Status.success)
             self.add_kb_group(DocListManager.DEDAULT_GROUP_NAME)
-            self.add_files_to_kb_group(ids, group=DocListManager.DEDAULT_GROUP_NAME)
+
+        files_list = []
+        for root, _, files in os.walk(self._path):
+            files = [os.path.join(root, file_path) for file_path in files]
+            files_list.extend(files)
+        ids = self.add_files(files_list, status=DocListManager.Status.success)
+        self.add_files_to_kb_group(ids, group=DocListManager.DEDAULT_GROUP_NAME)
         return self
 
     def delete_files(self, file_ids: List[str]):
@@ -88,7 +86,7 @@ class DocListManager(ABC):
 
     @abstractmethod
     def add_files(self, files: List[str], metadatas: Optional[List] = None,
-                  status: Optional[str] = None) -> List[str]: pass
+                  status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[str]: pass
 
     @abstractmethod
     def update_file_message(self, fileid: str, **kw): pass
@@ -253,20 +251,29 @@ class SqliteDocListManager(DocListManager):
         if not details: return [row[:2] for row in rows]
         return rows
 
-    def add_files(self, files: List[str], metadatas: Optional[List] = None, status: Optional[str] = None):
-        with self._conn:
-            ids = []
-            for i, file_path in enumerate(files):
+    def add_files(self, files: List[str], metadatas: Optional[List] = None,
+                  status: Optional[str] = DocListManager.Status.waiting, batch_size: int = 64):
+        results = []
+        for i in range(0, len(files), batch_size):
+            batch_files = files[i:i + batch_size]
+            batch_metadatas = metadatas[i:i + batch_size] if metadatas else None
+            insert_values, params = [], []
+
+            for i, file_path in enumerate(batch_files):
                 filename = os.path.basename(file_path)
-                metadata = json.dumps(metadatas[i]) if metadatas else ''
+                metadata = json.dumps(batch_metadatas[i]) if batch_metadatas else ''
                 doc_id = hashlib.sha256(f'{file_path}'.encode()).hexdigest()
-                with self._conn:
-                    self._conn.execute("""
-                        INSERT OR IGNORE INTO documents (doc_id, filename, path, metadata, status, count)
-                        VALUES (?, ?, ?, ?, ?, ?) RETURNING doc_id;
-                    """, (doc_id, filename, file_path, metadata, status or DocListManager.Status.waiting, 1))
-                ids.append(doc_id)
-            return ids
+                insert_values.append("(?, ?, ?, ?, ?, ?)")
+                params.extend([doc_id, filename, file_path, metadata, status, 1])
+
+            with self._conn:
+                query = f"""
+                    INSERT OR IGNORE INTO documents (doc_id, filename, path, metadata, status, count)
+                    VALUES {', '.join(insert_values)} RETURNING doc_id;
+                """
+                cursor = self._conn.execute(query, params)
+                results.extend([row[0] for row in cursor.fetchall()])
+        return results
 
     # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):

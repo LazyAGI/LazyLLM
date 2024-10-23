@@ -155,12 +155,15 @@ class DocImpl:
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
                 continue
 
+            if self._kb_group_name == DocListManager.DEDAULT_GROUP_NAME:
+                self._dlm.init_tables()
             ids, files = self._list_files(status=DocListManager.Status.waiting,
                                           upload_status=DocListManager.Status.success)
             if files:
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
                 self._add_files(files)
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
+                continue
             time.sleep(10)
 
     def _list_files(self, status: str = DocListManager.Status.all, upload_status: str = DocListManager.Status.all
