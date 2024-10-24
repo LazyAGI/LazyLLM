@@ -29,6 +29,7 @@ class LightEngine(Engine):
 
     def release_node(self, nodeid: str):
         self.stop(nodeid)
+        # TODO(wangzhihong): Analyze dependencies and only allow deleting nodes without dependencies
         self._nodes.pop(nodeid)
 
     def update_node(self, node):

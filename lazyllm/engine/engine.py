@@ -144,6 +144,9 @@ class ServerGraph(lazyllm.ModuleBase):
             return self._web.url
         return None
 
+    def __repr__(self):
+        return repr(self._g)
+
 
 class ServerResource(object):
     def __init__(self, graph: ServerGraph, kind: str, args: Dict):
@@ -161,7 +164,8 @@ def make_server_resource(kind: str, graph: ServerGraph, args: Dict[str, Any]):
 
 
 @NodeConstructor.register('Graph', 'SubGraph', subitems=['nodes', 'resources'])
-def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [], enable_server=True):
+def make_graph(nodes: List[dict], edges: List[Union[List[str], dict]] = [],
+               resources: List[dict] = [], enable_server=True):
     engine = Engine()
     server_resources = dict(server=None, web=None)
     for resource in resources:
@@ -179,7 +183,13 @@ def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [],
             setattr(g, node.name, node.func)
     g.set_node_arg_name([node.arg_names for node in nodes])
 
+    if not edges:
+        edges = ([dict(iid='__start__', oid=nodes[0].id)] + [
+            dict(iid=nodes[i].id, oid=nodes[i + 1].id) for i in range(len(nodes) - 1)] + [
+            dict(iid=nodes[-1].id, oid='__end__')])
+
     for edge in edges:
+        if isinstance(edge, (tuple, list)): edge = dict(iid=edge[0], oid=edge[1])
         if formatter := edge.get('formatter'):
             assert formatter.startswith(('*[', '[', '}')) and formatter.endswith((']', '}'))
             formatter = lazyllm.formatter.JsonLike(formatter)
@@ -211,7 +221,7 @@ def _build_pipeline(nodes):
         return Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
 
 
-@NodeConstructor.register('Switch', subitems=['node:dict'])
+@NodeConstructor.register('Switch', subitems=['nodes:dict'])
 def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     with switch(judge_on_full_input=judge_on_full_input) as sw:
         for cond, nodes in nodes.items():
@@ -220,12 +230,12 @@ def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
 
 
 @NodeConstructor.register('Warp', subitems=['nodes', 'resources'])
-def make_warp(nodes: List[dict], edges: List[dict], resources: List[dict] = []):
+def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] = []):
     return lazyllm.warp(make_graph(nodes, edges, resources, enable_server=False))
 
 
 @NodeConstructor.register('Loop', subitems=['nodes', 'resources'])
-def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict],
+def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict] = [],
               resources: List[dict] = [], judge_on_full_input: bool = True):
     stop_condition = make_code(stop_condition)
     return lazyllm.loop(make_graph(nodes, edges, resources, enable_server=False),
@@ -285,7 +295,7 @@ class JoinFormatter(lazyllm.components.FormatterBase):
             return {k: v for k, v in zip(self.names, data)}
         elif self.type == 'join':
             symbol = self.symbol or ''
-            return symbol.join(data)
+            return symbol.join([str(d) for d in data])
         else:
             raise TypeError('type should be one of sum/stack/to_dict/join')
 

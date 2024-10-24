@@ -154,7 +154,11 @@ class ModuleBase(metaclass=_MetaBind):
         while len(stack) > 0:
             try:
                 top = next(stack[-1][1])
-                stack.append((top, iter(top.submodules)))
+                try:
+                    stack.append((top, iter(top.submodules)))
+                except AttributeError as e:
+                    print(repr(top))
+                    raise e
             except StopIteration:
                 top = stack.pop()[0]
                 if top._module_id in visited: continue
@@ -395,10 +399,13 @@ class ActionModule(ModuleBase):
 
     @property
     def submodules(self):
-        if isinstance(self.action, FlowBase):
-            submodule = []
-            self.action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: submodule.append(x))
-            return submodule
+        try:
+            if isinstance(self.action, FlowBase):
+                submodule = []
+                self.action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: submodule.append(x))
+                return submodule
+        except Exception as e:
+            raise RuntimeError(str(e))
         return super().submodules
 
     def __repr__(self):

@@ -27,7 +27,11 @@ class _FuncWrap(object):
     def __repr__(self):
         # TODO: specify lambda/staticmethod/classmethod/instancemethod
         # TODO: add registry message
-        return lazyllm.make_repr('Function', self.f.__name__.strip('<>'))
+        return lazyllm.make_repr('Function', (
+            self.f if _is_function(self.f) else self.f.__class__).__name__.strip('<>'))
+
+    def __getattr__(self, __key):
+        return getattr(self.f, __key)
 
 _oldins = isinstance
 def new_ins(obj, cls):
@@ -94,7 +98,7 @@ class FlowBase(metaclass=_MetaBind):
 
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
-            assert name not in self._item_names, 'Duplicated name: {name}'
+            assert name not in self._item_names, f'Duplicated name: {name}'
             self._add(name, value)
         else:
             super(__class__, self).__setattr__(name, value)

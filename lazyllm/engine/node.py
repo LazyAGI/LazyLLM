@@ -25,7 +25,7 @@ class Node():
         result = []
         for name in names:
             name, tp = name.split(':') if ':' in name else (name, None)
-            source = self.args[name]
+            source = self.args.get(name, {} if tp == 'dict' else [])
             if tp != 'dict': source = dict(key=source)
             for s in source.values():
                 if isinstance(s, (tuple, list)):
