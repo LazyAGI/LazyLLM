@@ -10,7 +10,8 @@ from .agent import (
     ReWOOAgent,
 )
 from .classifier import IntentClassifier
-from .sql import SQLiteManger, SqlManager, SqlCall
+from .sql import SqlManagerBase, SQLiteManger, SqlManager, MonogDBManager, DBResult, DBStatus, SqlCall
+
 from .tools.http_tool import HttpTool
 
 __all__ = [
@@ -28,8 +29,12 @@ __all__ = [
     "ReWOOAgent",
     "IntentClassifier",
     "SentenceSplitter",
+    "SqlManagerBase",
     "SQLiteManger",
     "SqlManager",
+    "MonogDBManager",
+    "DBResult",
+    "DBStatus",
     "SqlCall",
     "HttpTool",
 ]
