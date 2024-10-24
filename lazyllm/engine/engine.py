@@ -49,9 +49,13 @@ class NodeConstructor(object):
     builder_methods = dict()
 
     @classmethod
-    def register(cls, name):
+    def register(cls, *names: Union[List[str], str], subitems: Optional[Union[bool, str]] = None):
+        if len(names) == 1 and isinstance(names, (tuple, list)): names = names[0]
+        if subitems is True: subitems = 'nodes'
+
         def impl(f):
-            cls.builder_methods[name] = f
+            for name in names:
+                cls.builder_methods[name] = (f, subitems)
             return f
         return impl
 
@@ -59,15 +63,11 @@ class NodeConstructor(object):
     def build(self, node: Node):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
-        args_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
+        node.args_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
         if node.kind in NodeConstructor.builder_methods:
-            createf = NodeConstructor.builder_methods[node.kind]
-            r = inspect.getfullargspec(createf)
-            if isinstance(node.args, dict) and set(node.args.keys()).issubset(set(r.args)):
-                r = NodeConstructor.builder_methods[node.kind](**node.args)
-            else:
-                r = NodeConstructor.builder_methods[node.kind](node.args)
-            node.func, node.arg_names = r, args_names
+            createf, node.subitem_name = NodeConstructor.builder_methods[node.kind]
+            node.func = createf(**node.args) if isinstance(node.args, dict) and set(node.args.keys()).issubset(
+                set(inspect.getfullargspec(createf).args)) else createf(node.args)
             return node
 
         node_msgs = all_nodes[node.kind]
@@ -94,7 +94,7 @@ class NodeConstructor(object):
         module = node_msgs['module'](**init_args)
         for key, value in build_args.items():
             module = getattr(module, key)(value, **other_args.get(key, dict()))
-        node.func, node.arg_names = module, args_names
+        node.func = module
         return node
 
 
@@ -145,6 +145,23 @@ class ServerGraph(lazyllm.ModuleBase):
         return None
 
 
+class ServerResource(object):
+    def __init__(self, graph: ServerGraph, kind: str, args: Dict):
+        self._graph = graph
+        self._kind = type
+        self._args = args
+
+    @property
+    def status(self):
+        return self._graph._g.status if self._kind == 'server' else self._graph._web.status
+
+
+@NodeConstructor.register('web')
+@NodeConstructor.register('server')
+def make_server_resource(kind: str, graph: ServerGraph, args: Dict[str, Any]):
+    return ServerResource(graph, kind, args)
+
+
 @NodeConstructor.register('Graph')
 @NodeConstructor.register('SubGraph')
 def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [], enable_server=True):
@@ -171,7 +188,11 @@ def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [],
             formatter = lazyllm.formatter.JsonLike(formatter)
         g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name, formatter)
 
-    return ServerGraph(g, server_resources['server'], server_resources['web'])
+    sg = ServerGraph(g, server_resources['server'], server_resources['web'])
+    for kind, node in server_resources.items():
+        node.args = dict(kind=kind, graph=sg, args=node.args)
+        engine.build_node(node)
+    return sg
 
 
 @NodeConstructor.register('App')

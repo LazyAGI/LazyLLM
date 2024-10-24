@@ -467,6 +467,10 @@ class ServerModule(UrlModule):
     def stop(self):
         self._impl.stop()
 
+    @property
+    def status(self):
+        return self._impl._launcher.status
+
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
                                  stream=self._stream, return_trace=self._return_trace)

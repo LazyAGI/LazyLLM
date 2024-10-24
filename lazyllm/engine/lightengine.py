@@ -1,6 +1,6 @@
 from .engine import Engine, Node
 from lazyllm import once_wrapper
-from typing import List, Dict, Optional, overload
+from typing import List, Dict, Optional, overload, Set
 import uuid
 
 
@@ -16,11 +16,12 @@ class LightEngine(Engine):
     @once_wrapper
     def __init__(self):
         super().__init__()
+        self.node_graph: Set[str, List[str]] = dict()
 
     def build_node(self, node):
         if not isinstance(node, Node):
             if isinstance(node, str):
-                return self._nodes[node]
+                return self._nodes.get(node)
             node = Node(id=node['id'], kind=node['kind'], name=node['name'], args=node['args'])
         if node.id not in self._nodes:
             self._nodes[node.id] = super(__class__, self).build_node(node)
@@ -52,8 +53,13 @@ class LightEngine(Engine):
 
     def status(self, node_id: str, task_name: Optional[str] = None):
         node = self.build_node(node_id)
-        assert node.kind in ('LocalLLM')
-        return node.func.status(task_name=task_name)
+        if not node: return 'unknown'
+        elif node.id in self.node_graph:
+            return {n.id: self.status(n.id) for n in self.node_graph[node.id]}
+        elif node.kind in ('LocalLLM', 'LocalEmbedding', 'SD', 'TTS', 'STT', 'VQA'):
+            return node.func.status(task_name=task_name)
+        else:
+            return 'started'
 
     def stop(self, node_id: str, task_name: Optional[str] = None):
         node = self.build_node(node_id)
@@ -61,7 +67,7 @@ class LightEngine(Engine):
             assert node.kind in ('LocalLLM')
             node.func.stop(task_name=task_name)
         else:
-            assert node.kind in ('Graph', 'LocalLLM', 'LocalEmbedding', 'SD', 'TTS', 'STT')
+            assert node.kind in ('Graph', 'LocalLLM', 'LocalEmbedding', 'SD', 'TTS', 'STT', 'VQA')
             node.func.stop()
 
     def update(self, nodes: List[Dict] = [], changed_nodes: List[Dict] = [],
