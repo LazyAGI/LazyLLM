@@ -70,7 +70,7 @@ class NodeConstructor(object):
     def build(self, node: Node):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
-        node.args_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
+        node.arg_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
         if node.kind in NodeConstructor.builder_methods:
             createf, node.subitem_name = NodeConstructor.builder_methods[node.kind]
             node.func = createf(**node.args) if isinstance(node.args, dict) and set(node.args.keys()).issubset(
