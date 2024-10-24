@@ -154,11 +154,7 @@ class ModuleBase(metaclass=_MetaBind):
         while len(stack) > 0:
             try:
                 top = next(stack[-1][1])
-                try:
-                    stack.append((top, iter(top.submodules)))
-                except AttributeError as e:
-                    print(repr(top))
-                    raise e
+                stack.append((top, iter(top.submodules)))
             except StopIteration:
                 top = stack.pop()[0]
                 if top._module_id in visited: continue

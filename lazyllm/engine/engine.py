@@ -56,9 +56,8 @@ class NodeConstructor(object):
     builder_methods = dict()
 
     @classmethod
-    def register(cls, *names: Union[List[str], str], subitems: Optional[Union[bool, str]] = None):
+    def register(cls, *names: Union[List[str], str], subitems: Optional[Union[str, List[str]]] = None):
         if len(names) == 1 and isinstance(names[0], (tuple, list)): names = names[0]
-        if subitems is True: subitems = 'nodes'
 
         def impl(f):
             for name in names:
