@@ -13,6 +13,7 @@ class Node():
     kind: str
     name: str
     args: Optional[Dict] = None
+
     func: Optional[Callable] = None
     arg_names: Optional[List[str]] = None
     subitem_name: Optional[Union[List[str], str]] = None
@@ -25,19 +26,12 @@ class Node():
         for name in names:
             name, tp = name.split(':') if ':' in name else (name, None)
             source = self.args[name]
-            if isinstance(source, str):
-                result.append(source)
-            elif isinstance(source, (tuple, list)):
-                result.extend([n['id'] if isinstance(n, dict) else n for n in source])
-            elif tp == 'dict':
-                assert isinstance(source, dict)
-                for s in source.values():
-                    if isinstance(s, (tuple, list)):
-                        result.extend([n['id'] if isinstance(n, dict) else n for n in s])
-                    else:
-                        result.append(s['id'] if isinstance(s, dict) else s)
-            else:
-                result.append(source['id'] if isinstance(source, dict) else source)
+            if tp != 'dict': source = dict(key=source)
+            for s in source.values():
+                if isinstance(s, (tuple, list)):
+                    result.extend([n['id'] if isinstance(n, dict) else n for n in s])
+                else:
+                    result.append(s['id'] if isinstance(s, dict) else s)
         return result
 
 

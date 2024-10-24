@@ -50,7 +50,7 @@ class NodeConstructor(object):
 
     @classmethod
     def register(cls, *names: Union[List[str], str], subitems: Optional[Union[bool, str]] = None):
-        if len(names) == 1 and isinstance(names, (tuple, list)): names = names[0]
+        if len(names) == 1 and isinstance(names[0], (tuple, list)): names = names[0]
         if subitems is True: subitems = 'nodes'
 
         def impl(f):
@@ -187,8 +187,9 @@ def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [],
 
     sg = ServerGraph(g, server_resources['server'], server_resources['web'])
     for kind, node in server_resources.items():
-        node.args = dict(kind=kind, graph=sg, args=node.args)
-        engine.build_node(node)
+        if node:
+            node.args = dict(kind=kind, graph=sg, args=node.args)
+            engine.build_node(node)
     return sg
 
 

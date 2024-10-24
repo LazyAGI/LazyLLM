@@ -279,22 +279,29 @@ class TestEngine(object):
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
 
         engine = LightEngine()
-        gid = engine.start(nodes, edges, resources)
+        assert engine.status('123') == 'unknown'
+        gid = engine.start(nodes, edges, resources, gid='123')
+        assert gid == '123'
+
         r = engine.run(gid, '1234')
         assert 'reply for You are an AI-Agent developed by LazyLLM' in r
         assert '1234' in r
 
+        assert engine.status(gid) == {'1': 'running', '0': lazyllm.launcher.Status.Running}
         engine.stop('0')
 
+        assert engine.status(gid) == {'1': 'running', '0': lazyllm.launcher.Status.Cancelled}
         with pytest.raises((TimeoutException, urllib3.exceptions.NewConnectionError, RuntimeError)):
             with lazyllm.timeout(3):
                 engine.run(gid, '1234567')
 
         engine.start('0')
+        assert engine.status(gid) == {'1': 'running', '0': lazyllm.launcher.Status.Running}
         r = engine.run(gid, '12345')
         assert 'reply for You are an AI-Agent developed by LazyLLM' in r
         assert '12345' in r
         engine.stop(gid)
+        assert engine.status(gid) == {'1': 'running', '0': lazyllm.launcher.Status.Cancelled}
 
     def test_engine_httptool(self):
         params = {'p1': '{{p1}}', 'p2': '{{p2}}'}

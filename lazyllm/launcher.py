@@ -49,8 +49,11 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
 
     @property
     def status(self):
-        assert len(self.all_processes[self._id]) == 1
-        return self.all_processes[self._id][0].status
+        if len(self.all_processes[self._id]) == 1:
+            return self.all_processes[self._id][0][1].status
+        elif len(self.all_processes[self._id]) == 0:
+            return Status.Cancelled
+        raise RuntimeError('More than one tasks are found in one launcher!')
 
     def wait(self):
         for _, v in self.all_processes[self._id]:
