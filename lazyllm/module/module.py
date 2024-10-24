@@ -395,10 +395,13 @@ class ActionModule(ModuleBase):
 
     @property
     def submodules(self):
-        if isinstance(self.action, FlowBase):
-            submodule = []
-            self.action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: submodule.append(x))
-            return submodule
+        try:
+            if isinstance(self.action, FlowBase):
+                submodule = []
+                self.action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: submodule.append(x))
+                return submodule
+        except Exception as e:
+            raise RuntimeError(str(e))
         return super().submodules
 
     def __repr__(self):
@@ -466,6 +469,10 @@ class ServerModule(UrlModule):
 
     def stop(self):
         self._impl.stop()
+
+    @property
+    def status(self):
+        return self._impl._launcher.status
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,

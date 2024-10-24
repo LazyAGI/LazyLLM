@@ -20,19 +20,25 @@ import uuid
 
 class _FuncWrap(object):
     def __init__(self, f):
-        self.f = f.f if isinstance(f, _FuncWrap) else f
+        self._f = f._f if isinstance(f, _FuncWrap) else f
 
-    def __call__(self, *args, **kw): return self.f(*args, **kw)
+    def __call__(self, *args, **kw): return self._f(*args, **kw)
 
     def __repr__(self):
         # TODO: specify lambda/staticmethod/classmethod/instancemethod
         # TODO: add registry message
-        return lazyllm.make_repr('Function', self.f.__name__.strip('<>'))
+        return lazyllm.make_repr('Function', (
+            self._f if _is_function(self._f) else self._f.__class__).__name__.strip('<>'))
+
+    def __getattr__(self, __key):
+        if __key != '_f':
+            return getattr(self._f, __key)
+        return super(__class__, self).__getattr__(__key)
 
 _oldins = isinstance
 def new_ins(obj, cls):
     if _oldins(obj, _FuncWrap) and os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) != 'ON':
-        return True if (cls is _FuncWrap or (_oldins(cls, (tuple, list)) and _FuncWrap in cls)) else _oldins(obj.f, cls)
+        return True if (cls is _FuncWrap or (_oldins(cls, (tuple, list)) and _FuncWrap in cls)) else _oldins(obj._f, cls)
     return _oldins(obj, cls)
 
 setattr(builtins, 'isinstance', new_ins)
@@ -94,7 +100,7 @@ class FlowBase(metaclass=_MetaBind):
 
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
-            assert name not in self._item_names, 'Duplicated name: {name}'
+            assert name not in self._item_names, f'Duplicated name: {name}'
             self._add(name, value)
         else:
             super(__class__, self).__setattr__(name, value)
