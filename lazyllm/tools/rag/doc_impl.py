@@ -42,6 +42,7 @@ class DocImpl:
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
+        self._embed_dim = None
         self.store = None
 
     @once_wrapper(reset_on_pickle=True)
@@ -50,6 +51,8 @@ class DocImpl:
         node_groups.update(DocImpl._global_node_groups)
         node_groups.update(self.node_groups)
         self.node_groups = node_groups
+
+        self._embed_dim = {k: len(e('a')) for k, e in self.embed.items()}
 
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
@@ -71,7 +74,7 @@ class DocImpl:
         if rag_store_type == "map":
             store = MapStore(node_groups=self.node_groups.keys())
         elif rag_store_type == "chroma":
-            store = ChromadbStore(node_groups=self.node_groups.keys(), embed=self.embed)
+            store = ChromadbStore(node_groups=self.node_groups.keys(), embed_dim=self._embed_dim)
             store.try_load_store()
         else:
             raise NotImplementedError(

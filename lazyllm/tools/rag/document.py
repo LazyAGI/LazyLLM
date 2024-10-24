@@ -9,6 +9,7 @@ from .doc_impl import DocImpl
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY, DocNode
 from .utils import DocListManager
 import copy
+import functools
 
 
 class Document(ModuleBase):
@@ -22,7 +23,7 @@ class Document(ModuleBase):
                     dataset_path = defatult_path
             launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
             self._dataset_path = dataset_path
-            self._embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed}
+            self._embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}
             self.name = name
             for embed in self._embed.values():
                 if isinstance(embed, ModuleBase):
@@ -77,11 +78,11 @@ class Document(ModuleBase):
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
         return cls.add_reader(pattern, func)
 
-    def find_parent(self) -> Callable:
-        return DocImpl.find_parent
+    def find_parent(self, target) -> Callable:
+        return functools.partial(DocImpl.find_parent, group=target)
 
-    def find_children(self) -> Callable:
-        return DocImpl.find_children
+    def find_children(self, target) -> Callable:
+        return functools.partial(DocImpl.find_children, group=target)
 
     def forward(self, *args, **kw) -> List[DocNode]:
         return self._impl.retrieve(*args, **kw)
