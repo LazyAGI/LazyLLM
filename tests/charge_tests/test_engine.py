@@ -2,7 +2,7 @@ import lazyllm
 from lazyllm.engine import LightEngine
 import pytest
 from .utils import SqlEgsData, get_sql_init_keywords
-from lazyllm.tools import SqlManager
+from lazyllm.tools import SqlManager, DBStatus
 from .tools import (get_current_weather_code, get_current_weather_vars, get_current_weather_doc,
                     get_n_day_weather_forecast_code, multiply_tool_code, add_tool_code, dummy_code)
 
@@ -128,9 +128,11 @@ class TestEngine(object):
         # 1.  Init: insert data to database
         tmp_sql_manager = SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)
         for table_name in SqlEgsData.TEST_TABLES:
-            rt, err_msg = tmp_sql_manager._delete_rows_by_name(table_name)
+            db_result = tmp_sql_manager.delete(table_name)
+            assert db_result.status == DBStatus.SUCCESS
         for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
-            tmp_sql_manager.execute_sql_update(insert_script)
+            db_result = tmp_sql_manager.execute(insert_script)
+            assert db_result.status == DBStatus.SUCCESS
 
         # 2. Engine: build and chat
         resources = [
@@ -160,7 +162,8 @@ class TestEngine(object):
 
         # 3. Release: delete data and table from database
         for table_name in SqlEgsData.TEST_TABLES:
-            rt, err_msg = tmp_sql_manager._drop_table_by_name(table_name)
+            db_result = tmp_sql_manager.drop(table_name)
+            assert db_result.status == DBStatus.SUCCESS
 
     def test_register_tools(self):
         resources = [
