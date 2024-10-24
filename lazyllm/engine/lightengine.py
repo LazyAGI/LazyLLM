@@ -1,6 +1,6 @@
 from .engine import Engine, Node
 from lazyllm import once_wrapper
-from typing import List, Dict, Optional, overload, Set
+from typing import List, Dict, Optional, overload, Set, Any
 import uuid
 
 
@@ -43,13 +43,20 @@ class LightEngine(Engine):
         ...
 
     @overload
+    def start(self, nodes: Dict[str, Any]) -> None:
+        ...
+
+    @overload
     def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
               gid: Optional[str] = None, name: Optional[str] = None) -> str:
         ...
 
-    def start(self, nodes=[], edges=[], resources=[], gid=None, name=None):
+    def start(self, nodes, edges=[], resources=[], gid=None, name=None):
         if isinstance(nodes, str):
+            assert not edges and not resources and not gid and not name
             self.build_node(nodes).func.start()
+        elif isinstance(nodes, dict):
+            Engine().build_node(nodes)
         else:
             gid, name = gid or str(uuid.uuid4().hex), name or str(uuid.uuid4().hex)
             node = Node(id=gid, kind='Graph', name=name, args=dict(nodes=nodes, edges=edges, resources=resources))
@@ -70,13 +77,16 @@ class LightEngine(Engine):
         else:
             return 'running'
 
-    def stop(self, node_id: str, task_name: Optional[str] = None):
-        node = self.build_node(node_id)
-        if task_name:
-            assert node.kind in ('LocalLLM')
-            node.func.stop(task_name=task_name)
-        elif node.kind in ('Graph', 'LocalLLM', 'LocalEmbedding', 'SD', 'TTS', 'STT', 'VQA'):
-            node.func.stop()
+    def stop(self, node_id: Optional[str] = None, task_name: Optional[str] = None):
+        if not node_id:
+            for node in self._nodes:
+                self.release_node(node)
+        elif node := self.build_node(node_id):
+            if task_name:
+                assert node.kind in ('LocalLLM')
+                node.func.stop(task_name=task_name)
+            elif node.kind in ('Graph', 'LocalLLM', 'LocalEmbedding', 'SD', 'TTS', 'STT', 'VQA'):
+                node.func.stop()
 
     def update(self, nodes: List[Dict] = [], changed_nodes: List[Dict] = [],
                edges: List[Dict] = [], changed_resources: List[Dict] = [],

@@ -33,6 +33,9 @@ class Engine(object):
               gid: Optional[str], name: Optional[str]):
         raise NotImplementedError
 
+    def release_node(self, nodeid: str): pass
+    def stop(self, node_id: Optional[str] = None, task_name: Optional[str] = None): pass
+
     def update(self, nodes: List[Dict], changed_nodes: List[Dict], edges: List[Dict],
                changed_resources: List[Dict], gid: Optional[str], name: Optional[str]):
         raise NotImplementedError
@@ -43,6 +46,10 @@ class Engine(object):
     def reset(self):
         self.__init__.flag.reset()
         self.__init__()
+
+    def __del__(self):
+        self.stop()
+        self.reset()
 
 
 class NodeConstructor(object):

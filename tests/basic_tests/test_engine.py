@@ -265,6 +265,8 @@ class TestEngine(object):
         assert engine.run(gid, 1) == 2
         time.sleep(3)
         web = engine.build_node('graph-1').func._web
+        assert engine.build_node('graph-1').func.api_url is not None
+        assert engine.build_node('graph-1').func.web_url == web.url
         client = Client(web.url, download_files=web.cach_path)
         chat_history = [['123', None]]
         ans = client.predict(False, chat_history, False, False, api_name="/_respond_stream")
