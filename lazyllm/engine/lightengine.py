@@ -27,6 +27,10 @@ class LightEngine(Engine):
             self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]
 
+    def release_node(self, nodeid: str):
+        self.stop(nodeid)
+        self._nodes.pop(nodeid)
+
     def update_node(self, node):
         if not isinstance(node, Node):
             node = Node(id=node['id'], kind=node['kind'], name=node['name'], args=node['args'])
@@ -70,8 +74,7 @@ class LightEngine(Engine):
         if task_name:
             assert node.kind in ('LocalLLM')
             node.func.stop(task_name=task_name)
-        else:
-            assert node.kind in ('Graph', 'LocalLLM', 'LocalEmbedding', 'SD', 'TTS', 'STT', 'VQA')
+        elif node.kind in ('Graph', 'LocalLLM', 'LocalEmbedding', 'SD', 'TTS', 'STT', 'VQA'):
             node.func.stop()
 
     def update(self, nodes: List[Dict] = [], changed_nodes: List[Dict] = [],
