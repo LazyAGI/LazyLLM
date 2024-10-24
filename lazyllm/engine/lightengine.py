@@ -53,13 +53,17 @@ class LightEngine(Engine):
 
     def status(self, node_id: str, task_name: Optional[str] = None):
         node = self.build_node(node_id)
-        if not node: return 'unknown'
-        elif node.id in self.node_graph:
-            return {n.id: self.status(n.id) for n in self.node_graph[node.id]}
-        elif node.kind in ('LocalLLM', 'LocalEmbedding', 'SD', 'TTS', 'STT', 'VQA'):
+        if not node:
+            return 'unknown'
+        elif task_name:
+            assert node.kind in ('LocalLLM')
             return node.func.status(task_name=task_name)
+        elif subs := node.subitems:
+            return {n: self.status(n) for n in subs}
+        elif node.kind in ('LocalLLM', 'LocalEmbedding', 'SD', 'TTS', 'STT', 'VQA', 'web', 'server'):
+            return node.func.status()
         else:
-            return 'started'
+            return 'running'
 
     def stop(self, node_id: str, task_name: Optional[str] = None):
         node = self.build_node(node_id)

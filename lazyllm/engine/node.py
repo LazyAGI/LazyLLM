@@ -18,15 +18,26 @@ class Node():
     subitem_name: Optional[Union[List[str], str]] = None
 
     @property
-    def subitems(self) -> str:
+    def subitems(self) -> List[str]:
         if not self.subitem_name: return None
         names = [self.subitem_name] if isinstance(self.subitem_name, str) else self.subitem_name
         result = []
         for name in names:
-            if isinstance(self.args[name], (tuple, list)):
-                result.extend([n['id'] for n in self.args[name]])
+            name, tp = name.split(':') if ':' in name else (name, None)
+            source = self.args[name]
+            if isinstance(source, str):
+                result.append(source)
+            elif isinstance(source, (tuple, list)):
+                result.extend([n['id'] if isinstance(n, dict) else n for n in source])
+            elif tp == 'dict':
+                assert isinstance(source, dict)
+                for s in source.values():
+                    if isinstance(s, (tuple, list)):
+                        result.extend([n['id'] if isinstance(n, dict) else n for n in s])
+                    else:
+                        result.append(s['id'] if isinstance(s, dict) else s)
             else:
-                result.append(self.args[name]['id'])
+                result.append(source['id'] if isinstance(source, dict) else source)
         return result
 
 

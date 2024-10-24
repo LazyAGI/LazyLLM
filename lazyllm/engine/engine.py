@@ -151,19 +151,16 @@ class ServerResource(object):
         self._kind = type
         self._args = args
 
-    @property
     def status(self):
         return self._graph._g.status if self._kind == 'server' else self._graph._web.status
 
 
-@NodeConstructor.register('web')
-@NodeConstructor.register('server')
+@NodeConstructor.register('web', 'server')
 def make_server_resource(kind: str, graph: ServerGraph, args: Dict[str, Any]):
     return ServerResource(graph, kind, args)
 
 
-@NodeConstructor.register('Graph')
-@NodeConstructor.register('SubGraph')
+@NodeConstructor.register('Graph', 'SubGraph', subitems=['nodes', 'resources'])
 def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [], enable_server=True):
     engine = Engine()
     server_resources = dict(server=None, web=None)
@@ -213,7 +210,7 @@ def _build_pipeline(nodes):
         return Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
 
 
-@NodeConstructor.register('Switch')
+@NodeConstructor.register('Switch', subitems=['node:dict'])
 def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     with switch(judge_on_full_input=judge_on_full_input) as sw:
         for cond, nodes in nodes.items():
@@ -221,12 +218,12 @@ def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     return sw
 
 
-@NodeConstructor.register('Warp')
+@NodeConstructor.register('Warp', subitems=['nodes', 'resources'])
 def make_warp(nodes: List[dict], edges: List[dict], resources: List[dict] = []):
     return lazyllm.warp(make_graph(nodes, edges, resources, enable_server=False))
 
 
-@NodeConstructor.register('Loop')
+@NodeConstructor.register('Loop', subitems=['nodes', 'resources'])
 def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict],
               resources: List[dict] = [], judge_on_full_input: bool = True):
     stop_condition = make_code(stop_condition)
@@ -234,13 +231,13 @@ def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict],
                         stop_condition=stop_condition, judge_on_full_input=judge_on_full_input)
 
 
-@NodeConstructor.register('Ifs')
+@NodeConstructor.register('Ifs', subitems=['true', 'false'])
 def make_ifs(cond: str, true: List[dict], false: List[dict], judge_on_full_input: bool = True):
     assert judge_on_full_input, 'judge_on_full_input only support True now'
     return lazyllm.ifs(make_code(cond), tpath=_build_pipeline(true), fpath=_build_pipeline(false))
 
 
-@NodeConstructor.register('Intention')
+@NodeConstructor.register('Intention', subitems=['nodes:dict'])
 def make_intention(base_model: str, nodes: Dict[str, List[dict]],
                    prompt: str = '', constrain: str = '', attention: str = ''):
     with IntentClassifier(Engine().build_node(base_model).func,
