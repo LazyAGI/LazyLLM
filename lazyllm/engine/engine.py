@@ -157,7 +157,7 @@ class ServerGraph(lazyllm.ModuleBase):
 class ServerResource(object):
     def __init__(self, graph: ServerGraph, kind: str, args: Dict):
         self._graph = graph
-        self._kind = type
+        self._kind = kind
         self._args = args
 
     def status(self):

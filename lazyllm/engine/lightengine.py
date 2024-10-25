@@ -1,6 +1,6 @@
 from .engine import Engine, Node
 from lazyllm import once_wrapper
-from typing import List, Dict, Optional, overload, Set, Any
+from typing import List, Dict, Optional, overload, Set, Any, Union
 import uuid
 
 
@@ -27,10 +27,12 @@ class LightEngine(Engine):
             self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]
 
-    def release_node(self, nodeid: str):
-        self.stop(nodeid)
-        # TODO(wangzhihong): Analyze dependencies and only allow deleting nodes without dependencies
-        self._nodes.pop(nodeid)
+    def release_node(self, *node_ids: Union[str, List[str]]):
+        if len(node_ids) == 1 and isinstance(node_ids[0], (tuple, list)): node_ids = node_ids[0]
+        for nodeid in node_ids:
+            self.stop(nodeid)
+            # TODO(wangzhihong): Analyze dependencies and only allow deleting nodes without dependencies
+            self._nodes.pop(nodeid)
 
     def update_node(self, node):
         if not isinstance(node, Node):
