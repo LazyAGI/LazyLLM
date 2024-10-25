@@ -87,7 +87,7 @@ def is_even_or_odd(number):
         number (int): 输入数值
 
     Returns:
-        int: 输出
+        str: 输出
     '''
     if number % 2 == 0:
         return f'{number}是偶数'
