@@ -262,6 +262,7 @@ class TestEngine(object):
                     ]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources, gid='graph-1')
+        assert engine.status(gid) == {'1': 'running', '2': lazyllm.launcher.Status.Running, '3': 'running'}
         assert engine.run(gid, 1) == 2
         time.sleep(3)
         web = engine.build_node('graph-1').func._web
