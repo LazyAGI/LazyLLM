@@ -1,5 +1,4 @@
-from .sql_manager import SqlManager, SqlManagerBase, SQLiteManger, DBResult, DBStatus
-from .mongodb_manager import MonogDBManager
-from .sql_call import SqlCall
+from .sql_manager import DBManager, SqlManager, SqlManagerBase, SQLiteManger, DBResult, DBStatus
+from .mongodb_manager import MongoDBManager
 
-__all__ = ["SqlCall", "SqlManagerBase", "SQLiteManger", "SqlManager", "MonogDBManager", "DBResult", "DBStatus"]
+__all__ = ["DBManager", "SqlManagerBase", "SQLiteManger", "SqlManager", "MongoDBManager", "DBResult", "DBStatus"]

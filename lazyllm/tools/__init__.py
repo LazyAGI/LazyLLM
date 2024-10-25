@@ -10,8 +10,8 @@ from .agent import (
     ReWOOAgent,
 )
 from .classifier import IntentClassifier
-from .sql import SqlManagerBase, SQLiteManger, SqlManager, MonogDBManager, DBResult, DBStatus, SqlCall
-
+from .sql import SqlManagerBase, SQLiteManger, SqlManager, MongoDBManager, DBResult, DBStatus
+from .sql_call import SqlCall
 from .tools.http_tool import HttpTool
 
 __all__ = [
@@ -32,7 +32,7 @@ __all__ = [
     "SqlManagerBase",
     "SQLiteManger",
     "SqlManager",
-    "MonogDBManager",
+    "MongoDBManager",
     "DBResult",
     "DBStatus",
     "SqlCall",

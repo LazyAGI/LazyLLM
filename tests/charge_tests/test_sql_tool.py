@@ -4,7 +4,7 @@ import lazyllm
 import tempfile
 from pathlib import Path
 import uuid
-from .utils import SqlEgsData, get_sql_init_keywords
+from .utils import SqlEgsData, get_db_init_keywords
 import datetime
 import re
 
@@ -34,8 +34,8 @@ class TestSqlManager(unittest.TestCase):
         filepath = str(Path(tempfile.gettempdir()) / f"{str(uuid.uuid4().hex)}.db")
         cls.db_filepath = filepath
         cls.sql_managers.append(SQLiteManger(filepath, SqlEgsData.TEST_TABLES_INFO))
-        for db_type in []:  # ["PostgreSQL"]:
-            username, password, host, port, database = get_sql_init_keywords(db_type)
+        for db_type in ["PostgreSQL"]:
+            username, password, host, port, database = get_db_init_keywords(db_type)
             cls.sql_managers.append(
                 SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)
             )

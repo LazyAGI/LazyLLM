@@ -5,7 +5,7 @@ from lazyllm import pipeline, globals, bind, _0, switch
 from typing import List, Any, Dict, Union, Callable
 import datetime
 import re
-from .db_manager import DBManager
+from lazyllm.tools.sql import DBManager
 
 sql_query_instruct_template = """
 Given the following SQL tables and current date {current_date}, your job is to write sql queries in {db_type} given a user’s request.
@@ -24,13 +24,18 @@ Your task is to analyze the user_question, which follows certain guidelines, and
 
 {desc}
 
-Note: Please return the query in a code block and start with the keyword "mongodb".
+Note: Please return the json pipeline in a code block and start with the keyword "json".
 """  # noqa E501
 
 db_explain_instruct_template = """
 According to chat history
 ```
 {{history_info}}
+```
+
+and the {db_type} database description
+```
+{{desc}}
 ```
 
 bellowing {statement_type} is executed
@@ -58,6 +63,8 @@ class SqlCall(ModuleBase):
         return_trace: bool = False,
     ) -> None:
         super().__init__(return_trace=return_trace)
+        if not sql_manager.desc:
+            raise ValueError("Error: sql_manager found empty description.")
         self._sql_tool = sql_manager
         self.sql_post_func = sql_post_func
 
@@ -65,19 +72,20 @@ class SqlCall(ModuleBase):
             self._query_prompter = ChatPrompter(instruction=mongodb_query_instruct_template).pre_hook(
                 self.sql_query_promt_hook
             )
-            statement_type = "mongodb pipeline"
+            statement_type = "mongodb json pipeline"
+            self._pattern = re.compile(r"```json(.+?)```", re.DOTALL)
         else:
             self._query_prompter = ChatPrompter(instruction=sql_query_instruct_template).pre_hook(
                 self.sql_query_promt_hook
             )
             statement_type = "sql query"
+            self._pattern = re.compile(r"```sql(.+?)```", re.DOTALL)
 
         self._llm_query = llm.share(prompt=self._query_prompter)
         self._answer_prompter = ChatPrompter(
-            instruction=db_explain_instruct_template.format(statement_type=statement_type)
+            instruction=db_explain_instruct_template.format(statement_type=statement_type, db_type=sql_manager.db_type)
         ).pre_hook(self.sql_explain_prompt_hook)
         self._llm_answer = llm.share(prompt=self._answer_prompter)
-        self._pattern = re.compile(r"```sql(.+?)```", re.DOTALL)
         self.example = sql_examples
         with pipeline() as sql_execute_ppl:
             sql_execute_ppl.exec = self._sql_tool.execute_to_json
@@ -128,7 +136,13 @@ class SqlCall(ModuleBase):
         globals.pop("root_input")
         history_info = chat_history_to_str(history, user_query)
         return (
-            dict(history_info=history_info, query=input[0], result=input[1], explain_query=explain_query),
+            dict(
+                history_info=history_info,
+                desc=self._sql_tool.desc,
+                query=input[0],
+                result=input[1],
+                explain_query=explain_query,
+            ),
             history,
             tools,
             label,

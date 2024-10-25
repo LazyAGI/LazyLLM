@@ -185,9 +185,10 @@ class SqlManagerBase(DBManager):
             return DBResult(status=status, detail=detail)
         for exist_column in exist_table.columns:
             target_column = getattr(table, exist_column.name)
-            exist_type = type(exist_column.type).__visit_name__.lower()
-            target_type = type(target_column.type).__visit_name__.lower()
-            if target_type is not sqlalchemy.types.TypeEngine and exist_type != target_type:
+            exist_type = type(exist_column.type)
+            target_type = type(target_column.type)
+            type_is_subclass = issubclass(exist_type, target_type) or issubclass(target_type, exist_type)
+            if target_type is not sqlalchemy.types.TypeEngine and not type_is_subclass:
                 detail += f"type mismatch {exist_type}  vs {target_type}"
                 return DBResult(status=DBStatus.FAIL, detail=detail)
             for attr in ["primary_key", "nullable"]:
@@ -229,7 +230,7 @@ class SqlManagerBase(DBManager):
         return DBResult()
 
     def insert(self, statement) -> DBResult:
-        if isinstance(statement, (str, sqlalchemy.Select)):
+        if isinstance(statement, (str, sqlalchemy.Insert)):
             return self.execute(statement)
         elif isinstance(statement, dict):
             table_name = statement.get("table_name", None)
@@ -291,14 +292,13 @@ class TableInfo(pydantic.BaseModel):
 class TablesInfo(pydantic.BaseModel):
     tables: list[TableInfo]
 
-
 class SqlManager(SqlManagerBase):
     PYTYPE_TO_SQL_MAP = {
         "integer": sqlalchemy.Integer,
         "string": sqlalchemy.Text,
         "text": sqlalchemy.Text,
         "boolean": sqlalchemy.Boolean,
-        "float": sqlalchemy.DOUBLE_PRECISION,
+        "float": sqlalchemy.Float,
         "datetime": sqlalchemy.DateTime,
         "bytes": sqlalchemy.LargeBinary,
         "bool": sqlalchemy.Boolean,

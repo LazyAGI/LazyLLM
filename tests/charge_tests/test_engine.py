@@ -1,7 +1,7 @@
 import lazyllm
 from lazyllm.engine import LightEngine
 import pytest
-from .utils import SqlEgsData, get_sql_init_keywords
+from .utils import SqlEgsData, get_db_init_keywords
 from lazyllm.tools import SqlManager, DBStatus
 from .tools import (get_current_weather_code, get_current_weather_vars, get_current_weather_doc,
                     get_n_day_weather_forecast_code, multiply_tool_code, add_tool_code, dummy_code)
@@ -123,7 +123,7 @@ class TestEngine(object):
 
     def test_sql_call(self):
         db_type = "PostgreSQL"
-        username, password, host, port, database = get_sql_init_keywords(db_type)
+        username, password, host, port, database = get_db_init_keywords(db_type)
 
         # 1.  Init: insert data to database
         tmp_sql_manager = SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)

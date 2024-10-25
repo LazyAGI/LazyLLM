@@ -56,12 +56,88 @@ class SqlEgsData:
     ]
     TEST_QUERY_SCRIPTS = f"SELECT department from {TEST_TABLES[0]} WHERE employee_id=1;"
 
+class MongoDBEgsData:
+    COLLECTION_NAME = f"america_{CURRENT_DAY}_{UUID_HEX}"
+    COLLECTION_SCHEMA_TYPE = {
+        "_id": "string",
+        "city": "string",
+        "state": "string",
+        "pop": "int",
+        "loc": {"type": "string", "coordinates": "array of float"},
+    }
+    COLLECTION_SCHEMA_DESC = {
+        "city": "城市名",
+        "state": "两个字母的州名缩写",
+        "pop": "人口数量",
+        "loc": "城市的经纬度",
+    }
 
-def get_sql_init_keywords(db_type):
+    COLLECTION_DATA = [
+        {
+            "city": "New York",
+            "state": "NY",
+            "pop": 8419600,
+            "loc": {"type": "Point", "coordinates": [-74.0060, 40.7128]},
+        },
+        {
+            "city": "Los Angeles",
+            "state": "CA",
+            "pop": 3980400,
+            "loc": {"type": "Point", "coordinates": [-118.2437, 34.0522]},
+        },
+        {
+            "city": "Chicago",
+            "state": "IL",
+            "pop": 2716000,
+            "loc": {"type": "Point", "coordinates": [-87.6298, 41.8781]},
+        },
+        {
+            "city": "Houston",
+            "state": "TX",
+            "pop": 2328000,
+            "loc": {"type": "Point", "coordinates": [-95.3698, 29.7604]},
+        },
+        {
+            "city": "Phoenix",
+            "state": "AZ",
+            "pop": 1690000,
+            "loc": {"type": "Point", "coordinates": [-112.0740, 33.4484]},
+        },
+        {
+            "city": "Philadelphia",
+            "state": "PA",
+            "pop": 1584200,
+            "loc": {"type": "Point", "coordinates": [-75.1652, 39.9526]},
+        },
+        {
+            "city": "San Antonio",
+            "state": "TX",
+            "pop": 1547000,
+            "loc": {"type": "Point", "coordinates": [-98.4936, 29.4241]},
+        },
+        {
+            "city": "San Diego",
+            "state": "CA",
+            "pop": 1423800,
+            "loc": {"type": "Point", "coordinates": [-117.1611, 32.7157]},
+        },
+        {"city": "Dallas", "state": "TX", "pop": 1343000, "loc": {"type": "Point", "coordinates": [-96.7970, 32.7767]}},
+        {
+            "city": "San Jose",
+            "state": "CA",
+            "pop": 1028000,
+            "loc": {"type": "Point", "coordinates": [-121.8863, 37.3382]},
+        },
+    ]
+
+
+def get_db_init_keywords(db_type: str):
     env_key = f"LAZYLLM_{db_type.replace(' ', '_')}_URL"
     conn_url = os.environ.get(env_key, None)
     assert conn_url is not None
-    pattern = r"postgresql://(?P<username>[^:]+):(?P<password>[^@]+)@(?P<host>[^:]+):(?P<port>\d+)/(?P<database>.+)"
+    pattern = (
+        rf"{db_type.lower()}://(?P<username>[^:]+):(?P<password>[^@]+)@(?P<host>[^:]+):(?P<port>\d+)/(?P<database>.+)"
+    )
     match = re.search(pattern, conn_url)
     assert match
     username = match.group("username")

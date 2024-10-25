@@ -38,7 +38,7 @@ class DBManager(ABC):
         db_type_lower = db_type.lower()
         self.status = DBStatus.SUCCESS
         self.detail = ""
-        self.db_type = db_type_lower
+        self._db_type = db_type_lower
         if db_type_lower not in self.DB_TYPE_SUPPORTED:
             return DBResult(status=DBStatus.FAIL, detail=f"{db_type} not supported")
         if db_type_lower in self.DB_DRIVER_MAP:
@@ -53,6 +53,10 @@ class DBManager(ABC):
     @abstractmethod
     def execute_to_json(self, statement):
         pass
+
+    @property
+    def db_type(self):
+        return self._db_type
 
     @property
     def desc(self):
