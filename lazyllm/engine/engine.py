@@ -1,4 +1,4 @@
-from typing import List, Callable, Dict, Type, Optional, Union, Any
+from typing import List, Callable, Dict, Type, Optional, Union, Any, overload
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier
@@ -29,16 +29,30 @@ class Engine(object):
     def set_default(cls, engine: Type):
         cls.__default_engine__ = engine
 
-    def start(self, nodes: List[Dict], edges: List[Dict], resources: List[Dict],
-              gid: Optional[str], name: Optional[str]):
-        raise NotImplementedError
+    @overload
+    def start(self, nodes: str) -> None:
+        ...
+
+    @overload
+    def start(self, nodes: Dict[str, Any]) -> None:
+        ...
+
+    @overload
+    def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
+              gid: Optional[str] = None, name: Optional[str] = None) -> str:
+        ...
+
+    @overload
+    def update(self, nodes: List[Dict]) -> None:
+        ...
+
+    @overload
+    def update(self, gid: str, nodes: List[Dict], edges: List[Dict] = [],
+               resources: List[Dict] = []) -> str:
+        ...
 
     def release_node(self, nodeid: str): pass
     def stop(self, node_id: Optional[str] = None, task_name: Optional[str] = None): pass
-
-    def update(self, nodes: List[Dict], changed_nodes: List[Dict], edges: List[Dict],
-               changed_resources: List[Dict], gid: Optional[str], name: Optional[str]):
-        raise NotImplementedError
 
     def build_node(self, node) -> Callable:
         return _constructor.build(node)

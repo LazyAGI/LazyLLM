@@ -1,6 +1,6 @@
 from .engine import Engine, Node
 from lazyllm import once_wrapper
-from typing import List, Dict, Optional, overload, Set, Any
+from typing import List, Dict, Optional, Set, Any
 import uuid
 
 
@@ -37,19 +37,6 @@ class LightEngine(Engine):
             node = Node(id=node['id'], kind=node['kind'], name=node['name'], args=node['args'])
         self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]
-
-    @overload
-    def start(self, nodes: str) -> None:
-        ...
-
-    @overload
-    def start(self, nodes: Dict[str, Any]) -> None:
-        ...
-
-    @overload
-    def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
-              gid: Optional[str] = None, name: Optional[str] = None) -> str:
-        ...
 
     def start(self, nodes, edges=[], resources=[], gid=None, name=None):
         if isinstance(nodes, str):
