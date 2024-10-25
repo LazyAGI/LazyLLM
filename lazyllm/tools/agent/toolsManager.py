@@ -60,6 +60,8 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self._description = self.apply.__doc__\
             if hasattr(self.apply, "__doc__") and self.apply.__doc__ is not None\
             else (_ for _ in ()).throw(ValueError("Function must have a docstring"))
+        # strip space(s) and newlines before and after docstring, as RewooAgent requires
+        self._description = self._description.strip(' \n')
 
         self._params_schema = self._load_function_schema(self.__class__.apply)
 
@@ -67,6 +69,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         parsed_docstring = docstring_parser.parse(self._description)
         func_str_from_doc = _gen_empty_func_str_from_parsed_docstring(parsed_docstring)
         func_from_doc = _gen_func_from_str(func_str_from_doc, self._description)
+        func_from_doc.__name__ = func.__name__
         doc_type_hints = get_type_hints(func_from_doc, globals(), locals())
 
         func_type_hints = get_type_hints(func, globals(), locals())
@@ -84,6 +87,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         if has_var_args:
             # we cannot get type hints from var args, so we get them from docstring
             self._type_hints = doc_type_hints
+            signature = inspect.signature(func_from_doc)
         else:
             self._type_hints = func_type_hints
             # accomplish type_hints from docstring
@@ -120,9 +124,6 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     @property
     def required_args(self) -> Set[str]:
         return set(self._params_schema.model_json_schema()["required"])
-
-    def get_params_schema(self) -> [BaseModel]:
-        return self._params_schema
 
     def apply(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError("Implement apply function in subclass")
@@ -223,15 +224,6 @@ class ToolManager(ModuleBase):
             self._tool_call = {tool.name: tool for tool in self._tools}
 
     @staticmethod
-    def _gen_wrapped_moduletool(func):
-        if "tmp_tool" not in LazyLLMRegisterMetaClass.all_clses:
-            register.new_group('tmp_tool')
-        register('tmp_tool')(func)
-        wrapped_module = getattr(lazyllm.tmp_tool, func.__name__)()
-        lazyllm.tmp_tool.remove(func.__name__)
-        return wrapped_module
-
-    @staticmethod
     def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
         """
         returns a dict of param names containing at least
@@ -269,8 +261,8 @@ class ToolManager(ModuleBase):
             if desc:
                 args[k].update({"description": desc})
             else:
-                raise ValueError(f"The actual input parameter {k} is not found "
-                                 "in the parameter description.")
+                raise ValueError(f"The actual input parameter '{k}' is not found "
+                                 f"in the parameter description of tool '{tool.name}'.")
         return args
 
     def _transform_to_openai_function(self):
@@ -282,7 +274,7 @@ class ToolManager(ModuleBase):
             try:
                 parsed_docstring = docstring_parser.parse(tool.description)
                 args = self._gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring)
-                required_arg_list = tool.get_params_schema().model_json_schema().get("required", [])
+                required_arg_list = tool.params_schema.model_json_schema().get("required", [])
                 func = {
                     "type": "function",
                     "function": {
