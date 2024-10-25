@@ -1,247 +1,136 @@
-from abc import ABC, abstractmethod
-from collections import defaultdict
-from enum import Enum, auto
-import uuid
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 import chromadb
 from lazyllm import LOG, config
 from chromadb.api.models.Collection import Collection
-import threading
+from .base_store import BaseStore
+from .base_index import BaseIndex
+from .doc_node import DocNode
 import json
-import time
 
+# ---------------------------------------------------------------------------- #
 
 LAZY_ROOT_NAME = "lazyllm_root"
 EMBED_DEFAULT_KEY = '__default__'
 config.add("rag_store_type", str, "map", "RAG_STORE_TYPE")  # "map", "chroma"
 config.add("rag_persistent_path", str, "./lazyllm_chroma", "RAG_PERSISTENT_PATH")
 
+# ---------------------------------------------------------------------------- #
 
-class MetadataMode(str, Enum):
-    ALL = auto()
-    EMBED = auto()
-    LLM = auto()
-    NONE = auto()
+class StoreWrapper(BaseStore):
+    def __init__(self, store: BaseStore):
+        self._store = store
+        self._name2index = {}
 
+    def update_nodes(self, nodes: List[DocNode]) -> None:
+        self._store.update_nodes(nodes)
+        self._update_indices(self._name2index, nodes)
 
-class DocNode:
-    def __init__(self, uid: Optional[str] = None, text: Optional[str] = None, group: Optional[str] = None,
-                 embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
-                 metadata: Optional[Dict[str, Any]] = None, classfication: Optional[str] = None):
-        self.uid: str = uid if uid else str(uuid.uuid4())
-        self.text: Optional[str] = text
-        self.group: Optional[str] = group
-        self.embedding: Optional[Dict[str, List[float]]] = embedding or None
-        self._metadata: Dict[str, Any] = metadata or {}
-        # Metadata keys that are excluded from text for the embed model.
-        self._excluded_embed_metadata_keys: List[str] = []
-        # Metadata keys that are excluded from text for the LLM.
-        self._excluded_llm_metadata_keys: List[str] = []
-        self.parent: Optional["DocNode"] = parent
-        self.children: Dict[str, List["DocNode"]] = defaultdict(list)
-        self.is_saved: bool = False
-        self._docpath = None
-        self._lock = threading.Lock()
-        self._embedding_state = set()
-        # store will create index cache for classfication to speed up retrieve
-        self._classfication = classfication
+    def get_group_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
+        return self._store.get_group_nodes(group_name, uids)
 
-    @property
-    def root_node(self) -> Optional["DocNode"]:
-        root = self.parent
-        while root and root.parent:
-            root = root.parent
-        return root or self
+    def remove_group_nodes(self, group_name: str, uids: List[str] = None) -> None:
+        self._store.remove_group_nodes(group_name, uids)
+        self._remove_from_indices(self._name2index, uids, group_name)
 
-    @property
-    def metadata(self) -> Dict:
-        return self.root_node._metadata
+    def group_is_active(self, group_name: str) -> bool:
+        return self._store.group_is_active(group_name)
 
-    @metadata.setter
-    def metadata(self, metadata: Dict) -> None:
-        self._metadata = metadata
+    def group_names(self) -> List[str]:
+        return self._store.group_names()
 
-    @property
-    def excluded_embed_metadata_keys(self) -> List:
-        return self.root_node._excluded_embed_metadata_keys
+    def register_index(self, type: str, index: BaseIndex) -> None:
+        self._name2index[type] = index
 
-    @excluded_embed_metadata_keys.setter
-    def excluded_embed_metadata_keys(self, excluded_embed_metadata_keys: List) -> None:
-        self._excluded_embed_metadata_keys = excluded_embed_metadata_keys
+    def remove_index(self, type: str) -> None:
+        self._name2index.pop(type, None)
 
-    @property
-    def excluded_llm_metadata_keys(self) -> List:
-        return self.root_node._excluded_llm_metadata_keys
+    def get_index(self, type: str) -> Optional[BaseIndex]:
+        index = self._store.get_index(type)
+        if not index:
+            index = self._name2index.get(type)
+        return index
 
-    @excluded_llm_metadata_keys.setter
-    def excluded_llm_metadata_keys(self, excluded_llm_metadata_keys: List) -> None:
-        self._excluded_llm_metadata_keys = excluded_llm_metadata_keys
-
-    @property
-    def docpath(self) -> str:
-        return self.root_node._docpath or ''
-
-    @docpath.setter
-    def docpath(self, path):
-        assert not self.parent, 'Only root node can set docpath'
-        self._docpath = str(path)
-
-    def get_children_str(self) -> str:
-        return str(
-            {key: [node.uid for node in nodes] for key, nodes in self.children.items()}
-        )
-
-    def get_parent_id(self) -> str:
-        return self.parent.uid if self.parent else ""
-
-    def __str__(self) -> str:
-        return (
-            f"DocNode(id: {self.uid}, group: {self.group}, text: {self.get_text()}) parent: {self.get_parent_id()}, "
-            f"children: {self.get_children_str()}"
-        )
-
-    def __repr__(self) -> str:
-        return str(self) if config["debug"] else f'<Node id={self.uid}>'
-
-    def __eq__(self, other):
-        if isinstance(other, DocNode):
-            return self.uid == other.uid
-        return False
-
-    def __hash__(self):
-        return hash(self.uid)
-
-    def has_missing_embedding(self, embed_keys: Union[str, List[str]]) -> List[str]:
-        if isinstance(embed_keys, str): embed_keys = [embed_keys]
-        assert len(embed_keys) > 0, "The ebmed_keys to be checked must be passed in."
-        if self.embedding is None: return embed_keys
-        return [k for k in embed_keys if k not in self.embedding]
-
-    def do_embedding(self, embed: Dict[str, Callable]) -> None:
-        generate_embed = {k: e(self.get_text(MetadataMode.EMBED)) for k, e in embed.items()}
-        with self._lock:
-            self.embedding = self.embedding or {}
-            self.embedding = {**self.embedding, **generate_embed}
-        self.is_saved = False
-
-    def check_embedding_state(self, embed_key: str) -> None:
-        while True:
-            with self._lock:
-                if not self.has_missing_embedding(embed_key):
-                    self._embedding_state.discard(embed_key)
-                    break
-            time.sleep(1)
-
-    def get_content(self) -> str:
-        return self.get_text(MetadataMode.LLM)
-
-    def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
-        """Metadata info string."""
-        if mode == MetadataMode.NONE:
-            return ""
-
-        metadata_keys = set(self.metadata.keys())
-        if mode == MetadataMode.LLM:
-            for key in self.excluded_llm_metadata_keys:
-                if key in metadata_keys:
-                    metadata_keys.remove(key)
-        elif mode == MetadataMode.EMBED:
-            for key in self.excluded_embed_metadata_keys:
-                if key in metadata_keys:
-                    metadata_keys.remove(key)
-
-        return "\n".join([f"{key}: {self.metadata[key]}" for key in metadata_keys])
-
-    def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
-        metadata_str = self.get_metadata_str(metadata_mode).strip()
-        if not metadata_str:
-            return self.text if self.text else ""
-        return f"{metadata_str}\n\n{self.text}".strip()
-
-    def to_dict(self) -> Dict:
-        return dict(text=self.text, embedding=self.embedding, metadata=self.metadata)
-
-
-class BaseStore(ABC):
-    def __init__(self, node_groups: List[str]) -> None:
-        self._store: Dict[str, Dict[str, DocNode]] = {
-            group: {} for group in node_groups
-        }
-        self._file_node_map = {}
-
-    def _add_nodes(self, nodes: List[DocNode]) -> None:
-        for node in nodes:
-            if node.group == LAZY_ROOT_NAME and "file_name" in node.metadata:
-                self._file_node_map[node.metadata["file_name"]] = node
-            self._store[node.group][node.uid] = node
-
-    def add_nodes(self, nodes: List[DocNode]) -> None:
-        self._add_nodes(nodes)
-        self.try_save_nodes(nodes)
-
-    def has_nodes(self, group: str) -> bool:
-        return len(self._store[group]) > 0
-
-    def get_node(self, group: str, node_id: str) -> Optional[DocNode]:
-        return self._store.get(group, {}).get(node_id)
-
-    def traverse_nodes(self, group: str) -> List[DocNode]:
-        return list(self._store.get(group, {}).values())
-
-    @abstractmethod
-    def try_save_nodes(self, nodes: List[DocNode]) -> None:
-        # try save nodes to persistent source
-        raise NotImplementedError("Not implemented yet.")
-
-    @abstractmethod
-    def try_load_store(self) -> None:
-        # try load nodes from persistent source
-        raise NotImplementedError("Not implemented yet.")
-
-    @abstractmethod
-    def try_remove_nodes(self, nodes: List[DocNode]) -> None:
-        # try remove nodes in persistent source
-        raise NotImplementedError("Not implemented yet.")
-
-    def active_groups(self) -> List:
-        return [group for group, nodes in self._store.items() if nodes]
-
-    def _remove_nodes(self, nodes: List[DocNode]) -> None:
-        for node in nodes:
-            assert node.group in self._store, f"Unexpected node group {node.group}"
-            self._store[node.group].pop(node.uid, None)
-
-    def remove_nodes(self, nodes: List[DocNode]) -> None:
-        self._remove_nodes(nodes)
-        self.try_remove_nodes(nodes)
-
-    def get_nodes_by_files(self, files: List[str]) -> List[DocNode]:
-        nodes = []
-        for file in files:
-            if file in self._file_node_map:
-                nodes.append(self._file_node_map[file])
-        return nodes
-
+# ---------------------------------------------------------------------------- #
 
 class MapStore(BaseStore):
-    def __init__(self, node_groups: List[str], *args, **kwargs):
-        super().__init__(node_groups, *args, **kwargs)
+    def __init__(self, node_groups: List[str]):
+        # Dict[group_name, Dict[uuid, DocNode]]
+        self._group2docs: Dict[str, Dict[str, DocNode]] = {
+            group: {} for group in node_groups
+        }
+        self._name2index = {}
 
-    def try_save_nodes(self, nodes: List[DocNode]) -> None:
-        pass
+    # override
+    def update_nodes(self, nodes: List[DocNode]) -> None:
+        for node in nodes:
+            self._group2docs[node.group][node.uid] = node
 
-    def try_load_store(self) -> None:
-        pass
+        self._update_indices(self._name2index, nodes)
 
-    def try_remove_nodes(self, nodes: List[DocNode]) -> None:
-        pass
+    # override
+    def get_group_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
+        docs = self._group2docs.get(group_name)
+        if not docs:
+            return []
 
+        if not uids:
+            return list(docs.values())
+
+        ret = []
+        for uid in uids:
+            doc = docs.get(uid)
+            if doc:
+                ret.append(doc)
+        return ret
+
+    # override
+    def remove_group_nodes(self, group_name: str, uids: List[str] = None) -> None:
+        if uids:
+            docs = self._group2docs.get(group_name)
+            if docs:
+                self._remove_from_indices(self._name2index, uids)
+                for uid in uids:
+                    docs.pop(uid, None)
+        else:
+            docs = self._group2docs.pop(group_name, None)
+            if docs:
+                self._remove_from_indices(self._name2index, [doc.uid for doc in docs])
+
+    # override
+    def group_is_active(self, group_name: str) -> bool:
+        docs = self._group2docs.get(group_name)
+        return True if docs else False
+
+    # override
+    def group_names(self) -> List[str]:
+        return self._group2docs.keys()
+
+    # override
+    def register_index(self, type: str, index: BaseIndex) -> None:
+        self._name2index[type] = index
+
+    # override
+    def remove_index(self, type: str) -> None:
+        self._name2index.pop(type, None)
+
+    # override
+    def get_index(self, type: str) -> Optional[BaseIndex]:
+        return self._name2index.get(type)
+
+    def find_node_by_uid(self, uid: str) -> Optional[DocNode]:
+        for docs in self._group2docs.values():
+            doc = docs.get(uid)
+            if doc:
+                return doc
+        return None
+
+# ---------------------------------------------------------------------------- #
 
 class ChromadbStore(BaseStore):
     def __init__(
-        self, node_groups: List[str], embed_dim: Dict[str, int], *args, **kwargs
+        self, node_groups: List[str], embed_dim: Dict[str, int]
     ) -> None:
-        super().__init__(node_groups, *args, **kwargs)
+        self._map_store = MapStore(node_groups)
         self._db_client = chromadb.PersistentClient(path=config["rag_persistent_path"])
         LOG.success(f"Initialzed chromadb in path: {config['rag_persistent_path']}")
         self._collections: Dict[str, Collection] = {
@@ -250,7 +139,44 @@ class ChromadbStore(BaseStore):
         }
         self._embed_dim = embed_dim
 
-    def try_load_store(self) -> None:
+    # override
+    def update_nodes(self, nodes: List[DocNode]) -> None:
+        self._map_store.update_nodes(nodes)
+        self._save_nodes(nodes)
+
+    # override
+    def get_group_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
+        return self._map_store.get_group_nodes(group_name, uids)
+
+    # override
+    def remove_group_nodes(self, group_name: str, uids: List[str]) -> None:
+        if uids:
+            self._delete_group_nodes(group_name, uids)
+        else:
+            self._db_client.delete_collection(name=group_name)
+        return self._map_store.remove_group_nodes(group_name, uids)
+
+    # override
+    def group_is_active(self, group_name: str) -> bool:
+        return self._map_store.group_is_active(group_name)
+
+    # override
+    def group_names(self) -> List[str]:
+        return self._map_store.group_names()
+
+    # override
+    def register_index(self, type: str, index: BaseIndex) -> None:
+        self._map_store.register_index(type, index)
+
+    # override
+    def remove_index(self, type: str) -> Optional[BaseIndex]:
+        return self._map_store.remove_index(type)
+
+    # override
+    def get_index(self, type: str) -> Optional[BaseIndex]:
+        return self._map_store.get_index(type)
+
+    def _load_store(self) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:
             LOG.info("No persistent data found, skip the rebuilding phrase.")
             return
@@ -259,20 +185,21 @@ class ChromadbStore(BaseStore):
         for group in self._collections.keys():
             results = self._peek_all_documents(group)
             nodes = self._build_nodes_from_chroma(results)
-            self._add_nodes(nodes)
+            self._map_store.update_nodes(nodes)
 
         # Rebuild relationships
-        for group, nodes_dict in self._store.items():
-            for node in nodes_dict.values():
+        for group_name in self._map_store.group_names():
+            nodes = self._map_store.get_group_nodes(group_name)
+            for node in nodes:
                 if node.parent:
                     parent_uid = node.parent
-                    parent_node = self._find_node_by_uid(parent_uid)
+                    parent_node = self._map_store.find_node_by_uid(parent_uid)
                     node.parent = parent_node
                     parent_node.children[node.group].append(node)
-            LOG.debug(f"build {group} nodes from chromadb: {nodes_dict.values()}")
+            LOG.debug(f"build {group} nodes from chromadb: {nodes}")
         LOG.success("Successfully Built nodes from chromadb.")
 
-    def try_save_nodes(self, nodes: List[DocNode]) -> None:
+    def _save_nodes(self, nodes: List[DocNode]) -> None:
         if not nodes:
             return
         # Note: It's caller's duty to make sure this batch of nodes has the same group.
@@ -301,14 +228,10 @@ class ChromadbStore(BaseStore):
             )
             LOG.debug(f"Saved {group} nodes {ids} to chromadb.")
 
-    def try_remove_nodes(self, nodes: List[DocNode]) -> None:
-        pass
-
-    def _find_node_by_uid(self, uid: str) -> Optional[DocNode]:
-        for nodes_by_category in self._store.values():
-            if uid in nodes_by_category:
-                return nodes_by_category[uid]
-        raise ValueError(f"UID {uid} not found in store.")
+    def _delete_group_nodes(self, group_name: str, uids: List[str]) -> None:
+        collection = self._collections.get(group_name)
+        if collection:
+            collection.delete(ids=uids)
 
     def _build_nodes_from_chroma(self, results: Dict[str, List]) -> List[DocNode]:
         nodes: List[DocNode] = []

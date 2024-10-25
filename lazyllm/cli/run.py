@@ -38,13 +38,13 @@ def graph(json_file):
         engine_conf = json.load(fp)
 
     engine = LightEngine()
-    engine.start(engine_conf.get('nodes', []), engine_conf.get('edges', []),
-                 engine_conf.get('resources', []))
+    eid = engine.start(engine_conf.get('nodes', []), engine_conf.get('edges', []),
+                       engine_conf.get('resources', []))
     while True:
         query = input("query(enter 'quit' to exit): ")
         if query == 'quit':
             break
-        res = engine.run(query)
+        res = engine.run(eid, query)
         print(f'answer: {res}')
 
 def run(commands):

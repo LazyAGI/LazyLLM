@@ -1,6 +1,6 @@
 import unittest
 from lazyllm.tools.rag.component.bm25 import BM25
-from lazyllm.tools.rag.store import DocNode
+from lazyllm.tools.rag.doc_node import DocNode
 import numpy as np
 
 

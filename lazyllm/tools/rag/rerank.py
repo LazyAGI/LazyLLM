@@ -3,7 +3,7 @@ from typing import Callable, List, Optional, Union
 
 import lazyllm
 from lazyllm import ModuleBase, LOG
-from lazyllm.tools.rag.store import DocNode, MetadataMode
+from .doc_node import DocNode, MetadataMode
 from .retriever import _PostProcess
 
 

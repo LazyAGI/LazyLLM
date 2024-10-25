@@ -1,5 +1,5 @@
 from lazyllm import ModuleBase, pipeline, once_wrapper
-from .store import DocNode
+from .doc_node import DocNode
 from .document import Document, DocImpl
 from typing import List, Optional, Union, Dict
 

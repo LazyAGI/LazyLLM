@@ -1,7 +1,7 @@
 import unittest
 import os
 import lazyllm
-from lazyllm.tools.rag.store import DocNode
+from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.rerank import Reranker, register_reranker
 
 

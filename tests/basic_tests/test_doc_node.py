@@ -1,5 +1,5 @@
 from unittest.mock import MagicMock
-from lazyllm.tools.rag.store import DocNode, MetadataMode
+from lazyllm.tools.rag.doc_node import DocNode, MetadataMode
 
 
 class TestDocNode:
