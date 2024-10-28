@@ -13,10 +13,9 @@ from PIL import Image
 from io import BytesIO
 import numpy as np
 import re
-import platform
 
 import lazyllm
-from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule, ForkProcess
+from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule
 from ...module.module import ModuleBase
 
 
@@ -75,7 +74,7 @@ class WebModule(ModuleBase):
         return cach_path
 
     def init_web(self, component_descs):
-        with gr.Blocks(css=css, title=self.title) as demo:
+        with gr.Blocks(css=css, title=self.title, analytics_enabled=False) as demo:
             sess_data = gr.State(value={
                 'sess_titles': [''],
                 'sess_logs': {},
@@ -260,7 +259,7 @@ class WebModule(ModuleBase):
                     globals['chat_history'][h] = history
 
             if FileSystemQueue().size() > 0: FileSystemQueue().clear()
-            kw = dict(stream_output=stream_output) if isinstance(self.m, TrainableModule) else {}
+            kw = dict(stream_output=stream_output) if isinstance(self.m, (TrainableModule, OnlineChatModule)) else {}
             func_future = self.pool.submit(self.m, input, **kw)
             while True:
                 if value := FileSystemQueue().dequeue():
@@ -291,12 +290,12 @@ class WebModule(ModuleBase):
                                     s = delta["content"]
                                 else:
                                     s = ""
-                        elif 'images_base64' in r:
-                            image_data = r.pop('images_base64')[0]
+                        elif 'lazyllm_images' in r:
+                            image_data = r.pop('lazyllm_images')[0]
                             image = Image.open(BytesIO(base64.b64decode(image_data)))
                             return "The image is: ", "".join(log_history), {'img': image}
-                        elif 'sounds' in r:
-                            sound_data = r.pop('sounds')
+                        elif 'lazyllm_sounds' in r:
+                            sound_data = r.pop('lazyllm_sounds')
                             sound_data = (sound_data[0], np.array(sound_data[1]).astype(np.int16))
                             return "The Audio is: ", "".join(log_history), {'audio': sound_data}
                         else:
@@ -344,12 +343,8 @@ class WebModule(ModuleBase):
             assert self._verify_port_access(port), f'port {port} is occupied'
 
         self.url = f'http://0.0.0.0:{port}'
-        def _impl(): self.demo.queue().launch(server_name='0.0.0.0', server_port=port)
-        if platform.system() == 'Darwin':
-            _impl()
-        else:
-            self.p = ForkProcess(target=_impl)
-            self.p.start()
+
+        self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True)
         LOG.success(f'LazyLLM webmodule launched successfully: Running on local URL: {self.url}', flush=True)
 
     def _update(self, *, mode=None, recursive=True):
@@ -358,13 +353,13 @@ class WebModule(ModuleBase):
         return self
 
     def wait(self):
-        if hasattr(self, 'p'):
-            return self.p.join()
+        self.demo.block_thread()
 
     def stop(self):
-        if hasattr(self, 'p') and self.p.is_alive():
-            self.p.terminate()
-            self.p.join()
+        if self.demo:
+            self.demo.close()
+            del self.demo
+            self.demo = None
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Web', name=self._module_name, subs=[repr(self.m)])

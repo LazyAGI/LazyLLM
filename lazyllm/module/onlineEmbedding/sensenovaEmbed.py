@@ -6,11 +6,16 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase):
 
     def __init__(self,
                  embed_url: str = "https://api.sensenova.cn/v1/llm/embeddings",
-                 embed_model_name: str = "nova-embedding-stable"):
+                 embed_model_name: str = "nova-embedding-stable",
+                 api_key: str = None,
+                 secret_key: str = None):
+        jwt_api_key = None
+        if api_key and secret_key:
+            jwt_api_key = SenseNovaEmbedding.encode_jwt_token(api_key, secret_key)
         super().__init__("SENSENOVA",
                          embed_url,
-                         SenseNovaEmbedding.encode_jwt_token(lazyllm.config['sensenova_api_key'],
-                                                             lazyllm.config['sensenova_secret_key']),
+                         jwt_api_key or SenseNovaEmbedding.encode_jwt_token(lazyllm.config['sensenova_api_key'],
+                                                                            lazyllm.config['sensenova_secret_key']),
                          embed_model_name)
 
     @staticmethod

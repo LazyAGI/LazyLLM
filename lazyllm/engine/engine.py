@@ -33,6 +33,9 @@ class Engine(object):
               gid: Optional[str], name: Optional[str]):
         raise NotImplementedError
 
+    def release_node(self, nodeid: str): pass
+    def stop(self, node_id: Optional[str] = None, task_name: Optional[str] = None): pass
+
     def update(self, nodes: List[Dict], changed_nodes: List[Dict], edges: List[Dict],
                changed_resources: List[Dict], gid: Optional[str], name: Optional[str]):
         raise NotImplementedError
@@ -44,28 +47,33 @@ class Engine(object):
         self.__init__.flag.reset()
         self.__init__()
 
+    def __del__(self):
+        self.stop()
+        self.reset()
+
 
 class NodeConstructor(object):
     builder_methods = dict()
 
     @classmethod
-    def register(cls, name):
+    def register(cls, *names: Union[List[str], str], subitems: Optional[Union[str, List[str]]] = None):
+        if len(names) == 1 and isinstance(names[0], (tuple, list)): names = names[0]
+
         def impl(f):
-            cls.builder_methods[name] = f
+            for name in names:
+                cls.builder_methods[name] = (f, subitems)
             return f
         return impl
 
     # build node recursively
-    def build(self, node):
+    def build(self, node: Node):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
+        node.arg_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
         if node.kind in NodeConstructor.builder_methods:
-            createf = NodeConstructor.builder_methods[node.kind]
-            r = inspect.getfullargspec(createf)
-            if isinstance(node.args, dict) and set(node.args.keys()).issubset(set(r.args)):
-                node.func = NodeConstructor.builder_methods[node.kind](**node.args)
-            else:
-                node.func = NodeConstructor.builder_methods[node.kind](node.args)
+            createf, node.subitem_name = NodeConstructor.builder_methods[node.kind]
+            node.func = createf(**node.args) if isinstance(node.args, dict) and set(node.args.keys()).issubset(
+                set(inspect.getfullargspec(createf).args)) else createf(node.args)
             return node
 
         node_msgs = all_nodes[node.kind]
@@ -142,10 +150,28 @@ class ServerGraph(lazyllm.ModuleBase):
             return self._web.url
         return None
 
+    def __repr__(self):
+        return repr(self._g)
 
-@NodeConstructor.register('Graph')
-@NodeConstructor.register('SubGraph')
-def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [], enable_server=True):
+
+class ServerResource(object):
+    def __init__(self, graph: ServerGraph, kind: str, args: Dict):
+        self._graph = graph
+        self._kind = type
+        self._args = args
+
+    def status(self):
+        return self._graph._g.status if self._kind == 'server' else self._graph._web.status
+
+
+@NodeConstructor.register('web', 'server')
+def make_server_resource(kind: str, graph: ServerGraph, args: Dict[str, Any]):
+    return ServerResource(graph, kind, args)
+
+
+@NodeConstructor.register('Graph', 'SubGraph', subitems=['nodes', 'resources'])
+def make_graph(nodes: List[dict], edges: List[Union[List[str], dict]] = [],
+               resources: List[dict] = [], enable_server=True):
     engine = Engine()
     server_resources = dict(server=None, web=None)
     for resource in resources:
@@ -156,20 +182,31 @@ def make_graph(nodes: List[dict], edges: List[dict], resources: List[dict] = [],
                                                       name=resource['name'], args=resource['args'])
 
     resources = [engine.build_node(resource) for resource in resources if resource['kind'] not in server_resources]
-    nodes = [engine.build_node(node) for node in nodes]
+    nodes: List[Node] = [engine.build_node(node) for node in nodes]
 
     with graph() as g:
         for node in nodes:
             setattr(g, node.name, node.func)
+    g.set_node_arg_name([node.arg_names for node in nodes])
+
+    if not edges:
+        edges = ([dict(iid='__start__', oid=nodes[0].id)] + [
+            dict(iid=nodes[i].id, oid=nodes[i + 1].id) for i in range(len(nodes) - 1)] + [
+            dict(iid=nodes[-1].id, oid='__end__')])
 
     for edge in edges:
+        if isinstance(edge, (tuple, list)): edge = dict(iid=edge[0], oid=edge[1])
         if formatter := edge.get('formatter'):
-            assert formatter.startswith('[') and formatter.endswith(']') or \
-                formatter.startswith('{') and formatter.endswith('}')
+            assert formatter.startswith(('*[', '[', '}')) and formatter.endswith((']', '}'))
             formatter = lazyllm.formatter.JsonLike(formatter)
         g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name, formatter)
 
-    return ServerGraph(g, server_resources['server'], server_resources['web'])
+    sg = ServerGraph(g, server_resources['server'], server_resources['web'])
+    for kind, node in server_resources.items():
+        if node:
+            node.args = dict(kind=kind, graph=sg, args=node.args)
+            engine.build_node(node)
+    return sg
 
 
 @NodeConstructor.register('App')
@@ -190,7 +227,7 @@ def _build_pipeline(nodes):
         return Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
 
 
-@NodeConstructor.register('Switch')
+@NodeConstructor.register('Switch', subitems=['nodes:dict'])
 def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     with switch(judge_on_full_input=judge_on_full_input) as sw:
         for cond, nodes in nodes.items():
@@ -198,28 +235,30 @@ def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     return sw
 
 
-@NodeConstructor.register('Warp')
-def make_warp(nodes: List[dict], edges: List[dict], resources: List[dict] = []):
+@NodeConstructor.register('Warp', subitems=['nodes', 'resources'])
+def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] = []):
     return lazyllm.warp(make_graph(nodes, edges, resources, enable_server=False))
 
 
-@NodeConstructor.register('Loop')
-def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict],
+@NodeConstructor.register('Loop', subitems=['nodes', 'resources'])
+def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict] = [],
               resources: List[dict] = [], judge_on_full_input: bool = True):
     stop_condition = make_code(stop_condition)
     return lazyllm.loop(make_graph(nodes, edges, resources, enable_server=False),
                         stop_condition=stop_condition, judge_on_full_input=judge_on_full_input)
 
 
-@NodeConstructor.register('Ifs')
+@NodeConstructor.register('Ifs', subitems=['true', 'false'])
 def make_ifs(cond: str, true: List[dict], false: List[dict], judge_on_full_input: bool = True):
     assert judge_on_full_input, 'judge_on_full_input only support True now'
     return lazyllm.ifs(make_code(cond), tpath=_build_pipeline(true), fpath=_build_pipeline(false))
 
 
-@NodeConstructor.register('Intention')
-def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
-    with IntentClassifier(Engine().build_node(base_model).func) as ic:
+@NodeConstructor.register('Intention', subitems=['nodes:dict'])
+def make_intention(base_model: str, nodes: Dict[str, List[dict]],
+                   prompt: str = '', constrain: str = '', attention: str = ''):
+    with IntentClassifier(Engine().build_node(base_model).func,
+                          prompt=prompt, constrain=constrain, attention=attention) as ic:
         for cond, nodes in nodes.items():
             if isinstance(nodes, list) and len(nodes) > 1:
                 f = pipeline([Engine().build_node(node).func for node in nodes])
@@ -231,7 +270,8 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]]):
 
 @NodeConstructor.register('Document')
 def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False, node_group: List = []):
-    document = lazyllm.tools.rag.Document(dataset_path, Engine().build_node(embed) if embed else None, manager=create_ui)
+    document = lazyllm.tools.rag.Document(
+        dataset_path, Engine().build_node(embed).func if embed else None, manager=create_ui)
     for group in node_group:
         if group['transform'] == 'LLMParser': group['llm'] = Engine().build_node(group['llm']).func
         elif group['transform'] == 'FuncNode': group['function'] = make_code(group['function'])
@@ -261,7 +301,7 @@ class JoinFormatter(lazyllm.components.FormatterBase):
             return {k: v for k, v in zip(self.names, data)}
         elif self.type == 'join':
             symbol = self.symbol or ''
-            return symbol.join(data)
+            return symbol.join([str(d) for d in data])
         else:
             raise TypeError('type should be one of sum/stack/to_dict/join')
 
@@ -269,27 +309,35 @@ class JoinFormatter(lazyllm.components.FormatterBase):
 def make_join_formatter(type='sum', names=None, symbol=None):
     return JoinFormatter(type, names=names, symbol=symbol)
 
+@NodeConstructor.register('Formatter')
+def make_formatter(ftype, rule):
+    return getattr(lazyllm.formatter, ftype)(formatter=rule)
+
 def return_a_wrapper_func(func):
     @functools.wraps(func)
     def wrapper_func(*args, **kwargs):
         return func(*args, **kwargs)
     return wrapper_func
 
+def _get_tools(tools):
+    callable_list = []
+    for rid in tools:  # `tools` is a list of ids in engine's resources
+        node = Engine().build_node(rid)
+        wrapper_func = return_a_wrapper_func(node.func)
+        wrapper_func.__name__ = node.name
+        callable_list.append(wrapper_func)
+    return callable_list
+
+@NodeConstructor.register('ToolsForLLM')
+def make_tools_for_llm(tools: List[str]):
+    return lazyllm.tools.ToolManager(_get_tools(tools))
+
 @NodeConstructor.register('FunctionCall')
 def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
-
-    callable_list = []
-    for rid in tools:  # `tools` is a list of ids in engine's resources
-        node = Engine().build_node(rid)
-        func = node.func
-        wrapper_func = return_a_wrapper_func(func)
-        wrapper_func.__name__ = node.name
-        callable_list.append(wrapper_func)
-
-    return f(Engine().build_node(llm).func, callable_list)
+    return f(Engine().build_node(llm).func, _get_tools(tools))
 
 @NodeConstructor.register('HttpTool')
 def make_http_tool(method: Optional[str] = None,

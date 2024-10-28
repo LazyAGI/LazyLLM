@@ -529,6 +529,44 @@ add_example('deploy.LMDeploy', '''\
 >>> res = chat('What is it?')
 ''')
 
+# Deploy-Infinity
+add_chinese_doc('deploy.Infinity', '''\
+此类是 ``LazyLLMDeployBase`` 的子类，基于 [Infinity](https://github.com/michaelfeil/infinity) 框架提供的高性能文本嵌入、重排序和CLIP等能力。
+
+Args:
+    launcher (lazyllm.launcher): Infinity 的启动器，默认为 ``launchers.remote(ngpus=1)``。
+    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
+
+此类的关键字参数及其默认值如下：
+
+Keyword Args: 
+    host (str): 服务的IP地址，默认为 ``0.0.0.0``。
+    port (int): 服务的端口号，默认为 ``None``,此情况下LazyLLM会自动生成随机端口号。
+    batch-size (int): 最大batch数， 默认为 ``256``。
+''')
+
+add_english_doc('deploy.Infinity', '''\
+This class is a subclass of ``LazyLLMDeployBase``, providing high-performance text-embeddings, reranking, and CLIP capabilities based on the [Infinity](https://github.com/michaelfeil/infinity) framework.
+
+Args:
+    launcher (lazyllm.launcher): The launcher for Infinity, defaulting to ``launchers.remote(ngpus=1)``.
+    kw: Keyword arguments for updating default training parameters. Note that no additional keyword arguments can be passed here except those listed below.
+
+The keyword arguments and their default values for this class are as follows:
+
+Keyword Args: 
+    host (str): The IP address of the service, defaulting to ``0.0.0.0``.
+    port (int): The port number of the service, defaulting to ``None``, in which case LazyLLM will automatically generate a random port number.
+    batch-size (int): The maximum batch size, defaulting to ``256``.
+''')
+
+add_example('deploy.Infinity', '''\
+>>> import lazyllm
+>>> from lazyllm import deploy
+>>> deploy.Infinity()
+<lazyllm.llm.deploy type=Infinity>
+''')
+
 # Deploy-Auto
 add_chinese_doc('auto.AutoDeploy', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，可根据输入的参数自动选择合适的推理框架和参数，以对大语言模型进行推理。
@@ -878,9 +916,9 @@ Args:
     extro_keys (Option[List]): Additional fields that will be filled with user input.
     show (bool): Flag indicating whether to print the generated Prompt, default is False.
     tools (Option[list]): Tool-set which is provived for LLMs, default is None.
+''')
 
-**Examples:**\n
-```python
+add_example('AlpacaPrompter', '''\
 >>> from lazyllm import AlpacaPrompter
 >>> p = AlpacaPrompter('hello world {instruction}')
 >>> p.generate_prompt('this is my input')
@@ -893,55 +931,14 @@ Args:
 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world hello world, my input\\\\n\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nlazyllm\\\\n\\\\n\\\\n### Response:\\\\n'
 >>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'), return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world hello world, my input\\\\n\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nlazyllm\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
->>> 
+>>>
 >>> p = AlpacaPrompter(dict(system="hello world", user="this is user instruction {input}"))
 >>> p.generate_prompt(dict(input="my input"))
 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello word\\\\n\\\\n\\\\n\\\\nthis is user instruction my input### Response:\\\\n'
 >>> p.generate_prompt(dict(input="my input"), return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input'}]}
-```
 
-<span style="font-size: 20px;">**`generate_prompt(input: str | Dict[str, str] | None = None, history: List[List[str] | Dict[str, Any]] | None = None, tools: List[Dict[str, Any]] | None = None, label: str | None = None, *, show: bool = False, return_dict: bool = False)→ str | Dict `**</span>
-
-Based on the user's input, generate the corresponding Prompt.
-
-Args:
-    instruction (Option[str]): Task instructionspecify the ``system`` and ``user`` instructions.\n
-    extro_keys (Option[List]): Additional fields that will be filled with user input.\n
-    show (bool): Flag indicating whether to print the generated Prompt, default is False.\n
-    tools (Option[list]): Tool-set which is provived for LLMs, default is None.\n
-
-
-<span style="font-size: 20px;">**`get_response(output: str, input: str | None = None)→ str`**</span>
-
-Used to truncate the Prompt, only retaining valuable outputs.
-
-Args:
-    output (str) :The output of the large model
-    input (Optional[str]) :The input to the large model. If this parameter is specified, the function will truncate any part of the output that contains the input. Default is None.                
 ''')
-
-# add_example('AlpacaPrompter', '''\
-# >>> from lazyllm import AlpacaPrompter
-# >>> p = AlpacaPrompter('hello world {instruction}')
-# >>> p.generate_prompt('this is my input')
-# 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world this is my input\\\\n\\\\n\\\\n### Response:\\\\n'
-# >>> p.generate_prompt('this is my input', return_dict=True)
-# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world this is my input\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
-# >>>
-# >>> p = AlpacaPrompter('hello world {instruction}, {input}', extro_keys=['knowledge'])
-# >>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'))
-# 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world hello world, my input\\\\n\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nlazyllm\\\\n\\\\n\\\\n### Response:\\\\n'
-# >>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'), return_dict=True)
-# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world hello world, my input\\\\n\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nlazyllm\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
-# >>>
-# >>> p = AlpacaPrompter(dict(system="hello world", user="this is user instruction {input}"))
-# >>> p.generate_prompt(dict(input="my input"))
-# 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello word\\\\n\\\\n\\\\n\\\\nthis is user instruction my input### Response:\\\\n'
-# >>> p.generate_prompt(dict(input="my input"), return_dict=True)
-# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input'}]}
-
-# ''')
 
 add_chinese_doc('ChatPrompter', '''\
 多轮对话的Prompt，支持工具调用和历史对话
@@ -959,9 +956,9 @@ Args:
     instruction (Option[str]): Task instructions for the large model, with 0 to multiple fillable slot, represented by ``{}``. For user instructions, you can pass a dictionary with fields ``user`` and ``system``.
     extro_keys (Option[List]): Additional fields that will be filled with user input.
     show (bool): Flag indicating whether to print the generated Prompt, default is False.
+''')
 
-**Examples:**\n
-```python
+add_example('ChatPrompter', '''\
 >>> from lazyllm import ChatPrompter
 >>> p = ChatPrompter('hello world')
 >>> p.generate_prompt('this is my input')
@@ -982,50 +979,7 @@ Args:
 '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is user instruction my input this is user query\\\\n<|Assistant|>:\\\\n'
 >>> p.generate_prompt(dict(input="my input", query="this is user query"), return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
-```
-<span style="font-size: 20px;">**`generate_prompt(input: str | Dict[str, str] | None = None, history: List[List[str] | Dict[str, Any]] | None = None, tools: List[Dict[str, Any]] | None = None, label: str | None = None, *, show: bool = False, return_dict: bool = False)→ str | Dict `**</span>
-
-Based on the user's input, generate the corresponding Prompt.
-
-Args:
-    instruction (Option[str]): Task instructionspecify the ``system`` and ``user`` instructions.\n
-    extro_keys (Option[List]): Additional fields that will be filled with user input.\n
-    show (bool): Flag indicating whether to print the generated Prompt, default is False.\n
-    tools (Option[list]): Tool-set which is provived for LLMs, default is None.\n
-
-
-<span style="font-size: 20px;">**`get_response(output: str, input: str | None = None)→ str`**</span>
-
-Used to truncate the Prompt, only retaining valuable outputs.
-
-Args:
-    output (str) :The output of the large model
-    input (Optional[str]) :The input to the large model. If this parameter is specified, the function will truncate any part of the output that contains the input. Default is None.                
-
 ''')
-
-# add_example('ChatPrompter', '''\
-# >>> from lazyllm import ChatPrompter
-# >>> p = ChatPrompter('hello world')
-# >>> p.generate_prompt('this is my input')
-# '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is my input\\\\n<|Assistant|>:\\\\n'
-# >>> p.generate_prompt('this is my input', return_dict=True)
-# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is my input'}]}
-# >>>
-# >>> p = ChatPrompter('hello world {instruction}', extro_keys=['knowledge'])
-# >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'))
-# '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is my inp\\\\n<|Assistant|>:\\\\n'
-# >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), return_dict=True)
-# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n'}, {'role': 'user', 'content': 'this is my inp'}]}
-# >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), history=[['s1', 'e1'], ['s2', 'e2']])
-# '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n<|end_system|>\\\\n\\\\n<|Human|>:s1<|Assistant|>:e1<|Human|>:s2<|Assistant|>:e2\\\\n<|Human|>:\\\\nthis is my inp\\\\n<|Assistant|>:\\\\n'
-# >>>
-# >>> p = ChatPrompter(dict(system="hello world", user="this is user instruction {input} "))
-# >>> p.generate_prompt(dict(input="my input", query="this is user query"))
-# '<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is user instruction my input this is user query\\\\n<|Assistant|>:\\\\n'
-# >>> p.generate_prompt(dict(input="my input", query="this is user query"), return_dict=True)
-# {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
-# ''')
 
 # ============= MultiModal
 
@@ -1048,7 +1002,7 @@ Args:
 
 Notes: 
     - Input for infer: `str`. A description of the image to be generated.
-    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “images_base64”, corresponding to a list whose elements are images encoded in base64.
+    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “lazyllm_images”, corresponding to a list whose elements are images encoded in base64.
     - Supported models: [stable-diffusion-3-medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
 ''')
 
@@ -1071,7 +1025,7 @@ Args:
 
 Notes:
     - 推理的输入：字符串。待生成图像的描述。
-    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"images_base64", 对应值为一个列表，其中的元素是被base64编码的图像。
+    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"lazyllm_images", 对应值为一个列表，其中的元素是被base64编码的图像。
     - 支持的模型为：[stable-diffusion-3-medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
 ''')
 
@@ -1083,7 +1037,7 @@ add_example('StableDiffusionDeploy', ['''\
 >>> model = UrlModule(url=url)
 >>> res = model('a tiny cat.')
 >>> print(len(res), res[:50])
-... 1384335 {"images_base64": ["iVBORw0KGgoAAAANSUhEUgAABAAAAA
+... 1384335 {"lazyllm_images": ["iVBORw0KGgoAAAANSUhEUgAABAAAAA
 '''])
 
 add_english_doc('ChatTTSDeploy', '''\
@@ -1105,7 +1059,7 @@ Args:
 
 Notes:
     - Input for infer: `str`.  The text corresponding to the audio to be generated.
-    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
+    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “lazyllm_sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
     - Supported models: [ChatTTS](https://huggingface.co/2Noise/ChatTTS)
 ''')
 
@@ -1128,7 +1082,7 @@ Args:
 
 Notes:
     - 推理的输入：字符串。待生成音频的对应文字。
-    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
+    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"lazyllm_sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
     - 支持的模型为：[ChatTTS](https://huggingface.co/2Noise/ChatTTS)
 ''')
 
@@ -1140,7 +1094,7 @@ add_example('ChatTTSDeploy', ['''\
 >>> model = UrlModule(url=url)
 >>> res = model('Hello World!')
 >>> print(len(res), res[:50])
-... {"sounds": [24000, [-0.006741484627127647, 0.00795
+... {"lazyllm_sounds": [24000, [-0.006741484627127647, 0.00795
 '''])
 
 add_english_doc('BarkDeploy', '''\
@@ -1162,7 +1116,7 @@ Args:
 
 Notes:
     - Input for infer: `str`.  The text corresponding to the audio to be generated.
-    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
+    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “lazyllm_sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
     - Supported models: [bark](https://huggingface.co/suno/bark)
 ''')
 
@@ -1185,7 +1139,7 @@ Args:
 
 Notes:
     - 推理的输入：字符串。待生成音频的对应文字。
-    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
+    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"lazyllm_sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
     - 支持的模型为：[bark](https://huggingface.co/suno/bark)
 ''')
 
@@ -1197,7 +1151,7 @@ add_example('BarkDeploy', ['''\
 >>> model = UrlModule(url=url)
 >>> res = model('Hello World!')
 >>> print(len(res), res[:50])
-... 373843 {"sounds": [24000, [-66.9375, -62.0625, -60.5, -60
+... 373843 {"lazyllm_sounds": [24000, [-66.9375, -62.0625, -60.5, -60
 '''])
 
 add_english_doc('MusicGenDeploy', '''\
@@ -1219,7 +1173,7 @@ Args:
 
 Notes:
     - Input for infer: `str`.  The text corresponding to the audio to be generated.
-    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
+    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “lazyllm_sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
     - Supported models: [musicgen-small](https://huggingface.co/facebook/musicgen-small)
 ''')
 
@@ -1242,7 +1196,7 @@ Args:
 
 Notes:
     - 推理的输入：字符串。待生成音频的对应文字。
-    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
+    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"lazyllm_sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
     - 支持的模型为：[musicgen-small](https://huggingface.co/facebook/musicgen-small)
 ''')
 
@@ -1253,7 +1207,7 @@ add_example('MusicGenDeploy', ['''\
 >>> url = deployer(base_model='musicgen-small')
 >>> model = UrlModule(url=url)
 >>> model('Symphony with flute as the main melody')
-4981065 {"sounds": [32000, [-931, -1206, -1170, -1078, -10, ...
+4981065 {"lazyllm_sounds": [32000, [-931, -1206, -1170, -1078, -10, ...
 '''])
 
 add_english_doc('SenseVoiceDeploy', '''\
@@ -1356,7 +1310,7 @@ add_example('TTSDeploy', ['''\
 >>> model = UrlModule(url=url)
 >>> res = model('Hello World!')
 >>> print(len(res), res[:50])
-... 387355 {"sounds": [24000, [-111.9375, -106.4375, -106.875
+... 387355 {"lazyllm_sounds": [24000, [-111.9375, -106.4375, -106.875
 '''])
 
 # ============= Launcher

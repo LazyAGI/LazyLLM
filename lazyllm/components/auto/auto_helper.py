@@ -1,9 +1,9 @@
 import re
 import pkg_resources
+import functools
 from packaging import version
 
 from .dependencies.modelsconfig import models_config
-from .dependencies.requirements import requirements
 from lazyllm import LOG
 
 def model_map(name):
@@ -28,8 +28,9 @@ def compare_versions(version1, version2):
     else:
         return 0
 
-def check_requirements(frame):
-    packages = [line.strip() for line in requirements[frame].split('\n') if line.strip()]
+@functools.lru_cache
+def check_requirements(requirements):
+    packages = [line.strip() for line in requirements.split('\n') if line.strip()]
 
     not_installed = []
     for package in packages:

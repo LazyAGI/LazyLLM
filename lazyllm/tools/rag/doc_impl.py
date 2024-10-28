@@ -1,13 +1,16 @@
 import ast
 from collections import defaultdict
 from functools import wraps
-from typing import Callable, Dict, List, Optional, Set, Union
+from typing import Callable, Dict, List, Optional, Set, Union, Tuple
 from lazyllm import LOG, config, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
 from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, BaseStore
 from .data_loaders import DirectoryReader
 from .index import DefaultIndex
+from .utils import DocListManager
+import threading
+import time
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
@@ -25,15 +28,21 @@ def embed_wrapper(func):
 
 
 class DocImpl:
-    _builtin_node_groups = {}
-    _global_node_groups = {}
+    _builtin_node_groups: Dict[str, Dict] = {}
+    _global_node_groups: Dict[str, Dict] = {}
+    _registered_file_reader: Dict[str, Callable] = {}
 
-    def __init__(self, embed, doc_files=Optional[List[str]], local_readers: Optional[Dict] = None,
-                 global_readers: Optional[Dict] = None, **kwargs):
+    def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
+                 doc_files: Optional[str] = None, kb_group_name: str = None):
         super().__init__()
-        self.directory_reader = DirectoryReader(doc_files, local_readers=local_readers, global_readers=global_readers)
+        assert (dlm is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
+        self._local_file_reader: Dict[str, Callable] = {}
+        self._kb_group_name = kb_group_name or DocListManager.DEDAULT_GROUP_NAME
+        self._dlm, self._doc_files = dlm, doc_files
+        self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
-        self.embed = embed_wrapper(embed)
+        self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
+        self._embed_dim = None
         self.store = None
 
     @once_wrapper(reset_on_pickle=True)
@@ -43,19 +52,29 @@ class DocImpl:
         node_groups.update(self.node_groups)
         self.node_groups = node_groups
 
+        self._embed_dim = {k: len(e('a')) for k, e in self.embed.items()}
+
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
         if not self.store.has_nodes(LAZY_ROOT_NAME):
-            root_nodes = self.directory_reader.load_data()
+            ids, pathes = self._list_files()
+            root_nodes = self._reader.load_data(pathes)
             self.store.add_nodes(root_nodes)
+            if self._dlm: self._dlm.update_kb_group_file_status(
+                ids, DocListManager.Status.success, group=self._kb_group_name)
             LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
+
+        if self._dlm:
+            self._daemon = threading.Thread(target=self.worker)
+            self._daemon.daemon = True
+            self._daemon.start()
 
     def _get_store(self) -> BaseStore:
         rag_store_type = config["rag_store_type"]
         if rag_store_type == "map":
             store = MapStore(node_groups=self.node_groups.keys())
         elif rag_store_type == "chroma":
-            store = ChromadbStore(node_groups=self.node_groups.keys(), embed=self.embed)
+            store = ChromadbStore(node_groups=self.node_groups.keys(), embed_dim=self._embed_dim)
             store.try_load_store()
         else:
             raise NotImplementedError(
@@ -115,11 +134,56 @@ class DocImpl:
         DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, **kwargs)
 
-    def add_files(self, input_files: List[str]) -> None:
+    @classmethod
+    def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
+        if func is not None:
+            cls._registered_file_reader[pattern] = func
+            return None
+
+        def decorator(klass):
+            if callable(klass): cls._registered_file_reader[pattern] = klass
+            else: raise TypeError(f"The registered object {klass} is not a callable object.")
+            return klass
+        return decorator
+
+    def add_reader(self, pattern: str, func: Optional[Callable] = None):
+        assert callable(func), 'func for reader should be callable'
+        self._local_file_reader[pattern] = func
+
+    def worker(self):
+        while True:
+            ids, files = self._list_files(status=DocListManager.Status.deleting)
+            if files:
+                self._delete_files(files)
+                self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
+                continue
+
+            if self._kb_group_name == DocListManager.DEDAULT_GROUP_NAME:
+                self._dlm.init_tables()
+            ids, files = self._list_files(status=DocListManager.Status.waiting,
+                                          upload_status=DocListManager.Status.success)
+            if files:
+                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
+                self._add_files(files)
+                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
+                continue
+            time.sleep(10)
+
+    def _list_files(self, status: str = DocListManager.Status.all, upload_status: str = DocListManager.Status.all
+                    ) -> Tuple[List[str], List[str]]:
+        if self._doc_files: return None, self._doc_files
+        ids, paths = [], []
+        for row in self._dlm.list_kb_group_files(group=self._kb_group_name, status=status,
+                                                 upload_status=upload_status, details=True):
+            ids.append(row[0])
+            paths.append(row[1])
+        return ids, paths
+
+    def _add_files(self, input_files: List[str]):
         if len(input_files) == 0:
             return
         self._lazy_init()
-        root_nodes = self.directory_reader.load_data(input_files)
+        root_nodes = self._reader.load_data(input_files)
         temp_store = self._get_store()
         temp_store.add_nodes(root_nodes)
         active_groups = self.store.active_groups()
@@ -130,7 +194,7 @@ class DocImpl:
             self.store.add_nodes(nodes)
             LOG.debug(f"Merge {group} with {nodes}")
 
-    def delete_files(self, input_files: List[str]) -> None:
+    def _delete_files(self, input_files: List[str]) -> None:
         self._lazy_init()
         docs = self.store.get_nodes_by_files(input_files)
         LOG.info(f"delete_files: removing documents {input_files} and nodes {docs}")
@@ -176,17 +240,18 @@ class DocImpl:
         self._dynamic_create_nodes(group_name, store)
         return store.traverse_nodes(group_name)
 
-    def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: float,
-                 index: str, topk: int, similarity_kws: dict) -> List[DocNode]:
+    def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
+                 index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None) -> List[DocNode]:
         self._lazy_init()
         if index:
             assert index == "default", "we only support default index currently"
         nodes = self._get_nodes(group_name)
         return self.index.query(
-            query, nodes, similarity, similarity_cut_off, topk, **similarity_kws
+            query, nodes, similarity, similarity_cut_off, topk, embed_keys, **similarity_kws
         )
 
-    def find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
+    @staticmethod
+    def find_parent(nodes: List[DocNode], group: str) -> List[DocNode]:
         def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
             if node.parent:
                 if node.parent.group == group:
@@ -203,13 +268,8 @@ class DocImpl:
         LOG.debug(f"Found parent node for {group}: {result}")
         return list(result)
 
-    def find_children(self, nodes: List[DocNode], group: str) -> List[DocNode]:
-        active_groups = self.store.active_groups()
-        if group not in active_groups:
-            raise ValueError(
-                f"group {group} not found in active groups {active_groups}, please retrieve the group first."
-            )
-
+    @staticmethod
+    def find_children(nodes: List[DocNode], group: str) -> List[DocNode]:
         def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
             if group in node.children:
                 visited.update(node.children[group])

@@ -110,12 +110,19 @@ model_name_mapping = {
         },
         "type": "embed"
     },
+    "bge-m3": {
+        "source": {
+            "huggingface": "BAAI/bge-m3",
+            "modelscope": "Xorbits/bge-m3"
+        },
+        "type": "embed"
+    },
     "bge-reranker-large": {
         "source": {
             "huggingface": "BAAI/bge-reranker-large",
             "modelscope": "Xorbits/bge-reranker-large"
         },
-        "type": "embed"
+        "type": "reranker"
     },
     "chattts": {
         "source": {

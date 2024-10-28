@@ -20,19 +20,25 @@ import uuid
 
 class _FuncWrap(object):
     def __init__(self, f):
-        self.f = f.f if isinstance(f, _FuncWrap) else f
+        self._f = f._f if isinstance(f, _FuncWrap) else f
 
-    def __call__(self, *args, **kw): return self.f(*args, **kw)
+    def __call__(self, *args, **kw): return self._f(*args, **kw)
 
     def __repr__(self):
         # TODO: specify lambda/staticmethod/classmethod/instancemethod
         # TODO: add registry message
-        return lazyllm.make_repr('Function', self.f.__name__.strip('<>'))
+        return lazyllm.make_repr('Function', (
+            self._f if _is_function(self._f) else self._f.__class__).__name__.strip('<>'))
+
+    def __getattr__(self, __key):
+        if __key != '_f':
+            return getattr(self._f, __key)
+        return super(__class__, self).__getattr__(__key)
 
 _oldins = isinstance
 def new_ins(obj, cls):
     if _oldins(obj, _FuncWrap) and os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) != 'ON':
-        return True if (cls is _FuncWrap or (_oldins(cls, (tuple, list)) and _FuncWrap in cls)) else _oldins(obj.f, cls)
+        return True if (cls is _FuncWrap or (_oldins(cls, (tuple, list)) and _FuncWrap in cls)) else _oldins(obj._f, cls)
     return _oldins(obj, cls)
 
 setattr(builtins, 'isinstance', new_ins)
@@ -94,7 +100,7 @@ class FlowBase(metaclass=_MetaBind):
 
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
-            assert name not in self._item_names, 'Duplicated name: {name}'
+            assert name not in self._item_names, f'Duplicated name: {name}'
             self._add(name, value)
         else:
             super(__class__, self).__setattr__(name, value)
@@ -484,8 +490,8 @@ class Graph(LazyLLMFlowsBase):
     start_node_name, end_node_name = '__start__', '__end__'
 
     class Node:
-        def __init__(self, func, name):
-            self.func, self.name = func, name
+        def __init__(self, func, name, arg_names=None):
+            self.func, self.name, self.arg_names = func, name, None
             self.inputs, self.outputs = dict(), []
 
         def __repr__(self): return lazyllm.make_repr('Flow', 'Node', name=self.name)
@@ -499,6 +505,10 @@ class Graph(LazyLLMFlowsBase):
         self._nodes[Graph.end_node_name] = Graph.Node(lazyllm.Identity(), Graph.end_node_name)
         self._in_degree = {node: 0 for node in self._nodes.values()}
         self._sorted_nodes = None
+
+    def set_node_arg_name(self, arg_names):
+        for node_name, name in zip(self._item_names, arg_names):
+            self._nodes[node_name].arg_names = name
 
     @property
     def start_node(self): return self._nodes[Graph.start_node_name]
@@ -523,7 +533,7 @@ class Graph(LazyLLMFlowsBase):
     def topological_sort(self):
         in_degree = self._in_degree.copy()
         queue = deque([node for node in self._nodes.values() if in_degree[node] == 0])
-        sorted_nodes = []
+        sorted_nodes: List[Graph.Node] = []
 
         while queue:
             node = queue.popleft()
@@ -536,7 +546,7 @@ class Graph(LazyLLMFlowsBase):
         if len(sorted_nodes) != len(self._nodes):
             raise ValueError("Graph has a cycle")
 
-        return sorted_nodes
+        return [n for n in sorted_nodes if (self._in_degree[n] > 0 or n.name == Graph.start_node_name)]
 
     def compute_node(self, sid, node, intermediate_results, futures):
         globals._init_sid(sid)
@@ -548,8 +558,11 @@ class Graph(LazyLLMFlowsBase):
                     if name not in intermediate_results['values']:
                         intermediate_results['values'][name] = r
             r = intermediate_results['values'][name]
+            if isinstance(r, Exception): raise r
             if node.inputs[name]:
-                r = node.inputs[name](r)
+                if isinstance(r, arguments) and not ((len(r.args) == 0) ^ (len(r.kw) == 0)):
+                    raise RuntimeError('Only one of args and kwargs can be given with formatter.')
+                r = node.inputs[name]((r.args or r.kw) if isinstance(r, arguments) else r)
             return r
 
         kw = {}
@@ -565,6 +578,10 @@ class Graph(LazyLLMFlowsBase):
         if isinstance(input, arguments):
             kw = input.kw
             input = input.args
+
+        if node.arg_names:
+            kw.update({name: value for name, value in zip(node.arg_names, input)})
+            input = package()
 
         return self.invoke(node.func, input, **kw)
 

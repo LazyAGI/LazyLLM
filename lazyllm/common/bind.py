@@ -78,6 +78,8 @@ class Bind(object):
             return self
 
         def __getattr__(self, key):
+            if key.startswith('__') and key.endswith('__'):
+                raise AttributeError(f'Args has no attribute {key}')
             self._attr_key = key
             return self
 

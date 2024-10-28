@@ -10,7 +10,7 @@ class TestDocNode:
         self.embedding = [0.1, 0.2, 0.3]
         self.node = DocNode(
             text=self.text,
-            embedding=self.embedding,
+            embedding={"default": self.embedding},
         )
         self.node.metadata = self.metadata
         self.node.excluded_embed_metadata_keys = ["author"]
@@ -19,14 +19,26 @@ class TestDocNode:
     def test_do_embedding(self):
         """Test that do_embedding passes the correct content to the embed function."""
         mock_embed = MagicMock(return_value=[0.4, 0.5, 0.6])
-        self.node.do_embedding(mock_embed)
+        self.node.do_embedding({"mock": mock_embed})
         mock_embed.assert_called_once_with(self.node.get_text(MetadataMode.EMBED))
+
+    def test_multi_embedding(self):
+        mock_embed1 = MagicMock(return_value=[0.11, 0.12, 0.13])
+        mock_embed2 = MagicMock(return_value=[0.21, 0.22, 0.23])
+        embed = {"test1": mock_embed1, "test2": mock_embed2}
+        assert "test1" not in self.node.embedding.keys()
+        assert "test2" not in self.node.embedding.keys()
+        if miss_keys := self.node.has_missing_embedding(embed.keys()):
+            node_embed = {k: e for k, e in embed.items() if k in miss_keys}
+            self.node.do_embedding(node_embed)
+        assert "test1" in self.node.embedding.keys()
+        assert "test2" in self.node.embedding.keys()
 
     def test_node_creation(self):
         """Test the creation of a DocNode."""
         assert self.node.text == self.text
         assert self.node.metadata == self.metadata
-        assert self.node.embedding == self.embedding
+        assert self.node.embedding['default'] == self.embedding
         assert self.node.excluded_embed_metadata_keys == ["author"]
         assert self.node.excluded_llm_metadata_keys == ["date"]
 

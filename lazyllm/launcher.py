@@ -29,8 +29,9 @@ class Status(Enum):
 
 
 class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
+    Status = Status
+
     def __init__(self) -> None:
-        self.status = Status.TBSubmitted
         self._id = str(uuid.uuid4().hex)
 
     def makejob(self, cmd):
@@ -44,6 +45,15 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
             v.stop()
             LOG.info(f"killed job:{k}")
         self.all_processes.pop(self._id)
+        self.wait()
+
+    @property
+    def status(self):
+        if len(self.all_processes[self._id]) == 1:
+            return self.all_processes[self._id][0][1].status
+        elif len(self.all_processes[self._id]) == 0:
+            return Status.Cancelled
+        raise RuntimeError('More than one tasks are found in one launcher!')
 
     def wait(self):
         for _, v in self.all_processes[self._id]:
@@ -62,7 +72,8 @@ lazyllm.config.add('partition', str, 'your_part', 'SLURM_PART')
 lazyllm.config.add('sco.workspace', str, 'your_workspace', 'SCO_WORKSPACE')
 lazyllm.config.add('sco_env_name', str, '', 'SCO_ENV_NAME')
 lazyllm.config.add('sco_keep_record', bool, False, 'SCO_KEEP_RECORD')
-lazyllm.config.add("sco_resource_type", str, "N3lS.Ii.I60", "SCO_RESOURCE_TYPE")
+lazyllm.config.add('sco_resource_type', str, 'N3lS.Ii.I60', 'SCO_RESOURCE_TYPE')
+lazyllm.config.add('cuda_visible', bool, False, 'CUDA_VISIBLE')
 
 
 # store cmd, return message and command output.
@@ -173,6 +184,25 @@ class EmptyLauncher(LazyLLMLaunchersBase):
         def __init__(self, cmd, launcher, *, sync=True):
             super(__class__, self).__init__(cmd, launcher, sync=sync)
 
+        def _wrap_cmd(self, cmd):
+            if self.launcher.ngpus == 0:
+                return cmd
+            gpus = self.launcher._get_idle_gpus()
+            if gpus and lazyllm.config['cuda_visible']:
+                if self.launcher.ngpus is None:
+                    empty_cmd = f'CUDA_VISIBLE_DEVICES={gpus[0]} '
+                elif self.launcher.ngpus <= len(gpus):
+                    empty_cmd = 'CUDA_VISIBLE_DEVICES=' + \
+                                ','.join([str(n) for n in gpus[:self.launcher.ngpus]]) + ' '
+                else:
+                    error_info = (f'Not enough GPUs available. Requested {self.launcher.ngpus} GPUs, '
+                                  f'but only {len(gpus)} are available.')
+                    LOG.error(error_info)
+                    raise error_info
+            else:
+                empty_cmd = ''
+            return empty_cmd + cmd
+
         def stop(self):
             if self.ps:
                 try:
@@ -230,6 +260,29 @@ class EmptyLauncher(LazyLLMLaunchersBase):
         else:
             raise RuntimeError('Invalid cmd given, please check the return value of cmd.')
 
+    def _get_idle_gpus(self):
+        try:
+            order_list = subprocess.check_output(
+                ['nvidia-smi', '--query-gpu=index,memory.free', '--format=csv,noheader,nounits'],
+                encoding='utf-8'
+            )
+        except Exception as e:
+            LOG.warning(f"Get idle gpus failed: {e}, if you have no gpu-driver, ignor it.")
+            return []
+        lines = order_list.strip().split('\n')
+
+        str_num = os.getenv('CUDA_VISIBLE_DEVICES', None)
+        if str_num:
+            sub_gpus = [int(x) for x in str_num.strip().split(',')]
+
+        gpu_info = []
+        for line in lines:
+            index, memory_free = line.split(', ')
+            if not str_num or int(index) in sub_gpus:
+                gpu_info.append((int(index), int(memory_free)))
+        gpu_info.sort(key=lambda x: x[1], reverse=True)
+        LOG.info('Memory left:\n' + '\n'.join([f'{item[0]} GPU, left: {item[1]} MiB' for item in gpu_info]))
+        return [info[0] for info in gpu_info]
 
 @final
 class SlurmLauncher(LazyLLMLaunchersBase):
@@ -273,6 +326,8 @@ class SlurmLauncher(LazyLLMLaunchersBase):
                 cmd = f"scancel --quiet {self.jobid}"
                 subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                  encoding='utf-8', executable='/bin/bash')
+                self.jobid = None
+
             if self.ps:
                 self.ps.terminate()
                 self.queue = Queue()
@@ -478,6 +533,30 @@ class ScoLauncher(LazyLLMLaunchersBase):
             else:
                 raise RuntimeError("Cannot get IP.", f"JobID: {self.jobid}")
 
+        def _scancel_job(self, cmd, max_retries=3):
+            retries = 0
+            while retries < max_retries:
+                ps = subprocess.Popen(
+                    cmd, shell=True, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    encoding='utf-8', executable='/bin/bash')
+                try:
+                    stdout, stderr = ps.communicate(timeout=3)
+                    if stdout:
+                        LOG.info(stdout)
+                        if 'success scancel' in stdout:
+                            break
+                    if stderr:
+                        LOG.error(stderr)
+                except subprocess.TimeoutExpired:
+                    ps.kill()
+                    LOG.warning(f"Command timed out, retrying... (Attempt {retries + 1}/{max_retries})")
+                except Exception as e:
+                    LOG.error("Try to scancel, but meet: ", e)
+                retries += 1
+            if retries == max_retries:
+                LOG.error(f"Command failed after {max_retries} attempts.")
+
         def stop(self):
             if self.jobid:
                 cmd = f"scancel --workspace-id={self.workspace_name} {self.jobid}"
@@ -488,16 +567,20 @@ class ScoLauncher(LazyLLMLaunchersBase):
                         f"To delete by terminal, you can execute: `{cmd}`"
                     )
                 else:
-                    subprocess.Popen(
-                        cmd, shell=True, stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        encoding='utf-8', executable='/bin/bash')
+                    self._scancel_job(cmd)
+                    time.sleep(0.5)  # Avoid the execution of scancel and scontrol too close together.
+
+            with lazyllm.timeout(25):
+                while self.status not in (Status.Done, Status.Cancelled, Status.Failed):
+                    time.sleep(1)
 
             if self.ps:
                 self.ps.terminate()
                 self.queue = Queue()
                 self.output_thread_event.set()
                 self.output_thread.join()
+
+            self.jobid = None
 
         def wait(self):
             if self.ps:
@@ -513,11 +596,13 @@ class ScoLauncher(LazyLLMLaunchersBase):
                     job_state = id_json['status_phase'].strip().lower()
                     if job_state == 'running':
                         return Status.Running
-                    elif job_state in ['tbsubmitted', 'suspending', 'suspended']:
+                    elif job_state in ['tbsubmitted', 'suspending']:
                         return Status.TBSubmitted
                     elif job_state in ['waiting', 'init', 'queueing', 'creating',
                                        'restarting', 'recovering', 'starting']:
                         return Status.InQueue
+                    elif job_state in ['suspended']:
+                        return Status.Cancelled
                     elif job_state == 'succeeded':
                         return Status.Done
                 except Exception:
@@ -561,7 +646,8 @@ class RemoteLauncher(LazyLLMLaunchersBase):
 def cleanup():
     # empty
     for m in (EmptyLauncher, SlurmLauncher, ScoLauncher):
-        for vs in m.all_processes.values():
+        while m.all_processes:
+            _, vs = m.all_processes.popitem()
             for k, v in vs:
                 v.stop()
                 LOG.info(f"killed job:{k}")
