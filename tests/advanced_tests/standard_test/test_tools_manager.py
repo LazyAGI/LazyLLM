@@ -9,7 +9,6 @@ from lazyllm.tools.agent.toolsManager import (
     register,
 )
 from lazyllm.common import LazyLLMRegisterMetaClass
-from pydantic import BaseModel
 from typing import Literal, get_type_hints
 
 def _gen_wrapped_moduletool(func):
