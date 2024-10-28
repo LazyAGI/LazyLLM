@@ -131,6 +131,7 @@ class TestDocument(unittest.TestCase):
         retriever('什么是道')
 
     def test_multi_embedding_with_document(self):
+        Document(dataset_path="rag_master")._impl._dlm.release()
         document1 = Document(dataset_path="rag_master", embed=self.embed_model1)
         document1.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
         retriever1 = Retriever(document1, group_name="sentences", similarity="cosine", topk=10)

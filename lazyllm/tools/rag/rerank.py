@@ -1,14 +1,22 @@
 from functools import lru_cache
 from typing import Callable, List, Optional, Union
-from lazyllm import ModuleBase, config, LOG
+
+import lazyllm
+from lazyllm import ModuleBase, LOG
 from lazyllm.tools.rag.store import DocNode, MetadataMode
-from lazyllm.components.utils.downloader import ModelManager
 from .retriever import _PostProcess
-import numpy as np
 
 
 class Reranker(ModuleBase, _PostProcess):
     registered_reranker = dict()
+
+    def __new__(cls, name: str = "ModuleReranker", *args, **kwargs):
+        assert name in cls.registered_reranker, f"Reranker: {name} is not registered, please register first."
+        item = cls.registered_reranker[name]
+        if isinstance(item, type) and issubclass(item, Reranker):
+            return super(Reranker, cls).__new__(item)
+        else:
+            return super(Reranker, cls).__new__(cls)
 
     def __init__(self, name: str = "ModuleReranker", target: Optional[str] = None,
                  output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs) -> None:
@@ -27,15 +35,19 @@ class Reranker(ModuleBase, _PostProcess):
         cls: "Reranker", func: Optional[Callable] = None, batch: bool = False
     ):
         def decorator(f):
-            def wrapper(nodes, **kwargs):
-                if batch:
-                    return f(nodes, **kwargs)
-                else:
-                    results = [f(node, **kwargs) for node in nodes]
-                    return [result for result in results if result]
+            if isinstance(f, type):
+                cls.registered_reranker[f.__name__] = f
+                return f
+            else:
+                def wrapper(nodes, **kwargs):
+                    if batch:
+                        return f(nodes, **kwargs)
+                    else:
+                        results = [f(node, **kwargs) for node in nodes]
+                        return [result for result in results if result]
 
-            cls.registered_reranker[f.__name__] = wrapper
-            return wrapper
+                cls.registered_reranker[f.__name__] = wrapper
+                return wrapper
 
         return decorator(func) if func else decorator
 
@@ -73,32 +85,26 @@ def KeywordFilter(
         return None
     return node
 
+@Reranker.register_reranker()
+class ModuleReranker(Reranker):
 
-@lru_cache(maxsize=None)
-def get_cross_encoder_model(model_name: str):
-    from sentence_transformers import CrossEncoder
+    def __init__(self, name: str = "ModuleReranker", target: Optional[str] = None,
+                 output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs) -> None:
+        super().__init__(name, target, output_format, join, **kwargs)
+        assert 'model' in self._kwargs
+        self._reranker = lazyllm.TrainableModule(self._kwargs['model'])
 
-    model = ModelManager(config["model_source"]).download(model_name)
-    return CrossEncoder(model)
-
-
-@Reranker.register_reranker(batch=True)
-def ModuleReranker(
-    nodes: List[DocNode], model: str, query: str, topk: int = -1, **kwargs
-) -> List[DocNode]:
-    if not nodes:
-        return []
-    cross_encoder = get_cross_encoder_model(model)
-    query_pairs = [
-        (query, node.get_text(metadata_mode=MetadataMode.EMBED)) for node in nodes
-    ]
-    scores = cross_encoder.predict(query_pairs)
-    sorted_indices = np.argsort(scores)[::-1]  # Descending order
-    if topk > 0:
-        sorted_indices = sorted_indices[:topk]
-
-    return [nodes[i] for i in sorted_indices]
-
+    def forward(self, nodes: List[DocNode], query: str = "") -> List[DocNode]:
+        docs = [node.get_text(metadata_mode=MetadataMode.EMBED) for node in nodes]
+        top_n = self._kwargs['topk'] if 'topk' in self._kwargs else len(docs)
+        if self._reranker._deploy_type == lazyllm.deploy.Infinity:
+            sorted_indices = self._reranker(query, documents=docs, top_n=top_n)
+        else:
+            inps = {'query': query, 'documents': docs, 'top_n': top_n}
+            sorted_indices = self._reranker(inps)
+        results = [nodes[i] for i in sorted_indices]
+        LOG.debug(f"Rerank use `{self._name}` and get nodes: {results}")
+        return self._post_process(results)
 
 # User-defined similarity decorator
 def register_reranker(func=None, batch=False):

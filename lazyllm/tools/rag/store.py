@@ -115,7 +115,7 @@ class DocNode:
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
         assert len(embed_keys) > 0, "The ebmed_keys to be checked must be passed in."
         if self.embedding is None: return embed_keys
-        return [k for k in embed_keys if k not in self.embedding.keys() or self.embedding.get(k, [-1])[0] == -1]
+        return [k for k in embed_keys if k not in self.embedding]
 
     def do_embedding(self, embed: Dict[str, Callable]) -> None:
         generate_embed = {k: e(self.get_text(MetadataMode.EMBED)) for k, e in embed.items()}
@@ -239,7 +239,7 @@ class MapStore(BaseStore):
 
 class ChromadbStore(BaseStore):
     def __init__(
-        self, node_groups: List[str], embed: Dict[str, Callable], *args, **kwargs
+        self, node_groups: List[str], embed_dim: Dict[str, int], *args, **kwargs
     ) -> None:
         super().__init__(node_groups, *args, **kwargs)
         self._db_client = chromadb.PersistentClient(path=config["rag_persistent_path"])
@@ -248,7 +248,7 @@ class ChromadbStore(BaseStore):
             group: self._db_client.get_or_create_collection(group)
             for group in node_groups
         }
-        self._placeholder = {k: [-1] * len(e("a")) for k, e in embed.items()} if embed else {EMBED_DEFAULT_KEY: []}
+        self._embed_dim = embed_dim
 
     def try_load_store(self) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:
@@ -285,13 +285,10 @@ class ChromadbStore(BaseStore):
         for node in nodes:
             if node.is_saved:
                 continue
-            if miss_keys := node.has_missing_embedding(self._placeholder.keys()):
-                node.embedding = node.embedding or {}
-                node.embedding = {**node.embedding, **{k: self._placeholder[k] for k in miss_keys}}
             metadata = self._make_chroma_metadata(node)
             metadata["embedding"] = json.dumps(node.embedding)
             ids.append(node.uid)
-            embeddings.append([item for subembed in node.embedding.values() for item in subembed])
+            embeddings.append([0])  # we don't use chroma for retrieving
             metadatas.append(metadata)
             documents.append(node.get_text())
             node.is_saved = True
@@ -324,6 +321,23 @@ class ChromadbStore(BaseStore):
                 embedding=json.loads(chroma_metadata['embedding']),
                 parent=chroma_metadata["parent"],
             )
+
+            if node.embedding:
+                # convert sparse embedding to List[float]
+                new_embedding_dict = {}
+                for key, embedding in node.embedding.items():
+                    if isinstance(embedding, dict):
+                        dim = self._embed_dim.get(key)
+                        if not dim:
+                            raise ValueError(f'dim of embed [{key}] is not determined.')
+                        new_embedding = [0] * dim
+                        for idx, val in embedding.items():
+                            new_embedding[int(idx)] = val
+                        new_embedding_dict[key] = new_embedding
+                    else:
+                        new_embedding_dict[key] = embedding
+                node.embedding = new_embedding_dict
+
             node.is_saved = True
             nodes.append(node)
         return nodes

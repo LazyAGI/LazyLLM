@@ -2,7 +2,6 @@ import os
 import shutil
 import unittest
 import lazyllm
-from unittest.mock import MagicMock
 from lazyllm.tools.rag.store import DocNode, ChromadbStore, LAZY_ROOT_NAME
 
 
@@ -24,8 +23,8 @@ def clear_directory(directory_path):
 class TestChromadbStore(unittest.TestCase):
     def setUp(self):
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
-        self.embed = {"default": MagicMock(side_effect=lambda text: [0.1, 0.2, 0.3])}
-        self.store = ChromadbStore(self.node_groups, self.embed)
+        self.embed_dim = {"default": 3}
+        self.store = ChromadbStore(self.node_groups, self.embed_dim)
         self.store.add_nodes(
             [DocNode(uid="1", text="text1", group=LAZY_ROOT_NAME, parent=None)],
         )
@@ -66,6 +65,25 @@ class TestChromadbStore(unittest.TestCase):
         self.assertEqual(nodes[0].uid, "1")
         self.assertEqual(nodes[1].uid, "2")
         self.assertEqual(nodes[1].parent.uid, "1")
+
+    def test_insert_dict_as_sparse_embedding(self):
+        node1 = DocNode(uid="1", text="text1", group="group1", embedding={'default': {1: 10, 2: 20}})
+        node2 = DocNode(uid="2", text="text2", group="group1", embedding={'default': {0: 30, 2: 50}})
+        orig_embedding_dict = {
+            node1.uid: [0, 10, 20],
+            node2.uid: [30, 0, 50],
+        }
+        self.store.add_nodes([node1, node2])
+
+        results = self.store._peek_all_documents('group1')
+        nodes = self.store._build_nodes_from_chroma(results)
+        nodes_dict = {
+            node.uid: node for node in nodes
+        }
+
+        assert nodes_dict.keys() == orig_embedding_dict.keys()
+        for uid, node in nodes_dict.items():
+            assert node.embedding['default'] == orig_embedding_dict.get(uid)
 
 
 if __name__ == "__main__":

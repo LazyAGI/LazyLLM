@@ -28,9 +28,9 @@ class TestEngine(object):
                                 nodes={'music': music, 'draw': draw, 'chat': chat}))]
         edges = [dict(iid="__start__", oid="4"), dict(iid="4", oid="__end__")]
         engine = LightEngine()
-        engine.start(nodes, edges, resources)
-        assert engine.run("sing a song") == 'Music get sing a song'
-        assert engine.run("draw a hourse") == 'Draw get draw a hourse'
+        gid = engine.start(nodes, edges, resources)
+        assert engine.run(gid, "sing a song") == 'Music get sing a song'
+        assert engine.run(gid, "draw a hourse") == 'Draw get draw a hourse'
 
     def test_toolsforllm(self):
         resources = [
@@ -49,8 +49,8 @@ class TestEngine(object):
                       args=dict(tools=['1001', '1002', '1003', '1004']))]
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
-        engine.start(nodes, edges, resources)
-        assert '22' in engine.run([dict(name='get_current_weather', arguments=dict(location='Paris'))])[0]
+        gid = engine.start(nodes, edges, resources)
+        assert '22' in engine.run(gid, [dict(name='get_current_weather', arguments=dict(location='Paris'))])[0]
 
     def test_fc(self):
         resources = [
@@ -70,23 +70,23 @@ class TestEngine(object):
                       args=dict(llm='0', tools=['1001', '1002', '1003', '1004']))]
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
-        engine.start(nodes, edges, resources)
-        assert '10' in engine.run("What's the weather like today in celsius in Tokyo.")
-        assert '22' in engine.run("What will the temperature be in degrees Celsius in Paris tomorrow?")
+        gid = engine.start(nodes, edges, resources)
+        assert '10' in engine.run(gid, "What's the weather like today in celsius in Tokyo.")
+        assert '22' in engine.run(gid, "What will the temperature be in degrees Celsius in Paris tomorrow?")
 
         nodes = [dict(id="2", kind="FunctionCall", name="re",
                       args=dict(llm='0', tools=['1003', '1004'], algorithm='React'))]
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
         engine = LightEngine()
-        engine.start(nodes, edges, resources)
-        assert '5440' in engine.run("Calculate 20*(45+23)*4, step by step.")
+        gid = engine.start(nodes, edges, resources)
+        assert '5440' in engine.run(gid, "Calculate 20*(45+23)*4, step by step.")
 
         nodes = [dict(id="3", kind="FunctionCall", name="re",
                       args=dict(llm='0', tools=['1003', '1004'], algorithm='PlanAndSolve'))]
         edges = [dict(iid="__start__", oid="3"), dict(iid="3", oid="__end__")]
         engine = LightEngine()
-        engine.start(nodes, edges, resources)
-        assert '5440' in engine.run("Calculate 20*(45+23)*(1+3), step by step.")
+        gid = engine.start(nodes, edges, resources)
+        assert '5440' in engine.run(gid, "Calculate 20*(45+23)*(1+3), step by step.")
 
     def test_rag(self):
         prompt = ("作为国学大师，你将扮演一个人工智能国学问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的已知国学篇章以及"
@@ -117,8 +117,8 @@ class TestEngine(object):
                  dict(iid='4', oid='5'), dict(iid='__start__', oid='5'), dict(iid='5', oid='6'),
                  dict(iid='6', oid='__end__')]
         engine = LightEngine()
-        engine.start(nodes, edges, resources)
-        r = engine.run('何为天道?')
+        gid = engine.start(nodes, edges, resources)
+        r = engine.run(gid, '何为天道?')
         assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
 
     def test_sql_call(self):
@@ -154,8 +154,8 @@ class TestEngine(object):
         nodes = [dict(id="2", kind="SqlCall", name="sql_call", args=dict(sql_manager="0", llm="1", sql_examples=""))]
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
         engine = LightEngine()
-        engine.start(nodes, edges, resources)
-        str_answer = engine.run("员工编号是3的人来自哪个部门？")
+        gid = engine.start(nodes, edges, resources)
+        str_answer = engine.run(gid, "员工编号是3的人来自哪个部门？")
         assert "销售三部" in str_answer
 
         # 3. Release: delete data and table from database
@@ -178,9 +178,9 @@ class TestEngine(object):
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
         # TODO handle duplicated node id
-        engine.start(nodes, edges, resources)
+        gid = engine.start(nodes, edges, resources)
 
         city_name = 'Tokyo'
         unit = 'Celsius'
-        ret = engine.run(f"What is the temperature in {city_name} today in {unit}?")
+        ret = engine.run(gid, f"What is the temperature in {city_name} today in {unit}?")
         assert city_name in ret and unit in ret and '10' in ret

@@ -42,6 +42,7 @@ class DocImpl:
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
+        self._embed_dim = None
         self.store = None
 
     @once_wrapper(reset_on_pickle=True)
@@ -50,6 +51,8 @@ class DocImpl:
         node_groups.update(DocImpl._global_node_groups)
         node_groups.update(self.node_groups)
         self.node_groups = node_groups
+
+        self._embed_dim = {k: len(e('a')) for k, e in self.embed.items()}
 
         self.store = self._get_store()
         self.index = DefaultIndex(self.embed, self.store)
@@ -71,7 +74,7 @@ class DocImpl:
         if rag_store_type == "map":
             store = MapStore(node_groups=self.node_groups.keys())
         elif rag_store_type == "chroma":
-            store = ChromadbStore(node_groups=self.node_groups.keys(), embed=self.embed)
+            store = ChromadbStore(node_groups=self.node_groups.keys(), embed_dim=self._embed_dim)
             store.try_load_store()
         else:
             raise NotImplementedError(
@@ -155,12 +158,15 @@ class DocImpl:
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
                 continue
 
+            if self._kb_group_name == DocListManager.DEDAULT_GROUP_NAME:
+                self._dlm.init_tables()
             ids, files = self._list_files(status=DocListManager.Status.waiting,
                                           upload_status=DocListManager.Status.success)
             if files:
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
                 self._add_files(files)
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
+                continue
             time.sleep(10)
 
     def _list_files(self, status: str = DocListManager.Status.all, upload_status: str = DocListManager.Status.all
