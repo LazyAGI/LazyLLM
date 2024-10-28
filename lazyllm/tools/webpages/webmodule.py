@@ -36,7 +36,7 @@ class WebModule(ModuleBase):
         Appendix = 2
 
     def __init__(self, m, *, components=dict(), title='对话演示终端', port=None,
-                 history=[], text_mode=None, trace_mode=None, audio=False) -> None:
+                 history=[], text_mode=None, trace_mode=None, audio=False, stream=True) -> None:
         super().__init__()
         self.m = lazyllm.ActionModule(m) if isinstance(m, lazyllm.FlowBase) else m
         self.pool = lazyllm.ThreadPoolExecutor(max_workers=50)
@@ -53,6 +53,7 @@ class WebModule(ModuleBase):
         self.text_mode = text_mode if text_mode else WebModule.Mode.Dynamic
         self.cach_path = self._set_up_caching()
         self.audio = audio
+        self.stream = stream
         self.demo = self.init_web(components)
         self.url = None
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -91,7 +92,7 @@ class WebModule(ModuleBase):
                     with gr.Row():
                         chat_use_context = gr.Checkbox(interactive=True, value=False, label="使用上下文")
                     with gr.Row():
-                        stream_output = gr.Checkbox(interactive=True, value=True, label="流式输出")
+                        stream_output = gr.Checkbox(interactive=True, value=self.stream, label="流式输出")
                         text_mode = gr.Checkbox(interactive=(self.text_mode == WebModule.Mode.Dynamic),
                                                 value=(self.text_mode != WebModule.Mode.Refresh), label="追加输出")
                     components = []
