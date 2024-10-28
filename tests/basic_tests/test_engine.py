@@ -239,6 +239,32 @@ class TestEngine(object):
         assert engine.run(gid, '1') == dict(a='1', b='11', c='111')
         assert engine.run(gid, [1]) == dict(a=[1], b=[1, 1], c=[1, 1, 1])
 
+    def test_engine_update(self):
+        plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
+        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
+        square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
+        ifs = dict(id='4', kind='Ifs', name='i1', args=dict(
+            cond='def cond(x): return x < 10', true=[plus1, double], false=[square]
+        ))
+        nodes = [ifs]
+        edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
+        engine = LightEngine()
+        gid = engine.start(nodes, edges)
+        assert engine.run(gid, 1) == 4
+        assert engine.run(gid, 5) == 12
+        assert engine.run(gid, 10) == 100
+
+        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 3 * x\n')
+        ifs = dict(id='4', kind='Ifs', name='i1', args=dict(
+            cond='def cond(x): return x < 10', true=[plus1, double], false=[square]
+        ))
+        nodes = [ifs]
+        engine.update(gid, nodes, edges)
+
+        assert engine.run(gid, 1) == 6
+        assert engine.run(gid, 5) == 18
+        assert engine.run(gid, 10) == 100
+
     def test_engine_join_join(self):
         nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
                  dict(id='1', kind='Code', name='c2', args='def test(x: int): return 2 * x'),
