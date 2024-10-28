@@ -1,6 +1,7 @@
 from .engine import Engine, Node
 from lazyllm import once_wrapper
 from typing import List, Dict, Optional, Set, Union
+import copy
 import uuid
 
 
@@ -49,7 +50,8 @@ class LightEngine(Engine):
             Engine().build_node(nodes)
         else:
             gid, name = gid or str(uuid.uuid4().hex), name or str(uuid.uuid4().hex)
-            node = Node(id=gid, kind='Graph', name=name, args=dict(nodes=nodes, edges=edges, resources=resources))
+            node = Node(id=gid, kind='Graph', name=name, args=dict(
+                nodes=copy.copy(nodes), edges=copy.copy(edges), resources=copy.copy(resources)))
             self.build_node(node).func.start()
             return gid
 
