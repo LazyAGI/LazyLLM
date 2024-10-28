@@ -41,7 +41,7 @@ def _gen_func_from_str(func_str, orig_docstring, global_env=None):
     f.__doc__ = orig_docstring
     return f
 
-def _check_return_info_is_the_same(doc_type_hints, func_type_hints) -> None:
+def _check_return_type_is_the_same(doc_type_hints, func_type_hints) -> None:
     func_return_type = func_type_hints.get('return') if func_type_hints else None
     doc_return_type = doc_type_hints.get('return') if doc_type_hints else None
     if func_return_type is not None and doc_return_type is not None:
@@ -74,7 +74,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         func_type_hints = get_type_hints(func, globals(), locals())
 
-        _check_return_info_is_the_same(doc_type_hints, func_type_hints)
+        _check_return_type_is_the_same(doc_type_hints, func_type_hints)
 
         signature = inspect.signature(func)
         has_var_args = False
