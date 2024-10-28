@@ -32,6 +32,7 @@ class LightEngine(Engine):
         for nodeid in node_ids:
             self.stop(nodeid)
             # TODO(wangzhihong): Analyze dependencies and only allow deleting nodes without dependencies
+            [self._nodes.pop(id) for id in self.subnodes(nodeid, recursive=True)]
             self._nodes.pop(nodeid)
 
     def update_node(self, node):
@@ -81,8 +82,8 @@ class LightEngine(Engine):
                edges: List[Dict] = [], resources: List[Dict] = []) -> str:
         if isinstance(gid_or_nodes, str):
             assert (gid := gid_or_nodes) in self._nodes
-            name = self.build_node(gid).name
-            self.release_node(self.subnodes(gid, recursive=True))
+            name = self._nodes[gid].name
+            self.release_node(gid)
             self.start(nodes, edges, resources, gid_or_nodes, name=name)
         else:
             for node in gid_or_nodes: self.update_node(node)

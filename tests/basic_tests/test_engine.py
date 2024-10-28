@@ -250,7 +250,7 @@ class TestEngine(object):
         gid = engine.start(nodes, edges)
         assert engine.run(gid, '1') == '111111'
 
-        nodes[-1] = [dict(id='3', kind='JoinFormatter', name='join', args=dict(type='join', symbol='\n'))]
+        nodes[-1] = dict(id='3', kind='JoinFormatter', name='join', args=dict(type='join', symbol='\n'))
         engine.update(gid, nodes, edges)
         assert engine.run(gid, '1') == '1\n11\n111'
 
