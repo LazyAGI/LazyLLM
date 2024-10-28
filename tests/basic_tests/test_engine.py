@@ -250,8 +250,8 @@ class TestEngine(object):
         gid = engine.start(nodes, edges)
         assert engine.run(gid, '1') == '111111'
 
-        changed_nodes = [dict(id='3', kind='JoinFormatter', name='join', args=dict(type='join', symbol='\n'))]
-        engine.update(nodes, changed_nodes, edges, gid=gid)
+        nodes[-1] = [dict(id='3', kind='JoinFormatter', name='join', args=dict(type='join', symbol='\n'))]
+        engine.update(gid, nodes, edges)
         assert engine.run(gid, '1') == '1\n11\n111'
 
     def test_engine_server(self):
@@ -385,16 +385,16 @@ class TestEngineRAG(object):
         assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
 
         # test add doc_group
-        changed_resources = [dict(id='0', kind='Document', name='d1', args=dict(
+        resources[-1] = [dict(id='0', kind='Document', name='d1', args=dict(
             dataset_path='rag_master', node_group=[dict(name='sentence', transform='SentenceSplitter',
                                                         chunk_size=100, chunk_overlap=10)]))]
-        changed_nodes = [dict(id='2', kind='Retriever', name='ret2',
-                              args=dict(doc='0', group_name='sentence', similarity='bm25', topk=3)),
-                         dict(id='3', kind='JoinFormatter', name='c', args=dict(type='sum'))]
+        nodes.extend([dict(id='2', kind='Retriever', name='ret2',
+                           args=dict(doc='0', group_name='sentence', similarity='bm25', topk=3)),
+                      dict(id='3', kind='JoinFormatter', name='c', args=dict(type='sum'))])
         edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='1', oid='3'),
                  dict(iid='2', oid='3'), dict(iid='3', oid='4'), dict(iid='__start__', oid='4'),
                  dict(iid='4', oid='5'), dict(iid='__start__', oid='5'), dict(iid='5', oid='6'),
                  dict(iid='6', oid='__end__')]
         engine = LightEngine()
-        engine.update(nodes + changed_nodes, changed_nodes, edges, changed_resources, gid=gid)
+        engine.update(gid, nodes, edges, resources)
         assert '观天之道，执天之行' in engine.run(gid, '何为天道?')

@@ -1,6 +1,6 @@
 from .engine import Engine, Node
 from lazyllm import once_wrapper
-from typing import List, Dict, Optional, Set, Any, Union
+from typing import List, Dict, Optional, Set, Union
 import uuid
 
 
@@ -77,17 +77,15 @@ class LightEngine(Engine):
             elif node.kind in ('Graph', 'LocalLLM', 'LocalEmbedding', 'SD', 'TTS', 'STT', 'VQA'):
                 node.func.stop()
 
-    def update(self, nodes: List[Dict] = [], changed_nodes: List[Dict] = [],
-               edges: List[Dict] = [], changed_resources: List[Dict] = [],
-               gid: Optional[str] = None, name: Optional[str] = None):
-        for r in changed_resources:
-            if r['kind'] in ('server', 'web'):
-                raise NotImplementedError('Web and Api server are not allowed now')
-            self.update_node(r)
-        for n in changed_nodes: self.update_node(n)
-        gid, name = gid or str(uuid.uuid4().hex), name or str(uuid.uuid4().hex)
-        node = Node(id=gid, kind='Graph', name=name, args=dict(nodes=nodes, edges=edges))
-        self.update_node(node).func.start()
+    def update(self, gid_or_nodes: Union[str, Dict, List[Dict]], nodes: List[Dict],
+               edges: List[Dict] = [], resources: List[Dict] = []) -> str:
+        if isinstance(gid_or_nodes, str):
+            assert (gid := gid_or_nodes) in self._nodes
+            name = self.build_node(gid).name
+            self.release_node(self.subnodes(gid, recursive=True))
+            self.start(nodes, edges, resources, gid_or_nodes, name=name)
+        else:
+            for node in gid_or_nodes: self.update_node(node)
 
     def run(self, id: str, *args, **kw):
         return self.build_node(id).func(*args, **kw)

@@ -58,12 +58,21 @@ class Engine(object):
         return _constructor.build(node)
 
     def reset(self):
+        for node in self._nodes:
+            self.stop(node)
         self.__init__.flag.reset()
         self.__init__()
 
     def __del__(self):
         self.stop()
         self.reset()
+
+    def subnodes(self, nodeid: str, recursive: bool = False):
+        def _impl(nid, recursive):
+            for id in self._nodes[nid].subitems:
+                yield id
+                if recursive: yield from self.subnodes(id, True)
+        return list(_impl(nodeid, recursive))
 
 
 class NodeConstructor(object):
