@@ -488,12 +488,13 @@ class _TrainableModuleImpl(ModuleBase):
         #                    Then support Option for base_model
         self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model)
         self._target_path = target_path if target_path else os.path.join(os.getcwd(), 'save_ckpt')
-        self._train, self._finetune, self._deploy = train, finetune, deploy
         self._stream = stream
         self._father = []
         self._launchers: Dict[str, Dict[str, Launcher]] = dict(default=dict(), manual=dict())
         self._deployer = None
         self._specific_target_path = None
+        self._train, self._finetune = train, finetune
+        self.deploy_method(deploy)
 
     def _add_father(self, father):
         if father not in self._father: self._father.append(father)
@@ -604,7 +605,7 @@ class _TrainableModuleImpl(ModuleBase):
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_train_or_deploy_args('deploy', disable=['target_path'])
-        if self._deploy is not lazyllm.deploy.AutoDeploy:
+        if self._deploy and self._deploy is not lazyllm.deploy.AutoDeploy:
             self._set_template(self._deploy)
             if url := self._deploy_args.get('url', None):
                 assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
@@ -670,12 +671,14 @@ class TrainableModule(UrlModule):
             return lazyllm.deploy.AutoDeploy
 
     def wait(self):
-        # TODO(wangzhihong): Split finetune launcher and deploy launcher; Only one deploy launcher is allowed.
-        for launcher in self._impl._launchers:
+        if launcher := self._impl._launchers['default'].get('deploy'):
             launcher.wait()
 
     def stop(self, task_name: Optional[str] = None):
-        launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
+        try:
+            launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
+        except KeyError:
+            raise RuntimeError('Cannot stop an unstarted task')
         if not task_name: self._impl._get_deploy_tasks.flag.reset()
         launcher.cleanup()
 

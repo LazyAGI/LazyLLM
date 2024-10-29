@@ -20,7 +20,7 @@ class Node():
 
     @property
     def subitems(self) -> List[str]:
-        if not self.subitem_name: return None
+        if not self.subitem_name: return []
         names = [self.subitem_name] if isinstance(self.subitem_name, str) else self.subitem_name
         result = []
         for name in names:

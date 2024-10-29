@@ -359,7 +359,11 @@ class WebModule(ModuleBase):
         if self.demo:
             self.demo.close()
             del self.demo
-            self.demo = None
+            self.demo, self.url = None, ''
+
+    @property
+    def status(self):
+        return 'running' if self.url else 'waiting' if self.url is None else 'Cancelled'
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Web', name=self._module_name, subs=[repr(self.m)])
