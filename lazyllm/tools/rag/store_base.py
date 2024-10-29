@@ -30,7 +30,7 @@ class StoreBase(ABC):
         raise NotImplementedError("not implemented yet.")
 
     @abstractmethod
-    def remove_group_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
+    def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
         '''
         Removes sepcified `DocNode`s in the group named `group_name`.
         Group `group_name` will be removed if `uids` is `None` or `[]`.

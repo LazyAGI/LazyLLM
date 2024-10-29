@@ -28,8 +28,8 @@ class StoreWrapper(StoreBase):
     def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
         return self._store.get_nodes(group_name, uids)
 
-    def remove_group_nodes(self, group_name: str, uids: List[str] = None) -> None:
-        self._store.remove_group_nodes(group_name, uids)
+    def remove_nodes(self, group_name: str, uids: List[str] = None) -> None:
+        self._store.remove_nodes(group_name, uids)
         self._remove_from_indices(self._name2index, uids, group_name)
 
     def group_is_active(self, group_name: str) -> bool:
@@ -84,7 +84,7 @@ class MapStore(StoreBase):
         return ret
 
     # override
-    def remove_group_nodes(self, group_name: str, uids: List[str] = None) -> None:
+    def remove_nodes(self, group_name: str, uids: List[str] = None) -> None:
         if uids:
             docs = self._group2docs.get(group_name)
             if docs:
@@ -149,12 +149,12 @@ class ChromadbStore(StoreBase):
         return self._map_store.get_nodes(group_name, uids)
 
     # override
-    def remove_group_nodes(self, group_name: str, uids: List[str]) -> None:
+    def remove_nodes(self, group_name: str, uids: List[str]) -> None:
         if uids:
             self._delete_group_nodes(group_name, uids)
         else:
             self._db_client.delete_collection(name=group_name)
-        return self._map_store.remove_group_nodes(group_name, uids)
+        return self._map_store.remove_nodes(group_name, uids)
 
     # override
     def group_is_active(self, group_name: str) -> bool:

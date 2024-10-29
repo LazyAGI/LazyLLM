@@ -266,7 +266,7 @@ class DocImpl:
 
         # Delete nodes in all groups
         for group, node_uids in uids_to_delete.items():
-            self.store.remove_group_nodes(group, node_uids)
+            self.store.remove_nodes(group, node_uids)
             LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
     def _dynamic_create_nodes(self, group_name: str, store: StoreBase) -> None:

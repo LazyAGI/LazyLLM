@@ -52,7 +52,7 @@ class TestChromadbStore(unittest.TestCase):
         self.store.update_nodes([node1, node2])
         collection = self.store._collections["group1"]
         self.assertEqual(collection.peek(collection.count())["ids"], ["1", "2"])
-        self.store.remove_group_nodes("group1", "1")
+        self.store.remove_nodes("group1", "1")
         self.assertEqual(collection.peek(collection.count())["ids"], ["2"])
 
     def test_load_store(self):
@@ -130,13 +130,13 @@ class TestMapStore(unittest.TestCase):
 
         n1 = self.store.get_nodes("group1", ["1"])[0]
         assert n1.text == self.node1.text
-        self.store.remove_group_nodes("group1", ["1"])
+        self.store.remove_nodes("group1", ["1"])
         n1 = self.store.get_nodes("group1", ["1"])
         assert not n1
 
         n2 = self.store.get_nodes("group1", ["2"])[0]
         assert n2.text == self.node2.text
-        self.store.remove_group_nodes("group1", ["2"])
+        self.store.remove_nodes("group1", ["2"])
         n2 = self.store.get_nodes("group1", ["2"])
         assert not n2
 

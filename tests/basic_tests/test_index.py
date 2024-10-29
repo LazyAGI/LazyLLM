@@ -159,7 +159,7 @@ class TestMilvusIndex(unittest.TestCase):
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0].uid, self.node2.uid)
 
-        self.map_store.remove_group_nodes("group1", [self.node2.uid])
+        self.map_store.remove_nodes("group1", [self.node2.uid])
         ret = self.index.query(query='test', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0].uid, self.node1.uid)
