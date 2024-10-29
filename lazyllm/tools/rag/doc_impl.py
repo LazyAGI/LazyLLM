@@ -292,8 +292,7 @@ class DocImpl:
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None) -> List[DocNode]:
         self._lazy_init()
 
-        index_instance = self.store.get_index(type_name=index)
-        if not index_instance:
+        if not index_instance := self.store.get_index(type_name=index):
             raise NotImplementedError(f"index type '{index}' is not supported currently.")
 
         self._dynamic_create_nodes(group_name, self.store)
