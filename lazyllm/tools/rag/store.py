@@ -16,42 +16,6 @@ config.add("rag_persistent_path", str, "./lazyllm_chroma", "RAG_PERSISTENT_PATH"
 
 # ---------------------------------------------------------------------------- #
 
-class StoreWrapper(StoreBase):
-    def __init__(self, store: StoreBase):
-        self._store = store
-        self._name2index = {}
-
-    def update_nodes(self, nodes: List[DocNode]) -> None:
-        self._store.update_nodes(nodes)
-        self._update_indices(self._name2index, nodes)
-
-    def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
-        return self._store.get_nodes(group_name, uids)
-
-    def remove_nodes(self, group_name: str, uids: List[str] = None) -> None:
-        self._store.remove_nodes(group_name, uids)
-        self._remove_from_indices(self._name2index, uids, group_name)
-
-    def group_is_active(self, group_name: str) -> bool:
-        return self._store.group_is_active(group_name)
-
-    def all_groups(self) -> List[str]:
-        return self._store.all_groups()
-
-    def register_index(self, type_name: str, index: IndexBase) -> None:
-        self._name2index[type_name] = index
-
-    def remove_index(self, type_name: str) -> None:
-        self._name2index.pop(type_name, None)
-
-    def get_index(self, type_name: str) -> Optional[IndexBase]:
-        index = self._store.get_index(type_name)
-        if not index:
-            index = self._name2index.get(type_name)
-        return index
-
-# ---------------------------------------------------------------------------- #
-
 class MapStore(StoreBase):
     def __init__(self, node_groups: List[str]):
         # Dict[group_name, Dict[uuid, DocNode]]
@@ -97,8 +61,8 @@ class MapStore(StoreBase):
                 self._remove_from_indices(self._name2index, [doc.uid for doc in docs])
 
     # override
-    def group_is_active(self, group_name: str) -> bool:
-        docs = self._group2docs.get(group_name)
+    def is_group_active(self, name: str) -> bool:
+        docs = self._group2docs.get(name)
         return True if docs else False
 
     # override
@@ -106,16 +70,12 @@ class MapStore(StoreBase):
         return self._group2docs.keys()
 
     # override
-    def register_index(self, type_name: str, index: IndexBase) -> None:
-        self._name2index[type_name] = index
+    def register_index(self, type: str, index: IndexBase) -> None:
+        self._name2index[type] = index
 
     # override
-    def remove_index(self, type_name: str) -> None:
-        self._name2index.pop(type_name, None)
-
-    # override
-    def get_index(self, type_name: str) -> Optional[IndexBase]:
-        return self._name2index.get(type_name)
+    def get_index(self, type: str) -> Optional[IndexBase]:
+        return self._name2index.get(type)
 
     def find_node_by_uid(self, uid: str) -> Optional[DocNode]:
         for docs in self._group2docs.values():
@@ -157,24 +117,20 @@ class ChromadbStore(StoreBase):
         return self._map_store.remove_nodes(group_name, uids)
 
     # override
-    def group_is_active(self, group_name: str) -> bool:
-        return self._map_store.group_is_active(group_name)
+    def is_group_active(self, name: str) -> bool:
+        return self._map_store.is_group_active(name)
 
     # override
     def all_groups(self) -> List[str]:
         return self._map_store.all_groups()
 
     # override
-    def register_index(self, type_name: str, index: IndexBase) -> None:
-        self._map_store.register_index(type_name, index)
+    def register_index(self, type: str, index: IndexBase) -> None:
+        self._map_store.register_index(type, index)
 
     # override
-    def remove_index(self, type_name: str) -> Optional[IndexBase]:
-        return self._map_store.remove_index(type_name)
-
-    # override
-    def get_index(self, type_name: str) -> Optional[IndexBase]:
-        return self._map_store.get_index(type_name)
+    def get_index(self, type: str) -> Optional[IndexBase]:
+        return self._map_store.get_index(type)
 
     def _load_store(self) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:

@@ -97,8 +97,8 @@ class TestChromadbStore(unittest.TestCase):
         node1 = DocNode(uid="1", text="text1", group="group1", parent=None)
         node2 = DocNode(uid="2", text="text2", group="group1", parent=node1)
         self.store.update_nodes([node1, node2])
-        self.assertEqual(self.store.group_is_active("group1"), True)
-        self.assertEqual(self.store.group_is_active("group2"), False)
+        self.assertEqual(self.store.is_group_active("group1"), True)
+        self.assertEqual(self.store.is_group_active("group2"), False)
 
 class TestMapStore(unittest.TestCase):
     def setUp(self):
@@ -145,5 +145,5 @@ class TestMapStore(unittest.TestCase):
 
     def test_group_others(self):
         self.store.update_nodes([self.node1, self.node2])
-        self.assertEqual(self.store.group_is_active("group1"), True)
-        self.assertEqual(self.store.group_is_active("group2"), False)
+        self.assertEqual(self.store.is_group_active("group1"), True)
+        self.assertEqual(self.store.is_group_active("group2"), False)
