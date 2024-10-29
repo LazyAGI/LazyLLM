@@ -91,7 +91,7 @@ class TestChromadbStore(unittest.TestCase):
             assert node.embedding['default'] == orig_embedding_dict.get(uid)
 
     def test_group_names(self):
-        self.assertEqual(set(self.store.group_names()), set(self.node_groups))
+        self.assertEqual(set(self.store.all_groups()), set(self.node_groups))
 
     def test_group_others(self):
         node1 = DocNode(uid="1", text="text1", group="group1", parent=None)
@@ -141,7 +141,7 @@ class TestMapStore(unittest.TestCase):
         assert not n2
 
     def test_group_names(self):
-        self.assertEqual(set(self.store.group_names()), set(self.node_groups))
+        self.assertEqual(set(self.store.all_groups()), set(self.node_groups))
 
     def test_group_others(self):
         self.store.update_nodes([self.node1, self.node2])

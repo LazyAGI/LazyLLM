@@ -14,7 +14,7 @@ import time
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
-class FileNodeIndex(IndexBase):
+class _FileNodeIndex(IndexBase):
     def __init__(self):
         self._file_node_map = {}
 
@@ -77,9 +77,9 @@ class DocImpl:
             self.store = None
 
     @staticmethod
-    def _create_file_node_index(store) -> FileNodeIndex:
-        index = FileNodeIndex()
-        for group in store.group_names():
+    def _create_file_node_index(store) -> _FileNodeIndex:
+        index = _FileNodeIndex()
+        for group in store.all_groups():
             index.update(store.get_nodes(group))
         return index
 
@@ -232,9 +232,9 @@ class DocImpl:
         root_nodes = self._reader.load_data(input_files)
         temp_store = self._create_store("map")
         temp_store.update_nodes(root_nodes)
-        group_names = self.store.group_names()
-        LOG.info(f"add_files: Trying to merge store with {group_names}")
-        for group in group_names:
+        all_groups = self.store.all_groups()
+        LOG.info(f"add_files: Trying to merge store with {all_groups}")
+        for group in all_groups:
             if not self.store.group_is_active(group):
                 continue
             # Duplicate group will be discarded automatically

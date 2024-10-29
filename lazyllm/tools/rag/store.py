@@ -35,8 +35,8 @@ class StoreWrapper(StoreBase):
     def group_is_active(self, group_name: str) -> bool:
         return self._store.group_is_active(group_name)
 
-    def group_names(self) -> List[str]:
-        return self._store.group_names()
+    def all_groups(self) -> List[str]:
+        return self._store.all_groups()
 
     def register_index(self, type_name: str, index: IndexBase) -> None:
         self._name2index[type_name] = index
@@ -102,7 +102,7 @@ class MapStore(StoreBase):
         return True if docs else False
 
     # override
-    def group_names(self) -> List[str]:
+    def all_groups(self) -> List[str]:
         return self._group2docs.keys()
 
     # override
@@ -161,8 +161,8 @@ class ChromadbStore(StoreBase):
         return self._map_store.group_is_active(group_name)
 
     # override
-    def group_names(self) -> List[str]:
-        return self._map_store.group_names()
+    def all_groups(self) -> List[str]:
+        return self._map_store.all_groups()
 
     # override
     def register_index(self, type_name: str, index: IndexBase) -> None:
@@ -188,7 +188,7 @@ class ChromadbStore(StoreBase):
             self._map_store.update_nodes(nodes)
 
         # Rebuild relationships
-        for group_name in self._map_store.group_names():
+        for group_name in self._map_store.all_groups():
             nodes = self._map_store.get_nodes(group_name)
             for node in nodes:
                 if node.parent:
