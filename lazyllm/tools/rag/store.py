@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional
 import chromadb
 from lazyllm import LOG, config
+from lazyllm.common import override
 from chromadb.api.models.Collection import Collection
 from .store_base import StoreBase
 from .index_base import IndexBase
@@ -18,20 +19,13 @@ config.add("rag_persistent_path", str, "./lazyllm_chroma", "RAG_PERSISTENT_PATH"
 
 class MapStore(StoreBase):
     def __init__(self, node_groups: List[str]):
+        super().__init__()
         # Dict[group_name, Dict[uuid, DocNode]]
         self._group2docs: Dict[str, Dict[str, DocNode]] = {
             group: {} for group in node_groups
         }
-        self._name2index = {}
 
-    # override
-    def update_nodes(self, nodes: List[DocNode]) -> None:
-        for node in nodes:
-            self._group2docs[node.group][node.uid] = node
-
-        self._update_indices(self._name2index, nodes)
-
-    # override
+    @override
     def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
         docs = self._group2docs.get(group_name)
         if not docs:
@@ -47,35 +41,29 @@ class MapStore(StoreBase):
                 ret.append(doc)
         return ret
 
-    # override
-    def remove_nodes(self, group_name: str, uids: List[str] = None) -> None:
-        if uids:
-            docs = self._group2docs.get(group_name)
-            if docs:
-                self._remove_from_indices(self._name2index, uids)
-                for uid in uids:
-                    docs.pop(uid, None)
-        else:
-            docs = self._group2docs.pop(group_name, None)
-            if docs:
-                self._remove_from_indices(self._name2index, [doc.uid for doc in docs])
-
-    # override
+    @override
     def is_group_active(self, name: str) -> bool:
         docs = self._group2docs.get(name)
         return True if docs else False
 
-    # override
+    @override
     def all_groups(self) -> List[str]:
         return self._group2docs.keys()
 
-    # override
-    def register_index(self, type: str, index: IndexBase) -> None:
-        self._name2index[type] = index
+    @override
+    def _update_nodes(self, nodes: List[DocNode]) -> None:
+        for node in nodes:
+            self._group2docs[node.group][node.uid] = node
 
-    # override
-    def get_index(self, type: str) -> Optional[IndexBase]:
-        return self._name2index.get(type)
+    @override
+    def _remove_nodes(self, group_name: str, uids: List[str] = None) -> None:
+        if uids:
+            docs = self._group2docs.get(group_name)
+            if docs:
+                for uid in uids:
+                    docs.pop(uid, None)
+        else:
+            self._group2docs.pop(group_name, None)
 
     def find_node_by_uid(self, uid: str) -> Optional[DocNode]:
         for docs in self._group2docs.values():
@@ -90,6 +78,7 @@ class ChromadbStore(StoreBase):
     def __init__(
         self, node_groups: List[str], embed_dim: Dict[str, int]
     ) -> None:
+        super().__init__()
         self._map_store = MapStore(node_groups)
         self._db_client = chromadb.PersistentClient(path=config["rag_persistent_path"])
         LOG.success(f"Initialzed chromadb in path: {config['rag_persistent_path']}")
@@ -99,38 +88,30 @@ class ChromadbStore(StoreBase):
         }
         self._embed_dim = embed_dim
 
-    # override
-    def update_nodes(self, nodes: List[DocNode]) -> None:
-        self._map_store.update_nodes(nodes)
-        self._save_nodes(nodes)
-
-    # override
+    @override
     def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
         return self._map_store.get_nodes(group_name, uids)
 
-    # override
-    def remove_nodes(self, group_name: str, uids: List[str]) -> None:
+    @override
+    def is_group_active(self, name: str) -> bool:
+        return self._map_store.is_group_active(name)
+
+    @override
+    def all_groups(self) -> List[str]:
+        return self._map_store.all_groups()
+
+    @override
+    def _update_nodes(self, nodes: List[DocNode]) -> None:
+        self._map_store.update_nodes(nodes)
+        self._save_nodes(nodes)
+
+    @override
+    def _remove_nodes(self, group_name: str, uids: List[str]) -> None:
         if uids:
             self._delete_group_nodes(group_name, uids)
         else:
             self._db_client.delete_collection(name=group_name)
         return self._map_store.remove_nodes(group_name, uids)
-
-    # override
-    def is_group_active(self, name: str) -> bool:
-        return self._map_store.is_group_active(name)
-
-    # override
-    def all_groups(self) -> List[str]:
-        return self._map_store.all_groups()
-
-    # override
-    def register_index(self, type: str, index: IndexBase) -> None:
-        self._map_store.register_index(type, index)
-
-    # override
-    def get_index(self, type: str) -> Optional[IndexBase]:
-        return self._map_store.get_index(type)
 
     def _load_store(self) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:

@@ -14,6 +14,12 @@ except ImportError:
     _F = typing.TypeVar("_F", bound=Callable[..., Any])
     def final(f: _F) -> _F: return f
 
+try:
+    from typing import override
+except ImportError:
+    def override(func: Callable):
+        return func
+
 
 class FlatList(list):
     def absorb(self, item):

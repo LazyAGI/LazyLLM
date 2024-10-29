@@ -78,7 +78,7 @@ class TestChromadbStore(unittest.TestCase):
             node1.uid: [0, 10, 20],
             node2.uid: [30, 0, 50],
         }
-        self.store.add_nodes([node1, node2])
+        self.store.update_nodes([node1, node2])
 
         results = self.store._peek_all_documents('group1')
         nodes = self.store._build_nodes_from_chroma(results)

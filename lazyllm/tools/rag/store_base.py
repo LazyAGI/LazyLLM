@@ -42,12 +42,12 @@ class StoreBase(ABC):
         pass
 
     @staticmethod
-    def _update_indices(name2index: Dict[str, BaseIndex], nodes: List[DocNode]) -> None:
+    def _update_indices(name2index: Dict[str, IndexBase], nodes: List[DocNode]) -> None:
         for _, index in name2index.items():
             index.update(nodes)
 
     @staticmethod
-    def _remove_from_indices(name2index: Dict[str, BaseIndex], uids: List[str],
+    def _remove_from_indices(name2index: Dict[str, IndexBase], uids: List[str],
                              group_name: Optional[str] = None) -> None:
         for _, index in name2index.items():
             index.remove(uids, group_name)

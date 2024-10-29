@@ -7,7 +7,9 @@ from .index_base import IndexBase
 import numpy as np
 from .component.bm25 import BM25
 from lazyllm import LOG, config, ThreadPoolExecutor
+from lazyllm.common import override
 import pymilvus
+from pymilvus.client.abstract import AnnSearchRequest, BaseRanker
 
 # ---------------------------------------------------------------------------- #
 
@@ -85,15 +87,15 @@ class DefaultIndex(IndexBase):
 
         return decorator(func) if func else decorator
 
-    # override
+    @override
     def update(self, nodes: List[DocNode]) -> None:
         pass
 
-    # override
+    @override
     def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
         pass
 
-    # override
+    @override
     def query(
         self,
         query: str,
@@ -176,8 +178,9 @@ def register_similarity(
 
 class MilvusIndex(IndexBase):
     class Field:
-        def __init__(self, name: str, data_type: pymilvus.DataType, index_type: str,
-                     metric_type: str, index_params={}, dim: Optional[int] = None):
+        def __init__(self, name: str, data_type: pymilvus.DataType,
+                     metric_type: str, index_type: Optional[str] = None,
+                     index_params={}, dim: Optional[int] = None):
             self.name = name
             self.data_type = data_type
             self.index_type = index_type
@@ -185,8 +188,7 @@ class MilvusIndex(IndexBase):
             self.index_params = index_params
             self.dim = dim
 
-    def __init__(self, embed: Dict[str, Callable],
-                 group_fields: Dict[str, List[MilvusIndex.Field]],
+    def __init__(self, embed: Dict[str, Callable], group_fields: Dict[str, List[Field]],
                  uri: str, full_data_store: StoreBase):
         self._embed = embed
         self._full_data_store = full_data_store
@@ -219,7 +221,7 @@ class MilvusIndex(IndexBase):
             self._client.create_collection(collection_name=group_name, schema=schema,
                                            index_params=index_params)
 
-    # override
+    @override
     def update(self, nodes: List[DocNode]) -> None:
         parallel_do_embedding(self._embed, nodes)
         for node in nodes:
@@ -227,7 +229,7 @@ class MilvusIndex(IndexBase):
             data[self._primary_key] = node.uid
             self._client.upsert(collection_name=node.group, data=data)
 
-    # override
+    @override
     def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
         if group_name:
             self._client.delete(collection_name=group_name,
@@ -237,22 +239,22 @@ class MilvusIndex(IndexBase):
                 self._client.delete(collection_name=group_name,
                                     filter=f'{self._primary_key} in {uids}')
 
-    # override
+    @override
     def query(self,
-              query: str,
               group_name: str,
-              embed_keys: Optional[List[str]] = None,
-              topk: int = 10,
+              req: AnnSearchRequest,
+              ranker: BaseRanker,
+              limit: int = 10,
+              timeout: Optional[float] = None,
               **kwargs) -> List[DocNode]:
-        uids = set()
-        for embed_name in embed_keys:
-            embed_func = self._embed.get(embed_name)
-            query_embedding = embed_func(query)
-            results = self._client.search(collection_name=group_name, data=[query_embedding],
-                                          limit=topk, anns_field=embed_name)
-            if len(results) > 0:
-                # we have only one `data` for search() so there is only one result in `results`
-                for result in results[0]:
-                    uids.update(result['id'])
+        results = self._client.hybrid_search(
+            collection_name=group_name, reqs=[req], ranker=ranker, limit=limit,
+            timeout=timeout)
+        if len(results) != 1:
+            raise ValueError(f'return results size [{len(results)}] != 1')
 
-        return self._full_data_store.get_nodes(group_name, list(uids))
+        uids = []
+        for record in results[0]:
+            uids.append(record['id'])
+
+        return self._full_data_store.get_group_nodes(group_name, uids)

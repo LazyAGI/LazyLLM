@@ -3,6 +3,7 @@ from collections import defaultdict
 from functools import wraps
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple
 from lazyllm import LOG, config, once_wrapper
+from lazyllm.common import override
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
 from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, StoreBase
@@ -20,7 +21,7 @@ class _FileNodeIndex(IndexBase):
     def __init__(self):
         self._file_node_map = {}
 
-    # override
+    @override
     def update(self, nodes: List[DocNode]) -> None:
         for node in nodes:
             if node.group != LAZY_ROOT_NAME:
@@ -29,13 +30,13 @@ class _FileNodeIndex(IndexBase):
             if file_name:
                 self._file_node_map[file_name] = node
 
-    # override
+    @override
     def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
         # group_name is ignored
         left = {k: v for k, v in self._file_node_map.items() if v.uid not in uids}
         self._file_node_map = left
 
-    # override
+    @override
     def query(self, files: List[str]) -> List[DocNode]:
         ret = []
         for file in files:
@@ -329,7 +330,8 @@ class DocImpl:
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None) -> List[DocNode]:
         self._lazy_init()
 
-        if not index_instance := self.store.get_index(type=index):
+        index_instance = self.store.get_index(type=index)
+        if not index_instance:
             raise NotImplementedError(f"index type '{index}' is not supported currently.")
 
         self._dynamic_create_nodes(group_name, self.store)
