@@ -605,7 +605,7 @@ class _TrainableModuleImpl(ModuleBase):
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_train_or_deploy_args('deploy', disable=['target_path'])
-        if self._deploy is not lazyllm.deploy.AutoDeploy:
+        if self._deploy and self._deploy is not lazyllm.deploy.AutoDeploy:
             self._set_template(self._deploy)
             if url := self._deploy_args.get('url', None):
                 assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
