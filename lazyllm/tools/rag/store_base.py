@@ -6,97 +6,35 @@ from .index_base import IndexBase
 class StoreBase(ABC):
     @abstractmethod
     def update_nodes(self, nodes: List[DocNode]) -> None:
-        '''
-        Inserts or updates a list of `DocNode` to this store.
-
-        Args:
-            nodes (List[DocNode]): nodes to be inserted or updated.
-        '''
-        raise NotImplementedError("not implemented yet.")
+        pass
 
     @abstractmethod
     def get_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:
-        '''
-        Returns a list of `DocNode` specified by `uids` in the group named `group_name`.
-        All `DocNode`s in the group `group_name` will be returned if `uids` is `None` or `[]`.
-
-        Args:
-            group_name (str): the name of group.
-            uids (List[str]): a list of doc ids.
-
-        Returns:
-            List[DocNode]: the result.
-        '''
-        raise NotImplementedError("not implemented yet.")
+        pass
 
     @abstractmethod
     def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
-        '''
-        Removes sepcified `DocNode`s in the group named `group_name`.
-        Group `group_name` will be removed if `uids` is `None` or `[]`.
-
-        Args:
-            group_name (str): the name of group.
-            uids (List[str]): a list of doc ids.
-        '''
-        raise NotImplementedError("not implemented yet.")
+        pass
 
     @abstractmethod
     def group_is_active(self, group_name: str) -> bool:
-        '''
-        Returns `True` if a group named `group_name` exists or has at least one `DocNode`.
-
-        Args:
-            group_name (str): the name of group.
-
-        Returns:
-            bool: whether the group `group_name` is active.
-        '''
-        raise NotImplementedError("not implemented yet.")
+        pass
 
     @abstractmethod
     def group_names(self) -> List[str]:
-        '''
-        Returns group names in this store.
-
-        Returns:
-            List[str]: the result.
-        '''
-        raise NotImplementedError("not implemented yet.")
+        pass
 
     @abstractmethod
     def register_index(self, type_name: str, index: IndexBase) -> None:
-        '''
-        Registers `index` with type `type` to this store.
-
-        Args:
-            type_name (str): type of the index to be registered.
-            index (IndexBase): the index to be registered.
-        '''
-        raise NotImplementedError("not implemented yet.")
+        pass
 
     @abstractmethod
     def remove_index(self, type_name: str) -> None:
-        '''
-        Removes index with type `type` in this store.
-
-        Args:
-            type_name (str): type of the index to be removed.
-        '''
-        raise NotImplementedError("not implemented yet.")
+        pass
 
     @abstractmethod
     def get_index(self, type_name: str) -> Optional[IndexBase]:
-        '''
-        Returns index with the specified type `type` in this store.
-
-        Args:
-            type_name (str): type of the index to be removed.
-
-        Returns:
-            Optional[IndexBase]: the index of specified type, or `None`.
-        '''
-        raise NotImplementedError("not implemented yet.")
+        pass
 
     # ----- helper functions ----- #
 
