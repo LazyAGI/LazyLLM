@@ -1,7 +1,8 @@
 import lazyllm
-from lazyllm.tools.rag.doc_impl import DocImpl
+from lazyllm.tools.rag.doc_impl import DocImpl, FileNodeIndex
 from lazyllm.tools.rag.transform import SentenceSplitter
-from lazyllm.tools.rag.store import DocNode, LAZY_ROOT_NAME
+from lazyllm.tools.rag.store import LAZY_ROOT_NAME
+from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform
 from lazyllm.launcher import cleanup
 from unittest.mock import MagicMock
@@ -49,7 +50,7 @@ class TestDocImpl(unittest.TestCase):
             group_name="FineChunk",
             similarity="bm25",
             similarity_cut_off=-100,
-            index=None,
+            index='default',
             topk=1,
             similarity_kws={},
         )
@@ -59,16 +60,16 @@ class TestDocImpl(unittest.TestCase):
     def test_add_files(self):
         assert self.doc_impl.store is None
         self.doc_impl._lazy_init()
-        assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME)) == 1
+        assert len(self.doc_impl.store.get_group_nodes(LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
         new_doc.metadata = {"file_name": "new_file.txt"}
         self.mock_directory_reader.load_data.return_value = [new_doc]
         self.doc_impl._add_files(["new_file.txt"])
-        assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME)) == 2
+        assert len(self.doc_impl.store.get_group_nodes(LAZY_ROOT_NAME)) == 2
 
     def test_delete_files(self):
         self.doc_impl._delete_files(["dummy_file.txt"])
-        assert len(self.doc_impl.store.traverse_nodes(LAZY_ROOT_NAME)) == 0
+        assert len(self.doc_impl.store.get_group_nodes(LAZY_ROOT_NAME)) == 0
 
 
 class TestDocument(unittest.TestCase):
@@ -151,6 +152,39 @@ class TestDocument(unittest.TestCase):
         nodes3 = retriever3("何为天道?")
         assert len(nodes3) == 3
 
+
+class TestFileNodeIndex(unittest.TestCase):
+    def setUp(self):
+        self.index = FileNodeIndex()
+        self.node1 = DocNode(uid='1', group=LAZY_ROOT_NAME, metadata={"file_name": "d1"})
+        self.node2 = DocNode(uid='2', group=LAZY_ROOT_NAME, metadata={"file_name": "d2"})
+        self.files = [self.node1.metadata['file_name'], self.node1.metadata['file_name']]
+
+    def test_update(self):
+        self.index.update([self.node1, self.node2])
+
+        nodes = self.index.query(self.files)
+        assert len(nodes) == len(self.files)
+
+        ret = [node.metadata['file_name'] for node in nodes]
+        assert set(ret) == set(self.files)
+
+    def test_remove(self):
+        self.index.update([self.node1, self.node2])
+
+        self.index.remove([self.node2.uid])
+        ret = self.index.query([self.node2.metadata['file_name']])
+        assert len(ret) == 1
+        assert ret[0] is None
+
+    def test_query(self):
+        self.index.update([self.node1, self.node2])
+        ret = self.index.query([self.node2.metadata['file_name']])
+        assert len(ret) == 1
+        assert ret[0] is self.node2
+        ret = self.index.query([self.node1.metadata['file_name']])
+        assert len(ret) == 1
+        assert ret[0] is self.node1
 
 if __name__ == "__main__":
     unittest.main()
