@@ -2,7 +2,7 @@ from .doc_node import DocNode
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
-class BaseIndex(ABC):
+class IndexBase(ABC):
     @abstractmethod
     def update(nodes: List[DocNode]) -> None:
         '''

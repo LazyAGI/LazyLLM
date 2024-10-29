@@ -2,8 +2,8 @@ from typing import Any, Dict, List, Optional
 import chromadb
 from lazyllm import LOG, config
 from chromadb.api.models.Collection import Collection
-from .base_store import BaseStore
-from .base_index import BaseIndex
+from .store_base import StoreBase
+from .index_base import IndexBase
 from .doc_node import DocNode
 import json
 
@@ -16,8 +16,8 @@ config.add("rag_persistent_path", str, "./lazyllm_chroma", "RAG_PERSISTENT_PATH"
 
 # ---------------------------------------------------------------------------- #
 
-class StoreWrapper(BaseStore):
-    def __init__(self, store: BaseStore):
+class StoreWrapper(StoreBase):
+    def __init__(self, store: StoreBase):
         self._store = store
         self._name2index = {}
 
@@ -25,8 +25,8 @@ class StoreWrapper(BaseStore):
         self._store.update_nodes(nodes)
         self._update_indices(self._name2index, nodes)
 
-    def get_group_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
-        return self._store.get_group_nodes(group_name, uids)
+    def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
+        return self._store.get_nodes(group_name, uids)
 
     def remove_group_nodes(self, group_name: str, uids: List[str] = None) -> None:
         self._store.remove_group_nodes(group_name, uids)
@@ -38,13 +38,13 @@ class StoreWrapper(BaseStore):
     def group_names(self) -> List[str]:
         return self._store.group_names()
 
-    def register_index(self, type_name: str, index: BaseIndex) -> None:
+    def register_index(self, type_name: str, index: IndexBase) -> None:
         self._name2index[type_name] = index
 
     def remove_index(self, type_name: str) -> None:
         self._name2index.pop(type_name, None)
 
-    def get_index(self, type_name: str) -> Optional[BaseIndex]:
+    def get_index(self, type_name: str) -> Optional[IndexBase]:
         index = self._store.get_index(type_name)
         if not index:
             index = self._name2index.get(type_name)
@@ -52,7 +52,7 @@ class StoreWrapper(BaseStore):
 
 # ---------------------------------------------------------------------------- #
 
-class MapStore(BaseStore):
+class MapStore(StoreBase):
     def __init__(self, node_groups: List[str]):
         # Dict[group_name, Dict[uuid, DocNode]]
         self._group2docs: Dict[str, Dict[str, DocNode]] = {
@@ -68,7 +68,7 @@ class MapStore(BaseStore):
         self._update_indices(self._name2index, nodes)
 
     # override
-    def get_group_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
+    def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
         docs = self._group2docs.get(group_name)
         if not docs:
             return []
@@ -106,7 +106,7 @@ class MapStore(BaseStore):
         return self._group2docs.keys()
 
     # override
-    def register_index(self, type_name: str, index: BaseIndex) -> None:
+    def register_index(self, type_name: str, index: IndexBase) -> None:
         self._name2index[type_name] = index
 
     # override
@@ -114,7 +114,7 @@ class MapStore(BaseStore):
         self._name2index.pop(type_name, None)
 
     # override
-    def get_index(self, type_name: str) -> Optional[BaseIndex]:
+    def get_index(self, type_name: str) -> Optional[IndexBase]:
         return self._name2index.get(type_name)
 
     def find_node_by_uid(self, uid: str) -> Optional[DocNode]:
@@ -126,7 +126,7 @@ class MapStore(BaseStore):
 
 # ---------------------------------------------------------------------------- #
 
-class ChromadbStore(BaseStore):
+class ChromadbStore(StoreBase):
     def __init__(
         self, node_groups: List[str], embed_dim: Dict[str, int]
     ) -> None:
@@ -145,8 +145,8 @@ class ChromadbStore(BaseStore):
         self._save_nodes(nodes)
 
     # override
-    def get_group_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
-        return self._map_store.get_group_nodes(group_name, uids)
+    def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
+        return self._map_store.get_nodes(group_name, uids)
 
     # override
     def remove_group_nodes(self, group_name: str, uids: List[str]) -> None:
@@ -165,15 +165,15 @@ class ChromadbStore(BaseStore):
         return self._map_store.group_names()
 
     # override
-    def register_index(self, type_name: str, index: BaseIndex) -> None:
+    def register_index(self, type_name: str, index: IndexBase) -> None:
         self._map_store.register_index(type_name, index)
 
     # override
-    def remove_index(self, type_name: str) -> Optional[BaseIndex]:
+    def remove_index(self, type_name: str) -> Optional[IndexBase]:
         return self._map_store.remove_index(type_name)
 
     # override
-    def get_index(self, type_name: str) -> Optional[BaseIndex]:
+    def get_index(self, type_name: str) -> Optional[IndexBase]:
         return self._map_store.get_index(type_name)
 
     def _load_store(self) -> None:
@@ -189,7 +189,7 @@ class ChromadbStore(BaseStore):
 
         # Rebuild relationships
         for group_name in self._map_store.group_names():
-            nodes = self._map_store.get_group_nodes(group_name)
+            nodes = self._map_store.get_nodes(group_name)
             for node in nodes:
                 if node.parent:
                     parent_uid = node.parent

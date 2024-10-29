@@ -16,7 +16,7 @@ class MetadataMode(str, Enum):
 class DocNode:
     def __init__(self, uid: Optional[str] = None, text: Optional[str] = None, group: Optional[str] = None,
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
-                 metadata: Optional[Dict[str, Any]] = None, classfication: Optional[str] = None):
+                 metadata: Optional[Dict[str, Any]] = None):
         self.uid: str = uid if uid else str(uuid.uuid4())
         self.text: Optional[str] = text
         self.group: Optional[str] = group
@@ -32,8 +32,6 @@ class DocNode:
         self._docpath = None
         self._lock = threading.Lock()
         self._embedding_state = set()
-        # store will create index cache for classfication to speed up retrieve
-        self._classfication = classfication
 
     @property
     def root_node(self) -> Optional["DocNode"]:

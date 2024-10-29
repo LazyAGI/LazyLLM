@@ -8,8 +8,8 @@ from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader,
                       MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader)
 from .dataReader import SimpleDirectoryReader
 from .doc_manager import DocManager, DocListManager
-from .base_store import BaseStore
-from .base_index import BaseIndex
+from .store_base import StoreBase
+from .index_base import IndexBase
 
 
 __all__ = [
@@ -39,6 +39,6 @@ __all__ = [
     "SimpleDirectoryReader",
     'DocManager',
     'DocListManager',
-    'BaseStore',
-    'BaseIndex',
+    'StoreBase',
+    'IndexBase',
 ]

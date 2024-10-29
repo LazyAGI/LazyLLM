@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict
 from .doc_node import DocNode
-from .base_index import BaseIndex
+from .index_base import IndexBase
 
-class BaseStore(ABC):
+class StoreBase(ABC):
     @abstractmethod
     def update_nodes(self, nodes: List[DocNode]) -> None:
         '''
@@ -15,7 +15,7 @@ class BaseStore(ABC):
         raise NotImplementedError("not implemented yet.")
 
     @abstractmethod
-    def get_group_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:
+    def get_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:
         '''
         Returns a list of `DocNode` specified by `uids` in the group named `group_name`.
         All `DocNode`s in the group `group_name` will be returned if `uids` is `None` or `[]`.
@@ -65,13 +65,13 @@ class BaseStore(ABC):
         raise NotImplementedError("not implemented yet.")
 
     @abstractmethod
-    def register_index(self, type_name: str, index: BaseIndex) -> None:
+    def register_index(self, type_name: str, index: IndexBase) -> None:
         '''
         Registers `index` with type `type` to this store.
 
         Args:
             type_name (str): type of the index to be registered.
-            index (BaseIndex): the index to be registered.
+            index (IndexBase): the index to be registered.
         '''
         raise NotImplementedError("not implemented yet.")
 
@@ -86,7 +86,7 @@ class BaseStore(ABC):
         raise NotImplementedError("not implemented yet.")
 
     @abstractmethod
-    def get_index(self, type_name: str) -> Optional[BaseIndex]:
+    def get_index(self, type_name: str) -> Optional[IndexBase]:
         '''
         Returns index with the specified type `type` in this store.
 
@@ -94,19 +94,19 @@ class BaseStore(ABC):
             type_name (str): type of the index to be removed.
 
         Returns:
-            Optional[BaseIndex]: the index of specified type, or `None`.
+            Optional[IndexBase]: the index of specified type, or `None`.
         '''
         raise NotImplementedError("not implemented yet.")
 
     # ----- helper functions ----- #
 
     @staticmethod
-    def _update_indices(name2index: Dict[str, BaseIndex], nodes: List[DocNode]) -> None:
+    def _update_indices(name2index: Dict[str, IndexBase], nodes: List[DocNode]) -> None:
         for _, index in name2index.items():
             index.update(nodes)
 
     @staticmethod
-    def _remove_from_indices(name2index: Dict[str, BaseIndex], uids: List[str],
+    def _remove_from_indices(name2index: Dict[str, IndexBase], uids: List[str],
                              group_name: Optional[str] = None) -> None:
         for _, index in name2index.items():
             index.remove(uids, group_name)

@@ -2,8 +2,8 @@ import concurrent
 import os
 from typing import List, Callable, Optional, Dict, Union, Tuple
 from .doc_node import DocNode
-from .base_store import BaseStore
-from .base_index import BaseIndex
+from .store_base import StoreBase
+from .index_base import IndexBase
 import numpy as np
 from .component.bm25 import BM25
 from lazyllm import LOG, config, ThreadPoolExecutor
@@ -45,12 +45,12 @@ def parallel_do_embedding(embed: Dict[str, Callable], nodes: List[DocNode]) -> L
                 future.result()
     return modified_nodes
 
-class DefaultIndex(BaseIndex):
+class DefaultIndex(IndexBase):
     """Default Index, registered for similarity functions"""
 
     registered_similarity = dict()
 
-    def __init__(self, embed: Dict[str, Callable], store: BaseStore, **kwargs):
+    def __init__(self, embed: Dict[str, Callable], store: StoreBase, **kwargs):
         self.embed = embed
         self.store = store
 
@@ -111,7 +111,7 @@ class DefaultIndex(BaseIndex):
             )
         similarity_func, mode, descend = self.registered_similarity[similarity_name]
 
-        nodes = self.store.get_group_nodes(group_name)
+        nodes = self.store.get_nodes(group_name)
         if mode == "embedding":
             assert self.embed, "Chosen similarity needs embed model."
             assert len(query) > 0, "Query should not be empty."
@@ -174,7 +174,7 @@ def register_similarity(
 
 # ---------------------------------------------------------------------------- #
 
-class MilvusIndex(BaseIndex):
+class MilvusIndex(IndexBase):
     class Field:
         def __init__(self, name: str, data_type: pymilvus.DataType, index_type: str,
                      metric_type: str, index_params={}, dim: Optional[int] = None):
@@ -187,7 +187,7 @@ class MilvusIndex(BaseIndex):
 
     def __init__(self, embed: Dict[str, Callable],
                  group_fields: Dict[str, List[MilvusIndex.Field]],
-                 uri: str, full_data_store: BaseStore):
+                 uri: str, full_data_store: StoreBase):
         self._embed = embed
         self._full_data_store = full_data_store
 
@@ -255,4 +255,4 @@ class MilvusIndex(BaseIndex):
                 for result in results[0]:
                     uids.update(result['id'])
 
-        return self._full_data_store.get_group_nodes(group_name, list(uids))
+        return self._full_data_store.get_nodes(group_name, list(uids))

@@ -5,16 +5,16 @@ from typing import Callable, Dict, List, Optional, Set, Union, Tuple
 from lazyllm import LOG, config, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
-from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, BaseStore, StoreWrapper
+from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, StoreBase, StoreWrapper
 from .data_loaders import DirectoryReader
-from .index import DefaultIndex, BaseIndex
+from .index import DefaultIndex, IndexBase
 from .utils import DocListManager
 import threading
 import time
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
-class FileNodeIndex(BaseIndex):
+class FileNodeIndex(IndexBase):
     def __init__(self):
         self._file_node_map = {}
 
@@ -60,7 +60,7 @@ class DocImpl:
 
     def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
-                 store: Optional[BaseStore] = None):
+                 store: Optional[StoreBase] = None):
         super().__init__()
         assert (dlm is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
         self._local_file_reader: Dict[str, Callable] = {}
@@ -80,7 +80,7 @@ class DocImpl:
     def _create_file_node_index(store) -> FileNodeIndex:
         index = FileNodeIndex()
         for group in store.group_names():
-            index.update(store.get_group_nodes(group))
+            index.update(store.get_nodes(group))
         return index
 
     @once_wrapper(reset_on_pickle=True)
@@ -109,7 +109,7 @@ class DocImpl:
             self._daemon.daemon = True
             self._daemon.start()
 
-    def _create_store(self, rag_store_type: str = None) -> BaseStore:
+    def _create_store(self, rag_store_type: str = None) -> StoreBase:
         if not rag_store_type:
             rag_store_type = config["rag_store_type"]
         if rag_store_type == "map":
@@ -122,7 +122,7 @@ class DocImpl:
             )
         return store
 
-    def _create_some_indices_for_store(self, store: BaseStore):
+    def _create_some_indices_for_store(self, store: StoreBase):
         if not store.get_index(type_name='default'):
             store.register_index(type_name='default', index=DefaultIndex(self.embed, store))
         if not store.get_index(type_name='file_node_map'):
@@ -269,7 +269,7 @@ class DocImpl:
             self.store.remove_group_nodes(group, node_uids)
             LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
-    def _dynamic_create_nodes(self, group_name: str, store: BaseStore) -> None:
+    def _dynamic_create_nodes(self, group_name: str, store: StoreBase) -> None:
         if store.group_is_active(group_name):
             return
         node_group = self.node_groups.get(group_name)
@@ -283,10 +283,10 @@ class DocImpl:
         store.update_nodes(nodes)
         LOG.debug(f"building {group_name} nodes: {nodes}")
 
-    def _get_nodes(self, group_name: str, store: Optional[BaseStore] = None) -> List[DocNode]:
+    def _get_nodes(self, group_name: str, store: Optional[StoreBase] = None) -> List[DocNode]:
         store = store or self.store
         self._dynamic_create_nodes(group_name, store)
-        return store.get_group_nodes(group_name)
+        return store.get_nodes(group_name)
 
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None) -> List[DocNode]:

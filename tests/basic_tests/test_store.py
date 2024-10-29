@@ -43,7 +43,7 @@ class TestChromadbStore(unittest.TestCase):
         self.store.update_nodes([node1, node2])
         collection = self.store._collections["group1"]
         self.assertEqual(set(collection.peek(collection.count())["ids"]), set(["1", "2"]))
-        nodes = self.store.get_group_nodes("group1")
+        nodes = self.store.get_nodes("group1")
         self.assertEqual(nodes, [node1])
 
     def test_remove_group_nodes(self):
@@ -65,7 +65,7 @@ class TestChromadbStore(unittest.TestCase):
         self.store._map_store._group2docs = {group: {} for group in self.node_groups}
         self.store._load_store()
 
-        nodes = self.store.get_group_nodes("group1")
+        nodes = self.store.get_nodes("group1")
         self.assertEqual(len(nodes), 2)
         self.assertEqual(nodes[0].uid, "1")
         self.assertEqual(nodes[1].uid, "2")
@@ -109,7 +109,7 @@ class TestMapStore(unittest.TestCase):
 
     def test_update_nodes(self):
         self.store.update_nodes([self.node1, self.node2])
-        nodes = self.store.get_group_nodes("group1")
+        nodes = self.store.get_nodes("group1")
         self.assertEqual(len(nodes), 2)
         self.assertEqual(nodes[0].uid, "1")
         self.assertEqual(nodes[1].uid, "2")
@@ -117,27 +117,27 @@ class TestMapStore(unittest.TestCase):
 
     def test_get_group_nodes(self):
         self.store.update_nodes([self.node1, self.node2])
-        n1 = self.store.get_group_nodes("group1", ["1"])[0]
+        n1 = self.store.get_nodes("group1", ["1"])[0]
         self.assertEqual(n1.text, self.node1.text)
-        n2 = self.store.get_group_nodes("group1", ["2"])[0]
+        n2 = self.store.get_nodes("group1", ["2"])[0]
         self.assertEqual(n2.text, self.node2.text)
         ids = set([self.node1.uid, self.node2.uid])
-        docs = self.store.get_group_nodes("group1")
+        docs = self.store.get_nodes("group1")
         self.assertEqual(ids, set([doc.uid for doc in docs]))
 
     def test_remove_group_nodes(self):
         self.store.update_nodes([self.node1, self.node2])
 
-        n1 = self.store.get_group_nodes("group1", ["1"])[0]
+        n1 = self.store.get_nodes("group1", ["1"])[0]
         assert n1.text == self.node1.text
         self.store.remove_group_nodes("group1", ["1"])
-        n1 = self.store.get_group_nodes("group1", ["1"])
+        n1 = self.store.get_nodes("group1", ["1"])
         assert not n1
 
-        n2 = self.store.get_group_nodes("group1", ["2"])[0]
+        n2 = self.store.get_nodes("group1", ["2"])[0]
         assert n2.text == self.node2.text
         self.store.remove_group_nodes("group1", ["2"])
-        n2 = self.store.get_group_nodes("group1", ["2"])
+        n2 = self.store.get_nodes("group1", ["2"])
         assert not n2
 
     def test_group_names(self):
