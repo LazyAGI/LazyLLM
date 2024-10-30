@@ -344,7 +344,7 @@ class MilvusStore(StoreBase, IndexBase):
               query: str,
               group_name: str,
               similarity_name: str,
-              similarity_cut_off: Union[float, Dict[str, float]],
+              similarity_cut_off: Union[float, Dict[str, float]], # ignored
               topk: int,
               embed_keys: Optional[List[str]] = None,
               **kwargs) -> List[DocNode]:
@@ -352,7 +352,7 @@ class MilvusStore(StoreBase, IndexBase):
         for key in embed_keys:
             embed_func = self._embed.get(key)
             query_embedding = embed_func(query)
-            # TODO set search params
+            # TODO set search params according to similarity_name
             req = AnnSearchRequest(
                 data=query_embedding,
                 anns_field=key,
@@ -400,7 +400,7 @@ class MilvusStore(StoreBase, IndexBase):
         for k, v in node.embedding.items():
             res['embedding_' + k] = v
         for k, v in self.metadata.items():
-            res['metadata_' + k] = json.dumps(v)
+            res['metadata_' + k] = v
 
         return res
 
