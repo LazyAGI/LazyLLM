@@ -1,7 +1,7 @@
 import os
 import shutil
 import hashlib
-from typing import List, Callable, Generator, Dict, Any, Optional, Union
+from typing import List, Callable, Generator, Dict, Any, Optional, Union, Tuple
 from abc import ABC, abstractmethod
 
 import pydantic
@@ -312,10 +312,18 @@ class SqliteDocListManager(DocListManager):
             cursor = self._conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
         return cursor.fetchone()
 
-    def update_file_status(self, file_ids: List[str], status: str):
-        with self._conn:
-            for fileid in file_ids:
-                self._conn.execute("UPDATE documents SET status = ? WHERE doc_id = ?", (status, fileid))
+    def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]:
+        updated_files = []
+
+        for i in range(0, len(file_ids), batch_size):
+            batch = file_ids[i:i + batch_size]
+            placeholders = ', '.join('?' for _ in batch)
+            sql = f'UPDATE documents SET status = ? WHERE doc_id IN ({placeholders}) RETURNING doc_id, path'
+
+            with self._conn:
+                cursor = self._conn.execute(sql, [status] + batch)
+                updated_files.extend(cursor.fetchall())
+        return updated_files
 
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
         if isinstance(file_ids, str): file_ids = [file_ids]
