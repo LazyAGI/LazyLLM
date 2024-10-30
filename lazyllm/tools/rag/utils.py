@@ -109,7 +109,7 @@ class DocListManager(ABC):
     def get_file_status(self, fileid: str): pass
 
     @abstractmethod
-    def update_file_status(self, file_ids: List[str], status: str): pass
+    def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]: pass
 
     @abstractmethod
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]],
