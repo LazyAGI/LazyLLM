@@ -84,6 +84,8 @@ class TestDocListManager(unittest.TestCase):
         self.manager.add_files([self.test_file_1, self.test_file_2])
         self.manager.delete_files([hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()])
         files_list = self.manager.list_files(details=True)
+        assert len(files_list) == 2
+        files_list = self.manager.list_files(details=True, exclude_status=DocListManager.Status.deleted)
         assert len(files_list) == 1
         assert not any(self.test_file_1.endswith(row[1]) for row in files_list)
 
