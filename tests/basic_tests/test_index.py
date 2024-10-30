@@ -2,16 +2,11 @@ import os
 import time
 import unittest
 import tempfile
-import pymilvus
 from unittest.mock import MagicMock
-from lazyllm.tools.rag.store import MapStore, LAZY_ROOT_NAME
+from lazyllm.tools.rag.store import MapStore, LAZY_ROOT_NAME, MilvusStore, MilvusField
 from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.index import (
-    DefaultIndex,
-    register_similarity,
-    MilvusIndex, MilvusEmbeddingField,
-    parallel_do_embedding)
-
+from lazyllm.tools.rag.index import DefaultIndex, register_similarity, parallel_do_embedding
+import pymilvus
 
 class TestDefaultIndex(unittest.TestCase):
     def setUp(self):
@@ -109,15 +104,17 @@ class TestDefaultIndex(unittest.TestCase):
 
 class TestMilvusIndex(unittest.TestCase):
     def setUp(self):
-        embedding_fields = [
-            MilvusEmbeddingField(name="vec1", dim=3, data_type=pymilvus.DataType.FLOAT_VECTOR,
-                                 index_type="HNSW", metric_type="IP"),
-            MilvusEmbeddingField(name="vec2", dim=5, data_type=pymilvus.DataType.FLOAT_VECTOR,
-                                 index_type="HNSW", metric_type="IP"),
+        field_list = [
+            MilvusField(name="comment", data_type=MilvusField.DTYPE_VARCHAR, max_length=128,
+                        index_type='Trie'),
+            MilvusField(name="vec1", data_type=MilvusField.DTYPE_FLOAT_VECTOR,
+                        index_type='HNSW', metric_type='IP'),
+            MilvusField(name="vec2", data_type=MilvusField.DTYPE_FLOAT_VECTOR,
+                        index_type='HNSW', metric_type='IP'),
         ]
-        group_embedding_fields = {
-            "group1": embedding_fields,
-            "group2": embedding_fields,
+        group_fields = {
+            "group1": field_list,
+            "group2": field_list,
         }
 
         self.mock_embed = {
@@ -128,38 +125,38 @@ class TestMilvusIndex(unittest.TestCase):
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
         _, self.store_file = tempfile.mkstemp(suffix=".db")
 
-        self.map_store = MapStore(self.node_groups)
-        self.index = MilvusIndex(embed=self.mock_embed,
-                                 group_embedding_fields=group_embedding_fields,
-                                 uri=self.store_file, full_data_store=self.map_store)
-        self.map_store.register_index(type='milvus', index=self.index)
+        self.store = MilvusStore(uri=self.store_file, embed=self.mock_embed,
+                                 group_fields=group_fields)
+        self.index = self.store.get_index()
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
-                             embedding={"vec1": [1.0, 2.0, 3.0], "vec2": [4.0, 5.0, 6.0, 7.0, 8.0]})
+                             embedding={"vec1": [1.0, 2.0, 3.0], "vec2": [4.0, 5.0, 6.0, 7.0, 8.0]},
+                             metadata={'comment': 'comment1'})
         self.node2 = DocNode(uid="2", text="text2", group="group1", parent=self.node1,
-                             embedding={"vec1": [100.0, 200.0, 300.0], "vec2": [400.0, 500.0, 600.0, 700.0, 800.0]})
+                             embedding={"vec1": [100.0, 200.0, 300.0], "vec2": [400.0, 500.0, 600.0, 700.0, 800.0]},
+                             metadata={'comment': 'comment2'})
 
     def tearDown(self):
         os.remove(self.store_file)
 
     def test_update_and_query(self):
-        self.map_store.update_nodes([self.node1])
+        self.store.update_nodes([self.node1])
         ret = self.index.query(query='text1', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0].uid, self.node1.uid)
 
-        self.map_store.update_nodes([self.node2])
+        self.store.update_nodes([self.node2])
         ret = self.index.query(query='text2', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0].uid, self.node2.uid)
 
     def test_remove_and_query(self):
-        self.map_store.update_nodes([self.node1, self.node2])
+        self.store.update_nodes([self.node1, self.node2])
         ret = self.index.query(query='test', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0].uid, self.node2.uid)
 
-        self.map_store.remove_nodes("group1", [self.node2.uid])
+        self.store.remove_nodes("group1", [self.node2.uid])
         ret = self.index.query(query='test', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0].uid, self.node1.uid)

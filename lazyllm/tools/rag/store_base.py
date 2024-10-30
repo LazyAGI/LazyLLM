@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict
+from typing import Optional, List
 from .doc_node import DocNode
 from .index_base import IndexBase
 
@@ -29,5 +29,5 @@ class StoreBase(ABC):
         pass
 
     @abstractmethod
-    def get_index(self, Optional[type]: str = 'default') -> Optional[IndexBase]:
+    def get_index(self, type: str = 'default') -> Optional[IndexBase]:
         pass

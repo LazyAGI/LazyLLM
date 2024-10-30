@@ -8,8 +8,6 @@ import numpy as np
 from .component.bm25 import BM25
 from lazyllm import LOG, config, ThreadPoolExecutor
 from lazyllm.common import override
-import pymilvus
-from pymilvus.client.abstract import AnnSearchRequest, BaseRanker
 
 # ---------------------------------------------------------------------------- #
 
