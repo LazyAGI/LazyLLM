@@ -1,6 +1,6 @@
 # noqa: E121
 import lazyllm
-from typing import Any, Optional, List, Callable, Dict
+from typing import Any, Optional, List, Callable, Dict, Union
 from dataclasses import dataclass
 from functools import partial
 
@@ -13,8 +13,26 @@ class Node():
     kind: str
     name: str
     args: Optional[Dict] = None
+
     func: Optional[Callable] = None
     arg_names: Optional[List[str]] = None
+    subitem_name: Optional[Union[List[str], str]] = None
+
+    @property
+    def subitems(self) -> List[str]:
+        if not self.subitem_name: return []
+        names = [self.subitem_name] if isinstance(self.subitem_name, str) else self.subitem_name
+        result = []
+        for name in names:
+            name, tp = name.split(':') if ':' in name else (name, None)
+            source = self.args.get(name, {} if tp == 'dict' else [])
+            if tp != 'dict': source = dict(key=source)
+            for s in source.values():
+                if isinstance(s, (tuple, list)):
+                    result.extend([n['id'] if isinstance(n, dict) else n for n in s])
+                else:
+                    result.append(s['id'] if isinstance(s, dict) else s)
+        return result
 
 
 @dataclass

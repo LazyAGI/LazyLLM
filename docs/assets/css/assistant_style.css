@@ -163,17 +163,25 @@
 
 .input-container {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     border-top: 1px solid #ddd;
     padding-top: 10px;
+    max-height: 110px;
 }
 
-.input-container input {
+.input-container input, textarea {
     flex: 1;
     padding: 10px;
     border: 1px solid #ddd;
     border-radius: 5px;
     font-size: 14px;
+}
+
+.input-container textarea {
+    height: 40px;
+    min-height: 40px;
+    max-height: 100px;
+    resize: none;
 }
 
 .input-container button {
