@@ -84,8 +84,8 @@ class MapStore(StoreBase, IndexBase):
         self._name2index[type] = index
 
     @override
-    def get_index(self, Optional[type]: str = None) -> Optional[IndexBase]:
-        if type:
+    def get_index(self, Optional[type]: str = 'default') -> Optional[IndexBase]:
+        if type != 'default':
             return self._name2index.get(type)
         return self
 
@@ -324,8 +324,8 @@ class MilvusStore(StoreBase, IndexBase):
         self._map_store.register_index(type, index)
 
     @override
-    def get_index(self, Optional[type]: str = None) -> Optional[IndexBase]:
-        if type:
+    def get_index(self, Optional[type]: str = 'default') -> Optional[IndexBase]:
+        if type != 'default':
             return self._map_store.get_index(type)
         return self
 
@@ -361,7 +361,7 @@ class MilvusStore(StoreBase, IndexBase):
             reqs.append(req)
 
         results = self._client.hybrid_search(collection_name=group_name, reqs=reqs,
-                                             ranker=ranker, limit=topk)
+                                             ranker=ranker, limit=topk, **kwargs)
         if len(results) != 1:
             raise ValueError(f'return results size [{len(results)}] != 1')
 

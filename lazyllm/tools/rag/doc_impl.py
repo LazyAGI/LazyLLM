@@ -51,6 +51,17 @@ class _DocStore(StoreBase):
             index.update(store.get_nodes(group))
         return index
 
+    @staticmethod
+    def _update_indices(name2index: Dict[str, IndexBase], nodes: List[DocNode]) -> None:
+        for _, index in name2index.items():
+            index.update(nodes)
+
+    @staticmethod
+    def _remove_from_indices(name2index: Dict[str, IndexBase], uids: List[str],
+                             group_name: Optional[str] = None) -> None:
+        for _, index in name2index.items():
+            index.remove(uids, group_name)
+
     def _create_some_indices(self):
         if not self._store.get_index(type='file_node_map'):
             self.register_index(type='file_node_map', index=self._create_file_node_index(self._store))
@@ -80,7 +91,7 @@ class _DocStore(StoreBase):
     def register_index(self, type: str, index: IndexBase) -> None:
         self._extra_indices[type] = index
 
-    def get_index(self, type: str) -> Optional[IndexBase]:
+    def get_index(self, type: str = 'default') -> Optional[IndexBase]:
         index = self._extra_indices.get(type)
         if not index:
             index = self._store.get_index(type)
