@@ -1,21 +1,22 @@
 import os
-import json
 
 import lazyllm
 from lazyllm import LOG
 from lazyllm.thirdparty import torch
 from lazyllm.thirdparty import transformers as tf
 from ..utils.downloader import ModelManager
+from .utils import sounds_to_files
 
 class Bark(object):
 
-    def __init__(self, base_path, source=None, trust_remote_code=True, init=False):
+    def __init__(self, base_path, source=None, trust_remote_code=True, save_path=None, init=False):
         source = lazyllm.config['model_source'] if not source else source
         self.base_path = ModelManager(source).download(base_path)
         self.trust_remote_code = trust_remote_code
         self.processor, self.bark = None, None
         self.init_flag = lazyllm.once_flag()
         self.device = 'cpu'
+        self.save_path = save_path if save_path else os.path.join(os.getcwd(), '.temp/bark')
         if init:
             lazyllm.call_once(self.init_flag, self.load_bark)
 
@@ -38,20 +39,17 @@ class Bark(object):
         else:
             raise TypeError(f"Not support input type:{type(string)}, requires str or dict.")
         inputs = self.processor(query, voice_preset=voice_preset).to(self.device)
-        speech = self.bark.generate(**inputs) * 32767
-        res = {'lazyllm_sounds': (
-            self.bark.generation_config.sample_rate,
-            speech.cpu().numpy().squeeze().tolist()
-        )}
-        return json.dumps(res)
+        speech = self.bark.generate(**inputs).cpu().numpy().squeeze()
+        file_path = sounds_to_files([speech], self.save_path, self.bark.generation_config.sample_rate)
+        return lazyllm.encode_query_with_filepaths(path_list=file_path)
 
     @classmethod
-    def rebuild(cls, base_path, init):
-        return cls(base_path, init=init)
+    def rebuild(cls, base_path, init, save_path):
+        return cls(base_path, init=init, save_path=save_path)
 
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return Bark.rebuild, (self.base_path, init)
+        return Bark.rebuild, (self.base_path, init, self.save_path)
 
 class BarkDeploy(object):
     keys_name_handle = {

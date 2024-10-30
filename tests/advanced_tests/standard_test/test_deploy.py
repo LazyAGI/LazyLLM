@@ -94,20 +94,26 @@ class TestDeploy(object):
     def test_sd3(self):
         m = lazyllm.TrainableModule('stable-diffusion-3-medium')
         m.update_server()
-        res = m('a little cat')
-        assert "lazyllm_images" in json.loads(res)
+        r = m('a little cat')
+        res = lazyllm.decode_query_with_filepaths(r)
+        assert "files" in res
+        assert len(res['files']) == 1
 
     def test_musicgen(self):
         m = lazyllm.TrainableModule('musicgen-small')
         m.update_server()
-        res = m('lo-fi music with a soothing melody')
-        assert "lazyllm_sounds" in json.loads(res)
+        r = m('lo-fi music with a soothing melody')
+        res = lazyllm.decode_query_with_filepaths(r)
+        assert "files" in res
+        assert len(res['files']) == 1
 
     def test_chattts(self):
         m = lazyllm.TrainableModule('ChatTTS')
         m.update_server()
-        res = m('你好啊，很高兴认识你。')
-        assert "lazyllm_sounds" in json.loads(res)
+        r = m('你好啊，很高兴认识你。')
+        res = lazyllm.decode_query_with_filepaths(r)
+        assert "files" in res
+        assert len(res['files']) == 1
 
     def test_stt_sensevoice(self):
         chat = lazyllm.TrainableModule('sensevoicesmall')
@@ -116,11 +122,14 @@ class TestDeploy(object):
         audio_path = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')
         res = m(audio_path)
         assert '但愿人长久' in res
-        globals['global_parameters']["lazyllm-files"] = {'files': [audio_path]}
+        res = m(lazyllm.encode_query_with_filepaths(path_list=[audio_path]))
+        assert '但愿人长久' in res
+        globals['lazyllm_files']["share_files"] = [audio_path]
         res = m('Hi')
         assert '但愿人长久' in res
-        globals['global_parameters']["lazyllm-files"] = {'files': audio_path}
-        res = m('hellow world.')
+        if "share_files" in globals['lazyllm_files']:
+            globals['lazyllm_files'].pop("share_files")
+        res = m(f'lazyllm-query{{"query":"hi","files":["{audio_path}"]}}')
         assert '但愿人长久' in res
 
         _, client = self.warp_into_web(m)
@@ -144,14 +153,22 @@ class TestDeploy(object):
         m = lazyllm.ServerModule(chat)
         m.update_server()
         query = '这是啥？'
-        image_path = os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg')
-        globals['global_parameters']["lazyllm-files"] = {'files': image_path}
-        res = m(query)
-        assert '鸡' in res
+        ji_path = os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg')
+        cow_path = os.path.join(lazyllm.config['data_path'], 'ci_data/cow.png')
+        pig_path = os.path.join(lazyllm.config['data_path'], 'ci_data/pig.png')
+
+        globals['lazyllm_files']["share_files"] = [cow_path]
+        assert '牛' in m(query)
+        globals['lazyllm_files']["share_files"] = [cow_path]
+        globals['lazyllm_files'][chat._module_id] = [pig_path]
+        assert '猪' in m(query)
+        globals['lazyllm_files']["share_files"] = [cow_path]
+        globals['lazyllm_files'][chat._module_id] = [pig_path]
+        assert '鸡' in m(f'lazyllm-query{{"query":"{query}","files":["{ji_path}"]}}')
 
         _, client = self.warp_into_web(m)
         # Add prefix 'lazyllm_img::' for client testing.
-        chat_history = [['lazyllm_img::' + image_path, None], [query, None]]
+        chat_history = [['lazyllm_img::' + ji_path, None], [query, None]]
         ans = client.predict(self.use_context,
                              chat_history,
                              self.stream_output,

@@ -1,7 +1,8 @@
 import re
 import builtins
+import json
 import typing
-from typing import Any, Callable
+from typing import Any, Callable, List, Union
 from contextlib import contextmanager
 import copy
 import threading
@@ -375,3 +376,43 @@ def singleton(cls):
         if cls not in instances: instances[cls] = cls(*args, **kwargs)
         return instances[cls]
     return get_instance
+
+LAZYLLM_QUERY_PREFIX = 'lazyllm-query'
+
+def encode_query_with_filepaths(query: str = None, path_list: List[str] = None) -> str:
+    query = query if query else ''
+    query_with_docs = {'query': query, 'files': path_list}
+    if path_list:
+        assert isinstance(path_list, list), "path_list must be a list."
+        assert all(isinstance(item, str) for item in path_list), "All items in path_list must be strings"
+        return LAZYLLM_QUERY_PREFIX + json.dumps(query_with_docs)
+    else:
+        return query
+
+def decode_query_with_filepaths(query_files: str) -> Union[dict, str]:
+    assert isinstance(query_files, str), "query_files must be a str."
+    query_files = query_files.strip()
+    if query_files.startswith(LAZYLLM_QUERY_PREFIX):
+        try:
+            obj = json.loads(query_files[len(LAZYLLM_QUERY_PREFIX):])
+            return obj
+        except json.JSONDecodeError as e:
+            raise ValueError(f"JSON parsing failed: {e}")
+    else:
+        return query_files
+
+def lazyllm_merge_query(*args: str) -> str:
+    if len(args) == 1:
+        return args[0]
+    for item in args:
+        assert isinstance(item, str), "Merge object must be str!"
+    querys = ''
+    files = []
+    for item in args:
+        decode = decode_query_with_filepaths(item)
+        if isinstance(decode, dict):
+            querys += decode['query']
+            files.extend(decode['files'])
+        else:
+            querys += decode
+    return encode_query_with_filepaths(querys, files)

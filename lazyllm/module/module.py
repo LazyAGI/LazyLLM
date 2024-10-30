@@ -19,6 +19,8 @@ from ..components.formatter import FormatterBase, EmptyFormatter
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
+from ..common.common import LAZYLLM_QUERY_PREFIX
+from ..common import decode_query_with_filepaths
 from ..launcher import LazyLLMLaunchersBase as Launcher
 import uuid
 from ..client import get_redis, redis_client
@@ -271,8 +273,19 @@ class UrlModule(ModuleBase, UrlTemplate):
         url = self._url
 
         files = []
-        if self.template_message and globals['global_parameters'].get("lazyllm-files"):
-            files = globals['global_parameters']["lazyllm-files"]['files']
+        # p2. share_files
+        if self.template_message and globals['lazyllm_files'].get("share_files"):
+            files.extend(globals['lazyllm_files']["share_files"])
+        # p1. specific module_files
+        if self._module_id in globals['lazyllm_files']:
+            files.extend(globals['lazyllm_files'].pop(self._module_id))
+        # p0. forward_files
+        if self.template_message and isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
+            deinput = decode_query_with_filepaths(__input)
+            __input = deinput['query']
+            if deinput['files']:
+                files.extend(deinput['files'])
+
         query = __input
         __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
         headers = {'Content-Type': 'application/json'}

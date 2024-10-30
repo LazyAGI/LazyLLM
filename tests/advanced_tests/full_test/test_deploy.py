@@ -1,5 +1,4 @@
 import os
-import json
 import time
 import pytest
 import httpx
@@ -110,8 +109,10 @@ class TestDeploy(object):
     def test_bark(self):
         m = lazyllm.TrainableModule('bark')
         m.update_server()
-        res = m('你好啊，很高兴认识你。')
-        assert "lazyllm_sounds" in json.loads(res)
+        r = m('你好啊，很高兴认识你。')
+        res = lazyllm.decode_query_with_filepaths(r)
+        assert "files" in res
+        assert len(res['files']) == 1
 
     @reset_env
     def test_AutoModel(self):

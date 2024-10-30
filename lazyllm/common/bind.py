@@ -2,6 +2,7 @@ import copy
 import builtins
 from typing import Callable, Any
 from .globals import globals
+from .common import encode_query_with_filepaths, lazyllm_merge_query, LAZYLLM_QUERY_PREFIX
 
 
 class AttrTree(object):
@@ -100,10 +101,11 @@ class Bind(object):
             elif self._attr_key is not Bind.Args._None: return getattr(input, self._attr_key)
             return input
 
-    def __init__(self, __bind_func=_None, *args, **kw):
+    def __init__(self, __bind_func=_None, *args, lazyllm_file=None, **kw):
         self._f = __bind_func() if isinstance(__bind_func, type) and __bind_func is not Bind._None else __bind_func
         self._args = args
         self._kw = kw
+        self._lazyllm_file = lazyllm_file
         self._has_root = any([isinstance(a, AttrTree) for a in args])
         self._has_root = self._has_root or any([isinstance(v, AttrTree) for k, v in kw.items()])
 
@@ -123,6 +125,21 @@ class Bind(object):
 
         bind_args = [a.get_arg(_bind_args_source) if isinstance(a, Bind.Args) else a for a in bind_args]
         kwargs = {k: v.get_arg(_bind_args_source) if isinstance(v, Bind.Args) else v for k, v in kwargs.items()}
+
+        if self._lazyllm_file:
+            assert len(bind_args) == 1
+            file_args = args[self._lazyllm_file.idx] if isinstance(self._lazyllm_file, Placeholder) \
+                else self._lazyllm_file
+            file_args = file_args.get_arg(_bind_args_source) if isinstance(file_args, Bind.Args) else file_args
+            if isinstance(file_args, str) and not file_args.startswith(LAZYLLM_QUERY_PREFIX):
+                file_args = encode_query_with_filepaths(path_list=[file_args])
+            elif isinstance(file_args, list) and isinstance(file_args[0], str):
+                file_args = encode_query_with_filepaths(path_list=file_args)
+            else:
+                raise TypeError(f"Not supported type: {type(file_args)}, only supported: str or list of str.")
+
+            bind_args[0] = lazyllm_merge_query(bind_args[0], file_args)
+
         return self._f(*bind_args, **kwargs, **kw)
 
     # TODO: modify it
@@ -137,7 +154,7 @@ class Bind(object):
         return super(__class__, self).__getattr__(name)
 
     def __setattr__(self, __name: str, __value: Any) -> None:
-        if __name not in ('_f', '_args', '_kw', '_has_root'):
+        if __name not in ('_f', '_args', '_kw', '_has_root', '_lazyllm_file'):
             return setattr(self._f, __name, __value)
         return super(__class__, self).__setattr__(__name, __value)
 

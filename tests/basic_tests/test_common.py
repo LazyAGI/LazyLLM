@@ -24,6 +24,41 @@ class TestCommon(object):
         ret_list = r1(num_list[1])
         assert ret_list == num_list
 
+    def test_bind_file(self):
+        f1 = (lambda x: x) | lazyllm.bind(lazyllm._0, lazyllm_file='path/to/file')
+        assert f1('hello world.') == 'lazyllm-query{"query": "hello world.", "files": ["path/to/file"]}'
+        f2 = (lambda x: x) | lazyllm.bind('path/to/file', lazyllm_file=lazyllm._0)
+        assert f2('hello world.') == 'lazyllm-query{"query": "path/to/file", "files": ["hello world."]}'
+        f3 = (lambda x: x) | lazyllm.bind(lazyllm._0, lazyllm_file=lazyllm._0)
+        assert f3('hello world.') == 'lazyllm-query{"query": "hello world.", "files": ["hello world."]}'
+        f4 = (lambda x: x) | lazyllm.bind(lazyllm._0, lazyllm_file=['a', 'b'])
+        assert f4('hello world.') == 'lazyllm-query{"query": "hello world.", "files": ["a", "b"]}'
+
+    def test_encode_and_decode_and_merge_query_with_filepaths(self):
+        # Test encode
+        query = 'hi'
+        path_list = ['a', 'b']
+        encode = lazyllm.encode_query_with_filepaths(query, path_list)
+        assert encode == 'lazyllm-query{"query": "hi", "files": ["a", "b"]}'
+        assert lazyllm.encode_query_with_filepaths(query) == 'hi'
+
+        # Test decode
+        decode = lazyllm.decode_query_with_filepaths(encode)
+        assert isinstance(decode, dict)
+        assert 'query' in decode and 'files' in decode
+        assert decode['query'] == query
+        assert decode['files'] == path_list
+        assert lazyllm.decode_query_with_filepaths(query) == query
+
+        # Test Merge
+        assert lazyllm.lazyllm_merge_query(query) == query
+        assert lazyllm.lazyllm_merge_query(query, query, query) == query * 3
+        assert lazyllm.lazyllm_merge_query(query, encode) == 'lazyllm-query{"query": "hihi", "files": ["a", "b"]}'
+        assert lazyllm.lazyllm_merge_query(encode, encode) == ('lazyllm-query{"query": "hihi", "files": '
+                                                               '["a", "b", "a", "b"]}')
+        assert lazyllm.lazyllm_merge_query(encode, query, query) == ('lazyllm-query{"query": "hihihi", '
+                                                                     '"files": ["a", "b"]}')
+
     def test_common_cmd(self):
 
         ret = lazyllm.LazyLLMCMD('python a --a=b --c=d', no_displays=['a'])

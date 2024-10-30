@@ -1,7 +1,6 @@
 import atexit
 import os
 import json
-import base64
 import signal
 import socket
 import sys
@@ -10,8 +9,6 @@ import traceback
 import gradio as gr
 import time
 from PIL import Image
-from io import BytesIO
-import numpy as np
 import re
 
 import lazyllm
@@ -36,7 +33,8 @@ class WebModule(ModuleBase):
         Appendix = 2
 
     def __init__(self, m, *, components=dict(), title='对话演示终端', port=None,
-                 history=[], text_mode=None, trace_mode=None, audio=False) -> None:
+                 history=[], text_mode=None, trace_mode=None, audio=False, stream=False,
+                 files_target=None, pop_share_file=True) -> None:
         super().__init__()
         self.m = lazyllm.ActionModule(m) if isinstance(m, lazyllm.FlowBase) else m
         self.pool = lazyllm.ThreadPoolExecutor(max_workers=50)
@@ -53,6 +51,9 @@ class WebModule(ModuleBase):
         self.text_mode = text_mode if text_mode else WebModule.Mode.Dynamic
         self.cach_path = self._set_up_caching()
         self.audio = audio
+        self.stream = stream
+        self.files_target = files_target if isinstance(files_target, list) or files_target is None else [files_target]
+        self.pop_share_file = pop_share_file
         self.demo = self.init_web(components)
         self.url = None
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -91,7 +92,7 @@ class WebModule(ModuleBase):
                     with gr.Row():
                         chat_use_context = gr.Checkbox(interactive=True, value=False, label="使用上下文")
                     with gr.Row():
-                        stream_output = gr.Checkbox(interactive=True, value=True, label="流式输出")
+                        stream_output = gr.Checkbox(interactive=self.stream, value=self.stream, label="流式输出")
                         text_mode = gr.Checkbox(interactive=(self.text_mode == WebModule.Mode.Dynamic),
                                                 value=(self.text_mode != WebModule.Mode.Refresh), label="追加输出")
                     components = []
@@ -243,9 +244,20 @@ class WebModule(ModuleBase):
             else:
                 string = ''
             if files:
-                globals['global_parameters']["lazyllm-files"] = {'files': files}
-                if files[0]:
-                    string += f' ## Get attachments: {os.path.basename(files[0])}'
+                if self.files_target:
+                    for module in self.files_target:
+                        assert isinstance(module, ModuleBase)
+                        if module._module_id in globals['lazyllm_files']:
+                            globals['lazyllm_files'][module._module_id].extend(files)
+                        else:
+                            globals['lazyllm_files'][module._module_id] = files
+                else:
+                    if "share_files" in globals['lazyllm_files']:
+                        globals['lazyllm_files']["share_files"].extend(files)
+                    else:
+                        globals['lazyllm_files']["share_files"] = files
+                    if files[0]:
+                        string += f' ## Get attachments: {os.path.basename(files[0])}'
             input = string
             history = chat_history[:-1] if use_context and len(chat_history) > 1 else list()
 
@@ -273,15 +285,18 @@ class WebModule(ModuleBase):
                 time.sleep(0.01)
             result = func_future.result()
             if FileSystemQueue().size() > 0: FileSystemQueue().clear()
-            if files:
-                globals['global_parameters']["lazyllm-files"].pop('files', None)
+            if files and 'share_files' in globals['lazyllm_files'] and \
+               self.pop_share_file and len(globals['lazyllm_files']['share_files']) > 0:
+                globals['lazyllm_files']['share_files'].pop()
 
             def get_log_and_message(s):
                 if isinstance(s, dict):
                     s = s.get("message", {}).get("content", "")
                 else:
                     try:
-                        r = json.loads(s)
+                        r = lazyllm.decode_query_with_filepaths(s)
+                        if isinstance(r, str):
+                            r = json.loads(r)
                         if 'choices' in r:
                             if "type" not in r["choices"][0] or (
                                     "type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
@@ -290,14 +305,8 @@ class WebModule(ModuleBase):
                                     s = delta["content"]
                                 else:
                                     s = ""
-                        elif 'lazyllm_images' in r:
-                            image_data = r.pop('lazyllm_images')[0]
-                            image = Image.open(BytesIO(base64.b64decode(image_data)))
-                            return "The image is: ", "".join(log_history), {'img': image}
-                        elif 'lazyllm_sounds' in r:
-                            sound_data = r.pop('lazyllm_sounds')
-                            sound_data = (sound_data[0], np.array(sound_data[1]).astype(np.int16))
-                            return "The Audio is: ", "".join(log_history), {'audio': sound_data}
+                        elif isinstance(r, dict) and 'files' in r and 'query' in r:
+                            return r['query'], ''.join(log_history), r['files'] if len(r['files']) > 0 else None
                         else:
                             s = s
                     except (ValueError, KeyError, TypeError):
@@ -306,14 +315,23 @@ class WebModule(ModuleBase):
                         LOG.error(f"Uncaptured error `{e}` when parsing `{s}`, please contact us if you see this.")
                 return s, "".join(log_history), None
 
-            file = None
+            file_paths = None
             if isinstance(result, (str, dict)):
-                result, log, file = get_log_and_message(result)
-            if file:
-                if 'img' in file:
-                    chat_history[-1][1] = gr.Image(file['img'])
-                if 'audio' in file:
-                    chat_history[-1][1] = gr.Audio(file['audio'])
+                result, log, file_paths = get_log_and_message(result)
+            if file_paths:
+                for i, file_path in enumerate(file_paths):
+                    suffix = os.path.splitext(file_path)[-1].lower()
+                    file = None
+                    if suffix in Image.registered_extensions().keys():
+                        file = gr.Image(file_path)
+                    elif suffix in ('.mp3', '.wav'):
+                        file = gr.Audio(file_path)
+                    else:
+                        LOG.error(f'Not supported typr: {suffix}, for file: {file}')
+                    if i == 0:
+                        chat_history[-1][1] = file
+                    else:
+                        chat_history.append([None, file])
             else:
                 assert isinstance(result, (str, dict)), f'Result should only be str, but got {type(result)}'
                 if isinstance(result, dict): result = result.get('message', '')

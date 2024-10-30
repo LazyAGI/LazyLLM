@@ -525,7 +525,7 @@ add_example('deploy.LMDeploy', '''\
 >>> from lazyllm import deploy, globals
 >>> chat = lazyllm.TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)
 >>> chat.update_server()
->>> globals['global_parameters']["lazyllm-files"] = {'files': 'path/to/image'}
+>>> globals['lazyllm_files']['share_files'] = ['path/to/image']
 >>> res = chat('What is it?')
 ''')
 
