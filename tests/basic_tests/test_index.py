@@ -105,12 +105,11 @@ class TestDefaultIndex(unittest.TestCase):
 class TestMilvusIndex(unittest.TestCase):
     def setUp(self):
         field_list = [
-            MilvusField(name="comment", data_type=MilvusField.DTYPE_VARCHAR, max_length=128,
-                        index_type='Trie'),
+            MilvusField(name="comment", data_type=MilvusField.DTYPE_VARCHAR, max_length=128),
             MilvusField(name="vec1", data_type=MilvusField.DTYPE_FLOAT_VECTOR,
-                        index_type='HNSW', metric_type='IP'),
+                        index_type='HNSW', metric_type='COSINE'),
             MilvusField(name="vec2", data_type=MilvusField.DTYPE_FLOAT_VECTOR,
-                        index_type='HNSW', metric_type='IP'),
+                        index_type='HNSW', metric_type='COSINE'),
         ]
         group_fields = {
             "group1": field_list,

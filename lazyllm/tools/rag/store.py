@@ -12,7 +12,6 @@ import json
 import pymilvus
 from pymilvus import MilvusClient, FieldSchema, CollectionSchema
 from pymilvus.milvus_client.index import IndexParams
-from pymilvus.client.abstract import AnnSearchRequest, BaseRanker
 
 # ---------------------------------------------------------------------------- #
 
@@ -405,32 +404,22 @@ class MilvusStore(StoreBase, IndexBase):
     def query(self,
               query: str,
               group_name: str,
-              similarity: str = "dummy",
-              similarity_cut_off: Union[float, Dict[str, float]] = float("-inf"),
+              similarity: Optional[str] = None,
+              similarity_cut_off: Optional[Union[float, Dict[str, float]]] = None,
               topk: int = 10,
               embed_keys: Optional[List[str]] = None,
               **kwargs) -> List[DocNode]:
-        reqs = []
+        uidset = set()
         for key in embed_keys:
             embed_func = self._embed.get(key)
             query_embedding = embed_func(query)
-            # TODO set search params according to similarity_name
-            req = AnnSearchRequest(
-                data=[query_embedding],
-                anns_field=self._gen_embedding_key(key),
-                limit=topk,
-                param={},
-            )
-            reqs.append(req)
+            results = self._client.search(collection_name=group_name, data=[query_embedding],
+                                          limit=topk, anns_field=self._gen_embedding_key(key))
+            if len(results) > 0:
+                # we have only one `data` for search() so there is only one result in `results`
+                for result in results[0]:
+                    uidset.update(result['id'])
 
-        results = self._client.hybrid_search(collection_name=group_name, reqs=reqs,
-                                             ranker=BaseRanker(), limit=topk, **kwargs)
-        if len(results) != 1:
-            raise ValueError(f'return results size [{len(results)}] != 1')
-
-        uidset = set()
-        for record in results[0]:
-            uidset.insert(record['id'])
         return self._map_store.get_nodes(group_name, list(uidset))
 
     def _load_all_nodes_to(self, store: StoreBase):
