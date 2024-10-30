@@ -41,7 +41,7 @@ class Bark(object):
         inputs = self.processor(query, voice_preset=voice_preset).to(self.device)
         speech = self.bark.generate(**inputs).cpu().numpy().squeeze()
         file_path = sounds_to_files([speech], self.save_path, self.bark.generation_config.sample_rate)
-        return lazyllm.encode_query_with_filepaths(path_list=file_path)
+        return lazyllm.encode_query_with_filepaths(files=file_path)
 
     @classmethod
     def rebuild(cls, base_path, init, save_path):

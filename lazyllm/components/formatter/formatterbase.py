@@ -1,4 +1,5 @@
-from ...common import LazyLLMRegisterMetaClass, package
+from ...common import LazyLLMRegisterMetaClass, package, \
+    decode_query_with_filepaths, encode_query_with_filepaths
 from typing import Optional
 
 def is_number(s: str):
@@ -108,3 +109,32 @@ class PythonFormatter(JsonLikeFormatter): pass
 class EmptyFormatter(LazyLLMFormatterBase):
     def _parse_py_data_by_formatter(self, msg: str):
         return msg
+
+class FileFormatter(LazyLLMFormatterBase):
+
+    def __init__(self, formatter: str = 'decode'):
+        self._mode = formatter.strip().lower()
+        assert self._mode in ('decode', 'encode')
+
+    def _parse_py_data_by_formatter(self, py_data):
+        if isinstance(py_data, package):
+            res = []
+            for i_data in py_data:
+                res.append(self._parse_py_data_by_formatter(i_data))
+            return package(res)
+        elif isinstance(py_data, (str, dict)):
+            return self._decode_one_data(py_data)
+        else:
+            return py_data
+
+    def _decode_one_data(self, py_data):
+        if self._mode == 'decode':
+            if isinstance(py_data, str):
+                return decode_query_with_filepaths(py_data)
+            else:
+                return py_data
+        else:
+            if isinstance(py_data, dict) and 'query' in py_data and 'files' in py_data:
+                return encode_query_with_filepaths(**py_data)
+            else:
+                return py_data

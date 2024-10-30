@@ -132,9 +132,9 @@ class Bind(object):
                 else self._lazyllm_file
             file_args = file_args.get_arg(_bind_args_source) if isinstance(file_args, Bind.Args) else file_args
             if isinstance(file_args, str) and not file_args.startswith(LAZYLLM_QUERY_PREFIX):
-                file_args = encode_query_with_filepaths(path_list=[file_args])
+                file_args = encode_query_with_filepaths(files=[file_args])
             elif isinstance(file_args, list) and isinstance(file_args[0], str):
-                file_args = encode_query_with_filepaths(path_list=file_args)
+                file_args = encode_query_with_filepaths(files=file_args)
             else:
                 raise TypeError(f"Not supported type: {type(file_args)}, only supported: str or list of str.")
 

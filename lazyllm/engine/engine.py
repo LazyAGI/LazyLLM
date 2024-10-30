@@ -220,8 +220,11 @@ def make_graph(nodes: List[dict], edges: List[Union[List[str], dict]] = [],
     for edge in edges:
         if isinstance(edge, (tuple, list)): edge = dict(iid=edge[0], oid=edge[1])
         if formatter := edge.get('formatter'):
-            assert formatter.startswith(('*[', '[', '}')) and formatter.endswith((']', '}'))
-            formatter = lazyllm.formatter.JsonLike(formatter)
+            if formatter.lower() in ('encode', 'decode'):
+                formatter = lazyllm.formatter.File(formatter)
+            else:
+                assert formatter.startswith(('*[', '[', '}')) and formatter.endswith((']', '}'))
+                formatter = lazyllm.formatter.JsonLike(formatter)
         g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name, formatter)
 
     sg = ServerGraph(g, server_resources['server'], server_resources['web'])

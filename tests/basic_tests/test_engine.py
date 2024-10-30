@@ -126,6 +126,20 @@ class TestEngine(object):
         gid = engine.start(nodes, edges)
         assert engine.run(gid, '- a: 1\n  b: 2\n- a: 3\n  d: 4\n') == [dict(a=1), dict(a=3)]
 
+        engine.reset()
+        nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='file', rule='decode'))]
+        gid = engine.start(nodes, edges)
+        assert engine.run(gid, 'hi') == 'hi'
+        assert engine.run(gid, 'lazyllm-query{"query":"aha","files":["path/to/file"]}') == \
+               {"query": "aha", "files": ["path/to/file"]}
+
+        engine.reset()
+        nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='file', rule='encode'))]
+        gid = engine.start(nodes, edges)
+        assert engine.run(gid, 'hi') == 'hi'
+        assert engine.run(gid, {"query": "aha", "files": ["path/to/file"]}) == \
+               'lazyllm-query{"query": "aha", "files": ["path/to/file"]}'
+
     def test_engine_edge_formatter(self):
         nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
                  dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),
@@ -139,6 +153,21 @@ class TestEngine(object):
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 1) == '1[2, 4]1'
         assert engine.run(gid, 2) == '2[4, 8]4'
+
+        engine.reset()
+        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x):\n    return x\n')]
+        edges = [dict(iid='__start__', oid='1', formatter='decode'), dict(iid='1', oid='__end__')]
+        gid = engine.start(nodes, edges)
+        assert engine.run(gid, 'hi') == 'hi'
+        assert engine.run(gid, 'lazyllm-query{"query":"aha","files":["path/to/file"]}') == \
+               {"query": "aha", "files": ["path/to/file"]}
+
+        engine.reset()
+        edges = [dict(iid='__start__', oid='1', formatter='encode'), dict(iid='1', oid='__end__')]
+        gid = engine.start(nodes, edges)
+        assert engine.run(gid, 'hi') == 'hi'
+        assert engine.run(gid, {"query": "aha", "files": ["path/to/file"]}) == \
+               'lazyllm-query{"query": "aha", "files": ["path/to/file"]}'
 
     def test_engine_edge_formatter_start(self):
         nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int): return x'),

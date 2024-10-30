@@ -44,3 +44,21 @@ class TestFormatter(object):
         assert jsf('[:][a, c, e]')(origin) == [[[1, 2], [3, 4], [5, 6]], [[10, 20], [30, 40], [50, 60]]]
         assert jsf('[:][a, c, e][1:]')(origin) == [[[2], [4], [6]], [[20], [40], [60]]]
         assert jsf('[:][e, c, a][1]')(origin) == [[6, 4, 2], [60, 40, 20]]
+
+    def test_file_formatter(self):
+        # Decode
+        filef = formatter.FileFormatter()
+        normal_output = 'hi'
+        encode_output = 'lazyllm-query{"query": "aha", "files": ["path/to/file"]}'
+        other_output = ['a', 'b']
+        assert filef(normal_output) == normal_output
+        assert filef(other_output) == other_output
+        decode_output = filef(encode_output)
+        assert decode_output == {"query": "aha", "files": ["path/to/file"]}
+
+        # Encode
+        filef = formatter.FileFormatter(formatter='encode')
+        assert filef(normal_output) == normal_output
+        assert filef(encode_output) == encode_output
+        assert filef(other_output) == other_output
+        assert filef(decode_output) == encode_output

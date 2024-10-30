@@ -122,7 +122,7 @@ class TestDeploy(object):
         audio_path = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')
         res = m(audio_path)
         assert '但愿人长久' in res
-        res = m(lazyllm.encode_query_with_filepaths(path_list=[audio_path]))
+        res = m(lazyllm.encode_query_with_filepaths(files=[audio_path]))
         assert '但愿人长久' in res
         globals['lazyllm_files']["share_files"] = [audio_path]
         res = m('Hi')

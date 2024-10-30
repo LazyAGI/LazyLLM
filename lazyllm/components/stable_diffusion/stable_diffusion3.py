@@ -78,7 +78,7 @@ class StableDiffusion3(object):
             max_sequence_length=512,
         ).images
         img_path_list = StableDiffusion3.images_to_files(imgs, self.save_path)
-        return lazyllm.encode_query_with_filepaths(path_list=img_path_list)
+        return lazyllm.encode_query_with_filepaths(files=img_path_list)
 
     @classmethod
     def rebuild(cls, base_sd, embed_batch_size, init, save_path):
