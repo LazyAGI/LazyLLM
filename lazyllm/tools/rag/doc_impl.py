@@ -414,6 +414,9 @@ class DocImpl:
         LOG.debug(f"Found children nodes for {group}: {result}")
         return list(result)
 
+    def __call__(self, func_name: str, *args, **kwargs):
+        return getattr(self, func_name)(*args, **kwargs)
+
 
 DocImpl._create_builtin_node_group(name="CoarseChunk", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 DocImpl._create_builtin_node_group(name="MediumChunk", transform=SentenceSplitter, chunk_size=256, chunk_overlap=25)

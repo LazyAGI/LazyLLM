@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any, Union, Callable, List
 from enum import Enum, auto
 from collections import defaultdict
-from lazyllm import config
+from lazyllm import config, reset_on_pickle
 import uuid
 import threading
 import time
@@ -13,6 +13,7 @@ class MetadataMode(str, Enum):
     NONE = auto()
 
 
+@reset_on_pickle(('_lock', threading.Lock))
 class DocNode:
     def __init__(self, uid: Optional[str] = None, text: Optional[str] = None, group: Optional[str] = None,
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,

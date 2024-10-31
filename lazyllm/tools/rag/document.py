@@ -3,6 +3,7 @@ import os
 from typing import Callable, Optional, Dict, Union, List
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor
+from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 
 from .doc_manager import DocManager
 from .doc_impl import DocImpl
@@ -12,17 +13,21 @@ import copy
 import functools
 
 
+class CallableDict(dict):
+    def __call__(self, cls, *args, **kw):
+        return self[cls](*args, **kw)
+
 class Document(ModuleBase):
     class _Impl(ModuleBase):
         def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
-                     manager: bool = False, server: bool = False, name: Optional[str] = None, launcher=None,
-                     store: StoreBase = None):
+                     manager: bool = False, server: bool = False, name: Optional[str] = None,
+                     launcher: Launcher = None, store: StoreBase = None):
             super().__init__()
             if not os.path.exists(dataset_path):
                 defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)
                 if os.path.exists(defatult_path):
                     dataset_path = defatult_path
-            launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
+            self._launcher: Launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
             self._dataset_path = dataset_path
             self._embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}
             self.name = name
@@ -30,15 +35,21 @@ class Document(ModuleBase):
                 if isinstance(embed, ModuleBase):
                     self._submodules.append(embed)
             self._dlm = DocListManager(dataset_path, name).init_tables()
-            self._kbs = {DocListManager.DEDAULT_GROUP_NAME: DocImpl(embed=self._embed, dlm=self._dlm, store=store)}
+            self._kbs = CallableDict({DocListManager.DEDAULT_GROUP_NAME: DocImpl(embed=self._embed, dlm=self._dlm, store=store)})
             if manager: self._manager = ServerModule(DocManager(self._dlm))
-            if server: self._doc = ServerModule(self._doc)
+            if server: self._kbs = ServerModule(self._kbs)
 
         def add_kb_group(self, name, store: StoreBase):
             self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name, store=store)
             self._dlm.add_kb_group(name)
 
-        def get_doc_by_kb_group(self, name): return self._kbs[name]
+        def get_doc_by_kb_group(self, name):
+            return self._kbs._impl._m[name] if isinstance(self._kbs, ServerModule) else self._kbs[name]
+
+        def stop(self): self._launcher.cleanup()
+
+        def __call__(self, *args, **kw):
+            return self._kbs(*args, **kw)
 
     def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                  create_ui: bool = False, manager: bool = False, server: bool = False,
@@ -57,6 +68,9 @@ class Document(ModuleBase):
 
     @property
     def _impl(self): return self._impls.get_doc_by_kb_group(self._curr_group)
+
+    @property
+    def manager(self): return getattr(self._impls, '_manager', None)
 
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
@@ -79,14 +93,25 @@ class Document(ModuleBase):
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
         return cls.add_reader(pattern, func)
 
+    def _forward(self, func_name: str, *args, **kw):
+        return self._impls(self._curr_group, func_name, *args, **kw)
+
     def find_parent(self, target) -> Callable:
-        return functools.partial(DocImpl.find_parent, group=target)
+        # TODO: Currently, when a DocNode is returned from the server, it will carry all parent nodes and child nodes.
+        # So the query of parent and child nodes can be performed locally, and there is no need to search the
+        # document service through the server for the time being. When this item is optimized, the code will become:
+        # return functools.partial(self._forward, 'find_parent', group=target)
+        return functools.partial(Document.find_parent, group=target)
 
     def find_children(self, target) -> Callable:
-        return functools.partial(DocImpl.find_children, group=target)
+        # TODO: Currently, when a DocNode is returned from the server, it will carry all parent nodes and child nodes.
+        # So the query of parent and child nodes can be performed locally, and there is no need to search the
+        # document service through the server for the time being. When this item is optimized, the code will become:
+        # return functools.partial(self._forward, 'find_children', group=target)
+        return functools.partial(Document.find_children, group=target)
 
     def forward(self, *args, **kw) -> List[DocNode]:
-        return self._impl.retrieve(*args, **kw)
+        return self._forward('retrieve', *args, **kw)
 
     def __repr__(self):
         return lazyllm.make_repr("Module", "Document", manager=hasattr(self._impl, '_manager'))
