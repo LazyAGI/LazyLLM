@@ -292,9 +292,10 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]],
 
 
 @NodeConstructor.register('Document')
-def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False, node_group: List = []):
+def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False,
+                  server: bool = False, node_group: List = []):
     document = lazyllm.tools.rag.Document(
-        dataset_path, Engine().build_node(embed).func if embed else None, manager=create_ui)
+        dataset_path, Engine().build_node(embed).func if embed else None, server=server, manager=create_ui)
     for group in node_group:
         if group['transform'] == 'LLMParser': group['llm'] = Engine().build_node(group['llm']).func
         elif group['transform'] == 'FuncNode': group['function'] = make_code(group['function'])

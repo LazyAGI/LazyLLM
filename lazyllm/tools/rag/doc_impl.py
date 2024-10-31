@@ -314,7 +314,7 @@ class DocImpl:
         LOG.debug(f"Found children nodes for {group}: {result}")
         return list(result)
 
-    def forward(self, func_name: str, *args, **kwargs):
+    def __call__(self, func_name: str, *args, **kwargs):
         return getattr(self, func_name)(*args, **kwargs)
 
 
