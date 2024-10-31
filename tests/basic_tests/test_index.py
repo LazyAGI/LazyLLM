@@ -129,7 +129,7 @@ class TestMilvusIndex(unittest.TestCase):
         self.index = self.store.get_index()
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
-                             embedding={"vec1": [1.0, 2.0, 3.0], "vec2": [4.0, 5.0, 6.0, 7.0, 8.0]},
+                             embedding={"vec1": [8.0, 9.0, 10.0], "vec2": [11.0, 12.0, 13.0, 14.0, 15.0]},
                              metadata={'comment': 'comment1'})
         self.node2 = DocNode(uid="2", text="text2", group="group1", parent=self.node1,
                              embedding={"vec1": [100.0, 200.0, 300.0], "vec2": [400.0, 500.0, 600.0, 700.0, 800.0]},

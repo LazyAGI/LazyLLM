@@ -11,7 +11,6 @@ from .doc_node import DocNode
 import json
 import pymilvus
 from pymilvus import MilvusClient, FieldSchema, CollectionSchema
-from pymilvus.milvus_client.index import IndexParams
 
 # ---------------------------------------------------------------------------- #
 
@@ -269,7 +268,7 @@ class MilvusField:
     DTYPE_SPARSE_FLOAT_VECTOR = 2
 
     def __init__(self, name: str, data_type: int, index_type: Optional[str] = None,
-                 metric_type: Optional[str] = None, index_params: Optional[Dict] = None,
+                 metric_type: Optional[str] = "", index_params: Dict = {},
                  max_length: Optional[int] = None):
         self.name = name
         self.data_type = data_type
@@ -299,8 +298,6 @@ class MilvusStore(StoreBase, IndexBase):
                         max_length=128, is_primary=True),
             FieldSchema(name='text', dtype=pymilvus.DataType.VARCHAR,
                         max_length=65535),
-            FieldSchema(name='group', dtype=pymilvus.DataType.VARCHAR,
-                        max_length=256),
             FieldSchema(name='parent', dtype=pymilvus.DataType.VARCHAR,
                         max_length=256),
         ]
@@ -309,7 +306,7 @@ class MilvusStore(StoreBase, IndexBase):
             if group_name in self._client.list_collections():
                 continue
 
-            index_params = IndexParams()
+            index_params = self._client.prepare_index_params()
             field_schema_list = copy.copy(builtin_fields)
 
             for field in field_list:
@@ -326,7 +323,7 @@ class MilvusStore(StoreBase, IndexBase):
                         max_length=field.max_length)
                 field_schema_list.append(field_schema)
 
-                if field_schema.index_type is not None:
+                if field.index_type is not None:
                     index_params.add_index(field_name=field_schema.name,
                                            index_type=field.index_type,
                                            metric_type=field.metric_type,
@@ -354,7 +351,7 @@ class MilvusStore(StoreBase, IndexBase):
         parallel_do_embedding(self._embed, nodes)
         for node in nodes:
             data = self._serialize_node_partial(node)
-            self._client.upsert(collection_name=node.group, data=data)
+            self._client.upsert(collection_name=node.group, data=[data])
 
         self._map_store.update_nodes(nodes)
 
@@ -415,10 +412,12 @@ class MilvusStore(StoreBase, IndexBase):
             query_embedding = embed_func(query)
             results = self._client.search(collection_name=group_name, data=[query_embedding],
                                           limit=topk, anns_field=self._gen_embedding_key(key))
-            if len(results) > 0:
-                # we have only one `data` for search() so there is only one result in `results`
-                for result in results[0]:
-                    uidset.update(result['id'])
+            # we have only one `data` for search() so there is only one result in `results`
+            if len(results) != 1:
+                raise ValueError(f'number of results [{len(results)}] != expected [1]')
+
+            for result in results[0]:
+                uidset.update(result['id'])
 
         return self._map_store.get_nodes(group_name, list(uidset))
 
@@ -428,6 +427,7 @@ class MilvusStore(StoreBase, IndexBase):
                                          filter=f'{self._primary_key} != ""')
             for result in results:
                 doc = self._deserialize_node_partial(result)
+                doc.group = group_name
                 store.update_nodes([doc], group_name)
 
         # construct DocNode::parent and DocNode::children
@@ -443,7 +443,6 @@ class MilvusStore(StoreBase, IndexBase):
         res = {
             'uid': node.uid,
             'text': node.text,
-            'group': node.group,
         }
 
         if node.parent:
@@ -465,13 +464,16 @@ class MilvusStore(StoreBase, IndexBase):
         doc = DocNode(
             uid=result.get('uid'),
             text=result.get('text'),
-            group=result.get('group'),
             parent=result.get('parent'),  # this is the parent's uid
         )
 
         for k in self._embedding_keys:
-            doc.embedding[k] = result.get(self._gen_embedding_key(k))
+            val = result.get(self._gen_embedding_key(k))
+            if val:
+                doc.embedding[k] = val
         for k in self._metadata_keys:
-            doc._metadata[k] = result.get(self._gen_metadata_key(k))
+            val = result.get(self._gen_metadata_key(k))
+            if val:
+                doc._metadata[k] = val
 
         return doc
