@@ -156,7 +156,7 @@ class EmbeddingIndex(IndexBase):
 
     @override
     def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
-        self._index.remove_nodes(group_name, uids)
+        self._store.remove_nodes(group_name, uids)
 
     @override
     def query(self, *args, **kwargs) -> List[DocNode]:
