@@ -7,7 +7,8 @@ from .component.bm25 import BM25
 from lazyllm import LOG
 from lazyllm.common import override
 from .embed_utils import parallel_do_embedding
-from .milvus_backend import MilvusBackend
+from .milvus_store import MilvusStore
+from .map_store import MapStore
 
 # ---------------------------------------------------------------------------- #
 

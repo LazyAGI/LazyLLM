@@ -35,7 +35,8 @@ class Document(ModuleBase):
                 if isinstance(embed, ModuleBase):
                     self._submodules.append(embed)
             self._dlm = DocListManager(dataset_path, name).init_tables()
-            self._kbs = CallableDict({DocListManager.DEDAULT_GROUP_NAME: DocImpl(embed=self._embed, dlm=self._dlm, store=store)})
+            self._kbs = CallableDict({DocListManager.DEDAULT_GROUP_NAME:
+                                      DocImpl(embed=self._embed, dlm=self._dlm, store=store)})
             if manager: self._manager = ServerModule(DocManager(self._dlm))
             if server: self._kbs = ServerModule(self._kbs)
 

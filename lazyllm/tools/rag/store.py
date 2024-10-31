@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 import chromadb
-from lazyllm import LOG, config, reset_on_pickle
+from lazyllm import LOG, config
 from lazyllm.common import override
 from chromadb.api.models.Collection import Collection
 from .store_base import StoreBase
