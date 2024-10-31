@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Union, Callable
 import pymilvus
 from pymilvus import MilvusClient, FieldSchema, CollectionSchema
 from .doc_node import DocNode
-from .map_backend import MapStore
+from .map_backend import MapBackend
 from .embed_utils import parallel_do_embedding
 from .index_base import IndexBase
 from .store_base import StoreBase
@@ -81,7 +81,7 @@ class MilvusBackend(StoreBase, IndexBase):
             self._client.create_collection(collection_name=group_name, schema=schema,
                                            index_params=index_params)
 
-        self._map_backend = MapStore(list(group_fields.keys()))
+        self._map_backend = MapBackend(list(group_fields.keys()))
         self._load_all_nodes_to(self._map_backend)
 
     # ----- APIs for Store ----- #
@@ -171,7 +171,7 @@ class MilvusBackend(StoreBase, IndexBase):
     def _gen_metadata_key(k: str) -> str:
         return 'metadata_' + k
 
-    def _load_all_nodes_to(self, store: MapStore):
+    def _load_all_nodes_to(self, store: StoreBase):
         for group_name in self._client.list_collections():
             results = self._client.query(collection_name=group_name,
                                          filter=f'{self._primary_key} != ""')

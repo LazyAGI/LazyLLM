@@ -6,7 +6,7 @@ from chromadb.api.models.Collection import Collection
 from .store_base import StoreBase
 from .doc_node import DocNode
 import json
-from .map_backend import MapStore
+from .map_backend import MapBackend
 
 # ---------------------------------------------------------------------------- #
 
@@ -22,7 +22,7 @@ class ChromadbStore(StoreBase):
         self, node_groups: List[str], embed_dim: Dict[str, int]
     ) -> None:
         super().__init__()
-        self._map_store = MapStore(node_groups)
+        self._map_store = MapBackend(node_groups)
         self._db_client = chromadb.PersistentClient(path=config["rag_persistent_path"])
         LOG.success(f"Initialzed chromadb in path: {config['rag_persistent_path']}")
         self._collections: Dict[str, Collection] = {

@@ -4,7 +4,7 @@ import tempfile
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.store import LAZY_ROOT_NAME
-from lazyllm.tools.rag.milvus_backend import MilvusStore, MilvusField
+from lazyllm.tools.rag.milvus_backend import MilvusBackend, MilvusField
 
 class TestMilvusBackend(unittest.TestCase):
     def setUp(self):
@@ -28,8 +28,8 @@ class TestMilvusBackend(unittest.TestCase):
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
         _, self.store_file = tempfile.mkstemp(suffix=".db")
 
-        self.store = MilvusStore(uri=self.store_file, embed=self.mock_embed,
-                                 group_fields=group_fields)
+        self.store = MilvusBackend(uri=self.store_file, embed=self.mock_embed,
+                                   group_fields=group_fields)
         self.index = self.store.get_index()
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,

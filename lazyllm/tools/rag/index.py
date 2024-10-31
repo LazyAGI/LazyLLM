@@ -7,7 +7,7 @@ from .component.bm25 import BM25
 from lazyllm import LOG
 from lazyllm.common import override
 from .embed_utils import parallel_do_embedding
-from .milvus_backend import MilvusBackend, _MilvusIndex
+from .milvus_backend import MilvusBackend
 
 # ---------------------------------------------------------------------------- #
 
@@ -143,8 +143,7 @@ def register_similarity(
 class EmbeddingIndex(IndexBase):
     def __init__(self, backend_type: Optional[str] = None, *args, **kwargs):
         if backend_type == 'milvus':
-            backend = MilvusBackend(*args, **kwargs)
-            self._index = _MilvusIndex(backend)
+            self._index = MilvusBackend(*args, **kwargs)
         else:
             raise ValueError(f'unsupported IndexWrapper backend [{backend_type}]')
 
