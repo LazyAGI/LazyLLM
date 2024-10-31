@@ -25,7 +25,7 @@ class MilvusField:
         self.max_length = max_length
 
 
-class MilvusBackend:
+class MilvusBackend(StoreBase, IndexBase):
     _type2milvus = [
         pymilvus.DataType.VARCHAR,  # DTYPE_VARCHAR
         pymilvus.DataType.FLOAT_VECTOR,  # DTYPE_FLOAT_VECTOR
@@ -86,6 +86,7 @@ class MilvusBackend:
 
     # ----- APIs for Store ----- #
 
+    @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
         parallel_do_embedding(self._embed, nodes)
         for node in nodes:
@@ -94,6 +95,7 @@ class MilvusBackend:
 
         self._map_backend.update_nodes(nodes)
 
+    @override
     def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
         if uids:
             self._client.delete(collection_name=group_name,
@@ -103,31 +105,39 @@ class MilvusBackend:
 
         self._map_backend.remove_nodes(group_name, uids)
 
+    @override
     def get_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:
         return self._map_backend.get_nodes(group_name, uids)
 
+    @override
     def is_group_active(self, name: str) -> bool:
         return self._map_backend.is_group_active(name)
 
+    @override
     def all_groups(self) -> List[str]:
         return self._map_backend.all_groups()
 
+    @override
     def register_index(self, type: str, index: IndexBase) -> None:
         self._map_backend.register_index(type, index)
 
+    @override
     def get_index(self, type: str = 'default') -> Optional[IndexBase]:
-        if type != 'default':
-            return self._map_backend.get_index(type)
-        return self
+        if type == 'default':
+            return self
+        return self._map_backend.get_index(type)
 
     # ----- APIs for Index ----- #
 
+    @override
     def update(self, nodes: List[DocNode]) -> None:
         self.update_nodes(nodes)
 
+    @override
     def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
         self.remove_nodes(group_name, uids)
 
+    @override
     def query(self,
               query: str,
               group_name: str,
@@ -217,56 +227,3 @@ class MilvusBackend:
                 doc._metadata[k] = val
 
         return doc
-
-
-class _MilvusIndex(IndexBase):
-    def __init__(self, backend: MilvusBackend):
-        self._backend = backend
-
-    @override
-    def update(self, nodes: List[DocNode]) -> None:
-        self._backend.update(nodes)
-
-    @override
-    def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
-        self._backend.remove(uids, group_name)
-
-    @override
-    def query(self, *args, **kwargs) -> List[DocNode]:
-        return self._backend.query(*args, **kwargs)
-
-
-class MilvusStore(StoreBase):
-    def __init__(self, uri: str, embed: Dict[str, Callable],
-                 group_fields: Dict[str, List[MilvusField]]):
-        self._backend = MilvusBackend(uri, embed, group_fields)
-
-    @override
-    def update_nodes(self, nodes: List[DocNode]) -> None:
-        self._backend.update_nodes(nodes)
-
-    @override
-    def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
-        self._backend.remove_nodes(group_name, uids)
-
-    @override
-    def get_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:
-        return self._backend.get_nodes(group_name, uids)
-
-    @override
-    def is_group_active(self, name: str) -> bool:
-        return self._backend.is_group_active(name)
-
-    @override
-    def all_groups(self) -> List[str]:
-        return self._backend.all_groups()
-
-    @override
-    def register_index(self, type: str, index: IndexBase) -> None:
-        self._backend.register_index(type, index)
-
-    @override
-    def get_index(self, type: str = 'default') -> Optional[IndexBase]:
-        if type == 'default':
-            return _MilvusIndex(self._backend)
-        return self._backend.get_index(type)

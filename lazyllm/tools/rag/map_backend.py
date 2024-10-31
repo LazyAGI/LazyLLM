@@ -13,7 +13,7 @@ def _remove_from_indices(name2index: Dict[str, IndexBase], uids: List[str],
     for _, index in name2index.items():
         index.remove(uids, group_name)
 
-class MapBackend:
+class MapBackend(StoreBase, IndexBase):
     def __init__(self, node_groups: List[str]):
         super().__init__()
         # Dict[group_name, Dict[uuid, DocNode]]
@@ -22,11 +22,15 @@ class MapBackend:
         }
         self._name2index = {}
 
+    # ----- APIs for StoreBase ----- #
+
+    @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
         for node in nodes:
             self._group2docs[node.group][node.uid] = node
         _update_indices(self._name2index, nodes)
 
+    @override
     def remove_nodes(self, group_name: str, uids: List[str] = None) -> None:
         if uids:
             docs = self._group2docs.get(group_name)
@@ -39,6 +43,7 @@ class MapBackend:
             if docs:
                 _remove_from_indices(self._name2index, [doc.uid for doc in docs])
 
+    @override
     def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
         docs = self._group2docs.get(group_name)
         if not docs:
@@ -54,24 +59,32 @@ class MapBackend:
                 ret.append(doc)
         return ret
 
+    @override
     def is_group_active(self, name: str) -> bool:
         docs = self._group2docs.get(name)
         return True if docs else False
 
+    @override
     def all_groups(self) -> List[str]:
         return self._group2docs.keys()
 
+    @override
     def register_index(self, type: str, index: IndexBase) -> None:
         self._name2index[type] = index
 
+    @override
     def get_index(self, type: str = 'default') -> Optional[IndexBase]:
-        if type != 'default':
-            return self._name2index.get(type)
-        return self
+        if type == 'default':
+            return self
+        return self._name2index.get(type)
 
+    # ----- APIs for IndexBase ----- #
+
+    @override
     def update(self, nodes: List[DocNode]) -> None:
         self.update_nodes(nodes)
 
+    @override
     def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
         if group_name:
             self.remove_nodes(group_name, uids)
@@ -81,6 +94,7 @@ class MapBackend:
                     docs.pop(uid, None)
         _remove_from_indices(self._name2index, uids)
 
+    @override
     def query(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:
         return self.get_nodes(group_name, uids)
 
@@ -90,55 +104,3 @@ class MapBackend:
             if doc:
                 return doc
         return None
-
-
-class _MapIndex(IndexBase):
-    def __init__(self, backend: MapBackend):
-        self._backend = backend
-
-    @override
-    def update(self, nodes: List[DocNode]) -> None:
-        self._backend.update(nodes)
-
-    @override
-    def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
-        self._backend.remove(uids, group_name)
-
-    @override
-    def query(self, *args, **kwargs) -> List[DocNode]:
-        return self._backend.query(*args, **kwargs)
-
-
-class MapStore(StoreBase):
-    def __init__(self, node_groups: List[str]):
-        self._backend = MapBackend(node_groups)
-
-    @override
-    def update_nodes(self, nodes: List[DocNode]) -> None:
-        self._backend.update_nodes(nodes)
-
-    @override
-    def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
-        self._backend.remove_nodes(group_name, uids)
-
-    @override
-    def get_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:
-        return self._backend.get_nodes(group_name, uids)
-
-    @override
-    def is_group_active(self, name: str) -> bool:
-        return self._backend.is_group_active(name)
-
-    @override
-    def all_groups(self) -> List[str]:
-        return self._backend.all_groups()
-
-    @override
-    def register_index(self, type: str, index: IndexBase) -> None:
-        self._backend.register_index(type, index)
-
-    @override
-    def get_index(self, type: str = 'default') -> Optional[IndexBase]:
-        if type == 'default':
-            return _MapIndex(self._backend)
-        return self._backend.get_index(type)
