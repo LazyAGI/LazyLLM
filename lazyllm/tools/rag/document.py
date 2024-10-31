@@ -97,10 +97,18 @@ class Document(ModuleBase):
         return self._impls(self._curr_group, func_name, *args, **kw)
 
     def find_parent(self, target) -> Callable:
-        return functools.partial(self._forward, 'find_parent', group=target)
+        # TODO: Currently, when a DocNode is returned from the server, it will carry all parent nodes and child nodes.
+        # So the query of parent and child nodes can be performed locally, and there is no need to search the
+        # document service through the server for the time being. When this item is optimized, the code will become:
+        # return functools.partial(self._forward, 'find_parent', group=target)
+        return functools.partial(Document.find_parent, group=target)
 
     def find_children(self, target) -> Callable:
-        return functools.partial(self._forward, 'find_children', group=target)
+        # TODO: Currently, when a DocNode is returned from the server, it will carry all parent nodes and child nodes.
+        # So the query of parent and child nodes can be performed locally, and there is no need to search the
+        # document service through the server for the time being. When this item is optimized, the code will become:
+        # return functools.partial(self._forward, 'find_children', group=target)
+        return functools.partial(Document.find_children, group=target)
 
     def forward(self, *args, **kw) -> List[DocNode]:
         return self._forward('retrieve', *args, **kw)
