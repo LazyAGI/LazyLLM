@@ -92,9 +92,9 @@ class MapBackend:
         return None
 
 
-class MapIndex(IndexBase):
-    def __init__(self, node_groups: List[str]):
-        self._backend = MapBackend(node_groups)
+class _MapIndex(IndexBase):
+    def __init__(self, backend: MapBackend):
+        self._backend = backend
 
     @override
     def update(self, nodes: List[DocNode]) -> None:
@@ -140,5 +140,5 @@ class MapStore(StoreBase):
     @override
     def get_index(self, type: str = 'default') -> Optional[IndexBase]:
         if type == 'default':
-            return
+            return _MapIndex(self._backend)
         return self._backend.get_index(type)

@@ -24,6 +24,7 @@ class MilvusField:
         self.index_params = index_params
         self.max_length = max_length
 
+
 class MilvusBackend:
     _type2milvus = [
         pymilvus.DataType.VARCHAR,  # DTYPE_VARCHAR
@@ -218,6 +219,23 @@ class MilvusBackend:
         return doc
 
 
+class _MilvusIndex(IndexBase):
+    def __init__(self, backend: MilvusBackend):
+        self._backend = backend
+
+    @override
+    def update(self, nodes: List[DocNode]) -> None:
+        self._backend.update(nodes)
+
+    @override
+    def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
+        self._backend.remove(uids, group_name)
+
+    @override
+    def query(self, *args, **kwargs) -> List[DocNode]:
+        return self._backend.query(*args, **kwargs)
+
+
 class MilvusStore(StoreBase):
     def __init__(self, uri: str, embed: Dict[str, Callable],
                  group_fields: Dict[str, List[MilvusField]]):
@@ -249,22 +267,6 @@ class MilvusStore(StoreBase):
 
     @override
     def get_index(self, type: str = 'default') -> Optional[IndexBase]:
+        if type == 'default':
+            return _MilvusIndex(self._backend)
         return self._backend.get_index(type)
-
-
-class MilvusIndex(IndexBase):
-    def __init__(self, uri: str, embed: Dict[str, Callable],
-                 group_fields: Dict[str, List[MilvusField]]):
-        self._backend = MilvusBackend(uri, embed, group_fields)
-
-    @override
-    def update(self, nodes: List[DocNode]) -> None:
-        self._backend.update(nodes)
-
-    @override
-    def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
-        self._backend.remove(uids, group_name)
-
-    @override
-    def query(self, *args, **kwargs) -> List[DocNode]:
-        return self._backend.query(*args, **kwargs)
