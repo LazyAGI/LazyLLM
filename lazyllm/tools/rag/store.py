@@ -336,14 +336,6 @@ class MilvusStore(StoreBase, IndexBase):
         self._map_store = MapStore(list(group_fields.keys()))
         self._load_all_nodes_to(self._map_store)
 
-    @staticmethod
-    def _gen_embedding_key(k: str) -> str:
-        return 'embedding_' + k
-
-    @staticmethod
-    def _gen_metadata_key(k: str) -> str:
-        return 'metadata_' + k
-
     # ----- Store APIs ----- #
 
     @override
@@ -420,6 +412,16 @@ class MilvusStore(StoreBase, IndexBase):
                 uidset.update(result['id'])
 
         return self._map_store.get_nodes(group_name, list(uidset))
+
+    # ----- internal helper functions ----- #
+
+    @staticmethod
+    def _gen_embedding_key(k: str) -> str:
+        return 'embedding_' + k
+
+    @staticmethod
+    def _gen_metadata_key(k: str) -> str:
+        return 'metadata_' + k
 
     def _load_all_nodes_to(self, store: StoreBase):
         for group_name in self._client.list_collections():
