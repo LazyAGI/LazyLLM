@@ -25,6 +25,10 @@ class StoreBase(ABC):
         pass
 
     @abstractmethod
+    def query(self, *args, **kwargs) -> List[DocNode]:
+        pass
+
+    @abstractmethod
     def register_index(self, type: str, index: IndexBase) -> None:
         pass
 

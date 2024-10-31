@@ -13,7 +13,7 @@ def _remove_from_indices(name2index: Dict[str, IndexBase], uids: List[str],
     for _, index in name2index.items():
         index.remove(uids, group_name)
 
-class MapBackend(StoreBase, IndexBase):
+class MapStore(StoreBase, IndexBase):
     def __init__(self, node_groups: List[str]):
         super().__init__()
         # Dict[group_name, Dict[uuid, DocNode]]
@@ -21,8 +21,6 @@ class MapBackend(StoreBase, IndexBase):
             group: {} for group in node_groups
         }
         self._name2index = {}
-
-    # ----- APIs for StoreBase ----- #
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
@@ -77,22 +75,6 @@ class MapBackend(StoreBase, IndexBase):
         if type == 'default':
             return self
         return self._name2index.get(type)
-
-    # ----- APIs for IndexBase ----- #
-
-    @override
-    def update(self, nodes: List[DocNode]) -> None:
-        self.update_nodes(nodes)
-
-    @override
-    def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
-        if group_name:
-            self.remove_nodes(group_name, uids)
-        else:
-            for _, docs in self._group2docs.items():
-                for uid in uids:
-                    docs.pop(uid, None)
-        _remove_from_indices(self._name2index, uids)
 
     @override
     def query(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:

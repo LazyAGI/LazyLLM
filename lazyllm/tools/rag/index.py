@@ -143,18 +143,20 @@ def register_similarity(
 class EmbeddingIndex(IndexBase):
     def __init__(self, backend_type: Optional[str] = None, *args, **kwargs):
         if backend_type == 'milvus':
-            self._index = MilvusBackend(*args, **kwargs)
+            self._store = MilvusStore(*args, **kwargs)
+        elif backend_type == 'map':
+            self._store = MapStore(*args, **kwargs)
         else:
             raise ValueError(f'unsupported IndexWrapper backend [{backend_type}]')
 
     @override
     def update(self, nodes: List[DocNode]) -> None:
-        self._index.update(nodes)
+        self._store.update_nodes(nodes)
 
     @override
     def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
-        self._index.remove(uids, group_name)
+        self._index.remove_nodes(group_name, uids)
 
     @override
     def query(self, *args, **kwargs) -> List[DocNode]:
-        return self._index.query(*args, **kwargs)
+        return self._store.query(*args, **kwargs)

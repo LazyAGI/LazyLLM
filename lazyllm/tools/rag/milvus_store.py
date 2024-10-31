@@ -25,7 +25,7 @@ class MilvusField:
         self.max_length = max_length
 
 
-class MilvusBackend(StoreBase, IndexBase):
+class MilvusStore(StoreBase):
     _type2milvus = [
         pymilvus.DataType.VARCHAR,  # DTYPE_VARCHAR
         pymilvus.DataType.FLOAT_VECTOR,  # DTYPE_FLOAT_VECTOR
@@ -84,8 +84,6 @@ class MilvusBackend(StoreBase, IndexBase):
         self._map_backend = MapBackend(list(group_fields.keys()))
         self._load_all_nodes_to(self._map_backend)
 
-    # ----- APIs for Store ----- #
-
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
         parallel_do_embedding(self._embed, nodes)
@@ -126,16 +124,6 @@ class MilvusBackend(StoreBase, IndexBase):
         if type == 'default':
             return self
         return self._map_backend.get_index(type)
-
-    # ----- APIs for Index ----- #
-
-    @override
-    def update(self, nodes: List[DocNode]) -> None:
-        self.update_nodes(nodes)
-
-    @override
-    def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
-        self.remove_nodes(group_name, uids)
 
     @override
     def query(self,
