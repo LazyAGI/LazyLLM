@@ -441,8 +441,8 @@ class TestEngineRAG(object):
 
         # test add doc_group
         resources[-1] = dict(id='0', kind='Document', name='d1', args=dict(
-            dataset_path='rag_master', node_group=[dict(name='sentence', transform='SentenceSplitter',
-                                                        chunk_size=100, chunk_overlap=10)]))
+            dataset_path='rag_master', server=True, node_group=[
+                dict(name='sentence', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))
         nodes.extend([dict(id='2', kind='Retriever', name='ret2',
                            args=dict(doc='0', group_name='sentence', similarity='bm25', topk=3)),
                       dict(id='3', kind='JoinFormatter', name='c', args=dict(type='sum'))])

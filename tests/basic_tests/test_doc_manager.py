@@ -84,6 +84,8 @@ class TestDocListManager(unittest.TestCase):
         self.manager.add_files([self.test_file_1, self.test_file_2])
         self.manager.delete_files([hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()])
         files_list = self.manager.list_files(details=True)
+        assert len(files_list) == 2
+        files_list = self.manager.list_files(details=True, exclude_status=DocListManager.Status.deleted)
         assert len(files_list) == 1
         assert not any(self.test_file_1.endswith(row[1]) for row in files_list)
 
@@ -204,7 +206,8 @@ class TestDocListServer(object):
 
         data = dict(override='false', metadatas=json.dumps([{"key": "value"}, {"key": "value2"}]), user_path='path')
         response = requests.post(self.get_url('upload_files', **data), files=files)
-        assert response.status_code == 200 and len(response.json().get('data')[0]) == 2
+        assert response.status_code == 200 and response.json().get('code') == 200, response.json()
+        assert len(response.json().get('data')[0]) == 2
 
         response = requests.get(self.get_url('list_files', details=False))
         ids = response.json().get('data')

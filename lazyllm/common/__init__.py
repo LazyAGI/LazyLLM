@@ -2,8 +2,8 @@ from .registry import LazyLLMRegisterMetaClass, _get_base_cls_from_registry, Reg
 from .common import package, kwargs, arguments, LazyLLMCMD, timeout, final, ReadOnlyWrapper, DynamicDescriptor
 from .common import FlatList, Identity, ResultCollector, ArgsDict, CaseInsensitiveDict
 from .common import ReprRule, make_repr, modify_repr
-from .common import once_flag, call_once, once_wrapper, singleton
 from .common import encode_query_with_filepaths, decode_query_with_filepaths, lazyllm_merge_query
+from .common import once_flag, call_once, once_wrapper, singleton, reset_on_pickle
 from .option import Option, OptionIter
 from .threading import Thread, ThreadPoolExecutor
 from .multiprocessing import SpawnProcess, ForkProcess
@@ -33,6 +33,7 @@ __all__ = [
     'compile_func',
     'DynamicDescriptor',
     'singleton',
+    'reset_on_pickle',
 
     # arg praser
     'LazyLLMCMD',

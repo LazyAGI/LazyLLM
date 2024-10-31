@@ -430,3 +430,27 @@ def _lazyllm_get_file_list(files: Any) -> list:
         return files
     else:
         raise TypeError(f'Not supported type: {type(files)}.')
+
+def reset_on_pickle(*fields):
+    def decorator(cls):
+        original_getstate = cls.__getstate__ if hasattr(cls, '__getstate__') else lambda self: self.__dict__
+        original_setstate = (cls.__setstate__ if hasattr(cls, '__setstate__') else
+                             lambda self, state: self.__dict__.update(state))
+
+        def __getstate__(self):
+            state = original_getstate(self).copy()
+            for field, *_ in fields:
+                state[field] = None
+            return state
+
+        def __setstate__(self, state):
+            original_setstate(self, state)
+            for field in fields:
+                field, field_type = field if isinstance(field, (tuple, list)) else (field, None)
+                if field in state and state[field] is None and field_type is not None:
+                    setattr(self, field, field_type() if field_type else None)
+
+        cls.__getstate__ = __getstate__
+        cls.__setstate__ = __setstate__
+        return cls
+    return decorator
