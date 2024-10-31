@@ -464,6 +464,11 @@ class ServerModule(UrlModule):
 
     _url_id = property(lambda self: self._impl._module_id)
 
+    def __call__(self, *args, **kw):
+        if len(args) > 1:
+            return super(__class__, self).__call__(package(args), **kw)
+        return super(__class__, self).__call__(*args, **kw)
+
     def wait(self):
         self._impl._launcher.wait()
 

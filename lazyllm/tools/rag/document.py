@@ -12,6 +12,10 @@ import copy
 import functools
 
 
+class CallableDict(dict):
+    def __call__(self, cls, *args, **kw):
+        return self[cls](*args, **kw)
+
 class Document(ModuleBase):
     class _Impl(ModuleBase):
         def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
@@ -56,6 +60,9 @@ class Document(ModuleBase):
 
     @property
     def _impl(self): return self._impls.get_doc_by_kb_group(self._curr_group)
+
+    @property
+    def manager(self): return getattr(self._impls, '_manager', None)
 
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
