@@ -3,7 +3,6 @@ import socket
 import requests
 import multiprocessing
 import json
-
 import lazyllm
 from lazyllm import ModuleBase, ServerModule
 import gradio as gr
@@ -51,7 +50,7 @@ class WebUi:
 
     def list_groups(self):
         response = requests.get(
-            f"{self.base_url}/list_groups", headers=self.basic_headers(False)
+            f"{self.base_url}/list_kb_groups", headers=self.basic_headers(False)
         )
         return response.json()["data"]
 
@@ -62,38 +61,44 @@ class WebUi:
         )
         return response.json()["data"]
 
-    def list_files(self, group_name: str):
+    def list_files(self):
         response = requests.get(
-            f"{self.base_url}/list_files?group_name={group_name}",
+            f"{self.base_url}/list_files",
+            headers=self.basic_headers(False),
+        )
+        return response.json()["data"]
+    
+    def list_files_in_group(self, group_name: str):
+        response = requests.get(
+            f"{self.base_url}/list_files_in_group?group_name={group_name}",
             headers=self.basic_headers(False),
         )
         return response.json()["data"]
 
-    def delete_file(self, group_name: str, file_name: str):
+    def delete_file(self, group_name: str, file_ids: list[str]):
+        data = {"group_name": group_name, "file_ids": file_ids}
         response = requests.post(
-            f"{self.base_url}/delete_file?group_name={group_name}&file_name={file_name}",
-            headers=self.basic_headers(True),
+            f"{self.base_url}/delete_files_from_group",
+            # headers=self.basic_headers(True),
+            json=data
         )
         return response.json()["msg"]
 
-    def gr_show_list(self, str_list: list[str], list_name: str):
-        return gr.DataFrame(
-            headers=["index", list_name],
-            value=[[index, str_list[index]] for index in range(len(str_list))],
-        )
+    def gr_show_list(self, str_list: list[str], list_name):
+        if isinstance(list_name, str):
+            return gr.DataFrame(
+                headers=["index", list_name],
+                value=[[index, str_list[index]] for index in range(len(str_list))],
+            )
+        headers = ["index"] + list_name
+        c = len(list_name)
+        values = [[i] + [""] * c for i in range(len(str_list))]
+        return gr.DataFrame(headers=headers, value=values)
 
     def create_ui(self):
         with gr.Blocks() as demo:
             with gr.Tabs():
                 select_group_list = []
-                with gr.TabItem("创建分组"):
-                    create_group_text = gr.Textbox(label="分组名称：")
-                    create_group_btn = gr.Button("创建")
-
-                with gr.TabItem("删除分组"):
-                    del_select_group = gr.Dropdown(self.list_groups(), label="选择分组")
-                    delete_group_btn = gr.Button("删除")
-                    select_group_list.append(del_select_group)
 
                 with gr.TabItem("分组列表"):
                     select_group = self.gr_show_list(
@@ -110,13 +115,13 @@ class WebUi:
                             for file in files
                         ]
 
-                        url = f"{self.base_url}/upload_files?group_name={group_name}&override=true"
+                        url = f"{self.base_url}/add_files_to_group?group_name={group_name}&override=true"
                         response = requests.post(
                             url, files=files_to_upload, headers=self.muti_headers()
                         )
                         response.raise_for_status()
                         response_data = response.json()
-                        gr.Info(str(response_data["data"]))
+                        gr.Info(str(response_data["msg"]))
 
                         for _, (_, file_obj) in files_to_upload:
                             file_obj.close()
@@ -134,19 +139,17 @@ class WebUi:
 
                     select_group_list.append(select_group)
 
-                with gr.TabItem("文件列表"):
-
+                with gr.TabItem("分组文件列表"):
                     def _list_group_files(group_name):
-                        file_list = self.list_files(group_name)
+                        file_list = self.list_files_in_group(group_name)
+                        file_list = [file[:2] for file in file_list]
+                        values = [[i] + file_list[i] for i in range(len(file_list))]
                         return gr.update(
-                            value=[
-                                [index, file_list[index]]
-                                for index in range(len(file_list))
-                            ]
+                            value=values
                         )
 
                     select_group = gr.Dropdown(self.list_groups(), label="选择分组")
-                    show_list = self.gr_show_list([], list_name="file_name")
+                    show_list = self.gr_show_list([], list_name=["file_id", "file_name"])
                     select_group.change(
                         fn=_list_group_files, inputs=select_group, outputs=show_list
                     )
@@ -155,7 +158,8 @@ class WebUi:
                 with gr.TabItem("删除文件"):
 
                     def _list_group_files(group_name):
-                        file_list = self.list_files(group_name)
+                        file_list = self.list_files_in_group(group_name)
+                        file_list = [','.join(file[:2]) for file in file_list]
                         return gr.update(choices=file_list)
 
                     select_group = gr.Dropdown(self.list_groups(), label="选择分组")
@@ -165,8 +169,9 @@ class WebUi:
                     )
                     delete_btn = gr.Button("删除")
 
-                    def _delete_file(group_name, file_name):
-                        gr.Info(self.delete_file(group_name, file_name))
+                    def _delete_file(group_name, select_file):
+                        file_ids = [select_file.split(',')[0]]
+                        gr.Info(self.delete_file(group_name, file_ids))
                         return _list_group_files(group_name)
 
                     delete_btn.click(
@@ -175,50 +180,6 @@ class WebUi:
                         outputs=select_file,
                     )
                     select_group_list.append(select_group)
-
-                def _create_group(group_name):
-                    gr.Info(self.new_group(group_name))
-                    curt_groups = self.list_groups()
-                    return [
-                        (
-                            gr.update(choices=curt_groups)
-                            if isinstance(select, gr.Dropdown)
-                            else gr.update(
-                                value=[
-                                    [index, curt_groups[index]]
-                                    for index in range(len(curt_groups))
-                                ]
-                            )
-                        )
-                        for select in select_group_list
-                    ]
-
-                def _del_group(group_name):
-                    gr.Info(self.delete_group(group_name))
-                    curt_groups = self.list_groups()
-                    return [
-                        (
-                            gr.update(choices=curt_groups)
-                            if isinstance(select, gr.Dropdown)
-                            else gr.update(
-                                value=[
-                                    [index, curt_groups[index]]
-                                    for index in range(len(curt_groups))
-                                ]
-                            )
-                        )
-                        for select in select_group_list
-                    ]
-
-                create_group_btn.click(
-                    fn=_create_group,
-                    inputs=create_group_text,
-                    outputs=select_group_list,
-                )
-
-                delete_group_btn.click(
-                    fn=_del_group, inputs=del_select_group, outputs=select_group_list
-                )
 
         return demo
 

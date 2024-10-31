@@ -8,6 +8,7 @@ from .doc_manager import DocManager
 from .doc_impl import DocImpl
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY, DocNode
 from .utils import DocListManager
+from .web import DocWebModule
 import copy
 import functools
 
@@ -31,7 +32,9 @@ class Document(ModuleBase):
             self._dlm = DocListManager(dataset_path, name).init_tables()
             self._kbs = {DocListManager.DEDAULT_GROUP_NAME: DocImpl(embed=self._embed, dlm=self._dlm)}
             if manager: self._manager = ServerModule(DocManager(self._dlm))
-            if server: self._doc = ServerModule(self._doc)
+            if server: 
+                self._doc = DocWebModule(doc_server=self._manager)
+                self._kbs[DocListManager.DEDAULT_GROUP_NAME]._lazy_init()
 
         def add_kb_group(self, name):
             self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name)
