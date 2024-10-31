@@ -1,7 +1,7 @@
 import os
 import shutil
 import hashlib
-from typing import List, Callable, Generator, Dict, Any, Optional, Union
+from typing import List, Callable, Generator, Dict, Any, Optional, Union, Tuple
 from abc import ABC, abstractmethod
 
 import pydantic
@@ -29,7 +29,7 @@ class DocListManager(ABC):
         success = 'success'
         failed = 'failed'
         deleting = 'deleting'
-        deleting = 'deleted'
+        deleted = 'deleted'
 
     def __init__(self, path, name):
         self._path = path
@@ -52,13 +52,12 @@ class DocListManager(ABC):
         for root, _, files in os.walk(self._path):
             files = [os.path.join(root, file_path) for file_path in files]
             files_list.extend(files)
-        ids = self.add_files(files_list, status=DocListManager.Status.success)
-        self.add_files_to_kb_group(ids, group=DocListManager.DEDAULT_GROUP_NAME)
+        self.add_files(files_list, status=DocListManager.Status.success)
         return self
 
-    def delete_files(self, file_ids: List[str]):
+    def delete_files(self, file_ids: List[str], real: bool = False):
         self.update_kb_group_file_status(file_ids=file_ids, status=DocListManager.Status.deleting)
-        self._delete_files(file_ids)
+        self._delete_files(file_ids, real)
 
     @abstractmethod
     def table_inited(self): pass
@@ -81,12 +80,18 @@ class DocListManager(ABC):
     def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
                             status: Union[str, List[str]] = Status.all,
                             exclude_status: Optional[Union[str, List[str]]] = None,
-                            upload_status: str = Status.all,
+                            upload_status: Union[str, List[str]] = Status.all,
                             exclude_upload_status: Optional[Union[str, List[str]]] = None): pass
 
-    @abstractmethod
     def add_files(self, files: List[str], metadatas: Optional[List] = None,
-                  status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[str]: pass
+                  status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[str]:
+        ids = self._add_files(files, metadatas, status, batch_size)
+        self.add_files_to_kb_group(ids, group=DocListManager.DEDAULT_GROUP_NAME)
+        return ids
+
+    @abstractmethod
+    def _add_files(self, files: List[str], metadatas: Optional[List] = None,
+                   status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[str]: pass
 
     @abstractmethod
     def update_file_message(self, fileid: str, **kw): pass
@@ -95,7 +100,7 @@ class DocListManager(ABC):
     def add_files_to_kb_group(self, file_ids: List[str], group: str): pass
 
     @abstractmethod
-    def _delete_files(self, file_ids: List[str]): pass
+    def _delete_files(self, file_ids: List[str], real: bool = False): pass
 
     @abstractmethod
     def delete_files_from_kb_group(self, file_ids: List[str], group: str): pass
@@ -104,7 +109,7 @@ class DocListManager(ABC):
     def get_file_status(self, fileid: str): pass
 
     @abstractmethod
-    def update_file_status(self, file_ids: List[str], status: str): pass
+    def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]: pass
 
     @abstractmethod
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]],
@@ -213,7 +218,7 @@ class SqliteDocListManager(DocListManager):
     def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
                             status: Union[str, List[str]] = DocListManager.Status.all,
                             exclude_status: Optional[Union[str, List[str]]] = None,
-                            upload_status: str = DocListManager.Status.all,
+                            upload_status: Union[str, List[str]] = DocListManager.Status.all,
                             exclude_upload_status: Optional[Union[str, List[str]]] = None):
         query = """
             SELECT documents.doc_id, documents.path, documents.status,
@@ -251,8 +256,8 @@ class SqliteDocListManager(DocListManager):
         if not details: return [row[:2] for row in rows]
         return rows
 
-    def add_files(self, files: List[str], metadatas: Optional[List] = None,
-                  status: Optional[str] = DocListManager.Status.waiting, batch_size: int = 64):
+    def _add_files(self, files: List[str], metadatas: Optional[List] = None,
+                   status: Optional[str] = DocListManager.Status.waiting, batch_size: int = 64):
         results = []
         for i in range(0, len(files), batch_size):
             batch_files = files[i:i + batch_size]
@@ -290,7 +295,9 @@ class SqliteDocListManager(DocListManager):
                     VALUES (?, ?, ?)
                 """, (doc_id, group, DocListManager.Status.waiting))
 
-    def _delete_files(self, file_ids: List[str]):
+    def _delete_files(self, file_ids: List[str], real: bool = False):
+        if not real:
+            return self.update_file_status(file_ids, DocListManager.Status.deleted)
         with self._conn:
             for doc_id in file_ids:
                 self._conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
@@ -305,10 +312,18 @@ class SqliteDocListManager(DocListManager):
             cursor = self._conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
         return cursor.fetchone()
 
-    def update_file_status(self, file_ids: List[str], status: str):
-        with self._conn:
-            for fileid in file_ids:
-                self._conn.execute("UPDATE documents SET status = ? WHERE doc_id = ?", (status, fileid))
+    def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]:
+        updated_files = []
+
+        for i in range(0, len(file_ids), batch_size):
+            batch = file_ids[i:i + batch_size]
+            placeholders = ', '.join('?' for _ in batch)
+            sql = f'UPDATE documents SET status = ? WHERE doc_id IN ({placeholders}) RETURNING doc_id, path'
+
+            with self._conn:
+                cursor = self._conn.execute(sql, [status] + batch)
+                updated_files.extend(cursor.fetchall())
+        return updated_files
 
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
         if isinstance(file_ids, str): file_ids = [file_ids]

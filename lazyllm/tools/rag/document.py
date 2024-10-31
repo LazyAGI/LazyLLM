@@ -31,7 +31,7 @@ class Document(ModuleBase):
                     self._submodules.append(embed)
             self._dlm = DocListManager(dataset_path, name).init_tables()
             self._kbs = {DocListManager.DEDAULT_GROUP_NAME: DocImpl(embed=self._embed, dlm=self._dlm, store=store)}
-            if manager: self._manager = DocManager(self._dlm)
+            if manager: self._manager = ServerModule(DocManager(self._dlm))
             if server: self._doc = ServerModule(self._doc)
 
         def add_kb_group(self, name, store: StoreBase):
