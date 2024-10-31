@@ -24,16 +24,6 @@ class TestCommon(object):
         ret_list = r1(num_list[1])
         assert ret_list == num_list
 
-    def test_bind_file(self):
-        f1 = (lambda x: x) | lazyllm.bind(lazyllm._0, lazyllm_file='path/to/file')
-        assert f1('hello world.') == 'lazyllm-query{"query": "hello world.", "files": ["path/to/file"]}'
-        f2 = (lambda x: x) | lazyllm.bind('path/to/file', lazyllm_file=lazyllm._0)
-        assert f2('hello world.') == 'lazyllm-query{"query": "path/to/file", "files": ["hello world."]}'
-        f3 = (lambda x: x) | lazyllm.bind(lazyllm._0, lazyllm_file=lazyllm._0)
-        assert f3('hello world.') == 'lazyllm-query{"query": "hello world.", "files": ["hello world."]}'
-        f4 = (lambda x: x) | lazyllm.bind(lazyllm._0, lazyllm_file=['a', 'b'])
-        assert f4('hello world.') == 'lazyllm-query{"query": "hello world.", "files": ["a", "b"]}'
-
     def test_encode_and_decode_and_merge_query_with_filepaths(self):
         # Test encode
         query = 'hi'

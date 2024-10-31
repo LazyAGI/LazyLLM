@@ -34,7 +34,7 @@ class WebModule(ModuleBase):
 
     def __init__(self, m, *, components=dict(), title='对话演示终端', port=None,
                  history=[], text_mode=None, trace_mode=None, audio=False, stream=False,
-                 files_target=None, pop_share_file=True) -> None:
+                 files_target=None) -> None:
         super().__init__()
         self.m = lazyllm.ActionModule(m) if isinstance(m, lazyllm.FlowBase) else m
         self.pool = lazyllm.ThreadPoolExecutor(max_workers=50)
@@ -53,11 +53,18 @@ class WebModule(ModuleBase):
         self.audio = audio
         self.stream = stream
         self.files_target = files_target if isinstance(files_target, list) or files_target is None else [files_target]
-        self.pop_share_file = pop_share_file
         self.demo = self.init_web(components)
         self.url = None
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
+
+    def _get_all_file_submodule(self):
+        if self.files_target: return
+        self.files_target = []
+        self.for_each(
+            lambda x: getattr(x, 'template_message', None),
+            lambda x: self.files_target.append(x)
+        )
 
     def _signal_handler(self, signum, frame):
         LOG.info(f"Signal {signum} received, terminating subprocess.")
@@ -243,21 +250,16 @@ class WebModule(ModuleBase):
                 string = chat_history[-1][0]
             else:
                 string = ''
-            if files:
-                if self.files_target:
-                    for module in self.files_target:
-                        assert isinstance(module, ModuleBase)
-                        if module._module_id in globals['lazyllm_files']:
-                            globals['lazyllm_files'][module._module_id].extend(files)
-                        else:
-                            globals['lazyllm_files'][module._module_id] = files
-                else:
-                    if "share_files" in globals['lazyllm_files']:
-                        globals['lazyllm_files']["share_files"].extend(files)
+            if self.files_target is None:
+                self._get_all_file_submodule()
+            if files and self.files_target:
+                for module in self.files_target:
+                    assert isinstance(module, ModuleBase)
+                    if module._module_id in globals['lazyllm_files']:
+                        globals['lazyllm_files'][module._module_id].extend(files)
                     else:
-                        globals['lazyllm_files']["share_files"] = files
-                    if files[0]:
-                        string += f' ## Get attachments: {os.path.basename(files[0])}'
+                        globals['lazyllm_files'][module._module_id] = files
+                string += f' ## Get attachments: {os.path.basename(files[-1])}'
             input = string
             history = chat_history[:-1] if use_context and len(chat_history) > 1 else list()
 
@@ -285,9 +287,6 @@ class WebModule(ModuleBase):
                 time.sleep(0.01)
             result = func_future.result()
             if FileSystemQueue().size() > 0: FileSystemQueue().clear()
-            if files and 'share_files' in globals['lazyllm_files'] and \
-               self.pop_share_file and len(globals['lazyllm_files']['share_files']) > 0:
-                globals['lazyllm_files']['share_files'].pop()
 
             def get_log_and_message(s):
                 if isinstance(s, dict):

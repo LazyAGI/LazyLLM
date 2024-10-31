@@ -416,3 +416,17 @@ def lazyllm_merge_query(*args: str) -> str:
         else:
             querys += decode
     return encode_query_with_filepaths(querys, files)
+
+def _lazyllm_get_file_list(files: Any) -> list:
+    if isinstance(files, str):
+        decode = decode_query_with_filepaths(files)
+        if isinstance(decode, str):
+            return [decode]
+        if isinstance(decode, dict):
+            return decode['files']
+    elif isinstance(files, dict) and set(files.keys()) == {'query', 'files'}:
+        return files['files']
+    elif isinstance(files, list) and all(isinstance(item, str) for item in files):
+        return files
+    else:
+        raise TypeError(f'Not supported type: {type(files)}.')

@@ -124,11 +124,6 @@ class TestDeploy(object):
         assert '但愿人长久' in res
         res = m(lazyllm.encode_query_with_filepaths(files=[audio_path]))
         assert '但愿人长久' in res
-        globals['lazyllm_files']["share_files"] = [audio_path]
-        res = m('Hi')
-        assert '但愿人长久' in res
-        if "share_files" in globals['lazyllm_files']:
-            globals['lazyllm_files'].pop("share_files")
         res = m(f'lazyllm-query{{"query":"hi","files":["{audio_path}"]}}')
         assert '但愿人长久' in res
 
@@ -148,21 +143,31 @@ class TestDeploy(object):
         res = client_send('hi')[0][-1][-1]
         assert "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported." == res
 
+    def test_stt_bind(self):
+        audio_path = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')
+        with lazyllm.pipeline() as ppl:
+            ppl.m = lazyllm.TrainableModule('sensevoicesmall') | lazyllm.bind('No use inputs', lazyllm_files=ppl.input)
+        m = lazyllm.ActionModule(ppl)
+        m.update_server()
+        res = m(audio_path)
+        assert '但愿人长久' in res
+        res = m([audio_path])
+        assert '但愿人长久' in res
+        res = m(lazyllm.encode_query_with_filepaths(files=[audio_path]))
+        assert '但愿人长久' in res
+        res = m({"query": "aha", "files": [audio_path]})
+        assert '但愿人长久' in res
+
     def test_vlm_and_lmdeploy(self):
         chat = lazyllm.TrainableModule('Mini-InternVL-Chat-2B-V1-5')
         m = lazyllm.ServerModule(chat)
         m.update_server()
         query = '这是啥？'
         ji_path = os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg')
-        cow_path = os.path.join(lazyllm.config['data_path'], 'ci_data/cow.png')
         pig_path = os.path.join(lazyllm.config['data_path'], 'ci_data/pig.png')
 
-        globals['lazyllm_files']["share_files"] = [cow_path]
-        assert '牛' in m(query)
-        globals['lazyllm_files']["share_files"] = [cow_path]
         globals['lazyllm_files'][chat._module_id] = [pig_path]
         assert '猪' in m(query)
-        globals['lazyllm_files']["share_files"] = [cow_path]
         globals['lazyllm_files'][chat._module_id] = [pig_path]
         assert '鸡' in m(f'lazyllm-query{{"query":"{query}","files":["{ji_path}"]}}')
 
