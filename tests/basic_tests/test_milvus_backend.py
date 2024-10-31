@@ -3,7 +3,8 @@ import unittest
 import tempfile
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.store import LAZY_ROOT_NAME, MilvusStore, MilvusField
+from lazyllm.tools.rag.store import LAZY_ROOT_NAME
+from lazyllm.tools.rag.milvus_backend import MilvusStore, MilvusField
 
 class TestMilvusBackend(unittest.TestCase):
     def setUp(self):
