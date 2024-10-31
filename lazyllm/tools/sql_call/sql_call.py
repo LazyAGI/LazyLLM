@@ -12,7 +12,7 @@ Given the following SQL tables and current date {current_date}, your job is to w
 
 {desc}
 
-Alert: Just replay the sql query in a code block start with keyword "sql"
+Alert: Just replay the sql query in a code block start with triple-backticks and keyword "sql"
 """  # noqa E501
 
 
@@ -24,7 +24,7 @@ Your task is to analyze the user_question, which follows certain guidelines, and
 
 {desc}
 
-Note: Please return the json pipeline in a code block and start with the keyword "json".
+Note: Please return the json pipeline in a code block start with triple-backticks and keyword "json".
 """  # noqa E501
 
 db_explain_instruct_template = """

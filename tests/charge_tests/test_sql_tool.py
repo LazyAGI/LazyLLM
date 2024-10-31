@@ -49,7 +49,7 @@ class TestSqlManager(unittest.TestCase):
                 assert db_result.status == DBStatus.SUCCESS, db_result.detail
 
         # Recommend to use sensenova, gpt-4o, qwen online model
-        sql_llm = lazyllm.OnlineChatModule(source="sensenova")
+        sql_llm = lazyllm.OnlineChatModule(source="qwen")
         cls.sql_calls: list[SqlCall] = []
         for sql_manager in cls.sql_managers:
             cls.sql_calls.append(SqlCall(sql_llm, sql_manager, use_llm_for_sql_result=True))

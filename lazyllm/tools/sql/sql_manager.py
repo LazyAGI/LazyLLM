@@ -410,7 +410,7 @@ class SQLiteManger(SqlManager):
             raise ValueError(self.detail)
 
     def reset_engine(self, db_file: str, tables_info_dict: dict):
-        self.db_type = "sqlite"
+        self._db_type = "sqlite"
         self.status = DBStatus.SUCCESS
         self.detail = ""
         if not Path(db_file).is_file():
