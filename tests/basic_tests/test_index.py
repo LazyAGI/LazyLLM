@@ -5,8 +5,8 @@ import tempfile
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.store import MapStore, LAZY_ROOT_NAME, MilvusStore, MilvusField
 from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.index import DefaultIndex, register_similarity, parallel_do_embedding
-import pymilvus
+from lazyllm.tools.rag.index import DefaultIndex, register_similarity
+from lazyllm.tools.rag.embed_utils import parallel_do_embedding
 
 class TestDefaultIndex(unittest.TestCase):
     def setUp(self):

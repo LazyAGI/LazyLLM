@@ -1,49 +1,15 @@
-import concurrent
-import os
 from typing import List, Callable, Optional, Dict, Union, Tuple
 from .doc_node import DocNode
 from .store_base import StoreBase
 from .index_base import IndexBase
 import numpy as np
 from .component.bm25 import BM25
-from lazyllm import LOG, config, ThreadPoolExecutor
+from lazyllm import LOG
 from lazyllm.common import override
+from .embed_utils import parallel_do_embedding
+from .milvus_backend import MilvusIndex
 
 # ---------------------------------------------------------------------------- #
-
-# min(32, (os.cpu_count() or 1) + 4) is the default number of workers for ThreadPoolExecutor
-config.add(
-    "max_embedding_workers",
-    int,
-    min(32, (os.cpu_count() or 1) + 4),
-    "MAX_EMBEDDING_WORKERS",
-)
-
-# ---------------------------------------------------------------------------- #
-
-def parallel_do_embedding(embed: Dict[str, Callable], nodes: List[DocNode]) -> List[DocNode]:
-    '''
-    returns a list of modified nodes
-    '''
-    modified_nodes = []
-    with ThreadPoolExecutor(config["max_embedding_workers"]) as executor:
-        futures = []
-        for node in nodes:
-            miss_keys = node.has_missing_embedding(embed.keys())
-            if not miss_keys:
-                continue
-            modified_nodes.append(node)
-            for k in miss_keys:
-                with node._lock:
-                    if node.has_missing_embedding(k):
-                        future = executor.submit(node.do_embedding, {k: embed[k]}) \
-                            if k not in node._embedding_state else executor.submit(node.check_embedding_state, k)
-                        node._embedding_state.add(k)
-                        futures.append(future)
-        if len(futures) > 0:
-            for future in concurrent.futures.as_completed(futures):
-                future.result()
-    return modified_nodes
 
 class DefaultIndex(IndexBase):
     """Default Index, registered for similarity functions"""
@@ -171,3 +137,24 @@ def register_similarity(
     batch: bool = False,
 ) -> Callable:
     return DefaultIndex.register_similarity(func, mode, descend, batch)
+
+# ---------------------------------------------------------------------------- #
+
+class EmbeddingIndex(IndexBase):
+    def __init__(self, backend_type: Optional[str] = None, *args, **kwargs):
+        if backend_type == 'milvus':
+            self._index = MilvusIndex(*args, **kwargs)
+        else:
+            raise ValueError(f'unsupported IndexWrapper backend [{backend_type}]')
+
+    @override
+    def update(self, nodes: List[DocNode]) -> None:
+        self._index.update(nodes)
+
+    @override
+    def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
+        self._index.remove(uids, group_name)
+
+    @override
+    def query(self, *args, **kwargs) -> List[DocNode]:
+        return self._index.query(*args, **kwargs)
