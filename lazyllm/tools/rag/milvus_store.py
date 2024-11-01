@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Union, Callable
 import pymilvus
 from pymilvus import MilvusClient, FieldSchema, CollectionSchema
 from .doc_node import DocNode
-from .map_backend import MapBackend
+from .map_store import MapStore
 from .embed_utils import parallel_do_embedding
 from .index_base import IndexBase
 from .store_base import StoreBase
@@ -81,8 +81,8 @@ class MilvusStore(StoreBase):
             self._client.create_collection(collection_name=group_name, schema=schema,
                                            index_params=index_params)
 
-        self._map_backend = MapBackend(list(group_fields.keys()))
-        self._load_all_nodes_to(self._map_backend)
+        self._map_store = MapStore(list(group_fields.keys()))
+        self._load_all_nodes_to(self._map_store)
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
@@ -91,7 +91,7 @@ class MilvusStore(StoreBase):
             data = self._serialize_node_partial(node)
             self._client.upsert(collection_name=node.group, data=[data])
 
-        self._map_backend.update_nodes(nodes)
+        self._map_store.update_nodes(nodes)
 
     @override
     def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
@@ -101,27 +101,27 @@ class MilvusStore(StoreBase):
         else:
             self._client.drop_collection(collection_name=group_name)
 
-        self._map_backend.remove_nodes(group_name, uids)
+        self._map_store.remove_nodes(group_name, uids)
 
     @override
     def get_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:
-        return self._map_backend.get_nodes(group_name, uids)
+        return self._map_store.get_nodes(group_name, uids)
 
     @override
     def is_group_active(self, name: str) -> bool:
-        return self._map_backend.is_group_active(name)
+        return self._map_store.is_group_active(name)
 
     @override
     def all_groups(self) -> List[str]:
-        return self._map_backend.all_groups()
+        return self._map_store.all_groups()
 
     @override
     def register_index(self, type: str, index: IndexBase) -> None:
-        self._map_backend.register_index(type, index)
+        self._map_store.register_index(type, index)
 
     @override
     def get_index(self, type: str) -> Optional[IndexBase]:
-        return self._map_backend.get_index(type)
+        return self._map_store.get_index(type)
 
     @override
     def query(self,
@@ -145,7 +145,7 @@ class MilvusStore(StoreBase):
             for result in results[0]:
                 uidset.update(result['id'])
 
-        return self._map_backend.get_nodes(group_name, list(uidset))
+        return self._map_store.get_nodes(group_name, list(uidset))
 
     # ----- internal helper functions ----- #
 
@@ -171,7 +171,7 @@ class MilvusStore(StoreBase):
             for node in self.get_nodes(group):
                 if node.parent:
                     parent_uid = node.parent
-                    parent_node = self._map_backend.find_node_by_uid(parent_uid)
+                    parent_node = self._map_store.find_node_by_uid(parent_uid)
                     node.parent = parent_node
                     parent_node.children[node.group].append(node)
 

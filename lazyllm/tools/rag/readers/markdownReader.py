@@ -5,7 +5,7 @@ from fsspec.implementations.local import LocalFileSystem
 from typing import Dict, List, Optional, Tuple
 
 from .readerBase import LazyLLMReaderBase
-from ..store import DocNode
+from ..doc_node import DocNode
 
 class MarkdownReader(LazyLLMReaderBase):
     def __init__(self, remove_hyperlinks: bool = True, remove_images: bool = True, return_trace: bool = True) -> None:

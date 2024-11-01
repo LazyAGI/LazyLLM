@@ -6,9 +6,14 @@ from lazyllm import LOG, config, once_wrapper
 from lazyllm.common import override
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
-from .store import MapStore, DocNode, ChromadbStore, LAZY_ROOT_NAME, StoreBase
+from .store import LAZY_ROOT_NAME
+from .store_base import StoreBase
+from .map_store import MapStore
+from .chroma_store import ChromadbStore
+from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .index import DefaultIndex, IndexBase
+from .index_base import IndexBase
+from .default_index import DefaultIndex
 from .utils import DocListManager
 import threading
 import time

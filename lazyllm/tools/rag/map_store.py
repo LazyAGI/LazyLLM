@@ -13,7 +13,7 @@ def _remove_from_indices(name2index: Dict[str, IndexBase], uids: List[str],
     for _, index in name2index.items():
         index.remove(uids, group_name)
 
-class MapStore(StoreBase, IndexBase):
+class MapStore(StoreBase):
     def __init__(self, node_groups: List[str]):
         super().__init__()
         # Dict[group_name, Dict[uuid, DocNode]]
