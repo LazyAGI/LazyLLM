@@ -1,5 +1,5 @@
 import lazyllm
-from lazyllm.tools.rag.doc_impl import DocImpl, FileNodeIndex
+from lazyllm.tools.rag.doc_impl import DocImpl, _FileNodeIndex
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
@@ -155,7 +155,7 @@ class TestDocument(unittest.TestCase):
 
 class TestFileNodeIndex(unittest.TestCase):
     def setUp(self):
-        self.index = FileNodeIndex()
+        self.index = _FileNodeIndex()
         self.node1 = DocNode(uid='1', group=LAZY_ROOT_NAME, metadata={"file_name": "d1"})
         self.node2 = DocNode(uid='2', group=LAZY_ROOT_NAME, metadata={"file_name": "d2"})
         self.files = [self.node1.metadata['file_name'], self.node1.metadata['file_name']]
