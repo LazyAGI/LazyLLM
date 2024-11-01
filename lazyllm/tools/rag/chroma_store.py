@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 import chromadb
 from lazyllm import LOG, config
 from lazyllm.common import override
@@ -59,7 +59,7 @@ class ChromadbStore(StoreBase):
 
     @override
     def query(self, *args, **kwargs) -> List[DocNode]:
-        return get_index('default').query(*args, **kwargs)
+        return self.get_index('default').query(*args, **kwargs)
 
     @override
     def register_index(self, type: str, index: IndexBase) -> None:

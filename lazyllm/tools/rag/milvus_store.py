@@ -6,7 +6,6 @@ from .doc_node import DocNode
 from .map_store import MapStore
 from .embed_utils import parallel_do_embedding
 from .index_base import IndexBase
-from .index import WrapStoreToIndex
 from .store_base import StoreBase
 from lazyllm.common import override
 

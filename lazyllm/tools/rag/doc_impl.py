@@ -3,7 +3,6 @@ from collections import defaultdict
 from functools import wraps
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple
 from lazyllm import LOG, config, once_wrapper
-from lazyllm.common import override
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
 from .store import LAZY_ROOT_NAME
@@ -13,8 +12,7 @@ from .chroma_store import ChromadbStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
 from .index_base import IndexBase
-from .default_index import DefaultIndex
-from .utils import DocListManager
+from .utils import DocListManager, _FileNodeIndex
 import threading
 import time
 
@@ -43,10 +41,9 @@ class _DocStore(StoreBase):
 
     def __init__(self, store: StoreBase):
         self._store = store
-        self._extra_indices = {}
-
-        if not self._store.get_index(type='file_node_map'):
-            self.register_index(type='file_node_map', index=self._create_file_node_index(self._store))
+        self._extra_indices = {
+            'file_node_map': self._create_file_node_index(self._store)
+        }
 
     def update_nodes(self, nodes: List[DocNode]) -> None:
         self._store.update_nodes(nodes)

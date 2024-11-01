@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable
 from .index_base import IndexBase
 from .store_base import StoreBase
 from .doc_node import DocNode
@@ -73,7 +73,7 @@ class MapStore(StoreBase):
 
     @override
     def query(self, *args, **kwargs) -> List[DocNode]:
-        return get_index('default').query(*args, **kwargs)
+        return self.get_index('default').query(*args, **kwargs)
 
     @override
     def register_index(self, type: str, index: IndexBase) -> None:

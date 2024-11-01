@@ -1,10 +1,9 @@
 from typing import List, Optional
 from .doc_node import DocNode
-from .store_base import StoreBase
 from .index_base import IndexBase
 from lazyllm.common import override
 from .map_store import MapStore
-from .milvus_store import MilvusStore, MilvusField
+from .milvus_store import MilvusStore
 
 class SmartEmbeddingIndex(IndexBase):
     def __init__(self, backend_type: str, fields: List[str], *args, **kwargs):

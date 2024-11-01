@@ -3,6 +3,10 @@ import shutil
 import hashlib
 from typing import List, Callable, Generator, Dict, Any, Optional, Union, Tuple
 from abc import ABC, abstractmethod
+from .index_base import IndexBase
+from .store_base import LAZY_ROOT_NAME
+from .doc_node import DocNode
+from lazyllm.common import override
 
 import pydantic
 import sqlite3

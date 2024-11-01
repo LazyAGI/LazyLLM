@@ -33,7 +33,7 @@ class Retriever(ModuleBase, _PostProcess):
         self,
         doc: object,
         group_name: str,
-        similarity: str = "dummy",
+        similarity: Optional[str] = None,
         similarity_cut_off: Union[float, Dict[str, float]] = float("-inf"),
         index: str = "default",
         topk: int = 6,
