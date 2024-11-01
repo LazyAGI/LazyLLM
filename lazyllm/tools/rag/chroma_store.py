@@ -6,6 +6,7 @@ from chromadb.api.models.Collection import Collection
 from .store_base import StoreBase
 from .doc_node import DocNode
 from .store import LAZY_ROOT_NAME
+from .index_base import IndexBase
 import json
 from .map_store import MapStore
 
@@ -15,7 +16,6 @@ class ChromadbStore(StoreBase):
     def __init__(
         self, node_groups: List[str], embed_dim: Dict[str, int]
     ) -> None:
-        super().__init__()
         self._map_store = MapStore(node_groups)
         self._db_client = chromadb.PersistentClient(path=config["rag_persistent_path"])
         LOG.success(f"Initialzed chromadb in path: {config['rag_persistent_path']}")
@@ -24,6 +24,7 @@ class ChromadbStore(StoreBase):
             for group in node_groups
         }
         self._embed_dim = embed_dim
+        self._name2index = {}
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
@@ -49,6 +50,20 @@ class ChromadbStore(StoreBase):
     @override
     def all_groups(self) -> List[str]:
         return self._map_store.all_groups()
+
+    @override
+    def query(self, *args, **kwargs) -> List[DocNode]:
+        raise NotImplementedError('not implemented yet.')
+
+    @override
+    def register_index(self, type: str, index: IndexBase) -> None:
+        self._name2index[type] = index
+
+    @override
+    def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
+        if type is None:
+            type = 'default'
+        return self._name2index.get(type)
 
     def _load_store(self) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:

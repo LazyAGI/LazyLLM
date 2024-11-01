@@ -33,5 +33,5 @@ class StoreBase(ABC):
         pass
 
     @abstractmethod
-    def get_index(self, type: str) -> Optional[IndexBase]:
+    def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
         pass

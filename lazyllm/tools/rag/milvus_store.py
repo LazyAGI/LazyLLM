@@ -6,6 +6,7 @@ from .doc_node import DocNode
 from .map_store import MapStore
 from .embed_utils import parallel_do_embedding
 from .index_base import IndexBase
+from .index import WrapStoreToIndex
 from .store_base import StoreBase
 from lazyllm.common import override
 
@@ -120,7 +121,9 @@ class MilvusStore(StoreBase):
         self._map_store.register_index(type, index)
 
     @override
-    def get_index(self, type: str) -> Optional[IndexBase]:
+    def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
+        if type is None or type == 'default':
+            return WrapStoreToIndex(self)
         return self._map_store.get_index(type)
 
     @override

@@ -2,6 +2,7 @@ from typing import Dict, List, Optional
 from .index_base import IndexBase
 from .store_base import StoreBase
 from .doc_node import DocNode
+from .index import WrapStoreToIndex
 from lazyllm.common import override
 
 def _update_indices(name2index: Dict[str, IndexBase], nodes: List[DocNode]) -> None:
@@ -15,7 +16,6 @@ def _remove_from_indices(name2index: Dict[str, IndexBase], uids: List[str],
 
 class MapStore(StoreBase):
     def __init__(self, node_groups: List[str]):
-        super().__init__()
         # Dict[group_name, Dict[uuid, DocNode]]
         self._group2docs: Dict[str, Dict[str, DocNode]] = {
             group: {} for group in node_groups
@@ -71,7 +71,9 @@ class MapStore(StoreBase):
         self._name2index[type] = index
 
     @override
-    def get_index(self, type: str) -> Optional[IndexBase]:
+    def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
+        if type is None or type == 'default':
+            return WrapStoreToIndex(self)
         return self._name2index.get(type)
 
     @override
