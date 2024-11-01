@@ -2,7 +2,7 @@ import ast
 from collections import defaultdict
 from functools import wraps
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple
-from lazyllm import LOG, config, once_wrapper
+from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
 from .store import LAZY_ROOT_NAME
@@ -11,67 +11,11 @@ from .map_store import MapStore
 from .chroma_store import ChromadbStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .index_base import IndexBase
-from .utils import DocListManager, _FileNodeIndex
+from .utils import DocListManager
 import threading
 import time
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
-
-# ---------------------------------------------------------------------------- #
-
-class _DocStore(StoreBase):
-    @staticmethod
-    def _create_file_node_index(store) -> _FileNodeIndex:
-        index = _FileNodeIndex()
-        for group in store.all_groups():
-            index.update(store.get_nodes(group))
-        return index
-
-    @staticmethod
-    def _update_indices(name2index: Dict[str, IndexBase], nodes: List[DocNode]) -> None:
-        for index in name2index.values():
-            index.update(nodes)
-
-    @staticmethod
-    def _remove_from_indices(name2index: Dict[str, IndexBase], uids: List[str],
-                             group_name: Optional[str] = None) -> None:
-        for index in name2index.values():
-            index.remove(uids, group_name)
-
-    def __init__(self, store: StoreBase):
-        self._store = store
-        self._extra_indices = {
-            'file_node_map': self._create_file_node_index(self._store)
-        }
-
-    def update_nodes(self, nodes: List[DocNode]) -> None:
-        self._store.update_nodes(nodes)
-        self._update_indices(self._extra_indices, nodes)
-
-    def get_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:
-        return self._store.get_nodes(group_name, uids)
-
-    def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
-        self._store.remove_nodes(group_name, uids)
-        self._remove_from_indices(self._extra_indices, uids, group_name)
-
-    def is_group_active(self, name: str) -> bool:
-        return self._store.is_group_active(name)
-
-    def all_groups(self) -> List[str]:
-        return self._store.all_groups()
-
-    def register_index(self, type: str, index: IndexBase) -> None:
-        self._extra_indices[type] = index
-
-    def get_index(self, type: str = 'default') -> Optional[IndexBase]:
-        index = self._extra_indices.get(type)
-        if not index:
-            index = self._store.get_index(type)
-        return index
-
-# ---------------------------------------------------------------------------- #
 
 def embed_wrapper(func):
     if not func:
@@ -92,7 +36,7 @@ class DocImpl:
 
     def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
-                 store: Optional[StoreBase] = None):
+                 store_conf: Optional[Dict] = None):
         super().__init__()
         assert (dlm is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
         self._local_file_reader: Dict[str, Callable] = {}
@@ -102,10 +46,7 @@ class DocImpl:
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self._embed_dim = None
-        if store:
-            self.store = _DocStore(store)
-        else:
-            self.store = None
+        self.store = store_conf  # NOTE: will be initialized in _lazy_init()
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
@@ -116,8 +57,10 @@ class DocImpl:
 
         self._embed_dim = {k: len(e('a')) for k, e in self.embed.items()}
 
-        if not self.store:
-            self.store = self._create_store()
+        if isinstance(self.store, Dict):
+            self.store = self._create_store(self.store)
+        else:
+            raise ValueError(f'store type [{type(self.store)}] is not a dict.')
 
         if not self.store.is_group_active(LAZY_ROOT_NAME):
             ids, pathes = self._list_files()
@@ -132,17 +75,22 @@ class DocImpl:
             self._daemon.daemon = True
             self._daemon.start()
 
-    def _create_store(self, rag_store_type: str = None) -> StoreBase:
-        if not rag_store_type:
-            rag_store_type = config["rag_store_type"]
-        if rag_store_type == "map":
-            store = MapStore(node_groups=self.node_groups.keys())
-        elif rag_store_type == "chroma":
-            store = ChromadbStore(node_groups=self.node_groups.keys(),
-                                  embed=self.embed, embed_dim=self._embed_dim)
+    def _create_store(self, store_conf: Optional[Dict]) -> StoreBase:
+        type = store_conf.get('type')
+        if not type:
+            raise ValueError('store type is not specified.')
+
+        kwargs = store_conf.get('kwargs')
+        if not isinstance(kwargs, Dict):
+            raise ValueError('`kwargs` in store conf is not a dict.')
+
+        if type == "map":
+            store = MapStore(embed=self.embed, **kwargs)
+        elif type == "chroma":
+            store = ChromadbStore(embed=self.embed, **kwargs)
         else:
             raise NotImplementedError(
-                f"Not implemented store type for {rag_store_type}"
+                f"Not implemented store type for {type}"
             )
 
         return store

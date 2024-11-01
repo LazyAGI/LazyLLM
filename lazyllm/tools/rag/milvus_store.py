@@ -134,6 +134,9 @@ class MilvusStore(StoreBase):
               topk: int = 10,
               embed_keys: Optional[List[str]] = None,
               **kwargs) -> List[DocNode]:
+        if similarity is not None:
+            raise ValueError('`similarity` MUST be None when Milvus backend is used.')
+
         uidset = set()
         for key in embed_keys:
             embed_func = self._embed.get(key)

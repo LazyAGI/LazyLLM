@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Callable
 import chromadb
-from lazyllm import LOG, config
+from lazyllm import LOG
 from lazyllm.common import override
 from chromadb.api.models.Collection import Collection
 from .store_base import StoreBase
@@ -15,12 +15,11 @@ from .map_store import MapStore
 # ---------------------------------------------------------------------------- #
 
 class ChromadbStore(StoreBase):
-    def __init__(
-        self, node_groups: List[str], embed: Dict[str, Callable], embed_dim: Dict[str, int]
-    ) -> None:
+    def __init__(self, node_groups: List[str], path: str, embed: Dict[str, Callable],
+                 embed_dim: Dict[str, int]) -> None:
         self._map_store = MapStore(node_groups)
-        self._db_client = chromadb.PersistentClient(path=config["rag_persistent_path"])
-        LOG.success(f"Initialzed chromadb in path: {config['rag_persistent_path']}")
+        self._db_client = chromadb.PersistentClient(path=path)
+        LOG.success(f"Initialzed chromadb in path: {path}")
         self._collections: Dict[str, Collection] = {
             group: self._db_client.get_or_create_collection(group)
             for group in node_groups
