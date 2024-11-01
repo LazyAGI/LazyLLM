@@ -88,6 +88,8 @@ class DocImpl:
             store = MapStore(embed=self.embed, **kwargs)
         elif type == "chroma":
             store = ChromadbStore(embed=self.embed, **kwargs)
+        elif type == "milvus":
+            store = MilvusStore(embed=self.embed, **kwargs)
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {type}"
