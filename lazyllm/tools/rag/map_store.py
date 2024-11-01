@@ -71,9 +71,7 @@ class MapStore(StoreBase, IndexBase):
         self._name2index[type] = index
 
     @override
-    def get_index(self, type: str = 'default') -> Optional[IndexBase]:
-        if type == 'default':
-            return self
+    def get_index(self, type: str) -> Optional[IndexBase]:
         return self._name2index.get(type)
 
     @override

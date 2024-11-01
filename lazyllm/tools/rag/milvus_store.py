@@ -120,9 +120,7 @@ class MilvusStore(StoreBase):
         self._map_backend.register_index(type, index)
 
     @override
-    def get_index(self, type: str = 'default') -> Optional[IndexBase]:
-        if type == 'default':
-            return self
+    def get_index(self, type: str) -> Optional[IndexBase]:
         return self._map_backend.get_index(type)
 
     @override
