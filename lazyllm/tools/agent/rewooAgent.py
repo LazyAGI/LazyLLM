@@ -1,7 +1,7 @@
 from lazyllm.module import ModuleBase
 from lazyllm import pipeline, package, LOG, globals, bind
 from .toolsManager import ToolManager
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Callable
 import re
 
 P_PROMPT_PREFIX = ("For the following tasks, make plans that can solve the problem step-by-step. "
@@ -31,7 +31,7 @@ S_PROMPT_SUFFIX = ("\nNow begin to solve the task or problem. Respond with "
                    "the answer directly with no extra words.\n\n")
 
 class ReWOOAgent(ModuleBase):
-    def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[str] = [], *,
+    def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[Union[str, Callable]] = [], *,
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  return_trace: bool = False):
         super().__init__(return_trace=return_trace)
@@ -41,8 +41,7 @@ class ReWOOAgent(ModuleBase):
         assert tools, "tools cannot be empty."
         self._planner = plan_llm or llm
         self._solver = solve_llm or llm
-        self._workers = tools
-        self._tools_manager = ToolManager(tools, return_trace=return_trace).tools_info
+        self._name2tool = ToolManager(tools, return_trace=return_trace).tools_info
         with pipeline() as self._agent:
             self._agent.planner_pre_action = self._build_planner_prompt
             self._agent.planner = self._planner
@@ -53,8 +52,8 @@ class ReWOOAgent(ModuleBase):
 
     def _build_planner_prompt(self, input: str):
         prompt = P_PROMPT_PREFIX + "Tools can be one of the following:\n"
-        for name in self._workers:
-            prompt += f"{name}[search query]: {self._tools_manager[name].description}\n"
+        for name, tool in self._name2tool.items():
+            prompt += f"{name}[search query]: {tool.description}\n"
         prompt += P_FEWSHOT + "\n" + P_PROMPT_SUFFIX + input + "\n"
         LOG.info(f"planner prompt: {prompt}")
         globals['chat_history'][self._planner._module_id] = []
@@ -88,8 +87,9 @@ class ReWOOAgent(ModuleBase):
             for var in re.findall(r"#E\d+", tool_input):
                 if var in worker_evidences:
                     tool_input = tool_input.replace(var, "[" + worker_evidences[var] + "]")
-            if tool in self._workers:
-                worker_evidences[e] = self._tools_manager[tool](tool_input)
+            tool_instance = self._name2tool.get(tool)
+            if tool_instance:
+                worker_evidences[e] = tool_instance(tool_input)
             else:
                 worker_evidences[e] = "No evidence found"
 

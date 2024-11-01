@@ -1,4 +1,4 @@
-from typing import List, Callable, Dict, Type, Optional, Union, Any
+from typing import List, Callable, Dict, Type, Optional, Union, Any, overload
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier
@@ -29,27 +29,50 @@ class Engine(object):
     def set_default(cls, engine: Type):
         cls.__default_engine__ = engine
 
-    def start(self, nodes: List[Dict], edges: List[Dict], resources: List[Dict],
-              gid: Optional[str], name: Optional[str]):
-        raise NotImplementedError
+    @overload
+    def start(self, nodes: str) -> None:
+        ...
+
+    @overload
+    def start(self, nodes: Dict[str, Any]) -> None:
+        ...
+
+    @overload
+    def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
+              gid: Optional[str] = None, name: Optional[str] = None) -> str:
+        ...
+
+    @overload
+    def update(self, nodes: List[Dict]) -> None:
+        ...
+
+    @overload
+    def update(self, gid: str, nodes: List[Dict], edges: List[Dict] = [],
+               resources: List[Dict] = []) -> str:
+        ...
 
     def release_node(self, nodeid: str): pass
     def stop(self, node_id: Optional[str] = None, task_name: Optional[str] = None): pass
-
-    def update(self, nodes: List[Dict], changed_nodes: List[Dict], edges: List[Dict],
-               changed_resources: List[Dict], gid: Optional[str], name: Optional[str]):
-        raise NotImplementedError
 
     def build_node(self, node) -> Callable:
         return _constructor.build(node)
 
     def reset(self):
+        for node in self._nodes:
+            self.stop(node)
         self.__init__.flag.reset()
         self.__init__()
 
     def __del__(self):
         self.stop()
         self.reset()
+
+    def subnodes(self, nodeid: str, recursive: bool = False):
+        def _impl(nid, recursive):
+            for id in self._nodes[nid].subitems:
+                yield id
+                if recursive: yield from self.subnodes(id, True)
+        return list(_impl(nodeid, recursive))
 
 
 class NodeConstructor(object):
@@ -157,7 +180,7 @@ class ServerGraph(lazyllm.ModuleBase):
 class ServerResource(object):
     def __init__(self, graph: ServerGraph, kind: str, args: Dict):
         self._graph = graph
-        self._kind = type
+        self._kind = kind
         self._args = args
 
     def status(self):
@@ -269,9 +292,10 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]],
 
 
 @NodeConstructor.register('Document')
-def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False, node_group: List = []):
+def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False,
+                  server: bool = False, node_group: List = []):
     document = lazyllm.tools.rag.Document(
-        dataset_path, Engine().build_node(embed).func if embed else None, manager=create_ui)
+        dataset_path, Engine().build_node(embed).func if embed else None, server=server, manager=create_ui)
     for group in node_group:
         if group['transform'] == 'LLMParser': group['llm'] = Engine().build_node(group['llm']).func
         elif group['transform'] == 'FuncNode': group['function'] = make_code(group['function'])

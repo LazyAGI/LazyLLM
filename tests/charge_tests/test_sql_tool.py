@@ -48,7 +48,7 @@ class TestSqlManager(unittest.TestCase):
                 sql_manager.execute_sql_update(insert_script)
 
         # Recommend to use sensenova, gpt-4o, qwen online model
-        sql_llm = lazyllm.OnlineChatModule(source="sensenova")
+        sql_llm = lazyllm.OnlineChatModule(source="qwen")
         cls.sql_calls: list[SqlCall] = []
         for sql_manager in cls.sql_managers:
             cls.sql_calls.append(SqlCall(sql_llm, sql_manager, use_llm_for_sql_result=True))

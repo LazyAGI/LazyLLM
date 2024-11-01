@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <div id="messages" class="messages"> </div> 
                 <div class="input-container"> 
-                    <input type="text" id="user-input" placeholder="${placeholdervalue}"> 
+                    <textarea type="text" id="user-input" placeholder="${placeholdervalue}"/></textarea> 
                     <button id="send-message">${sendbtn}</button> 
                 </div>
             </div>`
@@ -85,6 +85,10 @@ document.addEventListener('DOMContentLoaded', function() {
             bindEvents();
             setTimeout(popHelloMessage, 1000);
             userInput.focus();
+            userInput.addEventListener('input', (e) => {
+                userInput.style.height = '40px';
+                userInput.style.height = e.target.scrollHeight + 'px';
+            });
         }
     }
     
@@ -212,9 +216,15 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function resetUserInput() {
+        userInput.value = '';
+        userInput.style.height = '40px';
+    }
+
     function resetDialog(){
         messages.innerHTML = '';
         setMessageState(false);
+        resetUserInput()
         sessionid = '';
         firstHello = true;
         setTimeout(popHelloMessage, 100);
@@ -395,13 +405,12 @@ document.addEventListener('DOMContentLoaded', function() {
             userMessage.classList.add('sent');
             userMessage.innerHTML = `
                 <hr/>
-                <p>${text}</p>
+                <p style="white-space: pre-wrap;">${text}</p>
             `;
             messages.appendChild(userMessage);
             userQuery = text;
             botReply = '';
-            userInput.value = '';
-            
+            resetUserInput();
             setMessageState(true);
             getChatContent();
         }
@@ -414,7 +423,19 @@ document.addEventListener('DOMContentLoaded', function() {
         sendMessageButton.addEventListener('click', sendMessage);
         resetDialogButton.addEventListener('click', resetDialog);
         userInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
+            // shift + enter 换行
+            if (e.shiftKey && e.key === 'Enter') {
+                // 阻止默认事件
+                e.preventDefault();
+                // 将光标移动到换行后的正确位置
+                const cursorPos = userInput.selectionStart;
+                userInput.value = userInput.value.substring(0, cursorPos) + "\n" + userInput.value.substring(cursorPos);
+                userInput.selectionStart = userInput.selectionEnd = cursorPos + 1;
+                // 调整高度
+                userInput.style.height = 40 + "px"; 
+                userInput.style.height = userInput.scrollHeight + "px";
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
                 sendMessage();
             }
         });

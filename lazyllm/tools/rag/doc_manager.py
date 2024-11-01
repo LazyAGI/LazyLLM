@@ -112,7 +112,13 @@ class DocManager(lazyllm.ModuleBase):
             else:
                 self._manager.update_kb_group_file_status(
                     file_ids=request.file_ids, status=DocListManager.Status.deleting)
-                self._manager.update_file_status(file_ids=request.file_ids, status=DocListManager.Status.deleting)
+                docs = self._manager.update_file_status(file_ids=request.file_ids, status=DocListManager.Status.deleting)
+
+                for doc in docs:
+                    if os.path.exists(path := doc[1]):
+                        os.remove(path)
+
+                self._manager.update_file_status(file_ids=request.file_ids, status=DocListManager.Status.deleted)
                 return BaseResponse()
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)

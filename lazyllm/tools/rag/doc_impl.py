@@ -169,8 +169,8 @@ class DocImpl:
                 continue
             time.sleep(10)
 
-    def _list_files(self, status: str = DocListManager.Status.all, upload_status: str = DocListManager.Status.all
-                    ) -> Tuple[List[str], List[str]]:
+    def _list_files(self, status: Union[str, List[str]] = DocListManager.Status.all,
+                    upload_status: Union[str, List[str]] = DocListManager.Status.all) -> Tuple[List[str], List[str]]:
         if self._doc_files: return None, self._doc_files
         ids, paths = [], []
         for row in self._dlm.list_kb_group_files(group=self._kb_group_name, status=status,
@@ -313,6 +313,9 @@ class DocImpl:
 
         LOG.debug(f"Found children nodes for {group}: {result}")
         return list(result)
+
+    def __call__(self, func_name: str, *args, **kwargs):
+        return getattr(self, func_name)(*args, **kwargs)
 
 
 DocImpl._create_builtin_node_group(name="CoarseChunk", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)

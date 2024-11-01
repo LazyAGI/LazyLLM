@@ -4,7 +4,7 @@ from enum import Enum, auto
 import uuid
 from typing import Any, Callable, Dict, List, Optional, Union
 import chromadb
-from lazyllm import LOG, config
+from lazyllm import LOG, config, reset_on_pickle
 from chromadb.api.models.Collection import Collection
 import threading
 import json
@@ -24,6 +24,7 @@ class MetadataMode(str, Enum):
     NONE = auto()
 
 
+@reset_on_pickle(('_lock', threading.Lock))
 class DocNode:
     def __init__(self, uid: Optional[str] = None, text: Optional[str] = None, group: Optional[str] = None,
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,

@@ -239,6 +239,32 @@ class TestEngine(object):
         assert engine.run(gid, '1') == dict(a='1', b='11', c='111')
         assert engine.run(gid, [1]) == dict(a=[1], b=[1, 1], c=[1, 1, 1])
 
+    def test_engine_update(self):
+        plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
+        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
+        square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
+        ifs = dict(id='4', kind='Ifs', name='i1', args=dict(
+            cond='def cond(x): return x < 10', true=[plus1, double], false=[square]
+        ))
+        nodes = [ifs]
+        edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
+        engine = LightEngine()
+        gid = engine.start(nodes, edges)
+        assert engine.run(gid, 1) == 4
+        assert engine.run(gid, 5) == 12
+        assert engine.run(gid, 10) == 100
+
+        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 3 * x\n')
+        ifs = dict(id='4', kind='Ifs', name='i1', args=dict(
+            cond='def cond(x): return x < 10', true=[plus1, double], false=[square]
+        ))
+        nodes = [ifs]
+        engine.update(gid, nodes, edges)
+
+        assert engine.run(gid, 1) == 6
+        assert engine.run(gid, 5) == 18
+        assert engine.run(gid, 10) == 100
+
     def test_engine_join_join(self):
         nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
                  dict(id='1', kind='Code', name='c2', args='def test(x: int): return 2 * x'),
@@ -250,8 +276,8 @@ class TestEngine(object):
         gid = engine.start(nodes, edges)
         assert engine.run(gid, '1') == '111111'
 
-        changed_nodes = [dict(id='3', kind='JoinFormatter', name='join', args=dict(type='join', symbol='\n'))]
-        engine.update(nodes, changed_nodes, edges, gid=gid)
+        nodes[-1] = dict(id='3', kind='JoinFormatter', name='join', args=dict(type='join', symbol='\n'))
+        engine.update(gid, nodes, edges)
         assert engine.run(gid, '1') == '1\n11\n111'
 
     def test_engine_server(self):
@@ -262,6 +288,7 @@ class TestEngine(object):
                     ]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources, gid='graph-1')
+        assert engine.status(gid) == {'1': 'running', '2': lazyllm.launcher.Status.Running, '3': 'running'}
         assert engine.run(gid, 1) == 2
         time.sleep(3)
         web = engine.build_node('graph-1').func._web
@@ -384,16 +411,16 @@ class TestEngineRAG(object):
         assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
 
         # test add doc_group
-        changed_resources = [dict(id='0', kind='Document', name='d1', args=dict(
-            dataset_path='rag_master', node_group=[dict(name='sentence', transform='SentenceSplitter',
-                                                        chunk_size=100, chunk_overlap=10)]))]
-        changed_nodes = [dict(id='2', kind='Retriever', name='ret2',
-                              args=dict(doc='0', group_name='sentence', similarity='bm25', topk=3)),
-                         dict(id='3', kind='JoinFormatter', name='c', args=dict(type='sum'))]
+        resources[-1] = dict(id='0', kind='Document', name='d1', args=dict(
+            dataset_path='rag_master', server=True, node_group=[
+                dict(name='sentence', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))
+        nodes.extend([dict(id='2', kind='Retriever', name='ret2',
+                           args=dict(doc='0', group_name='sentence', similarity='bm25', topk=3)),
+                      dict(id='3', kind='JoinFormatter', name='c', args=dict(type='sum'))])
         edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='1', oid='3'),
                  dict(iid='2', oid='3'), dict(iid='3', oid='4'), dict(iid='__start__', oid='4'),
                  dict(iid='4', oid='5'), dict(iid='__start__', oid='5'), dict(iid='5', oid='6'),
                  dict(iid='6', oid='__end__')]
         engine = LightEngine()
-        engine.update(nodes + changed_nodes, changed_nodes, edges, changed_resources, gid=gid)
+        engine.update(gid, nodes, edges, resources)
         assert '观天之道，执天之行' in engine.run(gid, '何为天道?')

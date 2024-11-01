@@ -1,6 +1,7 @@
 from .engine import Engine, Node
 from lazyllm import once_wrapper
-from typing import List, Dict, Optional, overload, Set, Any
+from typing import List, Dict, Optional, Set, Union
+import copy
 import uuid
 
 
@@ -27,29 +28,19 @@ class LightEngine(Engine):
             self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]
 
-    def release_node(self, nodeid: str):
-        self.stop(nodeid)
-        # TODO(wangzhihong): Analyze dependencies and only allow deleting nodes without dependencies
-        self._nodes.pop(nodeid)
+    def release_node(self, *node_ids: Union[str, List[str]]):
+        if len(node_ids) == 1 and isinstance(node_ids[0], (tuple, list)): node_ids = node_ids[0]
+        for nodeid in node_ids:
+            self.stop(nodeid)
+            # TODO(wangzhihong): Analyze dependencies and only allow deleting nodes without dependencies
+            [self._nodes.pop(id) for id in self.subnodes(nodeid, recursive=True)]
+            self._nodes.pop(nodeid)
 
     def update_node(self, node):
         if not isinstance(node, Node):
             node = Node(id=node['id'], kind=node['kind'], name=node['name'], args=node['args'])
         self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]
-
-    @overload
-    def start(self, nodes: str) -> None:
-        ...
-
-    @overload
-    def start(self, nodes: Dict[str, Any]) -> None:
-        ...
-
-    @overload
-    def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
-              gid: Optional[str] = None, name: Optional[str] = None) -> str:
-        ...
 
     def start(self, nodes, edges=[], resources=[], gid=None, name=None):
         if isinstance(nodes, str):
@@ -59,7 +50,8 @@ class LightEngine(Engine):
             Engine().build_node(nodes)
         else:
             gid, name = gid or str(uuid.uuid4().hex), name or str(uuid.uuid4().hex)
-            node = Node(id=gid, kind='Graph', name=name, args=dict(nodes=nodes, edges=edges, resources=resources))
+            node = Node(id=gid, kind='Graph', name=name, args=dict(
+                nodes=copy.copy(nodes), edges=copy.copy(edges), resources=copy.copy(resources)))
             self.build_node(node).func.start()
             return gid
 
@@ -88,17 +80,15 @@ class LightEngine(Engine):
             elif node.kind in ('Graph', 'LocalLLM', 'LocalEmbedding', 'SD', 'TTS', 'STT', 'VQA'):
                 node.func.stop()
 
-    def update(self, nodes: List[Dict] = [], changed_nodes: List[Dict] = [],
-               edges: List[Dict] = [], changed_resources: List[Dict] = [],
-               gid: Optional[str] = None, name: Optional[str] = None):
-        for r in changed_resources:
-            if r['kind'] in ('server', 'web'):
-                raise NotImplementedError('Web and Api server are not allowed now')
-            self.update_node(r)
-        for n in changed_nodes: self.update_node(n)
-        gid, name = gid or str(uuid.uuid4().hex), name or str(uuid.uuid4().hex)
-        node = Node(id=gid, kind='Graph', name=name, args=dict(nodes=nodes, edges=edges))
-        self.update_node(node).func.start()
+    def update(self, gid_or_nodes: Union[str, Dict, List[Dict]], nodes: List[Dict],
+               edges: List[Dict] = [], resources: List[Dict] = []) -> str:
+        if isinstance(gid_or_nodes, str):
+            assert (gid := gid_or_nodes) in self._nodes
+            name = self._nodes[gid].name
+            self.release_node(gid)
+            self.start(nodes, edges, resources, gid_or_nodes, name=name)
+        else:
+            for node in gid_or_nodes: self.update_node(node)
 
     def run(self, id: str, *args, **kw):
         return self.build_node(id).func(*args, **kw)
