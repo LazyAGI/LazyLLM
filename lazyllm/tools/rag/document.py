@@ -40,7 +40,10 @@ class Document(ModuleBase):
             if server: self._kbs = ServerModule(self._kbs)
 
         def add_kb_group(self, name):
-            self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name)
+            if isinstance(self._kbs, ServerModule):
+                self._kbs._impl._m[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name)
+            else:
+                self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name)
             self._dlm.add_kb_group(name)
 
         def get_doc_by_kb_group(self, name):
@@ -114,4 +117,5 @@ class Document(ModuleBase):
         return self._forward('retrieve', *args, **kw)
 
     def __repr__(self):
-        return lazyllm.make_repr("Module", "Document", manager=hasattr(self._impl, '_manager'))
+        return lazyllm.make_repr("Module", "Document", manager=hasattr(self._impl, '_manager'),
+                                 server=isinstance(self._impls._kbs, ServerModule))
