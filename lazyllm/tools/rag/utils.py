@@ -472,3 +472,30 @@ def save_files_in_threads(
     if os.path.exists(cache_dir):
         shutil.rmtree(cache_dir)
     return (already_exist_files, new_add_files, overwritten_files)
+
+
+class _FileNodeIndex(IndexBase):
+    def __init__(self):
+        self._file_node_map = {}
+
+    @override
+    def update(self, nodes: List[DocNode]) -> None:
+        for node in nodes:
+            if node.group != LAZY_ROOT_NAME:
+                continue
+            file_name = node.metadata.get("file_name")
+            if file_name:
+                self._file_node_map[file_name] = node
+
+    @override
+    def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
+        # group_name is ignored
+        left = {k: v for k, v in self._file_node_map.items() if v.uid not in uids}
+        self._file_node_map = left
+
+    @override
+    def query(self, files: List[str]) -> List[DocNode]:
+        ret = []
+        for file in files:
+            ret.append(self._file_node_map.get(file))
+        return ret

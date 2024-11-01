@@ -22,32 +22,6 @@ _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, 
 
 # ---------------------------------------------------------------------------- #
 
-class _FileNodeIndex(IndexBase):
-    def __init__(self):
-        self._file_node_map = {}
-
-    @override
-    def update(self, nodes: List[DocNode]) -> None:
-        for node in nodes:
-            if node.group != LAZY_ROOT_NAME:
-                continue
-            file_name = node.metadata.get("file_name")
-            if file_name:
-                self._file_node_map[file_name] = node
-
-    @override
-    def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
-        # group_name is ignored
-        left = {k: v for k, v in self._file_node_map.items() if v.uid not in uids}
-        self._file_node_map = left
-
-    @override
-    def query(self, files: List[str]) -> List[DocNode]:
-        ret = []
-        for file in files:
-            ret.append(self._file_node_map.get(file))
-        return ret
-
 class _DocStore(StoreBase):
     @staticmethod
     def _create_file_node_index(store) -> _FileNodeIndex:
@@ -58,23 +32,21 @@ class _DocStore(StoreBase):
 
     @staticmethod
     def _update_indices(name2index: Dict[str, IndexBase], nodes: List[DocNode]) -> None:
-        for _, index in name2index.items():
+        for index in name2index.values():
             index.update(nodes)
 
     @staticmethod
     def _remove_from_indices(name2index: Dict[str, IndexBase], uids: List[str],
                              group_name: Optional[str] = None) -> None:
-        for _, index in name2index.items():
+        for index in name2index.values():
             index.remove(uids, group_name)
-
-    def _create_some_indices(self):
-        if not self._store.get_index(type='file_node_map'):
-            self.register_index(type='file_node_map', index=self._create_file_node_index(self._store))
 
     def __init__(self, store: StoreBase):
         self._store = store
         self._extra_indices = {}
-        self._create_some_indices()
+
+        if not self._store.get_index(type='file_node_map'):
+            self.register_index(type='file_node_map', index=self._create_file_node_index(self._store))
 
     def update_nodes(self, nodes: List[DocNode]) -> None:
         self._store.update_nodes(nodes)
@@ -169,16 +141,12 @@ class DocImpl:
         if rag_store_type == "map":
             store = MapStore(node_groups=self.node_groups.keys())
         elif rag_store_type == "chroma":
-            store = ChromadbStore(node_groups=self.node_groups.keys(), embed_dim=self._embed_dim)
+            store = ChromadbStore(node_groups=self.node_groups.keys(),
+                                  embed=self.embed, embed_dim=self._embed_dim)
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {rag_store_type}"
             )
-
-        if not store.get_index(type='default'):
-            store.register_index(type='default', index=DefaultIndex(self.embed, store))
-        if not store.get_index(type='file_node_map'):
-            store.register_index(type='file_node_map', index=self._create_file_node_index(store))
 
         return store
 
@@ -345,6 +313,11 @@ class DocImpl:
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None) -> List[DocNode]:
         self._lazy_init()
+
+        if type is None or type == 'default':
+            return self.store.query(query=query, group_name=group_name, similarity_name=similarity,
+                                    similarity_cut_off=similarity_cut_off, topk=topk,
+                                    embed_keys=embed_keys, **similarity_kws)
 
         index_instance = self.store.get_index(type=index)
         if not index_instance:

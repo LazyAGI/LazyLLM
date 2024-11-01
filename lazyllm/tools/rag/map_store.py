@@ -2,25 +2,30 @@ from typing import Dict, List, Optional
 from .index_base import IndexBase
 from .store_base import StoreBase
 from .doc_node import DocNode
-from .index import WrapStoreToIndex
+from .utils import _FileNodeIndex
+from .default_index import DefaultIndex
 from lazyllm.common import override
 
 def _update_indices(name2index: Dict[str, IndexBase], nodes: List[DocNode]) -> None:
-    for _, index in name2index.items():
+    for index in name2index.values():
         index.update(nodes)
 
 def _remove_from_indices(name2index: Dict[str, IndexBase], uids: List[str],
                          group_name: Optional[str] = None) -> None:
-    for _, index in name2index.items():
+    for index in name2index.values():
         index.remove(uids, group_name)
 
 class MapStore(StoreBase):
-    def __init__(self, node_groups: List[str]):
+    def __init__(self, node_groups: List[str], embed: Dict[str, Callable]):
         # Dict[group_name, Dict[uuid, DocNode]]
         self._group2docs: Dict[str, Dict[str, DocNode]] = {
             group: {} for group in node_groups
         }
-        self._name2index = {}
+
+        self._name2index = {
+            'default': DefaultIndex(embed, self),
+            'file_node_map': _FileNodeIndex(),
+        }
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
@@ -67,6 +72,10 @@ class MapStore(StoreBase):
         return self._group2docs.keys()
 
     @override
+    def query(self, *args, **kwargs) -> List[DocNode]:
+        return get_index('default').query(*args, **kwargs)
+
+    @override
     def register_index(self, type: str, index: IndexBase) -> None:
         self._name2index[type] = index
 
@@ -75,10 +84,6 @@ class MapStore(StoreBase):
         if type is None:
             type = 'default'
         return self._name2index.get(type)
-
-    @override
-    def query(self, *args, **kwargs) -> List[DocNode]:
-        raise NotImplementedError('not implemented yet.')
 
     def find_node_by_uid(self, uid: str) -> Optional[DocNode]:
         for docs in self._group2docs.values():

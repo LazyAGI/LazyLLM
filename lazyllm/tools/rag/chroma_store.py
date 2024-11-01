@@ -7,6 +7,8 @@ from .store_base import StoreBase
 from .doc_node import DocNode
 from .store import LAZY_ROOT_NAME
 from .index_base import IndexBase
+from .utils import _FileNodeIndex
+from .default_index import DefaultIndex
 import json
 from .map_store import MapStore
 
@@ -14,7 +16,7 @@ from .map_store import MapStore
 
 class ChromadbStore(StoreBase):
     def __init__(
-        self, node_groups: List[str], embed_dim: Dict[str, int]
+        self, node_groups: List[str], embed: Dict[str, Callable], embed_dim: Dict[str, int]
     ) -> None:
         self._map_store = MapStore(node_groups)
         self._db_client = chromadb.PersistentClient(path=config["rag_persistent_path"])
@@ -24,7 +26,11 @@ class ChromadbStore(StoreBase):
             for group in node_groups
         }
         self._embed_dim = embed_dim
-        self._name2index = {}
+
+        self._name2index = {
+            'default': DefaultIndex(embed, self._map_store),
+            'file_node_map': _FileNodeIndex(),
+        }
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
@@ -53,7 +59,7 @@ class ChromadbStore(StoreBase):
 
     @override
     def query(self, *args, **kwargs) -> List[DocNode]:
-        raise NotImplementedError('not implemented yet.')
+        return get_index('default').query(*args, **kwargs)
 
     @override
     def register_index(self, type: str, index: IndexBase) -> None:

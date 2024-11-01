@@ -122,8 +122,8 @@ class MilvusStore(StoreBase):
 
     @override
     def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
-        if type is None or type == 'default':
-            return WrapStoreToIndex(self)
+        if type is None:
+            type = 'default'
         return self._map_store.get_index(type)
 
     @override

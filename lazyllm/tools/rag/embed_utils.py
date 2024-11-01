@@ -12,10 +12,8 @@ config.add(
     "MAX_EMBEDDING_WORKERS",
 )
 
+# returns a list of modified nodes
 def parallel_do_embedding(embed: Dict[str, Callable], nodes: List[DocNode]) -> List[DocNode]:
-    '''
-    returns a list of modified nodes
-    '''
     modified_nodes = []
     with ThreadPoolExecutor(config["max_embedding_workers"]) as executor:
         futures = []
