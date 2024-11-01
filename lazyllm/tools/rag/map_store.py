@@ -72,13 +72,13 @@ class MapStore(StoreBase):
 
     @override
     def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
-        if type is None or type == 'default':
-            return WrapStoreToIndex(self)
+        if type is None:
+            type = 'default'
         return self._name2index.get(type)
 
     @override
-    def query(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:
-        return self.get_nodes(group_name, uids)
+    def query(self, *args, **kwargs) -> List[DocNode]:
+        raise NotImplementedError('not implemented yet.')
 
     def find_node_by_uid(self, uid: str) -> Optional[DocNode]:
         for docs in self._group2docs.values():
