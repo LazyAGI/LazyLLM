@@ -1,10 +1,13 @@
 import os
 import shutil
+import tempfile
 import unittest
+from unittest.mock import MagicMock
 import lazyllm
 from lazyllm.tools.rag.store import LAZY_ROOT_NAME
 from lazyllm.tools.rag.map_store import MapStore
 from lazyllm.tools.rag.chroma_store import ChromadbStore
+from lazyllm.tools.rag.milvus_store import MilvusStore, MilvusField
 from lazyllm.tools.rag.doc_node import DocNode
 
 
@@ -149,7 +152,6 @@ class TestMapStore(unittest.TestCase):
         self.store.update_nodes([self.node1, self.node2])
         self.assertEqual(self.store.is_group_active("group1"), True)
         self.assertEqual(self.store.is_group_active("group2"), False)
-
 
 class TestMilvusStore(unittest.TestCase):
     def setUp(self):
