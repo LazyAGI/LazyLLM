@@ -9,6 +9,7 @@ from gradio_client import Client
 import lazyllm
 from lazyllm import deploy
 from lazyllm.launcher import cleanup
+from lazyllm.components.formatter import decode_query_with_filepaths
 
 def reset_env(func):
 
@@ -110,7 +111,7 @@ class TestDeploy(object):
         m = lazyllm.TrainableModule('bark')
         m.update_server()
         r = m('你好啊，很高兴认识你。')
-        res = lazyllm.decode_query_with_filepaths(r)
+        res = decode_query_with_filepaths(r)
         assert "files" in res
         assert len(res['files']) == 1
 

@@ -13,6 +13,7 @@ import re
 
 import lazyllm
 from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule
+from lazyllm.components.formatter import decode_query_with_filepaths
 from ...module.module import ModuleBase
 
 
@@ -293,7 +294,7 @@ class WebModule(ModuleBase):
                     s = s.get("message", {}).get("content", "")
                 else:
                     try:
-                        r = lazyllm.decode_query_with_filepaths(s)
+                        r = decode_query_with_filepaths(s)
                         if isinstance(r, str):
                             r = json.loads(r)
                         if 'choices' in r:
@@ -331,6 +332,8 @@ class WebModule(ModuleBase):
                         chat_history[-1][1] = file
                     else:
                         chat_history.append([None, file])
+                if result:
+                    chat_history.append([None, result])
             else:
                 assert isinstance(result, (str, dict)), f'Result should only be str, but got {type(result)}'
                 if isinstance(result, dict): result = result.get('message', '')

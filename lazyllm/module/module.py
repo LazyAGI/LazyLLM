@@ -15,12 +15,11 @@ from typing import Dict, List, Any, Union, Optional
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
-from ..components.formatter import FormatterBase, EmptyFormatter
+from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
+from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
-from ..common.common import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
-from ..common import decode_query_with_filepaths
 from ..launcher import LazyLLMLaunchersBase as Launcher
 import uuid
 from ..client import get_redis, redis_client
@@ -279,17 +278,17 @@ class UrlModule(ModuleBase, UrlTemplate):
 
         files = []
         # p2. specific module_files
-        if self._module_id in globals['lazyllm_files']:
-            files.extend(globals['lazyllm_files'].pop(self._module_id))
+        if self._module_id in globals['lazyllm_files'] and globals['lazyllm_files'][self._module_id]:
+            files = globals['lazyllm_files'].pop(self._module_id)
         # p1. forward_files
         if self.template_message and isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
             deinput = decode_query_with_filepaths(__input)
             __input = deinput['query']
             if deinput['files']:
-                files.extend(deinput['files'])
+                files = deinput['files']
         # p0. bind_files
         if lazyllm_files:
-            files.extend(_lazyllm_get_file_list(lazyllm_files))
+            files = _lazyllm_get_file_list(lazyllm_files)
 
         query = __input
         __input = self._prompt.generate_prompt(query, llm_chat_history, tools)

@@ -9,7 +9,7 @@ from gradio_client import Client
 import lazyllm
 from lazyllm import deploy, globals
 from lazyllm.launcher import cleanup
-
+from lazyllm.components.formatter import encode_query_with_filepaths, decode_query_with_filepaths
 
 @pytest.fixture()
 def set_enviroment(request):
@@ -95,7 +95,7 @@ class TestDeploy(object):
         m = lazyllm.TrainableModule('stable-diffusion-3-medium')
         m.update_server()
         r = m('a little cat')
-        res = lazyllm.decode_query_with_filepaths(r)
+        res = decode_query_with_filepaths(r)
         assert "files" in res
         assert len(res['files']) == 1
 
@@ -103,7 +103,7 @@ class TestDeploy(object):
         m = lazyllm.TrainableModule('musicgen-small')
         m.update_server()
         r = m('lo-fi music with a soothing melody')
-        res = lazyllm.decode_query_with_filepaths(r)
+        res = decode_query_with_filepaths(r)
         assert "files" in res
         assert len(res['files']) == 1
 
@@ -111,7 +111,7 @@ class TestDeploy(object):
         m = lazyllm.TrainableModule('ChatTTS')
         m.update_server()
         r = m('你好啊，很高兴认识你。')
-        res = lazyllm.decode_query_with_filepaths(r)
+        res = decode_query_with_filepaths(r)
         assert "files" in res
         assert len(res['files']) == 1
 
@@ -122,9 +122,9 @@ class TestDeploy(object):
         audio_path = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')
         res = m(audio_path)
         assert '但愿人长久' in res
-        res = m(lazyllm.encode_query_with_filepaths(files=[audio_path]))
+        res = m(encode_query_with_filepaths(files=[audio_path]))
         assert '但愿人长久' in res
-        res = m(f'lazyllm-query{{"query":"hi","files":["{audio_path}"]}}')
+        res = m(f'<lazyllm-query>{{"query":"hi","files":["{audio_path}"]}}')
         assert '但愿人长久' in res
 
         _, client = self.warp_into_web(m)
@@ -153,7 +153,7 @@ class TestDeploy(object):
         assert '但愿人长久' in res
         res = m([audio_path])
         assert '但愿人长久' in res
-        res = m(lazyllm.encode_query_with_filepaths(files=[audio_path]))
+        res = m(encode_query_with_filepaths(files=[audio_path]))
         assert '但愿人长久' in res
         res = m({"query": "aha", "files": [audio_path]})
         assert '但愿人长久' in res
@@ -169,7 +169,7 @@ class TestDeploy(object):
         globals['lazyllm_files'][chat._module_id] = [pig_path]
         assert '猪' in m(query)
         globals['lazyllm_files'][chat._module_id] = [pig_path]
-        assert '鸡' in m(f'lazyllm-query{{"query":"{query}","files":["{ji_path}"]}}')
+        assert '鸡' in m(f'<lazyllm-query>{{"query":"{query}","files":["{ji_path}"]}}')
 
         _, client = self.warp_into_web(m)
         # Add prefix 'lazyllm_img::' for client testing.

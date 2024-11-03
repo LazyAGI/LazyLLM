@@ -1,6 +1,7 @@
 import os
 import uuid
 from lazyllm.thirdparty import scipy, numpy as np
+from ..utils.file_operate import delete_old_files
 
 
 def sound_to_file(sound: np.array, file_path: str, sample_rate: int = 24000) -> str:
@@ -11,6 +12,7 @@ def sound_to_file(sound: np.array, file_path: str, sample_rate: int = 24000) -> 
 def sounds_to_files(sounds: list, directory: str, sample_rate: int = 24000) -> list:
     if not os.path.exists(directory):
         os.makedirs(directory)
+    delete_old_files(directory)
     unique_id = uuid.uuid4()
     path_list = []
     for i, sound in enumerate(sounds):

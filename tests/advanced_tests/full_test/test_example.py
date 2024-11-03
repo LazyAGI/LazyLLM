@@ -8,6 +8,7 @@ from PIL import Image
 
 import lazyllm
 from lazyllm.launcher import cleanup
+from lazyllm.components.formatter import decode_query_with_filepaths
 
 
 class TestExamples(object):
@@ -121,7 +122,7 @@ class TestExamples(object):
         painting.start()
         query = "画只可爱的小猪"
         r = painting(query)
-        res = lazyllm.decode_query_with_filepaths(r)
+        res = decode_query_with_filepaths(r)
         assert type(res) is dict
         assert "files" in res
         assert len(res['files']) == 1

@@ -49,7 +49,7 @@ class TestFormatter(object):
         # Decode
         filef = formatter.FileFormatter()
         normal_output = 'hi'
-        encode_output = 'lazyllm-query{"query": "aha", "files": ["path/to/file"]}'
+        encode_output = '<lazyllm-query>{"query": "aha", "files": ["path/to/file"]}'
         other_output = ['a', 'b']
         assert filef(normal_output) == normal_output
         assert filef(other_output) == other_output
@@ -62,3 +62,13 @@ class TestFormatter(object):
         assert filef(encode_output) == encode_output
         assert filef(other_output) == other_output
         assert filef(decode_output) == encode_output
+
+        # Merge
+        filef = formatter.FileFormatter(formatter='merge')
+        assert filef(normal_output) == normal_output
+        assert filef(normal_output, normal_output, normal_output) == normal_output * 3
+        assert filef(normal_output, encode_output) == '<lazyllm-query>{"query": "hiaha", "files": ["path/to/file"]}'
+        assert filef(encode_output, encode_output) == ('<lazyllm-query>{"query": "ahaaha", "files": '
+                                                       '["path/to/file", "path/to/file"]}')
+        assert filef(encode_output, normal_output, normal_output) == ('<lazyllm-query>{"query": "ahahihi", '
+                                                                      '"files": ["path/to/file"]}')

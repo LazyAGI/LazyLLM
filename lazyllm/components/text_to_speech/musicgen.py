@@ -3,6 +3,7 @@ import os
 import lazyllm
 from lazyllm import LOG
 from lazyllm.thirdparty import transformers
+from lazyllm.components.formatter import encode_query_with_filepaths
 from ..utils.downloader import ModelManager
 from .utils import sounds_to_files
 
@@ -24,7 +25,7 @@ class MusicGen(object):
         lazyllm.call_once(self.init_flag, self.load_tts)
         speech = self.model(string, forward_params={"do_sample": True})
         file_path = sounds_to_files([speech['audio'].flatten()], self.save_path, speech['sampling_rate'])
-        return lazyllm.encode_query_with_filepaths(files=file_path)
+        return encode_query_with_filepaths(files=file_path)
 
     @classmethod
     def rebuild(cls, base_path, init, save_path):

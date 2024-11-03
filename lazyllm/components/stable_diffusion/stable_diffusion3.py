@@ -7,7 +7,9 @@ from io import BytesIO
 
 import lazyllm
 from lazyllm import LOG
+from lazyllm.components.formatter import encode_query_with_filepaths
 from ..utils.downloader import ModelManager
+from ..utils.file_operate import delete_old_files
 
 
 class StableDiffusion3(object):
@@ -60,6 +62,7 @@ class StableDiffusion3(object):
     def images_to_files(images, directory):
         if not os.path.exists(directory):
             os.makedirs(directory)
+        delete_old_files(directory)
         unique_id = uuid.uuid4()
         path_list = []
         for i, img in enumerate(images):
@@ -78,7 +81,7 @@ class StableDiffusion3(object):
             max_sequence_length=512,
         ).images
         img_path_list = StableDiffusion3.images_to_files(imgs, self.save_path)
-        return lazyllm.encode_query_with_filepaths(files=img_path_list)
+        return encode_query_with_filepaths(files=img_path_list)
 
     @classmethod
     def rebuild(cls, base_sd, embed_batch_size, init, save_path):

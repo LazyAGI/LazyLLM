@@ -18,6 +18,6 @@ chat = lazyllm.TrainableModule('SenseVoiceSmall')
 if __name__ == '__main__':
     # Note:
     # 1. that audio is enabled here
-    # 2. If `files_target` is not set, then all modules can access the input file.
+    # 2. If `files_target` is not set, then all acceptable file modules can access the input file.
     #    If it is set, only the specified modules can access the input file.
     lazyllm.WebModule(chat, port=8847, audio=True, files_target=chat).start().wait()

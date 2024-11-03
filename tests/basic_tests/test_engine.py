@@ -130,7 +130,7 @@ class TestEngine(object):
         nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='file', rule='decode'))]
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 'hi') == 'hi'
-        assert engine.run(gid, 'lazyllm-query{"query":"aha","files":["path/to/file"]}') == \
+        assert engine.run(gid, '<lazyllm-query>{"query":"aha","files":["path/to/file"]}') == \
                {"query": "aha", "files": ["path/to/file"]}
 
         engine.reset()
@@ -138,7 +138,14 @@ class TestEngine(object):
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 'hi') == 'hi'
         assert engine.run(gid, {"query": "aha", "files": ["path/to/file"]}) == \
-               'lazyllm-query{"query": "aha", "files": ["path/to/file"]}'
+               '<lazyllm-query>{"query": "aha", "files": ["path/to/file"]}'
+
+        engine.reset()
+        nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='file', rule='merge'))]
+        gid = engine.start(nodes, edges)
+        assert engine.run(gid, 'hi') == 'hi'
+        assert engine.run(gid, 'hi', '<lazyllm-query>{"query":"aha","files":["path/to/file"]}') == \
+               '<lazyllm-query>{"query": "hiaha", "files": ["path/to/file"]}'
 
     def test_engine_edge_formatter(self):
         nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
@@ -153,21 +160,6 @@ class TestEngine(object):
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 1) == '1[2, 4]1'
         assert engine.run(gid, 2) == '2[4, 8]4'
-
-        engine.reset()
-        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x):\n    return x\n')]
-        edges = [dict(iid='__start__', oid='1', formatter='decode'), dict(iid='1', oid='__end__')]
-        gid = engine.start(nodes, edges)
-        assert engine.run(gid, 'hi') == 'hi'
-        assert engine.run(gid, 'lazyllm-query{"query":"aha","files":["path/to/file"]}') == \
-               {"query": "aha", "files": ["path/to/file"]}
-
-        engine.reset()
-        edges = [dict(iid='__start__', oid='1', formatter='encode'), dict(iid='1', oid='__end__')]
-        gid = engine.start(nodes, edges)
-        assert engine.run(gid, 'hi') == 'hi'
-        assert engine.run(gid, {"query": "aha", "files": ["path/to/file"]}) == \
-               'lazyllm-query{"query": "aha", "files": ["path/to/file"]}'
 
     def test_engine_edge_formatter_start(self):
         nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int): return x'),

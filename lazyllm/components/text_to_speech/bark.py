@@ -4,6 +4,7 @@ import lazyllm
 from lazyllm import LOG
 from lazyllm.thirdparty import torch
 from lazyllm.thirdparty import transformers as tf
+from lazyllm.components.formatter import encode_query_with_filepaths
 from ..utils.downloader import ModelManager
 from .utils import sounds_to_files
 
@@ -41,7 +42,7 @@ class Bark(object):
         inputs = self.processor(query, voice_preset=voice_preset).to(self.device)
         speech = self.bark.generate(**inputs).cpu().numpy().squeeze()
         file_path = sounds_to_files([speech], self.save_path, self.bark.generation_config.sample_rate)
-        return lazyllm.encode_query_with_filepaths(files=file_path)
+        return encode_query_with_filepaths(files=file_path)
 
     @classmethod
     def rebuild(cls, base_path, init, save_path):

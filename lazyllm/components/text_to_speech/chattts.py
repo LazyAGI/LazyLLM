@@ -3,6 +3,7 @@ import os
 import lazyllm
 from lazyllm import LOG
 from lazyllm.thirdparty import torch, ChatTTS
+from lazyllm.components.formatter import encode_query_with_filepaths
 from ..utils.downloader import ModelManager
 from .utils import sounds_to_files
 
@@ -58,7 +59,7 @@ class ChatTTSModule(object):
                                   params_infer_code=params_infer_code,
                                 )
         file_path = sounds_to_files(speech[0], self.save_path)
-        return lazyllm.encode_query_with_filepaths(files=file_path)
+        return encode_query_with_filepaths(files=file_path)
 
     @classmethod
     def rebuild(cls, base_path, init, save_path):
