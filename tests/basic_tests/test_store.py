@@ -99,8 +99,17 @@ class TestChromadbStore(unittest.TestCase):
         for uid, node in nodes_dict.items():
             assert node.embedding['default'] == orig_embedding_dict.get(uid)
 
-    def test_group_names(self):
+    def test_all_groups(self):
         self.assertEqual(set(self.store.all_groups()), set(self.node_groups))
+
+    def test_query(self):
+        node1 = DocNode(uid="1", text="text1", group="group1", parent=None)
+        node2 = DocNode(uid="2", text="text2", group="group1", parent=node1)
+        self.store.update_nodes([node1, node2])
+        index = self.store.get_index()
+        res = self.store.query(query='text1', group_name='group1', embed_keys=['default'], topk=2,
+                               similarity_name='cosine', similarity_cut_off=0.000001)
+        self.assertEqual(set([node1, node2]), set(res))
 
     def test_group_others(self):
         node1 = DocNode(uid="1", text="text1", group="group1", parent=None)
@@ -111,8 +120,12 @@ class TestChromadbStore(unittest.TestCase):
 
 class TestMapStore(unittest.TestCase):
     def setUp(self):
+        self.mock_embed = {
+            'default': MagicMock(return_value=[1.0, 2.0, 3.0]),
+        }
+        self.embed_dim = {"default": 3}
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
-        self.store = MapStore(node_groups=self.node_groups, embed={})
+        self.store = MapStore(node_groups=self.node_groups, embed=self.mock_embed)
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None)
         self.node2 = DocNode(uid="2", text="text2", group="group1", parent=self.node1)
 
@@ -149,8 +162,15 @@ class TestMapStore(unittest.TestCase):
         n2 = self.store.get_nodes("group1", ["2"])
         assert not n2
 
-    def test_group_names(self):
+    def test_all_groups(self):
         self.assertEqual(set(self.store.all_groups()), set(self.node_groups))
+
+    def test_query(self):
+        self.store.update_nodes([self.node1, self.node2])
+        index = self.store.get_index()
+        res = self.store.query(query='text1', group_name='group1', embed_keys=['default'], topk=2,
+                               similarity_name='cosine', similarity_cut_off=0.000001)
+        self.assertEqual(set([self.node1, self.node2]), set(res))
 
     def test_group_others(self):
         self.store.update_nodes([self.node1, self.node2])
@@ -213,3 +233,11 @@ class TestMilvusStore(unittest.TestCase):
         ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0].uid, self.node1.uid)
+
+    def test_all_groups(self):
+        self.assertEqual(set(self.store.all_groups()), set(self.node_groups))
+
+    def test_group_others(self):
+        self.store.update_nodes([self.node1, self.node2])
+        self.assertEqual(self.store.is_group_active("group1"), True)
+        self.assertEqual(self.store.is_group_active("group2"), False)
