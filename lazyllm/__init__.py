@@ -7,7 +7,7 @@ from .launcher import LazyLLMLaunchersBase
 from .flow import *  # noqa F403
 from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                          LazyLLMValidateBase, register as component_register, Prompter,
-                         AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter)
+                         AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter, FileFormatter)
 
 from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
@@ -37,6 +37,7 @@ __all__ = [
     'ChatPrompter',
     'FastapiApp',
     'JsonFormatter',
+    'FileFormatter',
 
     # launcher
     'LazyLLMLaunchersBase',        # empty, slurm, sco

@@ -122,7 +122,8 @@ class ThreadSafeDict(dict):
 
 class Globals(object):
     __global_attrs__ = ThreadSafeDict(chat_history={}, global_parameters={},
-                                      bind_args={}, tool_delimiter="<|tool_calls|>")
+                                      bind_args={}, tool_delimiter="<|tool_calls|>",
+                                      lazyllm_files={})
 
     def __init__(self):
         self.__data = ThreadSafeDict()

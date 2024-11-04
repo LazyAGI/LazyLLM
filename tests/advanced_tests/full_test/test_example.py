@@ -1,16 +1,14 @@
 import os
 import time
-import json
 import httpx
 import pytest
 import random
-import base64
 from gradio_client import Client
 from PIL import Image
-from io import BytesIO
 
 import lazyllm
 from lazyllm.launcher import cleanup
+from lazyllm.components.formatter import decode_query_with_filepaths
 
 
 class TestExamples(object):
@@ -123,11 +121,12 @@ class TestExamples(object):
         painting = lazyllm.ActionModule(ppl)
         painting.start()
         query = "画只可爱的小猪"
-        res = painting(query)
-        assert type(res) is str
-        imgs_bs64 = json.loads(res)
-        assert "lazyllm_images" in imgs_bs64
-        image = Image.open(BytesIO(base64.b64decode(imgs_bs64["lazyllm_images"][0])))
+        r = painting(query)
+        res = decode_query_with_filepaths(r)
+        assert type(res) is dict
+        assert "files" in res
+        assert len(res['files']) == 1
+        image = Image.open(res['files'][0])
         assert image.size == (1024, 1024)
 
         # test painting warpped in web

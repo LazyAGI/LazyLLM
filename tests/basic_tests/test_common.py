@@ -1,9 +1,12 @@
-import lazyllm
-from lazyllm.common import ArgsDict, compile_func
 import random
 import time
 import pytest
 import threading
+
+import lazyllm
+from lazyllm.common import ArgsDict, compile_func
+from lazyllm.components.formatter import lazyllm_merge_query, encode_query_with_filepaths, decode_query_with_filepaths
+
 
 class TestCommon(object):
 
@@ -23,6 +26,31 @@ class TestCommon(object):
         r1 = lazyllm.bind(exam, num_list[0], lazyllm._0, num_list[2])
         ret_list = r1(num_list[1])
         assert ret_list == num_list
+
+    def test_encode_and_decode_and_merge_query_with_filepaths(self):
+        # Test encode
+        query = 'hi'
+        path_list = ['a', 'b']
+        encode = encode_query_with_filepaths(query, path_list)
+        assert encode == '<lazyllm-query>{"query": "hi", "files": ["a", "b"]}'
+        assert encode_query_with_filepaths(query) == 'hi'
+
+        # Test decode
+        decode = decode_query_with_filepaths(encode)
+        assert isinstance(decode, dict)
+        assert 'query' in decode and 'files' in decode
+        assert decode['query'] == query
+        assert decode['files'] == path_list
+        assert decode_query_with_filepaths(query) == query
+
+        # Test Merge
+        assert lazyllm_merge_query(query) == query
+        assert lazyllm_merge_query(query, query, query) == query * 3
+        assert lazyllm_merge_query(query, encode) == '<lazyllm-query>{"query": "hihi", "files": ["a", "b"]}'
+        assert lazyllm_merge_query(encode, encode) == ('<lazyllm-query>{"query": "hihi", "files": '
+                                                       '["a", "b", "a", "b"]}')
+        assert lazyllm_merge_query(encode, query, query) == ('<lazyllm-query>{"query": "hihihi", '
+                                                             '"files": ["a", "b"]}')
 
     def test_common_cmd(self):
 
