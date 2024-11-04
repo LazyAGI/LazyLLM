@@ -1,23 +1,26 @@
 import os
-import json
 import base64
+import uuid
 from PIL import Image
 import numpy as np
 from io import BytesIO
 
 import lazyllm
 from lazyllm import LOG
+from lazyllm.components.formatter import encode_query_with_filepaths
 from ..utils.downloader import ModelManager
+from ..utils.file_operate import delete_old_files
 
 
 class StableDiffusion3(object):
-    def __init__(self, base_sd, source=None, embed_batch_size=30, trust_remote_code=True, init=False):
+    def __init__(self, base_sd, source=None, embed_batch_size=30, trust_remote_code=True, save_path=None, init=False):
         source = lazyllm.config['model_source'] if not source else source
         self.base_sd = ModelManager(source).download(base_sd)
         self.embed_batch_size = embed_batch_size
         self.trust_remote_code = trust_remote_code
         self.sd = None
         self.init_flag = lazyllm.once_flag()
+        self.save_path = save_path if save_path else os.path.join(os.getcwd(), '.temp/sd3')
         if init:
             lazyllm.call_once(self.init_flag, self.load_sd)
 
@@ -45,6 +48,29 @@ class StableDiffusion3(object):
     def images_to_base64(images):
         return [StableDiffusion3.image_to_base64(img) for img in images]
 
+    @staticmethod
+    def image_to_file(image, file_path):
+        if isinstance(image, Image.Image):
+            image.save(file_path, format="PNG")
+        elif isinstance(image, np.ndarray):
+            image = Image.fromarray(image)
+            image.save(file_path, format="PNG")
+        else:
+            raise ValueError("Unsupported image type")
+
+    @staticmethod
+    def images_to_files(images, directory):
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        delete_old_files(directory)
+        unique_id = uuid.uuid4()
+        path_list = []
+        for i, img in enumerate(images):
+            file_path = os.path.join(directory, f'image_{unique_id}_{i}.png')
+            StableDiffusion3.image_to_file(img, file_path)
+            path_list.append(file_path)
+        return path_list
+
     def __call__(self, string):
         lazyllm.call_once(self.init_flag, self.load_sd)
         imgs = self.sd(
@@ -54,17 +80,16 @@ class StableDiffusion3(object):
             guidance_scale=7.0,
             max_sequence_length=512,
         ).images
-        img_base64_list = StableDiffusion3.images_to_base64(imgs)
-        res = {"lazyllm_images": img_base64_list}
-        return json.dumps(res)
+        img_path_list = StableDiffusion3.images_to_files(imgs, self.save_path)
+        return encode_query_with_filepaths(files=img_path_list)
 
     @classmethod
-    def rebuild(cls, base_sd, embed_batch_size, init):
-        return cls(base_sd, embed_batch_size=embed_batch_size, init=init)
+    def rebuild(cls, base_sd, embed_batch_size, init, save_path):
+        return cls(base_sd, embed_batch_size=embed_batch_size, init=init, save_path=save_path)
 
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return StableDiffusion3.rebuild, (self.base_sd, self.embed_batch_size, init)
+        return StableDiffusion3.rebuild, (self.base_sd, self.embed_batch_size, init, self.save_path)
 
 class StableDiffusionDeploy(object):
     message_format = None

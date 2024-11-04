@@ -15,7 +15,8 @@ from typing import Dict, List, Any, Union, Optional
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
-from ..components.formatter import FormatterBase, EmptyFormatter
+from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
+from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
@@ -200,6 +201,11 @@ class ModuleBase(metaclass=_MetaBind):
     def __repr__(self):
         return lazyllm.make_repr('Module', self.__class__, name=self.name)
 
+    def for_each(self, filter, action):
+        for submodule in self.submodules:
+            if filter(submodule):
+                action(submodule)
+            submodule.for_each(filter, action)
 
 class UrlTemplate(object):
     def __init__(self, template_message=None, keys_name_handle=None, template_headers=None) -> None:
@@ -265,14 +271,25 @@ class UrlModule(ModuleBase, UrlTemplate):
     # Cannot modify or add any attrubute of self
     # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
     # deploy parameters keys are in **kw
-    def forward(self, __input=package(), *, llm_chat_history=None, tools=None, stream_output=False, **kw):  # noqa C901
+    def forward(self, __input=package(), *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):  # noqa C901
         assert self._url is not None, f'Please start {self.__class__} first'
         stream_output = stream_output or self._stream
         url = self._url
 
         files = []
-        if self.template_message and globals['global_parameters'].get("lazyllm-files"):
-            files = globals['global_parameters']["lazyllm-files"]['files']
+        # p2. specific module_files
+        if self._module_id in globals['lazyllm_files'] and globals['lazyllm_files'][self._module_id]:
+            files = globals['lazyllm_files'].pop(self._module_id)
+        # p1. forward_files
+        if self.template_message and isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
+            deinput = decode_query_with_filepaths(__input)
+            __input = deinput['query']
+            if deinput['files']:
+                files = deinput['files']
+        # p0. bind_files
+        if lazyllm_files:
+            files = _lazyllm_get_file_list(lazyllm_files)
+
         query = __input
         __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
         headers = {'Content-Type': 'application/json'}
