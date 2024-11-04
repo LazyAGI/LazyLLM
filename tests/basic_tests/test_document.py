@@ -1,6 +1,6 @@
 import lazyllm
 from lazyllm.tools.rag.doc_impl import DocImpl
-from .utils import _FileNodeIndex
+from lazyllm.tools.rag.utils import _FileNodeIndex
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
