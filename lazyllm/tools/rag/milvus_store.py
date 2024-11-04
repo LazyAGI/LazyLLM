@@ -39,7 +39,6 @@ class MilvusStore(StoreBase):
             if g not in new_copy:
                 new_copy[g] = []
         group_fields = new_copy
-        print(f'debug!!! uri -> {uri}, group_fields -> {group_fields}')
 
         self._primary_key = 'uid'
         self._embedding_keys = embed.keys()
@@ -95,7 +94,6 @@ class MilvusStore(StoreBase):
         parallel_do_embedding(self._embed, nodes)
         for node in nodes:
             data = self._serialize_node_partial(node)
-            print(f'debug!!! update group [{node.group}]')
             self._client.upsert(collection_name=node.group, data=[data])
 
         self._map_store.update_nodes(nodes)
