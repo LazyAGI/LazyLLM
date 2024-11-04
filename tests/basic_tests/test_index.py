@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from lazyllm.tools.rag.map_store import MapStore
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.default_index import DefaultIndex, register_similarity
-from lazyllm.tools.rag.embed_utils import parallel_do_embedding
+from lazyllm.tools.rag.utils import parallel_do_embedding
 
 class TestDefaultIndex(unittest.TestCase):
     def setUp(self):
