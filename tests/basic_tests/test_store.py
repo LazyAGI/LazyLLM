@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock
 import lazyllm
-from lazyllm.tools.rag.store import LAZY_ROOT_NAME
+from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
 from lazyllm.tools.rag.map_store import MapStore
 from lazyllm.tools.rag.chroma_store import ChromadbStore
 from lazyllm.tools.rag.milvus_store import MilvusStore, MilvusField
@@ -30,14 +30,18 @@ class TestChromadbStore(unittest.TestCase):
     def setUp(self):
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
         self.embed_dim = {"default": 3}
-        self.store = ChromadbStore(self.node_groups, self.embed_dim)
+        self.store_dir = tempfile.mkdtemp()
+        self.mock_embed = {
+            'default': MagicMock(return_value=[1.0, 2.0, 3.0]),
+        }
+        self.store = ChromadbStore(path=self.store_dir, node_groups=self.node_groups,
+                                   embed=self.mock_embed, embed_dim=self.embed_dim)
         self.store.update_nodes(
             [DocNode(uid="1", text="text1", group=LAZY_ROOT_NAME, parent=None)],
         )
 
-    @classmethod
-    def tearDownClass(cls):
-        clear_directory(lazyllm.config['rag_persistent_path'])
+    def tearDown(self):
+        clear_directory(self.store_dir)
 
     def test_initialization(self):
         self.assertEqual(set(self.store._collections.keys()), set(self.node_groups))
@@ -108,7 +112,7 @@ class TestChromadbStore(unittest.TestCase):
 class TestMapStore(unittest.TestCase):
     def setUp(self):
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
-        self.store = MapStore(self.node_groups)
+        self.store = MapStore(node_groups=self.node_groups, embed={})
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None)
         self.node2 = DocNode(uid="2", text="text2", group="group1", parent=self.node1)
 
@@ -155,16 +159,16 @@ class TestMapStore(unittest.TestCase):
 
 class TestMilvusStore(unittest.TestCase):
     def setUp(self):
-        field_list = [
-            MilvusField(name="comment", data_type=MilvusField.DTYPE_VARCHAR, max_length=128),
-            MilvusField(name="vec1", data_type=MilvusField.DTYPE_FLOAT_VECTOR,
-                        index_type='HNSW', metric_type='COSINE'),
-            MilvusField(name="vec2", data_type=MilvusField.DTYPE_FLOAT_VECTOR,
-                        index_type='HNSW', metric_type='COSINE'),
-        ]
+        fields = {
+            'comment': MilvusField(data_type=MilvusField.DTYPE_VARCHAR, max_length=128),
+            'vec1': MilvusField(data_type=MilvusField.DTYPE_FLOAT_VECTOR,
+                                index_type='HNSW', metric_type='COSINE'),
+            'vec2': MilvusField(data_type=MilvusField.DTYPE_FLOAT_VECTOR,
+                                index_type='HNSW', metric_type='COSINE'),
+        }
         group_fields = {
-            "group1": field_list,
-            "group2": field_list,
+            "group1": fields,
+            "group2": fields,
         }
 
         self.mock_embed = {
@@ -176,8 +180,7 @@ class TestMilvusStore(unittest.TestCase):
         _, self.store_file = tempfile.mkstemp(suffix=".db")
 
         self.store = MilvusStore(uri=self.store_file, embed=self.mock_embed,
-                                 group_fields=group_fields)
-        self.index = self.store.get_index()
+                                 node_groups=self.node_groups, group_fields=group_fields)
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
                              embedding={"vec1": [8.0, 9.0, 10.0], "vec2": [11.0, 12.0, 13.0, 14.0, 15.0]},
@@ -191,22 +194,22 @@ class TestMilvusStore(unittest.TestCase):
 
     def test_update_and_query(self):
         self.store.update_nodes([self.node1])
-        ret = self.index.query(query='text1', group_name='group1', embed_keys=['vec2'], topk=1)
+        ret = self.store.query(query='text1', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0].uid, self.node1.uid)
 
         self.store.update_nodes([self.node2])
-        ret = self.index.query(query='text2', group_name='group1', embed_keys=['vec2'], topk=1)
+        ret = self.store.query(query='text2', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0].uid, self.node2.uid)
 
     def test_remove_and_query(self):
         self.store.update_nodes([self.node1, self.node2])
-        ret = self.index.query(query='test', group_name='group1', embed_keys=['vec2'], topk=1)
+        ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0].uid, self.node2.uid)
 
         self.store.remove_nodes("group1", [self.node2.uid])
-        ret = self.index.query(query='test', group_name='group1', embed_keys=['vec2'], topk=1)
+        ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0].uid, self.node1.uid)

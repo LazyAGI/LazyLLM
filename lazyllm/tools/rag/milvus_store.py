@@ -14,10 +14,9 @@ class MilvusField:
     DTYPE_FLOAT_VECTOR = 1
     DTYPE_SPARSE_FLOAT_VECTOR = 2
 
-    def __init__(self, name: str, data_type: int, index_type: Optional[str] = None,
+    def __init__(self, data_type: int, index_type: Optional[str] = None,
                  metric_type: Optional[str] = "", index_params: Dict = {},
                  max_length: Optional[int] = None):
-        self.name = name
         self.data_type = data_type
         self.index_type = index_type
         self.metric_type = metric_type
@@ -32,12 +31,12 @@ class MilvusStore(StoreBase):
         pymilvus.DataType.SPARSE_FLOAT_VECTOR,  # DTYPE_SPARSE_FLOAT_VECTOR
     ]
 
-    def __init__(self, uri: str, group_fields: Dict[str, List[MilvusField]],
+    def __init__(self, uri: str, group_fields: Dict[str, Dict[str, MilvusField]],
                  node_groups: List[str], embed: Dict[str, Callable], **kwargs):
         new_copy = copy.copy(group_fields)
         for g in node_groups:
             if g not in new_copy:
-                new_copy[g] = []
+                new_copy[g] = {}
         group_fields = new_copy
 
         self._primary_key = 'uid'
@@ -46,43 +45,53 @@ class MilvusStore(StoreBase):
         self._client = MilvusClient(uri=uri)
 
         embed_dim = {k: len(e('a')) for k, e in embed.items()}
-        builtin_fields = [
-            FieldSchema(name=self._primary_key, dtype=pymilvus.DataType.VARCHAR,
-                        max_length=128, is_primary=True),
-            FieldSchema(name='text', dtype=pymilvus.DataType.VARCHAR,
-                        max_length=65535),
-            FieldSchema(name='parent', dtype=pymilvus.DataType.VARCHAR,
-                        max_length=256),
-        ]
+        builtin_fields = {
+            self._primary_key: {
+                'datatype': pymilvus.DataType.VARCHAR,
+                'max_length': 128,
+                'is_primary': True,
+            },
+            'text': {
+                'datatype': pymilvus.DataType.VARCHAR,
+                'max_length': True,
+            },
+            'parent': {
+                'datatype': pymilvus.DataType.VARCHAR,
+                'max_length': 256,
+            },
+        }
 
-        for group_name, field_list in group_fields.items():
+        for group_name, fields in group_fields.items():
             if group_name in self._client.list_collections():
                 continue
 
             index_params = self._client.prepare_index_params()
-            field_schema_list = copy.copy(builtin_fields)
+            schema = self._client.create_schema(auto_id=False, enable_dynamic_field=True)
 
-            for field in field_list:
-                field_schema = None
-                if field.name in self._embedding_keys:
-                    field_schema = FieldSchema(
-                        name=self._gen_embedding_key(field.name),
-                        dtype=self._type2milvus[field.data_type],
-                        dim=embed_dim.get(field.name))
+            for name, field in builtin_fields.items():
+                schema.add_field(field_name=name, **field)
+
+            for name, field in fields.items():
+                field_name = None
+                if name in self._embedding_keys:
+                    field_name = self._gen_embedding_key(name)
+                    schema.add_field(
+                        field_name=field_name,
+                        datatype=self._type2milvus[field.data_type],
+                        dim=embed_dim.get(name))
                 else:
-                    field_schema = FieldSchema(
-                        name=self._gen_metadata_key(field.name),
-                        dtype=self._type2milvus[field.data_type],
+                    field_name = self._gen_metadata_key(name)
+                    schema.add_field(
+                        field_name=field_name,
+                        datatype=self._type2milvus[field.data_type],
                         max_length=field.max_length)
-                field_schema_list.append(field_schema)
 
                 if field.index_type is not None:
-                    index_params.add_index(field_name=field_schema.name,
+                    index_params.add_index(field_name=field_name,
                                            index_type=field.index_type,
                                            metric_type=field.metric_type,
                                            params=field.index_params)
 
-            schema = CollectionSchema(fields=field_schema_list, enable_dynamic_field=True)
             self._client.create_collection(collection_name=group_name, schema=schema,
                                            index_params=index_params)
 
