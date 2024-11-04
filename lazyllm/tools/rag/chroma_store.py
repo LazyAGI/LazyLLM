@@ -3,9 +3,8 @@ import chromadb
 from lazyllm import LOG
 from lazyllm.common import override
 from chromadb.api.models.Collection import Collection
-from .store_base import StoreBase
+from .store_base import StoreBase, LAZY_ROOT_NAME
 from .doc_node import DocNode
-from .store import LAZY_ROOT_NAME
 from .index_base import IndexBase
 from .utils import _FileNodeIndex
 from .default_index import DefaultIndex
@@ -15,9 +14,9 @@ from .map_store import MapStore
 # ---------------------------------------------------------------------------- #
 
 class ChromadbStore(StoreBase):
-    def __init__(self, node_groups: List[str], path: str, embed: Dict[str, Callable],
-                 embed_dim: Dict[str, int]) -> None:
-        self._map_store = MapStore(node_groups)
+    def __init__(self, node_groups: List[str], path: str, embed_dim: Dict[str, int],
+                 embed: Dict[str, Callable]) -> None:
+        self._map_store = MapStore(node_groups=node_groups, embed=embed)
         self._db_client = chromadb.PersistentClient(path=path)
         LOG.success(f"Initialzed chromadb in path: {path}")
         self._collections: Dict[str, Collection] = {

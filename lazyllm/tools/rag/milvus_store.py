@@ -32,9 +32,8 @@ class MilvusStore(StoreBase):
         pymilvus.DataType.SPARSE_FLOAT_VECTOR,  # DTYPE_SPARSE_FLOAT_VECTOR
     ]
 
-    def __init__(self, uri: str, embed: Dict[str, Callable],
-                 # a field is either an embedding key or a metadata key
-                 group_fields: Dict[str, List[MilvusField]]):
+    def __init__(self, uri: str, group_fields: Dict[str, List[MilvusField]],
+                 embed: Dict[str, Callable]):
         self._primary_key = 'uid'
         self._embedding_keys = embed.keys()
         self._embed = embed
@@ -81,7 +80,7 @@ class MilvusStore(StoreBase):
             self._client.create_collection(collection_name=group_name, schema=schema,
                                            index_params=index_params)
 
-        self._map_store = MapStore(list(group_fields.keys()))
+        self._map_store = MapStore(node_groups=list(group_fields.keys()), embed=embed)
         self._load_all_nodes_to(self._map_store)
 
     @override

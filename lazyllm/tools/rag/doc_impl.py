@@ -5,10 +5,10 @@ from typing import Callable, Dict, List, Optional, Set, Union, Tuple
 from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
-from .store import LAZY_ROOT_NAME
-from .store_base import StoreBase
+from .store_base import StoreBase, LAZY_ROOT_NAME
 from .map_store import MapStore
 from .chroma_store import ChromadbStore
+from .milvus_store import MilvusStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
 from .utils import DocListManager
@@ -56,6 +56,14 @@ class DocImpl:
         self.node_groups = node_groups
 
         self._embed_dim = {k: len(e('a')) for k, e in self.embed.items()}
+
+        if self.store is None:
+            self.store = {
+                'type': 'map',
+                'kwargs': {
+                    'node_groups': self.node_groups,
+                },
+            }
 
         if isinstance(self.store, Dict):
             self.store = self._create_store(self.store)

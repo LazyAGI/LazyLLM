@@ -1,4 +1,4 @@
-from .rag import Document, Reranker, Retriever, SentenceSplitter, LLMParser, StoreBase, IndexBase
+from .rag import Document, Reranker, Retriever, SentenceSplitter, LLMParser
 from .webpages import WebModule
 from .agent import (
     ToolManager,
@@ -32,6 +32,4 @@ __all__ = [
     "SqlManager",
     "SqlCall",
     "HttpTool",
-    'StoreBase',
-    'IndexBase',
 ]

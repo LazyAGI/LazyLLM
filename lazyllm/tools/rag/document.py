@@ -8,7 +8,7 @@ from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from .doc_manager import DocManager
 from .doc_impl import DocImpl
 from .doc_node import DocNode
-from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
+from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .utils import DocListManager
 import copy
 import functools
