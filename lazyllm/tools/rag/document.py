@@ -37,9 +37,8 @@ class Document(ModuleBase):
                     self._submodules.append(embed)
             self._dlm = DocListManager(dataset_path, name).init_tables()
             self._kbs = CallableDict({DocListManager.DEDAULT_GROUP_NAME: DocImpl(embed=self._embed, dlm=self._dlm)})
-            if manager:
-                if manager is True: self._manager = ServerModule(DocManager(self._dlm))
-                elif manager == 'ui': self._manager = DocWebModule(doc_server=ServerModule(DocManager(self._dlm)))
+            if manager: self._manager = ServerModule(DocManager(self._dlm))
+            if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
             if server: self._kbs = ServerModule(self._kbs)
 
         def add_kb_group(self, name):
