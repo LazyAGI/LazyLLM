@@ -3,7 +3,6 @@ import shutil
 import tempfile
 import unittest
 from unittest.mock import MagicMock
-import lazyllm
 from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
 from lazyllm.tools.rag.map_store import MapStore
 from lazyllm.tools.rag.chroma_store import ChromadbStore
@@ -106,7 +105,6 @@ class TestChromadbStore(unittest.TestCase):
         node1 = DocNode(uid="1", text="text1", group="group1", parent=None)
         node2 = DocNode(uid="2", text="text2", group="group1", parent=node1)
         self.store.update_nodes([node1, node2])
-        index = self.store.get_index()
         res = self.store.query(query='text1', group_name='group1', embed_keys=['default'], topk=2,
                                similarity_name='cosine', similarity_cut_off=0.000001)
         self.assertEqual(set([node1, node2]), set(res))
@@ -167,7 +165,6 @@ class TestMapStore(unittest.TestCase):
 
     def test_query(self):
         self.store.update_nodes([self.node1, self.node2])
-        index = self.store.get_index()
         res = self.store.query(query='text1', group_name='group1', embed_keys=['default'], topk=2,
                                similarity_name='cosine', similarity_cut_off=0.000001)
         self.assertEqual(set([self.node1, self.node2]), set(res))

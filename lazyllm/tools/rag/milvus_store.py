@@ -1,7 +1,7 @@
 import copy
 from typing import Dict, List, Optional, Union, Callable
 import pymilvus
-from pymilvus import MilvusClient, FieldSchema, CollectionSchema
+from pymilvus import MilvusClient
 from .doc_node import DocNode
 from .map_store import MapStore
 from .embed_utils import parallel_do_embedding
