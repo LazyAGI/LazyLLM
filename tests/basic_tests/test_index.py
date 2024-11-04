@@ -8,16 +8,15 @@ from lazyllm.tools.rag.utils import parallel_do_embedding
 
 class TestDefaultIndex(unittest.TestCase):
     def setUp(self):
-        self.mock_embed = MagicMock(side_effect=self.delayed_embed)
-        self.mock_embed1 = MagicMock(return_value=[0, 1, 0])
-        self.mock_embed2 = MagicMock(return_value=[0, 0, 1])
-        self.mock_store = MapStore(node_groups=['group1'])
+        self.mock_embed = {
+            'default': MagicMock(side_effect=self.delayed_embed),
+            'test1': MagicMock(return_value=[0, 1, 0]),
+            'test2': MagicMock(return_value=[0, 0, 1]),
+        }
+        self.mock_store = MapStore(node_groups=['group1'], embed=self.mock_embed)
 
         # Create instance of DefaultIndex
-        self.index = DefaultIndex(embed={"default": self.mock_embed,
-                                         "test1": self.mock_embed1,
-                                         "test2": self.mock_embed2},
-                                  store=self.mock_store)
+        self.index = DefaultIndex(embed=self.mock_embed, store=self.mock_store)
 
         # Create mock DocNodes
         self.doc_node_1 = DocNode(uid="text1", group="group1")
