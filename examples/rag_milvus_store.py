@@ -23,9 +23,6 @@ milvus_store_conf = {
             'sentences': fields,
         },
     },
-    'indices': {
-        'map': {}
-    },
 }
 
 documents = lazyllm.Document(dataset_path="rag_master",
