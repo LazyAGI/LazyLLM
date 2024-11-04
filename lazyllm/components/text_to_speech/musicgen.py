@@ -1,39 +1,39 @@
 import os
-import json
 
 import lazyllm
 from lazyllm import LOG
-from lazyllm.thirdparty import numpy as np
+from lazyllm.thirdparty import transformers
+from lazyllm.components.formatter import encode_query_with_filepaths
 from ..utils.downloader import ModelManager
+from .utils import sounds_to_files
 
 class MusicGen(object):
 
-    def __init__(self, base_path, source=None, init=False):
+    def __init__(self, base_path, source=None, save_path=None, init=False):
         source = lazyllm.config['model_source'] if not source else source
         self.base_path = ModelManager(source).download(base_path)
         self.model = None
         self.init_flag = lazyllm.once_flag()
+        self.save_path = save_path if save_path else os.path.join(os.getcwd(), '.temp/musicgen')
         if init:
             lazyllm.call_once(self.init_flag, self.load_tts)
 
     def load_tts(self):
-        from transformers import pipeline
-        self.model = pipeline("text-to-speech", self.base_path, device=0)
+        self.model = transformers.pipeline("text-to-speech", self.base_path, device=0)
 
     def __call__(self, string):
         lazyllm.call_once(self.init_flag, self.load_tts)
         speech = self.model(string, forward_params={"do_sample": True})
-        speech['audio'] = (speech['audio'].flatten() * 32767).astype(np.int16).tolist()
-        res = {'lazyllm_sounds': (speech['sampling_rate'], speech['audio'])}
-        return json.dumps(res)
+        file_path = sounds_to_files([speech['audio'].flatten()], self.save_path, speech['sampling_rate'])
+        return encode_query_with_filepaths(files=file_path)
 
     @classmethod
-    def rebuild(cls, base_path, init):
-        return cls(base_path, init=init)
+    def rebuild(cls, base_path, init, save_path):
+        return cls(base_path, init=init, save_path=save_path)
 
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return MusicGen.rebuild, (self.base_path, init)
+        return MusicGen.rebuild, (self.base_path, init, self.save_path)
 
 class MusicGenDeploy(object):
     message_format = None

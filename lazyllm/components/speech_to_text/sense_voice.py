@@ -39,7 +39,7 @@ class SenseVoice(object):
         lazyllm.call_once(self.init_flag, self.load_stt)
         if isinstance(string, dict):
             if string['audio']:
-                string = string['audio'][0] if isinstance(string['audio'], list) else string['audio']
+                string = string['audio'][-1] if isinstance(string['audio'], list) else string['audio']
             else:
                 string = string['inputs']
         assert isinstance(string, str)

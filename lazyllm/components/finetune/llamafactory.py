@@ -145,6 +145,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.temp_yaml_file = self.build_temp_yaml(updated_template_str)
 
         cmds = f'llamafactory-cli train {self.temp_yaml_file}'
+        cmds += f' 2>&1 | tee {self.target_path}/llm_$(date +"%Y-%m-%d_%H-%M-%S").log'
         if self.temp_export_yaml_file:
             cmds += f' && llamafactory-cli export {self.temp_export_yaml_file}'
         return cmds

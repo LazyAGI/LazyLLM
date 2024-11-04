@@ -376,7 +376,6 @@ def singleton(cls):
         return instances[cls]
     return get_instance
 
-
 def reset_on_pickle(*fields):
     def decorator(cls):
         original_getstate = cls.__getstate__ if hasattr(cls, '__getstate__') else lambda self: self.__dict__
