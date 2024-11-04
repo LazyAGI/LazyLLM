@@ -177,11 +177,15 @@ class TestMapStore(unittest.TestCase):
 class TestMilvusStore(unittest.TestCase):
     def setUp(self):
         fields = {
-            'comment': MilvusField(data_type=MilvusField.DTYPE_VARCHAR, max_length=128),
-            'vec1': MilvusField(data_type=MilvusField.DTYPE_FLOAT_VECTOR,
-                                index_type='HNSW', metric_type='COSINE'),
-            'vec2': MilvusField(data_type=MilvusField.DTYPE_FLOAT_VECTOR,
-                                index_type='HNSW', metric_type='COSINE'),
+            'embedding': {
+                'vec1': MilvusField(data_type=MilvusField.DTYPE_FLOAT_VECTOR,
+                                    index_type='HNSW', metric_type='COSINE'),
+                'vec2': MilvusField(data_type=MilvusField.DTYPE_FLOAT_VECTOR,
+                                    index_type='HNSW', metric_type='COSINE'),
+            },
+            'metadata': {
+                'comment': MilvusField(data_type=MilvusField.DTYPE_VARCHAR, max_length=128),
+            },
         }
         group_fields = {
             "group1": fields,

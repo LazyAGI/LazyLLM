@@ -8,8 +8,11 @@ from lazyllm.tools.rag import MilvusField, EMBED_DEFAULT_KEY
 _, store_file = tempfile.mkstemp(suffix=".db")
 
 fields = {
-    EMBED_DEFAULT_KEY: MilvusField(data_type=MilvusField.DTYPE_FLOAT_VECTOR,
-                                   index_type='HNSW', metric_type='COSINE'),
+    'embedding': {
+        EMBED_DEFAULT_KEY: MilvusField(data_type=MilvusField.DTYPE_FLOAT_VECTOR,
+                                       index_type='HNSW', metric_type='COSINE'),
+    },
+    'metadata': {}
 }
 
 milvus_store_conf = {

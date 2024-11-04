@@ -31,7 +31,7 @@ class MilvusStore(StoreBase):
         pymilvus.DataType.SPARSE_FLOAT_VECTOR,  # DTYPE_SPARSE_FLOAT_VECTOR
     ]
 
-    def __init__(self, uri: str, group_fields: Dict[str, Dict[str, MilvusField]],
+    def __init__(self, uri: str, group_fields: Dict[str, Dict[str, Dict[str, MilvusField]]],
                  node_groups: List[str], embed: Dict[str, Callable], **kwargs):
         new_copy = copy.copy(group_fields)
         for g in node_groups:
@@ -71,21 +71,26 @@ class MilvusStore(StoreBase):
             for name, field in builtin_fields.items():
                 schema.add_field(field_name=name, **field)
 
-            for name, field in fields.items():
-                field_name = None
-                if name in self._embedding_keys:
-                    field_name = self._gen_embedding_key(name)
-                    schema.add_field(
-                        field_name=field_name,
-                        datatype=self._type2milvus[field.data_type],
-                        dim=embed_dim.get(name))
-                else:
-                    field_name = self._gen_metadata_key(name)
-                    schema.add_field(
-                        field_name=field_name,
-                        datatype=self._type2milvus[field.data_type],
-                        max_length=field.max_length)
+            embedding_fields = fields.get('embedding', {})
+            for name, field in embedding_fields.items():
+                field_name = self._gen_embedding_key(name)
+                schema.add_field(
+                    field_name=field_name,
+                    datatype=self._type2milvus[field.data_type],
+                    dim=embed_dim.get(name))
+                if field.index_type is not None:
+                    index_params.add_index(field_name=field_name,
+                                           index_type=field.index_type,
+                                           metric_type=field.metric_type,
+                                           params=field.index_params)
 
+            metadata_fields = fields.get('metadata', {})
+            for name, field in metadata_fields.items():
+                field_name = self._gen_metadata_key(name)
+                schema.add_field(
+                    field_name=field_name,
+                    datatype=self._type2milvus[field.data_type],
+                    max_length=field.max_length)
                 if field.index_type is not None:
                     index_params.add_index(field_name=field_name,
                                            index_type=field.index_type,
