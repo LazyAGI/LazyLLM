@@ -14,8 +14,9 @@ from .map_store import MapStore
 # ---------------------------------------------------------------------------- #
 
 class ChromadbStore(StoreBase):
-    def __init__(self, node_groups: List[str], path: str, embed_dim: Dict[str, int],
-                 embed: Dict[str, Callable]) -> None:
+    def __init__(self, path: str, embed_dim: Dict[str, int],
+                 node_groups: List[str], embed: Dict[str, Callable],
+                 **kwargs) -> None:
         self._map_store = MapStore(node_groups=node_groups, embed=embed)
         self._db_client = chromadb.PersistentClient(path=path)
         LOG.success(f"Initialzed chromadb in path: {path}")

@@ -33,7 +33,14 @@ class MilvusStore(StoreBase):
     ]
 
     def __init__(self, uri: str, group_fields: Dict[str, List[MilvusField]],
-                 embed: Dict[str, Callable]):
+                 node_groups: List[str], embed: Dict[str, Callable], **kwargs):
+        new_copy = copy.copy(group_fields)
+        for g in node_groups:
+            if g not in new_copy:
+                new_copy[g] = []
+        group_fields = new_copy
+        print(f'debug!!! uri -> {uri}, group_fields -> {group_fields}')
+
         self._primary_key = 'uid'
         self._embedding_keys = embed.keys()
         self._embed = embed
@@ -76,7 +83,7 @@ class MilvusStore(StoreBase):
                                            metric_type=field.metric_type,
                                            params=field.index_params)
 
-            schema = CollectionSchema(fields=field_schema_list)
+            schema = CollectionSchema(fields=field_schema_list, enable_dynamic_field=True)
             self._client.create_collection(collection_name=group_name, schema=schema,
                                            index_params=index_params)
 
@@ -88,6 +95,7 @@ class MilvusStore(StoreBase):
         parallel_do_embedding(self._embed, nodes)
         for node in nodes:
             data = self._serialize_node_partial(node)
+            print(f'debug!!! update group [{node.group}]')
             self._client.upsert(collection_name=node.group, data=[data])
 
         self._map_store.update_nodes(nodes)

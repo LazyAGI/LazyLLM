@@ -60,9 +60,7 @@ class DocImpl:
         if self.store is None:
             self.store = {
                 'type': 'map',
-                'kwargs': {
-                    'node_groups': self.node_groups,
-                },
+                'kwargs': {},
             }
 
         if isinstance(self.store, Dict):
@@ -93,11 +91,11 @@ class DocImpl:
             raise ValueError('`kwargs` in store conf is not a dict.')
 
         if type == "map":
-            store = MapStore(embed=self.embed, **kwargs)
+            store = MapStore(embed=self.embed, node_groups=self.node_groups, **kwargs)
         elif type == "chroma":
-            store = ChromadbStore(embed=self.embed, **kwargs)
+            store = ChromadbStore(embed=self.embed, node_groups=self.node_groups, **kwargs)
         elif type == "milvus":
-            store = MilvusStore(embed=self.embed, **kwargs)
+            store = MilvusStore(embed=self.embed, node_groups=self.node_groups, **kwargs)
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {type}"
