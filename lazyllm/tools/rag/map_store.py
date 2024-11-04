@@ -52,8 +52,11 @@ class MapStore(StoreBase):
         if not docs:
             return []
 
-        if not uids:
+        if uids is None:
             return list(docs.values())
+
+        if len(uids) == 0:
+            return []
 
         ret = []
         for uid in uids:
