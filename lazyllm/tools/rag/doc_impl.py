@@ -9,6 +9,7 @@ from .store_base import StoreBase, LAZY_ROOT_NAME
 from .map_store import MapStore
 from .chroma_store import ChromadbStore
 from .milvus_store import MilvusStore
+from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
 from .utils import DocListManager
@@ -60,7 +61,6 @@ class DocImpl:
         if self.store is None:
             self.store = {
                 'type': 'map',
-                'kwargs': {},
             }
 
         if isinstance(self.store, Dict):
@@ -82,24 +82,33 @@ class DocImpl:
             self._daemon.start()
 
     def _create_store(self, store_conf: Optional[Dict]) -> StoreBase:
-        type = store_conf.get('type')
-        if not type:
+        store_type = store_conf.get('type')
+        if not store_type:
             raise ValueError('store type is not specified.')
 
-        kwargs = store_conf.get('kwargs')
+        kwargs = store_conf.get('kwargs', {})
         if not isinstance(kwargs, Dict):
             raise ValueError('`kwargs` in store conf is not a dict.')
 
-        if type == "map":
+        if store_type == "map":
             store = MapStore(embed=self.embed, node_groups=self.node_groups, **kwargs)
-        elif type == "chroma":
+        elif store_type == "chroma":
             store = ChromadbStore(embed=self.embed, node_groups=self.node_groups, **kwargs)
-        elif type == "milvus":
+        elif store_type == "milvus":
             store = MilvusStore(embed=self.embed, node_groups=self.node_groups, **kwargs)
         else:
             raise NotImplementedError(
-                f"Not implemented store type for {type}"
+                f"Not implemented store type for {store_type}"
             )
+
+        indices_conf = store_conf.get('indices', {})
+        if not isinstance(indices_conf, Dict):
+            raise ValueError(f"`indices`'s type [{type(indices_conf)}] is not a dict")
+
+        for backend_type, kwargs in indices_conf.items():
+            index = SmartEmbeddingIndex(backend_type=backend_type, embed=self.embed,
+                                        node_groups=self.node_groups, **kwargs)
+            store.register_index(type=backend_type, index=index)
 
         return store
 

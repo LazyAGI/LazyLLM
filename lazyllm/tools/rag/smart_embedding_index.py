@@ -6,11 +6,11 @@ from .map_store import MapStore
 from .milvus_store import MilvusStore
 
 class SmartEmbeddingIndex(IndexBase):
-    def __init__(self, backend_type: str, fields: List[str], *args, **kwargs):
+    def __init__(self, backend_type: str, **kwargs):
         if backend_type == 'milvus':
-            self._store = MilvusStore(*args, **kwargs)
+            self._store = MilvusStore(**kwargs)
         elif backend_type == 'map':
-            self._store = MapStore(*args, **kwargs)
+            self._store = MapStore(**kwargs)
         else:
             raise ValueError(f'unsupported backend [{backend_type}]')
 
