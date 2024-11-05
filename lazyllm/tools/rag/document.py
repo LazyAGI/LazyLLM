@@ -9,6 +9,7 @@ from .doc_manager import DocManager
 from .doc_impl import DocImpl
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY, DocNode
 from .utils import DocListManager
+from .web import DocWebModule
 import copy
 import functools
 
@@ -20,7 +21,7 @@ class CallableDict(dict):
 class Document(ModuleBase):
     class _Impl(ModuleBase):
         def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
-                     manager: bool = False, server: bool = False, name: Optional[str] = None,
+                     manager: Union[bool, str] = False, server: bool = False, name: Optional[str] = None,
                      launcher: Launcher = None):
             super().__init__()
             if not os.path.exists(dataset_path):
@@ -37,6 +38,7 @@ class Document(ModuleBase):
             self._dlm = DocListManager(dataset_path, name).init_tables()
             self._kbs = CallableDict({DocListManager.DEDAULT_GROUP_NAME: DocImpl(embed=self._embed, dlm=self._dlm)})
             if manager: self._manager = ServerModule(DocManager(self._dlm))
+            if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
             if server: self._kbs = ServerModule(self._kbs)
 
         def add_kb_group(self, name):
@@ -49,13 +51,16 @@ class Document(ModuleBase):
         def get_doc_by_kb_group(self, name):
             return self._kbs._impl._m[name] if isinstance(self._kbs, ServerModule) else self._kbs[name]
 
-        def stop(self): self._launcher.cleanup()
+        def stop(self):
+            if hasattr(self, '_docweb'):
+                self._docweb.stop()
+            self._launcher.cleanup()
 
         def __call__(self, *args, **kw):
             return self._kbs(*args, **kw)
 
     def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
-                 create_ui: bool = False, manager: bool = False, server: bool = False,
+                 create_ui: bool = False, manager: Union[bool, str] = False, server: bool = False,
                  name: Optional[str] = None, launcher=None):
         super().__init__()
         if create_ui:

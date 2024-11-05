@@ -151,6 +151,17 @@ class TestDocument(unittest.TestCase):
         nodes3 = retriever3("何为天道?")
         assert len(nodes3) == 3
 
+    def test_doc_web_module(self):
+        import time
+        import requests
+        doc = Document('rag_master', manager='ui')
+        doc.create_kb_group(name="test_group")
+        doc.start()
+        time.sleep(4)
+        url = doc._impls._docweb.url
+        response = requests.get(url)
+        assert response.status_code == 200
+        doc.stop()
 
 if __name__ == "__main__":
     unittest.main()
