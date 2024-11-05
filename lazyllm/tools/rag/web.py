@@ -1,11 +1,11 @@
 import os
 import socket
 import requests
-import multiprocessing
 import json
 from typing import Union
 
 import lazyllm
+from lazyllm import LOG
 from lazyllm import ModuleBase, ServerModule
 import gradio as gr
 from lazyllm.flow import Pipeline
@@ -88,7 +88,7 @@ class WebUi:
         return gr.DataFrame(headers=headers, value=value)
 
     def create_ui(self):
-        with gr.Blocks() as demo:
+        with gr.Blocks(analytics_enabled=False) as demo:
             with gr.Tabs():
                 select_group_list = []
 
@@ -216,15 +216,13 @@ class DocWebModule(ModuleBase):
             port = self.port
             assert self._verify_port_access(port), f"port {port} is occupied"
 
-        def _impl():
-            self.demo.queue().launch(server_name="0.0.0.0", server_port=port)
-
         self.api_url = self.doc_server._url.rsplit("/", 1)[0]
         self.web_ui = WebUi(self.api_url)
         self.demo = self.web_ui.create_ui()
-        self.p = multiprocessing.Process(target=_impl)
-        self.p.start()
-        self.url = f"http://0.0.0.0:{port}"
+        self.url = f'http://0.0.0.0:{port}'
+
+        self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True)
+        LOG.success(f'LazyLLM docwebmodule launched successfully: Running on local URL: {self.url}', flush=True)
 
     def _get_deploy_tasks(self):
         return Pipeline(self._work)
@@ -233,12 +231,13 @@ class DocWebModule(ModuleBase):
         return Pipeline(self._print_url)
 
     def wait(self):
-        return self.p.join()
+        self.demo.block_thread()
 
     def stop(self):
-        if self.p.is_alive():
-            self.p.terminate()
-            self.p.join()
+        if self.demo:
+            self.demo.close()
+            del self.demo
+            self.demo, self.url = None, ''
         
     def _find_can_use_network_port(self):
         for port in self.port:
