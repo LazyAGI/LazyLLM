@@ -16,9 +16,11 @@ def _remove_from_indices(name2index: Dict[str, IndexBase], uids: List[str],
         index.remove(uids, group_name)
 
 class MapStore(StoreBase):
-    def __init__(self, embed: Dict[str, Callable], **kwargs):
+    def __init__(self, node_groups: List[str], embed: Dict[str, Callable], **kwargs):
         # Dict[group_name, Dict[uuid, DocNode]]
-        self._group2docs: Dict[str, Dict[str, DocNode]] = {}
+        self._group2docs: Dict[str, Dict[str, DocNode]] = {
+            group: {} for group in node_groups
+        }
 
         self._name2index = {
             'default': DefaultIndex(embed, self),
@@ -71,10 +73,6 @@ class MapStore(StoreBase):
     @override
     def all_groups(self) -> List[str]:
         return self._group2docs.keys()
-
-    @override
-    def add_group(self, name: str, embed_keys: Optional[List[str]] = None) -> None:
-        self._group2docs.setdefault(name, {})
 
     @override
     def query(self, *args, **kwargs) -> List[DocNode]:

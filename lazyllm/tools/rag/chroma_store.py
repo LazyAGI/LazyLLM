@@ -14,17 +14,21 @@ import pickle
 # ---------------------------------------------------------------------------- #
 
 class ChromadbStore(StoreBase):
-    def __init__(self, dir: str, embed: Dict[str, Callable], embed_dim: Dict[str, int], **kwargs) -> None:
+    def __init__(self, dir: str, node_groups: List[str], embed: Dict[str, Callable],
+                 embed_dim: Dict[str, int], **kwargs) -> None:
         self._db_client = chromadb.PersistentClient(path=dir)
         LOG.success(f"Initialzed chromadb in path: {dir}")
-        self._collections: Dict[str, Collection] = {}
+        self._collections: Dict[str, Collection] = {
+            group: self._db_client.get_or_create_collection(group)
+            for group in node_groups
+        }
 
         self._name2index = {
             'default': DefaultIndex(embed, self._map_store),
             'file_node_map': _FileNodeIndex(),
         }
 
-        self._map_store = MapStore(embed=embed)
+        self._map_store = MapStore(node_groups=node_groups, embed=embed)
         self._load_store(embed_dim)
 
     @override
@@ -51,11 +55,6 @@ class ChromadbStore(StoreBase):
     @override
     def all_groups(self) -> List[str]:
         return self._map_store.all_groups()
-
-    @override
-    def add_group(self, name: str, embed_keys: Optional[List[str]] = None) -> None:
-        self._collections[name] = self._db_client.get_or_create_collection(name)
-        self._map_store.add_group(name, embed_keys)
 
     @override
     def query(self, *args, **kwargs) -> List[DocNode]:

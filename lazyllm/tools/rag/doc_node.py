@@ -30,13 +30,12 @@ class DocNode:
         self.parent: Optional["DocNode"] = parent
         self.children: Dict[str, List["DocNode"]] = defaultdict(list)
         self.is_saved: bool = False
-        self._docpath = None
         self._lock = threading.Lock()
         self._embedding_state = set()
 
         if fields and parent:
             raise ValueError('only ROOT node can set fields.')
-        self._fields = fields
+        self._fields = fields if fields else {}
 
     @property
     def root_node(self) -> Optional["DocNode"]:
@@ -76,12 +75,12 @@ class DocNode:
 
     @property
     def docpath(self) -> str:
-        return self.root_node._docpath or ''
+        return self.root_node._fields.get('lazyllm_doc_path', '')
 
     @docpath.setter
     def docpath(self, path):
         assert not self.parent, 'Only root node can set docpath'
-        self._docpath = str(path)
+        self._fields['lazyllm_doc_path'] = str(path)
 
     def get_children_str(self) -> str:
         return str(

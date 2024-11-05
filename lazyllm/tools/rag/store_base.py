@@ -32,10 +32,6 @@ class StoreBase(ABC):
         pass
 
     @abstractmethod
-    def add_group(self, name: str, embed_keys: Optional[List[str]] = None) -> None:
-        pass
-
-    @abstractmethod
     def query(self, *args, **kwargs) -> List[DocNode]:
         pass
 

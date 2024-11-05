@@ -10,7 +10,8 @@ from .doc_impl import DocImpl
 from .doc_node import DocNode
 from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .utils import DocListManager
-from .doc_field_info import DocFieldInfo
+from .doc_field_desc import DocFieldDesc
+from .web import DocWebModule
 import copy
 import functools
 
@@ -22,9 +23,9 @@ class CallableDict(dict):
 class Document(ModuleBase):
     class _Impl(ModuleBase):
         def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
-                     manager: bool = False, server: bool = False, name: Optional[str] = None,
+                     manager: Union[bool, str] = False, server: bool = False, name: Optional[str] = None,
                      launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
-                     fields_info: Optional[Dict[str, DocFieldInfo]] = None):
+                     fields_desc: Optional[Dict[str, DocFieldDesc]] = None):
             super().__init__()
             if not os.path.exists(dataset_path):
                 defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)
@@ -39,37 +40,43 @@ class Document(ModuleBase):
                     self._submodules.append(embed)
             self._dlm = DocListManager(dataset_path, name).init_tables()
             self._kbs = CallableDict({DocListManager.DEDAULT_GROUP_NAME:
-                                      DocImpl(embed=self._embed, dlm=self._dlm, store_conf=store_conf)})
+                                      DocImpl(embed=self._embed, dlm=self._dlm, fields_desc=fields_desc,
+                                              store_conf=store_conf)})
             if manager: self._manager = ServerModule(DocManager(self._dlm))
+            if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
             if server: self._kbs = ServerModule(self._kbs)
-            self._fields_info = fields_info
+            self._fields_desc = fields_desc
 
-        def add_kb_group(self, name, store_conf: Optional[Dict] = None):
+        def add_kb_group(self, name, fields_desc: Optional[Dict[str, DocFieldDesc]] = None,
+                         store_conf: Optional[Dict] = None):
             if isinstance(self._kbs, ServerModule):
                 self._kbs._impl._m[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
-                                                   store_conf=store_conf)
+                                                   fields_desc=fields_desc, store_conf=store_conf)
             else:
                 self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
-                                          store_conf=store_conf)
+                                          fields_desc=fields_desc, store_conf=store_conf)
             self._dlm.add_kb_group(name)
 
         def get_doc_by_kb_group(self, name):
             return self._kbs._impl._m[name] if isinstance(self._kbs, ServerModule) else self._kbs[name]
 
-        def stop(self): self._launcher.cleanup()
+        def stop(self):
+            if hasattr(self, '_docweb'):
+                self._docweb.stop()
+            self._launcher.cleanup()
 
         def __call__(self, *args, **kw):
             return self._kbs(*args, **kw)
 
     def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
-                 create_ui: bool = False, manager: bool = False, server: bool = False,
+                 create_ui: bool = False, manager: Union[bool, str] = False, server: bool = False,
                  name: Optional[str] = None, launcher: Optional[Launcher] = None,
-                 fields_info: Dict[str, DocFieldInfo] = None, store_conf: Optional[Dict] = None):
+                 fields_desc: Dict[str, DocFieldDesc] = None, store_conf: Optional[Dict] = None):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
         self._impls = Document._Impl(dataset_path, embed, create_ui or manager, server, name,
-                                     launcher, store_conf, fields_info)
+                                     launcher, store_conf, fields_desc)
         self._curr_group = DocListManager.DEDAULT_GROUP_NAME
 
     def create_kb_group(self, name: str, store_conf: Optional[Dict] = None) -> "Document":

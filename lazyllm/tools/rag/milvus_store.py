@@ -7,8 +7,10 @@ from .map_store import MapStore
 from .utils import parallel_do_embedding
 from .index_base import IndexBase
 from .store_base import StoreBase
-from .doc_field_info import DocFieldInfo
+from .doc_field_desc import DocFieldDesc
 from lazyllm.common import override
+import pickle
+import base64
 
 class MilvusStore(StoreBase):
     _primary_key = 'uid'
@@ -22,34 +24,71 @@ class MilvusStore(StoreBase):
             'max_length': 256,
             'is_primary': True,
         },
-        'text': {
-            'datatype': pymilvus.DataType.VARCHAR,
-            'max_length': True,
-        },
         'parent': {
             'datatype': pymilvus.DataType.VARCHAR,
             'max_length': 256,
         },
+        'text': {
+            'datatype': pymilvus.DataType.VARCHAR,
+            'max_length': 65535,
+        },
+        'metadata': {
+            'datatype': pymilvus.DataType.VARCHAR,
+            'max_length': 65535,
+        },
     }
 
     _type2milvus = [
-        0,
         pymilvus.DataType.VARCHAR,
     ]
 
-    def __init__(self, embed: Dict[str, Callable], fields_info: Dict[str, DocFieldInfo], uri: str,
-                 embedding_index_type: Optional[str] = None, embedding_metric_type: Optional[str] = None,
-                 **kwargs):
+    def __init__(self, node_groups: List[str], embed: Dict[str, Callable], embed_keys: List[str],
+                 fields_desc: Dict[str, DocFieldDesc], uri: str, embedding_index_type: Optional[str] = None,
+                 embedding_metric_type: Optional[str] = None, **kwargs):
         self._embed = embed
-        self._fields_info = fields_info
-        self._embedding_index_type = embedding_index_type if embedding_index_type else 'HNSW'
-        self._embedding_metric_type = embedding_metric_type if embedding_metric_type else 'COSINE'
-
-        self._embedding_keys = embed.keys()
-        self._embed_dim = {k: len(e('a')) for k, e in embed.items()}
         self._client = MilvusClient(uri=uri)
 
-        self._map_store = MapStore(embed=embed)
+        if not embedding_index_type:
+            embedding_index_type = 'HNSW'
+
+        if not embedding_metric_type:
+            embedding_metric_type = 'COSINE'
+
+        embed_dims = {}
+        for k in embed_keys:
+            e = embed.get(k)
+            if not e:
+                raise ValueError(f'cannot find embed callable [{k}]')
+            embed_dims[k] = len(e('a'))
+
+        for group in node_groups:
+            index_params = self._client.prepare_index_params()
+            schema = self._client.create_schema(auto_id=False, enable_dynamic_field=False)
+
+            for key, info in self._builtin_fields.items():
+                schema.add_field(field_name=key, **info)
+
+            for key in embed_keys:
+                dim = embed_dims.get(key)
+                if not dim:
+                    raise ValueError(f'cannot find embedding dim of embed [{key}]')
+
+                field_name = self._gen_embedding_key(key)
+                schema.add_field(field_name=field_name, datatype=pymilvus.DataType.FLOAT_VECTOR,
+                                 dim=dim)
+                index_params.add_index(field_name=field_name, index_type=embedding_index_type,
+                                       metric_type=embedding_metric_type)
+
+            if fields_desc:
+                for key, info in fields_desc.items():
+                    schema.add_field(field_name=self._gen_field_key(key),
+                                     datatype=self._type2milvus[info.data_type],
+                                     max_length=info.max_length)
+
+            self._client.create_collection(collection_name=group, schema=schema,
+                                           index_params=index_params)
+
+        self._map_store = MapStore(node_groups=node_groups, embed=embed)
         self._load_all_nodes_to(self._map_store)
 
     @override
@@ -82,30 +121,6 @@ class MilvusStore(StoreBase):
     @override
     def all_groups(self) -> List[str]:
         return self._map_store.all_groups()
-
-    @override
-    def add_group(self, name: str, embed_keys: Optional[List[str]] = None) -> None:
-        if name in self._client.list_collections():
-            return
-
-        index_params = self._client.prepare_index_params()
-        schema = self._client.create_schema(auto_id=False, enable_dynamic_field=False)
-
-        for key in embed_keys:
-            field_name = self._gen_embedding_key(key)
-            schema.add_field(field_name=field_name, datatype=pymilvus.DataType.FLOAT_VECTOR)
-            index_params.add_index(field_name=field_name, index_type=self._embedding_index_type,
-                                   metric_type=self._embedding_metric_type)
-
-        if self._fields_info:
-            for key, info in self._fields_info.items():
-                schema.add_field(field_name=self._gen_field_key(key),
-                                 datatype=self._type2milvus[info.data_type])
-
-        self._client.create_collection(collection_name=name, schema=schema,
-                                       index_params=index_params)
-
-        self._map_store.add_group(name, embed_keys)
 
     @override
     def register_index(self, type: str, index: IndexBase) -> None:
@@ -156,7 +171,7 @@ class MilvusStore(StoreBase):
 
     def _load_all_nodes_to(self, store: StoreBase):
         for group_name in self._client.list_collections():
-            store.add_group(name=group_name, embed=self._embed)
+            store.activate_group(name=group_name, embed=self._embed)
 
             results = self._client.query(collection_name=group_name,
                                          filter=f'{self._primary_key} != ""')
@@ -179,13 +194,15 @@ class MilvusStore(StoreBase):
             'uid': node.uid,
             'text': node.text,
             'parent': node.parent.uid if node.parent else '',
-            'metadata': node._metadata,
+            'metadata': base64.b64encode(pickle.dumps(node._metadata)).decode('utf-8'),
         }
 
         for k, v in node.embedding.items():
             res[self._gen_embedding_key(k)] = v
-        for k, v in node.fields.items():
-            res[self._gen_field_key(k)] = v
+
+        if node.parent and node.fields:
+            for k, v in node.fields.items():
+                res[self._gen_field_key(k)] = v
 
         return res
 
@@ -196,7 +213,7 @@ class MilvusStore(StoreBase):
             uid=record.pop('uid'),
             text=record.pop('text'),
             parent=record.pop('parent'),  # this is the parent's uid
-            metadata=record.pop('metadata'),
+            metadata=pickle.loads(base64.b64decode(record.pop('metadata').encode('utf-8'))),
         )
 
         for k, v in record.items():

@@ -13,7 +13,7 @@ from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
 from .utils import DocListManager
-from .doc_field_info import DocFieldInfo
+from .doc_field_desc import DocFieldDesc
 import threading
 import time
 
@@ -38,7 +38,7 @@ class DocImpl:
 
     def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
-                 fields_info: Dict[str, DocFieldInfo] = None, store_conf: Optional[Dict] = None):
+                 fields_desc: Dict[str, DocFieldDesc] = None, store_conf: Optional[Dict] = None):
         super().__init__()
         assert (dlm is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
         self._local_file_reader: Dict[str, Callable] = {}
@@ -48,8 +48,9 @@ class DocImpl:
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self._embed_dim = None
-        self._fields_info = fields_info
+        self._fields_desc = fields_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
+        self._activated_embeddings = set()
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
@@ -71,7 +72,6 @@ class DocImpl:
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
 
         if not self.store.is_group_active(LAZY_ROOT_NAME):
-            self.store.add_group(name=LAZY_ROOT_NAME, fields_info=self._fields_info, embed_keys={})
             ids, pathes = self._list_files()
             root_nodes = self._reader.load_data(pathes)
             self.store.update_nodes(root_nodes)
@@ -94,11 +94,14 @@ class DocImpl:
             raise ValueError('`kwargs` in store conf is not a dict.')
 
         if store_type == "map":
-            store = MapStore(embed=self.embed, **kwargs)
+            store = MapStore(node_groups=self.node_groups, embed=self.embed, **kwargs)
         elif store_type == "chroma":
-            store = ChromadbStore(embed_dim=self.embed_dim, embed=self.embed, **kwargs)
+            store = ChromadbStore(node_groups=self.node_groups, embed=self.embed,
+                                  embed_dim=self.embed_dim, **kwargs)
         elif store_type == "milvus":
-            store = MilvusStore(embed=self.embed, fields_info=self._fields_info, **kwargs)
+            store = MilvusStore(node_groups=self.node_groups, embed=self.embed,
+                                embed_keys=self._activated_embeddings,
+                                fields_desc=self._fields_desc, **kwargs)
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {store_type}"
@@ -276,9 +279,6 @@ class DocImpl:
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None) -> List[DocNode]:
         self._lazy_init()
-
-        if not self.store.is_group_active(group_name):
-            self.store.add_group(group_name, embed_keys=embed_keys)
 
         if type is None or type == 'default':
             return self.store.query(query=query, group_name=group_name, similarity_name=similarity,

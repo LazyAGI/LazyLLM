@@ -8,7 +8,7 @@ from lazyllm.tools.rag.map_store import MapStore
 from lazyllm.tools.rag.chroma_store import ChromadbStore
 from lazyllm.tools.rag.milvus_store import MilvusStore
 from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.doc_field_info import DocFieldInfo
+from lazyllm.tools.rag.doc_field_desc import DocFieldDesc
 
 
 def clear_directory(directory_path):
@@ -37,7 +37,7 @@ class TestChromadbStore(unittest.TestCase):
 
         self.store = ChromadbStore(dir=self.store_dir, embed=self.mock_embed, embed_dim=self.embed_dim)
         for group in self.node_groups:
-            self.store.add_group(name=group, embed_keys=self.mock_embed.keys())
+            self.store.activate_group(name=group, embed_keys=self.mock_embed.keys())
 
         self.store.update_nodes(
             [DocNode(uid="1", text="text1", group=LAZY_ROOT_NAME, parent=None)],
@@ -184,21 +184,21 @@ class TestMilvusStore(unittest.TestCase):
             'vec1': MagicMock(return_value=[1.0, 2.0, 3.0]),
             'vec2': MagicMock(return_value=[400.0, 500.0, 600.0, 700.0, 800.0]),
         }
-        self.fields_info = {
-            'comment': DocFieldInfo(DocFieldInfo.DTYPE_VARCHAR),
+        self.fields_desc = {
+            'comment': DocFieldDesc(data_type=DocFieldDesc.DTYPE_VARCHAR),
         }
 
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
         _, self.store_file = tempfile.mkstemp(suffix=".db")
 
-        self.store = MilvusStore(embed=self.mock_embed, fields_info=self.fields_info,
+        self.store = MilvusStore(embed=self.mock_embed, fields_desc=self.fields_desc,
                                  uri=self.store_file)
         for group in self.node_groups:
-            self.store.add_group(name=group, embed_keys=self.mock_embed.keys())
+            self.store.activate_group(name=group, embed_keys=self.mock_embed.keys())
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
                              embedding={"vec1": [8.0, 9.0, 10.0], "vec2": [11.0, 12.0, 13.0, 14.0, 15.0]},
-                             metadata={'comment': 'comment1'})
+                             metadata={'comment': 'comment1'}, fields={'comment': 'comment3'})
         self.node2 = DocNode(uid="2", text="text2", group="group1", parent=self.node1,
                              embedding={"vec1": [100.0, 200.0, 300.0], "vec2": [400.0, 500.0, 600.0, 700.0, 800.0]},
                              metadata={'comment': 'comment2'})
