@@ -6,8 +6,9 @@ from unittest.mock import MagicMock
 from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
 from lazyllm.tools.rag.map_store import MapStore
 from lazyllm.tools.rag.chroma_store import ChromadbStore
-from lazyllm.tools.rag.milvus_store import MilvusStore, MilvusField
+from lazyllm.tools.rag.milvus_store import MilvusStore
 from lazyllm.tools.rag.doc_node import DocNode
+from lazyllm.tools.rag.doc_field_info import DocFieldInfo
 
 
 def clear_directory(directory_path):
@@ -28,13 +29,16 @@ def clear_directory(directory_path):
 class TestChromadbStore(unittest.TestCase):
     def setUp(self):
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
-        self.embed_dim = {"default": 3}
         self.store_dir = tempfile.mkdtemp()
         self.mock_embed = {
             'default': MagicMock(return_value=[1.0, 2.0, 3.0]),
         }
-        self.store = ChromadbStore(path=self.store_dir, node_groups=self.node_groups,
-                                   embed=self.mock_embed, embed_dim=self.embed_dim)
+        self.embed_dim = {"default": 3}
+
+        self.store = ChromadbStore(dir=self.store_dir, embed=self.mock_embed, embed_dim=self.embed_dim)
+        for group in self.node_groups:
+            self.store.add_group(name=group, embed_keys=self.mock_embed.keys())
+
         self.store.update_nodes(
             [DocNode(uid="1", text="text1", group=LAZY_ROOT_NAME, parent=None)],
         )
@@ -176,32 +180,21 @@ class TestMapStore(unittest.TestCase):
 
 class TestMilvusStore(unittest.TestCase):
     def setUp(self):
-        fields = {
-            'embedding': {
-                'vec1': MilvusField(data_type=MilvusField.DTYPE_FLOAT_VECTOR,
-                                    index_type='HNSW', metric_type='COSINE'),
-                'vec2': MilvusField(data_type=MilvusField.DTYPE_FLOAT_VECTOR,
-                                    index_type='HNSW', metric_type='COSINE'),
-            },
-            'metadata': {
-                'comment': MilvusField(data_type=MilvusField.DTYPE_VARCHAR, max_length=128),
-            },
-        }
-        group_fields = {
-            "group1": fields,
-            "group2": fields,
-        }
-
         self.mock_embed = {
             'vec1': MagicMock(return_value=[1.0, 2.0, 3.0]),
             'vec2': MagicMock(return_value=[400.0, 500.0, 600.0, 700.0, 800.0]),
+        }
+        self.fields_info = {
+            'comment': DocFieldInfo(DocFieldInfo.DTYPE_VARCHAR),
         }
 
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
         _, self.store_file = tempfile.mkstemp(suffix=".db")
 
-        self.store = MilvusStore(uri=self.store_file, embed=self.mock_embed,
-                                 node_groups=self.node_groups, group_fields=group_fields)
+        self.store = MilvusStore(embed=self.mock_embed, fields_info=self.fields_info,
+                                 uri=self.store_file)
+        for group in self.node_groups:
+            self.store.add_group(name=group, embed_keys=self.mock_embed.keys())
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
                              embedding={"vec1": [8.0, 9.0, 10.0], "vec2": [11.0, 12.0, 13.0, 14.0, 15.0]},

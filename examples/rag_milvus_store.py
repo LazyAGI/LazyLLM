@@ -3,25 +3,15 @@
 import os
 import lazyllm
 import tempfile
-from lazyllm.tools.rag import MilvusField, EMBED_DEFAULT_KEY
 
 _, store_file = tempfile.mkstemp(suffix=".db")
-
-fields = {
-    'embedding': {
-        EMBED_DEFAULT_KEY: MilvusField(data_type=MilvusField.DTYPE_FLOAT_VECTOR,
-                                       index_type='HNSW', metric_type='COSINE'),
-    },
-    'metadata': {}
-}
 
 milvus_store_conf = {
     'type': 'milvus',
     'kwargs': {
         'uri': store_file,
-        'group_fields': {
-            'sentences': fields,
-        },
+        'embedding_index_type': 'HNSW',
+        'embedding_metric_type': 'COSINE',
     },
 }
 

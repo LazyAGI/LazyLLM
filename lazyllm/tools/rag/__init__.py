@@ -8,8 +8,6 @@ from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader,
                       MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader)
 from .dataReader import SimpleDirectoryReader
 from .doc_manager import DocManager, DocListManager
-from .store_base import EMBED_DEFAULT_KEY
-from .milvus_store import MilvusField
 
 
 __all__ = [
@@ -39,6 +37,4 @@ __all__ = [
     "SimpleDirectoryReader",
     'DocManager',
     'DocListManager',
-    'MilvusField',
-    'EMBED_DEFAULT_KEY',
 ]

@@ -8,28 +8,24 @@ from .doc_node import DocNode
 from .index_base import IndexBase
 from .utils import _FileNodeIndex
 from .default_index import DefaultIndex
-import json
 from .map_store import MapStore
+import pickle
 
 # ---------------------------------------------------------------------------- #
 
 class ChromadbStore(StoreBase):
-    def __init__(self, path: str, embed_dim: Dict[str, int],
-                 node_groups: List[str], embed: Dict[str, Callable],
-                 **kwargs) -> None:
-        self._map_store = MapStore(node_groups=node_groups, embed=embed)
-        self._db_client = chromadb.PersistentClient(path=path)
-        LOG.success(f"Initialzed chromadb in path: {path}")
-        self._collections: Dict[str, Collection] = {
-            group: self._db_client.get_or_create_collection(group)
-            for group in node_groups
-        }
-        self._embed_dim = embed_dim
+    def __init__(self, dir: str, embed: Dict[str, Callable], embed_dim: Dict[str, int], **kwargs) -> None:
+        self._db_client = chromadb.PersistentClient(path=dir)
+        LOG.success(f"Initialzed chromadb in path: {dir}")
+        self._collections: Dict[str, Collection] = {}
 
         self._name2index = {
             'default': DefaultIndex(embed, self._map_store),
             'file_node_map': _FileNodeIndex(),
         }
+
+        self._map_store = MapStore(embed=embed)
+        self._load_store(embed_dim)
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
@@ -57,6 +53,11 @@ class ChromadbStore(StoreBase):
         return self._map_store.all_groups()
 
     @override
+    def add_group(self, name: str, embed_keys: Optional[List[str]] = None) -> None:
+        self._collections[name] = self._db_client.get_or_create_collection(name)
+        self._map_store.add_group(name, embed_keys)
+
+    @override
     def query(self, *args, **kwargs) -> List[DocNode]:
         return self.get_index('default').query(*args, **kwargs)
 
@@ -70,7 +71,7 @@ class ChromadbStore(StoreBase):
             type = 'default'
         return self._name2index.get(type)
 
-    def _load_store(self) -> None:
+    def _load_store(self, embed_dim: Dict[str, int]) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:
             LOG.info("No persistent data found, skip the rebuilding phrase.")
             return
@@ -78,7 +79,7 @@ class ChromadbStore(StoreBase):
         # Restore all nodes
         for group in self._collections.keys():
             results = self._peek_all_documents(group)
-            nodes = self._build_nodes_from_chroma(results)
+            nodes = self._build_nodes_from_chroma(results, embed_dim)
             self._map_store.update_nodes(nodes)
 
         # Rebuild relationships
@@ -107,7 +108,6 @@ class ChromadbStore(StoreBase):
             if node.is_saved:
                 continue
             metadata = self._make_chroma_metadata(node)
-            metadata["embedding"] = json.dumps(node.embedding)
             ids.append(node.uid)
             embeddings.append([0])  # we don't use chroma for retrieving
             metadatas.append(metadata)
@@ -127,16 +127,21 @@ class ChromadbStore(StoreBase):
         if collection:
             collection.delete(ids=uids)
 
-    def _build_nodes_from_chroma(self, results: Dict[str, List]) -> List[DocNode]:
+    def _build_nodes_from_chroma(self, results: Dict[str, List], embed_dim: Dict[str, int]) -> List[DocNode]:
         nodes: List[DocNode] = []
         for i, uid in enumerate(results['ids']):
             chroma_metadata = results['metadatas'][i]
+
+            parent = chroma_metadata['parent']
+            fields = pickle.loads(chroma_metadata['fields']) if parent else None
+
             node = DocNode(
                 uid=uid,
                 text=results["documents"][i],
                 group=chroma_metadata["group"],
-                embedding=json.loads(chroma_metadata['embedding']),
-                parent=chroma_metadata["parent"],
+                embedding=pickle.loads(chroma_metadata['embedding']),
+                parent=parent,
+                fields=fields,
             )
 
             if node.embedding:
@@ -144,7 +149,7 @@ class ChromadbStore(StoreBase):
                 new_embedding_dict = {}
                 for key, embedding in node.embedding.items():
                     if isinstance(embedding, dict):
-                        dim = self._embed_dim.get(key)
+                        dim = embed_dim.get(key)
                         if not dim:
                             raise ValueError(f'dim of embed [{key}] is not determined.')
                         new_embedding = [0] * dim
@@ -163,7 +168,12 @@ class ChromadbStore(StoreBase):
         metadata = {
             "group": node.group,
             "parent": node.parent.uid if node.parent else "",
+            "embedding": pickle.dumps(node.embedding),
         }
+
+        if node.parent:
+            metadata["fields"] = pickle.dumps(node.fields)
+
         return metadata
 
     def _peek_all_documents(self, group: str) -> Dict[str, List]:

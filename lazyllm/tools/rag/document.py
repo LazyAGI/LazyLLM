@@ -10,6 +10,7 @@ from .doc_impl import DocImpl
 from .doc_node import DocNode
 from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .utils import DocListManager
+from .doc_field_info import DocFieldInfo
 import copy
 import functools
 
@@ -22,7 +23,8 @@ class Document(ModuleBase):
     class _Impl(ModuleBase):
         def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: bool = False, server: bool = False, name: Optional[str] = None,
-                     launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None):
+                     launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
+                     fields_info: Optional[Dict[str, DocFieldInfo]] = None):
             super().__init__()
             if not os.path.exists(dataset_path):
                 defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)
@@ -40,6 +42,7 @@ class Document(ModuleBase):
                                       DocImpl(embed=self._embed, dlm=self._dlm, store_conf=store_conf)})
             if manager: self._manager = ServerModule(DocManager(self._dlm))
             if server: self._kbs = ServerModule(self._kbs)
+            self._fields_info = fields_info
 
         def add_kb_group(self, name, store_conf: Optional[Dict] = None):
             if isinstance(self._kbs, ServerModule):
@@ -61,11 +64,12 @@ class Document(ModuleBase):
     def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                  create_ui: bool = False, manager: bool = False, server: bool = False,
                  name: Optional[str] = None, launcher: Optional[Launcher] = None,
-                 store_conf: Optional[Dict] = None):
+                 fields_info: Dict[str, DocFieldInfo] = None, store_conf: Optional[Dict] = None):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
-        self._impls = Document._Impl(dataset_path, embed, create_ui or manager, server, name, launcher, store_conf)
+        self._impls = Document._Impl(dataset_path, embed, create_ui or manager, server, name,
+                                     launcher, store_conf, fields_info)
         self._curr_group = DocListManager.DEDAULT_GROUP_NAME
 
     def create_kb_group(self, name: str, store_conf: Optional[Dict] = None) -> "Document":

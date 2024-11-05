@@ -17,7 +17,7 @@ class MetadataMode(str, Enum):
 class DocNode:
     def __init__(self, uid: Optional[str] = None, text: Optional[str] = None, group: Optional[str] = None,
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
-                 metadata: Optional[Dict[str, Any]] = None):
+                 metadata: Optional[Dict[str, Any]] = None, fields: Optional[Dict[str, Any]] = None):
         self.uid: str = uid if uid else str(uuid.uuid4())
         self.text: Optional[str] = text
         self.group: Optional[str] = group
@@ -34,6 +34,10 @@ class DocNode:
         self._lock = threading.Lock()
         self._embedding_state = set()
 
+        if fields and parent:
+            raise ValueError('only ROOT node can set fields.')
+        self._fields = fields
+
     @property
     def root_node(self) -> Optional["DocNode"]:
         root = self.parent
@@ -42,11 +46,16 @@ class DocNode:
         return root or self
 
     @property
+    def fields(self) -> Dict[str, Any]:
+        return self.root_node._fields
+
+    @property
     def metadata(self) -> Dict:
         return self.root_node._metadata
 
     @metadata.setter
     def metadata(self, metadata: Dict) -> None:
+        self.is_saved = False
         self._metadata = metadata
 
     @property

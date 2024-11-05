@@ -7,100 +7,49 @@ from .map_store import MapStore
 from .utils import parallel_do_embedding
 from .index_base import IndexBase
 from .store_base import StoreBase
+from .doc_field_info import DocFieldInfo
 from lazyllm.common import override
 
-class MilvusField:
-    DTYPE_VARCHAR = 0
-    DTYPE_FLOAT_VECTOR = 1
-    DTYPE_SPARSE_FLOAT_VECTOR = 2
-
-    def __init__(self, data_type: int, index_type: Optional[str] = None,
-                 metric_type: Optional[str] = "", index_params: Dict = {},
-                 max_length: Optional[int] = None):
-        self.data_type = data_type
-        self.index_type = index_type
-        self.metric_type = metric_type
-        self.index_params = index_params
-        self.max_length = max_length
-
-
 class MilvusStore(StoreBase):
+    _primary_key = 'uid'
+
+    _embedding_key_prefix = 'embedding_'
+    _field_key_prefix = 'field_'
+
+    _builtin_fields = {
+        _primary_key: {
+            'datatype': pymilvus.DataType.VARCHAR,
+            'max_length': 256,
+            'is_primary': True,
+        },
+        'text': {
+            'datatype': pymilvus.DataType.VARCHAR,
+            'max_length': True,
+        },
+        'parent': {
+            'datatype': pymilvus.DataType.VARCHAR,
+            'max_length': 256,
+        },
+    }
+
     _type2milvus = [
-        pymilvus.DataType.VARCHAR,  # DTYPE_VARCHAR
-        pymilvus.DataType.FLOAT_VECTOR,  # DTYPE_FLOAT_VECTOR
-        pymilvus.DataType.SPARSE_FLOAT_VECTOR,  # DTYPE_SPARSE_FLOAT_VECTOR
+        0,
+        pymilvus.DataType.VARCHAR,
     ]
 
-    def __init__(self, uri: str, group_fields: Dict[str, Dict[str, Dict[str, MilvusField]]],
-                 node_groups: List[str], embed: Dict[str, Callable], **kwargs):
-        new_copy = copy.copy(group_fields)
-        for g in node_groups:
-            if g not in new_copy:
-                new_copy[g] = {}
-        group_fields = new_copy
-
-        self._primary_key = 'uid'
-        self._embedding_keys = embed.keys()
+    def __init__(self, embed: Dict[str, Callable], fields_info: Dict[str, DocFieldInfo], uri: str,
+                 embedding_index_type: Optional[str] = None, embedding_metric_type: Optional[str] = None,
+                 **kwargs):
         self._embed = embed
+        self._fields_info = fields_info
+        self._embedding_index_type = embedding_index_type if embedding_index_type else 'HNSW'
+        self._embedding_metric_type = embedding_metric_type if embedding_metric_type else 'COSINE'
+
+        self._embedding_keys = embed.keys()
+        self._embed_dim = {k: len(e('a')) for k, e in embed.items()}
         self._client = MilvusClient(uri=uri)
 
-        embed_dim = {k: len(e('a')) for k, e in embed.items()}
-        builtin_fields = {
-            self._primary_key: {
-                'datatype': pymilvus.DataType.VARCHAR,
-                'max_length': 128,
-                'is_primary': True,
-            },
-            'text': {
-                'datatype': pymilvus.DataType.VARCHAR,
-                'max_length': True,
-            },
-            'parent': {
-                'datatype': pymilvus.DataType.VARCHAR,
-                'max_length': 256,
-            },
-        }
-
-        for group_name, fields in group_fields.items():
-            if group_name in self._client.list_collections():
-                continue
-
-            index_params = self._client.prepare_index_params()
-            schema = self._client.create_schema(auto_id=False, enable_dynamic_field=True)
-
-            for name, field in builtin_fields.items():
-                schema.add_field(field_name=name, **field)
-
-            embedding_fields = fields.get('embedding', {})
-            for name, field in embedding_fields.items():
-                field_name = self._gen_embedding_key(name)
-                schema.add_field(
-                    field_name=field_name,
-                    datatype=self._type2milvus[field.data_type],
-                    dim=embed_dim.get(name))
-                if field.index_type is not None:
-                    index_params.add_index(field_name=field_name,
-                                           index_type=field.index_type,
-                                           metric_type=field.metric_type,
-                                           params=field.index_params)
-
-            metadata_fields = fields.get('metadata', {})
-            for name, field in metadata_fields.items():
-                field_name = self._gen_metadata_key(name)
-                schema.add_field(
-                    field_name=field_name,
-                    datatype=self._type2milvus[field.data_type],
-                    max_length=field.max_length)
-                if field.index_type is not None:
-                    index_params.add_index(field_name=field_name,
-                                           index_type=field.index_type,
-                                           metric_type=field.metric_type,
-                                           params=field.index_params)
-
-            self._client.create_collection(collection_name=group_name, schema=schema,
-                                           index_params=index_params)
-
-        self._map_store = MapStore(node_groups=list(group_fields.keys()), embed=embed)
+        self._map_store = MapStore(embed=embed)
         self._load_all_nodes_to(self._map_store)
 
     @override
@@ -133,6 +82,30 @@ class MilvusStore(StoreBase):
     @override
     def all_groups(self) -> List[str]:
         return self._map_store.all_groups()
+
+    @override
+    def add_group(self, name: str, embed_keys: Optional[List[str]] = None) -> None:
+        if name in self._client.list_collections():
+            return
+
+        index_params = self._client.prepare_index_params()
+        schema = self._client.create_schema(auto_id=False, enable_dynamic_field=False)
+
+        for key in embed_keys:
+            field_name = self._gen_embedding_key(key)
+            schema.add_field(field_name=field_name, datatype=pymilvus.DataType.FLOAT_VECTOR)
+            index_params.add_index(field_name=field_name, index_type=self._embedding_index_type,
+                                   metric_type=self._embedding_metric_type)
+
+        if self._fields_info:
+            for key, info in self._fields_info.items():
+                schema.add_field(field_name=self._gen_field_key(key),
+                                 datatype=self._type2milvus[info.data_type])
+
+        self._client.create_collection(collection_name=name, schema=schema,
+                                       index_params=index_params)
+
+        self._map_store.add_group(name, embed_keys)
 
     @override
     def register_index(self, type: str, index: IndexBase) -> None:
@@ -173,16 +146,18 @@ class MilvusStore(StoreBase):
 
     # ----- internal helper functions ----- #
 
-    @staticmethod
-    def _gen_embedding_key(k: str) -> str:
-        return 'embedding_' + k
+    @classmethod
+    def _gen_embedding_key(cls, k: str) -> str:
+        return cls._embedding_key_prefix + k
 
-    @staticmethod
-    def _gen_metadata_key(k: str) -> str:
-        return 'metadata_' + k
+    @classmethod
+    def _gen_field_key(cls, k: str) -> str:
+        return cls._field_key_prefix + k
 
     def _load_all_nodes_to(self, store: StoreBase):
         for group_name in self._client.list_collections():
+            store.add_group(name=group_name, embed=self._embed)
+
             results = self._client.query(collection_name=group_name,
                                          filter=f'{self._primary_key} != ""')
             for result in results:
@@ -203,37 +178,32 @@ class MilvusStore(StoreBase):
         res = {
             'uid': node.uid,
             'text': node.text,
+            'parent': node.parent.uid if node.parent else '',
+            'metadata': node._metadata,
         }
-
-        if node.parent:
-            res['parent'] = node.parent.uid
-        else:
-            res['parent'] = ''
 
         for k, v in node.embedding.items():
             res[self._gen_embedding_key(k)] = v
-        for k, v in node.metadata.items():
-            res[self._gen_metadata_key(k)] = v
+        for k, v in node.fields.items():
+            res[self._gen_field_key(k)] = v
 
         return res
 
     def _deserialize_node_partial(self, result: Dict) -> DocNode:
-        '''
-        without parent and children
-        '''
+        record = copy.copy(result)
+
         doc = DocNode(
-            uid=result.get('uid'),
-            text=result.get('text'),
-            parent=result.get('parent'),  # this is the parent's uid
+            uid=record.pop('uid'),
+            text=record.pop('text'),
+            parent=record.pop('parent'),  # this is the parent's uid
+            metadata=record.pop('metadata'),
         )
 
-        for k in self._embedding_keys:
-            val = result.get(self._gen_embedding_key(k))
-            if val:
-                doc.embedding[k] = val
-        for k in self._metadata_keys:
-            val = result.get(self._gen_metadata_key(k))
-            if val:
-                doc._metadata[k] = val
+        for k, v in record.items():
+            if k.startswith(self._embedding_key_prefix):
+                doc.embedding[k[len(self._embedding_key_prefix):]] = v
+            elif k.startswith(self._field_key_prefix):
+                if doc.parent:
+                    doc._fields[k[len(self._field_key_prefix):]] = v
 
         return doc

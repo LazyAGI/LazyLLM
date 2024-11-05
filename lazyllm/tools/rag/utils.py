@@ -1,6 +1,7 @@
 import os
 import shutil
 import hashlib
+import concurrent
 from typing import List, Callable, Generator, Dict, Any, Optional, Union, Tuple
 from abc import ABC, abstractmethod
 from .index_base import IndexBase
