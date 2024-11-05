@@ -62,7 +62,7 @@ class WebUi:
             headers=self.basic_headers(True),
         )
         return response.json()["data"]
-    
+
     def list_files_in_group(self, group_name: str):
         response = requests.get(
             f"{self.base_url}/list_files_in_group?group_name={group_name}&alive=True",
@@ -238,7 +238,7 @@ class DocWebModule(ModuleBase):
             self.demo.close()
             del self.demo
             self.demo, self.url = None, ''
-        
+
     def _find_can_use_network_port(self):
         for port in self.port:
             if self._verify_port_access(port):
