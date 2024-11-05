@@ -235,6 +235,11 @@ class DocWebModule(ModuleBase):
     def wait(self):
         return self.p.join()
 
+    def stop(self):
+        if self.p.is_alive():
+            self.p.terminate()
+            self.p.join()
+        
     def _find_can_use_network_port(self):
         for port in self.port:
             if self._verify_port_access(port):

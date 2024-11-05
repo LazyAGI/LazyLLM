@@ -51,7 +51,10 @@ class Document(ModuleBase):
         def get_doc_by_kb_group(self, name):
             return self._kbs._impl._m[name] if isinstance(self._kbs, ServerModule) else self._kbs[name]
 
-        def stop(self): self._launcher.cleanup()
+        def stop(self):
+            if hasattr(self, '_docweb'):
+                self._docweb.stop()
+            self._launcher.cleanup()
 
         def __call__(self, *args, **kw):
             return self._kbs(*args, **kw)
