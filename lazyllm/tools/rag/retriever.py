@@ -50,7 +50,7 @@ class Retriever(ModuleBase, _PostProcess):
             assert isinstance(doc, Document), 'Only Document or List[Document] are supported'
             self._submodules.append(doc)
             if embed_keys:
-                doc._activated_embeddings.insert(embed_keys)
+                doc._activated_embeddings.setdefault(group_name, set()).insert(embed_keys)
 
         self._group_name = group_name
         self._similarity = similarity  # similarity function str

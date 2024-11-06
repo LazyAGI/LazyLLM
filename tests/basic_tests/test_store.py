@@ -33,10 +33,16 @@ class TestChromadbStore(unittest.TestCase):
         self.mock_embed = {
             'default': MagicMock(return_value=[1.0, 2.0, 3.0]),
         }
-        self.embed_dim = {"default": 3}
+        self.embed_dims = {"default": 3}
 
-        self.store = ChromadbStore(dir=self.store_dir, node_groups=self.node_groups,
-                                   embed=self.mock_embed, embed_dim=self.embed_dim)
+        embed_keys = set(['default'])
+        group_embed_keys = {
+            LAZY_ROOT_NAME: embed_keys,
+            'group1': embed_keys,
+            'group2': embed_keys,
+        }
+        self.store = ChromadbStore(group_embed_keys=group_embed_keys, embed=self.mock_embed,
+                                   embed_dims=self.embed_dims, dir=self.store_dir)
 
         self.store.update_nodes(
             [DocNode(uid="1", text="text1", group=LAZY_ROOT_NAME, parent=None)],
@@ -74,7 +80,7 @@ class TestChromadbStore(unittest.TestCase):
 
         # Reset store and load from "persistent" storage
         self.store._map_store._group2docs = {group: {} for group in self.node_groups}
-        self.store._load_store(self.embed_dim)
+        self.store._load_store(self.embed_dims)
 
         nodes = self.store.get_nodes("group1")
         self.assertEqual(len(nodes), 2)
@@ -92,7 +98,7 @@ class TestChromadbStore(unittest.TestCase):
         self.store.update_nodes([node1, node2])
 
         results = self.store._peek_all_documents('group1')
-        nodes = self.store._build_nodes_from_chroma(results, self.embed_dim)
+        nodes = self.store._build_nodes_from_chroma(results, self.embed_dims)
         nodes_dict = {
             node.uid: node for node in nodes
         }
@@ -124,7 +130,6 @@ class TestMapStore(unittest.TestCase):
         self.mock_embed = {
             'default': MagicMock(return_value=[1.0, 2.0, 3.0]),
         }
-        self.embed_dim = {"default": 3}
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
         self.store = MapStore(node_groups=self.node_groups, embed=self.mock_embed)
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None)
@@ -184,15 +189,25 @@ class TestMilvusStore(unittest.TestCase):
             'vec2': MagicMock(return_value=[400.0, 500.0, 600.0, 700.0, 800.0]),
         }
         self.fields_desc = {
-            'comment': DocFieldDesc(data_type=DocFieldDesc.DTYPE_VARCHAR),
+            'comment': DocFieldDesc(data_type=DocFieldDesc.DTYPE_VARCHAR, max_length=65535),
         }
 
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
         _, self.store_file = tempfile.mkstemp(suffix=".db")
 
-        self.store = MilvusStore(node_groups=self.node_groups, embed=self.mock_embed,
-                                 embed_keys=self.mock_embed.keys(),
-                                 fields_desc=self.fields_desc, uri=self.store_file)
+        embed_keys = set(['vec1', 'vec2'])
+        group_embed_keys = {
+            LAZY_ROOT_NAME: embed_keys,
+            'group1': embed_keys,
+            'group2': embed_keys,
+        }
+        embed_dims = {
+            "vec1": 3,
+            "vec2": 5,
+        }
+        self.store = MilvusStore(group_embed_keys=group_embed_keys, embed=self.mock_embed,
+                                 embed_dims=embed_dims, fields_desc=self.fields_desc,
+                                 uri=self.store_file)
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
                              embedding={"vec1": [8.0, 9.0, 10.0], "vec2": [11.0, 12.0, 13.0, 14.0, 15.0]},

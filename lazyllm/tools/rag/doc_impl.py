@@ -47,10 +47,10 @@ class DocImpl:
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
-        self._embed_dim = None
+        self._embed_dims = None
         self._fields_desc = fields_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
-        self._activated_embeddings = set()
+        self._activated_embeddings = {}
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
@@ -59,7 +59,11 @@ class DocImpl:
         node_groups.update(self.node_groups)
         self.node_groups = node_groups
 
-        self._embed_dim = {k: len(e('a')) for k, e in self.embed.items()}
+        # set empty embed keys for groups that are not visited by Retriever
+        for group in node_groups.keys():
+            self._activated_embeddings.setdefault(group, set())
+
+        self._embed_dims = {k: len(e('a')) for k, e in self.embed.items()}
 
         if self.store is None:
             self.store = {
@@ -94,14 +98,13 @@ class DocImpl:
             raise ValueError('`kwargs` in store conf is not a dict.')
 
         if store_type == "map":
-            store = MapStore(node_groups=self.node_groups, embed=self.embed, **kwargs)
+            store = MapStore(node_groups=self._activated_embeddings.keys(), embed=self.embed, **kwargs)
         elif store_type == "chroma":
-            store = ChromadbStore(node_groups=self.node_groups, embed=self.embed,
-                                  embed_dim=self.embed_dim, **kwargs)
+            store = ChromadbStore(group_embed_keys=self._activated_embeddings, embed=self.embed,
+                                  embed_dims=self._embed_dims, **kwargs)
         elif store_type == "milvus":
-            store = MilvusStore(node_groups=self.node_groups, embed=self.embed,
-                                embed_keys=self._activated_embeddings,
-                                fields_desc=self._fields_desc, **kwargs)
+            store = MilvusStore(group_embed_keys=self._activated_embeddings, embed=self.embed,
+                                embed_dims=self.embed_dims, fields_desc=self._fields_desc, **kwargs)
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {store_type}"

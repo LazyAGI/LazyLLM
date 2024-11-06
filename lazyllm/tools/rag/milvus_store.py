@@ -1,5 +1,5 @@
 import copy
-from typing import Dict, List, Optional, Union, Callable
+from typing import Dict, List, Optional, Union, Callable, Set
 import pymilvus
 from pymilvus import MilvusClient
 from .doc_node import DocNode
@@ -42,8 +42,9 @@ class MilvusStore(StoreBase):
         pymilvus.DataType.VARCHAR,
     ]
 
-    def __init__(self, node_groups: List[str], embed: Dict[str, Callable], embed_keys: List[str],
-                 fields_desc: Dict[str, DocFieldDesc], uri: str, embedding_index_type: Optional[str] = None,
+    def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable],
+                 embed_dims: Dict[str, int], fields_desc: Dict[str, DocFieldDesc],
+                 uri: str, embedding_index_type: Optional[str] = None,
                  embedding_metric_type: Optional[str] = None, **kwargs):
         self._embed = embed
         self._client = MilvusClient(uri=uri)
@@ -54,14 +55,7 @@ class MilvusStore(StoreBase):
         if not embedding_metric_type:
             embedding_metric_type = 'COSINE'
 
-        embed_dims = {}
-        for k in embed_keys:
-            e = embed.get(k)
-            if not e:
-                raise ValueError(f'cannot find embed callable [{k}]')
-            embed_dims[k] = len(e('a'))
-
-        for group in node_groups:
+        for group, embed_keys in group_embed_keys.items():
             index_params = self._client.prepare_index_params()
             schema = self._client.create_schema(auto_id=False, enable_dynamic_field=False)
 
@@ -88,7 +82,7 @@ class MilvusStore(StoreBase):
             self._client.create_collection(collection_name=group, schema=schema,
                                            index_params=index_params)
 
-        self._map_store = MapStore(node_groups=node_groups, embed=embed)
+        self._map_store = MapStore(node_groups=list(group_embed_keys.keys()), embed=embed)
         self._load_all_nodes_to(self._map_store)
 
     @override

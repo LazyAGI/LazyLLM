@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, Set
 import chromadb
 from lazyllm import LOG
 from lazyllm.common import override
@@ -15,17 +15,18 @@ import base64
 # ---------------------------------------------------------------------------- #
 
 class ChromadbStore(StoreBase):
-    def __init__(self, dir: str, node_groups: List[str], embed: Dict[str, Callable],
-                 embed_dim: Dict[str, int], **kwargs) -> None:
+    def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable],
+                 embed_dims: Dict[str, int], dir: str, **kwargs) -> None:
         self._db_client = chromadb.PersistentClient(path=dir)
         LOG.success(f"Initialzed chromadb in path: {dir}")
+        node_groups = list(group_embed_keys.keys())
         self._collections: Dict[str, Collection] = {
             group: self._db_client.get_or_create_collection(group)
             for group in node_groups
         }
 
         self._map_store = MapStore(node_groups=node_groups, embed=embed)
-        self._load_store(embed_dim)
+        self._load_store(embed_dims)
 
         self._name2index = {
             'default': DefaultIndex(embed, self._map_store),
@@ -71,7 +72,7 @@ class ChromadbStore(StoreBase):
             type = 'default'
         return self._name2index.get(type)
 
-    def _load_store(self, embed_dim: Dict[str, int]) -> None:
+    def _load_store(self, embed_dims: Dict[str, int]) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:
             LOG.info("No persistent data found, skip the rebuilding phrase.")
             return
@@ -79,7 +80,7 @@ class ChromadbStore(StoreBase):
         # Restore all nodes
         for group in self._collections.keys():
             results = self._peek_all_documents(group)
-            nodes = self._build_nodes_from_chroma(results, embed_dim)
+            nodes = self._build_nodes_from_chroma(results, embed_dims)
             self._map_store.update_nodes(nodes)
 
         # Rebuild relationships
@@ -127,7 +128,7 @@ class ChromadbStore(StoreBase):
         if collection:
             collection.delete(ids=uids)
 
-    def _build_nodes_from_chroma(self, results: Dict[str, List], embed_dim: Dict[str, int]) -> List[DocNode]:
+    def _build_nodes_from_chroma(self, results: Dict[str, List], embed_dims: Dict[str, int]) -> List[DocNode]:
         nodes: List[DocNode] = []
         for i, uid in enumerate(results['ids']):
             chroma_metadata = results['metadatas'][i]
@@ -150,7 +151,7 @@ class ChromadbStore(StoreBase):
                 new_embedding_dict = {}
                 for key, embedding in node.embedding.items():
                     if isinstance(embedding, dict):
-                        dim = embed_dim.get(key)
+                        dim = embed_dims.get(key)
                         if not dim:
                             raise ValueError(f'dim of embed [{key}] is not determined.')
                         new_embedding = [0] * dim

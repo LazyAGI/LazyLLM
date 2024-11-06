@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Union, Set
 from .index_base import IndexBase
 from .store_base import StoreBase
 from .doc_node import DocNode
@@ -16,7 +16,7 @@ def _remove_from_indices(name2index: Dict[str, IndexBase], uids: List[str],
         index.remove(uids, group_name)
 
 class MapStore(StoreBase):
-    def __init__(self, node_groups: List[str], embed: Dict[str, Callable], **kwargs):
+    def __init__(self, node_groups: Union[List[str], Set[str]], embed: Dict[str, Callable], **kwargs):
         # Dict[group_name, Dict[uuid, DocNode]]
         self._group2docs: Dict[str, Dict[str, DocNode]] = {
             group: {} for group in node_groups
