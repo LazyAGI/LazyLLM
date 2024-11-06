@@ -171,8 +171,6 @@ class MilvusStore(StoreBase):
 
     def _load_all_nodes_to(self, store: StoreBase):
         for group_name in self._client.list_collections():
-            store.activate_group(name=group_name, embed=self._embed)
-
             results = self._client.query(collection_name=group_name,
                                          filter=f'{self._primary_key} != ""')
             for result in results:
@@ -200,9 +198,8 @@ class MilvusStore(StoreBase):
         for k, v in node.embedding.items():
             res[self._gen_embedding_key(k)] = v
 
-        if node.parent and node.fields:
-            for k, v in node.fields.items():
-                res[self._gen_field_key(k)] = v
+        for k, v in node.fields.items():
+            res[self._gen_field_key(k)] = v
 
         return res
 

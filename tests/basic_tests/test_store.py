@@ -191,10 +191,9 @@ class TestMilvusStore(unittest.TestCase):
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
         _, self.store_file = tempfile.mkstemp(suffix=".db")
 
-        self.store = MilvusStore(embed=self.mock_embed, fields_desc=self.fields_desc,
-                                 uri=self.store_file)
-        for group in self.node_groups:
-            self.store.activate_group(name=group, embed_keys=self.mock_embed.keys())
+        self.store = MilvusStore(node_groups=self.node_groups, embed=self.mock_embed,
+                                 embed_keys=self.mock_embed.keys(),
+                                 fields_desc=self.fields_desc, uri=self.store_file)
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
                              embedding={"vec1": [8.0, 9.0, 10.0], "vec2": [11.0, 12.0, 13.0, 14.0, 15.0]},
