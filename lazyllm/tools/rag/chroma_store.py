@@ -10,6 +10,7 @@ from .utils import _FileNodeIndex
 from .default_index import DefaultIndex
 from .map_store import MapStore
 import pickle
+import base64
 
 # ---------------------------------------------------------------------------- #
 
@@ -23,13 +24,13 @@ class ChromadbStore(StoreBase):
             for group in node_groups
         }
 
+        self._map_store = MapStore(node_groups=node_groups, embed=embed)
+        self._load_store(embed_dim)
+
         self._name2index = {
             'default': DefaultIndex(embed, self._map_store),
             'file_node_map': _FileNodeIndex(),
         }
-
-        self._map_store = MapStore(node_groups=node_groups, embed=embed)
-        self._load_store(embed_dim)
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
@@ -132,13 +133,14 @@ class ChromadbStore(StoreBase):
             chroma_metadata = results['metadatas'][i]
 
             parent = chroma_metadata['parent']
-            fields = pickle.loads(chroma_metadata['fields']) if parent else None
+            fields = pickle.loads(base64.b64decode(chroma_metadata['fields'].encode('utf-8')))\
+                if parent else None
 
             node = DocNode(
                 uid=uid,
                 text=results["documents"][i],
                 group=chroma_metadata["group"],
-                embedding=pickle.loads(chroma_metadata['embedding']),
+                embedding=pickle.loads(base64.b64decode(chroma_metadata['embedding'].encode('utf-8'))),
                 parent=parent,
                 fields=fields,
             )
@@ -167,11 +169,11 @@ class ChromadbStore(StoreBase):
         metadata = {
             "group": node.group,
             "parent": node.parent.uid if node.parent else "",
-            "embedding": pickle.dumps(node.embedding),
+            "embedding": base64.b64encode(pickle.dumps(node.embedding)).decode('utf-8'),
         }
 
         if node.parent:
-            metadata["fields"] = pickle.dumps(node.fields)
+            metadata["fields"] = base64.b64encode(pickle.dumps(node.fields)).decode('utf-8')
 
         return metadata
 

@@ -219,7 +219,7 @@ class DocImpl:
         if len(input_files) == 0:
             return
         root_nodes = self._reader.load_data(input_files)
-        temp_store = self._create_store("map")
+        temp_store = self._create_store({"type": "map"})
         temp_store.update_nodes(root_nodes)
         all_groups = self.store.all_groups()
         LOG.info(f"add_files: Trying to merge store with {all_groups}")

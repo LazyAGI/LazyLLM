@@ -69,6 +69,7 @@ class TestDocImpl(unittest.TestCase):
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 2
 
     def test_delete_files(self):
+        self.doc_impl._lazy_init()
         self.doc_impl._delete_files(["dummy_file.txt"])
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 0
 

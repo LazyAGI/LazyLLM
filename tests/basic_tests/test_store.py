@@ -35,9 +35,8 @@ class TestChromadbStore(unittest.TestCase):
         }
         self.embed_dim = {"default": 3}
 
-        self.store = ChromadbStore(dir=self.store_dir, embed=self.mock_embed, embed_dim=self.embed_dim)
-        for group in self.node_groups:
-            self.store.activate_group(name=group, embed_keys=self.mock_embed.keys())
+        self.store = ChromadbStore(dir=self.store_dir, node_groups=self.node_groups,
+                                   embed=self.mock_embed, embed_dim=self.embed_dim)
 
         self.store.update_nodes(
             [DocNode(uid="1", text="text1", group=LAZY_ROOT_NAME, parent=None)],
@@ -75,7 +74,7 @@ class TestChromadbStore(unittest.TestCase):
 
         # Reset store and load from "persistent" storage
         self.store._map_store._group2docs = {group: {} for group in self.node_groups}
-        self.store._load_store()
+        self.store._load_store(self.embed_dim)
 
         nodes = self.store.get_nodes("group1")
         self.assertEqual(len(nodes), 2)
@@ -93,7 +92,7 @@ class TestChromadbStore(unittest.TestCase):
         self.store.update_nodes([node1, node2])
 
         results = self.store._peek_all_documents('group1')
-        nodes = self.store._build_nodes_from_chroma(results)
+        nodes = self.store._build_nodes_from_chroma(results, self.embed_dim)
         nodes_dict = {
             node.uid: node for node in nodes
         }
