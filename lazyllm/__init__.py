@@ -9,7 +9,7 @@ from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeploy
                          LazyLLMValidateBase, register as component_register, Prompter,
                          AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter, FileFormatter)
 
-from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
+from .module import (ModuleBase, ModuleBase as Module, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
                      OnlineChatModule, OnlineEmbeddingModule, AutoModel)
 from .client import redis_client
@@ -47,6 +47,7 @@ __all__ = [
 
     # module
     'ModuleBase',
+    'Module',
     'UrlModule',
     'TrainableModule',
     'ActionModule',
