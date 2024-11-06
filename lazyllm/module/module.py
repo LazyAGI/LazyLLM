@@ -287,7 +287,7 @@ class UrlModule(ModuleBase, UrlTemplate):
                 deinput = decode_query_with_filepaths(__input)
                 __input, files = deinput['query'], deinput['files']
             else:
-                files = _lazyllm_get_file_list(files) if lazyllm_files else []
+                files = _lazyllm_get_file_list(lazyllm_files) if lazyllm_files else []
 
         query = __input
         __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
