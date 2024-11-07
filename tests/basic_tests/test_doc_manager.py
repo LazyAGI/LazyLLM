@@ -227,9 +227,9 @@ class TestDocListServer(object):
         response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
         assert response.status_code == 200 and len(response.json().get('data')) == 1
 
-        # add_files_by_path
+        # add_files
         data = dict(files=[self.test_file_3], metadatas=json.dumps([{"key": "value"}]), group_name='group1')
-        response = requests.post(self.get_url('add_files_by_path', **data))
+        response = requests.post(self.get_url('add_files', **data))
         assert response.status_code == 200
 
     @pytest.mark.order(4)

@@ -60,8 +60,8 @@ class DocManager(lazyllm.ModuleBase):
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
-    @app.post("/add_files_by_path")
-    def add_files_by_path(self, files: List[str], group_name: str = None, metadatas: Optional[str] = None):
+    @app.post("/add_files")
+    def add_files(self, files: List[str], group_name: str = None, metadatas: Optional[str] = None):
         try:
             if metadatas:
                 metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)
