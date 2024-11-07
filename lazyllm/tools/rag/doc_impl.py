@@ -104,7 +104,7 @@ class DocImpl:
                                   embed_dims=self._embed_dims, **kwargs)
         elif store_type == "milvus":
             store = MilvusStore(group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                embed_dims=self.embed_dims, fields_desc=self._fields_desc, **kwargs)
+                                embed_dims=self._embed_dims, fields_desc=self._fields_desc, **kwargs)
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {store_type}"
@@ -115,8 +115,12 @@ class DocImpl:
             raise ValueError(f"`indices`'s type [{type(indices_conf)}] is not a dict")
 
         for backend_type, kwargs in indices_conf.items():
-            index = SmartEmbeddingIndex(backend_type=backend_type, embed=self.embed,
-                                        node_groups=self.node_groups, **kwargs)
+            index = SmartEmbeddingIndex(backend_type=backend_type,
+                                        group_embed_keys=self._activated_embeddings,
+                                        embed=self.embed,
+                                        embed_dims=self._embed_dims,
+                                        fields_desc=self._fields_desc,
+                                        **kwargs)
             store.register_index(type=backend_type, index=index)
 
         return store

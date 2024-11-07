@@ -2,53 +2,17 @@ from typing import List, Callable, Optional, Dict, Union, Tuple
 from .doc_node import DocNode
 from .store_base import StoreBase
 from .index_base import IndexBase
-import numpy as np
-from .component.bm25 import BM25
 from lazyllm import LOG
 from lazyllm.common import override
 from .utils import parallel_do_embedding
+from .similarity import registered_similarities
 
 # ---------------------------------------------------------------------------- #
 
 class DefaultIndex(IndexBase):
-    """Default Index, registered for similarity functions"""
-
-    registered_similarity = dict()
-
     def __init__(self, embed: Dict[str, Callable], store: StoreBase, **kwargs):
         self.embed = embed
         self.store = store
-
-    @classmethod
-    def register_similarity(
-        cls: "DefaultIndex",
-        func: Optional[Callable] = None,
-        mode: str = "",
-        descend: bool = True,
-        batch: bool = False,
-    ) -> Callable:
-        def decorator(f):
-            def wrapper(query, nodes, **kwargs):
-                if mode != "embedding":
-                    if batch:
-                        return f(query, nodes, **kwargs)
-                    else:
-                        return [(node, f(query, node, **kwargs)) for node in nodes]
-                else:
-                    assert isinstance(query, dict), "query must be of dict type, used for similarity calculation."
-                    similarity = {}
-                    if batch:
-                        for key, val in query.items():
-                            nodes_embed = [node.embedding[key] for node in nodes]
-                            similarity[key] = f(val, nodes_embed, **kwargs)
-                    else:
-                        for key, val in query.items():
-                            similarity[key] = [(node, f(val, node.embedding[key], **kwargs)) for node in nodes]
-                    return similarity
-            cls.registered_similarity[f.__name__] = (wrapper, mode, descend)
-            return wrapper
-
-        return decorator(func) if func else decorator
 
     @override
     def update(self, nodes: List[DocNode]) -> None:
@@ -69,19 +33,21 @@ class DefaultIndex(IndexBase):
         embed_keys: Optional[List[str]] = None,
         **kwargs,
     ) -> List[DocNode]:
-        if similarity_name not in self.registered_similarity:
+        if similarity_name not in registered_similarities:
             raise ValueError(
                 f"{similarity_name} not registered, please check your input."
-                f"Available options now: {self.registered_similarity.keys()}"
+                f"Available options now: {registered_similarities.keys()}"
             )
-        similarity_func, mode, descend = self.registered_similarity[similarity_name]
+        similarity_func, mode, descend = registered_similarities[similarity_name]
 
         nodes = self.store.get_nodes(group_name)
         if mode == "embedding":
             assert self.embed, "Chosen similarity needs embed model."
             assert len(query) > 0, "Query should not be empty."
-            query_embedding = {k: self.embed[k](query) for k in (embed_keys or self.embed.keys())}
-            modified_nodes = parallel_do_embedding(self.embed, nodes)
+            if not embed_keys:
+                embed_keys = list(self.embed.keys())
+            query_embedding = {k: self.embed[k](query) for k in embed_keys}
+            modified_nodes = parallel_do_embedding(self.embed, embed_keys, nodes)
             self.store.update_nodes(modified_nodes)
             similarities = similarity_func(query_embedding, nodes, topk=topk, **kwargs)
         elif mode == "text":
@@ -108,31 +74,3 @@ class DefaultIndex(IndexBase):
             similarities = similarities[:topk]
 
         return [node for node, score in similarities if score > similarity_cut_off]
-
-@DefaultIndex.register_similarity(mode="text", batch=True)
-def bm25(query: str, nodes: List[DocNode], **kwargs) -> List:
-    bm25_retriever = BM25(nodes, language="en", **kwargs)
-    return bm25_retriever.retrieve(query)
-
-
-@DefaultIndex.register_similarity(mode="text", batch=True)
-def bm25_chinese(query: str, nodes: List[DocNode], **kwargs) -> List:
-    bm25_retriever = BM25(nodes, language="zh", **kwargs)
-    return bm25_retriever.retrieve(query)
-
-
-@DefaultIndex.register_similarity(mode="embedding")
-def cosine(query: List[float], node: List[float], **kwargs) -> float:
-    product = np.dot(query, node)
-    norm = np.linalg.norm(query) * np.linalg.norm(node)
-    return product / norm
-
-
-# User-defined similarity decorator
-def register_similarity(
-    func: Optional[Callable] = None,
-    mode: str = "",
-    descend: bool = True,
-    batch: bool = False,
-) -> Callable:
-    return DefaultIndex.register_similarity(func, mode, descend, batch)

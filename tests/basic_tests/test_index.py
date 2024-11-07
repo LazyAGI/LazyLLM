@@ -3,7 +3,8 @@ import unittest
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.map_store import MapStore
 from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.default_index import DefaultIndex, register_similarity
+from lazyllm.tools.rag.default_index import DefaultIndex
+from lazyllm.tools.rag.similarity import register_similarity, registered_similarities
 from lazyllm.tools.rag.utils import parallel_do_embedding
 
 class TestDefaultIndex(unittest.TestCase):
@@ -38,9 +39,9 @@ class TestDefaultIndex(unittest.TestCase):
         def custom_similarity(query, nodes, **kwargs):
             return [(node, 1.0) for node in nodes]
 
-        self.assertIn("custom_similarity", DefaultIndex.registered_similarity)
+        self.assertIn("custom_similarity", registered_similarities)
         self.assertEqual(
-            DefaultIndex.registered_similarity["custom_similarity"][1], "embedding"
+            registered_similarities["custom_similarity"][1], "embedding"
         )
 
     def test_query_cosine_similarity(self):
@@ -71,7 +72,7 @@ class TestDefaultIndex(unittest.TestCase):
         for node in self.nodes:
             node.has_embedding = MagicMock(return_value=False)
         start_time = time.time()
-        parallel_do_embedding(self.index.embed, self.nodes)
+        parallel_do_embedding(self.index.embed, self.index.embed.keys(), self.nodes)
         assert time.time() - start_time < 4, "Parallel not used!"
 
     def test_query_multi_embed_similarity(self):

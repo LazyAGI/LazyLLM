@@ -1,7 +1,7 @@
 import copy
 from typing import Dict, List, Optional, Union, Callable, Set
 import pymilvus
-from pymilvus import MilvusClient
+from pymilvus import MilvusClient, CollectionSchema, FieldSchema
 from .doc_node import DocNode
 from .map_store import MapStore
 from .utils import parallel_do_embedding
@@ -18,24 +18,29 @@ class MilvusStore(StoreBase):
     _embedding_key_prefix = 'embedding_'
     _field_key_prefix = 'field_'
 
-    _builtin_fields = {
+    _builtin_keys = {
         _primary_key: {
-            'datatype': pymilvus.DataType.VARCHAR,
+            'dtype': pymilvus.DataType.VARCHAR,
             'max_length': 256,
             'is_primary': True,
         },
         'parent': {
-            'datatype': pymilvus.DataType.VARCHAR,
+            'dtype': pymilvus.DataType.VARCHAR,
             'max_length': 256,
         },
         'text': {
-            'datatype': pymilvus.DataType.VARCHAR,
+            'dtype': pymilvus.DataType.VARCHAR,
             'max_length': 65535,
         },
         'metadata': {
-            'datatype': pymilvus.DataType.VARCHAR,
+            'dtype': pymilvus.DataType.VARCHAR,
             'max_length': 65535,
         },
+    }
+
+    _builtin_fields_desc = {
+        'lazyllm_doc_path': DocFieldDesc(data_type=DocFieldDesc.DTYPE_VARCHAR,
+                                         default_value=' ', max_length=65535),
     }
 
     _type2milvus = [
@@ -46,8 +51,13 @@ class MilvusStore(StoreBase):
                  embed_dims: Dict[str, int], fields_desc: Dict[str, DocFieldDesc],
                  uri: str, embedding_index_type: Optional[str] = None,
                  embedding_metric_type: Optional[str] = None, **kwargs):
+        self._group_embed_keys = group_embed_keys
         self._embed = embed
         self._client = MilvusClient(uri=uri)
+
+        # XXX milvus 2.4.x doesn't support `default_value`
+        # https://milvus.io/docs/product_faq.md#Does-Milvus-support-specifying-default-values-for-scalar-or-vector-fields
+        self._fields_desc = fields_desc | self._builtin_fields_desc
 
         if not embedding_index_type:
             embedding_index_type = 'HNSW'
@@ -56,29 +66,30 @@ class MilvusStore(StoreBase):
             embedding_metric_type = 'COSINE'
 
         for group, embed_keys in group_embed_keys.items():
+            field_list = []
             index_params = self._client.prepare_index_params()
-            schema = self._client.create_schema(auto_id=False, enable_dynamic_field=False)
 
-            for key, info in self._builtin_fields.items():
-                schema.add_field(field_name=key, **info)
+            for key, info in self._builtin_keys.items():
+                field_list.append(FieldSchema(name=key, **info))
 
             for key in embed_keys:
                 dim = embed_dims.get(key)
                 if not dim:
-                    raise ValueError(f'cannot find embedding dim of embed [{key}]')
+                    raise ValueError(f'cannot find embedding dim of embed [{key}] in [{embed_dims}]')
 
                 field_name = self._gen_embedding_key(key)
-                schema.add_field(field_name=field_name, datatype=pymilvus.DataType.FLOAT_VECTOR,
-                                 dim=dim)
+                field_list.append(FieldSchema(name=field_name, dtype=pymilvus.DataType.FLOAT_VECTOR, dim=dim))
                 index_params.add_index(field_name=field_name, index_type=embedding_index_type,
                                        metric_type=embedding_metric_type)
 
-            if fields_desc:
-                for key, info in fields_desc.items():
-                    schema.add_field(field_name=self._gen_field_key(key),
-                                     datatype=self._type2milvus[info.data_type],
-                                     max_length=info.max_length)
+            if self._fields_desc:
+                for key, desc in self._fields_desc.items():
+                    field_list.append(FieldSchema(name=self._gen_field_key(key),
+                                                  dtype=self._type2milvus[desc.data_type],
+                                                  max_length=desc.max_length,
+                                                  default_value=desc.default_value))
 
+            schema = CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_fields=False)
             self._client.create_collection(collection_name=group, schema=schema,
                                            index_params=index_params)
 
@@ -87,8 +98,10 @@ class MilvusStore(StoreBase):
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
-        parallel_do_embedding(self._embed, nodes)
         for node in nodes:
+            embed_keys = self._group_embed_keys.get(node.group)
+            if embed_keys:
+                parallel_do_embedding(self._embed, embed_keys, [node])
             data = self._serialize_node_partial(node)
             self._client.upsert(collection_name=node.group, data=[data])
 
@@ -192,8 +205,10 @@ class MilvusStore(StoreBase):
         for k, v in node.embedding.items():
             res[self._gen_embedding_key(k)] = v
 
-        for k, v in node.fields.items():
-            res[self._gen_field_key(k)] = v
+        for name, desc in self._fields_desc.items():
+            val = node.fields.get(name, desc.default_value)
+            if val:
+                res[self._gen_field_key(name)] = val
 
         return res
 

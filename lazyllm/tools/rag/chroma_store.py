@@ -106,14 +106,11 @@ class ChromadbStore(StoreBase):
             collection
         ), f"Group {group} is not found in collections {self._collections}"
         for node in nodes:
-            if node.is_saved:
-                continue
             metadata = self._make_chroma_metadata(node)
             ids.append(node.uid)
             embeddings.append([0])  # we don't use chroma for retrieving
             metadatas.append(metadata)
             documents.append(node.get_text())
-            node.is_saved = True
         if ids:
             collection.upsert(
                 embeddings=embeddings,
@@ -162,7 +159,6 @@ class ChromadbStore(StoreBase):
                         new_embedding_dict[key] = embedding
                 node.embedding = new_embedding_dict
 
-            node.is_saved = True
             nodes.append(node)
         return nodes
 

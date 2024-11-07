@@ -21,7 +21,7 @@ class DocNode:
         self.uid: str = uid if uid else str(uuid.uuid4())
         self.text: Optional[str] = text
         self.group: Optional[str] = group
-        self.embedding: Optional[Dict[str, List[float]]] = embedding or None
+        self.embedding: Optional[Dict[str, List[float]]] = embedding or {}
         self._metadata: Dict[str, Any] = metadata or {}
         # Metadata keys that are excluded from text for the embed model.
         self._excluded_embed_metadata_keys: List[str] = []
@@ -29,7 +29,6 @@ class DocNode:
         self._excluded_llm_metadata_keys: List[str] = []
         self.parent: Optional["DocNode"] = parent
         self.children: Dict[str, List["DocNode"]] = defaultdict(list)
-        self.is_saved: bool = False
         self._lock = threading.Lock()
         self._embedding_state = set()
 
@@ -54,7 +53,6 @@ class DocNode:
 
     @metadata.setter
     def metadata(self, metadata: Dict) -> None:
-        self.is_saved = False
         self._metadata = metadata
 
     @property
@@ -118,7 +116,6 @@ class DocNode:
         with self._lock:
             self.embedding = self.embedding or {}
             self.embedding = {**self.embedding, **generate_embed}
-        self.is_saved = False
 
     def check_embedding_state(self, embed_key: str) -> None:
         while True:

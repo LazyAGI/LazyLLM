@@ -2,6 +2,7 @@ from lazyllm import ModuleBase, pipeline, once_wrapper
 from .doc_node import DocNode
 from .document import Document, DocImpl
 from typing import List, Optional, Union, Dict
+from .similarity import registered_similarities
 
 class _PostProcess(object):
     def __init__(self, target: Optional[str] = None,
@@ -45,12 +46,18 @@ class Retriever(ModuleBase, _PostProcess):
     ):
         super().__init__()
 
+        _, mode, _ = registered_similarities[similarity]
+
         self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
         for doc in self._docs:
             assert isinstance(doc, Document), 'Only Document or List[Document] are supported'
             self._submodules.append(doc)
-            if embed_keys:
-                doc._activated_embeddings.setdefault(group_name, set()).insert(embed_keys)
+            if mode == 'embedding' and not embed_keys:
+                real_embed_keys = list(doc._impl.embed.keys())
+            else:
+                real_embed_keys = embed_keys
+            if real_embed_keys:
+                doc._impl._activated_embeddings.setdefault(group_name, set()).update(real_embed_keys)
 
         self._group_name = group_name
         self._similarity = similarity  # similarity function str
