@@ -331,6 +331,7 @@ class JoinFormatter(lazyllm.components.FormatterBase):
 
 @NodeConstructor.register('JoinFormatter')
 def make_join_formatter(type='sum', names=None, symbol=None):
+    if type == 'file': return make_formatter('file', rule='merge')
     return JoinFormatter(type, names=names, symbol=symbol)
 
 @NodeConstructor.register('Formatter')
@@ -387,3 +388,19 @@ def make_shared_llm(llm: str, prompt: Optional[str] = None):
 @NodeConstructor.register('VQA')
 def make_vqa(base_model: str):
     return lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
+
+@NodeConstructor.register('STT')
+def make_stt(base_model: str):
+    # TODO: support multi-files with pictures
+    def cond(x):
+        if '<lazyllm-query>' in x:
+            for ext in ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma']:
+                if ext in x or ext.upper() in x:
+                    return True
+        return False
+
+    return lazyllm.ifs(cond, tpath=lazyllm.TrainableModule(base_model), fpath=lazyllm.Identity())
+
+@NodeConstructor.register('Constant')
+def make_constant(value: Any):
+    return (lambda *args, **kw: value)
