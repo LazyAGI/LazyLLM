@@ -60,6 +60,19 @@ class DocManager(lazyllm.ModuleBase):
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
+    @app.post("/add_files_by_path")
+    def add_files_by_path(self, files: List[str], group_name: str = None, metadatas: Optional[str] = None):
+        try:
+            if metadatas:
+                metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)
+                assert len(files) == len(metadatas), 'Length of files and metadatas should be the same'
+            ids = self._manager.add_files(files, metadatas=metadatas, status=DocListManager.Status.success)
+            if group_name:
+                self._manager.add_files_to_kb_group(ids, group=group_name)
+            return BaseResponse(data=ids)
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
+
     @app.get("/list_files")
     def list_files(self, limit: Optional[int] = None, details: bool = True, alive: Optional[bool] = None):
         try:

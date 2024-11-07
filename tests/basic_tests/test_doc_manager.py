@@ -156,9 +156,12 @@ class TestDocListServer(object):
         cls.test_dir = test_dir = cls.tmpdir.mkdir("test_server")
 
         test_file_1, test_file_2 = test_dir.join("test1.txt"), test_dir.join("test2.txt")
+        test_file_3 = test_dir.join("test3.txt")
         test_file_1.write("This is a test file 1.")
         test_file_2.write("This is a test file 2.")
-        cls.test_file_1, cls.test_file_2 = str(test_file_1), str(test_file_2)
+        test_file_3.write("This is a test file 3.")
+
+        cls.test_file_1, cls.test_file_2, cls.test_file_3 = str(test_file_1), str(test_file_2), str(test_file_3)
 
         cls.manager = DocListManager(str(test_dir), "TestManager")
         cls.manager.init_tables()
@@ -223,6 +226,11 @@ class TestDocListServer(object):
         assert response.status_code == 200 and len(response.json().get('data')) == 5
         response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
         assert response.status_code == 200 and len(response.json().get('data')) == 1
+
+        # add_files_by_path
+        data = dict(files=[self.test_file_3], metadatas=json.dumps([{"key": "value"}]), group_name='group1')
+        response = requests.post(self.get_url('add_files_by_path', **data))
+        assert response.status_code == 200
 
     @pytest.mark.order(4)
     def test_add_files_to_group_and_delete_files_from_group(self):
