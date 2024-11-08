@@ -3,6 +3,7 @@ import hashlib
 import json
 from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
+from fastapi import Body
 
 from starlette.responses import RedirectResponse
 from fastapi import UploadFile
@@ -61,7 +62,9 @@ class DocManager(lazyllm.ModuleBase):
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/add_files")
-    def add_files(self, files: List[str], group_name: str = None, metadatas: Optional[str] = None):
+    def add_files(self, files: List[str] = Body(),
+                  group_name: str = Body(None),
+                  metadatas: Optional[str] = Body(None)):
         try:
             if metadatas:
                 metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)

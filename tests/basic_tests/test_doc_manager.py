@@ -156,19 +156,21 @@ class TestDocListServer(object):
         cls.test_dir = test_dir = cls.tmpdir.mkdir("test_server")
 
         test_file_1, test_file_2 = test_dir.join("test1.txt"), test_dir.join("test2.txt")
-        test_file_3 = test_dir.join("test3.txt")
         test_file_1.write("This is a test file 1.")
         test_file_2.write("This is a test file 2.")
-        test_file_3.write("This is a test file 3.")
-
-        cls.test_file_1, cls.test_file_2, cls.test_file_3 = str(test_file_1), str(test_file_2), str(test_file_3)
+        cls.test_file_1, cls.test_file_2 = str(test_file_1), str(test_file_2)
 
         cls.manager = DocListManager(str(test_dir), "TestManager")
         cls.manager.init_tables()
         cls.manager.add_kb_group('group1')
+        cls.manager.add_kb_group('group2')
         cls.server = lazyllm.ServerModule(DocManager(cls.manager))
         cls.server.start()
         cls._test_inited = True
+
+        test_file_3 = test_dir.join("test3.txt")
+        test_file_3.write("This is a test file 3.")
+        cls.test_file_3 = str(test_file_3)
 
     def get_url(self, url, **kw):
         url = (self.server._url.rsplit("/", 1)[0] + '/' + url).rstrip('/')
@@ -228,9 +230,13 @@ class TestDocListServer(object):
         assert response.status_code == 200 and len(response.json().get('data')) == 1
 
         # add_files
-        data = dict(files=[self.test_file_3], metadatas=json.dumps([{"key": "value"}]), group_name='group1')
-        response = requests.post(self.get_url('add_files', **data))
-        assert response.status_code == 200
+        json_data = {
+            'files': [self.test_file_3],
+            'group_name': "group2",
+            'metadatas': json.dumps([{"key": "value"}])
+        }
+        response = requests.post(self.get_url('add_files'), json=json_data)
+        assert response.status_code == 200 and len(response.json().get('data')) == 1
 
     @pytest.mark.order(4)
     def test_add_files_to_group_and_delete_files_from_group(self):
