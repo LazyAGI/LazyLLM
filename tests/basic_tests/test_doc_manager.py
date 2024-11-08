@@ -191,7 +191,7 @@ class TestDocListServer(object):
     def test_list_kb_groups(self):
         response = requests.get(self.get_url('list_kb_groups'))
         assert response.status_code == 200
-        assert response.json().get('data') == [DocListManager.DEDAULT_GROUP_NAME, 'group1']
+        assert response.json().get('data') == [DocListManager.DEDAULT_GROUP_NAME, 'group1', 'extra_group']
 
     @pytest.mark.order(2)
     def test_list_files(self):
