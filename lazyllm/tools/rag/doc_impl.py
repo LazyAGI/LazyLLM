@@ -292,13 +292,14 @@ class DocImpl:
         return store.get_nodes(group_name)
 
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
-                 index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None) -> List[DocNode]:
+                 index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,
+                 filters: Optional[Dict[str, Union[List, Set]]] = None) -> List[DocNode]:
         self._lazy_init()
 
         if type is None or type == 'default':
             return self.store.query(query=query, group_name=group_name, similarity_name=similarity,
                                     similarity_cut_off=similarity_cut_off, topk=topk,
-                                    embed_keys=embed_keys, **similarity_kws)
+                                    embed_keys=embed_keys, filters=filters, **similarity_kws)
 
         index_instance = self.store.get_index(type=index)
         if not index_instance:
@@ -307,7 +308,7 @@ class DocImpl:
         self._dynamic_create_nodes(group_name, self.store)
         return index_instance.query(query=query, group_name=group_name, similarity_name=similarity,
                                     similarity_cut_off=similarity_cut_off, topk=topk,
-                                    embed_keys=embed_keys, **similarity_kws)
+                                    embed_keys=embed_keys, filters=filters, **similarity_kws)
 
     @staticmethod
     def find_parent(nodes: List[DocNode], group: str) -> List[DocNode]:

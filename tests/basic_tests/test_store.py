@@ -189,7 +189,8 @@ class TestMilvusStore(unittest.TestCase):
             'vec2': MagicMock(return_value=[400.0, 500.0, 600.0, 700.0, 800.0]),
         }
         self.fields_desc = {
-            'comment': DocFieldDesc(data_type=DocFieldDesc.DTYPE_VARCHAR, max_length=65535),
+            'comment': DocFieldDesc(data_type=DocFieldDesc.DTYPE_VARCHAR, max_size=65535,
+                                    default_value=' '),
         }
 
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
@@ -211,10 +212,15 @@ class TestMilvusStore(unittest.TestCase):
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
                              embedding={"vec1": [8.0, 9.0, 10.0], "vec2": [11.0, 12.0, 13.0, 14.0, 15.0]},
-                             metadata={'comment': 'comment1'}, fields={'comment': 'comment3'})
+                             metadata={'comment': 'comment1'},
+                             fields={'comment': 'comment3', 'signature': 'node1', 'lazyllm_kb': [1, 3, 5]})
         self.node2 = DocNode(uid="2", text="text2", group="group1", parent=self.node1,
                              embedding={"vec1": [100.0, 200.0, 300.0], "vec2": [400.0, 500.0, 600.0, 700.0, 800.0]},
-                             metadata={'comment': 'comment2'})
+                             metadata={'comment': 'comment2', 'signature': 'node2'})
+        self.node3 = DocNode(uid="3", text="text3", group="group1", parent=None,
+                             embedding={"vec1": [4.0, 5.0, 6.0], "vec2": [16.0, 17.0, 18.0, 19.0, 20.0]},
+                             metadata={'comment': 'comment3', 'signature': 'node3'},
+                             fields={'lazyllm_kb': [1, 2, 3]})
 
     def tearDown(self):
         os.remove(self.store_file)
@@ -248,3 +254,31 @@ class TestMilvusStore(unittest.TestCase):
         self.store.update_nodes([self.node1, self.node2])
         self.assertEqual(self.store.is_group_active("group1"), True)
         self.assertEqual(self.store.is_group_active("group2"), False)
+
+    def test_query_with_filter_exist_1(self):
+        self.store.update_nodes([self.node1, self.node3])
+        ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=10,
+                               filters={'comment': ['comment3']})
+        self.assertEqual(len(ret), 1)
+        self.assertEqual(ret[0].uid, self.node1.uid)
+
+    def test_query_with_filter_exist_2(self):
+        self.store.update_nodes([self.node1, self.node2, self.node3])
+        ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=10,
+                               filters={'comment': ['comment3']})
+        self.assertEqual(len(ret), 2)
+        self.assertEqual(set([ret[0].uid, ret[1].uid]), set([self.node1.uid, self.node2.uid]))
+
+    def test_query_with_filter_non_exist(self):
+        self.store.update_nodes([self.node1, self.node3])
+        ret = self.store.query(query='test', group_name='group1', embed_keys=['vec1'], topk=10,
+                               filters={'comment': ['non-exist']})
+        self.assertEqual(len(ret), 0)
+
+    # XXX `array_contains_any` is not supported in local(aka lite) mode. skip this ut
+    def _test_query_with_kb(self):
+        self.store.update_nodes([self.node1, self.node3])
+        ret = self.store.query(query='test', group_name='group1', embed_keys=['vec1'], topk=10,
+                               filters={'lazyllm_kb': [2]})
+        self.assertEqual(len(ret), 2)
+        self.assertEqual(set([ret[0].uid, ret[1].uid]), set([self.node1.uid, self.node2.uid]))

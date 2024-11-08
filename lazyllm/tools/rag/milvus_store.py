@@ -8,6 +8,7 @@ from .utils import parallel_do_embedding
 from .index_base import IndexBase
 from .store_base import StoreBase
 from .doc_field_desc import DocFieldDesc
+from .doc_builtin_field import DocBuiltinField
 from lazyllm.common import override
 import pickle
 import base64
@@ -39,15 +40,20 @@ class MilvusStore(StoreBase):
     }
 
     _builtin_fields_desc = {
-        'lazyllm_doc_path': DocFieldDesc(data_type=DocFieldDesc.DTYPE_VARCHAR,
-                                         default_value=' ', max_length=65535),
+        DocBuiltinField.DOC_PATH: DocFieldDesc(data_type=DocFieldDesc.DTYPE_VARCHAR,
+                                               default_value=' ', max_size=65535),
+        DocBuiltinField.KB: DocFieldDesc(data_type=DocFieldDesc.DTYPE_ARRAY,
+                                         element_type=DocFieldDesc.DTYPE_INT32,
+                                         default_value=[2 ** 32 - 1], max_size=4096),
     }
 
     _type2milvus = [
         pymilvus.DataType.VARCHAR,
+        pymilvus.DataType.ARRAY,
+        pymilvus.DataType.INT32,
     ]
 
-    def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable],
+    def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable], # noqa C901
                  embed_dims: Dict[str, int], fields_desc: Dict[str, DocFieldDesc],
                  uri: str, embedding_index_type: Optional[str] = None,
                  embedding_metric_type: Optional[str] = None, **kwargs):
@@ -87,10 +93,24 @@ class MilvusStore(StoreBase):
 
             if self._fields_desc:
                 for key, desc in self._fields_desc.items():
+                    if desc.data_type == DocFieldDesc.DTYPE_ARRAY:
+                        if not desc.element_type:
+                            raise ValueError(f'Milvus field [{key}]: `element_type` is required when '
+                                             '`data_type` is DTYPE_ARRAY.')
+                        field_args = {
+                            'element_type': self._type2milvus[desc.element_type],
+                            'max_capacity': desc.max_size,
+                        }
+                    elif desc.data_type == DocFieldDesc.DTYPE_VARCHAR:
+                        field_args = {
+                            'max_length': desc.max_size,
+                        }
+                    else:
+                        field_args = {}
                     field_list.append(FieldSchema(name=self._gen_field_key(key),
                                                   dtype=self._type2milvus[desc.data_type],
-                                                  max_length=desc.max_length,
-                                                  default_value=desc.default_value))
+                                                  default_value=desc.default_value,
+                                                  **field_args))
 
             schema = CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_fields=False)
             self._client.create_collection(collection_name=group, schema=schema,
@@ -150,16 +170,20 @@ class MilvusStore(StoreBase):
               similarity_cut_off: Optional[Union[float, Dict[str, float]]] = None,
               topk: int = 10,
               embed_keys: Optional[List[str]] = None,
+              filters: Optional[Dict[str, Union[List, set]]] = None,
               **kwargs) -> List[DocNode]:
         if similarity is not None:
             raise ValueError('`similarity` MUST be None when Milvus backend is used.')
+
+        filter_str = self._construct_filter_expr(filters) if filters else ""
 
         uidset = set()
         for key in embed_keys:
             embed_func = self._embed.get(key)
             query_embedding = embed_func(query)
             results = self._client.search(collection_name=group_name, data=[query_embedding],
-                                          limit=topk, anns_field=self._gen_embedding_key(key))
+                                          limit=topk, anns_field=self._gen_embedding_key(key),
+                                          filter=filter_str)
             # we have only one `data` for search() so there is only one result in `results`
             if len(results) != 1:
                 raise ValueError(f'number of results [{len(results)}] != expected [1]')
@@ -196,6 +220,28 @@ class MilvusStore(StoreBase):
                     parent_node = self._map_store.find_node_by_uid(parent_uid)
                     node.parent = parent_node
                     parent_node.children[node.group].append(node)
+
+    def _construct_filter_expr(self, filters: Dict[str, Union[List, set]]) -> str:
+        ret_str = ""
+        for name, candidates in filters.items():
+            desc = self._fields_desc.get(name)
+            if not desc:
+                raise ValueError(f'cannot find desc of field [{name}]')
+
+            key = self._gen_field_key(name)
+            if not isinstance(candidates, List):
+                candidates = list(candidates)
+            if desc.data_type == DocFieldDesc.DTYPE_ARRAY:
+                # https://github.com/milvus-io/milvus/discussions/35279
+                # `array_contains_any` requires milvus >= 2.4.3 and is not supported in local(aka lite) mode.
+                ret_str += f'array_contains_any({key}, {candidates}) and '
+            else:
+                ret_str += f'{key} in {candidates} and '
+
+        if len(ret_str) > 0:
+            return ret_str[:-5]  # truncate the last ' and '
+
+        return ret_str
 
     def _serialize_node_partial(self, node: DocNode) -> Dict:
         res = {

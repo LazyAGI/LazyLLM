@@ -5,8 +5,8 @@ import concurrent
 from typing import List, Callable, Generator, Dict, Any, Optional, Union, Tuple, Set
 from abc import ABC, abstractmethod
 from .index_base import IndexBase
-from .store_base import LAZY_ROOT_NAME
 from .doc_node import DocNode
+from .doc_builtin_field import DocBuiltinField
 from lazyllm.common import override
 
 import pydantic
@@ -510,26 +510,37 @@ def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union
 
 class _FileNodeIndex(IndexBase):
     def __init__(self):
-        self._file_node_map = {}
+        self._file_node_map = {}  # Dict[path, Dict[uid, DocNode]]
 
     @override
     def update(self, nodes: List[DocNode]) -> None:
         for node in nodes:
-            if node.group != LAZY_ROOT_NAME:
-                continue
-            file_name = node.metadata.get("file_name")
-            if file_name:
-                self._file_node_map[file_name] = node
+            path = node.metadata.get(DocBuiltinField.DOC_PATH)
+            if path:
+                self.file_node_map.setdefault(path, {}).setdefault(node.uid, node)
 
     @override
     def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
-        # group_name is ignored
-        left = {k: v for k, v in self._file_node_map.items() if v.uid not in uids}
-        self._file_node_map = left
+        for path in list(self._file_node_map.keys()):
+            uid2node = self._file_node_map[path]
+            for uid in uids:
+                uid2node.pop(uid, None)
+            if not uid2node:
+                del self._file_node_map[path]
 
     @override
     def query(self, files: List[str]) -> List[DocNode]:
         ret = []
         for file in files:
-            ret.append(self._file_node_map.get(file))
+            ret.append(list(self._file_node_map.get(file, [])))
         return ret
+
+def generic_process_filters(nodes: List[DocNode], filters: Dict[str, Union[List, set]]) -> List[DocNode]:
+    for field_name, candidates in filters.items():
+        filtered_nodes = []
+        for node in nodes:
+            value = node.fields.get(field_name)
+            if value and value in candidates:
+                filtered_nodes.append(node)
+        nodes = filtered_nodes
+    return nodes

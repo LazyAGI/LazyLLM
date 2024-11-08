@@ -4,7 +4,7 @@ from lazyllm.tools.rag.utils import _FileNodeIndex
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform
+from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform, DocBuiltinField
 from lazyllm.launcher import cleanup
 from unittest.mock import MagicMock
 import unittest
@@ -169,9 +169,9 @@ class TestDocument(unittest.TestCase):
 class TestFileNodeIndex(unittest.TestCase):
     def setUp(self):
         self.index = _FileNodeIndex()
-        self.node1 = DocNode(uid='1', group=LAZY_ROOT_NAME, metadata={"file_name": "d1"})
-        self.node2 = DocNode(uid='2', group=LAZY_ROOT_NAME, metadata={"file_name": "d2"})
-        self.files = [self.node1.metadata['file_name'], self.node1.metadata['file_name']]
+        self.node1 = DocNode(uid='1', group=LAZY_ROOT_NAME, fields={DocBuiltinField.DOC_PATH: "d1"})
+        self.node2 = DocNode(uid='2', group=LAZY_ROOT_NAME, fields={DocBuiltinField.DOC_PATH: "d2"})
+        self.files = [self.node1.fields[DocBuiltinField.DOC_PATH], self.node2.fields[DocBuiltinField.DOC_PATH]]
 
     def test_update(self):
         self.index.update([self.node1, self.node2])
@@ -179,7 +179,7 @@ class TestFileNodeIndex(unittest.TestCase):
         nodes = self.index.query(self.files)
         assert len(nodes) == len(self.files)
 
-        ret = [node.metadata['file_name'] for node in nodes]
+        ret = [node.fileds[DocBuiltinField.DOC_PATH] for node in nodes]
         assert set(ret) == set(self.files)
 
     def test_remove(self):

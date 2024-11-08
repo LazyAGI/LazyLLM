@@ -78,11 +78,14 @@ class Retriever(ModuleBase, _PostProcess):
     def _get_post_process_tasks(self):
         return pipeline(lambda *a: self('Test Query'))
 
-    def forward(self, query: str) -> Union[List[DocNode], str]:
+    def forward(
+            self, query: str, filters: Optional[Dict[str, Union[List, set]]] = None
+    ) -> Union[List[DocNode], str]:
         self._lazy_init()
         nodes = []
         for doc in self._docs:
             nodes.extend(doc.forward(query=query, group_name=self._group_name, similarity=self._similarity,
                                      similarity_cut_off=self._similarity_cut_off, index=self._index,
-                                     topk=self._topk, similarity_kws=self._similarity_kw, embed_keys=self._embed_keys))
+                                     topk=self._topk, similarity_kws=self._similarity_kw, embed_keys=self._embed_keys,
+                                     filters=filters))
         return self._post_process(nodes)

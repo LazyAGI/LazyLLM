@@ -2,9 +2,13 @@ from typing import Optional, Any
 
 class DocFieldDesc:
     DTYPE_VARCHAR = 0
+    DTYPE_ARRAY = 1
+    DTYPE_INT32 = 2
 
-    def __init__(self, data_type: int, default_value: Optional[Any] = None,
-                 max_length: Optional[int] = None):
+    # max_size MUST be set when data_type is DTYPE_VARCHAR or DTYPE_ARRAY
+    def __init__(self, data_type: int, element_type: Optional[int] = None,
+                 default_value: Optional[Any] = None, max_size: Optional[int] = None):
         self.data_type = data_type
+        self.element_type = element_type
         self.default_value = default_value
-        self.max_length = max_length
+        self.max_size = max_size

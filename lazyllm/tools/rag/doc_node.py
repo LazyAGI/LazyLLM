@@ -2,6 +2,7 @@ from typing import Optional, Dict, Any, Union, Callable, List
 from enum import Enum, auto
 from collections import defaultdict
 from lazyllm import config, reset_on_pickle
+from .doc_builtin_field import DocBuiltinField
 import uuid
 import threading
 import time
@@ -73,12 +74,12 @@ class DocNode:
 
     @property
     def docpath(self) -> str:
-        return self.root_node._fields.get('lazyllm_doc_path', '')
+        return self.root_node._fields.get(DocBuiltinField.DOC_PATH, '')
 
     @docpath.setter
     def docpath(self, path):
         assert not self.parent, 'Only root node can set docpath'
-        self._fields['lazyllm_doc_path'] = str(path)
+        self._fields[DocBuiltinField.DOC_PATH] = str(path)
 
     def get_children_str(self) -> str:
         return str(
