@@ -163,14 +163,14 @@ class TestDocListServer(object):
         cls.manager = DocListManager(str(test_dir), "TestManager")
         cls.manager.init_tables()
         cls.manager.add_kb_group('group1')
-        cls.manager.add_kb_group('group2')
+        cls.manager.add_kb_group('extra_group')
         cls.server = lazyllm.ServerModule(DocManager(cls.manager))
         cls.server.start()
         cls._test_inited = True
 
-        test_file_3 = test_dir.join("test3.txt")
-        test_file_3.write("This is a test file 3.")
-        cls.test_file_3 = str(test_file_3)
+        test_file_extra = test_dir.join("test_extra.txt")
+        test_file_extra.write("This is a test file extra.")
+        cls.test_file_extra = str(test_file_extra)
 
     def get_url(self, url, **kw):
         url = (self.server._url.rsplit("/", 1)[0] + '/' + url).rstrip('/')
@@ -229,15 +229,6 @@ class TestDocListServer(object):
         response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
         assert response.status_code == 200 and len(response.json().get('data')) == 1
 
-        # add_files
-        json_data = {
-            'files': [self.test_file_3],
-            'group_name': "group2",
-            'metadatas': json.dumps([{"key": "value"}])
-        }
-        response = requests.post(self.get_url('add_files'), json=json_data)
-        assert response.status_code == 200 and len(response.json().get('data')) == 1
-
     @pytest.mark.order(4)
     def test_add_files_to_group_and_delete_files_from_group(self):
         response = requests.get(self.get_url('list_files', details=False))
@@ -271,4 +262,14 @@ class TestDocListServer(object):
         response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
         assert response.status_code == 200 and len(response.json().get('data')) == 3
         response = requests.get(self.get_url('list_files_in_group', group_name='group1', alive=True))
+        assert response.status_code == 200 and len(response.json().get('data')) == 1
+
+    @pytest.mark.order(6)
+    def test_add_file_by_path(self):
+        json_data = {
+            'files': [self.test_file_extra],
+            'group_name': "extra_group",
+            'metadatas': json.dumps([{"key": "value"}])
+        }
+        response = requests.post(self.get_url('add_files'), json=json_data)
         assert response.status_code == 200 and len(response.json().get('data')) == 1
