@@ -91,4 +91,5 @@ config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBU
                 ).add('repr_ml', bool, False, 'REPR_USE_ML'
                 ).add('rag_store', str, 'none', 'RAG_STORE'
                 ).add('gpu_type', str, 'A100', 'GPU_TYPE'
+                ).add('train_target_root', str, '', 'TRAIN_TARGET_ROOT'
                 )

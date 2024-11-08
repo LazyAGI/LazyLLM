@@ -1,7 +1,8 @@
 import json
 import os
 import requests
-from typing import Tuple
+from typing import Tuple, List
+
 import lazyllm
 from .onlineChatModuleBase import OnlineChatModuleBase
 from .fileHandler import FileHandlerBase
@@ -26,6 +27,25 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
                                       return_trace=return_trace,
                                       **kwargs)
         FileHandlerBase.__init__(self)
+        self.default_train_data = {
+            "model": None,
+            "training_file": None,
+            "validation_file": None,
+            "extra_hyperparameters": {
+                "fine_tuning_method": None,  # lora\full, default: lora,
+                "fine_tuning_parameters": {
+                    "max_sequence_length": None  # [1, 8192](int), default: 8192
+                }
+            },
+            "hyperparameters": {
+                "learning_rate_multiplier": 0.01,  # (0,5] , default: 1.0
+                "batch_size": None,  # [1, 32], default: 8
+                "n_epochs": 1,  # [1, 10], default: 3
+            },
+            "suffix": None,
+            "request_id": None
+        }
+        self.fine_tuning_job_id = None
 
     def _get_system_prompt(self):
         return ("You are ChatGLM, an AI assistant developed based on a language model trained by Zhipu AI. "
@@ -73,6 +93,18 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
             self._dataHandler.close()
             return r.json()["id"]
 
+    def _update_kw(self, data, normal_config):
+        current_train_data = self.default_train_data.copy()
+        current_train_data.update(data)
+
+        current_train_data["extra_hyperparameters"]["fine_tuning_method"] = normal_config["finetuning_type"].strip().lower()
+        current_train_data["extra_hyperparameters"]["fine_tuning_parameters"]["max_sequence_length"] = normal_config["cutoff_len"]
+        current_train_data["hyperparameters"]["learning_rate_multiplier"] = normal_config["learning_rate"]
+        current_train_data["hyperparameters"]["batch_size"] = normal_config["batch_size"]
+        current_train_data["hyperparameters"]["n_epochs"] = normal_config["num_epochs"]
+        current_train_data["suffix"] = normal_config["finetune_model_name"]
+        return current_train_data
+
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
         url = os.path.join(self._base_url, "fine_tuning/jobs")
         headers = {
@@ -84,15 +116,69 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
             "training_file": train_file_id
         }
         if len(kw) > 0:
-            data.update(kw)
+            if 'finetuning_type' in kw:
+                data = self._update_kw(data, kw)
+            else:
+                data.update(kw)
 
         with requests.post(url, headers=headers, json=data) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
             fine_tuning_job_id = r.json()["id"]
+            self.fine_tuning_job_id = fine_tuning_job_id
             status = r.json()["status"]
             return (fine_tuning_job_id, status)
+
+    def _cancel_finetuning_job(self, fine_tuning_job_id=None):
+        fine_tuning_job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
+        url = os.path.join(self._base_url, "fine_tuning/jobs/{fine_tuning_job_id}/cancel")
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self._api_key}",
+        }
+        with requests.post(url, headers=headers) as r:
+            if r.status_code != 200:
+                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+            (fine_tuned_model, status) = self._query_finetuning_job(fine_tuning_job_id)
+
+    def _query_finetuned_jobs(self):
+        fine_tune_url = os.path.join(self._base_url, "fine_tuning/jobs/")
+        headers = {
+            "Authorization": f"Bearer {self._api_key}"
+        }
+        with requests.get(fine_tune_url, headers=headers) as r:
+            if r.status_code != 200:
+                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+        return r.json()
+
+    def _get_finetuned_model_names(self) -> (List[str], List[str]):
+        model_data = self._query_finetuned_jobs()
+        names_valid = []
+        names_invalid = []
+        for model in model_data['data']:
+            if model['status'] == 'succeeded':
+                names_valid.append(model['fine_tuned_model'])
+            else:
+                names_invalid.append(model['fine_tuned_model'])
+        return names_valid, names_invalid
+
+    def _query_job_with_model_name(self, model_name=None):
+        model_name = model_name if model_name else self._model_name
+        model_data = self._query_finetuned_jobs()
+        all_model_jobid = dict()
+        for model in model_data['data']:
+            all_model_jobid[model['fine_tuned_model']] = model['id']
+        if model_name in all_model_jobid:
+            _, statu = self._query_finetuning_job(all_model_jobid[model_name])
+        else:
+            _, statu = self._query_finetuning_job(self.fine_tuning_job_id)
+        if statu == 'succeeded':
+            return 'Done'
+        elif statu in ('failed', 'cancelled'):
+            return 'Failed'
+        else:
+            return 'Running'
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
         fine_tune_url = os.path.join(self._base_url, f"fine_tuning/jobs/{fine_tuning_job_id}")

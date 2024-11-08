@@ -6,11 +6,15 @@ import requests
 import re
 from typing import Tuple, List, Dict, Union, Any
 import time
+import threading
+
 import lazyllm
 from lazyllm import globals, FileSystemQueue
 from lazyllm.components.prompter import PrompterBase, ChatPrompter
 from lazyllm.components.formatter import FormatterBase, EmptyFormatter
 from ..module import ModuleBase, Pipeline
+from ..utils import TrainConfig, updat_config, uniform_sft_dataset
+
 
 class OnlineChatModuleBase(ModuleBase):
 
@@ -277,9 +281,51 @@ class OnlineChatModuleBase(ModuleBase):
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
         raise NotImplementedError(f"{self._model_series} not implemented _query_finetuning_job method in subclass")
 
-    def set_train_tasks(self, train_file, **kw):
+    def _query_finetuned_jobs(self) -> dict:
+        raise NotImplementedError(f"{self._model_series} not implemented _query_finetuned_jobs method in subclass")
+
+    def _get_finetuned_model_names(self) -> (List[str], List[str]):
+        raise NotImplementedError(f"{self._model_series} not implemented _get_finetuned_model_names method in subclass")
+
+    def set_train_tasks(self, train_file, stand_config=None, **kw):
         self._train_file = train_file
-        self._train_parameters = kw
+        assert not (stand_config and kw), "Cannot have both 'stand_config' and keyword arguments simultaneously."
+        if stand_config:
+            self._train_parameters = stand_config
+        else:
+            self._train_parameters = kw
+
+    def train(self, train_config: dict, asyn: bool = True) -> None:
+        train_config = updat_config(train_config, TrainConfig)
+        assert train_config['training_type'].lower() == 'sft', 'Only supported sft!'
+
+        data_path = os.path.join(lazyllm.config['data_path'], train_config['data_path'])
+        data_path = uniform_sft_dataset(data_path, target='openai')
+        self.set_train_tasks(data_path, train_config)
+
+        self.thread = threading.Thread(target=self._update, kwargs={'mode': ['train']})
+        self.thread.daemon = True
+        self.thread.start()
+        if not asyn:
+            self.thread.join()
+
+    def get_all_finetuned_models(self,):
+        return self._get_finetuned_model_names()
+
+    def set_specific_finetuned_model(self, name):
+        names_valid, _ = self._get_finetuned_model_names()
+        if name in names_valid:
+            self._model_name = name
+        else:
+            raise ValueError(f"Cannot find modle({name}), in fintuned model list: {names_valid}")
+
+    def get_train_status(self):
+        try:
+            status = self._query_job_with_model_name()
+        except Exception as e:
+            status = 'Invalid'
+            print(e)
+        return status
 
     def _get_train_tasks(self):
         if not self._model_name or not self._train_file:

@@ -7,6 +7,7 @@ import requests
 import pickle
 import codecs
 import inspect
+import threading
 import functools
 from datetime import datetime
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
@@ -17,10 +18,11 @@ from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_re
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
+from .utils import TrainConfig, updat_config, uniform_sft_dataset
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
-from ..launcher import LazyLLMLaunchersBase as Launcher
+from ..launcher import LazyLLMLaunchersBase as Launcher, Status
 import uuid
 from ..client import get_redis, redis_client
 
@@ -509,11 +511,14 @@ class _TrainableModuleImpl(ModuleBase):
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
         self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model)
-        self._target_path = target_path if target_path else os.path.join(os.getcwd(), 'save_ckpt')
+        save_root = lazyllm.config['train_target_root'] if lazyllm.config['train_target_root'] \
+            else os.path.join(os.getcwd(), 'save_ckpt')
+        self._target_path = os.path.join(save_root, target_path)
         self._stream = stream
         self._father = []
         self._launchers: Dict[str, Dict[str, Launcher]] = dict(default=dict(), manual=dict())
         self._deployer = None
+        self._file_name = None
         self._specific_target_path = None
         self._train, self._finetune = train, finetune
         self.deploy_method(deploy)
@@ -647,13 +652,16 @@ class _TrainableModuleImpl(ModuleBase):
                 return name[:5] + '_' + name[-4:]
             return name
         base_model_name = optimize_name(base_model_name)
+        file_name = base_model_name if not self._file_name else self._file_name
         train_set_name = optimize_name(train_set_name)
 
-        target_path = os.path.join(self._target_path,
-                                   f"{base_model_name}-{train_set_name}-"
+        target_path = os.path.join(self._target_path, base_model_name,
+                                   f"{file_name}-{train_set_name}-"
                                    f"{datetime.now().strftime('%y%m%d%H%M%S%f')[:14]}")
         return target_path
 
+    def _set_file_name(self, name):
+        self._file_name = name
 
 class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
@@ -696,17 +704,30 @@ class TrainableModule(UrlModule):
         if launcher := self._impl._launchers['default'].get('deploy'):
             launcher.wait()
 
-    def stop(self, task_name: Optional[str] = None):
+    def stop(self, task_name: Optional[str] = None, task_type: str = 'deploy'):
         try:
-            launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
+            launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or task_type]
         except KeyError:
             raise RuntimeError('Cannot stop an unstarted task')
         if not task_name: self._impl._get_deploy_tasks.flag.reset()
         launcher.cleanup()
 
-    def status(self, task_name: Optional[str] = None):
-        launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
+    def status(self, task_name: Optional[str] = None, task_type: str = 'deploy'):
+        launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or task_type]
         return launcher.status
+
+    def get_train_status(self, ):
+        try:
+            status = self.status(task_type='finetune')
+            if status == Status.Done:
+                status = 'Done'
+            elif status in (Status.Cancelled, Status.Failed):
+                status = 'Failed'
+            else:
+                status = 'Running'
+        except KeyError:
+            status = 'Invalid'
+        return status
 
     # modify default value to ''
     def prompt(self, prompt=''):
@@ -720,6 +741,30 @@ class TrainableModule(UrlModule):
             for key in ["tool_start_token", "tool_args_token", "tool_end_token"]:
                 if key in keys: setattr(self, f"_{key}", keys[key])
         return self
+
+    def train(self, train_config: dict, asyn: bool = True) -> None:
+        train_config = updat_config(train_config, TrainConfig)
+        model_name = train_config.pop('finetune_model_name', 'llm')
+        self._impl._set_file_name(model_name)
+        assert train_config['training_type'].lower() == 'sft', 'Only supported sft!'
+        self.mode('finetune')
+
+        data_path = os.path.join(lazyllm.config['data_path'], train_config['data_path'])
+        data_path = uniform_sft_dataset(data_path, target='alpaca')
+        self.trainset(data_path)
+        train_config.pop('lora_rate')
+        train_config.pop('data_path')
+        train_config['per_device_train_batch_size'] = train_config.pop('batch_size')
+        train_config['num_train_epochs'] = train_config.pop('num_epochs')
+        train_config['stage'] = train_config.pop('training_type').strip().lower()
+        train_config['finetuning_type'] = train_config.pop('finetuning_type').strip().lower()
+
+        self.finetune_method((lazyllm.finetune.llamafactory, train_config))
+        self.thread = threading.Thread(target=self._update, kwargs={'mode': ['train']})
+        self.thread.daemon = True
+        self.thread.start()
+        if not asyn:
+            self.thread.join()
 
     def _loads_str(self, text: str) -> Union[str, Dict]:
         try:
