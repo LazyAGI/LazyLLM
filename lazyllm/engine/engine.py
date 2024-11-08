@@ -265,6 +265,7 @@ def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
     CodeBlock = type("CodeBlock", (lazyllm.ModuleBase,), {"forward": cls_method})
     code_block = CodeBlock()
     code_block.__doc__ = ori_func.__doc__
+    code_block.__name__ = ori_func.__name__
     return code_block
 
 

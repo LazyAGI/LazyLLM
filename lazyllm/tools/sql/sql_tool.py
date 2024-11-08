@@ -54,8 +54,9 @@ class SqlManager(ModuleBase):
         options_str: str = "",
     ) -> None:
         super().__init__()
-        conn_url = f"{db_type.lower()}://{user}:{password}@{host}:{port}/{db_name}"
-        self.reset_db(db_type, conn_url, tables_info_dict, options_str)
+        if db_type.lower() != "sqlite":
+            conn_url = f"{db_type.lower()}://{user}:{password}@{host}:{port}/{db_name}"
+            self.reset_db(db_type, conn_url, tables_info_dict, options_str)
 
     def forward(self, sql_script: str) -> str:
         return self.get_query_result_in_json(sql_script)
@@ -268,6 +269,7 @@ class SqlManager(ModuleBase):
 class SQLiteManger(SqlManager):
     def __init__(self, db_file, tables_info_dict: dict):
         assert Path(db_file).is_file()
+        super().__init__("SQLite", "", "", "", 0, "", {}, "")
         super().reset_db("SQLite", f"sqlite:///{db_file}", tables_info_dict)
 
 
