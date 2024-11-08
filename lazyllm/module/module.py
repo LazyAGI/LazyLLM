@@ -23,7 +23,7 @@ from ..common.bind import _MetaBind
 from ..launcher import LazyLLMLaunchersBase as Launcher
 import uuid
 from ..client import get_redis, redis_client
-from ..components.hook import LazyllmHook
+from ..components.hook import LazyLLMHook
 
 
 # use _MetaBind:
@@ -94,16 +94,20 @@ class ModuleBase(metaclass=_MetaBind):
     def __call__(self, *args, **kw):
         hook_objs = []
         for hook_type in self._hooks:
-            hook_objs.append(hook_type(self))
+            if isinstance(hook_type, LazyLLMHook):
+                hook_objs.append(hook_type)
+            else:
+                hook_objs.append(hook_type(self))
             hook_objs[-1].pre_hook(*args, **kw)
         try:
             kw.update(globals['global_parameters'].get(self._module_id, dict()))
             if (files := globals['lazyllm_files'].get(self._module_id)) is not None: kw['lazyllm_files'] = files
             if (history := globals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
-            r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
-            print("TYPE: ", self.__class__)
-            print("RRRRRRRRRR: ", r)
-            print("hook_objs:", hook_objs)
+            r = (
+                self.forward(**args[0], **kw)
+                if args and isinstance(args[0], kwargs)
+                else self.forward(*args, **kw)
+            )
             if self._return_trace:
                 lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))
         except Exception as e:
@@ -111,7 +115,7 @@ class ModuleBase(metaclass=_MetaBind):
                 f"\nAn error occured in {self.__class__} with name {self.name}.\n"
                 f"Args:\n{args}\nKwargs\n{kw}\nError messages:\n{e}\n"
             )
-        for hook_obj in hook_objs:
+        for hook_obj in hook_objs[::-1]:
             hook_obj.post_hook(r)
         for hook_obj in hook_objs:
             hook_obj.report()
@@ -128,10 +132,10 @@ class ModuleBase(metaclass=_MetaBind):
     # interfaces
     def forward(self, *args, **kw): raise NotImplementedError
 
-    def register_hook(self, hook_type: LazyllmHook):
+    def register_hook(self, hook_type: LazyLLMHook):
         self._hooks.add(hook_type)
 
-    def unregister_hook(self, hook_type: LazyllmHook):
+    def unregister_hook(self, hook_type: LazyLLMHook):
         if hook_type in self._hooks:
             self._hooks.remove(hook_type)
 
@@ -149,12 +153,16 @@ class ModuleBase(metaclass=_MetaBind):
     _url_id = property(lambda self: self._module_id)
 
     @property
-    def name(self): return self._module_name
+    def name(self):
+        return self._module_name
+
     @name.setter
-    def name(self, name): self._module_name = name
+    def name(self, name):
+        self._module_name = name
 
     @property
-    def submodules(self): return self._submodules
+    def submodules(self):
+        return self._submodules
 
     def evalset(self, evalset, load_f=None, collect_f=lambda x: x):
         if isinstance(evalset, str) and os.path.exists(evalset):

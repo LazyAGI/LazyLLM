@@ -257,31 +257,37 @@ class OnlineChatModuleBase(ModuleBase):
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
                     if stream_output else requests.RequestException(r.text)
 
-            msg_json = list(filter(lambda x: x, [self._str_to_json(line, stream_output) for line in r.iter_lines()
-                                   if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]))
-            print("!" * 100)
-            print(msg_json)
-            print("!" * 100 + "\n")
+            msg_json = list(
+                filter(
+                    lambda x: x,
+                    (
+                        [
+                            self._str_to_json(line, stream_output)
+                            for line in r.iter_lines()
+                            if len(line)
+                        ]
+                        if stream_output
+                        else [self._str_to_json(r.text, stream_output)]
+                    ),
+                )
+            )
             usage = {"prompt_tokens": -1, "completion_tokens": -1}
             if len(msg_json) > 0 and "usage" in msg_json[-1] and isinstance(msg_json[-1]["usage"], dict):
                 for k in usage:
                     usage[k] = msg_json[-1]["usage"].get(k, usage[k])
             self._record_usage(usage)
-            extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
-            print("extractor:", extractor)
-            print("formatted output:", self._formatter.format(extractor) if extractor else "")
-
+            extractor = self._extract_specified_key_fields(
+                self._merge_stream_result(msg_json)
+            )
             return self._formatter.format(extractor) if extractor else ""
 
     def _record_usage(self, usage: dict):
         globals["usage"][self._module_id] = usage
         par_muduleid = self._used_by_moduleid
-        print(f"par_muduleid = {par_muduleid}")
         if par_muduleid is None:
             return
         if par_muduleid not in globals["usage"]:
             globals["usage"][par_muduleid] = usage
-            print("globals['usage'] = ", globals["usage"])
             return
         existing_usage = globals["usage"][par_muduleid]
         if existing_usage["prompt_tokens"] == -1 or usage["prompt_tokens"] == -1:
@@ -289,7 +295,6 @@ class OnlineChatModuleBase(ModuleBase):
         else:
             for k in globals["usage"][par_muduleid]:
                 globals["usage"][par_muduleid][k] += usage[k]
-        print("globals['usage'] = ", globals["usage"])
 
     def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None):
         self.template_message = template_message

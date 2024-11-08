@@ -1,10 +1,10 @@
 from .engine import Engine, Node
-from ..components.hook import NodeMetaHook
 import lazyllm
 from lazyllm import once_wrapper
 from typing import List, Dict, Optional, Set, Union
 import copy
 import uuid
+
 
 class LightEngine(Engine):
 
@@ -28,9 +28,6 @@ class LightEngine(Engine):
         if node.id not in self._nodes:
             self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]
-
-    def set_report_url(self, url):
-        NodeMetaHook.URL = url
 
     def release_node(self, *node_ids: Union[str, List[str]]):
         if len(node_ids) == 1 and isinstance(node_ids[0], (tuple, list)): node_ids = node_ids[0]

@@ -1,6 +1,5 @@
 import lazyllm
-from lazyllm.engine import LightEngine
-from lazyllm.components import NodeMetaHook
+from lazyllm.engine import LightEngine, NodeMetaHook
 import pytest
 from .utils import SqlEgsData, get_sql_init_keywords
 from lazyllm.tools import SqlManager
@@ -17,9 +16,6 @@ app = FastAPI()
 
 @app.post("/mock_post")
 async def receive_json(data: dict):
-    print("+" * 100)
-    print(data)
-    print("-" * 100)
     return JSONResponse(content=data)
 
 
@@ -197,7 +193,7 @@ class TestEngine(unittest.TestCase):
         # Note: Set real http://ip:port/uri ...
         engine.set_report_url("mock_post")
         gid = engine.start(nodes, edges, resources)
-        str_answer = engine.run(gid, "员工编号是3的人来自哪个部门？")
+        str_answer = engine.run(gid, "员工编号是11的人来自哪个部门？")
         assert "销售三部" in str_answer
 
         # 3. Release: delete data and table from database
