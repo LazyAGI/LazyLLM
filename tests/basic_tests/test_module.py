@@ -57,7 +57,7 @@ class TestModule:
 
     def test_TrainableModule(self):
         tm1 = lazyllm.TrainableModule(self.base_model, self.target_path)
-        tm2 = tm1.share().used_by(self._module_id)
+        tm2 = tm1.share()
         # tm1 and tm2 all use: ChatPrompter
         assert tm1._prompt == tm2._prompt
         tm1.finetune_method(lazyllm.finetune.dummy)\
@@ -82,7 +82,7 @@ class TestModule:
         tm2.eval()
         assert tm2.eval_result == ["\n, and parameters is {'do_sample': False, 'temperature': 0.1}"] * 2
 
-        tm3 = tm1.share().used_by(self._module_id)
+        tm3 = tm1.share()
         # tm1 and tm3 use same: EmptyPrompter
         assert type(tm3._prompt) is lazyllm.prompter.EmptyPrompter
         assert tm1._prompt == tm3._prompt
@@ -90,7 +90,7 @@ class TestModule:
         tm3.eval()
         assert tm1.eval_result == tm3.eval_result
 
-        tm4 = tm2.share().used_by(self._module_id)
+        tm4 = tm2.share()
         # tm2 and tm4 use same: ChatPrompter
         assert type(tm4._prompt) is lazyllm.ChatPrompter
         assert tm4._prompt == tm2._prompt
