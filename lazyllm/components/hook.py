@@ -1,5 +1,4 @@
 import time
-from typing import NamedTuple
 import requests
 import json
 import lazyllm

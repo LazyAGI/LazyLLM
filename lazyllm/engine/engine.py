@@ -7,7 +7,6 @@ from .node import all_nodes, Node
 from ..components.hook import NodeMetaHook
 import inspect
 import functools
-import warnings
 
 
 # Each session will have a separate engine
@@ -93,7 +92,7 @@ class NodeConstructor(object):
     def build(self, node: Node):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
-        node.arg_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
+        node.arg_names = node.args.pop("_lazyllm_arg_names", None) if isinstance(node.args, dict) else None
         node.enable_report = node.args.pop("_lazyllm_enable_report", False) if isinstance(node.args, dict) else False
         if node.kind in NodeConstructor.builder_methods:
             createf, node.subitem_name = NodeConstructor.builder_methods[node.kind]
@@ -126,11 +125,14 @@ class NodeConstructor(object):
         for key, value in build_args.items():
             module = getattr(module, key)(value, **other_args.get(key, dict()))
         node.func = module
+        self._process_hook(node, module)
+        return node
+
+    def _process_hook(self, node, module):
         if not isinstance(module, lazyllm.ModuleBase):
             raise TypeError(f"Expected 'node.func' to be of type ModuleBase but got {type(node.func)}")
         if node.enable_report:
             node.func.register_hook(NodeMetaHook)
-        return node
 
 
 _constructor = NodeConstructor()
