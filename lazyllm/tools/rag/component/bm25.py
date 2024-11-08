@@ -1,5 +1,5 @@
 from typing import List, Tuple
-from ..store import DocNode
+from ..doc_node import DocNode
 import bm25s
 import Stemmer
 from lazyllm.thirdparty import jieba

@@ -1,31 +1,33 @@
 import time
 import unittest
 from unittest.mock import MagicMock
-from lazyllm.tools.rag.store import DocNode, MapStore
-from lazyllm.tools.rag.index import DefaultIndex, register_similarity
-
+from lazyllm.tools.rag.map_store import MapStore
+from lazyllm.tools.rag.doc_node import DocNode
+from lazyllm.tools.rag.default_index import DefaultIndex
+from lazyllm.tools.rag.similarity import register_similarity, registered_similarities
+from lazyllm.tools.rag.utils import parallel_do_embedding
 
 class TestDefaultIndex(unittest.TestCase):
     def setUp(self):
-        self.mock_embed = MagicMock(side_effect=self.delayed_embed)
-        self.mock_embed1 = MagicMock(return_value=[0, 1, 0])
-        self.mock_embed2 = MagicMock(return_value=[0, 0, 1])
-        self.mock_store = MagicMock(spec=MapStore)
+        self.mock_embed = {
+            'default': MagicMock(side_effect=self.delayed_embed),
+            'test1': MagicMock(return_value=[0, 1, 0]),
+            'test2': MagicMock(return_value=[0, 0, 1]),
+        }
+        self.mock_store = MapStore(node_groups=['group1'], embed=self.mock_embed)
 
         # Create instance of DefaultIndex
-        self.index = DefaultIndex(embed={"default": self.mock_embed,
-                                         "test1": self.mock_embed1,
-                                         "test2": self.mock_embed2},
-                                  store=self.mock_store)
+        self.index = DefaultIndex(embed=self.mock_embed, store=self.mock_store)
 
         # Create mock DocNodes
-        self.doc_node_1 = DocNode("text1")
+        self.doc_node_1 = DocNode(uid="text1", group="group1")
         self.doc_node_1.embedding = {"default": [1, 0, 0], "test1": [1, 0, 0], "test2": [1, 0, 0]}
-        self.doc_node_2 = DocNode("text2")
+        self.doc_node_2 = DocNode(uid="text2", group="group1")
         self.doc_node_2.embedding = {"default": [0, 1, 0], "test1": [0, 1, 0], "test2": [0, 1, 0]}
-        self.doc_node_3 = DocNode("text3")
+        self.doc_node_3 = DocNode(uid="text3", group="group1")
         self.doc_node_3.embedding = {"default": [0, 0, 1], "test1": [0, 0, 1], "test2": [0, 0, 1]}
         self.nodes = [self.doc_node_1, self.doc_node_2, self.doc_node_3]
+        self.mock_store.update_nodes(self.nodes)  # used by index
 
     def delayed_embed(self, text):
         time.sleep(3)
@@ -37,15 +39,15 @@ class TestDefaultIndex(unittest.TestCase):
         def custom_similarity(query, nodes, **kwargs):
             return [(node, 1.0) for node in nodes]
 
-        self.assertIn("custom_similarity", DefaultIndex.registered_similarity)
+        self.assertIn("custom_similarity", registered_similarities)
         self.assertEqual(
-            DefaultIndex.registered_similarity["custom_similarity"][1], "embedding"
+            registered_similarities["custom_similarity"][1], "embedding"
         )
 
     def test_query_cosine_similarity(self):
         results = self.index.query(
             query="test",
-            nodes=self.nodes,
+            group_name="group1",
             similarity_name="cosine",
             similarity_cut_off=0.0,
             topk=2,
@@ -59,7 +61,7 @@ class TestDefaultIndex(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.index.query(
                 query="test",
-                nodes=self.nodes,
+                group_name="group1",
                 similarity_name="invalid_similarity",
                 similarity_cut_off=0.0,
                 topk=2,
@@ -70,13 +72,13 @@ class TestDefaultIndex(unittest.TestCase):
         for node in self.nodes:
             node.has_embedding = MagicMock(return_value=False)
         start_time = time.time()
-        self.index._parallel_do_embedding(self.nodes)
+        parallel_do_embedding(self.index.embed, self.index.embed.keys(), self.nodes)
         assert time.time() - start_time < 4, "Parallel not used!"
 
     def test_query_multi_embed_similarity(self):
         results = self.index.query(
             query="test",
-            nodes=self.nodes,
+            group_name="group1",
             similarity_name="cosine",
             similarity_cut_off={"default": 0.8, "test1": 0.8, "test2": 0.8},
             topk=2,
@@ -88,7 +90,7 @@ class TestDefaultIndex(unittest.TestCase):
     def test_query_multi_embed_one_thresholds(self):
         results = self.index.query(
             query="test",
-            nodes=self.nodes,
+            group_name="group1",
             similarity_name="cosine",
             similarity_cut_off=0.8,
             embed_keys=["default", "test1"],

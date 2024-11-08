@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, cast
 from fsspec import AbstractFileSystem
 
 from .readerBase import LazyLLMReaderBase
-from ..store import DocNode
+from ..doc_node import DocNode
 
 class VideoAudioReader(LazyLLMReaderBase):
     def __init__(self, model_version: str = "base", return_trace: bool = True) -> None:
