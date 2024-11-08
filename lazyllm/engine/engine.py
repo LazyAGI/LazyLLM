@@ -259,8 +259,8 @@ def make_subapp(nodes: List[dict], edges: List[dict], resources: List[dict] = []
 def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
     ori_func = compile_func(code, vars_for_code)
 
-    def cls_method(self, *args):
-        return ori_func(*args)
+    def cls_method(self, *args, **kwargs):
+        return ori_func(*args, **kwargs)
 
     CodeBlock = type("CodeBlock", (lazyllm.ModuleBase,), {"forward": cls_method})
     code_block = CodeBlock()
