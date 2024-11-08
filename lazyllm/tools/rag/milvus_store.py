@@ -57,7 +57,10 @@ class MilvusStore(StoreBase):
 
         # XXX milvus 2.4.x doesn't support `default_value`
         # https://milvus.io/docs/product_faq.md#Does-Milvus-support-specifying-default-values-for-scalar-or-vector-fields
-        self._fields_desc = fields_desc | self._builtin_fields_desc
+        if fields_desc:
+            self._fields_desc = fields_desc | self._builtin_fields_desc
+        else:
+            self._fields_desc = self._builtin_fields_desc
 
         if not embedding_index_type:
             embedding_index_type = 'HNSW'

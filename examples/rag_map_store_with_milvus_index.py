@@ -11,10 +11,13 @@ def run(query):
     milvus_store_conf = {
         'type': 'map',
         'indices': {
-            'milvus': {
-                'uri': store_file,
-                'embedding_index_type': 'HNSW',
-                'embedding_metric_type': 'COSINE',
+            'smart_embedding_index': {
+                'backend': 'milvus',
+                'kwargs': {
+                    'uri': store_file,
+                    'embedding_index_type': 'HNSW',
+                    'embedding_metric_type': 'COSINE',
+                },
             },
         },
     }

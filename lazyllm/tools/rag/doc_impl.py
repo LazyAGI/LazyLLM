@@ -98,7 +98,7 @@ class DocImpl:
             raise ValueError('`kwargs` in store conf is not a dict.')
 
         if store_type == "map":
-            store = MapStore(node_groups=self._activated_embeddings.keys(), embed=self.embed, **kwargs)
+            store = MapStore(node_groups=list(self._activated_embeddings.keys()), embed=self.embed, **kwargs)
         elif store_type == "chroma":
             store = ChromadbStore(group_embed_keys=self._activated_embeddings, embed=self.embed,
                                   embed_dims=self._embed_dims, **kwargs)
@@ -114,14 +114,22 @@ class DocImpl:
         if not isinstance(indices_conf, Dict):
             raise ValueError(f"`indices`'s type [{type(indices_conf)}] is not a dict")
 
-        for backend_type, kwargs in indices_conf.items():
-            index = SmartEmbeddingIndex(backend_type=backend_type,
-                                        group_embed_keys=self._activated_embeddings,
-                                        embed=self.embed,
-                                        embed_dims=self._embed_dims,
-                                        fields_desc=self._fields_desc,
-                                        **kwargs)
-            store.register_index(type=backend_type, index=index)
+        for index_type, conf in indices_conf.items():
+            if index_type == 'smart_embedding_index':
+                backend_type = conf.get('backend')
+                if not backend_type:
+                    raise ValueError('`backend` is not specified in `smart_embedding_index`.')
+                kwargs = conf.get('kwargs', {})
+                index = SmartEmbeddingIndex(backend_type=backend_type,
+                                            group_embed_keys=self._activated_embeddings,
+                                            embed=self.embed,
+                                            embed_dims=self._embed_dims,
+                                            fields_desc=self._fields_desc,
+                                            **kwargs)
+            else:
+                raise ValueError(f'unsupported index type [{index_type}]')
+
+            store.register_index(type=index_type, index=index)
 
         return store
 
