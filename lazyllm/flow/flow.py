@@ -504,6 +504,7 @@ class Graph(LazyLLMFlowsBase):
         self._nodes[Graph.start_node_name] = Graph.Node(None, Graph.start_node_name)
         self._nodes[Graph.end_node_name] = Graph.Node(lazyllm.Identity(), Graph.end_node_name)
         self._in_degree = {node: 0 for node in self._nodes.values()}
+        self._out_degree = {node: 0 for node in self._nodes.values()}
         self._sorted_nodes = None
 
     def set_node_arg_name(self, arg_names):
@@ -529,6 +530,7 @@ class Graph(LazyLLMFlowsBase):
         assert from_node.name not in to_node.inputs, f'Duplicate edges from {from_node.name} to {to_node.name}'
         to_node.inputs[from_node.name] = formatter
         self._in_degree[to_node] += 1
+        self._out_degree[from_node] += 1
 
     def topological_sort(self):
         in_degree = self._in_degree.copy()
@@ -546,7 +548,7 @@ class Graph(LazyLLMFlowsBase):
         if len(sorted_nodes) != len(self._nodes):
             raise ValueError("Graph has a cycle")
 
-        return [n for n in sorted_nodes if (self._in_degree[n] > 0 or n.name == Graph.start_node_name)]
+        return [n for n in sorted_nodes if (self._in_degree[n] > 0 or self._out_degree[n] > 0)]
 
     def compute_node(self, sid, node, intermediate_results, futures):
         globals._init_sid(sid)
