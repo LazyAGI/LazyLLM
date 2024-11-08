@@ -1,12 +1,44 @@
 import lazyllm
 from lazyllm.engine import LightEngine
+from lazyllm.components import NodeMetaHook
 import pytest
 from .utils import SqlEgsData, get_sql_init_keywords
 from lazyllm.tools import SqlManager
 from .tools import (get_current_weather_code, get_current_weather_vars, get_current_weather_doc,
                     get_n_day_weather_forecast_code, multiply_tool_code, add_tool_code, dummy_code)
+import unittest
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from fastapi.testclient import TestClient
+import json
 
-class TestEngine(object):
+app = FastAPI()
+
+
+@app.post("/mock_post")
+async def receive_json(data: dict):
+    print("+" * 100)
+    print(data)
+    print("-" * 100)
+    return JSONResponse(content=data)
+
+
+class TestEngine(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        client = TestClient(app)
+
+        def mock_report(self):
+            headers = {"Content-Type": "application/json; charset=utf-8"}
+            json_data = json.dumps(self._meta_info, ensure_ascii=False)
+            try:
+                lazyllm.LOG.info(f"meta_info: {self._meta_info}")
+                response = client.post(self.URL, data=json_data, headers=headers)
+                assert response.json() == self._meta_info, "mock response should be same as input"
+            except Exception as e:
+                lazyllm.LOG.warning(f"Error sending collected data: {e}")
+
+        NodeMetaHook.report = mock_report
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
@@ -49,6 +81,7 @@ class TestEngine(object):
                       args=dict(tools=['1001', '1002', '1003', '1004']))]
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
+        engine.set_report_url("mock_post")
         gid = engine.start(nodes, edges, resources)
         assert '22' in engine.run(gid, [dict(name='get_current_weather', arguments=dict(location='Paris'))])[0]
 
@@ -149,11 +182,20 @@ class TestEngine(object):
                     tables_info_dict=SqlEgsData.TEST_TABLES_INFO,
                 ),
             ),
-            dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="sensenova")),
+            dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="qwen")),
         ]
-        nodes = [dict(id="2", kind="SqlCall", name="sql_call", args=dict(sql_manager="0", llm="1", sql_examples=""))]
+        nodes = [
+            dict(
+                id="2",
+                kind="SqlCall",
+                name="sql_call",
+                args=dict(sql_manager="0", llm="1", sql_examples="", _lazyllm_enable_report=True),
+            )
+        ]
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
         engine = LightEngine()
+        # Note: Set real http://ip:port/uri ...
+        engine.set_report_url("mock_post")
         gid = engine.start(nodes, edges, resources)
         str_answer = engine.run(gid, "员工编号是3的人来自哪个部门？")
         assert "销售三部" in str_answer

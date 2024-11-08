@@ -407,7 +407,7 @@ class LLMParser(NodeTransform):
         prompt = en_prompt_template if language == "en" else ch_prompt_template
         self._llm = llm.share(
             prompt=AlpacaPrompter(prompt).pre_hook(self.prompt_pre_hook)
-        )
+        ).used_by(self._module_id)
         self._task_type = task_type
 
     def prompt_pre_hook(

@@ -16,6 +16,7 @@ class Node():
 
     func: Optional[Callable] = None
     arg_names: Optional[List[str]] = None
+    enable_hook: bool = False
     subitem_name: Optional[Union[List[str], str]] = None
 
     @property

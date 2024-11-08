@@ -23,6 +23,8 @@ from ..common.bind import _MetaBind
 from ..launcher import LazyLLMLaunchersBase as Launcher
 import uuid
 from ..client import get_redis, redis_client
+from ..components.hook import LazyllmHook
+
 
 # use _MetaBind:
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
@@ -52,9 +54,11 @@ class ModuleBase(metaclass=_MetaBind):
         self._return_trace = return_trace
         self.mode_list = ('train', 'server', 'eval')
         self._set_mid()
+        self._used_by_moduleid = None
         self._module_name = None
         self._options = []
         self.eval_result = None
+        self._hooks = set()
 
     def __setattr__(self, name: str, value):
         if isinstance(value, ModuleBase):
@@ -88,19 +92,51 @@ class ModuleBase(metaclass=_MetaBind):
         raise AttributeError(f'{self.__class__} object has no attribute {key}')
 
     def __call__(self, *args, **kw):
+        hook_objs = []
+        for hook_type in self._hooks:
+            hook_objs.append(hook_type(self))
+            hook_objs[-1].pre_hook(*args, **kw)
         try:
             kw.update(globals['global_parameters'].get(self._module_id, dict()))
             if (history := globals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
             r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
+            print("TYPE: ", self.__class__)
+            print("RRRRRRRRRR: ", r)
+            print("hook_objs:", hook_objs)
             if self._return_trace:
                 lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))
         except Exception as e:
-            raise RuntimeError(f'\nAn error occured in {self.__class__} with name {self.name}.\n'
-                               f'Args:\n{args}\nKwargs\n{kw}\nError messages:\n{e}\n')
+            raise RuntimeError(
+                f"\nAn error occured in {self.__class__} with name {self.name}.\n"
+                f"Args:\n{args}\nKwargs\n{kw}\nError messages:\n{e}\n"
+            )
+        for hook_obj in hook_objs:
+            hook_obj.post_hook(r)
+        for hook_obj in hook_objs:
+            hook_obj.report()
+        self._clear_usage()
         return r
+
+    def used_by(self, module_id):
+        self._used_by_moduleid = module_id
+        return self
+
+    def _clear_usage(self):
+        globals["usage"].pop(self._module_id, None)
 
     # interfaces
     def forward(self, *args, **kw): raise NotImplementedError
+
+    def register_hook(self, hook_type: LazyllmHook):
+        self._hooks.add(hook_type)
+
+    def unregister_hook(self, hook_type: LazyllmHook):
+        if hook_type in self._hooks:
+            self._hooks.remove(hook_type)
+
+    def clear_hooks(self):
+        self._hooks = set()
+
     def _get_train_tasks(self): return None
     def _get_deploy_tasks(self): return None
     def _get_post_process_tasks(self): return None

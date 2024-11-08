@@ -33,8 +33,8 @@ class PlanAndSolveAgent(ModuleBase):
                without specify plan and solve, or specify only plan and solve without specifying llm, or specify \
                both llm and solve. Other situations are not allowed.'
         assert tools, "tools cannot be empty."
-        self._plan_llm = (plan_llm or llm).share(prompt=ChatPrompter(instruction=PLANNER_PROMPT))
-        self._solve_llm = (solve_llm or llm).share()
+        self._plan_llm = (plan_llm or llm).share(prompt=ChatPrompter(instruction=PLANNER_PROMPT)).used_by(self._module_id)
+        self._solve_llm = (solve_llm or llm).share().used_by(self._module_id)
         self._tools = tools
         with pipeline() as self._agent:
             self._agent.plan = self._plan_llm

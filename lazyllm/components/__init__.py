@@ -3,6 +3,7 @@
 from .core import register
 from .prompter import Prompter, AlpacaPrompter, ChatPrompter
 from .data import LazyLLMDataprocBase
+from .hook import LazyllmHook, NodeMetaHook
 from .finetune import LazyLLMFinetuneBase
 from .deploy import LazyLLMDeployBase, FastapiApp
 from .validate import LazyLLMValidateBase
@@ -14,26 +15,28 @@ from .text_to_speech import TTSDeploy, BarkDeploy, ChatTTSDeploy, MusicGenDeploy
 from .speech_to_text import SenseVoiceDeploy
 
 __all__ = [
-    'register',
-    'Prompter',
-    'AlpacaPrompter',
-    'ChatPrompter',
-    'LazyLLMDataprocBase',
-    'LazyLLMFinetuneBase',
-    'LazyLLMDeployBase',
-    'LazyLLMValidateBase',
-    'FastapiApp',
-    'AutoDeploy',
-    'AutoFinetune',
-    'ModelManager',
-    'FormatterBase',
-    'EmptyFormatter',
-    'JsonFormatter',
-    'FileFormatter',
-    'StableDiffusionDeploy',
-    'TTSDeploy',
-    'BarkDeploy',
-    'ChatTTSDeploy',
-    'MusicGenDeploy',
-    'SenseVoiceDeploy',
+    "register",
+    "Prompter",
+    "AlpacaPrompter",
+    "ChatPrompter",
+    "LazyLLMDataprocBase",
+    "LazyLLMFinetuneBase",
+    "LazyLLMDeployBase",
+    "LazyLLMValidateBase",
+    "FastapiApp",
+    "AutoDeploy",
+    "AutoFinetune",
+    "ModelManager",
+    "FormatterBase",
+    "EmptyFormatter",
+    "JsonFormatter",
+    "FileFormatter",
+    "StableDiffusionDeploy",
+    "TTSDeploy",
+    "BarkDeploy",
+    "ChatTTSDeploy",
+    "MusicGenDeploy",
+    "SenseVoiceDeploy",
+    "LazyllmHook",
+    "NodeMetaHook",
 ]

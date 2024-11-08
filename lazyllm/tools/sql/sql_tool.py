@@ -33,7 +33,7 @@ class TablesInfo(pydantic.BaseModel):
     tables: list[TableInfo]
 
 
-class SqlManager:
+class SqlManager(ModuleBase):
     DB_TYPE_SUPPORTED = set(["PostgreSQL", "MySQL", "MSSQL", "SQLite"])
     SUPPORTED_DATA_TYPES = {
         "integer": sqlalchemy.Integer,
@@ -53,8 +53,12 @@ class SqlManager:
         tables_info_dict: dict,
         options_str: str = "",
     ) -> None:
+        super().__init__()
         conn_url = f"{db_type.lower()}://{user}:{password}@{host}:{port}/{db_name}"
         self.reset_db(db_type, conn_url, tables_info_dict, options_str)
+
+    def forward(self, sql_script: str) -> str:
+        return self.get_query_result_in_json(sql_script)
 
     def reset_tables(self, tables_info_dict: dict) -> tuple[bool, str]:
         existing_tables = set(self.get_all_tables())
@@ -304,14 +308,14 @@ class SqlCall(ModuleBase):
         super().__init__(return_trace=return_trace)
         self._sql_tool = sql_manager
         self._query_prompter = ChatPrompter(instruction=sql_query_instruct_template).pre_hook(self.sql_query_promt_hook)
-        self._llm_query = llm.share(prompt=self._query_prompter)
+        self._llm_query = llm.share(prompt=self._query_prompter).used_by(self._module_id)
         self._answer_prompter = ChatPrompter(instruction=sql_explain_instruct_template).pre_hook(
             self.sql_explain_prompt_hook
         )
-        self._llm_answer = llm.share(prompt=self._answer_prompter)
+        self._llm_answer = llm.share(prompt=self._answer_prompter).used_by(self._module_id)
         self._pattern = re.compile(r"```sql(.+?)```", re.DOTALL)
         with pipeline() as sql_execute_ppl:
-            sql_execute_ppl.exec = self._sql_tool.get_query_result_in_json
+            sql_execute_ppl.exec = self._sql_tool
             if use_llm_for_sql_result:
                 sql_execute_ppl.concate = (lambda q, r: [q, r]) | bind(sql_execute_ppl.input, _0)
                 sql_execute_ppl.llm_answer = self._llm_answer

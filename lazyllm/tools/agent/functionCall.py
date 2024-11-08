@@ -44,7 +44,7 @@ class FunctionCall(ModuleBase):
         self._tools_manager = ToolManager(tools, return_trace=return_trace)
         self._prompter = ChatPrompter(instruction=_prompt, tools=self._tools_manager.tools_description)\
             .pre_hook(function_call_hook)
-        self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter())
+        self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
         with pipeline() as self._impl:
             self._impl.m1 = self._llm
             self._impl.m2 = self._parser

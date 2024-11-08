@@ -4,12 +4,10 @@ from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier
 from lazyllm.common import compile_func
 from .node import all_nodes, Node
+from ..components.hook import NodeMetaHook
 import inspect
 import functools
-
-class CodeBlock(object):
-    def __init__(self, code):
-        pass
+import warnings
 
 
 # Each session will have a separate engine
@@ -57,6 +55,9 @@ class Engine(object):
     def build_node(self, node) -> Callable:
         return _constructor.build(node)
 
+    @overload
+    def set_report_url(self, url) -> None: ...
+
     def reset(self):
         for node in self._nodes:
             self.stop(node)
@@ -93,6 +94,7 @@ class NodeConstructor(object):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
         node.arg_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
+        node.enable_report = node.args.pop("_lazyllm_enable_report", False) if isinstance(node.args, dict) else False
         if node.kind in NodeConstructor.builder_methods:
             createf, node.subitem_name = NodeConstructor.builder_methods[node.kind]
             node.func = createf(**node.args) if isinstance(node.args, dict) and set(node.args.keys()).issubset(
@@ -124,6 +126,10 @@ class NodeConstructor(object):
         for key, value in build_args.items():
             module = getattr(module, key)(value, **other_args.get(key, dict()))
         node.func = module
+        if not isinstance(module, lazyllm.ModuleBase):
+            raise TypeError(f"Expected 'node.func' to be of type ModuleBase but got {type(node.func)}")
+        if node.enable_report:
+            node.func.register_hook(NodeMetaHook)
         return node
 
 
@@ -240,7 +246,8 @@ def make_subapp(nodes: List[dict], edges: List[dict], resources: List[dict] = []
 # Note: It will be very dangerous if provided to C-end users as a SAAS service
 @NodeConstructor.register('Code')
 def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
-    return compile_func(code, vars_for_code)
+    CodeBlock = type("CodeBlock", (lazyllm.ModuleBase,), {"forward": compile_func(code, vars_for_code)})
+    return CodeBlock()
 
 
 def _build_pipeline(nodes):
