@@ -89,7 +89,7 @@ all_nodes['OnlineEmbedding'] = dict(
         secret_key=NodeArgs(str, None))
 )
 
-all_nodes['SD'] = all_nodes['TTS'] = all_nodes['STT'] = dict(
+all_nodes['SD'] = all_nodes['TTS'] = dict(
     module=lazyllm.TrainableModule,
     init_arguments=dict(base_model=NodeArgs(str))
 )

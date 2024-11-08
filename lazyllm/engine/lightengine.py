@@ -1,5 +1,6 @@
 from .engine import Engine, Node
 from ..components.hook import NodeMetaHook
+import lazyllm
 from lazyllm import once_wrapper
 from typing import List, Dict, Optional, Set, Union
 import copy
@@ -94,4 +95,7 @@ class LightEngine(Engine):
             for node in gid_or_nodes: self.update_node(node)
 
     def run(self, id: str, *args, **kw):
+        if files := kw.pop('_lazyllm_files', None):
+            assert len(args) <= 1 and len(kw) == 0, 'At most one query is enabled when file exists'
+            args = [lazyllm.formatter.file(formatter='encode')(dict(query=args[0] if args else '', files=files))]
         return self.build_node(id).func(*args, **kw)
