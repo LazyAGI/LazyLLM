@@ -3,10 +3,9 @@ import hashlib
 import json
 from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
-from fastapi import Body
 
 from starlette.responses import RedirectResponse
-from fastapi import UploadFile
+from fastapi import UploadFile, Body
 
 import lazyllm
 from lazyllm import FastapiApp as app
@@ -62,17 +61,23 @@ class DocManager(lazyllm.ModuleBase):
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/add_files")
-    def add_files(self, files: List[str] = Body(),
+    def add_files(self, files: List[str] = Body(...),
                   group_name: str = Body(None),
                   metadatas: Optional[str] = Body(None)):
         try:
             if metadatas:
                 metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)
                 assert len(files) == len(metadatas), 'Length of files and metadatas should be the same'
-            ids = self._manager.add_files(files, metadatas=metadatas, status=DocListManager.Status.success)
+
+            if_exists = [os.path.exists(file) for file in files]
+            exist_files = [file for i, file in enumerate(files) if if_exists[i]]
+            nonexist_files = [file for i, file in enumerate(files) if not if_exists[i]]
+            exist_metadatas = [metadatas[i] for i in range(len(files)) if if_exists[i]] if metadatas else None
+
+            ids = self._manager.add_files(exist_files, metadatas=exist_metadatas, status=DocListManager.Status.success)
             if group_name:
                 self._manager.add_files_to_kb_group(ids, group=group_name)
-            return BaseResponse(data=ids)
+            return BaseResponse(data={"uploaded_ids": ids, "nonexist_files": nonexist_files})
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
