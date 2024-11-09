@@ -266,6 +266,7 @@ def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
     code_block = CodeBlock()
     code_block.__doc__ = ori_func.__doc__
     code_block.__name__ = ori_func.__name__
+    code_block._ori_func = ori_func
     return code_block
 
 
@@ -374,7 +375,10 @@ def _get_tools(tools):
     callable_list = []
     for rid in tools:  # `tools` is a list of ids in engine's resources
         node = Engine().build_node(rid)
-        wrapper_func = return_a_wrapper_func(node.func)
+        if type(node.func).__name__ == "CodeBlock":
+            wrapper_func = return_a_wrapper_func(node.func._ori_func)
+        else:
+            wrapper_func = return_a_wrapper_func(node.func)
         wrapper_func.__name__ = node.name
         callable_list.append(wrapper_func)
     return callable_list
