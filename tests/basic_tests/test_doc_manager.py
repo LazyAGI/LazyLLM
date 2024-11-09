@@ -272,4 +272,4 @@ class TestDocListServer(object):
             'metadatas': json.dumps([{"key": "value"}])
         }
         response = requests.post(self.get_url('add_files'), json=json_data)
-        assert response.status_code == 200 and len(response.json().get('data')) == 1
+        assert response.status_code == 200 and len(response.json().get('data')["uploaded_ids"]) == 1
