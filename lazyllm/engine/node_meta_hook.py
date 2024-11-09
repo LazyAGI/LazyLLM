@@ -2,8 +2,7 @@ import time
 import requests
 import json
 import lazyllm
-from lazyllm import globals
-from ..components import LazyLLMHook
+from lazyllm import globals, LazyLLMHook
 
 
 class MetaKeys:
@@ -40,7 +39,10 @@ class NodeMetaHook(LazyLLMHook):
     def pre_hook(self, *args, **kwargs):
         arguments = {}
         if len(args) == 1:
-            self._meta_info[MetaKeys.INPUT] = str(args[0])
+            if isinstance(args[0], tuple) and len(args[0]) == 1:
+                self._meta_info[MetaKeys.INPUT] = str(args[0][0])
+            else:
+                self._meta_info[MetaKeys.INPUT] = str(args[0])
         else:
             for index, value in enumerate(args):
                 arguments[f"arg_{index}"] = value
@@ -49,8 +51,6 @@ class NodeMetaHook(LazyLLMHook):
         self._meta_info[MetaKeys.TIMECOST] = time.time()
 
     def post_hook(self, output):
-        if isinstance(output, tuple):
-            raise TypeError("Unexpected tuple for output in post_hook")
         self._meta_info[MetaKeys.OUTPUT] = str(output)
 
         if self._uniqueid in globals["usage"]:

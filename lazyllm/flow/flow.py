@@ -16,6 +16,7 @@ from typing import Union, Tuple, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
+from ..hook import LazyLLMHook
 
 
 class _FuncWrap(object):
@@ -154,12 +155,35 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self._sync = False
+        self._hooks = set()
 
     def __call__(self, *args, **kw):
+        hook_objs = []
+        for hook_type in self._hooks:
+            if isinstance(hook_type, LazyLLMHook):
+                hook_objs.append(hook_type)
+            else:
+                hook_objs.append(hook_type(self))
+            hook_objs[-1].pre_hook(*args, **kw)
         output = self._run(args[0] if len(args) == 1 else package(args), **kw)
         if self.post_action is not None: self.invoke(self.post_action, output)
         if self._sync: self.wait()
-        return self._post_process(output)
+        r = self._post_process(output)
+        for hook_obj in hook_objs[::-1]:
+            hook_obj.post_hook(r)
+        for hook_obj in hook_objs:
+            hook_obj.report()
+        return r
+
+    def register_hook(self, hook_type: LazyLLMHook):
+        self._hooks.add(hook_type)
+
+    def unregister_hook(self, hook_type: LazyLLMHook):
+        if hook_type in self._hooks:
+            self._hooks.remove(hook_type)
+
+    def clear_hooks(self):
+        self._hooks = set()
 
     def _post_process(self, output):
         return output

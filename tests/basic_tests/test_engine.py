@@ -1,4 +1,4 @@
-from lazyllm.engine import LightEngine
+from lazyllm.engine import LightEngine, NodeMetaHook
 import pytest
 import time
 from gradio_client import Client
@@ -6,8 +6,38 @@ import lazyllm
 import urllib3
 from lazyllm.common.common import TimeoutException
 import json
+import unittest
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from fastapi.testclient import TestClient
+import json
 
-class TestEngine(object):
+app = FastAPI()
+
+
+@app.post("/mock_post")
+async def receive_json(data: dict):
+    return JSONResponse(content=data)
+
+
+class TestEngine(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        client = TestClient(app)
+
+        def mock_report(self):
+            headers = {"Content-Type": "application/json; charset=utf-8"}
+            json_data = json.dumps(self._meta_info, ensure_ascii=False)
+            try:
+                lazyllm.LOG.info(f"meta_info: {self._meta_info}")
+                response = client.post(self.URL, data=json_data, headers=headers)
+                assert (
+                    response.json() == self._meta_info
+                ), "mock response should be same as input"
+            except Exception as e:
+                lazyllm.LOG.warning(f"Error sending collected data: {e}")
+
+        NodeMetaHook.report = mock_report
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
@@ -43,14 +73,20 @@ class TestEngine(object):
         plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
         double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
         square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
-        switch = dict(id='4', kind='Switch', name='s1', args=dict(judge_on_full_input=True, nodes={
-            1: [double],
-            2: [plus1, double],
-            3: [square]
-        }))
+        switch = dict(
+            id="4",
+            kind="Switch",
+            name="s1",
+            args=dict(
+                judge_on_full_input=True,
+                nodes={1: [double], 2: [plus1, double], 3: [square]},
+                _lazyllm_enable_report=True,
+            ),
+        )
         nodes = [switch]
         edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         engine = LightEngine()
+        engine.set_report_url("mock_post")
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 1) == 2
         assert engine.run(gid, 2) == 6
@@ -58,11 +94,16 @@ class TestEngine(object):
 
         engine.reset()
 
-        switch = dict(id='4', kind='Switch', name='s1', args=dict(judge_on_full_input=False, nodes={
-            'case1': [double],
-            'case2': [plus1, double],
-            'case3': [square]
-        }))
+        switch = dict(
+            id="4",
+            kind="Switch",
+            name="s1",
+            args=dict(
+                judge_on_full_input=False,
+                nodes={"case1": [double], "case2": [plus1, double], "case3": [square]},
+                _lazyllm_enable_report=True,
+            ),
+        )
         gid = engine.start([switch], edges)
         assert engine.run(gid, 'case1', 1) == 2
         assert engine.run(gid, 'case2', 1) == 4
@@ -75,11 +116,21 @@ class TestEngine(object):
         plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
         double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
         square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
-        ifs = dict(id='4', kind='Ifs', name='i1', args=dict(
-            cond='def cond(x): return x < 10', true=[plus1, double], false=[square]))
+        ifs = dict(
+            id="4",
+            kind="Ifs",
+            name="i1",
+            args=dict(
+                cond="def cond(x): return x < 10",
+                true=[plus1, double],
+                false=[square],
+                _lazyllm_enable_report=True,
+            ),
+        )
         nodes = [ifs]
         edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         engine = LightEngine()
+        engine.set_report_url("mock_post")
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 1) == 4
         assert engine.run(gid, 5) == 12
@@ -89,11 +140,23 @@ class TestEngine(object):
         nodes = [dict(id='1', kind='Code', name='code', args='def square(x: int): return x * x')]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
 
-        nodes = [dict(id='2', kind='Loop', name='loop',
-                      args=dict(stop_condition='def cond(x): return x > 10', nodes=nodes, edges=edges))]
+        nodes = [
+            dict(
+                id="2",
+                kind="Loop",
+                name="loop",
+                args=dict(
+                    stop_condition="def cond(x): return x > 10",
+                    nodes=nodes,
+                    edges=edges,
+                    _lazyllm_enable_report=True,
+                ),
+            )
+        ]
         edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
 
         engine = LightEngine()
+        engine.set_report_url("mock_post")
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2) == 16
 
@@ -101,10 +164,22 @@ class TestEngine(object):
         nodes = [dict(id='1', kind='Code', name='code', args='def square(x: int): return x * x')]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
 
-        nodes = [dict(id='2', kind='Warp', name='warp', args=dict(nodes=nodes, edges=edges))]
+        nodes = [
+            dict(
+                id="2",
+                kind="Warp",
+                name="warp",
+                args=dict(
+                    nodes=nodes,
+                    edges=edges,
+                    _lazyllm_enable_report=True,
+                ),
+            )
+        ]
         edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
 
         engine = LightEngine()
+        engine.set_report_url("mock_post")
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2, 3, 4, 5) == (4, 9, 16, 25)
 
@@ -408,6 +483,7 @@ class TestEngine(object):
                                       '10': 'running',
                                       '1': 'running',
                                       '0': lazyllm.launcher.Status.Running}
+
 
 class TestEngineRAG(object):
 

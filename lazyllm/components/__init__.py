@@ -3,7 +3,6 @@
 from .core import register
 from .prompter import Prompter, AlpacaPrompter, ChatPrompter
 from .data import LazyLLMDataprocBase
-from .hook import LazyLLMHook
 from .finetune import LazyLLMFinetuneBase
 from .deploy import LazyLLMDeployBase, FastapiApp
 from .validate import LazyLLMValidateBase
@@ -37,5 +36,4 @@ __all__ = [
     "ChatTTSDeploy",
     "MusicGenDeploy",
     "SenseVoiceDeploy",
-    "LazyLLMHook",
 ]

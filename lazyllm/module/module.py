@@ -23,7 +23,7 @@ from ..common.bind import _MetaBind
 from ..launcher import LazyLLMLaunchersBase as Launcher
 import uuid
 from ..client import get_redis, redis_client
-from ..components.hook import LazyLLMHook
+from ..hook import LazyLLMHook
 
 
 # use _MetaBind:
