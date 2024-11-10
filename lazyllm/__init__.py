@@ -13,6 +13,7 @@ from .module import (ModuleBase, ModuleBase as Module, UrlModule, TrainableModul
                      ServerModule, TrialModule, register as module_register,
                      OnlineChatModule, OnlineEmbeddingModule, AutoModel)
 from .client import redis_client
+from .hook import LazyLLMHook
 from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
                     FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
                     LLMParser)
@@ -61,6 +62,9 @@ __all__ = [
 
     # client
     'redis_client',
+
+    # hook
+    'LazyLLMHook',
 
     # tools
     'Document',

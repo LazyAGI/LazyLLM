@@ -4,12 +4,9 @@ from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier
 from lazyllm.common import compile_func
 from .node import all_nodes, Node
+from .node_meta_hook import NodeMetaHook
 import inspect
 import functools
-
-class CodeBlock(object):
-    def __init__(self, code):
-        pass
 
 
 # Each session will have a separate engine
@@ -57,6 +54,9 @@ class Engine(object):
     def build_node(self, node) -> Callable:
         return _constructor.build(node)
 
+    def set_report_url(self, url) -> None:
+        NodeMetaHook.URL = url
+
     def reset(self):
         for node in self._nodes:
             self.stop(node)
@@ -93,10 +93,13 @@ class NodeConstructor(object):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
         node.arg_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
+        node.enable_data_reflow = (node.args.pop('_lazyllm_enable_report', False)
+                                   if isinstance(node.args, dict) else False)
         if node.kind in NodeConstructor.builder_methods:
             createf, node.subitem_name = NodeConstructor.builder_methods[node.kind]
             node.func = createf(**node.args) if isinstance(node.args, dict) and set(node.args.keys()).issubset(
                 set(inspect.getfullargspec(createf).args)) else createf(node.args)
+            self._process_hook(node, node.func)
             return node
 
         node_msgs = all_nodes[node.kind]
@@ -124,7 +127,14 @@ class NodeConstructor(object):
         for key, value in build_args.items():
             module = getattr(module, key)(value, **other_args.get(key, dict()))
         node.func = module
+        self._process_hook(node, module)
         return node
+
+    def _process_hook(self, node, module):
+        if not isinstance(module, (lazyllm.ModuleBase, lazyllm.LazyLLMFlowsBase)):
+            return
+        if node.enable_data_reflow:
+            node.func.register_hook(NodeMetaHook)
 
 
 _constructor = NodeConstructor()
@@ -240,7 +250,17 @@ def make_subapp(nodes: List[dict], edges: List[dict], resources: List[dict] = []
 # Note: It will be very dangerous if provided to C-end users as a SAAS service
 @NodeConstructor.register('Code')
 def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
-    return compile_func(code, vars_for_code)
+    ori_func = compile_func(code, vars_for_code)
+
+    def cls_method(self, *args, **kwargs):
+        return ori_func(*args, **kwargs)
+
+    CodeBlock = type("CodeBlock", (lazyllm.ModuleBase,), {"forward": cls_method})
+    code_block = CodeBlock()
+    code_block.__doc__ = ori_func.__doc__
+    code_block.__name__ = ori_func.__name__
+    code_block._ori_func = ori_func
+    return code_block
 
 
 def _build_pipeline(nodes):
@@ -348,7 +368,10 @@ def _get_tools(tools):
     callable_list = []
     for rid in tools:  # `tools` is a list of ids in engine's resources
         node = Engine().build_node(rid)
-        wrapper_func = return_a_wrapper_func(node.func)
+        if type(node.func).__name__ == "CodeBlock":
+            wrapper_func = return_a_wrapper_func(node.func._ori_func)
+        else:
+            wrapper_func = return_a_wrapper_func(node.func)
         wrapper_func.__name__ = node.name
         callable_list.append(wrapper_func)
     return callable_list
