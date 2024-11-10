@@ -39,7 +39,7 @@ class NodeMetaHook(LazyLLMHook):
     def pre_hook(self, *args, **kwargs):
         arguments = {}
         if len(args) == 1:
-            if isinstance(args[0], tuple) and len(args[0]) == 1:
+            if isinstance(args[0], lazyllm.package) and len(args[0]) == 1:
                 self._meta_info[MetaKeys.INPUT] = str(args[0][0])
             else:
                 self._meta_info[MetaKeys.INPUT] = str(args[0])

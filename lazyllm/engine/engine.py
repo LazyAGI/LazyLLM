@@ -92,16 +92,9 @@ class NodeConstructor(object):
     def build(self, node: Node):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
-        node.arg_names = (
-            node.args.pop("_lazyllm_arg_names", None)
-            if isinstance(node.args, dict)
-            else None
-        )
-        node.enable_data_reflow = (
-            node.args.pop("_lazyllm_enable_report", False)
-            if isinstance(node.args, dict)
-            else False
-        )
+        node.arg_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
+        node.enable_data_reflow = (node.args.pop('_lazyllm_enable_report', False)
+                                   if isinstance(node.args, dict) else False)
         if node.kind in NodeConstructor.builder_methods:
             createf, node.subitem_name = NodeConstructor.builder_methods[node.kind]
             node.func = createf(**node.args) if isinstance(node.args, dict) and set(node.args.keys()).issubset(
