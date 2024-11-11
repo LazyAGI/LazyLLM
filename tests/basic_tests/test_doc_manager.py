@@ -265,7 +265,7 @@ class TestDocListServer(object):
         assert response.status_code == 200 and len(response.json().get('data')) == 1
 
     @pytest.mark.order(6)
-    def test_add_file_by_path(self):
+    def test_add_files(self):
         json_data = {
             'files': [self.test_file_extra],
             'group_name': "extra_group",
