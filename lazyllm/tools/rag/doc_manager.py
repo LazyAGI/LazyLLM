@@ -74,10 +74,13 @@ class DocManager(lazyllm.ModuleBase):
             nonexist_files = [file for i, file in enumerate(files) if not if_exists[i]]
             exist_metadatas = [metadatas[i] for i in range(len(files)) if if_exists[i]] if metadatas else None
 
+            files_info = self._manager.list_files(limit=None, details=True, status=DocListManager.Status.all)
+            exists_ids = [row[0] for row in files_info if row[2] in exist_files]
+
             ids = self._manager.add_files(exist_files, metadatas=exist_metadatas, status=DocListManager.Status.success)
             if group_name:
-                self._manager.add_files_to_kb_group(ids, group=group_name)
-            return BaseResponse(data={"uploaded_ids": ids, "nonexist_files": nonexist_files})
+                self._manager.add_files_to_kb_group(ids + exists_ids, group=group_name)
+            return BaseResponse(data={"uploaded_ids": ids + exists_ids, "nonexist_files": nonexist_files})
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
