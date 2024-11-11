@@ -1,4 +1,4 @@
-from typing import List, Callable, Dict, Type, Optional, Union, Any, overload
+from typing import List, Dict, Type, Optional, Union, Any, overload
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier
@@ -51,7 +51,7 @@ class Engine(object):
     def release_node(self, nodeid: str): pass
     def stop(self, node_id: Optional[str] = None, task_name: Optional[str] = None): pass
 
-    def build_node(self, node) -> Callable:
+    def build_node(self, node) -> Node:
         return _constructor.build(node)
 
     def set_report_url(self, url) -> None:
@@ -404,13 +404,40 @@ def make_http_tool(method: Optional[str] = None,
         instance.__doc__ = doc
     return instance
 
-@NodeConstructor.register('SharedLLM')
-def make_shared_llm(llm: str, prompt: Optional[str] = None):
-    return Engine().build_node(llm).func.share(prompt=prompt)
+
+class VQA(lazyllm.Module):
+    def __init__(self, base_model: Union[str, lazyllm.TrainableModule], file_resource_id: Optional[str]):
+        super().__init__()
+        self.vqa = self._vqa = (lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
+                                if not isinstance(base_model, lazyllm.TrainableModule) else base_model)
+        self._file_resource_id = file_resource_id
+        if file_resource_id:
+            with pipeline() as self.vqa:
+                self.vqa.file = Engine().build_node(file_resource_id).func
+                self.vqa.vqa = self._vqa | lazyllm.bind(self.vqa.input, lazyllm._0)
+
+    def status(self, task_name: Optional[str] = None):
+        return self._vqa.status(task_name)
+
+    def share(self, prompt: str):
+        shared_vqa = self._vqa.share(prompt=prompt)
+        return VQA(shared_vqa, self._file_resource_id)
+
+    def forward(self, *args, **kw):
+        return self.vqa(*args, **kw)
+
 
 @NodeConstructor.register('VQA')
-def make_vqa(base_model: str):
-    return lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
+def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
+    return VQA(base_model, file_resource_id)
+
+
+@NodeConstructor.register('SharedLLM')
+def make_shared_llm(llm: str, prompt: Optional[str] = None, file_resource_id: Optional[str] = None):
+    llm = Engine().build_node(llm).func
+    if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
+    return VQA(llm._vqa.share(prompt=prompt), file_resource_id) if file_resource_id else llm.share(prompt=prompt)
+
 
 @NodeConstructor.register('STT')
 def make_stt(base_model: str):
@@ -424,6 +451,20 @@ def make_stt(base_model: str):
 
     return lazyllm.ifs(cond, tpath=lazyllm.TrainableModule(base_model), fpath=lazyllm.Identity())
 
+
 @NodeConstructor.register('Constant')
 def make_constant(value: Any):
     return (lambda *args, **kw: value)
+
+
+class FileResource(object):
+    def __init__(self, id) -> None:
+        self.id = id
+
+    def __call__(self, *args, **kw) -> Union[str, List[str]]:
+        return lazyllm.globals['lazyllm_files'].get(self.id)
+
+
+@NodeConstructor.register('File')
+def make_file(id: str):
+    return FileResource(id)

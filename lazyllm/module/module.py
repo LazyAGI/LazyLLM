@@ -326,6 +326,10 @@ class UrlModule(ModuleBase, UrlTemplate):
             if isinstance(__input, package):
                 assert not lazyllm_files, 'Duplicate `files` argument provided by args and kwargs'
                 __input, lazyllm_files = __input
+                if lazyllm_files and (__input.startswith(LAZYLLM_QUERY_PREFIX)
+                                      or lazyllm_files.startswith(LAZYLLM_QUERY_PREFIX)):
+                    raise RuntimeError('Neither the query nor the file is allowed to be encoded '
+                                       'when the query and file passing in separately.')
             if isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
                 assert not lazyllm_files, 'Argument `files` is already provided by query'
                 deinput = decode_query_with_filepaths(__input)

@@ -91,8 +91,13 @@ class LightEngine(Engine):
         else:
             for node in gid_or_nodes: self.update_node(node)
 
-    def run(self, id: str, *args, **kw):
-        if files := kw.pop('_lazyllm_files', None):
+    def run(self, id: str, *args, _lazyllm_files: Optional[Union[str, List[str]]] = None,
+            _file_resources: Optional[Dict[str, Union[str, List[str]]]] = None, **kw):
+        if files := _lazyllm_files:
             assert len(args) <= 1 and len(kw) == 0, 'At most one query is enabled when file exists'
             args = [lazyllm.formatter.file(formatter='encode')(dict(query=args[0] if args else '', files=files))]
-        return self.build_node(id).func(*args, **kw)
+        if _file_resources:
+            lazyllm.globals['lazyllm_files'] = _file_resources
+        result = self.build_node(id).func(*args, **kw)
+        lazyllm.globals['lazyllm_files'] = {}
+        return result
