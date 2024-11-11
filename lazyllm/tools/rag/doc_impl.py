@@ -1,3 +1,4 @@
+import json
 import ast
 from collections import defaultdict
 from functools import wraps
@@ -13,7 +14,7 @@ from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
 from .utils import DocListManager
-from .doc_field_desc import DocFieldDesc
+from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH
 import threading
 import time
 
@@ -38,7 +39,7 @@ class DocImpl:
 
     def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
-                 fields_desc: Dict[str, DocFieldDesc] = None, store_conf: Optional[Dict] = None):
+                 fields_desc: Dict[str, GlobalMetadataDesc] = None, store_conf: Optional[Dict] = None):
         super().__init__()
         assert (dlm is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
         self._local_file_reader: Dict[str, Callable] = {}
@@ -76,8 +77,13 @@ class DocImpl:
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
 
         if not self.store.is_group_active(LAZY_ROOT_NAME):
-            ids, pathes = self._list_files()
+            ids, pathes, metadatas = self._list_files()
             root_nodes = self._reader.load_data(pathes)
+            assert len(metadatas) == len(root_nodes)
+            for idx, node in enumerate(root_nodes):
+                node.global_metadata = metadatas[idx]
+                node.global_metadata.setdefault(RAG_DOC_ID, ids[idx])
+                node.global_metadata.setdefault(RAG_DOC_PATH, pathes[idx])
             self.store.update_nodes(root_nodes)
             if self._dlm: self._dlm.update_kb_group_file_status(
                 ids, DocListManager.Status.success, group=self._kb_group_name)
@@ -203,7 +209,7 @@ class DocImpl:
 
     def worker(self):
         while True:
-            ids, files = self._list_files(status=DocListManager.Status.deleting)
+            ids, files, _ = self._list_files(status=DocListManager.Status.deleting)
             if files:
                 self._delete_files(files)
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
@@ -211,8 +217,8 @@ class DocImpl:
 
             if self._kb_group_name == DocListManager.DEDAULT_GROUP_NAME:
                 self._dlm.init_tables()
-            ids, files = self._list_files(status=DocListManager.Status.waiting,
-                                          upload_status=DocListManager.Status.success)
+                ids, files, _ = self._list_files(status=DocListManager.Status.waiting,
+                                                 upload_status=DocListManager.Status.success)
             if files:
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
                 self._add_files(files)
@@ -220,15 +226,18 @@ class DocImpl:
                 continue
             time.sleep(10)
 
-    def _list_files(self, status: Union[str, List[str]] = DocListManager.Status.all,
-                    upload_status: Union[str, List[str]] = DocListManager.Status.all) -> Tuple[List[str], List[str]]:
-        if self._doc_files: return None, self._doc_files
-        ids, paths = [], []
+    def _list_files(
+            self, status: Union[str, List[str]] = DocListManager.Status.all,
+            upload_status: Union[str, List[str]] = DocListManager.Status.all
+    ) -> Tuple[List[str], List[str], List[Dict]]:
+        if self._doc_files: return None, self._doc_files, None
+        ids, paths, metadatas = [], [], []
         for row in self._dlm.list_kb_group_files(group=self._kb_group_name, status=status,
                                                  upload_status=upload_status, details=True):
             ids.append(row[0])
             paths.append(row[1])
-        return ids, paths
+            metadatas.append(json.loads(row[3]) if row[3] else {})
+        return ids, paths, metadatas
 
     def _add_files(self, input_files: List[str]):
         if len(input_files) == 0:

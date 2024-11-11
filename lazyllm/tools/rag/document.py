@@ -10,7 +10,7 @@ from .doc_impl import DocImpl
 from .doc_node import DocNode
 from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .utils import DocListManager
-from .doc_field_desc import DocFieldDesc
+from .global_metadata import GlobalMetadataDesc
 from .web import DocWebModule
 import copy
 import functools
@@ -25,7 +25,7 @@ class Document(ModuleBase):
         def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: Union[bool, str] = False, server: bool = False, name: Optional[str] = None,
                      launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
-                     fields_desc: Optional[Dict[str, DocFieldDesc]] = None):
+                     fields_desc: Optional[Dict[str, GlobalMetadataDesc]] = None):
             super().__init__()
             if not os.path.exists(dataset_path):
                 defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)
@@ -47,7 +47,7 @@ class Document(ModuleBase):
             if server: self._kbs = ServerModule(self._kbs)
             self._fields_desc = fields_desc
 
-        def add_kb_group(self, name, fields_desc: Optional[Dict[str, DocFieldDesc]] = None,
+        def add_kb_group(self, name, fields_desc: Optional[Dict[str, GlobalMetadataDesc]] = None,
                          store_conf: Optional[Dict] = None):
             if isinstance(self._kbs, ServerModule):
                 self._kbs._impl._m[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
@@ -71,7 +71,7 @@ class Document(ModuleBase):
     def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                  create_ui: bool = False, manager: Union[bool, str] = False, server: bool = False,
                  name: Optional[str] = None, launcher: Optional[Launcher] = None,
-                 fields_desc: Dict[str, DocFieldDesc] = None, store_conf: Optional[Dict] = None):
+                 fields_desc: Dict[str, GlobalMetadataDesc] = None, store_conf: Optional[Dict] = None):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')

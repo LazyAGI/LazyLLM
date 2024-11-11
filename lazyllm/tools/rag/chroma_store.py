@@ -131,7 +131,7 @@ class ChromadbStore(StoreBase):
             chroma_metadata = results['metadatas'][i]
 
             parent = chroma_metadata['parent']
-            fields = pickle.loads(base64.b64decode(chroma_metadata['fields'].encode('utf-8')))\
+            global_metadata = pickle.loads(base64.b64decode(chroma_metadata['global_metadata'].encode('utf-8')))\
                 if parent else None
 
             node = DocNode(
@@ -140,7 +140,7 @@ class ChromadbStore(StoreBase):
                 group=chroma_metadata["group"],
                 embedding=pickle.loads(base64.b64decode(chroma_metadata['embedding'].encode('utf-8'))),
                 parent=parent,
-                fields=fields,
+                global_metadata=global_metadata,
             )
 
             if node.embedding:
@@ -170,7 +170,7 @@ class ChromadbStore(StoreBase):
         }
 
         if node.parent:
-            metadata["fields"] = base64.b64encode(pickle.dumps(node.fields)).decode('utf-8')
+            metadata["global_metadata"] = base64.b64encode(pickle.dumps(node.global_metadata)).decode('utf-8')
 
         return metadata
 

@@ -19,7 +19,7 @@ def run(query):
 
     documents = lazyllm.Document(dataset_path="rag_master",
                                  embed=lazyllm.TrainableModule("bge-large-zh-v1.5"),
-                                 manager=False,
+                                 manager=True,
                                  store_conf=milvus_store_conf)
 
     documents.create_node_group(name="sentences",

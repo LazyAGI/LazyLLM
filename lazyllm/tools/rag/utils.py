@@ -6,7 +6,7 @@ from typing import List, Callable, Generator, Dict, Any, Optional, Union, Tuple,
 from abc import ABC, abstractmethod
 from .index_base import IndexBase
 from .doc_node import DocNode
-from .doc_builtin_field import DocBuiltinField
+from .global_metadata import RAG_DOC_PATH
 from lazyllm.common import override
 
 import pydantic
@@ -167,7 +167,6 @@ class SqliteDocListManager(DocListManager):
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     doc_id TEXT NOT NULL,
                     group_name TEXT NOT NULL,
-                    classification TEXT,
                     status TEXT,
                     log TEXT,
                     UNIQUE (doc_id, group_name),
@@ -233,9 +232,8 @@ class SqliteDocListManager(DocListManager):
                             upload_status: Union[str, List[str]] = DocListManager.Status.all,
                             exclude_upload_status: Optional[Union[str, List[str]]] = None):
         query = """
-            SELECT documents.doc_id, documents.path, documents.status,
-                   kb_group_documents.group_name, kb_group_documents.classification,
-                   kb_group_documents.status, kb_group_documents.log
+            SELECT documents.doc_id, documents.path, documents.status, documents.metadata,
+                   kb_group_documents.group_name, kb_group_documents.status, kb_group_documents.log
             FROM kb_group_documents
             JOIN documents ON kb_group_documents.doc_id = documents.doc_id
         """
@@ -515,7 +513,7 @@ class _FileNodeIndex(IndexBase):
     @override
     def update(self, nodes: List[DocNode]) -> None:
         for node in nodes:
-            path = node.metadata.get(DocBuiltinField.DOC_PATH)
+            path = node.metadata.get(RAG_DOC_PATH)
             if path:
                 self.file_node_map.setdefault(path, {}).setdefault(node.uid, node)
 
@@ -536,11 +534,14 @@ class _FileNodeIndex(IndexBase):
         return ret
 
 def generic_process_filters(nodes: List[DocNode], filters: Dict[str, Union[List, set]]) -> List[DocNode]:
-    for field_name, candidates in filters.items():
-        filtered_nodes = []
-        for node in nodes:
-            value = node.fields.get(field_name)
-            if value and value in candidates:
-                filtered_nodes.append(node)
-        nodes = filtered_nodes
-    return nodes
+    res = []
+    for node in nodes:
+        is_valid = True
+        for name, candidates in filters.items():
+            value = node.global_metadata.get(name)
+            if (not value) or (value not in candidates):
+                is_valid = False
+                break
+        if is_valid:
+            res.append(node)
+    return res

@@ -1,6 +1,6 @@
 from typing import Optional, Any
 
-class DocFieldDesc:
+class GlobalMetadataDesc:
     DTYPE_VARCHAR = 0
     DTYPE_ARRAY = 1
     DTYPE_INT32 = 2
@@ -12,3 +12,8 @@ class DocFieldDesc:
         self.element_type = element_type
         self.default_value = default_value
         self.max_size = max_size
+
+# ---------------------------------------------------------------------------- #
+
+RAG_DOC_ID = 'docid'
+RAG_DOC_PATH = 'lazyllm_doc_path'
