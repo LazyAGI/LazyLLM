@@ -2,6 +2,8 @@ import os
 import yaml
 import json
 import tempfile
+import random
+from datetime import datetime
 
 import lazyllm
 from lazyllm import launchers, ArgsDict, thirdparty, CaseInsensitiveDict
@@ -76,6 +78,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.temp_folder = os.path.join(os.getcwd(), '.temp')
         if not os.path.exists(self.temp_folder):
             os.makedirs(self.temp_folder)
+        self.log_file_path = None
 
     def get_template_name(self, base_model):
         try:
@@ -144,8 +147,12 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         updated_template_str = yaml.dump(dict(self.template_dict), default_flow_style=False)
         self.temp_yaml_file = self.build_temp_yaml(updated_template_str)
 
+        formatted_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        random_value = random.randint(1000, 9999)
+        self.log_file_path = f'{self.target_path}/train_log_{formatted_date}_{random_value}.log'
+
         cmds = f'llamafactory-cli train {self.temp_yaml_file}'
-        cmds += f' 2>&1 | tee {self.target_path}/llm_$(date +"%Y-%m-%d_%H-%M-%S").log'
+        cmds += f' 2>&1 | tee {self.log_file_path}'
         if self.temp_export_yaml_file:
             cmds += f' && llamafactory-cli export {self.temp_export_yaml_file}'
         return cmds
