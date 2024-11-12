@@ -716,18 +716,54 @@ class TrainableModule(UrlModule):
         launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or task_type]
         return launcher.status
 
-    def get_train_status(self, ):
+    def get_train_status(self):
         try:
             status = self.status(task_type='finetune')
             if status == Status.Done:
                 status = 'Done'
-            elif status in (Status.Cancelled, Status.Failed):
+            elif status == Status.Cancelled:
+                status = 'Cancelled'
+            elif status == Status.Failed:
                 status = 'Failed'
             else:
                 status = 'Running'
         except KeyError:
             status = 'Invalid'
         return status
+
+    def cancel_finetuning(self, name=None):
+        self.stop(task_name=name, task_type='finetune')
+        time.sleep(0.5)
+        status = self.get_train_status()
+        if status == 'Cancelled':
+            return "Successfully cancelled task."
+        else:
+            return "Failed to cancel task. " + (f" Because: {status}" if status else '')
+
+    def get_log(self, name=None):
+        if not hasattr(self._impl, '_finetuned_model_path') and not name:
+            return None
+        if name and not os.path.isdir(name):
+            return None
+        log_dir = name if name else self._impl._finetuned_model_path
+        parts = log_dir.split(os.sep)
+        if parts[-1].endswith('lazyllm_merge'):
+            parts[-1] = parts[-1].replace('lazyllm_merge', 'lazyllm_lora')
+        log_dir = os.sep.join(parts)
+
+        log_files_paths = []
+        for file in os.listdir(log_dir):
+            if file.endswith(".log") and file.startswith("train_log_"):
+                log_files_paths.append(os.path.join(log_dir, file))
+        if len(log_files_paths) == 0:
+            return None
+        assert len(log_files_paths) == 1
+        return log_files_paths[-1]
+
+    def get_target_model(self):
+        if hasattr(self._impl, '_finetuned_model_path'):
+            return self._impl._finetuned_model_path
+        return None
 
     # modify default value to ''
     def prompt(self, prompt=''):

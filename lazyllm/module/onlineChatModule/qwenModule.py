@@ -1,7 +1,7 @@
 import json
 import os
 import requests
-from typing import Tuple
+from typing import Tuple, List
 import lazyllm
 from .onlineChatModuleBase import OnlineChatModuleBase
 from .fileHandler import FileHandlerBase
@@ -34,6 +34,26 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         self._deploy_paramters = dict()
         if stream:
             self._model_optional_params['incremental_output'] = True
+        self.default_train_data = {
+            "model": "qwen-turbo",
+            "training_file_ids": None,
+            "validation_file_ids": None,
+            "training_type": "efficient_sft",  # sft or efficient_sft
+            "hyper_parameters": {
+                "n_epochs": 1,
+                "batch_size": 16,
+                "learning_rate": "1.6e-5",
+                "split": 0.9,
+                "warmup_ratio": 0.0,
+                "eval_steps": 1,
+                "lr_scheduler_type": "linear",
+                "max_length": 2048,
+                "lora_rank": 8,
+                "lora_alpha": 32,
+                "lora_dropout": 0.1,
+            }
+        }
+        self.fine_tuning_job_id = None
 
     def _get_system_prompt(self):
         return ("You are a large-scale language model from Alibaba Cloud, "
@@ -88,6 +108,20 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             self._dataHandler.close()
             return r.json()['data']['uploaded_files'][0]["file_id"]
 
+    def _update_kw(self, data, normal_config):
+        current_train_data = self.default_train_data.copy()
+        current_train_data.update(data)
+
+        current_train_data["hyper_parameters"]["n_epochs"] = normal_config["num_epochs"]
+        current_train_data["hyper_parameters"]["learning_rate"] = str(normal_config["learning_rate"])
+        current_train_data["hyper_parameters"]["lr_scheduler_type"] = normal_config["lr_scheduler_type"]
+        current_train_data["hyper_parameters"]["batch_size"] = normal_config["batch_size"]
+        current_train_data["hyper_parameters"]["max_length"] = normal_config["cutoff_len"]
+        current_train_data["hyper_parameters"]["lora_rank"] = normal_config["lora_r"]
+        current_train_data["hyper_parameters"]["lora_alpha"] = normal_config["lora_alpha"]
+
+        return current_train_data
+
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
         url = os.path.join(self._base_url, "api/v1/fine-tunes")
         headers = {
@@ -100,14 +134,87 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         }
         if "training_parameters" in kw.keys():
             data.update(kw["training_parameters"])
+        elif 'finetuning_type' in kw:
+            data = self._update_kw(data, kw)
 
         with requests.post(url, headers=headers, json=data) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
             fine_tuning_job_id = r.json()["output"]["job_id"]
+            self.fine_tuning_job_id = fine_tuning_job_id
             status = r.json()["output"]["status"]
             return (fine_tuning_job_id, status)
+
+    def _cancel_finetuning_job(self, fine_tuning_job_id=None):
+        if not fine_tuning_job_id and not self.fine_tuning_job_id:
+            return 'Invalid'
+        job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
+        fine_tune_url = os.path.join(self._base_url, f"api/v1/fine-tunes/{job_id}/cancel")
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json"
+        }
+        with requests.post(fine_tune_url, headers=headers) as r:
+            if r.status_code != 200:
+                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+        status = r.json()['output']['status']
+        if status == 'success':
+            return 'Cancelled'
+        else:
+            return f'JOB {job_id} status: {status}'
+
+    def _query_finetuned_jobs(self):
+        fine_tune_url = os.path.join(self._base_url, "api/v1/fine-tunes")
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json"
+        }
+        with requests.get(fine_tune_url, headers=headers) as r:
+            if r.status_code != 200:
+                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+        return r.json()
+
+    def _get_finetuned_model_names(self) -> (List[str], List[str]):
+        model_data = self._query_finetuned_jobs()
+        names_valid = []
+        names_invalid = []
+        for model in model_data['output']['jobs']:
+            if model['status'] == 'SUCCEEDED':
+                # Note: model_name = job_id
+                names_valid.append(model['job_id'])
+            else:
+                names_invalid.append(model['job_id'])
+        return names_valid, names_invalid
+
+    def _query_job_with_model_name(self, model_name=None):
+        if not model_name and not self.fine_tuning_job_id:
+            return 'Invalid'
+        model_name = model_name if model_name else self.fine_tuning_job_id
+        _, status = self._query_finetuning_job(model_name)
+        if status == 'SUCCEEDED':
+            return 'Done'
+        elif status == 'FAILED':
+            return 'Failed'
+        elif status in ('CANCELING', 'CANCELED'):
+            return 'Cancelled'
+        else:
+            return 'Running'
+
+    def _get_log(self, fine_tuning_job_id=None):
+        if not fine_tuning_job_id and not self.fine_tuning_job_id:
+            raise RuntimeError("No job ID specified. Please ensure that a valid 'fine_tuning_job_id' is "
+                               "provided as an argument or started a training job.")
+        job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
+        fine_tune_url = os.path.join(self._base_url, f"api/v1/fine-tunes/{job_id}/logs")
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json"
+        }
+        with requests.get(fine_tune_url, headers=headers) as r:
+            if r.status_code != 200:
+                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+        return job_id, r.json()
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
         fine_tune_url = os.path.join(self._base_url, f"api/v1/fine-tunes/{fine_tuning_job_id}")

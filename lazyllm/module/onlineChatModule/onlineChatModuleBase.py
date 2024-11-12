@@ -12,6 +12,7 @@ import lazyllm
 from lazyllm import globals, FileSystemQueue
 from lazyllm.components.prompter import PrompterBase, ChatPrompter
 from lazyllm.components.formatter import FormatterBase, EmptyFormatter
+from lazyllm.components.utils.file_operate import delete_old_files
 from ..module import ModuleBase, Pipeline
 from ..utils import TrainConfig, updat_config, uniform_sft_dataset
 
@@ -324,8 +325,42 @@ class OnlineChatModuleBase(ModuleBase):
             status = self._query_job_with_model_name()
         except Exception as e:
             status = 'Invalid'
-            print(e)
+            lazyllm.LOG.error(e)
         return status
+
+    def cancel_finetuning(self, name=None):
+        try:
+            res = self._cancel_finetuning_job(name)
+        except Exception as e:
+            res = str(e)
+        if res == 'Cancelled':
+            return "Successfully cancelled task."
+        else:
+            return "Failed to cancel task. " + (f" Because: {res}" if res else '')
+
+    def get_log(self, name=None, target_path=None):
+        try:
+            file_name, log = self._get_log(name)
+        except Exception as e:
+            lazyllm.LOG.error(f"Failed to get log. Because: {e}")
+            return None
+        save_path = target_path if target_path else os.path.join(self._get_temp_save_dir_path(), f'{file_name}.log')
+        with open(save_path, 'w', encoding='utf-8') as log_file:
+            json.dump(log, log_file, indent=4, ensure_ascii=False)
+        return save_path
+    
+    def get_target_model(self):
+        if hasattr(self, 'fine_tuning_job_id'):
+            return self.fine_tuning_job_id
+        return None
+
+    def _get_temp_save_dir_path(self):
+        save_dir = os.path.join(os.getcwd(), '.temp/online_model_sft_log')
+        if not os.path.exists(save_dir):
+            os.system(f'mkdir -p {save_dir}')
+        else:
+            delete_old_files(save_dir)
+        return save_dir
 
     def _get_train_tasks(self):
         if not self._model_name or not self._train_file:
