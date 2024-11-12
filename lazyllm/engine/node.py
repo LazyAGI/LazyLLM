@@ -9,7 +9,7 @@ from lazyllm.tools.http_request.http_request import HttpRequest
 
 @dataclass
 class Node():
-    id: int
+    id: str
     kind: str
     name: str
     args: Optional[Dict] = None
@@ -17,7 +17,6 @@ class Node():
     func: Optional[Callable] = None
     arg_names: Optional[List[str]] = None
     enable_data_reflow: bool = False
-    enable_hook: bool = False
     subitem_name: Optional[Union[List[str], str]] = None
 
     @property
