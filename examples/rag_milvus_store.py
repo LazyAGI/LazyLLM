@@ -5,9 +5,7 @@ import lazyllm
 from lazyllm import bind
 import tempfile
 
-def run(query):
-    _, store_file = tempfile.mkstemp(suffix=".db")
-
+def create_pipeline(store_file):
     milvus_store_conf = {
         'type': 'milvus',
         'kwargs': {
@@ -29,15 +27,7 @@ def run(query):
         ' In this task, you need to provide your answer based on the given context and question.'
 
     with lazyllm.pipeline() as ppl:
-        with lazyllm.parallel().sum as ppl.prl:
-            ppl.prl.retriever1 = lazyllm.Retriever(doc=documents,
-                                                   group_name="CoarseChunk",
-                                                   similarity="bm25_chinese",
-                                                   topk=3)
-            ppl.prl.retriever2 = lazyllm.Retriever(doc=documents,
-                                                   group_name="sentences",
-                                                   similarity="cosine",
-                                                   topk=3)
+        ppl.retriever = lazyllm.Retriever(doc=documents, group_name="sentences", topk=3)
 
         ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
                                         model="bge-reranker-large",
@@ -52,14 +42,13 @@ def run(query):
         ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
             lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
 
-        rag = lazyllm.ActionModule(ppl)
-        rag.start()
-        res = rag(query)
-
-    os.remove(store_file)
-
-    return res
+        return ppl
 
 if __name__ == '__main__':
-    res = run('何为天道？')
+    _, store_file = tempfile.mkstemp(suffix=".db")
+    ppl = create_pipeline(store_file)
+    rag = lazyllm.ActionModule(ppl)
+    rag.start()
+    res = rag('何为天道？')
     print(f'answer: {res}')
+    os.remove(store_file)

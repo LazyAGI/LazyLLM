@@ -77,13 +77,13 @@ class DocImpl:
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
 
         if not self.store.is_group_active(LAZY_ROOT_NAME):
-            ids, pathes, metadatas = self._list_files()
-            root_nodes = self._reader.load_data(pathes)
+            ids, paths, metadatas = self._list_files()
+            root_nodes = self._reader.load_data(paths)
             assert len(metadatas) == len(root_nodes)
             for idx, node in enumerate(root_nodes):
                 node.global_metadata = metadatas[idx]
                 node.global_metadata.setdefault(RAG_DOC_ID, ids[idx])
-                node.global_metadata.setdefault(RAG_DOC_PATH, pathes[idx])
+                node.global_metadata.setdefault(RAG_DOC_PATH, paths[idx])
             self.store.update_nodes(root_nodes)
             if self._dlm: self._dlm.update_kb_group_file_status(
                 ids, DocListManager.Status.success, group=self._kb_group_name)
