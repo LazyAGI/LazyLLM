@@ -87,9 +87,9 @@ class MilvusStore(StoreBase):
             if self._fields_desc:
                 for key, desc in self._fields_desc.items():
                     field_list.append(pymilvus.FieldSchema(name=self._gen_field_key(key),
-                                                  dtype=self._type2milvus[desc.data_type],
-                                                  max_length=desc.max_length,
-                                                  default_value=desc.default_value))
+                                                           dtype=self._type2milvus[desc.data_type],
+                                                           max_length=desc.max_length,
+                                                           default_value=desc.default_value))
 
             schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_fields=False)
             self._client.create_collection(collection_name=group, schema=schema,
