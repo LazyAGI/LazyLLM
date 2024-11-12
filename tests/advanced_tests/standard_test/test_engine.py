@@ -46,13 +46,12 @@ class TestEngine(object):
         nodes1 = [
             dict(id='2', kind='SharedLLM', name='draw_prompt', args=dict(llm='llm', prompt=painter_prompt)),
             dict(id='3', kind='SD', name='sd', args=dict(base_model='stable-diffusion-3-medium')),
-            dict(id='4', kind='Constant', name='vqa_query', args='描述图片'),
-            dict(id='5', kind='SharedLLM', name='vqa1', args=dict(llm='vqa', file_resource_id='file-resource')),
+            dict(id='5', kind='SharedLLM', name='vqa1', args=dict(llm='vqa')),
             dict(id='6', kind='JoinFormatter', name='merge_sd_vqa2', args=dict(type='file')),
         ]
         edges1 = [
             dict(iid='__start__', oid='2'), dict(iid='6', oid='__end__'), dict(iid="2", oid="3"),
-            dict(iid="4", oid="5"), dict(iid="3", oid="5"), dict(iid="3", oid="6"), dict(iid="5", oid="6"),
+            dict(constant='描述图片', oid="5"), dict(iid="3", oid="5"), dict(iid="3", oid="6"), dict(iid="5", oid="6"),
         ]
 
         nodes = [dict(id='7', kind='STT', name='stt', args=dict(base_model='SenseVoiceSmall')),
@@ -64,7 +63,8 @@ class TestEngine(object):
                                              args=dict(llm='llm', prompt=musician_prompt)),
                                         dict(id='12', kind='TTS', name='music',
                                              args=dict(base_model='musicgen-small'))],
-                     'Image Question Answering': dict(id='13', kind='SharedLLM', name='vqa2', args=dict(llm='vqa')),
+                     'Image Question Answering': dict(id='13', kind='SharedLLM', name='vqa2',
+                                                      args=dict(llm='vqa', file_resource_id='file-resource')),
                      'Chat': dict(id='14', kind='SharedLLM', name='chat', args=dict(llm='llm'))}))]
         edges = [dict(iid="__start__", oid="7"), dict(iid="7", oid="8"), dict(iid="8", oid="__end__")]
 
