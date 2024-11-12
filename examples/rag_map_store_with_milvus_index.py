@@ -34,7 +34,8 @@ def run(query):
         ' In this task, you need to provide your answer based on the given context and question.'
 
     with lazyllm.pipeline() as ppl:
-        ppl.prl.retriever = lazyllm.Retriever(doc=documents, group_name="sentences", topk=3)
+        ppl.retriever = lazyllm.Retriever(doc=documents, group_name="sentences", topk=3,
+                                          index='smart_embedding_index')
 
         ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
                                         model="bge-reranker-large",
