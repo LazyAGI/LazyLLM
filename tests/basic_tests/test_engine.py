@@ -60,7 +60,14 @@ class TestEngine(unittest.TestCase):
         assert '1234' in r
 
     def test_engine_code(self):
-        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 2 * x\n')]
+        nodes = [
+            dict(
+                id="1",
+                kind="Code",
+                name="m1",
+                args=dict(code="def test(x: int):\n    return 2 * x\n"),
+            )
+        ]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
 
         engine = LightEngine()
@@ -69,9 +76,28 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 2) == 4
 
     def test_engine_switch(self):
-        plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
-        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
-        square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
+        plus1 = dict(
+            id="1",
+            kind="Code",
+            name="m1",
+            args=dict(code="def test(x: int):\n    return 1 + x\n"),
+        )
+        double = dict(
+            id="2",
+            kind="Code",
+            name="m2",
+            args=dict(code="def test(x: int):\n    return 2 * x\n"),
+        )
+        # square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
+        square = dict(
+            id="3",
+            kind="Code",
+            name="m3",
+            args=dict(
+                code="def test(x: int):\n    return x * x\n",
+                _lazyllm_enable_report=True,
+            ),
+        )
         switch = dict(
             id="4",
             kind="Switch",
@@ -92,6 +118,7 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 3) == 9
 
         engine.reset()
+        lazyllm.globals._init_sid("session_test_002")
 
         switch = dict(
             id="4",
@@ -112,9 +139,28 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 'case3', 3) == 9
 
     def test_engine_ifs(self):
-        plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
-        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
-        square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
+        # plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
+        plus1 = dict(
+            id="1",
+            kind="Code",
+            name="m1",
+            args=dict(
+                code="def test(x: int):\n    return 1 + x\n",
+                _lazyllm_enable_report=True,
+            ),
+        )
+        double = dict(
+            id="2",
+            kind="Code",
+            name="m2",
+            args=dict(code="def test(x: int):\n    return 2 * x\n"),
+        )
+        square = dict(
+            id="3",
+            kind="Code",
+            name="m3",
+            args=dict(code="def test(x: int):\n    return x * x\n"),
+        )
         ifs = dict(
             id="4",
             kind="Ifs",
@@ -136,7 +182,14 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 10) == 100
 
     def test_engine_loop(self):
-        nodes = [dict(id='1', kind='Code', name='code', args='def square(x: int): return x * x')]
+        nodes = [
+            dict(
+                id="1",
+                kind="Code",
+                name="code",
+                args=dict(code="def square(x: int): return x * x"),
+            )
+        ]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
 
         nodes = [
@@ -160,7 +213,14 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 2) == 16
 
     def test_engine_warp(self):
-        nodes = [dict(id='1', kind='Code', name='code', args='def square(x: int): return x * x')]
+        nodes = [
+            dict(
+                id="1",
+                kind="Code",
+                name="code",
+                args=dict(code="def square(x: int): return x * x"),
+            )
+        ]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
 
         nodes = [
@@ -222,10 +282,34 @@ class TestEngine(unittest.TestCase):
                '<lazyllm-query>{"query": "hiaha", "files": ["path/to/file"]}'
 
     def test_engine_edge_formatter(self):
-        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
-                 dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),
-                 dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return dict(a=1, b=x * x)\n'),
-                 dict(id='4', kind='Code', name='m4', args='def test(x, y, z):\n    return f"{x}{y}{z}"\n')]
+        nodes = [
+            dict(
+                id="1",
+                kind="Code",
+                name="m1",
+                args=dict(code="def test(x: int):\n    return x\n"),
+            ),
+            dict(
+                id="2",
+                kind="Code",
+                name="m2",
+                args=dict(
+                    code="def test(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n"
+                ),
+            ),
+            dict(
+                id="3",
+                kind="Code",
+                name="m3",
+                args=dict(code="def test(x: int):\n    return dict(a=1, b=x * x)\n"),
+            ),
+            dict(
+                id="4",
+                kind="Code",
+                name="m4",
+                args=dict(code='def test(x, y, z):\n    return f"{x}{y}{z}"\n'),
+            ),
+        ]
         edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='__start__', oid='3'),
                  dict(iid='1', oid='4'), dict(iid='2', oid='4', formatter='[:][1]'),
                  dict(iid='3', oid='4', formatter='[b]'), dict(iid='4', oid='__end__')]
@@ -236,9 +320,26 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 2) == '2[4, 8]4'
 
     def test_engine_edge_formatter_start(self):
-        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int): return x'),
-                 dict(id='2', kind='Code', name='m2', args='def test(x: int): return 2 * x'),
-                 dict(id='3', kind='Code', name='m3', args='def test(x, y): return x + y')]
+        nodes = [
+            dict(
+                id="1",
+                kind="Code",
+                name="m1",
+                args=dict(code="def test(x: int): return x"),
+            ),
+            dict(
+                id="2",
+                kind="Code",
+                name="m2",
+                args=dict(code="def test(x: int): return 2 * x"),
+            ),
+            dict(
+                id="3",
+                kind="Code",
+                name="m3",
+                args=dict(code="def test(x, y): return x + y"),
+            ),
+        ]
         edges = [dict(iid='__start__', oid='1', formatter='[0]'), dict(iid='__start__', oid='2', formatter='[1]'),
                  dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
 
@@ -248,11 +349,35 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 5, 3, 1) == 11
 
     def test_engine_formatter_end(self):
-        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
-                 dict(id='2', kind='Code', name='m2', args='def test1(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),
-                 # two unused node
-                 dict(id='3', kind='Code', name='m3', args='def test2(x: int):\n    return dict(a=1, b=x * x)\n'),
-                 dict(id='4', kind='Code', name='m4', args='def test3(x, y, z):\n    return f"{x}{y}{z}"\n')]
+        nodes = [
+            dict(
+                id="1",
+                kind="Code",
+                name="m1",
+                args=dict(code="def test(x: int):\n    return x\n"),
+            ),
+            dict(
+                id="2",
+                kind="Code",
+                name="m2",
+                args=dict(
+                    code="def test1(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n"
+                ),
+            ),
+            # two unused node
+            dict(
+                id="3",
+                kind="Code",
+                name="m3",
+                args=dict(code="def test2(x: int):\n    return dict(a=1, b=x * x)\n"),
+            ),
+            dict(
+                id="4",
+                kind="Code",
+                name="m4",
+                args=dict(code='def test3(x, y, z):\n    return f"{x}{y}{z}"\n'),
+            ),
+        ]
         edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__'),
                  dict(iid='1', oid='__end__')]
 
@@ -264,9 +389,28 @@ class TestEngine(unittest.TestCase):
 
         engine.reset()
 
-        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
-                 dict(id='2', kind='Code', name='m2', args='def test1(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),
-                 dict(id='3', kind='JoinFormatter', name='join', args=dict(type='to_dict', names=['a', 'b']))]
+        nodes = [
+            dict(
+                id="1",
+                kind="Code",
+                name="m1",
+                args=dict(code="def test(x: int):\n    return x\n"),
+            ),
+            dict(
+                id="2",
+                kind="Code",
+                name="m2",
+                args=dict(
+                    code="def test1(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n"
+                ),
+            ),
+            dict(
+                id="3",
+                kind="JoinFormatter",
+                name="join",
+                args=dict(type="to_dict", names=["a", "b"]),
+            ),
+        ]
         edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='2', oid='3'),
                  dict(iid='1', oid='3'), dict(iid='3', oid='__end__', formatter='*[a, b]')]
         engine = LightEngine()
@@ -276,8 +420,15 @@ class TestEngine(unittest.TestCase):
         print(isinstance(r, lazyllm.package))
 
     def test_engine_join_stack(self):
-        nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
-                 dict(id='1', kind='JoinFormatter', name='join', args=dict(type='stack'))]
+        nodes = [
+            dict(
+                id="0",
+                kind="Code",
+                name="c1",
+                args=dict(code="def test(x: int): return x"),
+            ),
+            dict(id="1", kind="JoinFormatter", name="join", args=dict(type="stack")),
+        ]
         edges = [dict(iid='__start__', oid='0'), dict(iid='0', oid='1'), dict(iid='1', oid='__end__')]
         engine = LightEngine()
         gid = engine.start(nodes, edges)
@@ -287,10 +438,27 @@ class TestEngine(unittest.TestCase):
 
         engine.reset()
 
-        nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
-                 dict(id='1', kind='Code', name='c2', args='def test(x: int): return 2 * x'),
-                 dict(id='2', kind='Code', name='c3', args='def test(x: int): return 3 * x'),
-                 dict(id='3', kind='JoinFormatter', name='join', args=dict(type='stack'))]
+        nodes = [
+            dict(
+                id="0",
+                kind="Code",
+                name="c1",
+                args=dict(code="def test(x: int): return x"),
+            ),
+            dict(
+                id="1",
+                kind="Code",
+                name="c2",
+                args=dict(code="def test(x: int): return 2 * x"),
+            ),
+            dict(
+                id="2",
+                kind="Code",
+                name="c3",
+                args=dict(code="def test(x: int): return 3 * x"),
+            ),
+            dict(id="3", kind="JoinFormatter", name="join", args=dict(type="stack")),
+        ]
         edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
                  dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
         gid = engine.start(nodes, edges)
@@ -299,8 +467,15 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, [1]) == [[1], [1, 1], [1, 1, 1]]
 
     def test_engine_join_sum(self):
-        nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return [x, 2 * x]'),
-                 dict(id='1', kind='JoinFormatter', name='join', args=dict(type='sum'))]
+        nodes = [
+            dict(
+                id="0",
+                kind="Code",
+                name="c1",
+                args=dict(code="def test(x: int): return [x, 2 * x]"),
+            ),
+            dict(id="1", kind="JoinFormatter", name="join", args=dict(type="sum")),
+        ]
         edges = [dict(iid='__start__', oid='0'), dict(iid='0', oid='1'), dict(iid='1', oid='__end__')]
         engine = LightEngine()
         gid = engine.start(nodes, edges)
@@ -310,10 +485,27 @@ class TestEngine(unittest.TestCase):
 
         engine.reset()
 
-        nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
-                 dict(id='1', kind='Code', name='c2', args='def test(x: int): return 2 * x'),
-                 dict(id='2', kind='Code', name='c3', args='def test(x: int): return 3 * x'),
-                 dict(id='3', kind='JoinFormatter', name='join', args=dict(type='sum'))]
+        nodes = [
+            dict(
+                id="0",
+                kind="Code",
+                name="c1",
+                args=dict(code="def test(x: int): return x"),
+            ),
+            dict(
+                id="1",
+                kind="Code",
+                name="c2",
+                args=dict(code="def test(x: int): return 2 * x"),
+            ),
+            dict(
+                id="2",
+                kind="Code",
+                name="c3",
+                args=dict(code="def test(x: int): return 3 * x"),
+            ),
+            dict(id="3", kind="JoinFormatter", name="join", args=dict(type="sum")),
+        ]
         edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
                  dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
         gid = engine.start(nodes, edges)
@@ -322,10 +514,32 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, [1]) == [1, 1, 1, 1, 1, 1]
 
     def test_engine_join_todict(self):
-        nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
-                 dict(id='1', kind='Code', name='c2', args='def test(x: int): return 2 * x'),
-                 dict(id='2', kind='Code', name='c3', args='def test(x: int): return 3 * x'),
-                 dict(id='3', kind='JoinFormatter', name='join', args=dict(type='to_dict', names=['a', 'b', 'c']))]
+        nodes = [
+            dict(
+                id="0",
+                kind="Code",
+                name="c1",
+                args=dict(code="def test(x: int): return x"),
+            ),
+            dict(
+                id="1",
+                kind="Code",
+                name="c2",
+                args=dict(code="def test(x: int): return 2 * x"),
+            ),
+            dict(
+                id="2",
+                kind="Code",
+                name="c3",
+                args=dict(code="def test(x: int): return 3 * x"),
+            ),
+            dict(
+                id="3",
+                kind="JoinFormatter",
+                name="join",
+                args=dict(type="to_dict", names=["a", "b", "c"]),
+            ),
+        ]
         edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
                  dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
         engine = LightEngine()
@@ -335,9 +549,24 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, [1]) == dict(a=[1], b=[1, 1], c=[1, 1, 1])
 
     def test_engine_update(self):
-        plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
-        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
-        square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
+        plus1 = dict(
+            id="1",
+            kind="Code",
+            name="m1",
+            args=dict(code="def test(x: int):\n    return 1 + x\n"),
+        )
+        double = dict(
+            id="2",
+            kind="Code",
+            name="m2",
+            args=dict(code="def test(x: int):\n    return 2 * x\n"),
+        )
+        square = dict(
+            id="3",
+            kind="Code",
+            name="m3",
+            args=dict(code="def test(x: int):\n    return x * x\n"),
+        )
         ifs = dict(id='4', kind='Ifs', name='i1', args=dict(
             cond='def cond(x): return x < 10', true=[plus1, double], false=[square]
         ))
@@ -349,7 +578,12 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 5) == 12
         assert engine.run(gid, 10) == 100
 
-        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 3 * x\n')
+        double = dict(
+            id="2",
+            kind="Code",
+            name="m2",
+            args=dict(code="def test(x: int):\n    return 3 * x\n"),
+        )
         ifs = dict(id='4', kind='Ifs', name='i1', args=dict(
             cond='def cond(x): return x < 10', true=[plus1, double], false=[square]
         ))
@@ -361,10 +595,27 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 10) == 100
 
     def test_engine_join_join(self):
-        nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
-                 dict(id='1', kind='Code', name='c2', args='def test(x: int): return 2 * x'),
-                 dict(id='2', kind='Code', name='c3', args='def test(x: int): return 3 * x'),
-                 dict(id='3', kind='JoinFormatter', name='join', args=dict(type='join'))]
+        nodes = [
+            dict(
+                id="0",
+                kind="Code",
+                name="c1",
+                args=dict(code="def test(x: int): return x"),
+            ),
+            dict(
+                id="1",
+                kind="Code",
+                name="c2",
+                args=dict(code="def test(x: int): return 2 * x"),
+            ),
+            dict(
+                id="2",
+                kind="Code",
+                name="c3",
+                args=dict(code="def test(x: int): return 3 * x"),
+            ),
+            dict(id="3", kind="JoinFormatter", name="join", args=dict(type="join")),
+        ]
         edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
                  dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
         engine = LightEngine()
@@ -376,7 +627,14 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, '1') == '1\n11\n111'
 
     def test_engine_server(self):
-        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 2 * x\n')]
+        nodes = [
+            dict(
+                id="1",
+                kind="Code",
+                name="m1",
+                args=dict(code="def test(x: int):\n    return 2 * x\n"),
+            )
+        ]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
         resources = [dict(id='2', kind='server', name='s1', args=dict(port=None)),
                      dict(id='3', kind='web', name='w1', args=dict(port=None, title='网页', history=[], audio=False))
@@ -433,11 +691,36 @@ class TestEngine(unittest.TestCase):
         url = 'https://postman-echo.com/get'
 
         nodes = [
-            dict(id='0', kind='Code', name='code1', args='def p1(): return "foo"'),
-            dict(id='1', kind='Code', name='code2', args='def p2(): return "bar"'),
-            dict(id='2', kind='Code', name='code3', args='def h1(): return "baz"'),
-            dict(id='3', kind='HttpTool', name='http', args=dict(
-                method='GET', url=url, params=params, headers=headers, _lazyllm_arg_names=['p1', 'p2', 'h1']))
+            dict(
+                id="0",
+                kind="Code",
+                name="code1",
+                args=dict(code='def p1(): return "foo"'),
+            ),
+            dict(
+                id="1",
+                kind="Code",
+                name="code2",
+                args=dict(code='def p2(): return "bar"'),
+            ),
+            dict(
+                id="2",
+                kind="Code",
+                name="code3",
+                args=dict(code='def h1(): return "baz"'),
+            ),
+            dict(
+                id="3",
+                kind="HttpTool",
+                name="http",
+                args=dict(
+                    method="GET",
+                    url=url,
+                    params=params,
+                    headers=headers,
+                    _lazyllm_arg_names=["p1", "p2", "h1"],
+                ),
+            ),
         ]
         edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
                  dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
@@ -454,9 +737,24 @@ class TestEngine(unittest.TestCase):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
         llm_node = dict(id='1', kind='SharedLLM', name='s1', args=dict(llm='0', prompt=None))
 
-        plus1 = dict(id='2', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
-        double = dict(id='3', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
-        square = dict(id='4', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
+        plus1 = dict(
+            id="2",
+            kind="Code",
+            name="m1",
+            args=dict(code="def test(x: int):\n    return 1 + x\n"),
+        )
+        double = dict(
+            id="3",
+            kind="Code",
+            name="m2",
+            args=dict(code="def test(x: int):\n    return 2 * x\n"),
+        )
+        square = dict(
+            id="4",
+            kind="Code",
+            name="m3",
+            args=dict(code="def test(x: int):\n    return x * x\n"),
+        )
 
         subgraph = dict(id='5', kind='SubGraph', name='subgraph', args=dict(nodes=[double, plus1]))
         ifs = dict(id='6', kind='Ifs', name='i1', args=dict(
@@ -490,14 +788,41 @@ class TestEngineRAG(object):
         resources = [
             dict(id='00', kind='LocalEmbedding', name='e1', args=dict(base_model='bge-large-zh-v1.5')),
             dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', embed='00'))]
-        nodes = [dict(id='1', kind='Retriever', name='ret1',
-                      args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
-                 dict(id='4', kind='Reranker', name='rek1',
-                      args=dict(type='ModuleReranker', output_format='content', join=True,
-                                arguments=dict(model="bge-reranker-large", topk=1))),
-                 dict(id='5', kind='Code', name='c1',
-                      args='def test(nodes, query): return f\'context_str={nodes}, query={query}\''),
-                 dict(id='6', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
+        nodes = [
+            dict(
+                id="1",
+                kind="Retriever",
+                name="ret1",
+                args=dict(
+                    doc="0", group_name="CoarseChunk", similarity="bm25_chinese", topk=3
+                ),
+            ),
+            dict(
+                id="4",
+                kind="Reranker",
+                name="rek1",
+                args=dict(
+                    type="ModuleReranker",
+                    output_format="content",
+                    join=True,
+                    arguments=dict(model="bge-reranker-large", topk=1),
+                ),
+            ),
+            dict(
+                id="5",
+                kind="Code",
+                name="c1",
+                args=dict(
+                    code="def test(nodes, query): return f'context_str={nodes}, query={query}'"
+                ),
+            ),
+            dict(
+                id="6",
+                kind="LocalLLM",
+                name="m1",
+                args=dict(base_model="", deploy_method="dummy"),
+            ),
+        ]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='4'), dict(iid='__start__', oid='4'),
                  dict(iid='4', oid='5'), dict(iid='__start__', oid='5'), dict(iid='5', oid='6'),
                  dict(iid='6', oid='__end__')]
