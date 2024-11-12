@@ -313,24 +313,26 @@ class OnlineChatModuleBase(ModuleBase):
     def get_all_finetuned_models(self,):
         return self._get_finetuned_model_names()
 
-    def set_specific_finetuned_model(self, name):
-        names_valid, _ = self._get_finetuned_model_names()
-        if name in names_valid:
-            self._model_name = name
+    def set_specific_finetuned_model(self, model_id):
+        valid_jobs, _ = self._get_finetuned_model_names()
+        valid_model_id = [model for _, model in valid_jobs]
+        if model_id in valid_model_id:
+            self._model_name = model_id
+            self._is_trained = True
         else:
-            raise ValueError(f"Cannot find modle({name}), in fintuned model list: {names_valid}")
+            raise ValueError(f"Cannot find modle({model_id}), in fintuned model list: {valid_model_id}")
 
-    def get_train_status(self):
+    def get_train_status(self, job_id=None):
         try:
-            status = self._query_job_with_model_name()
+            status = self._query_job_status(job_id)
         except Exception as e:
             status = 'Invalid'
             lazyllm.LOG.error(e)
         return status
 
-    def cancel_finetuning(self, name=None):
+    def cancel_finetuning(self, job_id=None):
         try:
-            res = self._cancel_finetuning_job(name)
+            res = self._cancel_finetuning_job(job_id)
         except Exception as e:
             res = str(e)
         if res == 'Cancelled':
@@ -338,9 +340,9 @@ class OnlineChatModuleBase(ModuleBase):
         else:
             return "Failed to cancel task. " + (f" Because: {res}" if res else '')
 
-    def get_log(self, name=None, target_path=None):
+    def get_log(self, job_id=None, target_path=None):
         try:
-            file_name, log = self._get_log(name)
+            file_name, log = self._get_log(job_id)
         except Exception as e:
             lazyllm.LOG.error(f"Failed to get log. Because: {e}")
             return None
@@ -348,11 +350,9 @@ class OnlineChatModuleBase(ModuleBase):
         with open(save_path, 'w', encoding='utf-8') as log_file:
             json.dump(log, log_file, indent=4, ensure_ascii=False)
         return save_path
-    
+
     def get_target_model(self):
-        if hasattr(self, 'fine_tuning_job_id'):
-            return self.fine_tuning_job_id
-        return None
+        return self._get_curr_job_model_id()
 
     def _get_temp_save_dir_path(self):
         save_dir = os.path.join(os.getcwd(), '.temp/online_model_sft_log')

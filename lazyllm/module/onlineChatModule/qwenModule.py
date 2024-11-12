@@ -62,6 +62,9 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
     def _set_chat_url(self):
         self._url = os.path.join(self._base_url, 'compatible-mode/v1/chat/completions')
 
+    # def _set_chat_sft_url(self):
+    #     self._url = os.path.join(self._base_url, )
+
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:
             dataset = [json.loads(line) for line in fr]
@@ -175,30 +178,31 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         return r.json()
 
-    def _get_finetuned_model_names(self) -> (List[str], List[str]):
+    def _get_finetuned_model_names(self) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
         model_data = self._query_finetuned_jobs()
         names_valid = []
         names_invalid = []
         for model in model_data['output']['jobs']:
             if model['status'] == 'SUCCEEDED':
-                # Note: model_name = job_id
-                names_valid.append(model['job_id'])
+                names_valid.append((model['job_id'], model['finetuned_output']))
             else:
-                names_invalid.append(model['job_id'])
+                model_id = model['model'] + '-' + model['job_id']
+                names_invalid.append((model['job_id'], model_id))
         return names_valid, names_invalid
 
-    def _query_job_with_model_name(self, model_name=None):
-        if not model_name and not self.fine_tuning_job_id:
-            return 'Invalid'
-        model_name = model_name if model_name else self.fine_tuning_job_id
-        _, status = self._query_finetuning_job(model_name)
+    def _query_job_status(self, fine_tuning_job_id=None):
+        if not fine_tuning_job_id and not self.fine_tuning_job_id:
+            raise RuntimeError("No job ID specified. Please ensure that a valid 'fine_tuning_job_id' is "
+                               "provided as an argument or started a training job.")
+        job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
+        _, status = self._query_finetuning_job(job_id)
         if status == 'SUCCEEDED':
             return 'Done'
         elif status == 'FAILED':
             return 'Failed'
         elif status in ('CANCELING', 'CANCELED'):
             return 'Cancelled'
-        else:
+        else:  # PENDING, QUEUING, RUNNING
             return 'Running'
 
     def _get_log(self, fine_tuning_job_id=None):
@@ -216,6 +220,12 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         return job_id, r.json()
 
+    def _get_curr_job_model_id(self):
+        if not self.fine_tuning_job_id:
+            return None, None
+        model_id, _ = self._query_finetuning_job(self.fine_tuning_job_id)
+        return self.fine_tuning_job_id, model_id
+
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
         fine_tune_url = os.path.join(self._base_url, f"api/v1/fine-tunes/{fine_tuning_job_id}")
         headers = {
@@ -226,11 +236,14 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
-            status = r.json()["output"]['status']
-            fine_tuned_model = None
-            if status.lower() == "succeeded":
-                fine_tuned_model = r.json()["output"]["finetuned_output"]
-            return (fine_tuned_model, status)
+        info = r.json()["output"]
+        status = info['status']
+        # QWen only status == 'SUCCEEDED' can have `finetuned_output`
+        if 'finetuned_output' in info:
+            fine_tuned_model = info["finetuned_output"]
+        else:
+            fine_tuned_model = info["model"] + '-' + info["job_id"]
+        return (fine_tuned_model, status)
 
     def set_deploy_parameters(self, **kw):
         self._deploy_paramters = kw
