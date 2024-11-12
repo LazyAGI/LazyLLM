@@ -255,7 +255,7 @@ class TestEngine(unittest.TestCase):
                  dict(id='2', kind='Code', name='m2',
                       args=dict(code='def test1(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n')),
                  # two unused node
-                 dict(id='3', kind='Code', name='m3', 
+                 dict(id='3', kind='Code', name='m3',
                       args=dict(code='def test2(x: int):\n    return dict(a=1, b=x * x)\n')),
                  dict(id='4', kind='Code', name='m4', args=dict(code='def test3(x, y, z):\n    return f"{x}{y}{z}"\n'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__'),
