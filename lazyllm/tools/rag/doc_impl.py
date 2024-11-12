@@ -39,7 +39,8 @@ class DocImpl:
 
     def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
-                 fields_desc: Dict[str, GlobalMetadataDesc] = None, store_conf: Optional[Dict] = None):
+                 global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
+                 store_conf: Optional[Dict] = None):
         super().__init__()
         assert (dlm is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
         self._local_file_reader: Dict[str, Callable] = {}
@@ -49,7 +50,7 @@ class DocImpl:
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self._embed_dims = None
-        self._fields_desc = fields_desc
+        self._global_metadata_desc = global_metadata_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
         self._activated_embeddings = {}
 
@@ -110,7 +111,8 @@ class DocImpl:
                                   embed_dims=self._embed_dims, **kwargs)
         elif store_type == "milvus":
             store = MilvusStore(group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                embed_dims=self._embed_dims, fields_desc=self._fields_desc, **kwargs)
+                                embed_dims=self._embed_dims, global_metadata_desc=self._global_metadata_desc,
+                                **kwargs)
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {store_type}"
@@ -130,7 +132,7 @@ class DocImpl:
                                             group_embed_keys=self._activated_embeddings,
                                             embed=self.embed,
                                             embed_dims=self._embed_dims,
-                                            fields_desc=self._fields_desc,
+                                            global_metadata_desc=self._global_metadata_desc,
                                             **kwargs)
             else:
                 raise ValueError(f'unsupported index type [{index_type}]')

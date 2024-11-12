@@ -25,7 +25,7 @@ class Document(ModuleBase):
         def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: Union[bool, str] = False, server: bool = False, name: Optional[str] = None,
                      launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
-                     fields_desc: Optional[Dict[str, GlobalMetadataDesc]] = None):
+                     global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None):
             super().__init__()
             if not os.path.exists(dataset_path):
                 defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)
@@ -40,21 +40,22 @@ class Document(ModuleBase):
                     self._submodules.append(embed)
             self._dlm = DocListManager(dataset_path, name).init_tables()
             self._kbs = CallableDict({DocListManager.DEDAULT_GROUP_NAME:
-                                      DocImpl(embed=self._embed, dlm=self._dlm, fields_desc=fields_desc,
+                                      DocImpl(embed=self._embed, dlm=self._dlm,
+                                              global_metadata_desc=global_metadata_desc,
                                               store_conf=store_conf)})
             if manager: self._manager = ServerModule(DocManager(self._dlm))
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
             if server: self._kbs = ServerModule(self._kbs)
-            self._fields_desc = fields_desc
+            self._global_metadata_desc = global_metadata_desc
 
-        def add_kb_group(self, name, fields_desc: Optional[Dict[str, GlobalMetadataDesc]] = None,
+        def add_kb_group(self, name, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None,
                          store_conf: Optional[Dict] = None):
             if isinstance(self._kbs, ServerModule):
                 self._kbs._impl._m[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
-                                                   fields_desc=fields_desc, store_conf=store_conf)
+                                                   global_metadata_desc=global_metadata_desc, store_conf=store_conf)
             else:
                 self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
-                                          fields_desc=fields_desc, store_conf=store_conf)
+                                          global_metadata_desc=global_metadata_desc, store_conf=store_conf)
             self._dlm.add_kb_group(name)
 
         def get_doc_by_kb_group(self, name):
@@ -71,12 +72,12 @@ class Document(ModuleBase):
     def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                  create_ui: bool = False, manager: Union[bool, str] = False, server: bool = False,
                  name: Optional[str] = None, launcher: Optional[Launcher] = None,
-                 fields_desc: Dict[str, GlobalMetadataDesc] = None, store_conf: Optional[Dict] = None):
+                 global_metadata_desc: Dict[str, GlobalMetadataDesc] = None, store_conf: Optional[Dict] = None):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
         self._impls = Document._Impl(dataset_path, embed, create_ui or manager, server, name,
-                                     launcher, store_conf, fields_desc)
+                                     launcher, store_conf, global_metadata_desc)
         self._curr_group = DocListManager.DEDAULT_GROUP_NAME
 
     def create_kb_group(self, name: str, store_conf: Optional[Dict] = None) -> "Document":

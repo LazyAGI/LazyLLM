@@ -141,8 +141,13 @@ class TestExamples(object):
         assert os.path.isfile(image_path)
 
     def test_rag_milvus_store(self):
-        from examples.rag_milvus_store import run as rag_run
-        res = rag_run('何为天道？')
+        from examples.rag_milvus_store import create_pipeline
+        _, store_file = tempfile.mkstemp(suffix=".db")
+        ppl = create_pipeline(store_file)
+        rag = lazyllm.ActionModule(ppl)
+        rag.start()
+        res = rag('何为天道？')
+        os.remove(store_file)
         assert type(res) is str
         assert "天道" in res
         assert len(res) >= 16
