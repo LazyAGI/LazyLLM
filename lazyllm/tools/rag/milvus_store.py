@@ -165,14 +165,17 @@ class MilvusStore(StoreBase):
     def query(self,
               query: str,
               group_name: str,
-              similarity: Optional[str] = None,
+              similarity_name: Optional[str] = None,
               similarity_cut_off: Optional[Union[float, Dict[str, float]]] = None,
               topk: int = 10,
               embed_keys: Optional[List[str]] = None,
               filters: Optional[Dict[str, Union[List, set]]] = None,
               **kwargs) -> List[DocNode]:
-        if similarity is not None:
+        if similarity_name is not None:
             raise ValueError('`similarity` MUST be None when Milvus backend is used.')
+
+        if not embed_keys:
+            raise ValueError('empty or None `embed_keys` is not supported.')
 
         filter_str = self._construct_filter_expr(filters) if filters else ""
 
@@ -188,7 +191,7 @@ class MilvusStore(StoreBase):
                 raise ValueError(f'number of results [{len(results)}] != expected [1]')
 
             for result in results[0]:
-                uidset.update(result['id'])
+                uidset.add(result['id'])
 
         return self._map_store.get_nodes(group_name, list(uidset))
 
