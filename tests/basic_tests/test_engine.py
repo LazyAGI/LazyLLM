@@ -71,7 +71,8 @@ class TestEngine(unittest.TestCase):
     def test_engine_switch(self):
         plus1 = dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
         double = dict(id='2', kind='Code', name='m2', args=dict(code='def test(x: int):\n    return 2 * x\n'))
-        square = dict(id='3', kind='Code', name='m3', args=dict(code='def test(x: int):\n    return x * x\n'))
+        square = dict(id='3', kind='Code', name='m3',
+                      args=dict(code='def test(x: int):\n    return x * x\n', _lazyllm_enable_report=True))
         switch = dict(
             id="4",
             kind="Switch",
