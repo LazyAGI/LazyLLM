@@ -34,15 +34,7 @@ def run(query):
         ' In this task, you need to provide your answer based on the given context and question.'
 
     with lazyllm.pipeline() as ppl:
-        with lazyllm.parallel().sum as ppl.prl:
-            ppl.prl.retriever1 = lazyllm.Retriever(doc=documents,
-                                                   group_name="CoarseChunk",
-                                                   similarity="bm25_chinese",
-                                                   topk=3)
-            ppl.prl.retriever2 = lazyllm.Retriever(doc=documents,
-                                                   group_name="sentences",
-                                                   similarity="cosine",
-                                                   topk=3)
+        ppl.prl.retriever = lazyllm.Retriever(doc=documents, group_name="sentences", topk=3)
 
         ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
                                         model="bge-reranker-large",
