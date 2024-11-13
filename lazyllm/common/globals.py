@@ -176,6 +176,12 @@ class Globals(object):
         except KeyError:
             raise KeyError(f'Cannot find key {__key}, current session-id is {self._sid}')
 
+    def get(self, __key: str, default: Any = None):
+        try:
+            return self[__key]
+        except KeyError:
+            return default
+
     def __setattr__(self, __name: str, __value: Any):
         if __name in __class__.__global_attrs__:
             self[__name] = __value
