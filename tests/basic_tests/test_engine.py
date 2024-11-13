@@ -513,7 +513,7 @@ class TestEngineRAG(object):
         assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
 
         # test add doc_group
-        resources[-1] = dict(id='0', kind='Document', name='d1', args=dict(
+        resources[0] = dict(id='0', kind='Document', name='d1', args=dict(
             dataset_path='rag_master', server=True, node_group=[
                 dict(name='sentence', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))
         nodes.extend([dict(id='2', kind='Retriever', name='ret2',

@@ -13,7 +13,7 @@ def set_resources(resource):
     try:
         yield
     finally:
-        lazyllm.globals['engine_resource'] = None
+        lazyllm.globals.pop('engine_resource', None)
 
 
 class LightEngine(Engine):
