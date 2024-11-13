@@ -582,8 +582,8 @@ class TestEngineRAG(object):
 
     def test_rag(self):
         resources = [
-            dict(id='00', kind='LocalEmbedding', name='e1', args=dict(base_model='bge-large-zh-v1.5')),
-            dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', embed='00'))]
+            dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', embed='00')),
+            dict(id='00', kind='LocalEmbedding', name='e1', args=dict(base_model='bge-large-zh-v1.5'))]
         nodes = [dict(id='1', kind='Retriever', name='ret1',
                       args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
                  dict(id='4', kind='Reranker', name='rek1',
@@ -601,7 +601,7 @@ class TestEngineRAG(object):
         assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
 
         # test add doc_group
-        resources[-1] = dict(id='0', kind='Document', name='d1', args=dict(
+        resources[0] = dict(id='0', kind='Document', name='d1', args=dict(
             dataset_path='rag_master', server=True, node_group=[
                 dict(name='sentence', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))
         nodes.extend([dict(id='2', kind='Retriever', name='ret2',

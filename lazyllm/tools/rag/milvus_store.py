@@ -1,7 +1,6 @@
 import copy
 from typing import Dict, List, Optional, Union, Callable, Set
-import pymilvus
-from pymilvus import MilvusClient, CollectionSchema, FieldSchema
+from lazyllm.thirdparty import pymilvus
 from .doc_node import DocNode
 from .map_store import MapStore
 from .utils import parallel_do_embedding
@@ -53,7 +52,7 @@ class MilvusStore(StoreBase):
                  embedding_metric_type: Optional[str] = None, **kwargs):
         self._group_embed_keys = group_embed_keys
         self._embed = embed
-        self._client = MilvusClient(uri=uri)
+        self._client = pymilvus.MilvusClient(uri=uri)
 
         # XXX milvus 2.4.x doesn't support `default_value`
         # https://milvus.io/docs/product_faq.md#Does-Milvus-support-specifying-default-values-for-scalar-or-vector-fields
@@ -73,7 +72,7 @@ class MilvusStore(StoreBase):
             index_params = self._client.prepare_index_params()
 
             for key, info in self._builtin_keys.items():
-                field_list.append(FieldSchema(name=key, **info))
+                field_list.append(pymilvus.FieldSchema(name=key, **info))
 
             for key in embed_keys:
                 dim = embed_dims.get(key)
@@ -81,18 +80,18 @@ class MilvusStore(StoreBase):
                     raise ValueError(f'cannot find embedding dim of embed [{key}] in [{embed_dims}]')
 
                 field_name = self._gen_embedding_key(key)
-                field_list.append(FieldSchema(name=field_name, dtype=pymilvus.DataType.FLOAT_VECTOR, dim=dim))
+                field_list.append(pymilvus.FieldSchema(name=field_name, dtype=pymilvus.DataType.FLOAT_VECTOR, dim=dim))
                 index_params.add_index(field_name=field_name, index_type=embedding_index_type,
                                        metric_type=embedding_metric_type)
 
             if self._fields_desc:
                 for key, desc in self._fields_desc.items():
-                    field_list.append(FieldSchema(name=self._gen_field_key(key),
-                                                  dtype=self._type2milvus[desc.data_type],
-                                                  max_length=desc.max_length,
-                                                  default_value=desc.default_value))
+                    field_list.append(pymilvus.FieldSchema(name=self._gen_field_key(key),
+                                                           dtype=self._type2milvus[desc.data_type],
+                                                           max_length=desc.max_length,
+                                                           default_value=desc.default_value))
 
-            schema = CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_fields=False)
+            schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_fields=False)
             self._client.create_collection(collection_name=group, schema=schema,
                                            index_params=index_params)
 
@@ -146,13 +145,16 @@ class MilvusStore(StoreBase):
     def query(self,
               query: str,
               group_name: str,
-              similarity: Optional[str] = None,
+              similarity_name: Optional[str] = None,
               similarity_cut_off: Optional[Union[float, Dict[str, float]]] = None,
               topk: int = 10,
               embed_keys: Optional[List[str]] = None,
               **kwargs) -> List[DocNode]:
-        if similarity is not None:
+        if similarity_name is not None:
             raise ValueError('`similarity` MUST be None when Milvus backend is used.')
+
+        if not embed_keys:
+            raise ValueError('empty or None `embed_keys` is not supported.')
 
         uidset = set()
         for key in embed_keys:
@@ -165,7 +167,7 @@ class MilvusStore(StoreBase):
                 raise ValueError(f'number of results [{len(results)}] != expected [1]')
 
             for result in results[0]:
-                uidset.update(result['id'])
+                uidset.add(result['id'])
 
         return self._map_store.get_nodes(group_name, list(uidset))
 

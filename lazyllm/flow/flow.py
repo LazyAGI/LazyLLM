@@ -494,7 +494,7 @@ class IFS(LazyLLMFlowsBase):
 
     def _run(self, __input, **kw):
         cond, tpath, fpath = self._items
-        return self.invoke(tpath if self.invoke(cond, __input) else fpath, __input, **kw)
+        return self.invoke(tpath if self.invoke(cond, __input, **kw) else fpath, __input, **kw)
 
 
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
@@ -530,6 +530,7 @@ class Graph(LazyLLMFlowsBase):
         self._in_degree = {node: 0 for node in self._nodes.values()}
         self._out_degree = {node: 0 for node in self._nodes.values()}
         self._sorted_nodes = None
+        self._constants = []
 
     def set_node_arg_name(self, arg_names):
         for node_name, name in zip(self._item_names, arg_names):
@@ -543,11 +544,10 @@ class Graph(LazyLLMFlowsBase):
 
     def add_edge(self, from_node, to_node, formatter=None):
         if isinstance(from_node, (tuple, list)):
-            for f in from_node: self.add_edge(f, to_node, formatter)
-            return
+            return [self.add_edge(f, to_node, formatter) for f in from_node]
         if isinstance(to_node, (tuple, list)):
-            for t in to_node: self.add_edge(from_node, t, formatter)
-            return
+            return [self.add_edge(from_node, t, formatter) for t in to_node]
+
         if isinstance(from_node, str): from_node = self._nodes[from_node]
         if isinstance(to_node, str): to_node = self._nodes[to_node]
         from_node.outputs.append(to_node)
@@ -555,6 +555,13 @@ class Graph(LazyLLMFlowsBase):
         to_node.inputs[from_node.name] = formatter
         self._in_degree[to_node] += 1
         self._out_degree[from_node] += 1
+
+    def add_const_edge(self, constant, to_node):
+        if isinstance(to_node, (tuple, list)):
+            return [self.add_const_edge(constant, t) for t in to_node]
+        if isinstance(to_node, str): to_node = self._nodes[to_node]
+        to_node.inputs[f'_lazyllm_constant_{len(self._constants)}'] = None
+        self._constants.append(constant)
 
     def topological_sort(self):
         in_degree = self._in_degree.copy()
@@ -578,6 +585,8 @@ class Graph(LazyLLMFlowsBase):
         globals._init_sid(sid)
 
         def get_input(name):
+            if name.startswith('_lazyllm_constant_'):
+                return self._constants[int(name.strip('_lazyllm_constant_'))]
             if name not in intermediate_results['values']:
                 r = futures[name].result()
                 with intermediate_results['lock']:

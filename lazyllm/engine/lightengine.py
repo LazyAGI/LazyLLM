@@ -4,6 +4,16 @@ from lazyllm import once_wrapper
 from typing import List, Dict, Optional, Set, Union
 import copy
 import uuid
+from contextlib import contextmanager
+
+
+@contextmanager
+def set_resources(resource):
+    lazyllm.globals['engine_resource'] = {r['id']: r for r in resource}
+    try:
+        yield
+    finally:
+        lazyllm.globals.pop('engine_resource', None)
 
 
 class LightEngine(Engine):
@@ -23,7 +33,10 @@ class LightEngine(Engine):
     def build_node(self, node):
         if not isinstance(node, Node):
             if isinstance(node, str):
-                return self._nodes.get(node)
+                if node not in self._nodes and (resource := lazyllm.globals.get('engine_resource', {}).get(node)):
+                    node = resource
+                else:
+                    return self._nodes.get(node)
             node = Node(id=node['id'], kind=node['kind'], name=node['name'], args=node['args'])
         if node.id not in self._nodes:
             self._nodes[node.id] = super(__class__, self).build_node(node)
@@ -53,7 +66,8 @@ class LightEngine(Engine):
             gid, name = gid or str(uuid.uuid4().hex), name or str(uuid.uuid4().hex)
             node = Node(id=gid, kind='Graph', name=name, args=dict(
                 nodes=copy.copy(nodes), edges=copy.copy(edges), resources=copy.copy(resources)))
-            self.build_node(node).func.start()
+            with set_resources(resources):
+                self.build_node(node).func.start()
             return gid
 
     def status(self, node_id: str, task_name: Optional[str] = None):
@@ -91,8 +105,13 @@ class LightEngine(Engine):
         else:
             for node in gid_or_nodes: self.update_node(node)
 
-    def run(self, id: str, *args, **kw):
-        if files := kw.pop('_lazyllm_files', None):
+    def run(self, id: str, *args, _lazyllm_files: Optional[Union[str, List[str]]] = None,
+            _file_resources: Optional[Dict[str, Union[str, List[str]]]] = None, **kw):
+        if files := _lazyllm_files:
             assert len(args) <= 1 and len(kw) == 0, 'At most one query is enabled when file exists'
             args = [lazyllm.formatter.file(formatter='encode')(dict(query=args[0] if args else '', files=files))]
-        return self.build_node(id).func(*args, **kw)
+        if _file_resources:
+            lazyllm.globals['lazyllm_files'] = _file_resources
+        result = self.build_node(id).func(*args, **kw)
+        lazyllm.globals['lazyllm_files'] = {}
+        return result
