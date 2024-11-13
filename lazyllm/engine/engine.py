@@ -15,10 +15,8 @@ class Engine(object):
     REPORT_URL = ""
 
     def __init__(self):
-        self._nodes = {
-            '__start__': Node(id='__start__', kind='__start__', name='__start__'),
-            '__end__': Node(id='__end__', kind='__end__', name='__end__'),
-        }
+        self._nodes = {'__start__': Node(id='__start__', kind='__start__', name='__start__'),
+                       '__end__': Node(id='__end__', kind='__end__', name='__end__')}
 
     def __new__(cls):
         if cls is not Engine:
@@ -30,38 +28,29 @@ class Engine(object):
         cls.__default_engine__ = engine
 
     @overload
-    def start(self, nodes: str) -> None: ...
+    def start(self, nodes: str) -> None:
+        ...
 
     @overload
-    def start(self, nodes: Dict[str, Any]) -> None: ...
+    def start(self, nodes: Dict[str, Any]) -> None:
+        ...
 
     @overload
-    def start(
-        self,
-        nodes: List[Dict] = [],
-        edges: List[Dict] = [],
-        resources: List[Dict] = [],
-        gid: Optional[str] = None,
-        name: Optional[str] = None,
-    ) -> str: ...
+    def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
+              gid: Optional[str] = None, name: Optional[str] = None) -> str:
+        ...
 
     @overload
-    def update(self, nodes: List[Dict]) -> None: ...
+    def update(self, nodes: List[Dict]) -> None:
+        ...
 
     @overload
-    def update(
-        self,
-        gid: str,
-        nodes: List[Dict],
-        edges: List[Dict] = [],
-        resources: List[Dict] = [],
-    ) -> str: ...
+    def update(self, gid: str, nodes: List[Dict], edges: List[Dict] = [],
+               resources: List[Dict] = []) -> str:
+        ...
 
-    def release_node(self, nodeid: str):
-        pass
-
-    def stop(self, node_id: Optional[str] = None, task_name: Optional[str] = None):
-        pass
+    def release_node(self, nodeid: str): pass
+    def stop(self, node_id: Optional[str] = None, task_name: Optional[str] = None): pass
 
     def build_node(self, node) -> Node:
         return _constructor.build(node)
@@ -83,8 +72,7 @@ class Engine(object):
         def _impl(nid, recursive):
             for id in self._nodes[nid].subitems:
                 yield id
-                if recursive:
-                    yield from self.subnodes(id, True)
+                if recursive: yield from self.subnodes(id, True)
         return list(_impl(nodeid, recursive))
 
 
@@ -92,13 +80,8 @@ class NodeConstructor(object):
     builder_methods = dict()
 
     @classmethod
-    def register(
-        cls,
-        *names: Union[List[str], str],
-        subitems: Optional[Union[str, List[str]]] = None,
-    ):
-        if len(names) == 1 and isinstance(names[0], (tuple, list)):
-            names = names[0]
+    def register(cls, *names: Union[List[str], str], subitems: Optional[Union[str, List[str]]] = None):
+        if len(names) == 1 and isinstance(names[0], (tuple, list)): names = names[0]
 
         def impl(f):
             for name in names:
@@ -110,26 +93,13 @@ class NodeConstructor(object):
     def build(self, node: Node):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
-        node.arg_names = (
-            node.args.pop('_lazyllm_arg_names', None)
-            if isinstance(node.args, dict)
-            else None
-        )
-        node.enable_data_reflow = (
-            node.args.pop('_lazyllm_enable_report', False)
-            if isinstance(node.args, dict)
-            else False
-        )
+        node.arg_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
+        node.enable_data_reflow = (node.args.pop('_lazyllm_enable_report', False)
+                                   if isinstance(node.args, dict) else False)
         if node.kind in NodeConstructor.builder_methods:
             createf, node.subitem_name = NodeConstructor.builder_methods[node.kind]
-            node.func = (
-                createf(**node.args)
-                if isinstance(node.args, dict)
-                and set(node.args.keys()).issubset(
-                    set(inspect.getfullargspec(createf).args)
-                )
-                else createf(node.args)
-            )
+            node.func = createf(**node.args) if isinstance(node.args, dict) and set(node.args.keys()).issubset(
+                set(inspect.getfullargspec(createf).args)) else createf(node.args)
             self._process_hook(node, node.func)
             return node
 
@@ -137,9 +107,7 @@ class NodeConstructor(object):
         init_args, build_args, other_args = dict(), dict(), dict()
 
         def get_args(cls, key, value, builder_key=None):
-            node_args = (
-                node_msgs[cls][builder_key][key] if builder_key else node_msgs[cls][key]
-            )
+            node_args = node_msgs[cls][builder_key][key] if builder_key else node_msgs[cls][key]
             if node_args.type == Node:
                 return Engine().build_node(value).func
             return node_args.getattr_f(value) if node_args.getattr_f else value
@@ -151,11 +119,8 @@ class NodeConstructor(object):
                 build_args[key] = get_args('builder_argument', key, value)
             elif '.' in key:
                 builder_key, key = key.split('.')
-                if builder_key not in other_args:
-                    other_args[builder_key] = dict()
-                other_args[builder_key][key] = get_args(
-                    'other_arguments', key, value, builder_key=builder_key
-                )
+                if builder_key not in other_args: other_args[builder_key] = dict()
+                other_args[builder_key][key] = get_args('other_arguments', key, value, builder_key=builder_key)
             else:
                 raise KeyError(f'Invalid key `{key}` found')
 
@@ -182,20 +147,12 @@ class ServerGraph(lazyllm.ModuleBase):
         super().__init__()
         self._g = lazyllm.ActionModule(g)
         if server:
-            if server.args.get('port'):
-                raise NotImplementedError('Port is not supported now')
+            if server.args.get('port'): raise NotImplementedError('Port is not supported now')
             self._g = lazyllm.ServerModule(g)
         if web:
             port = self._get_port(web.args['port'])
-            self._web = lazyllm.WebModule(
-                g,
-                port=port,
-                title=web.args['title'],
-                audio=web.args['audio'],
-                history=[
-                    Engine().build_node(h).func for h in web.args.get('history', [])
-                ],
-            )
+            self._web = lazyllm.WebModule(g, port=port, title=web.args['title'], audio=web.args['audio'],
+                                          history=[Engine().build_node(h).func for h in web.args.get('history', [])])
 
     def forward(self, *args, **kw):
         return self._g(*args, **kw)
@@ -203,13 +160,11 @@ class ServerGraph(lazyllm.ModuleBase):
     # TODO(wangzhihong)
     def _update(self, *, mode=None, recursive=True):
         super(__class__, self)._update(mode=mode, recursive=recursive)
-        if hasattr(self, '_web'):
-            self._web.start()
+        if hasattr(self, '_web'): self._web.start()
         return self
 
     def _get_port(self, port):
-        if not port:
-            return None
+        if not port: return None
         elif ',' in port:
             return list(int(p.strip()) for p in port.split(','))
         elif '-' in port:
@@ -241,9 +196,7 @@ class ServerResource(object):
         self._args = args
 
     def status(self):
-        return (
-            self._graph._g.status if self._kind == 'server' else self._graph._web.status
-        )
+        return self._graph._g.status if self._kind == 'server' else self._graph._web.status
 
 
 @NodeConstructor.register('web', 'server')
@@ -252,34 +205,18 @@ def make_server_resource(kind: str, graph: ServerGraph, args: Dict[str, Any]):
 
 
 @NodeConstructor.register('Graph', 'SubGraph', subitems=['nodes', 'resources'])
-def make_graph(
-    nodes: List[dict],
-    edges: List[Union[List[str], dict]] = [],
-    resources: List[dict] = [],
-    enable_server=True,
-):
+def make_graph(nodes: List[dict], edges: List[Union[List[str], dict]] = [],
+               resources: List[dict] = [], enable_server=True):
     engine = Engine()
     server_resources = dict(server=None, web=None)
     for resource in resources:
         if resource['kind'] in server_resources:
-            assert (
-                enable_server
-            ), 'Web and Api server are not allowed outside graph and subgraph'
-            assert (
-                server_resources[resource['kind']] is None
-            ), f'Duplicated {resource["kind"]} resource'
-            server_resources[resource['kind']] = Node(
-                id=resource['id'],
-                kind=resource['kind'],
-                name=resource['name'],
-                args=resource['args'],
-            )
+            assert enable_server, 'Web and Api server are not allowed outside graph and subgraph'
+            assert server_resources[resource['kind']] is None, f'Duplicated {resource["kind"]} resource'
+            server_resources[resource['kind']] = Node(id=resource['id'], kind=resource['kind'],
+                                                      name=resource['name'], args=resource['args'])
 
-    resources = [
-        engine.build_node(resource)
-        for resource in resources
-        if resource['kind'] not in server_resources
-    ]
+    resources = [engine.build_node(resource) for resource in resources if resource['kind'] not in server_resources]
     nodes: List[Node] = [engine.build_node(node) for node in nodes]
 
     with graph() as g:
@@ -288,31 +225,19 @@ def make_graph(
     g.set_node_arg_name([node.arg_names for node in nodes])
 
     if not edges:
-        edges = (
-            [dict(iid='__start__', oid=nodes[0].id)]
-            + [
-                dict(iid=nodes[i].id, oid=nodes[i + 1].id)
-                for i in range(len(nodes) - 1)
-            ]
-            + [dict(iid=nodes[-1].id, oid='__end__')]
-        )
+        edges = ([dict(iid='__start__', oid=nodes[0].id)] + [
+            dict(iid=nodes[i].id, oid=nodes[i + 1].id) for i in range(len(nodes) - 1)] + [
+            dict(iid=nodes[-1].id, oid='__end__')])
 
     for edge in edges:
-        if isinstance(edge, (tuple, list)):
-            edge = dict(iid=edge[0], oid=edge[1])
+        if isinstance(edge, (tuple, list)): edge = dict(iid=edge[0], oid=edge[1])
         if formatter := edge.get('formatter'):
-            assert formatter.startswith(('*[', '[', '}')) and formatter.endswith(
-                (']', '}')
-            )
+            assert formatter.startswith(('*[', '[', '}')) and formatter.endswith((']', '}'))
             formatter = lazyllm.formatter.JsonLike(formatter)
         if 'constant' in edge:
             g.add_const_edge(edge['constant'], engine._nodes[edge['oid']].name)
         else:
-            g.add_edge(
-                engine._nodes[edge['iid']].name,
-                engine._nodes[edge['oid']].name,
-                formatter,
-            )
+            g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name, formatter)
 
     sg = ServerGraph(g, server_resources['server'], server_resources['web'])
     for kind, node in server_resources.items():
@@ -354,7 +279,7 @@ def _build_pipeline(nodes):
 def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     with switch(judge_on_full_input=judge_on_full_input) as sw:
         for cond, nodes in nodes.items():
-            sw.case[cond :: _build_pipeline(nodes)]
+            sw.case[cond::_build_pipeline(nodes)]
     return sw
 
 
@@ -364,93 +289,48 @@ def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] =
 
 
 @NodeConstructor.register('Loop', subitems=['nodes', 'resources'])
-def make_loop(
-    stop_condition: str,
-    nodes: List[dict],
-    edges: List[dict] = [],
-    resources: List[dict] = [],
-    judge_on_full_input: bool = True,
-):
+def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict] = [],
+              resources: List[dict] = [], judge_on_full_input: bool = True):
     stop_condition = make_code(stop_condition)
-    return lazyllm.loop(
-        make_graph(nodes, edges, resources, enable_server=False),
-        stop_condition=stop_condition,
-        judge_on_full_input=judge_on_full_input,
-    )
+    return lazyllm.loop(make_graph(nodes, edges, resources, enable_server=False),
+                        stop_condition=stop_condition, judge_on_full_input=judge_on_full_input)
 
 
 @NodeConstructor.register('Ifs', subitems=['true', 'false'])
-def make_ifs(
-    cond: str, true: List[dict], false: List[dict], judge_on_full_input: bool = True
-):
+def make_ifs(cond: str, true: List[dict], false: List[dict], judge_on_full_input: bool = True):
     assert judge_on_full_input, 'judge_on_full_input only support True now'
-    return lazyllm.ifs(
-        make_code(cond), tpath=_build_pipeline(true), fpath=_build_pipeline(false)
-    )
+    return lazyllm.ifs(make_code(cond), tpath=_build_pipeline(true), fpath=_build_pipeline(false))
 
 
 @NodeConstructor.register('Intention', subitems=['nodes:dict'])
-def make_intention(
-    base_model: str,
-    nodes: Dict[str, List[dict]],
-    prompt: str = '',
-    constrain: str = '',
-    attention: str = '',
-):
-    with IntentClassifier(
-        Engine().build_node(base_model).func,
-        prompt=prompt,
-        constrain=constrain,
-        attention=attention,
-    ) as ic:
+def make_intention(base_model: str, nodes: Dict[str, List[dict]],
+                   prompt: str = '', constrain: str = '', attention: str = ''):
+    with IntentClassifier(Engine().build_node(base_model).func,
+                          prompt=prompt, constrain=constrain, attention=attention) as ic:
         for cond, nodes in nodes.items():
             if isinstance(nodes, list) and len(nodes) > 1:
                 f = pipeline([Engine().build_node(node).func for node in nodes])
             else:
-                f = (
-                    Engine()
-                    .build_node(nodes[0] if isinstance(nodes, list) else nodes)
-                    .func
-                )
+                f = Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
             ic.case[cond::f]
     return ic
 
 
 @NodeConstructor.register('Document')
-def make_document(
-    dataset_path: str,
-    embed: Node = None,
-    create_ui: bool = False,
-    server: bool = False,
-    node_group: List = [],
-):
+def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False,
+                  server: bool = False, node_group: List = []):
     document = lazyllm.tools.rag.Document(
-        dataset_path,
-        Engine().build_node(embed).func if embed else None,
-        server=server,
-        manager=create_ui,
-    )
+        dataset_path, Engine().build_node(embed).func if embed else None, server=server, manager=create_ui)
     for group in node_group:
-        if group['transform'] == 'LLMParser':
-            group['llm'] = Engine().build_node(group['llm']).func
-        elif group['transform'] == 'FuncNode':
-            group['function'] = make_code(group['function'])
+        if group['transform'] == 'LLMParser': group['llm'] = Engine().build_node(group['llm']).func
+        elif group['transform'] == 'FuncNode': group['function'] = make_code(group['function'])
         document.create_node_group(**group)
     return document
 
-
 @NodeConstructor.register('Reranker')
-def make_reranker(
-    type: str = 'ModuleReranker',
-    target: Optional[str] = None,
-    output_format: Optional[str] = None,
-    join: Union[bool, str] = False,
-    arguments: Dict = {},
-):
-    return lazyllm.tools.Reranker(
-        type, target=target, output_format=output_format, join=join, **arguments
-    )
-
+def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
+                  output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
+    return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
 
 class JoinFormatter(lazyllm.components.FormatterBase):
     def __init__(self, type, *, names=None, symbol=None):
@@ -461,17 +341,10 @@ class JoinFormatter(lazyllm.components.FormatterBase):
     def _parse_py_data_by_formatter(self, data):
         if self.type == 'sum':
             assert len(data) > 0, 'Cannot sum empty inputs'
-            if isinstance(data[0], str):
-                return ''.join(data)
+            if isinstance(data[0], str): return ''.join(data)
             return sum(data, type(data[0])())
         elif self.type == 'stack':
-            return (
-                list(data)
-                if isinstance(data, package)
-                else [
-                    data,
-                ]
-            )
+            return list(data) if isinstance(data, package) else [data,]
         elif self.type == 'to_dict':
             assert self.names and len(self.names) == len(data)
             return {k: v for k, v in zip(self.names, data)}
@@ -483,8 +356,7 @@ class JoinFormatter(lazyllm.components.FormatterBase):
 
 @NodeConstructor.register('JoinFormatter')
 def make_join_formatter(type='sum', names=None, symbol=None):
-    if type == 'file':
-        return make_formatter('file', rule='merge')
+    if type == 'file': return make_formatter('file', rule='merge')
     return JoinFormatter(type, names=names, symbol=symbol)
 
 @NodeConstructor.register('Formatter')
@@ -515,56 +387,34 @@ def make_tools_for_llm(tools: List[str]):
 
 @NodeConstructor.register('FunctionCall')
 def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
-    f = (
-        lazyllm.tools.PlanAndSolveAgent
-        if algorithm == 'PlanAndSolve'
-        else (
-            lazyllm.tools.ReWOOAgent
-            if algorithm == 'ReWOO'
-            else (
-                lazyllm.tools.ReactAgent
-                if algorithm == 'React'
-                else lazyllm.tools.FunctionCallAgent
-            )
-        )
-    )
+    f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
+        lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
+        lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
     return f(Engine().build_node(llm).func, _get_tools(tools))
 
-
 @NodeConstructor.register('HttpTool')
-def make_http_tool(
-    method: Optional[str] = None,
-    url: Optional[str] = None,
-    params: Optional[Dict[str, str]] = None,
-    headers: Optional[Dict[str, str]] = None,
-    body: Optional[str] = None,
-    timeout: int = 10,
-    proxies: Optional[Dict[str, str]] = None,
-    code_str: Optional[str] = None,
-    vars_for_code: Optional[Dict[str, Any]] = None,
-    doc: Optional[str] = None,
-):
-    instance = lazyllm.tools.HttpTool(
-        method, url, params, headers, body, timeout, proxies, code_str, vars_for_code
-    )
+def make_http_tool(method: Optional[str] = None,
+                   url: Optional[str] = None,
+                   params: Optional[Dict[str, str]] = None,
+                   headers: Optional[Dict[str, str]] = None,
+                   body: Optional[str] = None,
+                   timeout: int = 10,
+                   proxies: Optional[Dict[str, str]] = None,
+                   code_str: Optional[str] = None,
+                   vars_for_code: Optional[Dict[str, Any]] = None,
+                   doc: Optional[str] = None):
+    instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies,
+                                      code_str, vars_for_code)
     if doc:
         instance.__doc__ = doc
     return instance
 
 
 class VQA(lazyllm.Module):
-
-    def __init__(
-        self,
-        base_model: Union[str, lazyllm.TrainableModule],
-        file_resource_id: Optional[str],
-    ):
+    def __init__(self, base_model: Union[str, lazyllm.TrainableModule], file_resource_id: Optional[str]):
         super().__init__()
-        self.vqa = self._vqa = (
-            lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
-            if not isinstance(base_model, lazyllm.TrainableModule)
-            else base_model
-        )
+        self.vqa = self._vqa = (lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
+                                if not isinstance(base_model, lazyllm.TrainableModule) else base_model)
         self._file_resource_id = file_resource_id
         if file_resource_id:
             with pipeline() as self.vqa:
@@ -588,17 +438,10 @@ def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
 
 
 @NodeConstructor.register('SharedLLM')
-def make_shared_llm(
-    llm: str, prompt: Optional[str] = None, file_resource_id: Optional[str] = None
-):
+def make_shared_llm(llm: str, prompt: Optional[str] = None, file_resource_id: Optional[str] = None):
     llm = Engine().build_node(llm).func
-    if file_resource_id:
-        assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
-    return (
-        VQA(llm._vqa.share(prompt=prompt), file_resource_id)
-        if file_resource_id
-        else llm.share(prompt=prompt)
-    )
+    if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
+    return VQA(llm._vqa.share(prompt=prompt), file_resource_id) if file_resource_id else llm.share(prompt=prompt)
 
 
 @NodeConstructor.register('STT')
@@ -611,14 +454,12 @@ def make_stt(base_model: str):
                     return True
         return False
 
-    return lazyllm.ifs(
-        cond, tpath=lazyllm.TrainableModule(base_model), fpath=lazyllm.Identity()
-    )
+    return lazyllm.ifs(cond, tpath=lazyllm.TrainableModule(base_model), fpath=lazyllm.Identity())
 
 
 @NodeConstructor.register('Constant')
 def make_constant(value: Any):
-    return lambda *args, **kw: value
+    return (lambda *args, **kw: value)
 
 
 class FileResource(object):
