@@ -1,4 +1,4 @@
-from lazyllm.engine import LightEngine, NodeMetaHook
+from lazyllm.engine import LightEngine
 import pytest
 import time
 from gradio_client import Client
@@ -7,9 +7,6 @@ import urllib3
 from lazyllm.common.common import TimeoutException
 import json
 import unittest
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
-from fastapi.testclient import TestClient
 import subprocess
 import socket
 import threading
