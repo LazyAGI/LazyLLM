@@ -16,8 +16,6 @@ class MetaKeys:
 
 
 class NodeMetaHook(LazyLLMHook):
-    URL = ""
-    MODULEID_TO_WIDGETID = {}
 
     def __init__(self, obj, url, front_id):
         if isinstance(obj, lazyllm.ModuleBase):
@@ -56,7 +54,7 @@ class NodeMetaHook(LazyLLMHook):
         self._meta_info[MetaKeys.OUTPUT] = str(output)
 
         if self._uniqueid in globals["usage"]:
-            self._meta_info.update(globals["usage"])
+            self._meta_info.update(globals["usage"][self._uniqueid])
         self._meta_info[MetaKeys.ID] = self._front_id
         self._meta_info[MetaKeys.TIMECOST] = time.time() - self._meta_info[MetaKeys.TIMECOST]
 
@@ -64,7 +62,6 @@ class NodeMetaHook(LazyLLMHook):
         headers = {"Content-Type": "application/json; charset=utf-8"}
         json_data = json.dumps(self._meta_info, ensure_ascii=False)
         try:
-            lazyllm.LOG.info(f"meta_info: {self._meta_info}")
             requests.post(self._url, data=json_data, headers=headers)
         except Exception as e:
             lazyllm.LOG.warning(f"Error sending collected data: {e}. URL: {self._url}")

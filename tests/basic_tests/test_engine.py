@@ -27,6 +27,7 @@ app = FastAPI()
 @app.post("/{route}")
 async def receive_json(data: dict):
     print("Received json data:", data)
+    assert "prompt_tokens" in data
     return JSONResponse(content=data)
 
 
@@ -62,6 +63,7 @@ class TestEngine(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        time.sleep(3)
         cls.fastapi_process.terminate()
         cls.fastapi_process.wait()
 

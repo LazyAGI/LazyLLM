@@ -85,7 +85,6 @@ class Engine(object):
                 yield id
                 if recursive:
                     yield from self.subnodes(id, True)
-
         return list(_impl(nodeid, recursive))
 
 
@@ -105,7 +104,6 @@ class NodeConstructor(object):
             for name in names:
                 cls.builder_methods[name] = (f, subitems)
             return f
-
         return impl
 
     # build node recursively
@@ -171,11 +169,7 @@ class NodeConstructor(object):
     def _process_hook(self, node, module):
         if not node.enable_data_reflow:
             return
-        if isinstance(module, lazyllm.ModuleBase):
-            NodeMetaHook.MODULEID_TO_WIDGETID[module._module_id] = node.id
-        elif isinstance(module, lazyllm.LazyLLMFlowsBase):
-            NodeMetaHook.MODULEID_TO_WIDGETID[module._flow_id] = node.id
-        else:
+        if not isinstance(module, (lazyllm.ModuleBase, lazyllm.LazyLLMFlowsBase)):
             return
         node.func.register_hook(NodeMetaHook(node.func, Engine.REPORT_URL, node.id))
 
@@ -487,26 +481,21 @@ class JoinFormatter(lazyllm.components.FormatterBase):
         else:
             raise TypeError('type should be one of sum/stack/to_dict/join')
 
-
 @NodeConstructor.register('JoinFormatter')
 def make_join_formatter(type='sum', names=None, symbol=None):
     if type == 'file':
         return make_formatter('file', rule='merge')
     return JoinFormatter(type, names=names, symbol=symbol)
 
-
 @NodeConstructor.register('Formatter')
 def make_formatter(ftype, rule):
     return getattr(lazyllm.formatter, ftype)(formatter=rule)
-
 
 def return_a_wrapper_func(func):
     @functools.wraps(func)
     def wrapper_func(*args, **kwargs):
         return func(*args, **kwargs)
-
     return wrapper_func
-
 
 def _get_tools(tools):
     callable_list = []
@@ -520,11 +509,9 @@ def _get_tools(tools):
         callable_list.append(wrapper_func)
     return callable_list
 
-
 @NodeConstructor.register('ToolsForLLM')
 def make_tools_for_llm(tools: List[str]):
     return lazyllm.tools.ToolManager(_get_tools(tools))
-
 
 @NodeConstructor.register('FunctionCall')
 def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
@@ -566,6 +553,7 @@ def make_http_tool(
 
 
 class VQA(lazyllm.Module):
+
     def __init__(
         self,
         base_model: Union[str, lazyllm.TrainableModule],
