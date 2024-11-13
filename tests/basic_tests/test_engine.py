@@ -10,33 +10,60 @@ import unittest
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
+import subprocess
+import socket
+import threading
+
+HOOK_PORT = 33733
+HOOK_ROUTE = "mock_post"
+fastapi_code = """
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from fastapi.testclient import TestClient
 
 app = FastAPI()
 
 
-@app.post("/mock_post")
+@app.post("/{route}")
 async def receive_json(data: dict):
+    print("Received json data:", data)
     return JSONResponse(content=data)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port={port})
+""".format(
+    port=HOOK_PORT, route=HOOK_ROUTE
+)
 
 
 class TestEngine(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        client = TestClient(app)
+        cls.fastapi_process = subprocess.Popen(
+            ["python", "-c", fastapi_code],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        cls.report_url = f"http://{ip_address}:{HOOK_PORT}/{HOOK_ROUTE}"
 
-        def mock_report(self):
-            headers = {"Content-Type": "application/json; charset=utf-8"}
-            json_data = json.dumps(self._meta_info, ensure_ascii=False)
-            try:
-                lazyllm.LOG.info(f"meta_info: {self._meta_info}")
-                response = client.post(self.URL, data=json_data, headers=headers)
-                assert (
-                    response.json() == self._meta_info
-                ), "mock response should be same as input"
-            except Exception as e:
-                lazyllm.LOG.warning(f"Error sending collected data: {e}")
+        def read_stdout(process):
+            for line in iter(process.stdout.readline, b''):
+                print("FastAPI Server Output: ", line.decode(), end='')
 
-        NodeMetaHook.report = mock_report
+        cls.report_print_thread = threading.Thread(
+            target=read_stdout, args=(cls.fastapi_process,)
+        )
+        cls.report_print_thread.daemon = True
+        cls.report_print_thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.fastapi_process.terminate()
+        cls.fastapi_process.wait()
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
@@ -86,7 +113,7 @@ class TestEngine(unittest.TestCase):
         nodes = [switch]
         edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         engine = LightEngine()
-        engine.set_report_url("mock_post")
+        engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 1) == 2
         assert engine.run(gid, 2) == 6
@@ -130,11 +157,72 @@ class TestEngine(unittest.TestCase):
         nodes = [ifs]
         edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         engine = LightEngine()
-        engine.set_report_url("mock_post")
+        engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 1) == 4
         assert engine.run(gid, 5) == 12
         assert engine.run(gid, 10) == 100
+
+    def test_data_reflow_in_server(self):
+        nodes = [
+            {
+                "id": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324014737",
+                "kind": "Code",
+                "name": "1731324014737",
+                "args": {
+                    "code": "def main(x): return int(x) + 1",
+                    "_lazyllm_enable_report": True,
+                },
+            },
+            {
+                "id": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324018968",
+                "kind": "Code",
+                "name": "1731324018968",
+                "args": {
+                    "code": "def main(x): return int(x) + 2",
+                    "_lazyllm_enable_report": True,
+                },
+            },
+            {
+                "id": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324021877",
+                "kind": "Code",
+                "name": "1731324021877",
+                "args": {
+                    "code": "def main(x): return int(x) + 3",
+                    "_lazyllm_enable_report": True,
+                },
+            },
+        ]
+        edges = [
+            {
+                "iid": "__start__",
+                "oid": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324014737",
+            },
+            {
+                "iid": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324014737",
+                "oid": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324018968",
+            },
+            {
+                "iid": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324018968",
+                "oid": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324021877",
+            },
+            {
+                "iid": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324021877",
+                "oid": "__end__",
+            },
+        ]
+        resources = [
+            {
+                "id": "adc5174c-3220-4b98-92a6-3897e9af8898",
+                "kind": "server",
+                "name": "adc5174c-3220-4b98-92a6-3897e9af8898",
+                "args": {},
+            }
+        ]
+        engine = LightEngine()
+        engine.set_report_url(self.report_url)
+        gid = engine.start(nodes, edges, resources)
+        assert engine.run(gid, 1) == 7
 
     def test_engine_loop(self):
         nodes = [dict(id='1', kind='Code', name='code', args=dict(code='def square(x: int): return x * x'))]
@@ -156,7 +244,7 @@ class TestEngine(unittest.TestCase):
         edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
 
         engine = LightEngine()
-        engine.set_report_url("mock_post")
+        engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2) == 16
 
@@ -179,7 +267,7 @@ class TestEngine(unittest.TestCase):
         edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
 
         engine = LightEngine()
-        engine.set_report_url("mock_post")
+        engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2, 3, 4, 5) == (4, 9, 16, 25)
 

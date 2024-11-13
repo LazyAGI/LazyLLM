@@ -12,6 +12,7 @@ import functools
 # Each session will have a separate engine
 class Engine(object):
     __default_engine__ = None
+    REPORT_URL = ""
 
     def __init__(self):
         self._nodes = {'__start__': Node(id='__start__', kind='__start__', name='__start__'),
@@ -55,7 +56,7 @@ class Engine(object):
         return _constructor.build(node)
 
     def set_report_url(self, url) -> None:
-        NodeMetaHook.URL = url
+        Engine.REPORT_URL = url
 
     def reset(self):
         for node in self._nodes:
@@ -139,7 +140,7 @@ class NodeConstructor(object):
             NodeMetaHook.MODULEID_TO_WIDGETID[module._flow_id] = node.id
         else:
             return
-        node.func.register_hook(NodeMetaHook)
+        node.func.register_hook(NodeMetaHook(node.func, Engine.REPORT_URL, node.id))
 
 
 _constructor = NodeConstructor()
