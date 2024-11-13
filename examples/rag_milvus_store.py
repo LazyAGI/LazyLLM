@@ -3,64 +3,64 @@
 import os
 import lazyllm
 from lazyllm import bind
+from lazyllm.tools.rag import DocField
 import tempfile
+import shutil
 
-class Runner:
+class TmpDir:
     def __init__(self):
-        _, self._store_file = tempfile.mkstemp(suffix=".db")
-
-        milvus_store_conf = {
-            'type': 'milvus',
-            'kwargs': {
-                'uri': self._store_file,
-                'embedding_index_type': 'HNSW',
-                'embedding_metric_type': 'COSINE',
-            },
-        }
-
-        prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task.'\
-            ' In this task, you need to provide your answer based on the given context and question.'
-
-        self._documents = lazyllm.Document(dataset_path="rag_master",
-                                           embed=lazyllm.TrainableModule("bge-large-zh-v1.5"),
-                                           manager=True,
-                                           store_conf=milvus_store_conf)
-
-        self._documents.create_node_group(name="sentences",
-                                          transform=lambda s: '。'.split(s))
-
-        with lazyllm.pipeline() as self._ppl:
-            self._ppl.retriever = lazyllm.Retriever(doc=self._documents, group_name="sentences", topk=3)
-
-            self._ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
-                                                  model="bge-reranker-large",
-                                                  topk=1,
-                                                  output_format='content',
-                                                  join=True) | bind(query=self._ppl.input)
-
-            self._ppl.formatter = (
-                lambda nodes, query: dict(context_str=nodes, query=query)
-            ) | bind(query=self._ppl.input)
-
-            self._ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
-                lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+        self.store_dir = tempfile.mkdtemp()
+        print(f'debug!!! tmp dir -> {self.store_dir}')
+        self.store_file = os.path.join(self.store_dir, "milvus.db")
 
     def __del__(self):
-        os.remove(self._store_file)
+        shutil.rmtree(self.store_dir)
 
-    @property
-    def pipeline(self):
-        return self._ppl
+tmp_dir = TmpDir()
 
-    @property
-    def doc_server_addr(self) -> str:
-        url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
-        content = re.findall(url_pattern, self._documents.manager._url)
-        return content[0]
+milvus_store_conf = {
+    'type': 'milvus',
+    'kwargs': {
+        'uri': tmp_dir.store_file,
+        'embedding_index_type': 'HNSW',
+        'embedding_metric_type': 'COSINE',
+    },
+}
+
+doc_fields = {
+    'comment': DocField(data_type=DocField.DTYPE_VARCHAR, max_size=65535, default_value=' '),
+    'signature': DocField(data_type=DocField.DTYPE_VARCHAR, max_size=32, default_value=' '),
+}
+
+prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task.'\
+    ' In this task, you need to provide your answer based on the given context and question.'
+
+documents = lazyllm.Document(dataset_path=tmp_dir.store_dir,
+                             embed=lazyllm.TrainableModule("bge-large-zh-v1.5"),
+                             manager=True,
+                             store_conf=milvus_store_conf,
+                             doc_fields=doc_fields)
+
+documents.create_node_group(name="sentences", transform=lambda s: '。'.split(s))
+
+with lazyllm.pipeline() as ppl:
+    ppl.retriever = lazyllm.Retriever(doc=documents, group_name="sentences", topk=3)
+
+    ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
+                                    model="bge-reranker-large",
+                                    topk=1,
+                                    output_format='content',
+                                    join=True) | bind(query=ppl.input)
+
+    ppl.formatter = (
+        lambda nodes, query: dict(context_str=nodes, query=query)
+    ) | bind(query=ppl.input)
+
+    ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
+        lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
 
 if __name__ == '__main__':
-    runner = Runner()
-    rag = lazyllm.ActionModule(runner.pipeline)
+    rag = lazyllm.ActionModule(ppl)
     rag.start()
     res = rag('何为天道？')
     print(f'answer: {res}')

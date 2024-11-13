@@ -31,7 +31,7 @@ config.add(
 config.add("default_dlmanager", str, "sqlite", "DEFAULT_DOCLIST_MANAGER")
 
 class DocListManager(ABC):
-    DEDAULT_GROUP_NAME = '__default__'
+    DEFAULT_GROUP_NAME = '__default__'
     __pool__ = dict()
 
     class Status:
@@ -58,7 +58,7 @@ class DocListManager(ABC):
     def init_tables(self) -> 'DocListManager':
         if not self.table_inited():
             self._init_tables()
-            self.add_kb_group(DocListManager.DEDAULT_GROUP_NAME)
+            self.add_kb_group(DocListManager.DEFAULT_GROUP_NAME)
 
         files_list = []
         for root, _, files in os.walk(self._path):
@@ -98,7 +98,7 @@ class DocListManager(ABC):
     def add_files(self, files: List[str], metadatas: Optional[List] = None,
                   status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[str]:
         ids = self._add_files(files, metadatas, status, batch_size)
-        self.add_files_to_kb_group(ids, group=DocListManager.DEDAULT_GROUP_NAME)
+        self.add_files_to_kb_group(ids, group=DocListManager.DEFAULT_GROUP_NAME)
         return ids
 
     @abstractmethod
@@ -533,13 +533,17 @@ class _FileNodeIndex(IndexBase):
             ret.append(list(self._file_node_map.get(file, [])))
         return ret
 
-def generic_process_filters(nodes: List[DocNode], filters: Dict[str, Union[List, set]]) -> List[DocNode]:
+def generic_process_filters(nodes: List[DocNode], filters: Dict[str, Union[str, int, List, Set]]) -> List[DocNode]:
     res = []
     for node in nodes:
         is_valid = True
         for name, candidates in filters.items():
             value = node.global_metadata.get(name)
-            if (not value) or (value not in candidates):
+            if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
+                is_valid = True if value == candidates else False
+                if not is_valid:
+                    break
+            elif (not value) or (value not in candidates):
                 is_valid = False
                 break
         if is_valid:

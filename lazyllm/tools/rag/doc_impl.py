@@ -44,7 +44,7 @@ class DocImpl:
         super().__init__()
         assert (dlm is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
         self._local_file_reader: Dict[str, Callable] = {}
-        self._kb_group_name = kb_group_name or DocListManager.DEDAULT_GROUP_NAME
+        self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
         self._dlm, self._doc_files = dlm, doc_files
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
@@ -217,7 +217,7 @@ class DocImpl:
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
                 continue
 
-            if self._kb_group_name == DocListManager.DEDAULT_GROUP_NAME:
+            if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
                 self._dlm.init_tables()
                 ids, files, _ = self._list_files(status=DocListManager.Status.waiting,
                                                  upload_status=DocListManager.Status.success)
@@ -304,7 +304,7 @@ class DocImpl:
 
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,
-                 filters: Optional[Dict[str, Union[List, Set]]] = None) -> List[DocNode]:
+                 filters: Optional[Dict[str, Union[str, int, List, Set]]] = None) -> List[DocNode]:
         self._lazy_init()
 
         self._dynamic_create_nodes(group_name, self.store)

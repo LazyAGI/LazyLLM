@@ -8,7 +8,7 @@ from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader,
                       MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader)
 from .dataReader import SimpleDirectoryReader
 from .doc_manager import DocManager, DocListManager
-from .global_metadata import GlobalMetadataDesc, RAG_DOC_PATH
+from .global_metadata import GlobalMetadataDesc as DocField
 
 
 __all__ = [
@@ -38,6 +38,5 @@ __all__ = [
     "SimpleDirectoryReader",
     'DocManager',
     'DocListManager',
-    'GlobalMetadataDesc',
-    'RAG_DOC_PATH',
+    'DocField',
 ]

@@ -1,7 +1,7 @@
 from lazyllm import ModuleBase, pipeline, once_wrapper
 from .doc_node import DocNode
 from .document import Document, DocImpl
-from typing import List, Optional, Union, Dict
+from typing import List, Optional, Union, Dict, Set
 from .similarity import registered_similarities
 
 class _PostProcess(object):
@@ -80,7 +80,7 @@ class Retriever(ModuleBase, _PostProcess):
         return pipeline(lambda *a: self('Test Query'))
 
     def forward(
-            self, query: str, filters: Optional[Dict[str, Union[List, set]]] = None
+            self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None
     ) -> Union[List[DocNode], str]:
         self._lazy_init()
         nodes = []

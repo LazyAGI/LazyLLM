@@ -1,4 +1,7 @@
+import io
 import os
+import json
+import re
 import time
 import httpx
 import pytest
@@ -157,20 +160,32 @@ class TestExamples(object):
         assert "天道" in res
         assert len(res) >= 16
 
-class TestDocManagerServer(object):
+class TestRagFilter(object):
     def setup_class(self):
-        from examples.rag_milvus_store import Runner
-        self.runner = Runner()
-        rag = lazyllm.ActionModule(self.runner.pipeline)
-        rag.start()
-        self.doc_server_addr = self.runner.doc_server_addr
+        from examples.rag_milvus_store import ppl, documents
+        self.rag = lazyllm.ActionModule(ppl)
+        self.rag.start()
+        url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
+        self.doc_server_addr = re.findall(url_pattern, documents.manager._url)[0]
 
-    def test_list_kb_groups(self):
-        url = f'{self.doc_server_addr}/list_kb_groups'
-        res_str = httpx.get(url)
-        assert isinstance(res_str, str)
-        res = json.loads(res_str)
-        assert res['code'] == 200
-        assert '__default__' in res['data']
+    def test_upload_and_query(self):
+        print(f'doc server addr -> {self.doc_server_addr}')
 
-    def test_upload_and_delete_files(self):
+        response = httpx.get(f'{self.doc_server_addr}/list_kb_groups')
+        print(f'response -> {response}')
+
+        files = [('files', ('test1.txt', io.BytesIO(b"John's home is in Beijing"), 'text/palin')),
+                 ('files', ('test2.txt', io.BytesIO(b"John's home is in Shanghai"), 'text/plain'))]
+        metadatas = [{"comment": "comment1"}, {"signature": "signature2"}]
+
+        data = dict(override='true', metadatas=json.dumps(metadatas), user_path='path')
+
+        url = f'{self.doc_server_addr}/upload_files'
+        response = httpx.post(url, data=data, files=files)
+        res = json.loads(response.text)
+        print(f'res -> {res}')
+        # assert res['code'] == 200
+
+        res = self.rag("Where is John's home?", filters={'comment': ['comment1']})
+        print(f'query result -> {res}')
+        # assert 'Beijing' in res

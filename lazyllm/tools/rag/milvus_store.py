@@ -73,7 +73,11 @@ class MilvusStore(StoreBase):
         if not embedding_metric_type:
             embedding_metric_type = 'COSINE'
 
+        collections = self._client.list_collections()
         for group, embed_keys in group_embed_keys.items():
+            if group in collections:
+                continue
+
             field_list = []
             index_params = self._client.prepare_index_params()
 
@@ -111,9 +115,8 @@ class MilvusStore(StoreBase):
                                                            default_value=desc.default_value,
                                                            **field_args))
 
-            schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_global_metadata=False)
-            self._client.create_collection(collection_name=group, schema=schema,
-                                           index_params=index_params)
+            schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_field=False)
+            self._client.create_collection(collection_name=group, schema=schema, index_params=index_params)
 
         self._map_store = MapStore(node_groups=list(group_embed_keys.keys()), embed=embed)
         self._load_all_nodes_to(self._map_store)
@@ -223,7 +226,7 @@ class MilvusStore(StoreBase):
 
         store.update_nodes(list(uid2node.values()))
 
-    def _construct_filter_expr(self, filters: Dict[str, Union[List, set]]) -> str:
+    def _construct_filter_expr(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
         ret_str = ""
         for name, candidates in filters.items():
             desc = self._global_metadata_desc.get(name)
@@ -231,7 +234,7 @@ class MilvusStore(StoreBase):
                 raise ValueError(f'cannot find desc of field [{name}]')
 
             key = self._gen_field_key(name)
-            if not isinstance(candidates, List):
+            if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
                 candidates = list(candidates)
             if desc.data_type == GlobalMetadataDesc.DTYPE_ARRAY:
                 # https://github.com/milvus-io/milvus/discussions/35279

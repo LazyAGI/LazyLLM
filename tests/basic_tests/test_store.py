@@ -8,7 +8,7 @@ from lazyllm.tools.rag.map_store import MapStore
 from lazyllm.tools.rag.chroma_store import ChromadbStore
 from lazyllm.tools.rag.milvus_store import MilvusStore
 from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.global_metadata import GlobalMetadataDesc
+from lazyllm.tools.rag import DocField
 
 
 def clear_directory(directory_path):
@@ -188,9 +188,8 @@ class TestMilvusStore(unittest.TestCase):
             'vec1': MagicMock(return_value=[1.0, 2.0, 3.0]),
             'vec2': MagicMock(return_value=[400.0, 500.0, 600.0, 700.0, 800.0]),
         }
-        self.global_metadata_desc = {
-            'comment': GlobalMetadataDesc(data_type=GlobalMetadataDesc.DTYPE_VARCHAR, max_size=65535,
-                                          default_value=' '),
+        self.doc_fields = {
+            'comment': DocField(data_type=DocField.DTYPE_VARCHAR, max_size=65535, default_value=' '),
         }
 
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
@@ -207,7 +206,7 @@ class TestMilvusStore(unittest.TestCase):
             "vec2": 5,
         }
         self.store = MilvusStore(group_embed_keys=self.group_embed_keys, embed=self.mock_embed,
-                                 embed_dims=self.embed_dims, global_metadata_desc=self.global_metadata_desc,
+                                 embed_dims=self.embed_dims, doc_fields=self.doc_fields,
                                  uri=self.store_file)
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
@@ -279,7 +278,7 @@ class TestMilvusStore(unittest.TestCase):
         self.store.update_nodes([self.node1, self.node2, self.node3])
         del self.store
         self.store = MilvusStore(group_embed_keys=self.group_embed_keys, embed=self.mock_embed,
-                                 embed_dims=self.embed_dims, global_metadata_desc=self.global_metadata_desc,
+                                 embed_dims=self.embed_dims, doc_fields=self.doc_fields,
                                  uri=self.store_file)
         self.assertEqual(set([node.uid for node in self.store.get_nodes('group1')]),
                          set([self.node1.uid, self.node2.uid, self.node3.uid]))
