@@ -285,7 +285,7 @@ class TestMilvusStore(unittest.TestCase):
                          set([self.node1.uid, self.node2.uid, self.node3.uid]))
 
     # XXX `array_contains_any` is not supported in local(aka lite) mode. skip this ut
-    def _test_query_with_kb(self):
+    def _test_query_with_array_filter(self):
         self.store.update_nodes([self.node1, self.node3])
         ret = self.store.query(query='test', group_name='group1', embed_keys=['vec1'], topk=10,
                                filters={'tags': [2]})

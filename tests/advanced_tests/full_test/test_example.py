@@ -140,21 +140,37 @@ class TestExamples(object):
         image_path = ans[0][0][-1]['value']
         assert os.path.isfile(image_path)
 
-    def test_rag_milvus_store(self):
-        from examples.rag_milvus_store import create_pipeline
-        _, store_file = tempfile.mkstemp(suffix=".db")
-        ppl = create_pipeline(store_file)
-        rag = lazyllm.ActionModule(ppl)
-        rag.start()
-        res = rag('何为天道？')
-        os.remove(store_file)
-        assert type(res) is str
-        assert "天道" in res
-        assert len(res) >= 16
-
     def test_rag_map_store_with_milvus_index(self):
         from examples.rag_map_store_with_milvus_index import run as rag_run
         res = rag_run('何为天道？')
         assert type(res) is str
         assert "天道" in res
         assert len(res) >= 16
+
+    def test_rag_milvus_store(self):
+        from examples.rag_milvus_store import Runner
+        runner = Runner()
+        rag = lazyllm.ActionModule(runner.pipeline)
+        rag.start()
+        res = rag('何为天道？')
+        assert type(res) is str
+        assert "天道" in res
+        assert len(res) >= 16
+
+class TestDocManagerServer(object):
+    def setup_class(self):
+        from examples.rag_milvus_store import Runner
+        self.runner = Runner()
+        rag = lazyllm.ActionModule(self.runner.pipeline)
+        rag.start()
+        self.doc_server_addr = self.runner.doc_server_addr
+
+    def test_list_kb_groups(self):
+        url = f'{self.doc_server_addr}/list_kb_groups'
+        res_str = httpx.get(url)
+        assert isinstance(res_str, str)
+        res = json.loads(res_str)
+        assert res['code'] == 200
+        assert '__default__' in res['data']
+
+    def test_upload_and_delete_files(self):
