@@ -7,6 +7,8 @@ import requests
 import pickle
 import codecs
 import inspect
+import string
+import random
 import threading
 import functools
 from datetime import datetime
@@ -532,7 +534,7 @@ class _TrainableModuleImpl(ModuleBase):
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
                              '{arg_cls}_args, please pass them from Module.__init__()')
         if 'url' not in args:
-            args['launcher'] = args['launcher'].clone() if args.get('launcher') else launchers.remote(sync=False)
+            args['launcher'] = args['launcher'] if args.get('launcher') else launchers.remote(sync=False)
             self._launchers['default'][arg_cls] = args['launcher']
         return args
 
@@ -572,10 +574,12 @@ class _TrainableModuleImpl(ModuleBase):
         invalid_paths = []
         for root, dirs, files in os.walk(self._target_path):
             if root.endswith('lazyllm_merge'):
+                model_path = os.path.abspath(root)
+                model_id = model_path.split(os.sep)[-2].split('-x-')[0]
                 if any(file.endswith(('.bin', '.safetensors')) for file in files):
-                    valid_paths.append(os.path.abspath(root))
+                    valid_paths.append((model_id, model_path))
                 else:
-                    invalid_paths.append(os.path.abspath(root))
+                    invalid_paths.append((model_id, model_path))
         return valid_paths, invalid_paths
 
     def _set_specific_finetuned_model(self, model_path):
@@ -656,7 +660,7 @@ class _TrainableModuleImpl(ModuleBase):
         train_set_name = optimize_name(train_set_name)
 
         target_path = os.path.join(self._target_path, base_model_name,
-                                   f"{file_name}-{train_set_name}-"
+                                   f"{file_name}-x-{train_set_name}-x-"
                                    f"{datetime.now().strftime('%y%m%d%H%M%S%f')[:14]}")
         return target_path
 
@@ -716,9 +720,10 @@ class TrainableModule(UrlModule):
         launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or task_type]
         return launcher.status
 
-    def get_train_status(self):
+    def get_train_status(self, job_id=None):
+        job_id = job_id if job_id else self._impl._file_name
         try:
-            status = self.status(task_type='finetune')
+            status = self.status(job_id, task_type='finetune')
             if status == Status.Done:
                 status = 'Done'
             elif status == Status.Cancelled:
@@ -731,8 +736,9 @@ class TrainableModule(UrlModule):
             status = 'Invalid'
         return status
 
-    def cancel_finetuning(self, name=None):
-        self.stop(task_name=name, task_type='finetune')
+    def cancel_finetuning(self, job_id=None):
+        job_id = job_id if job_id else self._impl._file_name
+        self.stop(task_name=job_id, task_type='finetune')
         time.sleep(0.5)
         status = self.get_train_status()
         if status == 'Cancelled':
@@ -762,8 +768,8 @@ class TrainableModule(UrlModule):
 
     def get_target_model(self):
         if hasattr(self._impl, '_finetuned_model_path'):
-            return self._impl._finetuned_model_path
-        return None
+            return self._impl._file_name, self._impl._finetuned_model_path
+        return None, None
 
     # modify default value to ''
     def prompt(self, prompt=''):
@@ -780,7 +786,9 @@ class TrainableModule(UrlModule):
 
     def train(self, train_config: dict, asyn: bool = True) -> None:
         train_config = updat_config(train_config, TrainConfig)
-        model_name = train_config.pop('finetune_model_name', 'llm')
+        characters = string.ascii_letters + string.digits
+        random_string = ''.join(random.choices(characters, k=7))
+        model_name = train_config.pop('finetune_model_name', 'llm') + random_string
         self._impl._set_file_name(model_name)
         assert train_config['training_type'].lower() == 'sft', 'Only supported sft!'
         self.mode('finetune')
@@ -794,6 +802,7 @@ class TrainableModule(UrlModule):
         train_config['num_train_epochs'] = train_config.pop('num_epochs')
         train_config['stage'] = train_config.pop('training_type').strip().lower()
         train_config['finetuning_type'] = train_config.pop('finetuning_type').strip().lower()
+        self._impl._launchers['manual'][model_name] = train_config['launcher'] = launchers.remote(sync=False, ngpus=1)
 
         self.finetune_method((lazyllm.finetune.llamafactory, train_config))
         self.thread = threading.Thread(target=self._update, kwargs={'mode': ['train']})
