@@ -69,18 +69,25 @@ class DocManager(lazyllm.ModuleBase):
                 metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)
                 assert len(files) == len(metadatas), 'Length of files and metadatas should be the same'
 
-            if_exists = [os.path.exists(file) for file in files]
-            exist_files = [file for i, file in enumerate(files) if if_exists[i]]
-            nonexist_files = [file for i, file in enumerate(files) if not if_exists[i]]
-            exist_metadatas = [metadatas[i] for i in range(len(files)) if if_exists[i]] if metadatas else None
+            exists_files_info = self._manager.list_files(limit=None, details=True, status=DocListManager.Status.all)
+            exists_files_info = {row[2]: row[0] for row in exists_files_info}  # path: id
+            ids = []
+            for idx, file in enumerate(files):
+                if os.path.exists(file):
+                    exist_id = exists_files_info.get(file, None)
+                    if exist_id:
+                        ids.append(exist_id)
+                    else:
+                        metadata = metadatas[idx] if metadatas else None
+                        new_ids = self._manager.add_files([file], metadatas=[metadata],
+                                                          status=DocListManager.Status.success)
+                        ids.append(new_ids[0])
+                else:
+                    ids.append(None)
 
-            files_info = self._manager.list_files(limit=None, details=True, status=DocListManager.Status.all)
-            exists_ids = [row[0] for row in files_info if row[2] in exist_files]
-
-            ids = self._manager.add_files(exist_files, metadatas=exist_metadatas, status=DocListManager.Status.success)
             if group_name:
-                self._manager.add_files_to_kb_group(ids + exists_ids, group=group_name)
-            return BaseResponse(data={"uploaded_ids": ids + exists_ids, "nonexist_files": nonexist_files})
+                self._manager.add_files_to_kb_group([id for id in ids if id], group=group_name)
+            return BaseResponse(data=ids)
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 

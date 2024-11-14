@@ -267,9 +267,10 @@ class TestDocListServer(object):
     @pytest.mark.order(6)
     def test_add_files(self):
         json_data = {
-            'files': [self.test_file_extra],
+            'files': [self.test_file_extra, "fake path"],
             'group_name': "extra_group",
-            'metadatas': json.dumps([{"key": "value"}])
+            'metadatas': json.dumps([{"key": "value"}, {"key": "value"}])
         }
         response = requests.post(self.get_url('add_files'), json=json_data)
-        assert response.status_code == 200 and len(response.json().get('data')["uploaded_ids"]) == 1
+        assert response.status_code == 200
+        assert len(response.json().get('data')) == 2 and response.json().get('data')[1] is None
