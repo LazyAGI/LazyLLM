@@ -9,13 +9,14 @@ from lazyllm.tools.http_request.http_request import HttpRequest
 
 @dataclass
 class Node():
-    id: int
+    id: str
     kind: str
     name: str
     args: Optional[Dict] = None
 
     func: Optional[Callable] = None
     arg_names: Optional[List[str]] = None
+    enable_data_reflow: bool = False
     subitem_name: Optional[Union[List[str], str]] = None
 
     @property
@@ -88,7 +89,7 @@ all_nodes['OnlineEmbedding'] = dict(
         secret_key=NodeArgs(str, None))
 )
 
-all_nodes['SD'] = all_nodes['TTS'] = all_nodes['STT'] = dict(
+all_nodes['SD'] = all_nodes['TTS'] = dict(
     module=lazyllm.TrainableModule,
     init_arguments=dict(base_model=NodeArgs(str))
 )

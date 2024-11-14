@@ -168,7 +168,7 @@ class TestDeploy(object):
 
         globals['lazyllm_files'][chat._module_id] = [pig_path]
         assert '猪' in m(query)
-        globals['lazyllm_files'][chat._module_id] = [pig_path]
+        globals['lazyllm_files'][chat._module_id] = None
         assert '鸡' in m(f'<lazyllm-query>{{"query":"{query}","files":["{ji_path}"]}}')
 
         _, client = self.warp_into_web(m)

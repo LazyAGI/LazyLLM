@@ -16,6 +16,7 @@ from typing import Union, Tuple, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
+from ..hook import LazyLLMHook
 
 
 class _FuncWrap(object):
@@ -154,12 +155,35 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self._sync = False
+        self._hooks = set()
 
     def __call__(self, *args, **kw):
+        hook_objs = []
+        for hook_type in self._hooks:
+            if isinstance(hook_type, LazyLLMHook):
+                hook_objs.append(hook_type)
+            else:
+                hook_objs.append(hook_type(self))
+            hook_objs[-1].pre_hook(*args, **kw)
         output = self._run(args[0] if len(args) == 1 else package(args), **kw)
         if self.post_action is not None: self.invoke(self.post_action, output)
         if self._sync: self.wait()
-        return self._post_process(output)
+        r = self._post_process(output)
+        for hook_obj in hook_objs[::-1]:
+            hook_obj.post_hook(r)
+        for hook_obj in hook_objs:
+            hook_obj.report()
+        return r
+
+    def register_hook(self, hook_type: LazyLLMHook):
+        self._hooks.add(hook_type)
+
+    def unregister_hook(self, hook_type: LazyLLMHook):
+        if hook_type in self._hooks:
+            self._hooks.remove(hook_type)
+
+    def clear_hooks(self):
+        self._hooks = set()
 
     def _post_process(self, output):
         return output
@@ -470,7 +494,7 @@ class IFS(LazyLLMFlowsBase):
 
     def _run(self, __input, **kw):
         cond, tpath, fpath = self._items
-        return self.invoke(tpath if self.invoke(cond, __input) else fpath, __input, **kw)
+        return self.invoke(tpath if self.invoke(cond, __input, **kw) else fpath, __input, **kw)
 
 
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
@@ -504,7 +528,9 @@ class Graph(LazyLLMFlowsBase):
         self._nodes[Graph.start_node_name] = Graph.Node(None, Graph.start_node_name)
         self._nodes[Graph.end_node_name] = Graph.Node(lazyllm.Identity(), Graph.end_node_name)
         self._in_degree = {node: 0 for node in self._nodes.values()}
+        self._out_degree = {node: 0 for node in self._nodes.values()}
         self._sorted_nodes = None
+        self._constants = []
 
     def set_node_arg_name(self, arg_names):
         for node_name, name in zip(self._item_names, arg_names):
@@ -518,17 +544,24 @@ class Graph(LazyLLMFlowsBase):
 
     def add_edge(self, from_node, to_node, formatter=None):
         if isinstance(from_node, (tuple, list)):
-            for f in from_node: self.add_edge(f, to_node, formatter)
-            return
+            return [self.add_edge(f, to_node, formatter) for f in from_node]
         if isinstance(to_node, (tuple, list)):
-            for t in to_node: self.add_edge(from_node, t, formatter)
-            return
+            return [self.add_edge(from_node, t, formatter) for t in to_node]
+
         if isinstance(from_node, str): from_node = self._nodes[from_node]
         if isinstance(to_node, str): to_node = self._nodes[to_node]
         from_node.outputs.append(to_node)
         assert from_node.name not in to_node.inputs, f'Duplicate edges from {from_node.name} to {to_node.name}'
         to_node.inputs[from_node.name] = formatter
         self._in_degree[to_node] += 1
+        self._out_degree[from_node] += 1
+
+    def add_const_edge(self, constant, to_node):
+        if isinstance(to_node, (tuple, list)):
+            return [self.add_const_edge(constant, t) for t in to_node]
+        if isinstance(to_node, str): to_node = self._nodes[to_node]
+        to_node.inputs[f'_lazyllm_constant_{len(self._constants)}'] = None
+        self._constants.append(constant)
 
     def topological_sort(self):
         in_degree = self._in_degree.copy()
@@ -546,12 +579,14 @@ class Graph(LazyLLMFlowsBase):
         if len(sorted_nodes) != len(self._nodes):
             raise ValueError("Graph has a cycle")
 
-        return [n for n in sorted_nodes if (self._in_degree[n] > 0 or n.name == Graph.start_node_name)]
+        return [n for n in sorted_nodes if (self._in_degree[n] > 0 or self._out_degree[n] > 0)]
 
     def compute_node(self, sid, node, intermediate_results, futures):
         globals._init_sid(sid)
 
         def get_input(name):
+            if name.startswith('_lazyllm_constant_'):
+                return self._constants[int(name.strip('_lazyllm_constant_'))]
             if name not in intermediate_results['values']:
                 r = futures[name].result()
                 with intermediate_results['lock']:

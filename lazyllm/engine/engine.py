@@ -1,20 +1,18 @@
-from typing import List, Callable, Dict, Type, Optional, Union, Any, overload
+from typing import List, Dict, Type, Optional, Union, Any, overload
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier
 from lazyllm.common import compile_func
 from .node import all_nodes, Node
+from .node_meta_hook import NodeMetaHook
 import inspect
 import functools
-
-class CodeBlock(object):
-    def __init__(self, code):
-        pass
 
 
 # Each session will have a separate engine
 class Engine(object):
     __default_engine__ = None
+    REPORT_URL = ""
 
     def __init__(self):
         self._nodes = {'__start__': Node(id='__start__', kind='__start__', name='__start__'),
@@ -54,8 +52,11 @@ class Engine(object):
     def release_node(self, nodeid: str): pass
     def stop(self, node_id: Optional[str] = None, task_name: Optional[str] = None): pass
 
-    def build_node(self, node) -> Callable:
+    def build_node(self, node) -> Node:
         return _constructor.build(node)
+
+    def set_report_url(self, url) -> None:
+        Engine.REPORT_URL = url
 
     def reset(self):
         for node in self._nodes:
@@ -93,10 +94,13 @@ class NodeConstructor(object):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
         node.arg_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
+        node.enable_data_reflow = (node.args.pop('_lazyllm_enable_report', False)
+                                   if isinstance(node.args, dict) else False)
         if node.kind in NodeConstructor.builder_methods:
             createf, node.subitem_name = NodeConstructor.builder_methods[node.kind]
             node.func = createf(**node.args) if isinstance(node.args, dict) and set(node.args.keys()).issubset(
                 set(inspect.getfullargspec(createf).args)) else createf(node.args)
+            self._process_hook(node, node.func)
             return node
 
         node_msgs = all_nodes[node.kind]
@@ -124,7 +128,14 @@ class NodeConstructor(object):
         for key, value in build_args.items():
             module = getattr(module, key)(value, **other_args.get(key, dict()))
         node.func = module
+        self._process_hook(node, module)
         return node
+
+    def _process_hook(self, node, module):
+        if not node.enable_data_reflow:
+            return
+        if isinstance(module, (lazyllm.ModuleBase, lazyllm.LazyLLMFlowsBase)):
+            node.func.register_hook(NodeMetaHook(node.func, Engine.REPORT_URL, node.id))
 
 
 _constructor = NodeConstructor()
@@ -222,7 +233,10 @@ def make_graph(nodes: List[dict], edges: List[Union[List[str], dict]] = [],
         if formatter := edge.get('formatter'):
             assert formatter.startswith(('*[', '[', '}')) and formatter.endswith((']', '}'))
             formatter = lazyllm.formatter.JsonLike(formatter)
-        g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name, formatter)
+        if 'constant' in edge:
+            g.add_const_edge(edge['constant'], engine._nodes[edge['oid']].name)
+        else:
+            g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name, formatter)
 
     sg = ServerGraph(g, server_resources['server'], server_resources['web'])
     for kind, node in server_resources.items():
@@ -240,7 +254,17 @@ def make_subapp(nodes: List[dict], edges: List[dict], resources: List[dict] = []
 # Note: It will be very dangerous if provided to C-end users as a SAAS service
 @NodeConstructor.register('Code')
 def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
-    return compile_func(code, vars_for_code)
+    ori_func = compile_func(code, vars_for_code)
+
+    def cls_method(self, *args, **kwargs):
+        return ori_func(*args, **kwargs)
+
+    CodeBlock = type("CodeBlock", (lazyllm.ModuleBase,), {"forward": cls_method})
+    code_block = CodeBlock()
+    code_block.__doc__ = ori_func.__doc__
+    code_block.__name__ = ori_func.__name__
+    code_block._ori_func = ori_func
+    return code_block
 
 
 def _build_pipeline(nodes):
@@ -331,6 +355,7 @@ class JoinFormatter(lazyllm.components.FormatterBase):
 
 @NodeConstructor.register('JoinFormatter')
 def make_join_formatter(type='sum', names=None, symbol=None):
+    if type == 'file': return make_formatter('file', rule='merge')
     return JoinFormatter(type, names=names, symbol=symbol)
 
 @NodeConstructor.register('Formatter')
@@ -347,7 +372,10 @@ def _get_tools(tools):
     callable_list = []
     for rid in tools:  # `tools` is a list of ids in engine's resources
         node = Engine().build_node(rid)
-        wrapper_func = return_a_wrapper_func(node.func)
+        if type(node.func).__name__ == "CodeBlock":
+            wrapper_func = return_a_wrapper_func(node.func._ori_func)
+        else:
+            wrapper_func = return_a_wrapper_func(node.func)
         wrapper_func.__name__ = node.name
         callable_list.append(wrapper_func)
     return callable_list
@@ -380,10 +408,67 @@ def make_http_tool(method: Optional[str] = None,
         instance.__doc__ = doc
     return instance
 
-@NodeConstructor.register('SharedLLM')
-def make_shared_llm(llm: str, prompt: Optional[str] = None):
-    return Engine().build_node(llm).func.share(prompt=prompt)
+
+class VQA(lazyllm.Module):
+    def __init__(self, base_model: Union[str, lazyllm.TrainableModule], file_resource_id: Optional[str]):
+        super().__init__()
+        self.vqa = self._vqa = (lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
+                                if not isinstance(base_model, lazyllm.TrainableModule) else base_model)
+        self._file_resource_id = file_resource_id
+        if file_resource_id:
+            with pipeline() as self.vqa:
+                self.vqa.file = Engine().build_node(file_resource_id).func
+                self.vqa.vqa = self._vqa | lazyllm.bind(self.vqa.input, lazyllm._0)
+
+    def status(self, task_name: Optional[str] = None):
+        return self._vqa.status(task_name)
+
+    def share(self, prompt: str):
+        shared_vqa = self._vqa.share(prompt=prompt)
+        return VQA(shared_vqa, self._file_resource_id)
+
+    def forward(self, *args, **kw):
+        return self.vqa(*args, **kw)
+
 
 @NodeConstructor.register('VQA')
-def make_vqa(base_model: str):
-    return lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
+def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
+    return VQA(base_model, file_resource_id)
+
+
+@NodeConstructor.register('SharedLLM')
+def make_shared_llm(llm: str, prompt: Optional[str] = None, file_resource_id: Optional[str] = None):
+    llm = Engine().build_node(llm).func
+    if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
+    return VQA(llm._vqa.share(prompt=prompt), file_resource_id) if file_resource_id else llm.share(prompt=prompt)
+
+
+@NodeConstructor.register('STT')
+def make_stt(base_model: str):
+    # TODO: support multi-files with pictures
+    def cond(x):
+        if '<lazyllm-query>' in x:
+            for ext in ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma']:
+                if ext in x or ext.upper() in x:
+                    return True
+        return False
+
+    return lazyllm.ifs(cond, tpath=lazyllm.TrainableModule(base_model), fpath=lazyllm.Identity())
+
+
+@NodeConstructor.register('Constant')
+def make_constant(value: Any):
+    return (lambda *args, **kw: value)
+
+
+class FileResource(object):
+    def __init__(self, id) -> None:
+        self.id = id
+
+    def __call__(self, *args, **kw) -> Union[str, List[str]]:
+        return lazyllm.globals['lazyllm_files'].get(self.id)
+
+
+@NodeConstructor.register('File')
+def make_file(id: str):
+    return FileResource(id)
