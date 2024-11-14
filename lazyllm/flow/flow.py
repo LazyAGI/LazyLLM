@@ -494,7 +494,7 @@ class IFS(LazyLLMFlowsBase):
 
     def _run(self, __input, **kw):
         cond, tpath, fpath = self._items
-        return self.invoke(tpath if self.invoke(cond, __input) else fpath, __input, **kw)
+        return self.invoke(tpath if self.invoke(cond, __input, **kw) else fpath, __input, **kw)
 
 
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out

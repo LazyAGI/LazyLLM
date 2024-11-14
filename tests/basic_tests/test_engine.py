@@ -1,4 +1,4 @@
-from lazyllm.engine import LightEngine, NodeMetaHook
+from lazyllm.engine import LightEngine
 import pytest
 import time
 from gradio_client import Client
@@ -7,36 +7,80 @@ import urllib3
 from lazyllm.common.common import TimeoutException
 import json
 import unittest
+import subprocess
+import socket
+import threading
+import requests
+
+HOOK_PORT = 33733
+HOOK_ROUTE = "mock_post"
+fastapi_code = """
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from fastapi.testclient import TestClient
+from collections import deque
 
 app = FastAPI()
+received_datas = deque(maxlen=100)
 
 
-@app.post("/mock_post")
+@app.post("/{route}")
 async def receive_json(data: dict):
+    print("Received json data:", data)
+    received_datas.append(data)
     return JSONResponse(content=data)
+
+@app.get("/get_last_report")
+async def get_last_report():
+    if len(received_datas) > 0:
+        return received_datas[-1]
+    else:
+        return {{}}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port={port})
+""".format(
+    port=HOOK_PORT, route=HOOK_ROUTE
+)
 
 
 class TestEngine(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        client = TestClient(app)
+        cls.fastapi_process = subprocess.Popen(
+            ["python", "-c", fastapi_code],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        cls.report_url = f"http://{ip_address}:{HOOK_PORT}/{HOOK_ROUTE}"
+        cls.get_url = f"http://{ip_address}:{HOOK_PORT}/get_last_report"
 
-        def mock_report(self):
-            headers = {"Content-Type": "application/json; charset=utf-8"}
-            json_data = json.dumps(self._meta_info, ensure_ascii=False)
-            try:
-                lazyllm.LOG.info(f"meta_info: {self._meta_info}")
-                response = client.post(self.URL, data=json_data, headers=headers)
-                assert (
-                    response.json() == self._meta_info
-                ), "mock response should be same as input"
-            except Exception as e:
-                lazyllm.LOG.warning(f"Error sending collected data: {e}")
+        def read_stdout(process):
+            for line in iter(process.stdout.readline, b''):
+                print("FastAPI Server Output: ", line.decode(), end='')
 
-        NodeMetaHook.report = mock_report
+        cls.report_print_thread = threading.Thread(
+            target=read_stdout, args=(cls.fastapi_process,)
+        )
+        cls.report_print_thread.daemon = True
+        cls.report_print_thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        time.sleep(3)
+        cls.fastapi_process.terminate()
+        cls.fastapi_process.wait()
+
+    def get_last_report(self):
+        r = requests.get(self.get_url)
+        json_obj = {}
+        try:
+            json_obj = json.loads(r.content)
+        except Exception as e:
+            lazyllm.LOG.warning(str(e))
+        return json_obj
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
@@ -86,7 +130,7 @@ class TestEngine(unittest.TestCase):
         nodes = [switch]
         edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         engine = LightEngine()
-        engine.set_report_url("mock_post")
+        engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 1) == 2
         assert engine.run(gid, 2) == 6
@@ -111,6 +155,7 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 'case1', 2) == 4
         assert engine.run(gid, 'case2', 2) == 6
         assert engine.run(gid, 'case3', 3) == 9
+        assert "prompt_tokens" in self.get_last_report()
 
     def test_engine_ifs(self):
         plus1 = dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
@@ -130,11 +175,74 @@ class TestEngine(unittest.TestCase):
         nodes = [ifs]
         edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         engine = LightEngine()
-        engine.set_report_url("mock_post")
+        engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 1) == 4
         assert engine.run(gid, 5) == 12
         assert engine.run(gid, 10) == 100
+        assert "prompt_tokens" in self.get_last_report()
+
+    def test_data_reflow_in_server(self):
+        nodes = [
+            {
+                "id": "1",
+                "kind": "Code",
+                "name": "f1",
+                "args": {
+                    "code": "def main(x): return int(x) + 1",
+                    "_lazyllm_enable_report": True,
+                },
+            },
+            {
+                "id": "2",
+                "kind": "Code",
+                "name": "f2",
+                "args": {
+                    "code": "def main(x): return int(x) + 2",
+                    "_lazyllm_enable_report": True,
+                },
+            },
+            {
+                "id": "3",
+                "kind": "Code",
+                "name": "f3",
+                "args": {
+                    "code": "def main(x): return int(x) + 3",
+                    "_lazyllm_enable_report": True,
+                },
+            },
+        ]
+        edges = [
+            {
+                "iid": "__start__",
+                "oid": "1",
+            },
+            {
+                "iid": "1",
+                "oid": "2",
+            },
+            {
+                "iid": "2",
+                "oid": "3",
+            },
+            {
+                "iid": "3",
+                "oid": "__end__",
+            },
+        ]
+        resources = [
+            {
+                "id": "4",
+                "kind": "server",
+                "name": "s1",
+                "args": {},
+            }
+        ]
+        engine = LightEngine()
+        engine.set_report_url(self.report_url)
+        gid = engine.start(nodes, edges, resources)
+        assert engine.run(gid, 1) == 7
+        assert "prompt_tokens" in self.get_last_report()
 
     def test_engine_loop(self):
         nodes = [dict(id='1', kind='Code', name='code', args=dict(code='def square(x: int): return x * x'))]
@@ -156,9 +264,10 @@ class TestEngine(unittest.TestCase):
         edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
 
         engine = LightEngine()
-        engine.set_report_url("mock_post")
+        engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2) == 16
+        assert "prompt_tokens" in self.get_last_report()
 
     def test_engine_warp(self):
         nodes = [dict(id='1', kind='Code', name='code', args=dict(code='def square(x: int): return x * x'))]
@@ -179,9 +288,10 @@ class TestEngine(unittest.TestCase):
         edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
 
         engine = LightEngine()
-        engine.set_report_url("mock_post")
+        engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2, 3, 4, 5) == (4, 9, 16, 25)
+        assert "prompt_tokens" in self.get_last_report()
 
     def test_engine_formatter(self):
         nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='python', rule='[:]'))]
@@ -392,6 +502,12 @@ class TestEngine(unittest.TestCase):
         assert engine.status(gid) == {'1': 'running', '2': lazyllm.launcher.Status.Running, '3': 'running'}
         assert engine.run(gid, 1) == 2
         time.sleep(3)
+
+        server = engine.build_node('graph-1').func._g
+        assert isinstance(server, lazyllm.ServerModule)
+        m = lazyllm.UrlModule(url=server._url)
+        assert m(2) == 4
+
         web = engine.build_node('graph-1').func._web
         assert engine.build_node('graph-1').func.api_url is not None
         assert engine.build_node('graph-1').func.web_url == web.url
@@ -494,8 +610,8 @@ class TestEngineRAG(object):
 
     def test_rag(self):
         resources = [
-            dict(id='00', kind='LocalEmbedding', name='e1', args=dict(base_model='bge-large-zh-v1.5')),
-            dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', embed='00'))]
+            dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', embed='00')),
+            dict(id='00', kind='LocalEmbedding', name='e1', args=dict(base_model='bge-large-zh-v1.5'))]
         nodes = [dict(id='1', kind='Retriever', name='ret1',
                       args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
                  dict(id='4', kind='Reranker', name='rek1',
@@ -513,7 +629,7 @@ class TestEngineRAG(object):
         assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
 
         # test add doc_group
-        resources[-1] = dict(id='0', kind='Document', name='d1', args=dict(
+        resources[0] = dict(id='0', kind='Document', name='d1', args=dict(
             dataset_path='rag_master', server=True, node_group=[
                 dict(name='sentence', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))
         nodes.extend([dict(id='2', kind='Retriever', name='ret2',
