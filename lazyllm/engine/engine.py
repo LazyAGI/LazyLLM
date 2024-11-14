@@ -134,9 +134,8 @@ class NodeConstructor(object):
     def _process_hook(self, node, module):
         if not node.enable_data_reflow:
             return
-        if not isinstance(module, (lazyllm.ModuleBase, lazyllm.LazyLLMFlowsBase)):
-            return
-        node.func.register_hook(NodeMetaHook(node.func, Engine.REPORT_URL, node.id))
+        if isinstance(module, (lazyllm.ModuleBase, lazyllm.LazyLLMFlowsBase)):
+            node.func.register_hook(NodeMetaHook(node.func, Engine.REPORT_URL, node.id))
 
 
 _constructor = NodeConstructor()

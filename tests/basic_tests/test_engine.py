@@ -10,23 +10,31 @@ import unittest
 import subprocess
 import socket
 import threading
+import requests
 
 HOOK_PORT = 33733
 HOOK_ROUTE = "mock_post"
 fastapi_code = """
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from fastapi.testclient import TestClient
+from collections import deque
 
 app = FastAPI()
+received_datas = deque(maxlen=100)
 
 
 @app.post("/{route}")
 async def receive_json(data: dict):
     print("Received json data:", data)
-    assert "prompt_tokens" in data
+    received_datas.append(data)
     return JSONResponse(content=data)
 
+@app.get("/get_last_report")
+async def get_last_report():
+    if len(received_datas) > 0:
+        return received_datas[-1]
+    else:
+        return {{}}
 
 if __name__ == "__main__":
     import uvicorn
@@ -47,6 +55,7 @@ class TestEngine(unittest.TestCase):
         hostname = socket.gethostname()
         ip_address = socket.gethostbyname(hostname)
         cls.report_url = f"http://{ip_address}:{HOOK_PORT}/{HOOK_ROUTE}"
+        cls.get_url = f"http://{ip_address}:{HOOK_PORT}/get_last_report"
 
         def read_stdout(process):
             for line in iter(process.stdout.readline, b''):
@@ -63,6 +72,15 @@ class TestEngine(unittest.TestCase):
         time.sleep(3)
         cls.fastapi_process.terminate()
         cls.fastapi_process.wait()
+
+    def get_last_report(self):
+        r = requests.get(self.get_url)
+        json_obj = {}
+        try:
+            json_obj = json.loads(r.content)
+        except Exception as e:
+            lazyllm.LOG.warning(str(e))
+        return json_obj
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
@@ -137,6 +155,7 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 'case1', 2) == 4
         assert engine.run(gid, 'case2', 2) == 6
         assert engine.run(gid, 'case3', 3) == 9
+        assert "prompt_tokens" in self.get_last_report()
 
     def test_engine_ifs(self):
         plus1 = dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
@@ -161,31 +180,32 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 1) == 4
         assert engine.run(gid, 5) == 12
         assert engine.run(gid, 10) == 100
+        assert "prompt_tokens" in self.get_last_report()
 
     def test_data_reflow_in_server(self):
         nodes = [
             {
-                "id": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324014737",
+                "id": "1",
                 "kind": "Code",
-                "name": "1731324014737",
+                "name": "f1",
                 "args": {
                     "code": "def main(x): return int(x) + 1",
                     "_lazyllm_enable_report": True,
                 },
             },
             {
-                "id": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324018968",
+                "id": "2",
                 "kind": "Code",
-                "name": "1731324018968",
+                "name": "f2",
                 "args": {
                     "code": "def main(x): return int(x) + 2",
                     "_lazyllm_enable_report": True,
                 },
             },
             {
-                "id": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324021877",
+                "id": "3",
                 "kind": "Code",
-                "name": "1731324021877",
+                "name": "f3",
                 "args": {
                     "code": "def main(x): return int(x) + 3",
                     "_lazyllm_enable_report": True,
@@ -195,26 +215,26 @@ class TestEngine(unittest.TestCase):
         edges = [
             {
                 "iid": "__start__",
-                "oid": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324014737",
+                "oid": "1",
             },
             {
-                "iid": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324014737",
-                "oid": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324018968",
+                "iid": "1",
+                "oid": "2",
             },
             {
-                "iid": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324018968",
-                "oid": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324021877",
+                "iid": "2",
+                "oid": "3",
             },
             {
-                "iid": "debug-48f9e95a-e54c-4812-a41b-f61f635816b8-1731324021877",
+                "iid": "3",
                 "oid": "__end__",
             },
         ]
         resources = [
             {
-                "id": "adc5174c-3220-4b98-92a6-3897e9af8898",
+                "id": "4",
                 "kind": "server",
-                "name": "adc5174c-3220-4b98-92a6-3897e9af8898",
+                "name": "s1",
                 "args": {},
             }
         ]
@@ -222,6 +242,7 @@ class TestEngine(unittest.TestCase):
         engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges, resources)
         assert engine.run(gid, 1) == 7
+        assert "prompt_tokens" in self.get_last_report()
 
     def test_engine_loop(self):
         nodes = [dict(id='1', kind='Code', name='code', args=dict(code='def square(x: int): return x * x'))]
@@ -246,6 +267,7 @@ class TestEngine(unittest.TestCase):
         engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2) == 16
+        assert "prompt_tokens" in self.get_last_report()
 
     def test_engine_warp(self):
         nodes = [dict(id='1', kind='Code', name='code', args=dict(code='def square(x: int): return x * x'))]
@@ -269,6 +291,7 @@ class TestEngine(unittest.TestCase):
         engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2, 3, 4, 5) == (4, 9, 16, 25)
+        assert "prompt_tokens" in self.get_last_report()
 
     def test_engine_formatter(self):
         nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='python', rule='[:]'))]
