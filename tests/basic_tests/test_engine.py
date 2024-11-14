@@ -392,6 +392,12 @@ class TestEngine(unittest.TestCase):
         assert engine.status(gid) == {'1': 'running', '2': lazyllm.launcher.Status.Running, '3': 'running'}
         assert engine.run(gid, 1) == 2
         time.sleep(3)
+
+        server = engine.build_node('graph-1').func._g
+        assert isinstance(server, lazyllm.ServerModule)
+        m = lazyllm.UrlModule(url=server._url)
+        assert m(2) == 4
+
         web = engine.build_node('graph-1').func._web
         assert engine.build_node('graph-1').func.api_url is not None
         assert engine.build_node('graph-1').func.web_url == web.url
