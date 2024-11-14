@@ -10,7 +10,6 @@ import shutil
 class TmpDir:
     def __init__(self):
         self.store_dir = tempfile.mkdtemp()
-        print(f'debug!!! tmp dir -> {self.store_dir}')
         self.store_file = os.path.join(self.store_dir, "milvus.db")
 
     def __del__(self):
