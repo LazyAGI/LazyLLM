@@ -4,17 +4,16 @@ import os
 import lazyllm
 from lazyllm import bind
 from lazyllm.tools.rag import DocField
-import tempfile
 import shutil
 
 class TmpDir:
     def __init__(self):
-        self.root_dir = tempfile.mkdtemp()
-        # self.rag_dir = os.path.join(self.root_dir, 'rag')
-        # os.mkdir(self.rag_dir)
-        self.rag_dir = '/home/mnt/ouguoyu/rag_test'
+        self.root_dir = '/tmp/rag_test_for_example'
+        self.rag_dir = os.path.join(self.root_dir, 'rag_master')
+        os.makedirs(self.rag_dir, exist_ok=True)
         # creates a dummy file for rag
-        fd = open(os.path.join(self.rag_dir, '_dummy'), "w+")
+        fd = open(os.path.join(self.rag_dir, '_dummy.txt'), "wb")
+        fd.write(b'dsfjfasfkjdsfewifjewofjefiejw')
         fd.close()
         self.store_file = os.path.join(self.root_dir, "milvus.db")
 

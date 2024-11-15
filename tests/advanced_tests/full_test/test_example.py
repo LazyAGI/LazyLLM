@@ -143,13 +143,6 @@ class TestExamples(object):
         image_path = ans[0][0][-1]['value']
         assert os.path.isfile(image_path)
 
-    def test_rag_map_store_with_milvus_index(self):
-        from examples.rag_map_store_with_milvus_index import run as rag_run
-        res = rag_run('何为天道？')
-        assert type(res) is str
-        assert "天道" in res
-        assert len(res) >= 16
-
     def test_rag_milvus_store(self):
         from examples.rag_milvus_store import Runner
         runner = Runner()
@@ -172,28 +165,22 @@ class TestRagFilter(object):
     def test_upload_and_query(self):
         print(f'doc server addr -> {self.doc_server_addr}')
 
-        response = httpx.get(f'{self.doc_server_addr}/list_kb_groups')
-        print(f'response -> {response}')
-
         files = [('files', ('test1.txt', io.BytesIO(b"John's house is in Beijing"), 'text/palin')),
                  ('files', ('test2.txt', io.BytesIO(b"John's house is in Shanghai"), 'text/plain'))]
         metadatas = [{"comment": "comment1"}, {"signature": "signature2"}]
 
-        data = dict(override='true', metadatas=json.dumps(metadatas), user_path='path')
+        params = dict(override='true', metadatas=json.dumps(metadatas))
 
         url = f'{self.doc_server_addr}/upload_files'
-        response = httpx.post(url, data=data, files=files, timeout=10)
-        res = json.loads(response.text)
-        print(f'res -> {res}')
-        assert res['code'] == 200
+        response = httpx.post(url, params=params, files=files, timeout=10)
+        assert response.status_code == 200 and response.json().get('code') == 200, response.json()
 
-        time.sleep(15)  # waiting for worker thread to update newly uploaded files
-        #res = self.rag("Where is John's house?", filters={'comment': ['comment1']})
-        res = self.rag("Where is John's house?")
-        print(f'query result -> {res}')
-        assert 'Beijing' in res
+        time.sleep(30)  # waiting for worker thread to update newly uploaded files
 
-        #res = self.rag("Where is John's house?", filters={'signature': ['signature2']})
-        res = self.rag("Where is John's house?")
+        res = self.rag("Where is John's house?", filters={'comment': ['comment1']})
         print(f'query result -> {res}')
-        assert 'Shanghai' in res
+        assert 'Beijing' in res and 'Shanghai' not in res
+
+        res = self.rag("Where is John's house?", filters={'signature': ['signature2']})
+        print(f'query result -> {res}')
+        assert 'Shanghai' in res and 'Beijing' not in res

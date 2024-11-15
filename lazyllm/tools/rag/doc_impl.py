@@ -1,4 +1,3 @@
-import os
 import json
 import ast
 from collections import defaultdict
@@ -79,8 +78,7 @@ class DocImpl:
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
 
         if not self.store.is_group_active(LAZY_ROOT_NAME):
-            ids, paths, metadatas = self._list_files(status=DocListManager.Status.success)
-            LOG.error(f'debug!!! _list_files returns of init root is {paths}')
+            ids, paths, metadatas = self._list_files()
             if paths:
                 root_nodes = self._reader.load_data(paths)
                 assert len(metadatas) == len(root_nodes), \
@@ -216,7 +214,6 @@ class DocImpl:
     def worker(self):
         while True:
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
-            LOG.error(f'debug!!! _list_files returns of deleting is {files}')
             if files:
                 self._delete_files(files)
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
@@ -224,13 +221,10 @@ class DocImpl:
 
             if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
                 self._dlm.init_tables()
-                ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
-                                                         upload_status=DocListManager.Status.success)
-                LOG.error(f'debug!!! _list_files returns of waiting is {files}')
-            LOG.error(f'debug!!! get files -> {files}')
+            ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
+                                                     upload_status=DocListManager.Status.success)
             if files:
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
-                LOG.error(f'debug!!! trigger _add_files -> {files}')
                 self._add_files(input_files=files, ids=ids, metadatas=metadatas)
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
                 continue
@@ -250,30 +244,19 @@ class DocImpl:
         return ids, paths, metadatas
 
     def _add_files(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]]):
-        LOG.error(f'debug!!! enter _add_files with input_files -> {input_files}')
         if len(input_files) == 0:
             return
-        LOG.error('debug!!! before reader loads')
-        try:
-            for f in input_files:
-                dir_path = os.path.dirname(os.path.realpath(f))
-                #LOG.error(f'debug!!! file {f} dir -> {os.listdir(dir_path)}, /tmp -> {os.listdir("/tmp")}')
-            root_nodes = self._reader.load_data(input_files)
-        except Exception as e:
-            LOG.error(f'debug!!! in doc_impl _add_files load_data Exception: {e}')
-        LOG.error(f'debug!!! after reader loads {len(root_nodes)} nodes')
+        root_nodes = self._reader.load_data(input_files)
         for idx, node in enumerate(root_nodes):
             node.global_metadata = metadatas[idx]
             node.global_metadata.setdefault(RAG_DOC_ID, ids[idx])
             node.global_metadata.setdefault(RAG_DOC_PATH, input_files[idx])
         temp_store = self._create_store({"type": "map"})
-        LOG.error('debug!!! creates a temp store')
         temp_store.update_nodes(root_nodes)
         all_groups = self.store.all_groups()
         LOG.info(f"add_files: Trying to merge store with {all_groups}")
         for group in all_groups:
             if not self.store.is_group_active(group):
-                LOG.error(f'debug!!! ******* skip active group -> {group}')
                 continue
             # Duplicate group will be discarded automatically
             nodes = self._get_nodes(group, temp_store)
@@ -313,7 +296,6 @@ class DocImpl:
         if node_group is None:
             raise ValueError(f"Node group '{group_name}' does not exist. Please check the group name "
                              "or add a new one through `create_node_group`.")
-        LOG.error(f'debug!!! group [{group_name}] node group instance -> {node_group}')
         t = node_group['transform']
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
         parent_nodes = self._get_nodes(node_group["parent"], store)

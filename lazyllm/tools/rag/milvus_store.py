@@ -1,4 +1,3 @@
-import lazyllm
 import copy
 from typing import Dict, List, Optional, Union, Callable, Set
 from lazyllm.thirdparty import pymilvus
@@ -129,7 +128,6 @@ class MilvusStore(StoreBase):
             if embed_keys:
                 parallel_do_embedding(self._embed, embed_keys, [node])
             data = self._serialize_node_partial(node)
-            lazyllm.LOG.error(f'debug!!! in MilvusStore update node -> {data}')
             self._client.upsert(collection_name=node.group, data=[data])
 
         self._map_store.update_nodes(nodes)
@@ -198,7 +196,6 @@ class MilvusStore(StoreBase):
             for result in results[0]:
                 uidset.add(result['id'])
 
-        lazyllm.LOG.error(f'debug!!! get result uidset -> {uidset}')
         return self._map_store.get_nodes(group_name, list(uidset))
 
     # ----- internal helper functions ----- #

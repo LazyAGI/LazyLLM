@@ -39,7 +39,7 @@ class DocManager(lazyllm.ModuleBase):
         return None
 
     @app.post("/upload_files")
-    def upload_files(self, files: List[UploadFile], override: bool = False,
+    def upload_files(self, files: List[UploadFile], override: bool = False,  # noqa C901
                      metadatas: Optional[str] = None, user_path: Optional[str] = None):
         try:
             if user_path: user_path = user_path.lstrip('/')
@@ -51,13 +51,10 @@ class DocManager(lazyllm.ModuleBase):
                 for idx, mt in enumerate(metadatas):
                     err_msg = self._validate_metadata(mt)
                     if err_msg:
-                        lazyllm.LOG.error(f'debug!!! metadatas [{idx}] is illegal -> {err_msg}')
                         return BaseResponse(code=400, msg=f'file [{files[idx].filename}]: {err_msg}', data=None)
 
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
-            lazyllm.LOG.error(f'debug!!! in upload_files get file_paths -> {file_paths}')
             ids = self._manager.add_files(file_paths, metadatas=metadatas, status=DocListManager.Status.working)
-            lazyllm.LOG.error(f'debug!!! after manager add_files -> {ids}')
             results = []
             for file, path in zip(files, file_paths):
                 if os.path.exists(path):
@@ -73,7 +70,6 @@ class DocManager(lazyllm.ModuleBase):
 
                     with open(path, 'wb') as f:
                         f.write(content)
-                    lazyllm.LOG.error(f'debug!!! save file [{path}] content [{content}]')
                 except Exception as e:
                     lazyllm.LOG.error(f'writing file [{path}] to disk failed: [{e}]')
                     raise e
