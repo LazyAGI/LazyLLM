@@ -32,7 +32,9 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             if os.path.exists(defatult_path):
                 base_model = defatult_path
         if not merge_path:
-            save_path = os.path.join(os.getcwd(), target_path)
+            save_root = lazyllm.config['train_target_root'] if lazyllm.config['train_target_root'] \
+                else os.path.join(os.getcwd(), 'save_ckpt')
+            save_path = os.path.join(save_root, target_path)
             target_path, merge_path = os.path.join(save_path, "lazyllm_lora"), os.path.join(save_path, "lazyllm_merge")
             os.system(f'mkdir -p {target_path} {merge_path}')
         super().__init__(
@@ -75,7 +77,8 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.export_dict['export_dir'] = merge_path
         self.export_dict['template'] = self.template_dict['template']
 
-        self.temp_folder = os.path.join(os.getcwd(), '.temp')
+        self.temp_folder = lazyllm.config['temp_dir'] if lazyllm.config['temp_dir'] \
+            else os.path.join(os.getcwd(), '.temp/llamafactory_config')
         if not os.path.exists(self.temp_folder):
             os.makedirs(self.temp_folder)
         self.log_file_path = None

@@ -4,6 +4,7 @@ from datetime import datetime
 from datasets import load_dataset, DatasetDict
 from dataclasses import dataclass, asdict
 
+import lazyllm
 from ..components.utils.file_operate import delete_old_files
 
 @dataclass
@@ -94,7 +95,8 @@ def save_jsonl(data: list, output_json_path: str) -> None:
             json_file.write(json.dumps(row, ensure_ascii=False) + '\n')
 
 def save_dataset(save_data: list, save_suffix='json', base_name='train_data') -> str:
-    directory = os.path.join(os.getcwd(), '.temp/dataset')
+    directory = lazyllm.config['temp_dir'] if lazyllm.config['temp_dir'] \
+        else os.path.join(os.getcwd(), '.temp/dataset')
     if not os.path.exists(directory):
         os.makedirs(directory)
     delete_old_files(directory)

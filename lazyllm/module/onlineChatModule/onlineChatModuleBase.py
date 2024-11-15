@@ -388,7 +388,8 @@ class OnlineChatModuleBase(ModuleBase):
         return self._get_curr_job_model_id()
 
     def _get_temp_save_dir_path(self):
-        save_dir = os.path.join(os.getcwd(), '.temp/online_model_sft_log')
+        save_dir = lazyllm.config['temp_dir'] if lazyllm.config['temp_dir'] \
+            else os.path.join(os.getcwd(), '.temp/online_model_sft_log')
         if not os.path.exists(save_dir):
             os.system(f'mkdir -p {save_dir}')
         else:

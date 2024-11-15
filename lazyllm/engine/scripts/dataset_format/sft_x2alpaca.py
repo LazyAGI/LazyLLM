@@ -6,6 +6,7 @@ from typing import List
 from datetime import datetime
 from datasets import load_dataset
 
+import lazyllm
 from lazyllm.module.utils import openai2alpaca
 from lazyllm.components.utils.file_operate import delete_old_files
 
@@ -124,7 +125,8 @@ def _build_target_dir(target_path: str = None) -> str:
         if os.path.exists(save_dir):
             raise RuntimeError(f"The target_path at {save_dir} does not exist.")
     else:
-        save_dir = os.path.join(os.getcwd(), '.temp/dataset')
+        save_dir = lazyllm.config['temp_dir'] if lazyllm.config['temp_dir'] \
+            else os.path.join(os.getcwd(), '.temp/dataset')
         if not os.path.exists(save_dir):
             os.system(f'mkdir -p {save_dir}')
         else:

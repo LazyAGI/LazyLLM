@@ -92,4 +92,5 @@ config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBU
                 ).add('rag_store', str, 'none', 'RAG_STORE'
                 ).add('gpu_type', str, 'A100', 'GPU_TYPE'
                 ).add('train_target_root', str, '', 'TRAIN_TARGET_ROOT'
+                ).add('temp_dir', str, '', 'TEMP_DIR'
                 )

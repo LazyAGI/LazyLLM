@@ -20,7 +20,9 @@ class StableDiffusion3(object):
         self.trust_remote_code = trust_remote_code
         self.sd = None
         self.init_flag = lazyllm.once_flag()
-        self.save_path = save_path if save_path else os.path.join(os.getcwd(), '.temp/sd3')
+        save_dir = lazyllm.config['temp_dir'] if lazyllm.config['temp_dir'] \
+            else os.path.join(os.getcwd(), '.temp/sd3')
+        self.save_path = save_path if save_path else save_dir
         if init:
             lazyllm.call_once(self.init_flag, self.load_sd)
 
