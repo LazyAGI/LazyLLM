@@ -65,14 +65,19 @@ class DocManager(lazyllm.ModuleBase):
                         results.append('Duplicated')
                         continue
 
-                content = file.file.read()
-                directory = os.path.dirname(path)
-                if directory:
-                    os.makedirs(directory, exist_ok=True)
+                try:
+                    content = file.file.read()
+                    directory = os.path.dirname(path)
+                    if directory:
+                        os.makedirs(directory, exist_ok=True)
 
-                with open(path, 'wb') as f:
-                    f.write(content)
-                lazyllm.LOG.error(f'debug!!! save file [{path}] content [{content}]')
+                    with open(path, 'wb') as f:
+                        f.write(content)
+                    lazyllm.LOG.error(f'debug!!! save file [{path}] content [{content}]')
+                except Exception as e:
+                    lazyllm.LOG.error(f'writing file [{path}] to disk failed: [{e}]')
+                    raise e
+
                 file_id = hashlib.sha256(path.encode()).hexdigest()
                 self._manager.update_file_status([file_id], status=DocListManager.Status.success)
                 results.append('Success')

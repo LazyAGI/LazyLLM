@@ -79,7 +79,8 @@ class DocImpl:
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
 
         if not self.store.is_group_active(LAZY_ROOT_NAME):
-            ids, paths, metadatas = self._list_files()
+            ids, paths, metadatas = self._list_files(status=DocListManager.Status.success)
+            LOG.error(f'debug!!! _list_files returns of init root is {paths}')
             if paths:
                 root_nodes = self._reader.load_data(paths)
                 assert len(metadatas) == len(root_nodes), \
@@ -215,6 +216,7 @@ class DocImpl:
     def worker(self):
         while True:
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
+            LOG.error(f'debug!!! _list_files returns of deleting is {files}')
             if files:
                 self._delete_files(files)
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
@@ -224,7 +226,7 @@ class DocImpl:
                 self._dlm.init_tables()
                 ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
                                                          upload_status=DocListManager.Status.success)
-                LOG.error('debug!!! trigger fetch files from db')
+                LOG.error(f'debug!!! _list_files returns of waiting is {files}')
             LOG.error(f'debug!!! get files -> {files}')
             if files:
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
@@ -245,7 +247,6 @@ class DocImpl:
             ids.append(row[0])
             paths.append(row[1])
             metadatas.append(json.loads(row[3]) if row[3] else {})
-        LOG.error(f'debug!!! _list_files return ids {ids}, paths {paths}, metadatas {metadatas}')
         return ids, paths, metadatas
 
     def _add_files(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]]):
@@ -256,7 +257,7 @@ class DocImpl:
         try:
             for f in input_files:
                 dir_path = os.path.dirname(os.path.realpath(f))
-                LOG.error(f'debug!!! file {f} dir -> {os.listdir(dir_path)}, /tmp -> {os.listdir("/tmp")}')
+                #LOG.error(f'debug!!! file {f} dir -> {os.listdir(dir_path)}, /tmp -> {os.listdir("/tmp")}')
             root_nodes = self._reader.load_data(input_files)
         except Exception as e:
             LOG.error(f'debug!!! in doc_impl _add_files load_data Exception: {e}')
@@ -272,7 +273,7 @@ class DocImpl:
         LOG.info(f"add_files: Trying to merge store with {all_groups}")
         for group in all_groups:
             if not self.store.is_group_active(group):
-                LOG.error(f'debug!!! ******* skip inactive group -> {group}')
+                LOG.error(f'debug!!! ******* skip active group -> {group}')
                 continue
             # Duplicate group will be discarded automatically
             nodes = self._get_nodes(group, temp_store)
@@ -312,6 +313,7 @@ class DocImpl:
         if node_group is None:
             raise ValueError(f"Node group '{group_name}' does not exist. Please check the group name "
                              "or add a new one through `create_node_group`.")
+        LOG.error(f'debug!!! group [{group_name}] node group instance -> {node_group}')
         t = node_group['transform']
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
         parent_nodes = self._get_nodes(node_group["parent"], store)

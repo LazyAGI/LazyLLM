@@ -266,7 +266,7 @@ class SqliteDocListManager(DocListManager):
 
         with self._conn:
             cursor = self._conn.execute(query, params)
-            lazyllm.LOG.error(f'debug!!! query -> {query}')
+            lazyllm.LOG.error(f'debug!!! query -> {query}, params -> {params}')
             rows = cursor.fetchall()
 
         if not details:
@@ -294,6 +294,7 @@ class SqliteDocListManager(DocListManager):
 
             with self._conn:
                 lazyllm.LOG.error('debug!!!  enter hereeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee')
+                self._debug_print_documents()
                 query = f"""
                     INSERT OR IGNORE INTO documents (doc_id, filename, path, metadata, status, count)
                     VALUES {', '.join(insert_values)} RETURNING doc_id;
@@ -302,6 +303,11 @@ class SqliteDocListManager(DocListManager):
                 results.extend([row[0] for row in cursor.fetchall()])
         lazyllm.LOG.error(f'debug!!! in utils _add_files returns {results}')
         return results
+
+    def _debug_print_documents(self):
+        cursor = self._conn.cursor()
+        cursor.execute('select * from documents')
+        print(f'debug!!! table documents contains -> {cursor.fetchall()}')
 
     # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):
