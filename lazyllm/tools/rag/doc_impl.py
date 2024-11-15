@@ -1,8 +1,9 @@
+import os
 import json
 import ast
 from collections import defaultdict
 from functools import wraps
-from typing import Callable, Dict, List, Optional, Set, Union, Tuple
+from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
 from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
@@ -79,16 +80,18 @@ class DocImpl:
 
         if not self.store.is_group_active(LAZY_ROOT_NAME):
             ids, paths, metadatas = self._list_files()
-            root_nodes = self._reader.load_data(paths)
-            assert len(metadatas) == len(root_nodes)
-            for idx, node in enumerate(root_nodes):
-                node.global_metadata = metadatas[idx]
-                node.global_metadata.setdefault(RAG_DOC_ID, ids[idx])
-                node.global_metadata.setdefault(RAG_DOC_PATH, paths[idx])
-            self.store.update_nodes(root_nodes)
-            if self._dlm: self._dlm.update_kb_group_file_status(
-                ids, DocListManager.Status.success, group=self._kb_group_name)
-            LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
+            if paths:
+                root_nodes = self._reader.load_data(paths)
+                assert len(metadatas) == len(root_nodes), \
+                    f"size of metadatas [{len(metadatas)}] != size of root nodes [{len(root_nodes)}]"
+                for idx, node in enumerate(root_nodes):
+                    node.global_metadata = metadatas[idx]
+                    node.global_metadata.setdefault(RAG_DOC_ID, ids[idx])
+                    node.global_metadata.setdefault(RAG_DOC_PATH, paths[idx])
+                self.store.update_nodes(root_nodes)
+                if self._dlm: self._dlm.update_kb_group_file_status(
+                    ids, DocListManager.Status.success, group=self._kb_group_name)
+                LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
 
         if self._dlm:
             self._daemon = threading.Thread(target=self.worker)
@@ -211,7 +214,7 @@ class DocImpl:
 
     def worker(self):
         while True:
-            ids, files, _ = self._list_files(status=DocListManager.Status.deleting)
+            ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
             if files:
                 self._delete_files(files)
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
@@ -219,11 +222,14 @@ class DocImpl:
 
             if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
                 self._dlm.init_tables()
-                ids, files, _ = self._list_files(status=DocListManager.Status.waiting,
-                                                 upload_status=DocListManager.Status.success)
+                ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
+                                                         upload_status=DocListManager.Status.success)
+                LOG.error('debug!!! trigger fetch files from db')
+            LOG.error(f'debug!!! get files -> {files}')
             if files:
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
-                self._add_files(files)
+                LOG.error(f'debug!!! trigger _add_files -> {files}')
+                self._add_files(input_files=files, ids=ids, metadatas=metadatas)
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
                 continue
             time.sleep(10)
@@ -239,18 +245,34 @@ class DocImpl:
             ids.append(row[0])
             paths.append(row[1])
             metadatas.append(json.loads(row[3]) if row[3] else {})
+        LOG.error(f'debug!!! _list_files return ids {ids}, paths {paths}, metadatas {metadatas}')
         return ids, paths, metadatas
 
-    def _add_files(self, input_files: List[str]):
+    def _add_files(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]]):
+        LOG.error(f'debug!!! enter _add_files with input_files -> {input_files}')
         if len(input_files) == 0:
             return
-        root_nodes = self._reader.load_data(input_files)
+        LOG.error('debug!!! before reader loads')
+        try:
+            for f in input_files:
+                dir_path = os.path.dirname(os.path.realpath(f))
+                LOG.error(f'debug!!! file {f} dir -> {os.listdir(dir_path)}, /tmp -> {os.listdir("/tmp")}')
+            root_nodes = self._reader.load_data(input_files)
+        except Exception as e:
+            LOG.error(f'debug!!! in doc_impl _add_files load_data Exception: {e}')
+        LOG.error(f'debug!!! after reader loads {len(root_nodes)} nodes')
+        for idx, node in enumerate(root_nodes):
+            node.global_metadata = metadatas[idx]
+            node.global_metadata.setdefault(RAG_DOC_ID, ids[idx])
+            node.global_metadata.setdefault(RAG_DOC_PATH, input_files[idx])
         temp_store = self._create_store({"type": "map"})
+        LOG.error('debug!!! creates a temp store')
         temp_store.update_nodes(root_nodes)
         all_groups = self.store.all_groups()
         LOG.info(f"add_files: Trying to merge store with {all_groups}")
         for group in all_groups:
             if not self.store.is_group_active(group):
+                LOG.error(f'debug!!! ******* skip inactive group -> {group}')
                 continue
             # Duplicate group will be discarded automatically
             nodes = self._get_nodes(group, temp_store)

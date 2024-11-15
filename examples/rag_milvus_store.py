@@ -9,11 +9,17 @@ import shutil
 
 class TmpDir:
     def __init__(self):
-        self.store_dir = tempfile.mkdtemp()
-        self.store_file = os.path.join(self.store_dir, "milvus.db")
+        self.root_dir = tempfile.mkdtemp()
+        # self.rag_dir = os.path.join(self.root_dir, 'rag')
+        # os.mkdir(self.rag_dir)
+        self.rag_dir = '/home/mnt/ouguoyu/rag_test'
+        # creates a dummy file for rag
+        fd = open(os.path.join(self.rag_dir, '_dummy'), "w+")
+        fd.close()
+        self.store_file = os.path.join(self.root_dir, "milvus.db")
 
     def __del__(self):
-        shutil.rmtree(self.store_dir)
+        shutil.rmtree(self.root_dir)
 
 tmp_dir = TmpDir()
 
@@ -34,16 +40,16 @@ doc_fields = {
 prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task.'\
     ' In this task, you need to provide your answer based on the given context and question.'
 
-documents = lazyllm.Document(dataset_path=tmp_dir.store_dir,
+documents = lazyllm.Document(dataset_path=tmp_dir.rag_dir,
                              embed=lazyllm.TrainableModule("bge-large-zh-v1.5"),
                              manager=True,
                              store_conf=milvus_store_conf,
                              doc_fields=doc_fields)
 
-documents.create_node_group(name="sentences", transform=lambda s: '。'.split(s))
+documents.create_node_group(name="block", transform=lambda s: s.split("\n") if s else '')
 
 with lazyllm.pipeline() as ppl:
-    ppl.retriever = lazyllm.Retriever(doc=documents, group_name="sentences", topk=3)
+    ppl.retriever = lazyllm.Retriever(doc=documents, group_name="block", topk=3)
 
     ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
                                     model="bge-reranker-large",

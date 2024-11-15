@@ -134,10 +134,15 @@ class DocListManager(ABC):
 class SqliteDocListManager(DocListManager):
     def __init__(self, path, name):
         super().__init__(path, name)
+        # if sqlite3.threadsafety != 3:
+        #     lazyllm.LOG.error("this sqlite3 module doesn't support threading.")
+        #     exit(-1)
+
         root_dir = os.path.expanduser(os.path.join(config['home'], '.dbs'))
         os.system(f'mkdir -p {root_dir}')
         self._db_path = os.path.join(root_dir, f'.lazyllm_dlmanager.{self._id}.db')
         self._conns = threading.local()
+        lazyllm.LOG.info(f'sqlite db path is -> {self._db_path}')
 
     @property
     def _conn(self):
@@ -261,19 +266,25 @@ class SqliteDocListManager(DocListManager):
 
         with self._conn:
             cursor = self._conn.execute(query, params)
+            lazyllm.LOG.error(f'debug!!! query -> {query}')
             rows = cursor.fetchall()
 
-        if not details: return [row[:2] for row in rows]
+        if not details:
+            lazyllm.LOG.error(f'debug!!! 1111111111 returns {[row[:2] for row in rows]}')
+            return [row[:2] for row in rows]
+        lazyllm.LOG.error(f'debug!!! 22222222 returns {rows}')
         return rows
 
     def _add_files(self, files: List[str], metadatas: Optional[List] = None,
                    status: Optional[str] = DocListManager.Status.waiting, batch_size: int = 64):
         results = []
+        lazyllm.LOG.error(f'debug!!! entering utils::_add_files arg: files -> {files}')
         for i in range(0, len(files), batch_size):
             batch_files = files[i:i + batch_size]
             batch_metadatas = metadatas[i:i + batch_size] if metadatas else None
             insert_values, params = [], []
 
+            lazyllm.LOG.error(f'debug!!! before looping batch_files -> {batch_files}')
             for i, file_path in enumerate(batch_files):
                 filename = os.path.basename(file_path)
                 metadata = json.dumps(batch_metadatas[i]) if batch_metadatas else ''
@@ -282,12 +293,14 @@ class SqliteDocListManager(DocListManager):
                 params.extend([doc_id, filename, file_path, metadata, status, 1])
 
             with self._conn:
+                lazyllm.LOG.error('debug!!!  enter hereeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee')
                 query = f"""
                     INSERT OR IGNORE INTO documents (doc_id, filename, path, metadata, status, count)
                     VALUES {', '.join(insert_values)} RETURNING doc_id;
                 """
                 cursor = self._conn.execute(query, params)
                 results.extend([row[0] for row in cursor.fetchall()])
+        lazyllm.LOG.error(f'debug!!! in utils _add_files returns {results}')
         return results
 
     # TODO(wangzhihong): set to metadatas and enable this function
@@ -298,6 +311,7 @@ class SqliteDocListManager(DocListManager):
             self._conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
 
     def add_files_to_kb_group(self, file_ids: List[str], group: str):
+        lazyllm.LOG.error(f'debug!!! add_files_to_kb_group -> {file_ids}')
         with self._conn:
             for doc_id in file_ids:
                 self._conn.execute("""
@@ -333,6 +347,7 @@ class SqliteDocListManager(DocListManager):
             with self._conn:
                 cursor = self._conn.execute(sql, [status] + batch)
                 updated_files.extend(cursor.fetchall())
+        lazyllm.LOG.error(f'debug!!! update_file_status to [{status}] -> {updated_files}')
         return updated_files
 
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):

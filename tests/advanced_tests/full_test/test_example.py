@@ -162,7 +162,8 @@ class TestExamples(object):
 
 class TestRagFilter(object):
     def setup_class(self):
-        from examples.rag_milvus_store import ppl, documents
+        from examples.rag_milvus_store import ppl, documents, tmp_dir
+        self.tmp_dir = tmp_dir
         self.rag = lazyllm.ActionModule(ppl)
         self.rag.start()
         url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
@@ -174,18 +175,25 @@ class TestRagFilter(object):
         response = httpx.get(f'{self.doc_server_addr}/list_kb_groups')
         print(f'response -> {response}')
 
-        files = [('files', ('test1.txt', io.BytesIO(b"John's home is in Beijing"), 'text/palin')),
-                 ('files', ('test2.txt', io.BytesIO(b"John's home is in Shanghai"), 'text/plain'))]
+        files = [('files', ('test1.txt', io.BytesIO(b"John's house is in Beijing"), 'text/palin')),
+                 ('files', ('test2.txt', io.BytesIO(b"John's house is in Shanghai"), 'text/plain'))]
         metadatas = [{"comment": "comment1"}, {"signature": "signature2"}]
 
         data = dict(override='true', metadatas=json.dumps(metadatas), user_path='path')
 
         url = f'{self.doc_server_addr}/upload_files'
-        response = httpx.post(url, data=data, files=files)
+        response = httpx.post(url, data=data, files=files, timeout=10)
         res = json.loads(response.text)
         print(f'res -> {res}')
-        # assert res['code'] == 200
+        assert res['code'] == 200
 
-        res = self.rag("Where is John's home?", filters={'comment': ['comment1']})
+        time.sleep(15)  # waiting for worker thread to update newly uploaded files
+        #res = self.rag("Where is John's house?", filters={'comment': ['comment1']})
+        res = self.rag("Where is John's house?")
         print(f'query result -> {res}')
-        # assert 'Beijing' in res
+        assert 'Beijing' in res
+
+        #res = self.rag("Where is John's house?", filters={'signature': ['signature2']})
+        res = self.rag("Where is John's house?")
+        print(f'query result -> {res}')
+        assert 'Shanghai' in res
