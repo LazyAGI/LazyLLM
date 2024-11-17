@@ -109,7 +109,7 @@ def save_dataset(save_data: list, save_suffix='json', base_name='train_data') ->
         save_jsonl(save_data, output_json_path)
     return output_json_path
 
-def alpaca_filter_null(data: datasets.DatasetDict) -> list:
+def alpaca_filter_null(data) -> list:
     res = []
     for item in data["train"]:
         alpaca_item = dict()
@@ -119,7 +119,7 @@ def alpaca_filter_null(data: datasets.DatasetDict) -> list:
         res.append(alpaca_item)
     return res
 
-def alpaca2openai(data: datasets.DatasetDict) -> list:
+def alpaca2openai(data) -> list:
     res = []
     for item in data["train"]:
         openai_item = {"messages": []}
@@ -141,7 +141,7 @@ def alpaca2openai(data: datasets.DatasetDict) -> list:
 
     return res
 
-def openai2alpaca(data: datasets.DatasetDict) -> list:
+def openai2alpaca(data) -> list:
     res = []
     for line in data["train"]:
         chat = line["messages"]
