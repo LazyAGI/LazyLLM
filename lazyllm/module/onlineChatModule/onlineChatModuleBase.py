@@ -14,7 +14,7 @@ from lazyllm.components.prompter import PrompterBase, ChatPrompter
 from lazyllm.components.formatter import FormatterBase, EmptyFormatter
 from lazyllm.components.utils.file_operate import delete_old_files
 from ..module import ModuleBase, Pipeline
-from ..utils import TrainConfig, updat_config, uniform_sft_dataset
+from ..utils import TrainConfig, update_config, uniform_sft_dataset
 
 
 class OnlineChatModuleBase(ModuleBase):
@@ -330,7 +330,7 @@ class OnlineChatModuleBase(ModuleBase):
             self._train_parameters = kw
 
     def train(self, train_config: dict, asyn: bool = True) -> None:
-        train_config = updat_config(train_config, TrainConfig)
+        train_config = update_config(train_config, TrainConfig)
         assert train_config['training_type'].lower() == 'sft', 'Only supported sft!'
 
         data_path = os.path.join(lazyllm.config['data_path'], train_config['data_path'])

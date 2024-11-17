@@ -7,9 +7,6 @@ import requests
 import pickle
 import codecs
 import inspect
-import string
-import random
-import threading
 import functools
 from datetime import datetime
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
@@ -20,11 +17,10 @@ from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_re
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
-from .utils import TrainConfig, updat_config, uniform_sft_dataset
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
-from ..launcher import LazyLLMLaunchersBase as Launcher, Status
+from ..launcher import LazyLLMLaunchersBase as Launcher
 import uuid
 from ..client import get_redis, redis_client
 from ..hook import LazyLLMHook
@@ -732,7 +728,7 @@ class TrainableModule(UrlModule):
     def type(self):
         return ModelManager.get_model_type(self.base_model).upper()
 
-    def get_all_finetuned_models(self):
+    def get_all_models(self):
         return self._impl._get_all_finetuned_models()
 
     def set_specific_finetuned_model(self, model_path):
@@ -763,57 +759,6 @@ class TrainableModule(UrlModule):
         launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or task_type]
         return launcher.status
 
-    def get_train_status(self, job_id=None):
-        job_id = job_id if job_id else self._impl._file_name
-        try:
-            status = self.status(job_id, task_type='finetune')
-            if status == Status.Done:
-                status = 'Done'
-            elif status == Status.Cancelled:
-                status = 'Cancelled'
-            elif status == Status.Failed:
-                status = 'Failed'
-            else:
-                status = 'Running'
-        except KeyError:
-            status = 'Invalid'
-        return status
-
-    def cancel_finetuning(self, job_id=None):
-        job_id = job_id if job_id else self._impl._file_name
-        self.stop(task_name=job_id, task_type='finetune')
-        time.sleep(0.5)
-        status = self.get_train_status()
-        if status == 'Cancelled':
-            return "Successfully cancelled task."
-        else:
-            return "Failed to cancel task. " + (f" Because: {status}" if status else '')
-
-    def get_log(self, name=None):
-        if not hasattr(self._impl, '_finetuned_model_path') and not name:
-            return None
-        if name and not os.path.isdir(name):
-            return None
-        log_dir = name if name else self._impl._finetuned_model_path
-        parts = log_dir.split(os.sep)
-        if parts[-1].endswith('lazyllm_merge'):
-            parts[-1] = parts[-1].replace('lazyllm_merge', 'lazyllm_lora')
-        log_dir = os.sep.join(parts)
-
-        log_files_paths = []
-        for file in os.listdir(log_dir):
-            if file.endswith(".log") and file.startswith("train_log_"):
-                log_files_paths.append(os.path.join(log_dir, file))
-        if len(log_files_paths) == 0:
-            return None
-        assert len(log_files_paths) == 1
-        return log_files_paths[-1]
-
-    def get_target_model(self):
-        if hasattr(self._impl, '_finetuned_model_path'):
-            return self._impl._file_name, self._impl._finetuned_model_path
-        return None, None
-
     # modify default value to ''
     def prompt(self, prompt=''):
         if self.base_model != '' and prompt == '' and ModelManager.get_model_type(self.base_model) != 'llm':
@@ -826,33 +771,6 @@ class TrainableModule(UrlModule):
             for key in ["tool_start_token", "tool_args_token", "tool_end_token"]:
                 if key in keys: setattr(self, f"_{key}", keys[key])
         return self
-
-    def train(self, train_config: dict, asyn: bool = True) -> None:
-        train_config = updat_config(train_config, TrainConfig)
-        characters = string.ascii_letters + string.digits
-        random_string = ''.join(random.choices(characters, k=7))
-        model_name = train_config.pop('finetune_model_name', 'llm') + random_string
-        self._impl._set_file_name(model_name)
-        assert train_config['training_type'].lower() == 'sft', 'Only supported sft!'
-        self.mode('finetune')
-
-        data_path = os.path.join(lazyllm.config['data_path'], train_config['data_path'])
-        data_path = uniform_sft_dataset(data_path, target='alpaca')
-        self.trainset(data_path)
-        train_config.pop('lora_rate')
-        train_config.pop('data_path')
-        train_config['per_device_train_batch_size'] = train_config.pop('batch_size')
-        train_config['num_train_epochs'] = train_config.pop('num_epochs')
-        train_config['stage'] = train_config.pop('training_type').strip().lower()
-        train_config['finetuning_type'] = train_config.pop('finetuning_type').strip().lower()
-        self._impl._launchers['manual'][model_name] = train_config['launcher'] = launchers.remote(sync=False, ngpus=1)
-
-        self.finetune_method((lazyllm.finetune.llamafactory, train_config))
-        self.thread = threading.Thread(target=self._update, kwargs={'mode': ['train']})
-        self.thread.daemon = True
-        self.thread.start()
-        if not asyn:
-            self.thread.join()
 
     def _loads_str(self, text: str) -> Union[str, Dict]:
         try:

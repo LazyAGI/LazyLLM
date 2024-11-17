@@ -1,15 +1,16 @@
 import os
 import json
 from datetime import datetime
-from datasets import load_dataset, DatasetDict
 from dataclasses import dataclass, asdict
 
 import lazyllm
+from lazyllm.thirdparty import datasets
 from ..components.utils.file_operate import delete_old_files
 
 @dataclass
 class TrainConfig:
     finetune_model_name: str = 'llm'
+    base_model: str = 'llm'
     training_type: str = 'SFT'
     finetuning_type: str = 'LoRA'
     data_path: str = 'path/to/dataset'
@@ -23,7 +24,7 @@ class TrainConfig:
     lora_alpha: int = 32
     lora_rate: float = 0.1
 
-def updat_config(input_dict: dict, default_data: type) -> dict:
+def update_config(input_dict: dict, default_data: type) -> dict:
     config = TrainConfig()
     config_dict = asdict(config)
     assert all([key in config_dict for key in input_dict.keys()]), \
@@ -48,7 +49,7 @@ def uniform_sft_dataset(dataset_path: str, target: str = 'alpaca') -> str:
     '''
     assert os.path.exists(dataset_path), f"Path: {dataset_path} does not exist!"
 
-    data = load_dataset('json', data_files=dataset_path)
+    data = datasets.load_dataset('json', data_files=dataset_path)
     file_name = os.path.basename(dataset_path)
     base_name, suffix = file_name.split('.')
     assert suffix in ['json', 'jsonl']
@@ -108,7 +109,7 @@ def save_dataset(save_data: list, save_suffix='json', base_name='train_data') ->
         save_jsonl(save_data, output_json_path)
     return output_json_path
 
-def alpaca_filter_null(data: DatasetDict) -> list:
+def alpaca_filter_null(data: datasets.DatasetDict) -> list:
     res = []
     for item in data["train"]:
         alpaca_item = dict()
@@ -118,7 +119,7 @@ def alpaca_filter_null(data: DatasetDict) -> list:
         res.append(alpaca_item)
     return res
 
-def alpaca2openai(data: DatasetDict) -> list:
+def alpaca2openai(data: datasets.DatasetDict) -> list:
     res = []
     for item in data["train"]:
         openai_item = {"messages": []}
@@ -140,7 +141,7 @@ def alpaca2openai(data: DatasetDict) -> list:
 
     return res
 
-def openai2alpaca(data: DatasetDict) -> list:
+def openai2alpaca(data: datasets.DatasetDict) -> list:
     res = []
     for line in data["train"]:
         chat = line["messages"]

@@ -1,6 +1,7 @@
 from .engine import Engine, Node
 import lazyllm
 from lazyllm import once_wrapper
+from lazyllm.cli.serve import TrainServer
 from typing import List, Dict, Optional, Set, Union
 import copy
 import uuid
@@ -29,6 +30,8 @@ class LightEngine(Engine):
     def __init__(self):
         super().__init__()
         self.node_graph: Set[str, List[str]] = dict()
+        self.train_server = TrainServer()
+        self.train_server.run()
 
     def build_node(self, node):
         if not isinstance(node, Node):

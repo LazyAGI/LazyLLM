@@ -125,10 +125,13 @@ class Job(object):
         if self.sync:
             self.ps.wait()
         else:
-            with timeout(3600, msg='Launch failed: No computing resources are available.'):
-                while self.status in (Status.TBSubmitted, Status.InQueue, Status.Pending):
-                    time.sleep(2)
-            self.launcher.all_processes[self.launcher._id].append((self.jobid, self))
+            try:
+                self.launcher.all_processes[self.launcher._id].append((self.jobid, self))
+                with timeout(3600, msg='Launch failed: No computing resources are available.'):
+                    while self.status in (Status.TBSubmitted, Status.InQueue, Status.Pending):
+                        time.sleep(2)
+            except Exception:
+                self.launcher.all_processes[self.launcher._id].pop()
 
     def restart(self, *, fixed=False):
         self.stop()
