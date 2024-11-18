@@ -6,7 +6,7 @@ from .map_store import MapStore
 from .utils import parallel_do_embedding
 from .index_base import IndexBase
 from .store_base import StoreBase
-from .global_metadata import GlobalMetadataDesc, RAG_DOC_PATH
+from .global_metadata import GlobalMetadataDesc, RAG_DOC_PATH, RAG_DOC_ID
 from lazyllm.common import override
 import pickle
 import base64
@@ -40,6 +40,8 @@ class MilvusStore(StoreBase):
         }
 
         self._builtin_global_metadata_desc = {
+            RAG_DOC_ID: GlobalMetadataDesc(data_type=GlobalMetadataDesc.DTYPE_VARCHAR,
+                                           default_value=' ', max_size=512),
             RAG_DOC_PATH: GlobalMetadataDesc(data_type=GlobalMetadataDesc.DTYPE_VARCHAR,
                                              default_value=' ', max_size=65535),
         }

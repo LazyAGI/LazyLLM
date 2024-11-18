@@ -84,7 +84,7 @@ class DocImpl:
                 assert len(metadatas) == len(root_nodes), \
                     f"size of metadatas [{len(metadatas)}] != size of root nodes [{len(root_nodes)}]"
                 for idx, node in enumerate(root_nodes):
-                    node.global_metadata = metadatas[idx]
+                    node.global_metadata = metadatas[idx].copy()
                     node.global_metadata.setdefault(RAG_DOC_ID, ids[idx])
                     node.global_metadata.setdefault(RAG_DOC_PATH, paths[idx])
                 self.store.update_nodes(root_nodes)
@@ -248,7 +248,7 @@ class DocImpl:
             return
         root_nodes = self._reader.load_data(input_files)
         for idx, node in enumerate(root_nodes):
-            node.global_metadata = metadatas[idx]
+            node.global_metadata = metadatas[idx].copy()
             node.global_metadata.setdefault(RAG_DOC_ID, ids[idx])
             node.global_metadata.setdefault(RAG_DOC_PATH, input_files[idx])
         temp_store = self._create_store({"type": "map"})

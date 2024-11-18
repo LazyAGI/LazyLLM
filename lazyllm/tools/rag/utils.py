@@ -137,7 +137,6 @@ class SqliteDocListManager(DocListManager):
         root_dir = os.path.expanduser(os.path.join(config['home'], '.dbs'))
         os.system(f'mkdir -p {root_dir}')
         self._db_path = os.path.join(root_dir, f'.lazyllm_dlmanager.{self._id}.db')
-        lazyllm.LOG.info(f'db path -> {self._db_path}')
         self._conns = threading.local()
 
     @property

@@ -12,6 +12,7 @@ from PIL import Image
 import lazyllm
 from lazyllm.launcher import cleanup
 from lazyllm.components.formatter import decode_query_with_filepaths
+from lazyllm.tools.rag.global_metadata import RAG_DOC_ID
 
 
 class TestExamples(object):
@@ -162,9 +163,7 @@ class TestRagFilter(object):
         url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
         self.doc_server_addr = re.findall(url_pattern, documents.manager._url)[0]
 
-    def test_upload_and_query(self):
-        print(f'doc server addr -> {self.doc_server_addr}')
-
+    def test_upload_and_filter(self):
         files = [('files', ('test1.txt', io.BytesIO(b"John's house is in Beijing"), 'text/palin')),
                  ('files', ('test2.txt', io.BytesIO(b"John's house is in Shanghai"), 'text/plain'))]
         metadatas = [{"comment": "comment1"}, {"signature": "signature2"}]
@@ -178,9 +177,16 @@ class TestRagFilter(object):
         time.sleep(30)  # waiting for worker thread to update newly uploaded files
 
         res = self.rag("Where is John's house?", filters={'comment': ['comment1']})
-        print(f'query result -> {res}')
         assert 'Beijing' in res and 'Shanghai' not in res
 
         res = self.rag("Where is John's house?", filters={'signature': ['signature2']})
-        print(f'query result -> {res}')
+        assert 'Shanghai' in res and 'Beijing' not in res
+
+        test1_docid = "d40ad9fbd6b0ddce1ef34f5e14c31ea9cfa6ee44cae8b325d2d91542981baad0"
+        test2_docid = "b83e5de759bd69ad291c754c500f4667043cea4ce72d50298a8cfa68547b65b8"
+
+        res = self.rag("Where is John's house?", filters={RAG_DOC_ID: [test1_docid]})
+        assert 'Beijing' in res and 'Shanghai' not in res
+
+        res = self.rag("Where is John's house?", filters={RAG_DOC_ID: [test2_docid]})
         assert 'Shanghai' in res and 'Beijing' not in res
