@@ -81,8 +81,9 @@ class DocManager(lazyllm.ModuleBase):
                 if os.path.exists(file):
                     exist_id = exists_files_info.get(file, None)
                     if exist_id:
-                        if metadatas:
-                            self._manager.update_file_message(fileid=exist_id, metadata=metadatas[idx])
+                        update_kws = dict(fileid=exist_id, status=DocListManager.Status.success)
+                        if metadatas: update_kws["metadata"] = metadatas[idx]
+                        self._manager.update_file_message(**update_kws)
                         exist_ids.append(exist_id)
                         id_mapping[file] = exist_id
                     else:
