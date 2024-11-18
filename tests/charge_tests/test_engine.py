@@ -236,8 +236,8 @@ class TestEngine(unittest.TestCase):
                      user='请结合历史对话和本轮的问题，总结我们的全部对话。本轮情况如下:\n {query}, 回答: {answer}')))]
         engine = LightEngine()
         # TODO handle duplicated node id
-        gid = engine.start(nodes, edges=[['__start__', '1'], ['1', '2'], ['1', '3'],
-                                         ['2', '3'], ['3', '4'], ['4', '__end__']])
+        gid = engine.start(nodes, edges=[['__start__', '1'], ['1', '2'], ['1', '3'], ['2', '3'],
+                                         ['3', '4'], ['4', '__end__']], _history_ids=['2', '4'])
         history = [['水的沸点是多少？', '您好，我的答案是：水的沸点在标准大气压下是100摄氏度。'],
                    ['世界上最大的动物是什么？', '您好，我的答案是：蓝鲸是世界上最大的动物。'],
                    ['人一天需要喝多少水？', '您好，我的答案是：一般建议每天喝8杯水，大约2升。'],
@@ -247,8 +247,7 @@ class TestEngine(unittest.TestCase):
 
         stream_result = ''
         with lazyllm.ThreadPoolExecutor(1) as executor:
-            future = executor.submit(engine.run, gid, 'How many hours are there in a day?',
-                                     _llm_history=dict(ids=['2', '4'], history=history))
+            future = executor.submit(engine.run, gid, 'How many hours are there in a day?', _lazyllm_history=history)
             while True:
                 if value := lazyllm.FileSystemQueue().dequeue():
                     stream_result += f"{''.join(value)}"

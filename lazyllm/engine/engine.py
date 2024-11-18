@@ -37,7 +37,7 @@ class Engine(object):
 
     @overload
     def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
-              gid: Optional[str] = None, name: Optional[str] = None) -> str:
+              gid: Optional[str] = None, name: Optional[str] = None, _history_ids: Optional[List[str]] = None) -> str:
         ...
 
     @overload
@@ -142,9 +142,10 @@ _constructor = NodeConstructor()
 
 
 class ServerGraph(lazyllm.ModuleBase):
-    def __init__(self, g: lazyllm.graph, server: Node, web: Node):
+    def __init__(self, g: lazyllm.graph, server: Node, web: Node, _history_ids: Optional[List[str]] = None):
         super().__init__()
         self._g = lazyllm.ActionModule(g)
+        self._history_ids = _history_ids
         if server:
             if server.args.get('port'): raise NotImplementedError('Port is not supported now')
             self._g = lazyllm.ServerModule(g)
@@ -205,7 +206,7 @@ def make_server_resource(kind: str, graph: ServerGraph, args: Dict[str, Any]):
 
 @NodeConstructor.register('Graph', 'SubGraph', subitems=['nodes', 'resources'])
 def make_graph(nodes: List[dict], edges: List[Union[List[str], dict]] = [],
-               resources: List[dict] = [], enable_server=True):
+               resources: List[dict] = [], enable_server: bool = True, _history_ids: Optional[List[str]] = None):
     engine = Engine()
     server_resources = dict(server=None, web=None)
     for resource in resources:
@@ -238,7 +239,7 @@ def make_graph(nodes: List[dict], edges: List[Union[List[str], dict]] = [],
         else:
             g.add_edge(engine._nodes[edge['iid']].name, engine._nodes[edge['oid']].name, formatter)
 
-    sg = ServerGraph(g, server_resources['server'], server_resources['web'])
+    sg = ServerGraph(g, server_resources['server'], server_resources['web'], _history_ids=_history_ids)
     for kind, node in server_resources.items():
         if node:
             node.args = dict(kind=kind, graph=sg, args=node.args)
