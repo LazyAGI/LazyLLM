@@ -1,5 +1,6 @@
 import os
 import lazyllm
+from urllib.parse import urljoin
 from typing import Union, Dict, List
 from .onlineChatModuleBase import OnlineChatModuleBase
 
@@ -25,7 +26,7 @@ class DoubaoModule(OnlineChatModuleBase):
                 and support to users' questions and requests."
 
     def _set_chat_url(self):
-        self._url = os.path.join(self._base_url, 'chat/completions')
+        self._url = urljoin(self._base_url, 'chat/completions')
 
     def forward(self, __input: Union[Dict, str] = None, llm_chat_history: List[List[str]] = None, **kw):
         raise NotImplementedError("Individual user support is not friendly and is not supported yet")

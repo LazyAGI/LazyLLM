@@ -2,6 +2,7 @@ import json
 import os
 import requests
 from typing import Tuple
+from urllib.parse import urljoin
 import lazyllm
 from .onlineChatModuleBase import OnlineChatModuleBase
 from .fileHandler import FileHandlerBase
@@ -40,7 +41,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                 "your name is Tongyi Qianwen, and you are a useful assistant.")
 
     def _set_chat_url(self):
-        self._url = os.path.join(self._base_url, 'compatible-mode/v1/chat/completions')
+        self._url = urljoin(self._base_url, 'compatible-mode/v1/chat/completions')
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:
@@ -64,7 +65,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             "Authorization": "Bearer " + self._api_key
         }
 
-        url = os.path.join(self._base_url, "api/v1/files")
+        url = urljoin(self._base_url, "api/v1/files")
 
         self.get_finetune_data(train_file)
 
@@ -89,7 +90,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             return r.json()['data']['uploaded_files'][0]["file_id"]
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
-        url = os.path.join(self._base_url, "api/v1/fine-tunes")
+        url = urljoin(self._base_url, "api/v1/fine-tunes")
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}",
@@ -110,7 +111,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             return (fine_tuning_job_id, status)
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
-        fine_tune_url = os.path.join(self._base_url, f"api/v1/fine-tunes/{fine_tuning_job_id}")
+        fine_tune_url = urljoin(self._base_url, f"api/v1/fine-tunes/{fine_tuning_job_id}")
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json"
@@ -129,7 +130,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         self._deploy_paramters = kw
 
     def _create_deployment(self) -> Tuple[str, str]:
-        url = os.path.join(self._base_url, "api/v1/deployments")
+        url = urljoin(self._base_url, "api/v1/deployments")
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}",
@@ -150,7 +151,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             return (deployment_id, status)
 
     def _query_deployment(self, deployment_id) -> str:
-        fine_tune_url = os.path.join(self._base_url, f"api/v1/deployments/{deployment_id}")
+        fine_tune_url = urljoin(self._base_url, f"api/v1/deployments/{deployment_id}")
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}"

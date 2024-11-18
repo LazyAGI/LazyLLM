@@ -2,6 +2,7 @@ import json
 import os
 import requests
 from typing import Tuple, Dict, Any
+from urllib.parse import urljoin
 import uuid
 import lazyllm
 from .onlineChatModuleBase import OnlineChatModuleBase
@@ -56,7 +57,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
         return token
 
     def _set_chat_url(self):
-        self._url = os.path.join(self._base_url, 'chat-completions')
+        self._url = urljoin(self._base_url, 'chat-completions')
 
     def _convert_msg_format(self, msg: Dict[str, Any]):
         try:
@@ -121,7 +122,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             lazyllm.LOG.info(f"train file id: {train_file_id}")
 
         def _create_finetuning_dataset(description, files):
-            url = os.path.join(self._base_url, "fine-tune/datasets")
+            url = urljoin(self._base_url, "fine-tune/datasets")
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self._api_key}",
@@ -155,7 +156,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
         return _create_finetuning_dataset("fine-tuning dataset", [train_file_id])
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
-        url = os.path.join(self._base_url, "fine-tunes")
+        url = urljoin(self._base_url, "fine-tunes")
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}",
@@ -177,7 +178,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             return (fine_tuning_job_id, status)
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
-        fine_tune_url = os.path.join(self._base_url, f"fine-tunes/{fine_tuning_job_id}")
+        fine_tune_url = urljoin(self._base_url, f"fine-tunes/{fine_tuning_job_id}")
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}"
@@ -196,7 +197,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
         self._deploy_paramters = kw
 
     def _create_deployment(self) -> Tuple[str, str]:
-        url = os.path.join(self._base_url, "fine-tune/servings")
+        url = urljoin(self._base_url, "fine-tune/servings")
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}",
@@ -219,7 +220,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             return (fine_tuning_job_id, status)
 
     def _query_deployment(self, deployment_id) -> str:
-        fine_tune_url = os.path.join(self._base_url, f"fine-tune/servings/{deployment_id}")
+        fine_tune_url = urljoin(self._base_url, f"fine-tune/servings/{deployment_id}")
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}"

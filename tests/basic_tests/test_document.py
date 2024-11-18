@@ -162,6 +162,8 @@ class TestDocument(unittest.TestCase):
         doc.start()
         time.sleep(4)
         url = doc._impls._docweb.url
+        if '0.0.0.0' in url:
+            url = url.replace('0.0.0.0', '127.0.0.1')
         response = requests.get(url)
         assert response.status_code == 200
         doc.stop()

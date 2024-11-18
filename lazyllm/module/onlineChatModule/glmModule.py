@@ -2,6 +2,7 @@ import json
 import os
 import requests
 from typing import Tuple
+from urllib.parse import urljoin
 import lazyllm
 from .onlineChatModuleBase import OnlineChatModuleBase
 from .fileHandler import FileHandlerBase
@@ -56,8 +57,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
             "Authorization": "Bearer " + self._api_key
         }
 
-        url = os.path.join(self._base_url, "files")
-
+        url = urljoin(bself._base_url, "files")
         self.get_finetune_data(train_file)
 
         file_object = {
@@ -74,7 +74,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
             return r.json()["id"]
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
-        url = os.path.join(self._base_url, "fine_tuning/jobs")
+        url = urljoin(self._base_url, "fine_tuning/jobs")
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}",
@@ -95,7 +95,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
             return (fine_tuning_job_id, status)
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
-        fine_tune_url = os.path.join(self._base_url, f"fine_tuning/jobs/{fine_tuning_job_id}")
+        fine_tune_url = urljoin(self._base_url, f"fine_tuning/jobs/{fine_tuning_job_id}")
         headers = {
             "Authorization": f"Bearer {self._api_key}"
         }

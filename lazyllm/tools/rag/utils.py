@@ -135,7 +135,7 @@ class SqliteDocListManager(DocListManager):
     def __init__(self, path, name):
         super().__init__(path, name)
         root_dir = os.path.expanduser(os.path.join(config['home'], '.dbs'))
-        os.system(f'mkdir -p {root_dir}')
+        os.makedirs(root_dir, exist_ok=True)
         self._db_path = os.path.join(root_dir, f'.lazyllm_dlmanager.{self._id}.db')
         self._conns = threading.local()
 
@@ -349,7 +349,7 @@ class SqliteDocListManager(DocListManager):
 
     def release(self):
         self._conn.close()
-        os.system(f'rm {self._db_path}')
+        os.remove(self._db_path)
 
     def __reduce__(self):
         return (__class__, (self._path, self._name))

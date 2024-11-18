@@ -45,7 +45,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.export_config_path = export_config_path
         self.config_folder_path = os.path.dirname(os.path.abspath(__file__))
 
-        default_config_path = os.path.join(self.config_folder_path, 'llamafactory/sft.yaml')
+        default_config_path = os.path.join(self.config_folder_path, 'llamafactory', 'sft.yaml')
         self.template_dict = ArgsDict(self.load_yaml(default_config_path))
 
         if self.config_path:
@@ -62,7 +62,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.template_dict['template'] = self.get_template_name(base_model)
         self.template_dict.check_and_update(kw)
 
-        default_export_config_path = os.path.join(self.config_folder_path, 'llamafactory/lora_export.yaml')
+        default_export_config_path = os.path.join(self.config_folder_path, 'llamafactory', 'lora_export.yaml')
         self.export_dict = ArgsDict(self.load_yaml(default_export_config_path))
 
         if self.export_config_path:
@@ -145,7 +145,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.temp_yaml_file = self.build_temp_yaml(updated_template_str)
 
         cmds = f'llamafactory-cli train {self.temp_yaml_file}'
-        cmds += f' 2>&1 | tee {self.target_path}/llm_$(date +"%Y-%m-%d_%H-%M-%S").log'
+        cmds += f' 2>&1 | tee {os.path.join(self.target_path, "llm")}_$(date +"%Y-%m-%d_%H-%M-%S").log'
         if self.temp_export_yaml_file:
             cmds += f' && llamafactory-cli export {self.temp_export_yaml_file}'
         return cmds
