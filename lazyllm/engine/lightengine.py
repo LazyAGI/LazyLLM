@@ -106,12 +106,19 @@ class LightEngine(Engine):
             for node in gid_or_nodes: self.update_node(node)
 
     def run(self, id: str, *args, _lazyllm_files: Optional[Union[str, List[str]]] = None,
-            _file_resources: Optional[Dict[str, Union[str, List[str]]]] = None, **kw):
+            _file_resources: Optional[Dict[str, Union[str, List[str]]]] = None,
+            _llm_history: Optional[Dict[str, List]] = None, **kw):
         if files := _lazyllm_files:
             assert len(args) <= 1 and len(kw) == 0, 'At most one query is enabled when file exists'
             args = [lazyllm.formatter.file(formatter='encode')(dict(query=args[0] if args else '', files=files))]
         if _file_resources:
             lazyllm.globals['lazyllm_files'] = _file_resources
+        if _llm_history:
+            ids, history = _llm_history['ids'], _llm_history['history']
+            if not isinstance(history, list) and all([isinstance(h, list) for h in history]):
+                raise RuntimeError('History shoule be [[str, str], ..., [str, str]] (list of list of str)')
+            lazyllm.globals['chat_history'] = {Engine().build_node(i).func._module_id: history for i in ids}
         result = self.build_node(id).func(*args, **kw)
         lazyllm.globals['lazyllm_files'] = {}
+        lazyllm.globals['chat_history'] = {}
         return result
