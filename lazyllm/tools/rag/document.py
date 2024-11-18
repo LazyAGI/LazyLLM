@@ -55,7 +55,7 @@ class Document(ModuleBase):
                                                    global_metadata_desc=doc_fields, store_conf=store_conf)
             else:
                 self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
-                                          doc_fields=doc_fields, store_conf=store_conf)
+                                          global_metadata_desc=doc_fields, store_conf=store_conf)
             self._dlm.add_kb_group(name=name)
 
         def get_doc_by_kb_group(self, name):

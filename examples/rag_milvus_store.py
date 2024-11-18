@@ -8,7 +8,8 @@ import shutil
 
 class TmpDir:
     def __init__(self):
-        self.root_dir = '/tmp/rag_test_for_example'
+        home_dir = os.getenv('HOME')
+        self.root_dir = f'{home_dir}/rag_for_ut'
         self.rag_dir = os.path.join(self.root_dir, 'rag_master')
         os.makedirs(self.rag_dir, exist_ok=True)
         # creates a dummy file for rag

@@ -78,21 +78,23 @@ class ChromadbStore(StoreBase):
             return
 
         # Restore all nodes
+        uid2node = {}
         for group in self._collections.keys():
             results = self._peek_all_documents(group)
             nodes = self._build_nodes_from_chroma(results, embed_dims)
-            self._map_store.update_nodes(nodes)
+            for node in nodes:
+                uid2node[node.uid] = node
 
         # Rebuild relationships
-        for group_name in self._map_store.all_groups():
-            nodes = self._map_store.get_nodes(group_name)
-            for node in nodes:
-                if node.parent:
-                    parent_uid = node.parent
-                    parent_node = self._map_store.find_node_by_uid(parent_uid)
-                    node.parent = parent_node
-                    parent_node.children[node.group].append(node)
-            LOG.debug(f"build {group} nodes from chromadb: {nodes}")
+        for node in uid2node.values():
+            if node.parent:
+                parent_uid = node.parent
+                parent_node = uid2node.get(parent_uid)
+                node.parent = parent_node
+                parent_node.children[node.group].append(node)
+        LOG.debug(f"build {group} nodes from chromadb: {nodes}")
+
+        self._map_store.update_nodes(list(uid2node.values()))
         LOG.success("Successfully Built nodes from chromadb.")
 
     def _save_nodes(self, nodes: List[DocNode]) -> None:
@@ -134,7 +136,7 @@ class ChromadbStore(StoreBase):
             local_metadata = pickle.loads(base64.b64decode(chroma_metadata['metadata'].encode('utf-8')))
 
             global_metadata = pickle.loads(base64.b64decode(chroma_metadata['global_metadata'].encode('utf-8')))\
-                if parent else None
+                if not parent else None
 
             node = DocNode(
                 uid=uid,
