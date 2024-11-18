@@ -70,24 +70,37 @@ class DocManager(lazyllm.ModuleBase):
                 assert len(files) == len(metadatas), 'Length of files and metadatas should be the same'
 
             exists_files_info = self._manager.list_files(limit=None, details=True, status=DocListManager.Status.all)
-            exists_files_info = {row[2]: row[0] for row in exists_files_info}  # path: id
-            ids = []
+            exists_files_info = {row[2]: row[0] for row in exists_files_info}
+
+            exist_ids = []
+            new_files = []
+            new_metadatas = []
+            id_mapping = {}
+
             for idx, file in enumerate(files):
                 if os.path.exists(file):
                     exist_id = exists_files_info.get(file, None)
                     if exist_id:
-                        ids.append(exist_id)
+                        if metadatas:
+                            self._manager.update_file_message(fileid=exist_id, metadata=metadatas[idx])
+                        exist_ids.append(exist_id)
+                        id_mapping[file] = exist_id
                     else:
-                        metadata = metadatas[idx] if metadatas else None
-                        new_ids = self._manager.add_files([file], metadatas=[metadata],
-                                                          status=DocListManager.Status.success)
-                        ids.append(new_ids[0])
+                        new_files.append(file)
+                        if metadatas:
+                            new_metadatas.append(metadatas[idx])
                 else:
-                    ids.append(None)
+                    id_mapping[file] = None
 
+            new_ids = self._manager.add_files(new_files, metadatas=new_metadatas, status=DocListManager.Status.success)
             if group_name:
-                self._manager.add_files_to_kb_group([id for id in ids if id], group=group_name)
-            return BaseResponse(data=ids)
+                self._manager.add_files_to_kb_group(new_ids + exist_ids, group=group_name)
+
+            for file, new_id in zip(new_files, new_ids):
+                id_mapping[file] = new_id
+            return_ids = [id_mapping[file] for file in files]
+
+            return BaseResponse(data=return_ids)
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
