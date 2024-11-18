@@ -430,6 +430,14 @@ class VQA(lazyllm.Module):
     def forward(self, *args, **kw):
         return self.vqa(*args, **kw)
 
+    @property
+    def stream(self):
+        return self._vqa._stream
+
+    @stream.setter
+    def stream(self, v: bool):
+        self._vqa._stream = v
+
 
 @NodeConstructor.register('VQA')
 def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
@@ -437,10 +445,13 @@ def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
 
 
 @NodeConstructor.register('SharedLLM')
-def make_shared_llm(llm: str, prompt: Optional[str] = None, file_resource_id: Optional[str] = None):
+def make_shared_llm(llm: str, prompt: Optional[str] = None, stream: Optional[bool] = None,
+                    file_resource_id: Optional[str] = None):
     llm = Engine().build_node(llm).func
     if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
-    return VQA(llm._vqa.share(prompt=prompt), file_resource_id) if file_resource_id else llm.share(prompt=prompt)
+    r = VQA(llm._vqa.share(prompt=prompt), file_resource_id) if file_resource_id else llm.share(prompt=prompt)
+    if stream is not None: r.stream = stream
+    return r
 
 
 @NodeConstructor.register('STT')

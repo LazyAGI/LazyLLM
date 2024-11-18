@@ -231,9 +231,9 @@ class TestEngine(unittest.TestCase):
                       args=dict(source='glm', stream=True,
                                 prompt=dict(system='请参考历史对话，回答问题，并保持格式不变。', user='{query}'))),
                  dict(id='3', kind='JoinFormatter', name='join', args=dict(type='to_dict', names=['query', 'answer'])),
-                 dict(id='4', kind='OnlineLLM', stream=False, name='m3',
-                      args=dict(source='glm', prompt=dict(system='你是一个问答机器人，会根据用户的问题作出回答。',
-                                                          user='请结合本轮的问题，总结我们的全部对话。问题: {query}, 回答: {answer}')))]
+                 dict(id='4', kind='OnlineLLM', stream=False, name='m3', args=dict(source='glm', prompt=dict(
+                     system='你是一个问答机器人，会根据用户的问题作出回答。',
+                     user='请结合历史对话和本轮的问题，总结我们的全部对话。本轮情况如下:\n {query}, 回答: {answer}')))]
         engine = LightEngine()
         # TODO handle duplicated node id
         gid = engine.start(nodes, edges=[['__start__', '1'], ['1', '2'], ['1', '3'],
