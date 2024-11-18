@@ -235,7 +235,6 @@ class TestEngine(unittest.TestCase):
                      system='你是一个问答机器人，会根据用户的问题作出回答。',
                      user='请结合历史对话和本轮的问题，总结我们的全部对话。本轮情况如下:\n {query}, 回答: {answer}')))]
         engine = LightEngine()
-        # TODO handle duplicated node id
         gid = engine.start(nodes, edges=[['__start__', '1'], ['1', '2'], ['1', '3'], ['2', '3'],
                                          ['3', '4'], ['4', '__end__']], _history_ids=['2', '4'])
         history = [['水的沸点是多少？', '您好，我的答案是：水的沸点在标准大气压下是100摄氏度。'],
