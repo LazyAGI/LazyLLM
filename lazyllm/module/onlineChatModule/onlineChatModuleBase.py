@@ -51,6 +51,14 @@ class OnlineChatModuleBase(ModuleBase):
     def type(self):
         return "LLM"
 
+    @property
+    def stream(self):
+        return self._stream
+
+    @stream.setter
+    def stream(self, v: bool):
+        self._stream = v
+
     def prompt(self, prompt=None):
         if prompt is None:
             self._prompt = ChatPrompter()
