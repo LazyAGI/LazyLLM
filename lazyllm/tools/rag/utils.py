@@ -142,19 +142,12 @@ class SqliteDocListManager(DocListManager):
         os.makedirs(root_dir, exist_ok=True)
         self._db_path = os.path.join(root_dir, f'.lazyllm_dlmanager.{self._id}.db')
         self._db_lock = FileLock(self._db_path + '.lock')
-
         # ensure that this connection is not used in another thread when sqlite3 is not threadsafe
-        check_same_thread = not sqlite3_check_threadsafety()
-        with self._db_lock:
-            self._conn = sqlite3.connect(self._db_path, check_same_thread=check_same_thread)
-
-    def __del__(self):
-        with self._db_lock:
-            self._conn.close()
+        self._check_same_thread = not sqlite3_check_threadsafety()
 
     def _init_tables(self):
-        with self._db_lock, self._conn:
-            self._conn.execute("""
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS documents (
                     doc_id TEXT PRIMARY KEY,
                     filename TEXT NOT NULL,
@@ -164,13 +157,13 @@ class SqliteDocListManager(DocListManager):
                     count INTEGER DEFAULT 0
                 )
             """)
-            self._conn.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS document_groups (
                     group_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     group_name TEXT NOT NULL UNIQUE
                 )
             """)
-            self._conn.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS kb_group_documents (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     doc_id TEXT NOT NULL,
@@ -182,11 +175,11 @@ class SqliteDocListManager(DocListManager):
                     FOREIGN KEY(group_name) REFERENCES document_groups(group_name)
                 )
             """)
-            self._conn.commit()
+            conn.commit()
 
     def table_inited(self):
-        with self._db_lock, self._conn:
-            cursor = self._conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='documents'")
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='documents'")
             return cursor.fetchone() is not None
 
     @staticmethod
@@ -225,19 +218,19 @@ class SqliteDocListManager(DocListManager):
         if limit:
             query += " LIMIT ?"
             params.append(limit)
-        with self._db_lock, self._conn:
-            cursor = self._conn.execute(query, params)
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            cursor = conn.execute(query, params)
             return cursor.fetchall() if details else [row[0] for row in cursor]
 
     def list_all_kb_group(self):
-        with self._db_lock, self._conn:
-            cursor = self._conn.execute("SELECT group_name FROM document_groups")
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            cursor = conn.execute("SELECT group_name FROM document_groups")
             return [row[0] for row in cursor]
 
     def add_kb_group(self, name):
-        with self._db_lock, self._conn:
-            self._conn.execute('INSERT OR IGNORE INTO document_groups (group_name) VALUES (?)', (name,))
-            self._conn.commit()
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            conn.execute('INSERT OR IGNORE INTO document_groups (group_name) VALUES (?)', (name,))
+            conn.commit()
 
     def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
                             status: Union[str, List[str]] = DocListManager.Status.all,
@@ -272,8 +265,8 @@ class SqliteDocListManager(DocListManager):
             query += ' LIMIT ?'
             params.append(limit)
 
-        with self._db_lock, self._conn:
-            cursor = self._conn.execute(query, params)
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            cursor = conn.execute(query, params)
             rows = cursor.fetchall()
 
         if not details: return [row[:2] for row in rows]
@@ -299,50 +292,50 @@ class SqliteDocListManager(DocListManager):
                 insert_values.append("(?, ?, ?, ?, ?, ?)")
                 params.extend([doc_id, filename, file_path, metadata_str, status, 1])
 
-            with self._db_lock, self._conn:
+            with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
                 query = f"""
                     INSERT OR IGNORE INTO documents (doc_id, filename, path, metadata, status, count)
                     VALUES {', '.join(insert_values)} RETURNING doc_id;
                 """
-                cursor = self._conn.execute(query, params)
+                cursor = conn.execute(query, params)
                 results.extend([row[0] for row in cursor.fetchall()])
-                self._conn.commit()
+                conn.commit()
         return results
 
     # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):
         set_clause = ", ".join([f"{k} = ?" for k in kw.keys()])
         params = list(kw.values()) + [fileid]
-        with self._db_lock, self._conn:
-            self._conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
-            self._conn.commit()
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
+            conn.commit()
 
     def add_files_to_kb_group(self, file_ids: List[str], group: str):
-        with self._db_lock, self._conn:
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             for doc_id in file_ids:
-                self._conn.execute("""
+                conn.execute("""
                     INSERT OR IGNORE INTO kb_group_documents (doc_id, group_name, status)
                     VALUES (?, ?, ?)
                 """, (doc_id, group, DocListManager.Status.waiting))
-                self._conn.commit()
+                conn.commit()
 
     def _delete_files(self, file_ids: List[str], real: bool = False):
         if not real:
             return self.update_file_status(file_ids, DocListManager.Status.deleted)
-        with self._db_lock, self._conn:
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             for doc_id in file_ids:
-                self._conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
-                self._conn.commit()
+                conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
+                conn.commit()
 
     def delete_files_from_kb_group(self, file_ids: List[str], group: str):
-        with self._db_lock, self._conn:
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             for doc_id in file_ids:
-                self._conn.execute("DELETE FROM kb_group_documents WHERE doc_id = ? AND group_name = ?", (doc_id, group))
-                self._conn.commit()
+                conn.execute("DELETE FROM kb_group_documents WHERE doc_id = ? AND group_name = ?", (doc_id, group))
+                conn.commit()
 
     def get_file_status(self, fileid: str):
-        with self._db_lock, self._conn:
-            cursor = self._conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            cursor = conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
         return cursor.fetchone()
 
     def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]:
@@ -353,10 +346,10 @@ class SqliteDocListManager(DocListManager):
             placeholders = ', '.join('?' for _ in batch)
             sql = f'UPDATE documents SET status = ? WHERE doc_id IN ({placeholders}) RETURNING doc_id, path'
 
-            with self._db_lock, self._conn:
-                cursor = self._conn.execute(sql, [status] + batch)
+            with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+                cursor = conn.execute(sql, [status] + batch)
                 updated_files.extend(cursor.fetchall())
-                self._conn.commit()
+                conn.commit()
         return updated_files
 
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
@@ -366,16 +359,16 @@ class SqliteDocListManager(DocListManager):
             query += 'group_name = ? AND '
             params.append(group)
         query += f'doc_id IN ({",".join("?" * len(file_ids))})'
-        with self._db_lock, self._conn:
-            self._conn.execute(query, (params + file_ids))
-            self._conn.commit()
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            conn.execute(query, (params + file_ids))
+            conn.commit()
 
     def release(self):
-        with self._db_lock, self._conn:
-            self._conn.execute('delete from documents')
-            self._conn.execute('delete from document_groups')
-            self._conn.execute('delete from kb_group_documents')
-            self._conn.commit()
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            conn.execute('delete from documents')
+            conn.execute('delete from document_groups')
+            conn.execute('delete from kb_group_documents')
+            conn.commit()
 
     def __reduce__(self):
         return (__class__, (self._path, self._name))
