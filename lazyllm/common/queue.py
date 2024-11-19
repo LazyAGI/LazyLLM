@@ -79,8 +79,8 @@ def sqlite3_check_threadsafety() -> bool:
 class SQLiteQueue(FileSystemQueue):
     def __init__(self, klass='__default__'):
         super(__class__, self).__init__(klass=klass)
-        self.db_path = os.path.expanduser(os.path.join(config['home'], '.lazyllm_filesystem_queue.db'))
-        self._db_lock = FileLock(self.db_path + ".lock")
+        self._db_path = os.path.expanduser(os.path.join(config['home'], '.lazyllm_filesystem_queue.db'))
+        self._db_lock = FileLock(self._db_path + ".lock")
 
         # ensure that this connection is not used in another thread when sqlite3 is not threadsafe
         check_same_thread = False if sqlite3_check_threadsafety() else True
@@ -89,12 +89,8 @@ class SQLiteQueue(FileSystemQueue):
 
         self._initialize_db()
 
-    def __del__(self):
-        with self._db_lock:
-            self._conn.close()
-
     def _initialize_db(self):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             cursor = self._conn.cursor()
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS queue (
@@ -107,7 +103,7 @@ class SQLiteQueue(FileSystemQueue):
             self._conn.commit()
 
     def _enqueue(self, id, message):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             cursor = self._conn.cursor()
             cursor.execute('''
             SELECT MAX(position) FROM queue WHERE id = ?
@@ -122,7 +118,7 @@ class SQLiteQueue(FileSystemQueue):
 
     def _dequeue(self, id, limit=None):
         """Retrieve and remove all messages from the queue."""
-        with self._db_lock:
+        with self._db_lock, self._conn:
             cursor = self._conn.cursor()
             if limit:
                 cursor.execute('SELECT message, position FROM queue WHERE id = ? '
@@ -141,7 +137,7 @@ class SQLiteQueue(FileSystemQueue):
             return messages
 
     def _peek(self, id):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             cursor = self._conn.cursor()
             cursor.execute('''
             SELECT message FROM queue WHERE id = ? ORDER BY position ASC LIMIT 1
@@ -152,7 +148,7 @@ class SQLiteQueue(FileSystemQueue):
             return row[0]
 
     def _size(self, id):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             cursor = self._conn.cursor()
             cursor.execute('''
             SELECT COUNT(*) FROM queue WHERE id = ?
@@ -160,7 +156,7 @@ class SQLiteQueue(FileSystemQueue):
             return cursor.fetchone()[0]
 
     def _clear(self, id):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             cursor = self._conn.cursor()
             cursor.execute('''
             DELETE FROM queue WHERE id = ?

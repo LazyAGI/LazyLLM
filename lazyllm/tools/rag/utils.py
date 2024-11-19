@@ -149,11 +149,11 @@ class SqliteDocListManager(DocListManager):
             self._conn = sqlite3.connect(self._db_path, check_same_thread=check_same_thread)
 
     def __del__(self):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             self._conn.close()
 
     def _init_tables(self):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             self._conn.execute("""
                 CREATE TABLE IF NOT EXISTS documents (
                     doc_id TEXT PRIMARY KEY,
@@ -185,7 +185,7 @@ class SqliteDocListManager(DocListManager):
             self._conn.commit()
 
     def table_inited(self):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             cursor = self._conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='documents'")
             return cursor.fetchone() is not None
 
@@ -225,17 +225,17 @@ class SqliteDocListManager(DocListManager):
         if limit:
             query += " LIMIT ?"
             params.append(limit)
-        with self._db_lock:
+        with self._db_lock, self._conn:
             cursor = self._conn.execute(query, params)
             return cursor.fetchall() if details else [row[0] for row in cursor]
 
     def list_all_kb_group(self):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             cursor = self._conn.execute("SELECT group_name FROM document_groups")
             return [row[0] for row in cursor]
 
     def add_kb_group(self, name):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             self._conn.execute('INSERT OR IGNORE INTO document_groups (group_name) VALUES (?)', (name,))
             self._conn.commit()
 
@@ -272,7 +272,7 @@ class SqliteDocListManager(DocListManager):
             query += ' LIMIT ?'
             params.append(limit)
 
-        with self._db_lock:
+        with self._db_lock, self._conn:
             cursor = self._conn.execute(query, params)
             rows = cursor.fetchall()
 
@@ -299,7 +299,7 @@ class SqliteDocListManager(DocListManager):
                 insert_values.append("(?, ?, ?, ?, ?, ?)")
                 params.extend([doc_id, filename, file_path, metadata_str, status, 1])
 
-            with self._db_lock:
+            with self._db_lock, self._conn:
                 query = f"""
                     INSERT OR IGNORE INTO documents (doc_id, filename, path, metadata, status, count)
                     VALUES {', '.join(insert_values)} RETURNING doc_id;
@@ -313,12 +313,12 @@ class SqliteDocListManager(DocListManager):
     def update_file_message(self, fileid: str, **kw):
         set_clause = ", ".join([f"{k} = ?" for k in kw.keys()])
         params = list(kw.values()) + [fileid]
-        with self._db_lock:
+        with self._db_lock, self._conn:
             self._conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
             self._conn.commit()
 
     def add_files_to_kb_group(self, file_ids: List[str], group: str):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             for doc_id in file_ids:
                 self._conn.execute("""
                     INSERT OR IGNORE INTO kb_group_documents (doc_id, group_name, status)
@@ -329,19 +329,19 @@ class SqliteDocListManager(DocListManager):
     def _delete_files(self, file_ids: List[str], real: bool = False):
         if not real:
             return self.update_file_status(file_ids, DocListManager.Status.deleted)
-        with self._db_lock:
+        with self._db_lock, self._conn:
             for doc_id in file_ids:
                 self._conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
                 self._conn.commit()
 
     def delete_files_from_kb_group(self, file_ids: List[str], group: str):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             for doc_id in file_ids:
                 self._conn.execute("DELETE FROM kb_group_documents WHERE doc_id = ? AND group_name = ?", (doc_id, group))
                 self._conn.commit()
 
     def get_file_status(self, fileid: str):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             cursor = self._conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
         return cursor.fetchone()
 
@@ -353,7 +353,7 @@ class SqliteDocListManager(DocListManager):
             placeholders = ', '.join('?' for _ in batch)
             sql = f'UPDATE documents SET status = ? WHERE doc_id IN ({placeholders}) RETURNING doc_id, path'
 
-            with self._db_lock:
+            with self._db_lock, self._conn:
                 cursor = self._conn.execute(sql, [status] + batch)
                 updated_files.extend(cursor.fetchall())
                 self._conn.commit()
@@ -366,12 +366,12 @@ class SqliteDocListManager(DocListManager):
             query += 'group_name = ? AND '
             params.append(group)
         query += f'doc_id IN ({",".join("?" * len(file_ids))})'
-        with self._db_lock:
+        with self._db_lock, self._conn:
             self._conn.execute(query, (params + file_ids))
             self._conn.commit()
 
     def release(self):
-        with self._db_lock:
+        with self._db_lock, self._conn:
             self._conn.execute('delete from documents')
             self._conn.execute('delete from document_groups')
             self._conn.execute('delete from kb_group_documents')
