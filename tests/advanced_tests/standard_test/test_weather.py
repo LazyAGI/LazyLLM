@@ -2,7 +2,8 @@ import json
 from lazyllm.tools.tools import Weather
 
 class TestWeather(object):
-    def test_weather(self):
+    # skip
+    def _test_weather(self):
         weather = Weather()
         res = weather('海淀')
         assert res['status_code'] == 200

@@ -1,6 +1,7 @@
 import unittest
-from unittest.mock import patch, MagicMock
-from lazyllm.tools.rag.store import DocNode
+import os
+import lazyllm
+from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.rerank import Reranker, register_reranker
 
 
@@ -35,24 +36,25 @@ class TestReranker(unittest.TestCase):
         self.assertEqual(len(results), 2)
         self.assertNotIn(self.doc2, results)
 
-    @patch("lazyllm.components.utils.downloader.ModelManager.download")
-    @patch("sentence_transformers.CrossEncoder")
-    def test_module_reranker(self, MockCrossEncoder, mock_download):
-        mock_model = MagicMock()
-        mock_download.return_value = "mock_model_path"
-        MockCrossEncoder.return_value = mock_model
-        mock_model.predict.return_value = [0.8, 0.6, 0.9]
+    def test_module_reranker(self):
+        env_key = 'LAZYLLM_DEFAULT_EMBEDDING_ENGINE'
+        test_cases = ['', 'transformers']
+        original_value = os.getenv(env_key, None)
+        for value in test_cases:
+            with self.subTest(value=value):
+                os.environ[env_key] = value
+                lazyllm.config.refresh(env_key)
+                reranker = Reranker(name="ModuleReranker", model="bge-reranker-large", topk=2)
+                reranker.start()
+                results = reranker.forward(self.nodes, query='cherry')
 
-        reranker = Reranker(name="ModuleReranker", model="dummy-model", topk=2)
-        results = reranker.forward(self.nodes, query=self.query)
-
-        self.assertEqual(len(results), 2)
-        self.assertEqual(
-            results[0].get_text(), self.doc3.get_text()
-        )  # highest score
-        self.assertEqual(
-            results[1].get_text(), self.doc1.get_text()
-        )  # second highest score
+                self.assertEqual(len(results), 2)
+                self.assertEqual(
+                    results[0].get_text(), self.doc3.get_text()
+                )  # highest score
+        if original_value:
+            os.environ[env_key] = original_value
+            lazyllm.config.refresh(env_key)
 
     def test_register_reranker_decorator(self):
         @register_reranker

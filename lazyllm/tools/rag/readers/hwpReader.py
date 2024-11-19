@@ -5,7 +5,7 @@ from typing import Optional, Dict, List, Any
 import zlib
 
 from .readerBase import LazyLLMReaderBase
-from ..store import DocNode
+from ..doc_node import DocNode
 from lazyllm import LOG
 
 class HWPReader(LazyLLMReaderBase):

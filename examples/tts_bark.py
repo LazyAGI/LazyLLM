@@ -15,7 +15,7 @@ m = lazyllm.TrainableModule('bark')
 m.name = "tts"
 
 if __name__ == '__main__':
-    m.WebModule(
+    lazyllm.WebModule(
         m,
         port=8847,
         components={

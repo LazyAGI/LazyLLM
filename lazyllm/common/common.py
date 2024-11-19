@@ -14,6 +14,12 @@ except ImportError:
     _F = typing.TypeVar("_F", bound=Callable[..., Any])
     def final(f: _F) -> _F: return f
 
+try:
+    from typing import override
+except ImportError:
+    def override(func: Callable):
+        return func
+
 
 class FlatList(list):
     def absorb(self, item):
@@ -335,7 +341,7 @@ def once_wrapper(reset_on_pickle):
             def __doc__(self, value): self._func.__doc__ = value
 
             @property
-            def flag(self):
+            def flag(self) -> once_flag:
                 return getattr(self._instance, f'_lazyllm_{self._func.__name__}_once_flag')
 
         def __init__(self, func):
@@ -375,3 +381,27 @@ def singleton(cls):
         if cls not in instances: instances[cls] = cls(*args, **kwargs)
         return instances[cls]
     return get_instance
+
+def reset_on_pickle(*fields):
+    def decorator(cls):
+        original_getstate = cls.__getstate__ if hasattr(cls, '__getstate__') else lambda self: self.__dict__
+        original_setstate = (cls.__setstate__ if hasattr(cls, '__setstate__') else
+                             lambda self, state: self.__dict__.update(state))
+
+        def __getstate__(self):
+            state = original_getstate(self).copy()
+            for field, *_ in fields:
+                state[field] = None
+            return state
+
+        def __setstate__(self, state):
+            original_setstate(self, state)
+            for field in fields:
+                field, field_type = field if isinstance(field, (tuple, list)) else (field, None)
+                if field in state and state[field] is None and field_type is not None:
+                    setattr(self, field, field_type() if field_type else None)
+
+        cls.__getstate__ = __getstate__
+        cls.__setstate__ = __setstate__
+        return cls
+    return decorator

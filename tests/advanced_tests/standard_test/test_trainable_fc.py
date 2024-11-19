@@ -79,6 +79,22 @@ def add_tool(a: int, b: int):
     return a + b
 
 @fc_register("tool")
+def is_even_or_odd(number):
+    '''
+    定义一个函数，用于判断一个数字是奇数还是偶数
+
+    Args:
+        number (int): 输入数值
+
+    Returns:
+        str: 输出
+    '''
+    if number % 2 == 0:
+        return f'{number}是偶数'
+    else:
+        return f'{number}是奇数'
+
+@fc_register("tool")
 def WikipediaWorker(input: str):
     """
     Worker that search for similar page contents from Wikipedia. Useful when you need to get holistic knowledge \
@@ -176,6 +192,7 @@ mquery1 = "What's the weather like today in celsius in Tokyo and Paris."
 mquery2 = "What will the weather be like in fahrenheit in san francisco and beijing tomorrow?"
 agentQuery = "计算 20*(45+23)*4, Calculate step by step."
 rewooquery = "美国历届总统就职时年龄最大的是谁"
+rewooquery2 = "3是奇数还是偶数？"
 
 class TestTrainableFunctionCall(object):
     @classmethod
@@ -212,3 +229,10 @@ class TestTrainableFunctionCall(object):
     def test_trainable_advance_agent(self, exe_trainable_advance_agent):
         ret = exe_trainable_advance_agent
         assert "retrying" not in ret
+
+    @pytest.mark.parametrize("exe_trainable_advance_agent",
+                             [{'tools': ['add_tool', 'is_even_or_odd'], 'query': rewooquery2, "Agent": ReWOOAgent}],
+                             indirect=True)
+    def test_rewooagent_output_format(self, exe_trainable_advance_agent):
+        ret = exe_trainable_advance_agent
+        assert "奇数" in ret or 'odd' in ret

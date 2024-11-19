@@ -89,7 +89,7 @@ class IntentClassifier(ModuleBase):
             '{user_prompt}', f' {self._prompt}').replace('{attention}', self._attention).replace(
             '{user_constrains}', f' {self._constrain}').replace('{user_examples}', f' {examples}')
         self._llm = self._llm.share(prompt=AlpacaPrompter(dict(system=prompt, user='${input}')
-                                                          ).pre_hook(self.intent_promt_hook))
+                                                          ).pre_hook(self.intent_promt_hook)).used_by(self._module_id)
         self._impl = pipeline(self._llm, self.post_process_result)
 
     def intent_promt_hook(

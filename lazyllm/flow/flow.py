@@ -16,23 +16,30 @@ from typing import Union, Tuple, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
+from ..hook import LazyLLMHook
 
 
 class _FuncWrap(object):
     def __init__(self, f):
-        self.f = f.f if isinstance(f, _FuncWrap) else f
+        self._f = f._f if isinstance(f, _FuncWrap) else f
 
-    def __call__(self, *args, **kw): return self.f(*args, **kw)
+    def __call__(self, *args, **kw): return self._f(*args, **kw)
 
     def __repr__(self):
         # TODO: specify lambda/staticmethod/classmethod/instancemethod
         # TODO: add registry message
-        return lazyllm.make_repr('Function', self.f.__name__.strip('<>'))
+        return lazyllm.make_repr('Function', (
+            self._f if _is_function(self._f) else self._f.__class__).__name__.strip('<>'))
+
+    def __getattr__(self, __key):
+        if __key != '_f':
+            return getattr(self._f, __key)
+        return super(__class__, self).__getattr__(__key)
 
 _oldins = isinstance
 def new_ins(obj, cls):
     if _oldins(obj, _FuncWrap) and os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) != 'ON':
-        return True if (cls is _FuncWrap or (_oldins(cls, (tuple, list)) and _FuncWrap in cls)) else _oldins(obj.f, cls)
+        return True if (cls is _FuncWrap or (_oldins(cls, (tuple, list)) and _FuncWrap in cls)) else _oldins(obj._f, cls)
     return _oldins(obj, cls)
 
 setattr(builtins, 'isinstance', new_ins)
@@ -94,7 +101,7 @@ class FlowBase(metaclass=_MetaBind):
 
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
-            assert name not in self._item_names, 'Duplicated name: {name}'
+            assert name not in self._item_names, f'Duplicated name: {name}'
             self._add(name, value)
         else:
             super(__class__, self).__setattr__(name, value)
@@ -148,12 +155,35 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self._sync = False
+        self._hooks = set()
 
     def __call__(self, *args, **kw):
+        hook_objs = []
+        for hook_type in self._hooks:
+            if isinstance(hook_type, LazyLLMHook):
+                hook_objs.append(hook_type)
+            else:
+                hook_objs.append(hook_type(self))
+            hook_objs[-1].pre_hook(*args, **kw)
         output = self._run(args[0] if len(args) == 1 else package(args), **kw)
         if self.post_action is not None: self.invoke(self.post_action, output)
         if self._sync: self.wait()
-        return self._post_process(output)
+        r = self._post_process(output)
+        for hook_obj in hook_objs[::-1]:
+            hook_obj.post_hook(r)
+        for hook_obj in hook_objs:
+            hook_obj.report()
+        return r
+
+    def register_hook(self, hook_type: LazyLLMHook):
+        self._hooks.add(hook_type)
+
+    def unregister_hook(self, hook_type: LazyLLMHook):
+        if hook_type in self._hooks:
+            self._hooks.remove(hook_type)
+
+    def clear_hooks(self):
+        self._hooks = set()
 
     def _post_process(self, output):
         return output
@@ -464,7 +494,7 @@ class IFS(LazyLLMFlowsBase):
 
     def _run(self, __input, **kw):
         cond, tpath, fpath = self._items
-        return self.invoke(tpath if self.invoke(cond, __input) else fpath, __input, **kw)
+        return self.invoke(tpath if self.invoke(cond, __input, **kw) else fpath, __input, **kw)
 
 
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
@@ -484,8 +514,8 @@ class Graph(LazyLLMFlowsBase):
     start_node_name, end_node_name = '__start__', '__end__'
 
     class Node:
-        def __init__(self, func, name):
-            self.func, self.name = func, name
+        def __init__(self, func, name, arg_names=None):
+            self.func, self.name, self.arg_names = func, name, None
             self.inputs, self.outputs = dict(), []
 
         def __repr__(self): return lazyllm.make_repr('Flow', 'Node', name=self.name)
@@ -498,7 +528,13 @@ class Graph(LazyLLMFlowsBase):
         self._nodes[Graph.start_node_name] = Graph.Node(None, Graph.start_node_name)
         self._nodes[Graph.end_node_name] = Graph.Node(lazyllm.Identity(), Graph.end_node_name)
         self._in_degree = {node: 0 for node in self._nodes.values()}
+        self._out_degree = {node: 0 for node in self._nodes.values()}
         self._sorted_nodes = None
+        self._constants = []
+
+    def set_node_arg_name(self, arg_names):
+        for node_name, name in zip(self._item_names, arg_names):
+            self._nodes[node_name].arg_names = name
 
     @property
     def start_node(self): return self._nodes[Graph.start_node_name]
@@ -508,22 +544,29 @@ class Graph(LazyLLMFlowsBase):
 
     def add_edge(self, from_node, to_node, formatter=None):
         if isinstance(from_node, (tuple, list)):
-            for f in from_node: self.add_edge(f, to_node, formatter)
-            return
+            return [self.add_edge(f, to_node, formatter) for f in from_node]
         if isinstance(to_node, (tuple, list)):
-            for t in to_node: self.add_edge(from_node, t, formatter)
-            return
+            return [self.add_edge(from_node, t, formatter) for t in to_node]
+
         if isinstance(from_node, str): from_node = self._nodes[from_node]
         if isinstance(to_node, str): to_node = self._nodes[to_node]
         from_node.outputs.append(to_node)
         assert from_node.name not in to_node.inputs, f'Duplicate edges from {from_node.name} to {to_node.name}'
         to_node.inputs[from_node.name] = formatter
         self._in_degree[to_node] += 1
+        self._out_degree[from_node] += 1
+
+    def add_const_edge(self, constant, to_node):
+        if isinstance(to_node, (tuple, list)):
+            return [self.add_const_edge(constant, t) for t in to_node]
+        if isinstance(to_node, str): to_node = self._nodes[to_node]
+        to_node.inputs[f'_lazyllm_constant_{len(self._constants)}'] = None
+        self._constants.append(constant)
 
     def topological_sort(self):
         in_degree = self._in_degree.copy()
         queue = deque([node for node in self._nodes.values() if in_degree[node] == 0])
-        sorted_nodes = []
+        sorted_nodes: List[Graph.Node] = []
 
         while queue:
             node = queue.popleft()
@@ -536,19 +579,24 @@ class Graph(LazyLLMFlowsBase):
         if len(sorted_nodes) != len(self._nodes):
             raise ValueError("Graph has a cycle")
 
-        return sorted_nodes
+        return [n for n in sorted_nodes if (self._in_degree[n] > 0 or self._out_degree[n] > 0)]
 
     def compute_node(self, sid, node, intermediate_results, futures):
         globals._init_sid(sid)
 
         def get_input(name):
+            if name.startswith('_lazyllm_constant_'):
+                return self._constants[int(name.strip('_lazyllm_constant_'))]
             if name not in intermediate_results['values']:
                 r = futures[name].result()
                 with intermediate_results['lock']:
                     if name not in intermediate_results['values']:
                         intermediate_results['values'][name] = r
             r = intermediate_results['values'][name]
+            if isinstance(r, Exception): raise r
             if node.inputs[name]:
+                if isinstance(r, arguments) and not ((len(r.args) == 0) ^ (len(r.kw) == 0)):
+                    raise RuntimeError('Only one of args and kwargs can be given with formatter.')
                 r = node.inputs[name]((r.args or r.kw) if isinstance(r, arguments) else r)
             return r
 
@@ -565,6 +613,10 @@ class Graph(LazyLLMFlowsBase):
         if isinstance(input, arguments):
             kw = input.kw
             input = input.args
+
+        if node.arg_names:
+            kw.update({name: value for name, value in zip(node.arg_names, input)})
+            input = package()
 
         return self.invoke(node.func, input, **kw)
 

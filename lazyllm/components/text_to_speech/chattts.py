@@ -1,21 +1,23 @@
 import os
-import json
 
 import lazyllm
 from lazyllm import LOG
 from lazyllm.thirdparty import torch, ChatTTS
+from lazyllm.components.formatter import encode_query_with_filepaths
 from ..utils.downloader import ModelManager
+from .utils import sounds_to_files
 
 
 class ChatTTSModule(object):
 
-    def __init__(self, base_path, source=None, init=False):
+    def __init__(self, base_path, source=None, save_path=None, init=False):
         source = lazyllm.config['model_source'] if not source else source
         self.base_path = ModelManager(source).download(base_path)
         self.model, self.spk = None, None
         self.init_flag = lazyllm.once_flag()
         self.device = 'cpu'
         self.seed = 1024
+        self.save_path = save_path if save_path else os.path.join(os.getcwd(), '.temp/chattts')
         if init:
             lazyllm.call_once(self.init_flag, self.load_tts)
 
@@ -56,16 +58,16 @@ class ChatTTSModule(object):
                                   params_refine_text=params_refine_text,
                                   params_infer_code=params_infer_code,
                                 )
-        res = {'sounds': (24000, (speech[0].squeeze() * 32767).tolist())}
-        return json.dumps(res)
+        file_path = sounds_to_files(speech[0], self.save_path)
+        return encode_query_with_filepaths(files=file_path)
 
     @classmethod
-    def rebuild(cls, base_path, init):
-        return cls(base_path, init=init)
+    def rebuild(cls, base_path, init, save_path):
+        return cls(base_path, init=init, save_path=save_path)
 
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return ChatTTSModule.rebuild, (self.base_path, init)
+        return ChatTTSModule.rebuild, (self.base_path, init, self.save_path)
 
 class ChatTTSDeploy(object):
     keys_name_handle = {

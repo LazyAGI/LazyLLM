@@ -1,6 +1,6 @@
 # noqa: E121
 import lazyllm
-from typing import Any, Optional, List, Callable, Dict
+from typing import Any, Optional, List, Callable, Dict, Union
 from dataclasses import dataclass
 from functools import partial
 
@@ -9,11 +9,31 @@ from lazyllm.tools.http_request.http_request import HttpRequest
 
 @dataclass
 class Node():
-    id: int
+    id: str
     kind: str
     name: str
     args: Optional[Dict] = None
+
     func: Optional[Callable] = None
+    arg_names: Optional[List[str]] = None
+    enable_data_reflow: bool = False
+    subitem_name: Optional[Union[List[str], str]] = None
+
+    @property
+    def subitems(self) -> List[str]:
+        if not self.subitem_name: return []
+        names = [self.subitem_name] if isinstance(self.subitem_name, str) else self.subitem_name
+        result = []
+        for name in names:
+            name, tp = name.split(':') if ':' in name else (name, None)
+            source = self.args.get(name, {} if tp == 'dict' else [])
+            if tp != 'dict': source = dict(key=source)
+            for s in source.values():
+                if isinstance(s, (tuple, list)):
+                    result.extend([n['id'] if isinstance(n, dict) else n for n in s])
+                else:
+                    result.append(s['id'] if isinstance(s, dict) else s)
+        return result
 
 
 @dataclass
@@ -36,17 +56,7 @@ all_nodes['LocalLLM'] = dict(
     builder_argument=dict(
         trainset=NodeArgs(str),
         prompt=NodeArgs(str),
-        finetune_method=NodeArgs(str, getattr_f=partial(getattr, lazyllm.finetune)),
-        deploy_method=NodeArgs(str, 'vllm', getattr_f=partial(getattr, lazyllm.deploy))),
-    other_arguments=dict(
-        finetune_method=dict(
-            batch_size=NodeArgs(int, 16),
-            micro_batch_size=NodeArgs(int, 2),
-            num_epochs=NodeArgs(int, 3),
-            learning_rate=NodeArgs(float, 5e-4),
-            lora_r=NodeArgs(int, 8),
-            lora_alpha=NodeArgs(int, 32),
-            lora_dropout=NodeArgs(float, 0.05)))
+        deploy_method=NodeArgs(str, 'vllm', getattr_f=partial(getattr, lazyllm.deploy)))
 )
 
 all_nodes['OnlineLLM'] = dict(
@@ -55,6 +65,8 @@ all_nodes['OnlineLLM'] = dict(
         source=NodeArgs(str),
         base_model=NodeArgs(str),
         base_url=NodeArgs(str),
+        api_key=NodeArgs(str, None),
+        secret_key=NodeArgs(str, None),
         stream=NodeArgs(bool, True),
         return_trace=NodeArgs(bool, False)),
     builder_argument=dict(
@@ -72,10 +84,12 @@ all_nodes['OnlineEmbedding'] = dict(
     init_arguments=dict(
         source=NodeArgs(str),
         embed_model_name=NodeArgs(str),
-        embed_url=NodeArgs(str))
+        embed_url=NodeArgs(str),
+        api_key=NodeArgs(str, None),
+        secret_key=NodeArgs(str, None))
 )
 
-all_nodes['SD'] = all_nodes['TTS'] = all_nodes['STT'] = dict(
+all_nodes['SD'] = all_nodes['TTS'] = dict(
     module=lazyllm.TrainableModule,
     init_arguments=dict(base_model=NodeArgs(str))
 )

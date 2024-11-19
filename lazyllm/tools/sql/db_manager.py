@@ -1,7 +1,8 @@
 from enum import Enum, unique
-from typing import List, Union
+from typing import List, Union, overload
 from pydantic import BaseModel
 from abc import ABC, abstractmethod
+from urllib.parse import quote_plus
 
 
 @unique
@@ -30,25 +31,17 @@ class DBManager(ABC):
         db_name: str,
         options_str: str = "",
     ) -> None:
+        password = quote_plus(password)
+        self.status = DBStatus.SUCCESS
+        self.detail = ""
+        db_type = db_type.lower()
         db_result = self.reset_engine(db_type, user, password, host, port, db_name, options_str)
         if db_result.status != DBStatus.SUCCESS:
             raise ValueError(db_result.detail)
 
-    def reset_engine(self, db_type, user, password, host, port, db_name, options_str):
-        db_type_lower = db_type.lower()
-        self.status = DBStatus.SUCCESS
-        self.detail = ""
-        self._db_type = db_type_lower
-        if db_type_lower not in self.DB_TYPE_SUPPORTED:
-            return DBResult(status=DBStatus.FAIL, detail=f"{db_type} not supported")
-        if db_type_lower in self.DB_DRIVER_MAP:
-            conn_url = (
-                f"{db_type_lower}+{self.DB_DRIVER_MAP[db_type_lower]}://{user}:{password}@{host}:{port}/{db_name}"
-            )
-        else:
-            conn_url = f"{db_type_lower}://{user}:{password}@{host}:{port}/{db_name}"
-        self._conn_url = conn_url
-        self._desc = ""
+    @overload
+    def reset_engine(self, db_type, user, password, host, port, db_name, options_str) -> DBResult:
+        pass
 
     @abstractmethod
     def execute_to_json(self, statement):

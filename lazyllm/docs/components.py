@@ -523,10 +523,11 @@ add_example('deploy.LMDeploy', '''\
 >>> # MultiModal:
 >>> import lazyllm
 >>> from lazyllm import deploy, globals
+>>> from lazyllm.components.formatter import encode_query_with_filepaths
 >>> chat = lazyllm.TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)
 >>> chat.update_server()
->>> globals['global_parameters']["lazyllm-files"] = {'files': 'path/to/image'}
->>> res = chat('What is it?')
+>>> inputs = encode_query_with_filepaths('What is it?', ['path/to/image'])
+>>> res = chat(inputs)
 ''')
 
 # Deploy-Infinity
@@ -1002,7 +1003,7 @@ Args:
 
 Notes: 
     - Input for infer: `str`. A description of the image to be generated.
-    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “images_base64”, corresponding to a list whose elements are images encoded in base64.
+    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “lazyllm_images”, corresponding to a list whose elements are images encoded in base64.
     - Supported models: [stable-diffusion-3-medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
 ''')
 
@@ -1025,7 +1026,7 @@ Args:
 
 Notes:
     - 推理的输入：字符串。待生成图像的描述。
-    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"images_base64", 对应值为一个列表，其中的元素是被base64编码的图像。
+    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"lazyllm_images", 对应值为一个列表，其中的元素是被base64编码的图像。
     - 支持的模型为：[stable-diffusion-3-medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
 ''')
 
@@ -1037,7 +1038,7 @@ add_example('StableDiffusionDeploy', ['''\
 >>> model = UrlModule(url=url)
 >>> res = model('a tiny cat.')
 >>> print(len(res), res[:50])
-... 1384335 {"images_base64": ["iVBORw0KGgoAAAANSUhEUgAABAAAAA
+... 1384335 {"lazyllm_images": ["iVBORw0KGgoAAAANSUhEUgAABAAAAA
 '''])
 
 add_english_doc('ChatTTSDeploy', '''\
@@ -1059,7 +1060,7 @@ Args:
 
 Notes:
     - Input for infer: `str`.  The text corresponding to the audio to be generated.
-    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
+    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “lazyllm_sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
     - Supported models: [ChatTTS](https://huggingface.co/2Noise/ChatTTS)
 ''')
 
@@ -1082,7 +1083,7 @@ Args:
 
 Notes:
     - 推理的输入：字符串。待生成音频的对应文字。
-    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
+    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"lazyllm_sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
     - 支持的模型为：[ChatTTS](https://huggingface.co/2Noise/ChatTTS)
 ''')
 
@@ -1094,7 +1095,7 @@ add_example('ChatTTSDeploy', ['''\
 >>> model = UrlModule(url=url)
 >>> res = model('Hello World!')
 >>> print(len(res), res[:50])
-... {"sounds": [24000, [-0.006741484627127647, 0.00795
+... {"lazyllm_sounds": [24000, [-0.006741484627127647, 0.00795
 '''])
 
 add_english_doc('BarkDeploy', '''\
@@ -1116,7 +1117,7 @@ Args:
 
 Notes:
     - Input for infer: `str`.  The text corresponding to the audio to be generated.
-    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
+    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “lazyllm_sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
     - Supported models: [bark](https://huggingface.co/suno/bark)
 ''')
 
@@ -1139,7 +1140,7 @@ Args:
 
 Notes:
     - 推理的输入：字符串。待生成音频的对应文字。
-    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
+    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"lazyllm_sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
     - 支持的模型为：[bark](https://huggingface.co/suno/bark)
 ''')
 
@@ -1151,7 +1152,7 @@ add_example('BarkDeploy', ['''\
 >>> model = UrlModule(url=url)
 >>> res = model('Hello World!')
 >>> print(len(res), res[:50])
-... 373843 {"sounds": [24000, [-66.9375, -62.0625, -60.5, -60
+... 373843 {"lazyllm_sounds": [24000, [-66.9375, -62.0625, -60.5, -60
 '''])
 
 add_english_doc('MusicGenDeploy', '''\
@@ -1173,7 +1174,7 @@ Args:
 
 Notes:
     - Input for infer: `str`.  The text corresponding to the audio to be generated.
-    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
+    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “lazyllm_sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
     - Supported models: [musicgen-small](https://huggingface.co/facebook/musicgen-small)
 ''')
 
@@ -1196,7 +1197,7 @@ Args:
 
 Notes:
     - 推理的输入：字符串。待生成音频的对应文字。
-    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
+    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"lazyllm_sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
     - 支持的模型为：[musicgen-small](https://huggingface.co/facebook/musicgen-small)
 ''')
 
@@ -1207,7 +1208,7 @@ add_example('MusicGenDeploy', ['''\
 >>> url = deployer(base_model='musicgen-small')
 >>> model = UrlModule(url=url)
 >>> model('Symphony with flute as the main melody')
-4981065 {"sounds": [32000, [-931, -1206, -1170, -1078, -10, ...
+4981065 {"lazyllm_sounds": [32000, [-931, -1206, -1170, -1078, -10, ...
 '''])
 
 add_english_doc('SenseVoiceDeploy', '''\
@@ -1310,7 +1311,7 @@ add_example('TTSDeploy', ['''\
 >>> model = UrlModule(url=url)
 >>> res = model('Hello World!')
 >>> print(len(res), res[:50])
-... 387355 {"sounds": [24000, [-111.9375, -106.4375, -106.875
+... 387355 {"lazyllm_sounds": [24000, [-111.9375, -106.4375, -106.875
 '''])
 
 # ============= Launcher

@@ -1,7 +1,8 @@
 from lazyllm import ModuleBase, pipeline, once_wrapper
-from .store import DocNode
+from .doc_node import DocNode
 from .document import Document, DocImpl
 from typing import List, Optional, Union, Dict
+from .similarity import registered_similarities
 
 class _PostProcess(object):
     def __init__(self, target: Optional[str] = None,
@@ -18,7 +19,7 @@ class _PostProcess(object):
     def _post_process(self, nodes):
         if self._target:
             # TODO(wangzhihong): search relationship and add find_child
-            nodes = DocImpl.find_parent(self._target)(nodes)
+            nodes = DocImpl.find_parent(nodes, self._target)
         if self._output_format == 'content':
             nodes = [node.get_content() for node in nodes]
             if isinstance(self._join, str): nodes = self._join.join(nodes)
@@ -33,7 +34,7 @@ class Retriever(ModuleBase, _PostProcess):
         self,
         doc: object,
         group_name: str,
-        similarity: str = "dummy",
+        similarity: Optional[str] = None,
         similarity_cut_off: Union[float, Dict[str, float]] = float("-inf"),
         index: str = "default",
         topk: int = 6,
@@ -45,10 +46,19 @@ class Retriever(ModuleBase, _PostProcess):
     ):
         super().__init__()
 
-        self._docs = [doc] if isinstance(doc, Document) else doc
+        if similarity:
+            _, mode, _ = registered_similarities[similarity]
+        else:
+            mode = 'embedding'  # TODO FIXME XXX should be removed after similarity args refactor
+
+        self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
         for doc in self._docs:
             assert isinstance(doc, Document), 'Only Document or List[Document] are supported'
             self._submodules.append(doc)
+            if mode == 'embedding' and not embed_keys:
+                embed_keys = list(doc._impl.embed.keys())
+            if embed_keys:
+                doc._impl._activated_embeddings.setdefault(group_name, set()).update(embed_keys)
 
         self._group_name = group_name
         self._similarity = similarity  # similarity function str

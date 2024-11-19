@@ -29,11 +29,7 @@ class TestSqlManager(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.sql_managers: list[SqlManager] = []
-
-        filepath = str(Path(tempfile.gettempdir()) / f"{str(uuid.uuid4().hex)}.db")
-        cls.db_filepath = filepath
-        cls.sql_managers.append(SQLiteManger(filepath, SqlEgsData.TEST_TABLES_INFO))
+        cls.sql_managers: list[SqlManager] = [SQLiteManger(":memory:", SqlEgsData.TEST_TABLES_INFO)]
         for db_type in ["PostgreSQL"]:
             username, password, host, port, database = get_db_init_keywords(db_type)
             cls.sql_managers.append(
@@ -61,9 +57,6 @@ class TestSqlManager(unittest.TestCase):
             for table_name in SqlEgsData.TEST_TABLES:
                 db_result = sql_manager.drop(table_name)
                 assert db_result.status == DBStatus.SUCCESS, db_result.detail
-        db_path = Path(cls.db_filepath)
-        if db_path.is_file():
-            db_path.unlink()
 
     def test_manager_status(self):
         for sql_manager in self.sql_managers:
@@ -118,13 +111,6 @@ class TestSqlManager(unittest.TestCase):
         for sql_call in self.sql_calls:
             str_results = sql_call("去年一整年销售额最多的员工是谁，销售额是多少？")
             self.assertIn("张三", str_results)
-
-    @unittest.skip("Charge test has no scc support")
-    def test_llm_query_local(self):
-        local_llm = lazyllm.TrainableModule("qwen2-7b-instruct").deploy_method(lazyllm.deploy.vllm).start()
-        sql_call = SqlCall(local_llm, self.sql_managers[0], use_llm_for_sql_result=True, return_trace=True)
-        str_results = sql_call("员工编号是3的人来自哪个部门？")
-        self.assertIn("销售三部", str_results)
 
 
 if __name__ == "__main__":

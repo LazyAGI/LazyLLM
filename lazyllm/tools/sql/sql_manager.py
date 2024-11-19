@@ -9,19 +9,10 @@ from pathlib import Path
 
 
 class SqlManagerBase(DBManager):
-    def __init__(
-        self,
-        db_type: str,
-        user: str,
-        password: str,
-        host: str,
-        port: int,
-        db_name: str,
-        options_str: str = "",
-    ) -> None:
-        db_result = self.reset_engine(db_type, user, password, host, port, db_name, options_str)
-        if db_result.status != DBStatus.SUCCESS:
-            raise ValueError(self.detail)
+
+    def __init__(self, db_type, user, password, host, port, db_name, options_str="", set_default_des=True):
+        self._set_default_desc = set_default_des
+        super().__init__(db_type, user, password, host, port, db_name, options_str)
 
     def reset_engine(
         self,
@@ -33,7 +24,15 @@ class SqlManagerBase(DBManager):
         db_name: str,
         options_str: str = "",
     ):
-        super().reset_engine(db_type, user, password, host, port, db_name, options_str)
+        self._db_type = db_type
+        if db_type not in self.DB_TYPE_SUPPORTED:
+            return DBResult(status=DBStatus.FAIL, detail=f"{db_type} not supported")
+        if db_type in self.DB_DRIVER_MAP:
+            conn_url = f"{db_type}+{self.DB_DRIVER_MAP[db_type]}://{user}:{password}@{host}:{port}/{db_name}"
+        else:
+            conn_url = f"{db_type}://{user}:{password}@{host}:{port}/{db_name}"
+        self._conn_url = conn_url
+
         self._engine = sqlalchemy.create_engine(self._conn_url)
         self._desc = ""
         extra_fields = {}
@@ -42,14 +41,16 @@ class SqlManagerBase(DBManager):
                 key: value for key_value in options_str.split("&") for key, value in (key_value.split("="),)
             }
         self._extra_fields = extra_fields
-        result = self.check_connection()
-        if result.status != DBStatus.SUCCESS:
-            return result
+        db_result = self.check_connection()
+        if db_result.status != DBStatus.SUCCESS:
+            return db_result
         db_result = self.get_all_tables()
-        if result.status != DBStatus.SUCCESS:
-            return result
+        if db_result.status != DBStatus.SUCCESS:
+            return db_result
         self._visible_tables = db_result.result
-        return self.set_desc()
+        if self._set_default_desc:
+            return self.set_desc()
+        return db_result
 
     def get_all_tables(self) -> DBResult:
         inspector = sqlalchemy.inspect(self._engine)
@@ -321,23 +322,24 @@ class SqlManager(SqlManagerBase):
         tables_info_dict: dict,
         options_str: str = "",
     ) -> None:
-        self.reset_engine(db_type, user, password, host, port, db_name, tables_info_dict, options_str)
+        self._tables_info_dict = tables_info_dict
+        super().__init__(db_type, user, password, host, port, db_name, options_str, set_default_des=False)
 
-    def reset_engine(self, db_type, user, password, host, port, db_name, tables_info_dict, options_str):
-        self._tables_info_dict = {}
+    def reset_engine(self, db_type, user, password, host, port, db_name, options_str):
         super().reset_engine(db_type, user, password, host, port, db_name, options_str)
-        db_result = self.reset_table_info_dict(tables_info_dict)
+        db_result = self.reset_table_info_dict(self._tables_info_dict)
         self.status = db_result.status
         self.detail = db_result.detail
         if self.status != DBStatus.SUCCESS:
             raise ValueError(self.detail)
+        return db_result
 
     def reset_table_info_dict(self, tables_info_dict: dict) -> DBResult:
         self.status = DBStatus.SUCCESS
         self.detail = "Success"
         self._tables_info_dict = tables_info_dict
         try:
-            tables_info = TablesInfo.model_validate(tables_info_dict)
+            tables_info = TablesInfo.model_validate(self._tables_info_dict)
         except pydantic.ValidationError as e:
             self.status, self.detail = DBStatus.FAIL, str(e)
             return DBResult(status=DBStatus.FAIL, detail=str(e))
@@ -373,8 +375,6 @@ class SqlManager(SqlManagerBase):
 
     def set_desc(self) -> DBResult:
         self._desc = ""
-        if not self._tables_info_dict:
-            return DBResult()
         try:
             tables_info = TablesInfo.model_validate(self._tables_info_dict)
         except pydantic.ValidationError as e:
@@ -403,22 +403,18 @@ class SqlManager(SqlManagerBase):
 
 
 class SQLiteManger(SqlManager):
-    def __init__(self, db_file: str, tables_info_dict: dict = {}):
-        result = self.reset_engine(db_file, tables_info_dict)
+
+    def __init__(self, db_path: str, tables_info_dict: dict = {}):
+        result = self.reset_engine(db_path, tables_info_dict)
         self.status, self.detail = result.status, result.detail
         if self.status != DBStatus.SUCCESS:
             raise ValueError(self.detail)
 
-    def reset_engine(self, db_file: str, tables_info_dict: dict):
+    def reset_engine(self, db_path: str, tables_info_dict: dict):
         self._db_type = "sqlite"
         self.status = DBStatus.SUCCESS
         self.detail = ""
-        if not Path(db_file).is_file():
-            with Path(db_file).open("w") as _:
-                pass
-        if not Path(db_file).is_file():
-            return DBResult(status=DBStatus.FAIL, detail=f"Create file {db_file} failed")
-        self._conn_url = f"sqlite:///{db_file}"
+        self._conn_url = f"sqlite:///{db_path}"
         self._extra_fields = {}
         self._engine = sqlalchemy.create_engine(self._conn_url)
         return self.reset_table_info_dict(tables_info_dict)

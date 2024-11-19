@@ -5,14 +5,15 @@ from .onlineChatModuleBase import OnlineChatModuleBase
 class KimiModule(OnlineChatModuleBase):
 
     def __init__(self,
-                 base_url="https://api.moonshot.cn",
-                 model="moonshot-v1-8k",
-                 stream=True,
-                 return_trace=False,
+                 base_url: str = "https://api.moonshot.cn",
+                 model: str = "moonshot-v1-8k",
+                 api_key: str = None,
+                 stream: bool = True,
+                 return_trace: bool = False,
                  **kwargs):
 
         super().__init__(model_series="KIMI",
-                         api_key=lazyllm.config['kimi_api_key'],
+                         api_key=api_key or lazyllm.config['kimi_api_key'],
                          base_url=base_url,
                          model_name=model,
                          stream=stream,

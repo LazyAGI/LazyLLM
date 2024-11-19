@@ -49,10 +49,10 @@ class SqlEgsData:
     TEST_INSERT_SCRIPTS = [
         f"INSERT INTO {TEST_TABLES[0]} VALUES (1, '张三', '销售一部');",
         f"INSERT INTO {TEST_TABLES[0]} VALUES (2, '李四', '销售二部');",
-        f"INSERT INTO {TEST_TABLES[0]} VALUES (3, '王五', '销售三部');",
+        f"INSERT INTO {TEST_TABLES[0]} VALUES (11, '王五', '销售三部');",
         f"INSERT INTO {TEST_TABLES[1]} VALUES (1, 8715.55, 8465.65, 24747.82, 3514.36);",
         f"INSERT INTO {TEST_TABLES[1]} VALUES (2, 4989.23, 5103.22, 4897.98, 5322.05);",
-        f"INSERT INTO {TEST_TABLES[1]} VALUES (3, 5989.23, 6103.22, 2897.98, 3322.05);",
+        f"INSERT INTO {TEST_TABLES[1]} VALUES (11, 5989.23, 6103.22, 2897.98, 3322.05);",
     ]
     TEST_QUERY_SCRIPTS = f"SELECT department from {TEST_TABLES[0]} WHERE employee_id=1;"
 

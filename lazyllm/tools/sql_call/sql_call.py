@@ -81,11 +81,11 @@ class SqlCall(ModuleBase):
             statement_type = "sql query"
             self._pattern = re.compile(r"```sql(.+?)```", re.DOTALL)
 
-        self._llm_query = llm.share(prompt=self._query_prompter)
+        self._llm_query = llm.share(prompt=self._query_prompter).used_by(self._module_id)
         self._answer_prompter = ChatPrompter(
             instruction=db_explain_instruct_template.format(statement_type=statement_type, db_type=sql_manager.db_type)
         ).pre_hook(self.sql_explain_prompt_hook)
-        self._llm_answer = llm.share(prompt=self._answer_prompter)
+        self._llm_answer = llm.share(prompt=self._answer_prompter).used_by(self._module_id)
         self.example = sql_examples
         with pipeline() as sql_execute_ppl:
             sql_execute_ppl.exec = self._sql_tool.execute_to_json
