@@ -4,6 +4,7 @@ from lazyllm.tools.rag.utils import _FileNodeIndex
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
+from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH
 from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform
 from lazyllm.launcher import cleanup
 from unittest.mock import MagicMock
@@ -16,7 +17,7 @@ class TestDocImpl(unittest.TestCase):
         self.mock_embed = MagicMock()
         self.mock_directory_reader = MagicMock()
         mock_node = DocNode(group=LAZY_ROOT_NAME, text="dummy text")
-        mock_node.metadata = {"file_name": "dummy_file.txt"}
+        mock_node._global_metadata = {RAG_DOC_PATH: "dummy_file.txt"}
         self.mock_directory_reader.load_data.return_value = [mock_node]
 
         self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=["dummy_file.txt"])
@@ -63,7 +64,7 @@ class TestDocImpl(unittest.TestCase):
         self.doc_impl._lazy_init()
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
-        new_doc.metadata = {"file_name": "new_file.txt"}
+        new_doc._global_metadata = {RAG_DOC_PATH: "new_file.txt"}
         self.mock_directory_reader.load_data.return_value = [new_doc]
         self.doc_impl._add_files(["new_file.txt"])
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 2
@@ -169,9 +170,9 @@ class TestDocument(unittest.TestCase):
 class TestFileNodeIndex(unittest.TestCase):
     def setUp(self):
         self.index = _FileNodeIndex()
-        self.node1 = DocNode(uid='1', group=LAZY_ROOT_NAME, metadata={"file_name": "d1"})
-        self.node2 = DocNode(uid='2', group=LAZY_ROOT_NAME, metadata={"file_name": "d2"})
-        self.files = [self.node1.metadata['file_name'], self.node1.metadata['file_name']]
+        self.node1 = DocNode(uid='1', group=LAZY_ROOT_NAME, global_metadata={RAG_DOC_PATH: "d1"})
+        self.node2 = DocNode(uid='2', group=LAZY_ROOT_NAME, global_metadata={RAG_DOC_PATH: "d2"})
+        self.files = [self.node1.global_metadata[RAG_DOC_PATH], self.node2.global_metadata[RAG_DOC_PATH]]
 
     def test_update(self):
         self.index.update([self.node1, self.node2])
@@ -179,23 +180,21 @@ class TestFileNodeIndex(unittest.TestCase):
         nodes = self.index.query(self.files)
         assert len(nodes) == len(self.files)
 
-        ret = [node.metadata['file_name'] for node in nodes]
+        ret = [node.global_metadata[RAG_DOC_PATH] for node in nodes]
         assert set(ret) == set(self.files)
 
     def test_remove(self):
         self.index.update([self.node1, self.node2])
-
         self.index.remove([self.node2.uid])
-        ret = self.index.query([self.node2.metadata['file_name']])
-        assert len(ret) == 1
-        assert ret[0] is None
+        ret = self.index.query([self.node2.global_metadata[RAG_DOC_PATH]])
+        assert len(ret) == 0
 
     def test_query(self):
         self.index.update([self.node1, self.node2])
-        ret = self.index.query([self.node2.metadata['file_name']])
+        ret = self.index.query([self.node2.global_metadata[RAG_DOC_PATH]])
         assert len(ret) == 1
         assert ret[0] is self.node2
-        ret = self.index.query([self.node1.metadata['file_name']])
+        ret = self.index.query([self.node1.global_metadata[RAG_DOC_PATH]])
         assert len(ret) == 1
         assert ret[0] is self.node1
 
