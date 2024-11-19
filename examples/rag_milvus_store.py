@@ -13,9 +13,8 @@ class TmpDir:
         self.rag_dir = os.path.join(self.root_dir, 'rag_master')
         os.makedirs(self.rag_dir, exist_ok=True)
         # creates a dummy file for rag
-        fd = open(os.path.join(self.rag_dir, '_dummy.txt'), "wb")
-        fd.write(b'dsfjfasfkjdsfewifjewofjefiejw')
-        fd.close()
+        with open(os.path.join(self.rag_dir, '_dummy.txt'), "wb") as fd:
+            fd.write(b'dsfjfasfkjdsfewifjewofjefiejw')
         self.store_file = os.path.join(self.root_dir, "milvus.db")
 
     def __del__(self):

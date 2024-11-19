@@ -144,12 +144,9 @@ class TestExamples(object):
         image_path = ans[0][0][-1]['value']
         assert os.path.isfile(image_path)
 
-    def test_rag_milvus_store(self):
-        from examples.rag_milvus_store import Runner
-        runner = Runner()
-        rag = lazyllm.ActionModule(runner.pipeline)
-        rag.start()
-        res = rag('何为天道？')
+    def test_rag_map_store_with_milvus_index(self):
+        from examples.rag_map_store_with_milvus_index import run as rag_run
+        res = rag_run('何为天道？')
         assert type(res) is str
         assert "天道" in res
         assert len(res) >= 16

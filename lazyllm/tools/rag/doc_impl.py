@@ -289,7 +289,7 @@ class DocImpl:
             LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
     def _dynamic_create_nodes(self, group_name: str, store: StoreBase) -> None:
-        if store.is_group_active(group_name):
+        if group_name == LAZY_ROOT_NAME or store.is_group_active(group_name):
             return
         node_group = self.node_groups.get(group_name)
         if node_group is None:
