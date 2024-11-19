@@ -1,8 +1,7 @@
 from typing import Any, Dict, List, Optional, Callable, Set
-import chromadb
+from lazyllm.thirdparty import chromadb
 from lazyllm import LOG
 from lazyllm.common import override
-from chromadb.api.models.Collection import Collection
 from .store_base import StoreBase, LAZY_ROOT_NAME
 from .doc_node import DocNode
 from .index_base import IndexBase
@@ -20,7 +19,7 @@ class ChromadbStore(StoreBase):
         self._db_client = chromadb.PersistentClient(path=dir)
         LOG.success(f"Initialzed chromadb in path: {dir}")
         node_groups = list(group_embed_keys.keys())
-        self._collections: Dict[str, Collection] = {
+        self._collections: Dict[str, chromadb.api.models.Collection.Collection] = {
             group: self._db_client.get_or_create_collection(group)
             for group in node_groups
         }

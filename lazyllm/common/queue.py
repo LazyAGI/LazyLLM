@@ -79,19 +79,14 @@ def sqlite3_check_threadsafety() -> bool:
 class SQLiteQueue(FileSystemQueue):
     def __init__(self, klass='__default__'):
         super(__class__, self).__init__(klass=klass)
-        self._db_path = os.path.expanduser(os.path.join(config['home'], '.lazyllm_filesystem_queue.db'))
-        self._db_lock = FileLock(self._db_path + ".lock")
-
-        # ensure that this connection is not used in another thread when sqlite3 is not threadsafe
-        check_same_thread = False if sqlite3_check_threadsafety() else True
-        with self._db_lock:
-            self._conn = sqlite3.connect(self._db_path, check_same_thread=check_same_thread)
-
+        self.db_path = os.path.expanduser(os.path.join(config['home'], '.lazyllm_filesystem_queue.db'))
+        self._lock = FileLock(self.db_path + '.lock')
+        self._check_same_thread = not sqlite3_check_threadsafety()
         self._initialize_db()
 
     def _initialize_db(self):
-        with self._db_lock, self._conn:
-            cursor = self._conn.cursor()
+        with self._lock, sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
+            cursor = conn.cursor()
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS queue (
                 id TEXT NOT NULL,
@@ -100,68 +95,73 @@ class SQLiteQueue(FileSystemQueue):
                 PRIMARY KEY (id, position)
             )
             ''')
-            self._conn.commit()
+            conn.commit()
 
     def _enqueue(self, id, message):
-        with self._db_lock, self._conn:
-            cursor = self._conn.cursor()
-            cursor.execute('''
-            SELECT MAX(position) FROM queue WHERE id = ?
-            ''', (id,))
-            max_pos = cursor.fetchone()[0]
-            next_pos = 0 if max_pos is None else max_pos + 1
-            cursor.execute('''
-            INSERT INTO queue (id, position, message)
-            VALUES (?, ?, ?)
-            ''', (id, next_pos, message))
-            self._conn.commit()
+        with self._lock:
+            with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                SELECT MAX(position) FROM queue WHERE id = ?
+                ''', (id,))
+                max_pos = cursor.fetchone()[0]
+                next_pos = 0 if max_pos is None else max_pos + 1
+                cursor.execute('''
+                INSERT INTO queue (id, position, message)
+                VALUES (?, ?, ?)
+                ''', (id, next_pos, message))
+                conn.commit()
 
     def _dequeue(self, id, limit=None):
         """Retrieve and remove all messages from the queue."""
-        with self._db_lock, self._conn:
-            cursor = self._conn.cursor()
-            if limit:
-                cursor.execute('SELECT message, position FROM queue WHERE id = ? '
-                               'ORDER BY position ASC LIMIT ?', (id, limit))
-            else:
-                cursor.execute('SELECT message, position FROM queue WHERE id = ? '
-                               'ORDER BY position ASC', (id,))
+        with self._lock:
+            with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
+                cursor = conn.cursor()
+                if limit:
+                    cursor.execute('SELECT message, position FROM queue WHERE id = ? '
+                                   'ORDER BY position ASC LIMIT ?', (id, limit))
+                else:
+                    cursor.execute('SELECT message, position FROM queue WHERE id = ? '
+                                   'ORDER BY position ASC', (id,))
 
-            rows = cursor.fetchall()
-            if not rows:
-                return []
-            messages = [row[0] for row in rows]
-            cursor.execute('DELETE FROM queue WHERE id = ? AND position IN '
-                           f'({",".join([str(row[1]) for row in rows])})', (id, ))
-            self._conn.commit()
-            return messages
+                rows = cursor.fetchall()
+                if not rows:
+                    return []
+                messages = [row[0] for row in rows]
+                cursor.execute('DELETE FROM queue WHERE id = ? AND position IN '
+                               f'({",".join([str(row[1]) for row in rows])})', (id, ))
+                conn.commit()
+                return messages
 
     def _peek(self, id):
-        with self._db_lock, self._conn:
-            cursor = self._conn.cursor()
-            cursor.execute('''
-            SELECT message FROM queue WHERE id = ? ORDER BY position ASC LIMIT 1
-            ''', (id,))
-            row = cursor.fetchone()
-            if row is None:
-                return None
-            return row[0]
+        with self._lock:
+            with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                SELECT message FROM queue WHERE id = ? ORDER BY position ASC LIMIT 1
+                ''', (id,))
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                return row[0]
 
     def _size(self, id):
-        with self._db_lock, self._conn:
-            cursor = self._conn.cursor()
-            cursor.execute('''
-            SELECT COUNT(*) FROM queue WHERE id = ?
-            ''', (id,))
-            return cursor.fetchone()[0]
+        with self._lock:
+            with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                SELECT COUNT(*) FROM queue WHERE id = ?
+                ''', (id,))
+                return cursor.fetchone()[0]
 
     def _clear(self, id):
-        with self._db_lock, self._conn:
-            cursor = self._conn.cursor()
-            cursor.execute('''
-            DELETE FROM queue WHERE id = ?
-            ''', (id,))
-            self._conn.commit()
+        with self._lock:
+            with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                DELETE FROM queue WHERE id = ?
+                ''', (id,))
+                conn.commit()
 
 
 class RedisQueue(FileSystemQueue):

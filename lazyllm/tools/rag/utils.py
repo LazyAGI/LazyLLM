@@ -144,12 +144,12 @@ class SqliteDocListManager(DocListManager):
         self._db_lock = FileLock(self._db_path + '.lock')
 
         # ensure that this connection is not used in another thread when sqlite3 is not threadsafe
-        check_same_thread = False if sqlite3_check_threadsafety() else True
+        check_same_thread = not sqlite3_check_threadsafety()
         with self._db_lock:
             self._conn = sqlite3.connect(self._db_path, check_same_thread=check_same_thread)
 
     def __del__(self):
-        with self._db_lock, self._conn:
+        with self._db_lock:
             self._conn.close()
 
     def _init_tables(self):
