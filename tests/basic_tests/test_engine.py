@@ -6,8 +6,81 @@ import lazyllm
 import urllib3
 from lazyllm.common.common import TimeoutException
 import json
+import unittest
+import subprocess
+import socket
+import threading
+import requests
 
-class TestEngine(object):
+HOOK_PORT = 33733
+HOOK_ROUTE = "mock_post"
+fastapi_code = """
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from collections import deque
+
+app = FastAPI()
+received_datas = deque(maxlen=100)
+
+
+@app.post("/{route}")
+async def receive_json(data: dict):
+    print("Received json data:", data)
+    received_datas.append(data)
+    return JSONResponse(content=data)
+
+@app.get("/get_last_report")
+async def get_last_report():
+    if len(received_datas) > 0:
+        return received_datas[-1]
+    else:
+        return {{}}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port={port})
+""".format(
+    port=HOOK_PORT, route=HOOK_ROUTE
+)
+
+
+class TestEngine(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.fastapi_process = subprocess.Popen(
+            ["python", "-c", fastapi_code],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        cls.report_url = f"http://{ip_address}:{HOOK_PORT}/{HOOK_ROUTE}"
+        cls.get_url = f"http://{ip_address}:{HOOK_PORT}/get_last_report"
+
+        def read_stdout(process):
+            for line in iter(process.stdout.readline, b''):
+                print("FastAPI Server Output: ", line.decode(), end='')
+
+        cls.report_print_thread = threading.Thread(
+            target=read_stdout, args=(cls.fastapi_process,)
+        )
+        cls.report_print_thread.daemon = True
+        cls.report_print_thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        time.sleep(3)
+        cls.fastapi_process.terminate()
+        cls.fastapi_process.wait()
+
+    def get_last_report(self):
+        r = requests.get(self.get_url)
+        json_obj = {}
+        try:
+            json_obj = json.loads(r.content)
+        except Exception as e:
+            lazyllm.LOG.warning(str(e))
+        return json_obj
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
@@ -31,7 +104,7 @@ class TestEngine(object):
         assert '1234' in r
 
     def test_engine_code(self):
-        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 2 * x\n')]
+        nodes = [dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 2 * x\n'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
 
         engine = LightEngine()
@@ -40,17 +113,24 @@ class TestEngine(object):
         assert engine.run(gid, 2) == 4
 
     def test_engine_switch(self):
-        plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
-        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
-        square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
-        switch = dict(id='4', kind='Switch', name='s1', args=dict(judge_on_full_input=True, nodes={
-            1: [double],
-            2: [plus1, double],
-            3: [square]
-        }))
+        plus1 = dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
+        double = dict(id='2', kind='Code', name='m2', args=dict(code='def test(x: int):\n    return 2 * x\n'))
+        square = dict(id='3', kind='Code', name='m3',
+                      args=dict(code='def test(x: int):\n    return x * x\n', _lazyllm_enable_report=True))
+        switch = dict(
+            id="4",
+            kind="Switch",
+            name="s1",
+            args=dict(
+                judge_on_full_input=True,
+                nodes={1: [double], 2: [plus1, double], 3: [square]},
+                _lazyllm_enable_report=True,
+            ),
+        )
         nodes = [switch]
         edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         engine = LightEngine()
+        engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 1) == 2
         assert engine.run(gid, 2) == 6
@@ -58,11 +138,16 @@ class TestEngine(object):
 
         engine.reset()
 
-        switch = dict(id='4', kind='Switch', name='s1', args=dict(judge_on_full_input=False, nodes={
-            'case1': [double],
-            'case2': [plus1, double],
-            'case3': [square]
-        }))
+        switch = dict(
+            id="4",
+            kind="Switch",
+            name="s1",
+            args=dict(
+                judge_on_full_input=False,
+                nodes={"case1": [double], "case2": [plus1, double], "case3": [square]},
+                _lazyllm_enable_report=True,
+            ),
+        )
         gid = engine.start([switch], edges)
         assert engine.run(gid, 'case1', 1) == 2
         assert engine.run(gid, 'case2', 1) == 4
@@ -70,43 +155,143 @@ class TestEngine(object):
         assert engine.run(gid, 'case1', 2) == 4
         assert engine.run(gid, 'case2', 2) == 6
         assert engine.run(gid, 'case3', 3) == 9
+        assert "prompt_tokens" in self.get_last_report()
 
     def test_engine_ifs(self):
-        plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
-        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
-        square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
-        ifs = dict(id='4', kind='Ifs', name='i1', args=dict(
-            cond='def cond(x): return x < 10', true=[plus1, double], false=[square]))
+        plus1 = dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
+        double = dict(id='2', kind='Code', name='m2', args=dict(code='def test(x: int):\n    return 2 * x\n'))
+        square = dict(id='3', kind='Code', name='m3', args=dict(code='def test(x: int):\n    return x * x\n'))
+        ifs = dict(
+            id="4",
+            kind="Ifs",
+            name="i1",
+            args=dict(
+                cond="def cond(x): return x < 10",
+                true=[plus1, double],
+                false=[square],
+                _lazyllm_enable_report=True,
+            ),
+        )
         nodes = [ifs]
         edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         engine = LightEngine()
+        engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 1) == 4
         assert engine.run(gid, 5) == 12
         assert engine.run(gid, 10) == 100
+        assert "prompt_tokens" in self.get_last_report()
+
+    def test_data_reflow_in_server(self):
+        nodes = [
+            {
+                "id": "1",
+                "kind": "Code",
+                "name": "f1",
+                "args": {
+                    "code": "def main(x): return int(x) + 1",
+                    "_lazyllm_enable_report": True,
+                },
+            },
+            {
+                "id": "2",
+                "kind": "Code",
+                "name": "f2",
+                "args": {
+                    "code": "def main(x): return int(x) + 2",
+                    "_lazyllm_enable_report": True,
+                },
+            },
+            {
+                "id": "3",
+                "kind": "Code",
+                "name": "f3",
+                "args": {
+                    "code": "def main(x): return int(x) + 3",
+                    "_lazyllm_enable_report": True,
+                },
+            },
+        ]
+        edges = [
+            {
+                "iid": "__start__",
+                "oid": "1",
+            },
+            {
+                "iid": "1",
+                "oid": "2",
+            },
+            {
+                "iid": "2",
+                "oid": "3",
+            },
+            {
+                "iid": "3",
+                "oid": "__end__",
+            },
+        ]
+        resources = [
+            {
+                "id": "4",
+                "kind": "server",
+                "name": "s1",
+                "args": {},
+            }
+        ]
+        engine = LightEngine()
+        engine.set_report_url(self.report_url)
+        gid = engine.start(nodes, edges, resources)
+        assert engine.run(gid, 1) == 7
+        assert "prompt_tokens" in self.get_last_report()
 
     def test_engine_loop(self):
-        nodes = [dict(id='1', kind='Code', name='code', args='def square(x: int): return x * x')]
+        nodes = [dict(id='1', kind='Code', name='code', args=dict(code='def square(x: int): return x * x'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
 
-        nodes = [dict(id='2', kind='Loop', name='loop',
-                      args=dict(stop_condition='def cond(x): return x > 10', nodes=nodes, edges=edges))]
+        nodes = [
+            dict(
+                id="2",
+                kind="Loop",
+                name="loop",
+                args=dict(
+                    stop_condition="def cond(x): return x > 10",
+                    nodes=nodes,
+                    edges=edges,
+                    _lazyllm_enable_report=True,
+                ),
+            )
+        ]
         edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
 
         engine = LightEngine()
+        engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2) == 16
+        assert "prompt_tokens" in self.get_last_report()
 
     def test_engine_warp(self):
-        nodes = [dict(id='1', kind='Code', name='code', args='def square(x: int): return x * x')]
+        nodes = [dict(id='1', kind='Code', name='code', args=dict(code='def square(x: int): return x * x'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
 
-        nodes = [dict(id='2', kind='Warp', name='warp', args=dict(nodes=nodes, edges=edges))]
+        nodes = [
+            dict(
+                id="2",
+                kind="Warp",
+                name="warp",
+                args=dict(
+                    nodes=nodes,
+                    edges=edges,
+                    _lazyllm_enable_report=True,
+                ),
+            )
+        ]
         edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
 
         engine = LightEngine()
+        engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2, 3, 4, 5) == (4, 9, 16, 25)
+        assert "prompt_tokens" in self.get_last_report()
 
     def test_engine_formatter(self):
         nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='python', rule='[:]'))]
@@ -126,11 +311,34 @@ class TestEngine(object):
         gid = engine.start(nodes, edges)
         assert engine.run(gid, '- a: 1\n  b: 2\n- a: 3\n  d: 4\n') == [dict(a=1), dict(a=3)]
 
+        engine.reset()
+        nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='file', rule='decode'))]
+        gid = engine.start(nodes, edges)
+        assert engine.run(gid, 'hi') == 'hi'
+        assert engine.run(gid, '<lazyllm-query>{"query":"aha","files":["path/to/file"]}') == \
+               {"query": "aha", "files": ["path/to/file"]}
+
+        engine.reset()
+        nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='file', rule='encode'))]
+        gid = engine.start(nodes, edges)
+        assert engine.run(gid, 'hi') == 'hi'
+        assert engine.run(gid, {"query": "aha", "files": ["path/to/file"]}) == \
+               '<lazyllm-query>{"query": "aha", "files": ["path/to/file"]}'
+
+        engine.reset()
+        nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='file', rule='merge'))]
+        gid = engine.start(nodes, edges)
+        assert engine.run(gid, 'hi') == 'hi'
+        assert engine.run(gid, 'hi', '<lazyllm-query>{"query":"aha","files":["path/to/file"]}') == \
+               '<lazyllm-query>{"query": "hiaha", "files": ["path/to/file"]}'
+
     def test_engine_edge_formatter(self):
-        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
-                 dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),
-                 dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return dict(a=1, b=x * x)\n'),
-                 dict(id='4', kind='Code', name='m4', args='def test(x, y, z):\n    return f"{x}{y}{z}"\n')]
+        nodes = [dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return x\n')),
+                 dict(id='2', kind='Code', name='m2',
+                      args=dict(code='def test(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n')),
+                 dict(id='3', kind='Code', name='m3',
+                 args=dict(code='def test(x: int):\n    return dict(a=1, b=x * x)\n')),
+                 dict(id='4', kind='Code', name='m4', args=dict(code='def test(x, y, z):\n    return f"{x}{y}{z}"\n'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='__start__', oid='3'),
                  dict(iid='1', oid='4'), dict(iid='2', oid='4', formatter='[:][1]'),
                  dict(iid='3', oid='4', formatter='[b]'), dict(iid='4', oid='__end__')]
@@ -141,9 +349,9 @@ class TestEngine(object):
         assert engine.run(gid, 2) == '2[4, 8]4'
 
     def test_engine_edge_formatter_start(self):
-        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int): return x'),
-                 dict(id='2', kind='Code', name='m2', args='def test(x: int): return 2 * x'),
-                 dict(id='3', kind='Code', name='m3', args='def test(x, y): return x + y')]
+        nodes = [dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int): return x')),
+                 dict(id='2', kind='Code', name='m2', args=dict(code='def test(x: int): return 2 * x')),
+                 dict(id='3', kind='Code', name='m3', args=dict(code='def test(x, y): return x + y'))]
         edges = [dict(iid='__start__', oid='1', formatter='[0]'), dict(iid='__start__', oid='2', formatter='[1]'),
                  dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
 
@@ -153,11 +361,13 @@ class TestEngine(object):
         assert engine.run(gid, 5, 3, 1) == 11
 
     def test_engine_formatter_end(self):
-        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
-                 dict(id='2', kind='Code', name='m2', args='def test1(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),
+        nodes = [dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return x\n')),
+                 dict(id='2', kind='Code', name='m2',
+                      args=dict(code='def test1(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n')),
                  # two unused node
-                 dict(id='3', kind='Code', name='m3', args='def test2(x: int):\n    return dict(a=1, b=x * x)\n'),
-                 dict(id='4', kind='Code', name='m4', args='def test3(x, y, z):\n    return f"{x}{y}{z}"\n')]
+                 dict(id='3', kind='Code', name='m3',
+                      args=dict(code='def test2(x: int):\n    return dict(a=1, b=x * x)\n')),
+                 dict(id='4', kind='Code', name='m4', args=dict(code='def test3(x, y, z):\n    return f"{x}{y}{z}"\n'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__'),
                  dict(iid='1', oid='__end__')]
 
@@ -169,8 +379,9 @@ class TestEngine(object):
 
         engine.reset()
 
-        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return x\n'),
-                 dict(id='2', kind='Code', name='m2', args='def test1(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n'),
+        nodes = [dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return x\n')),
+                 dict(id='2', kind='Code', name='m2',
+                      args=dict(code='def test1(x: int):\n    return [[x, 2*x], [3*x, 4*x]]\n')),
                  dict(id='3', kind='JoinFormatter', name='join', args=dict(type='to_dict', names=['a', 'b']))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='2', oid='3'),
                  dict(iid='1', oid='3'), dict(iid='3', oid='__end__', formatter='*[a, b]')]
@@ -181,7 +392,7 @@ class TestEngine(object):
         print(isinstance(r, lazyllm.package))
 
     def test_engine_join_stack(self):
-        nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
+        nodes = [dict(id='0', kind='Code', name='c1', args=dict(code='def test(x: int): return x')),
                  dict(id='1', kind='JoinFormatter', name='join', args=dict(type='stack'))]
         edges = [dict(iid='__start__', oid='0'), dict(iid='0', oid='1'), dict(iid='1', oid='__end__')]
         engine = LightEngine()
@@ -192,9 +403,9 @@ class TestEngine(object):
 
         engine.reset()
 
-        nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
-                 dict(id='1', kind='Code', name='c2', args='def test(x: int): return 2 * x'),
-                 dict(id='2', kind='Code', name='c3', args='def test(x: int): return 3 * x'),
+        nodes = [dict(id='0', kind='Code', name='c1', args=dict(code='def test(x: int): return x')),
+                 dict(id='1', kind='Code', name='c2', args=dict(code='def test(x: int): return 2 * x')),
+                 dict(id='2', kind='Code', name='c3', args=dict(code='def test(x: int): return 3 * x')),
                  dict(id='3', kind='JoinFormatter', name='join', args=dict(type='stack'))]
         edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
                  dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
@@ -204,7 +415,7 @@ class TestEngine(object):
         assert engine.run(gid, [1]) == [[1], [1, 1], [1, 1, 1]]
 
     def test_engine_join_sum(self):
-        nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return [x, 2 * x]'),
+        nodes = [dict(id='0', kind='Code', name='c1', args=dict(code='def test(x: int): return [x, 2 * x]')),
                  dict(id='1', kind='JoinFormatter', name='join', args=dict(type='sum'))]
         edges = [dict(iid='__start__', oid='0'), dict(iid='0', oid='1'), dict(iid='1', oid='__end__')]
         engine = LightEngine()
@@ -215,9 +426,9 @@ class TestEngine(object):
 
         engine.reset()
 
-        nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
-                 dict(id='1', kind='Code', name='c2', args='def test(x: int): return 2 * x'),
-                 dict(id='2', kind='Code', name='c3', args='def test(x: int): return 3 * x'),
+        nodes = [dict(id='0', kind='Code', name='c1', args=dict(code='def test(x: int): return x')),
+                 dict(id='1', kind='Code', name='c2', args=dict(code='def test(x: int): return 2 * x')),
+                 dict(id='2', kind='Code', name='c3', args=dict(code='def test(x: int): return 3 * x')),
                  dict(id='3', kind='JoinFormatter', name='join', args=dict(type='sum'))]
         edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
                  dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
@@ -227,9 +438,9 @@ class TestEngine(object):
         assert engine.run(gid, [1]) == [1, 1, 1, 1, 1, 1]
 
     def test_engine_join_todict(self):
-        nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
-                 dict(id='1', kind='Code', name='c2', args='def test(x: int): return 2 * x'),
-                 dict(id='2', kind='Code', name='c3', args='def test(x: int): return 3 * x'),
+        nodes = [dict(id='0', kind='Code', name='c1', args=dict(code='def test(x: int): return x')),
+                 dict(id='1', kind='Code', name='c2', args=dict(code='def test(x: int): return 2 * x')),
+                 dict(id='2', kind='Code', name='c3', args=dict(code='def test(x: int): return 3 * x')),
                  dict(id='3', kind='JoinFormatter', name='join', args=dict(type='to_dict', names=['a', 'b', 'c']))]
         edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
                  dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
@@ -240,9 +451,9 @@ class TestEngine(object):
         assert engine.run(gid, [1]) == dict(a=[1], b=[1, 1], c=[1, 1, 1])
 
     def test_engine_update(self):
-        plus1 = dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
-        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
-        square = dict(id='3', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
+        plus1 = dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
+        double = dict(id='2', kind='Code', name='m2', args=dict(code='def test(x: int):\n    return 2 * x\n'))
+        square = dict(id='3', kind='Code', name='m3', args=dict(code='def test(x: int):\n    return x * x\n'))
         ifs = dict(id='4', kind='Ifs', name='i1', args=dict(
             cond='def cond(x): return x < 10', true=[plus1, double], false=[square]
         ))
@@ -254,7 +465,7 @@ class TestEngine(object):
         assert engine.run(gid, 5) == 12
         assert engine.run(gid, 10) == 100
 
-        double = dict(id='2', kind='Code', name='m2', args='def test(x: int):\n    return 3 * x\n')
+        double = dict(id='2', kind='Code', name='m2', args=dict(code='def test(x: int):\n    return 3 * x\n'))
         ifs = dict(id='4', kind='Ifs', name='i1', args=dict(
             cond='def cond(x): return x < 10', true=[plus1, double], false=[square]
         ))
@@ -266,9 +477,9 @@ class TestEngine(object):
         assert engine.run(gid, 10) == 100
 
     def test_engine_join_join(self):
-        nodes = [dict(id='0', kind='Code', name='c1', args='def test(x: int): return x'),
-                 dict(id='1', kind='Code', name='c2', args='def test(x: int): return 2 * x'),
-                 dict(id='2', kind='Code', name='c3', args='def test(x: int): return 3 * x'),
+        nodes = [dict(id='0', kind='Code', name='c1', args=dict(code='def test(x: int): return x')),
+                 dict(id='1', kind='Code', name='c2', args=dict(code='def test(x: int): return 2 * x')),
+                 dict(id='2', kind='Code', name='c3', args=dict(code='def test(x: int): return 3 * x')),
                  dict(id='3', kind='JoinFormatter', name='join', args=dict(type='join'))]
         edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
                  dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
@@ -281,7 +492,7 @@ class TestEngine(object):
         assert engine.run(gid, '1') == '1\n11\n111'
 
     def test_engine_server(self):
-        nodes = [dict(id='1', kind='Code', name='m1', args='def test(x: int):\n    return 2 * x\n')]
+        nodes = [dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 2 * x\n'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
         resources = [dict(id='2', kind='server', name='s1', args=dict(port=None)),
                      dict(id='3', kind='web', name='w1', args=dict(port=None, title='网页', history=[], audio=False))
@@ -291,6 +502,12 @@ class TestEngine(object):
         assert engine.status(gid) == {'1': 'running', '2': lazyllm.launcher.Status.Running, '3': 'running'}
         assert engine.run(gid, 1) == 2
         time.sleep(3)
+
+        server = engine.build_node('graph-1').func._g
+        assert isinstance(server, lazyllm.ServerModule)
+        m = lazyllm.UrlModule(url=server._url)
+        assert m(2) == 4
+
         web = engine.build_node('graph-1').func._web
         assert engine.build_node('graph-1').func.api_url is not None
         assert engine.build_node('graph-1').func.web_url == web.url
@@ -338,9 +555,9 @@ class TestEngine(object):
         url = 'https://postman-echo.com/get'
 
         nodes = [
-            dict(id='0', kind='Code', name='code1', args='def p1(): return "foo"'),
-            dict(id='1', kind='Code', name='code2', args='def p2(): return "bar"'),
-            dict(id='2', kind='Code', name='code3', args='def h1(): return "baz"'),
+            dict(id='0', kind='Code', name='code1', args=dict(code='def p1(): return "foo"')),
+            dict(id='1', kind='Code', name='code2', args=dict(code='def p2(): return "bar"')),
+            dict(id='2', kind='Code', name='code3', args=dict(code='def h1(): return "baz"')),
             dict(id='3', kind='HttpTool', name='http', args=dict(
                 method='GET', url=url, params=params, headers=headers, _lazyllm_arg_names=['p1', 'p2', 'h1']))
         ]
@@ -359,9 +576,9 @@ class TestEngine(object):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
         llm_node = dict(id='1', kind='SharedLLM', name='s1', args=dict(llm='0', prompt=None))
 
-        plus1 = dict(id='2', kind='Code', name='m1', args='def test(x: int):\n    return 1 + x\n')
-        double = dict(id='3', kind='Code', name='m2', args='def test(x: int):\n    return 2 * x\n')
-        square = dict(id='4', kind='Code', name='m3', args='def test(x: int):\n    return x * x\n')
+        plus1 = dict(id='2', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
+        double = dict(id='3', kind='Code', name='m2', args=dict(code='def test(x: int):\n    return 2 * x\n'))
+        square = dict(id='4', kind='Code', name='m3', args=dict(code='def test(x: int):\n    return x * x\n'))
 
         subgraph = dict(id='5', kind='SubGraph', name='subgraph', args=dict(nodes=[double, plus1]))
         ifs = dict(id='6', kind='Ifs', name='i1', args=dict(
@@ -388,19 +605,20 @@ class TestEngine(object):
                                       '1': 'running',
                                       '0': lazyllm.launcher.Status.Running}
 
+
 class TestEngineRAG(object):
 
     def test_rag(self):
         resources = [
-            dict(id='00', kind='LocalEmbedding', name='e1', args=dict(base_model='bge-large-zh-v1.5')),
-            dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', embed='00'))]
+            dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', embed='00')),
+            dict(id='00', kind='LocalEmbedding', name='e1', args=dict(base_model='bge-large-zh-v1.5'))]
         nodes = [dict(id='1', kind='Retriever', name='ret1',
                       args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
                  dict(id='4', kind='Reranker', name='rek1',
                       args=dict(type='ModuleReranker', output_format='content', join=True,
                                 arguments=dict(model="bge-reranker-large", topk=1))),
                  dict(id='5', kind='Code', name='c1',
-                      args='def test(nodes, query): return f\'context_str={nodes}, query={query}\''),
+                      args=dict(code='def test(nodes, query): return f\'context_str={nodes}, query={query}\'')),
                  dict(id='6', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='4'), dict(iid='__start__', oid='4'),
                  dict(iid='4', oid='5'), dict(iid='__start__', oid='5'), dict(iid='5', oid='6'),
@@ -411,7 +629,7 @@ class TestEngineRAG(object):
         assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
 
         # test add doc_group
-        resources[-1] = dict(id='0', kind='Document', name='d1', args=dict(
+        resources[0] = dict(id='0', kind='Document', name='d1', args=dict(
             dataset_path='rag_master', server=True, node_group=[
                 dict(name='sentence', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))
         nodes.extend([dict(id='2', kind='Retriever', name='ret2',

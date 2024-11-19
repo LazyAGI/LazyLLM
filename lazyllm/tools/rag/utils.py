@@ -1,8 +1,13 @@
 import os
 import shutil
 import hashlib
-from typing import List, Callable, Generator, Dict, Any, Optional, Union, Tuple
+import concurrent
+from typing import List, Callable, Generator, Dict, Any, Optional, Union, Tuple, Set
 from abc import ABC, abstractmethod
+from .index_base import IndexBase
+from .store_base import LAZY_ROOT_NAME
+from .doc_node import DocNode
+from lazyllm.common import override
 
 import pydantic
 import sqlite3
@@ -15,6 +20,13 @@ import json
 import lazyllm
 from lazyllm import config
 
+# min(32, (os.cpu_count() or 1) + 4) is the default number of workers for ThreadPoolExecutor
+config.add(
+    "max_embedding_workers",
+    int,
+    min(32, (os.cpu_count() or 1) + 4),
+    "MAX_EMBEDDING_WORKERS",
+)
 
 config.add("default_dlmanager", str, "sqlite", "DEFAULT_DOCLIST_MANAGER")
 
@@ -472,3 +484,52 @@ def save_files_in_threads(
     if os.path.exists(cache_dir):
         shutil.rmtree(cache_dir)
     return (already_exist_files, new_add_files, overwritten_files)
+
+# returns a list of modified nodes
+def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union[List[str], Set[str]]],
+                          nodes: List[DocNode]) -> List[DocNode]:
+    modified_nodes = []
+    with ThreadPoolExecutor(config["max_embedding_workers"]) as executor:
+        futures = []
+        for node in nodes:
+            miss_keys = node.has_missing_embedding(embed_keys)
+            if not miss_keys:
+                continue
+            modified_nodes.append(node)
+            for k in miss_keys:
+                with node._lock:
+                    if node.has_missing_embedding(k):
+                        future = executor.submit(node.do_embedding, {k: embed[k]}) \
+                            if k not in node._embedding_state else executor.submit(node.check_embedding_state, k)
+                        node._embedding_state.add(k)
+                        futures.append(future)
+        if len(futures) > 0:
+            for future in concurrent.futures.as_completed(futures):
+                future.result()
+    return modified_nodes
+
+class _FileNodeIndex(IndexBase):
+    def __init__(self):
+        self._file_node_map = {}
+
+    @override
+    def update(self, nodes: List[DocNode]) -> None:
+        for node in nodes:
+            if node.group != LAZY_ROOT_NAME:
+                continue
+            file_name = node.metadata.get("file_name")
+            if file_name:
+                self._file_node_map[file_name] = node
+
+    @override
+    def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
+        # group_name is ignored
+        left = {k: v for k, v in self._file_node_map.items() if v.uid not in uids}
+        self._file_node_map = left
+
+    @override
+    def query(self, files: List[str]) -> List[DocNode]:
+        ret = []
+        for file in files:
+            ret.append(self._file_node_map.get(file))
+        return ret

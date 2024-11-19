@@ -121,8 +121,9 @@ class ThreadSafeDict(dict):
 
 
 class Globals(object):
-    __global_attrs__ = ThreadSafeDict(chat_history={}, global_parameters={},
-                                      bind_args={}, tool_delimiter="<|tool_calls|>")
+    __global_attrs__ = ThreadSafeDict(
+        chat_history={}, global_parameters={}, bind_args={}, tool_delimiter="<|tool_calls|>", lazyllm_files={}, usage={}
+    )
 
     def __init__(self):
         self.__data = ThreadSafeDict()
@@ -174,6 +175,12 @@ class Globals(object):
             return self._data[__key]
         except KeyError:
             raise KeyError(f'Cannot find key {__key}, current session-id is {self._sid}')
+
+    def get(self, __key: str, default: Any = None):
+        try:
+            return self[__key]
+        except KeyError:
+            return default
 
     def __setattr__(self, __name: str, __value: Any):
         if __name in __class__.__global_attrs__:

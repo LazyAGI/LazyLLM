@@ -14,6 +14,12 @@ except ImportError:
     _F = typing.TypeVar("_F", bound=Callable[..., Any])
     def final(f: _F) -> _F: return f
 
+try:
+    from typing import override
+except ImportError:
+    def override(func: Callable):
+        return func
+
 
 class FlatList(list):
     def absorb(self, item):
@@ -375,7 +381,6 @@ def singleton(cls):
         if cls not in instances: instances[cls] = cls(*args, **kwargs)
         return instances[cls]
     return get_instance
-
 
 def reset_on_pickle(*fields):
     def decorator(cls):

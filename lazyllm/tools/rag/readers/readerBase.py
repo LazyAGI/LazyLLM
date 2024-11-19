@@ -3,7 +3,7 @@ from fsspec.implementations.local import LocalFileSystem
 from typing import Iterable, List
 
 from ....common import LazyLLMRegisterMetaClass
-from ..store import DocNode
+from ..doc_node import DocNode
 from lazyllm.module import ModuleBase
 
 class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):

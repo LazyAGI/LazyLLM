@@ -7,12 +7,13 @@ from .launcher import LazyLLMLaunchersBase
 from .flow import *  # noqa F403
 from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                          LazyLLMValidateBase, register as component_register, Prompter,
-                         AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter)
+                         AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter, FileFormatter)
 
-from .module import (ModuleBase, UrlModule, TrainableModule, ActionModule,
+from .module import (ModuleBase, ModuleBase as Module, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
                      OnlineChatModule, OnlineEmbeddingModule, AutoModel)
 from .client import redis_client
+from .hook import LazyLLMHook
 from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
                     FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
                     LLMParser)
@@ -37,6 +38,7 @@ __all__ = [
     'ChatPrompter',
     'FastapiApp',
     'JsonFormatter',
+    'FileFormatter',
 
     # launcher
     'LazyLLMLaunchersBase',        # empty, slurm, sco
@@ -46,6 +48,7 @@ __all__ = [
 
     # module
     'ModuleBase',
+    'Module',
     'UrlModule',
     'TrainableModule',
     'ActionModule',
@@ -59,6 +62,9 @@ __all__ = [
 
     # client
     'redis_client',
+
+    # hook
+    'LazyLLMHook',
 
     # tools
     'Document',

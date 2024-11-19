@@ -523,10 +523,11 @@ add_example('deploy.LMDeploy', '''\
 >>> # MultiModal:
 >>> import lazyllm
 >>> from lazyllm import deploy, globals
+>>> from lazyllm.components.formatter import encode_query_with_filepaths
 >>> chat = lazyllm.TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)
 >>> chat.update_server()
->>> globals['global_parameters']["lazyllm-files"] = {'files': 'path/to/image'}
->>> res = chat('What is it?')
+>>> inputs = encode_query_with_filepaths('What is it?', ['path/to/image'])
+>>> res = chat(inputs)
 ''')
 
 # Deploy-Infinity

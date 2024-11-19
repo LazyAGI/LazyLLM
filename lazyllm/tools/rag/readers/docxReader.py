@@ -3,7 +3,7 @@ from fsspec import AbstractFileSystem
 from typing import Dict, Optional, List
 
 from .readerBase import LazyLLMReaderBase
-from ..store import DocNode
+from ..doc_node import DocNode
 
 class DocxReader(LazyLLMReaderBase):
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
