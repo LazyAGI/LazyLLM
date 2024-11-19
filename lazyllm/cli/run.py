@@ -2,8 +2,9 @@ import sys
 import argparse
 import json
 
-from .serve import TrainServer
+import lazyllm
 from lazyllm.engine.lightengine import LightEngine
+from lazyllm.tools.train_service.serve import TrainServer
 
 # lazyllm run xx.json / xx.dsl / xx.lazyml
 # lazyllm run chatbot --model=xx --framework=xx --source=xx
@@ -51,7 +52,10 @@ def graph(json_file):
 
 def training_service():
     train_server = TrainServer()
-    train_server.run(asyn=False)
+    local_server = lazyllm.ServerModule(train_server, launcher=lazyllm.launcher.EmptyLauncher(sync=False))
+    local_server.start()
+    local_server()
+    local_server.wait()
 
 def run(commands):
     if not commands:

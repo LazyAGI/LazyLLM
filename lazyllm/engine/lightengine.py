@@ -1,11 +1,14 @@
-from .engine import Engine, Node
-import lazyllm
-from lazyllm import once_wrapper
-from lazyllm.cli.serve import TrainServer
-from typing import List, Dict, Optional, Set, Union
 import copy
 import uuid
+from urllib.parse import urlparse
 from contextlib import contextmanager
+from typing import List, Dict, Optional, Set, Union
+
+import lazyllm
+from lazyllm import once_wrapper
+from .engine import Engine, Node
+from lazyllm.tools.train_service.serve import TrainServer
+from lazyllm.tools.train_service.client import LocalTrainClient, OnlineTrainClient
 
 
 @contextmanager
@@ -21,17 +24,66 @@ class LightEngine(Engine):
 
     _instance = None
 
-    def __new__(cls):
+    def __new__(cls, *args, **kwargs):
         if not LightEngine._instance:
             cls._instance = super().__new__(cls)
         return cls._instance
 
     @once_wrapper
-    def __init__(self):
+    def __init__(self, launch_local_train_serve=False):
         super().__init__()
         self.node_graph: Set[str, List[str]] = dict()
-        self.train_server = TrainServer()
-        self.train_server.run()
+        self._launch_local_train = launch_local_train_serve
+        if self._launch_local_train:
+            train_server = TrainServer()
+            self._local_serve = lazyllm.ServerModule(train_server, launcher=lazyllm.launcher.EmptyLauncher(sync=False))
+            self._local_serve.start()()
+            parsed_url = urlparse(self._local_serve._url)
+            base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            self.local_train_client = LocalTrainClient(base_url)
+        self.online_train_client = OnlineTrainClient()
+
+    # Local
+    def local_train(self, train_config, token='default'):
+        if not self._launch_local_train:
+            raise RuntimeError('Please set launch_local_train_serve=True when instanche a LightEngine.')
+        return self.local_train_client.train(train_config, token)
+
+    def local_cancel_finetuning(self, token, job_id):
+        if not self._launch_local_train:
+            raise RuntimeError('Please set launch_local_train_serve=True when instanche a LightEngine.')
+        return self.local_train_client.cancel_finetuning(token, job_id)
+
+    def local_get_train_status(self, token, job_id):
+        if not self._launch_local_train:
+            raise RuntimeError('Please set launch_local_train_serve=True when instanche a LightEngine.')
+        return self.local_train_client.get_train_status(token, job_id)
+
+    def local_get_log(self, token, job_id):
+        if not self._launch_local_train:
+            raise RuntimeError('Please set launch_local_train_serve=True when instanche a LightEngine.')
+        return self.local_train_client.get_log(token, job_id)
+
+    def local_get_all_finetuned_models(self, token):
+        if not self._launch_local_train:
+            raise RuntimeError('Please set launch_local_train_serve=True when instanche a LightEngine.')
+        return self.local_train_client.get_all_finetuned_models(token)
+
+    # Online
+    def online_train(self, train_config, token, source='glm'):
+        return self.online_train_client.train(train_config, token, source)
+
+    def online_cancel_finetuning(self, token, job_id, source='glm'):
+        return self.online_train_client.cancel_finetuning(token, job_id, source)
+
+    def online_get_train_status(self, token, job_id, source='glm'):
+        return self.online_train_client.get_train_status(token, job_id, source)
+
+    def online_get_log(self, token, job_id, source='glm', target_path=None):
+        return self.online_train_client.get_log(token, job_id, source=source, target_path=target_path)
+
+    def online_get_all_finetuned_models(self, token, source='glm'):
+        return self.online_train_client.get_all_finetuned_models(token, source)
 
     def build_node(self, node):
         if not isinstance(node, Node):

@@ -6,7 +6,6 @@ import requests
 import re
 from typing import Tuple, List, Dict, Union, Any
 import time
-import threading
 
 import lazyllm
 from lazyllm import globals, FileSystemQueue
@@ -14,7 +13,6 @@ from lazyllm.components.prompter import PrompterBase, ChatPrompter
 from lazyllm.components.formatter import FormatterBase, EmptyFormatter
 from lazyllm.components.utils.file_operate import delete_old_files
 from ..module import ModuleBase, Pipeline
-from ..utils import TrainConfig, update_config, uniform_sft_dataset
 
 
 class OnlineChatModuleBase(ModuleBase):
@@ -321,30 +319,9 @@ class OnlineChatModuleBase(ModuleBase):
     def _get_finetuned_model_names(self) -> (List[str], List[str]):
         raise NotImplementedError(f"{self._model_series} not implemented _get_finetuned_model_names method in subclass")
 
-    def set_train_tasks(self, train_file, stand_config=None, **kw):
+    def set_train_tasks(self, train_file, **kw):
         self._train_file = train_file
-        assert not (stand_config and kw), "Cannot have both 'stand_config' and keyword arguments simultaneously."
-        if stand_config:
-            self._train_parameters = stand_config
-        else:
-            self._train_parameters = kw
-
-    def train(self, train_config: dict, asyn: bool = True) -> None:
-        train_config = update_config(train_config, TrainConfig)
-        assert train_config['training_type'].lower() == 'sft', 'Only supported sft!'
-
-        data_path = os.path.join(lazyllm.config['data_path'], train_config['data_path'])
-        data_path = uniform_sft_dataset(data_path, target='openai')
-        self.set_train_tasks(data_path, train_config)
-
-        self.thread = threading.Thread(target=self._update, kwargs={'mode': ['train']})
-        self.thread.daemon = True
-        self.thread.start()
-        if not asyn:
-            self.thread.join()
-
-    def get_all_finetuned_models(self,):
-        return self._get_finetuned_model_names()
+        self._train_parameters = kw
 
     def set_specific_finetuned_model(self, model_id):
         valid_jobs, _ = self._get_finetuned_model_names()
@@ -354,38 +331,6 @@ class OnlineChatModuleBase(ModuleBase):
             self._is_trained = True
         else:
             raise ValueError(f"Cannot find modle({model_id}), in fintuned model list: {valid_model_id}")
-
-    def get_train_status(self, job_id=None):
-        try:
-            status = self._query_job_status(job_id)
-        except Exception as e:
-            status = 'Invalid'
-            lazyllm.LOG.error(e)
-        return status
-
-    def cancel_finetuning(self, job_id=None):
-        try:
-            res = self._cancel_finetuning_job(job_id)
-        except Exception as e:
-            res = str(e)
-        if res == 'Cancelled':
-            return "Successfully cancelled task."
-        else:
-            return "Failed to cancel task. " + (f" Because: {res}" if res else '')
-
-    def get_log(self, job_id=None, target_path=None):
-        try:
-            file_name, log = self._get_log(job_id)
-        except Exception as e:
-            lazyllm.LOG.error(f"Failed to get log. Because: {e}")
-            return None
-        save_path = target_path if target_path else os.path.join(self._get_temp_save_dir_path(), f'{file_name}.log')
-        with open(save_path, 'w', encoding='utf-8') as log_file:
-            json.dump(log, log_file, indent=4, ensure_ascii=False)
-        return save_path
-
-    def get_target_model(self):
-        return self._get_curr_job_model_id()
 
     def _get_temp_save_dir_path(self):
         save_dir = lazyllm.config['temp_dir'] if lazyllm.config['temp_dir'] \

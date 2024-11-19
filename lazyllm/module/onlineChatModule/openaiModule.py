@@ -168,8 +168,10 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
             return 'Failed'
         elif status == 'cancelled':
             return 'Cancelled'
-        else:  # validating_files, queued, running
+        elif status == 'running':
             return 'Running'
+        else:  # validating_files, queued
+            return 'Pending'
 
     def _get_log(self, fine_tuning_job_id=None):
         if not fine_tuning_job_id and not self.fine_tuning_job_id:

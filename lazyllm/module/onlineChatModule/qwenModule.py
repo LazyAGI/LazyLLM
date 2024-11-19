@@ -202,8 +202,10 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             return 'Failed'
         elif status in ('CANCELING', 'CANCELED'):
             return 'Cancelled'
-        else:  # PENDING, QUEUING, RUNNING
+        elif status == 'RUNNING':
             return 'Running'
+        else:  # PENDING, QUEUING
+            return 'Pending'
 
     def _get_log(self, fine_tuning_job_id=None):
         if not fine_tuning_job_id and not self.fine_tuning_job_id:
