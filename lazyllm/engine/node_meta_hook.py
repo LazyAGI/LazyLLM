@@ -16,10 +16,8 @@ class MetaKeys:
 
 
 class NodeMetaHook(LazyLLMHook):
-    URL = ""
-    MODULEID_TO_WIDGETID = {}
 
-    def __init__(self, obj):
+    def __init__(self, obj, url, front_id):
         if isinstance(obj, lazyllm.ModuleBase):
             self._uniqueid = obj._module_id
         elif isinstance(obj, lazyllm.FlowBase):
@@ -28,16 +26,18 @@ class NodeMetaHook(LazyLLMHook):
             raise TypeError(f"Expected 'obj' to be type of ModuleBase or FlowBase, but got {type(obj)}")
         self._meta_info = {
             MetaKeys.ID: str(self._uniqueid),
-            MetaKeys.SESSIONID: lazyllm.globals._sid,
             MetaKeys.TIMECOST: 0.0,
             MetaKeys.PROMPT_TOKENS: 0,
             MetaKeys.COMPLETION_TOKENS: 0,
             MetaKeys.INPUT: "",
             MetaKeys.OUTPUT: "",
         }
+        self._front_id = front_id
+        self._url = url
 
     def pre_hook(self, *args, **kwargs):
         arguments = {}
+        self._meta_info[MetaKeys.SESSIONID] = lazyllm.globals._sid
         if len(args) == 1:
             if isinstance(args[0], lazyllm.package) and len(args[0]) == 1:
                 self._meta_info[MetaKeys.INPUT] = str(args[0][0])
@@ -54,16 +54,14 @@ class NodeMetaHook(LazyLLMHook):
         self._meta_info[MetaKeys.OUTPUT] = str(output)
 
         if self._uniqueid in globals["usage"]:
-            self._meta_info.update(globals["usage"])
-        if self._meta_info[MetaKeys.ID] in self.MODULEID_TO_WIDGETID:
-            self._meta_info[MetaKeys.ID] = self.MODULEID_TO_WIDGETID[self._meta_info[MetaKeys.ID]]
+            self._meta_info.update(globals["usage"][self._uniqueid])
+        self._meta_info[MetaKeys.ID] = self._front_id
         self._meta_info[MetaKeys.TIMECOST] = time.time() - self._meta_info[MetaKeys.TIMECOST]
 
     def report(self):
         headers = {"Content-Type": "application/json; charset=utf-8"}
         json_data = json.dumps(self._meta_info, ensure_ascii=False)
         try:
-            lazyllm.LOG.info(f"meta_info: {self._meta_info}")
-            requests.post(self.URL, data=json_data, headers=headers)
+            requests.post(self._url, data=json_data, headers=headers)
         except Exception as e:
-            lazyllm.LOG.warning(f"Error sending collected data: {e}")
+            lazyllm.LOG.warning(f"Error sending collected data: {e}. URL: {self._url}")
