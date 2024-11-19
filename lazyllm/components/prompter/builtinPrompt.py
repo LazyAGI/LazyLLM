@@ -176,7 +176,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         user_instruction = ""
         if LazyLLMPrompterBase.ISA in instruction and LazyLLMPrompterBase.ISE in instruction:
             # The instruction includes system prompts and/or user prompts
-            pattern = re.compile(r"%s(.*)%s" % (LazyLLMPrompterBase.ISA, LazyLLMPrompterBase.ISE))
+            pattern = re.compile(r"%s(.*)%s" % (LazyLLMPrompterBase.ISA, LazyLLMPrompterBase.ISE), re.DOTALL)
             ret = re.split(pattern, instruction)
             system_instruction = ret[0]
             user_instruction = ret[1]
