@@ -115,6 +115,7 @@ class LightEngine(Engine):
         if _file_resources:
             lazyllm.globals['lazyllm_files'] = _file_resources
         f = self.build_node(id).func
+        lazyllm.FileSystemQueue().dequeue()
         if history := _lazyllm_history:
             assert isinstance(f, ServerGraph) and (ids := f._history_ids), 'Only graph can support history'
             if not isinstance(history, list) and all([isinstance(h, list) for h in history]):
