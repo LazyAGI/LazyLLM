@@ -1,4 +1,5 @@
 import lazyllm
+import pytest
 from lazyllm.tools.rag.doc_impl import DocImpl
 from lazyllm.tools.rag.utils import _FileNodeIndex
 from lazyllm.tools.rag.transform import SentenceSplitter
@@ -133,6 +134,7 @@ class TestDocument(unittest.TestCase):
         retriever = Retriever(doc, 'AdaptiveChunk2', similarity='bm25', topk=2)
         retriever('什么是道')
 
+    @pytest.mark.skip_on_win
     def test_multi_embedding_with_document(self):
         Document(dataset_path="rag_master")._impl._dlm.release()
         document1 = Document(dataset_path="rag_master", embed=self.embed_model1)

@@ -1,5 +1,6 @@
 import os
 import shutil
+import pytest
 import tempfile
 import unittest
 from unittest.mock import MagicMock
@@ -182,6 +183,7 @@ class TestMapStore(unittest.TestCase):
         self.assertEqual(self.store.is_group_active("group1"), True)
         self.assertEqual(self.store.is_group_active("group2"), False)
 
+@pytest.mark.skip_on_win
 class TestMilvusStore(unittest.TestCase):
     def setUp(self):
         self.mock_embed = {

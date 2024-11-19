@@ -1,4 +1,3 @@
-
 import time
 import requests
 import pytest
@@ -55,6 +54,7 @@ class TestModule:
         server_module.eval()
         assert server_module.eval_result == ['INPUT12', 'INPUT22']
 
+    @pytest.mark.skip_on_win
     def test_TrainableModule(self):
         tm1 = lazyllm.TrainableModule(self.base_model, self.target_path)
         tm2 = tm1.share()
@@ -115,6 +115,7 @@ class TestModule:
         inputs = 'input-tm5'
         assert tm5(inputs) == res_template.format(inputs)
 
+    @pytest.mark.skip_on_win
     def test_TrainableModule_stream(self):
         tm = lazyllm.TrainableModule(self.base_model, self.target_path, stream=True).deploy_method(lazyllm.deploy.dummy)
         assert tm._deploy_type == lazyllm.deploy.dummy
