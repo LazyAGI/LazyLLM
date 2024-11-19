@@ -5,7 +5,6 @@ from sqlalchemy.exc import SQLAlchemyError, OperationalError, ProgrammingError
 from sqlalchemy.orm import declarative_base, DeclarativeMeta
 import pydantic
 from .db_manager import DBManager, DBStatus, DBResult
-from pathlib import Path
 
 
 class SqlManagerBase(DBManager):

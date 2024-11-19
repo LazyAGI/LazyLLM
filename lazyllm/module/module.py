@@ -322,7 +322,7 @@ class UrlModule(ModuleBase, UrlTemplate):
         non_ascii_chars = re.findall(non_ascii_pattern, text)
         non_ascii_char_count = len(non_ascii_chars)
         return int(ascii_ch_count / 3.0 + non_ascii_char_count + 1)
-    
+
     def _record_usage(self, usage: dict):
         globals["usage"][self._module_id] = usage
         par_muduleid = self._used_by_moduleid
