@@ -11,7 +11,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ["chatglm3-6b", "chatglm_12b", "chatglm_32b", "chatglm_66b", "chatglm_130b"]
 
     def __init__(self,
-                 base_url: str = "https://open.bigmodel.cn/api/paas/v4",
+                 base_url: str = "https://open.bigmodel.cn/api/paas/v4/",
                  model: str = "glm-4",
                  api_key: str = None,
                  stream: str = True,

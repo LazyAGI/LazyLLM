@@ -362,10 +362,11 @@ class WebModule(ModuleBase):
             port = self.port
             assert self._verify_port_access(port), f'port {port} is occupied'
 
-        self.url = f'http://0.0.0.0:{port}'
+        self.url = f'http://localhost:{port}'
+        self.broadcast_url = f'http://0.0.0.0:{port}' 
 
         self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True)
-        LOG.success(f'LazyLLM webmodule launched successfully: Running on local URL: {self.url}', flush=True)
+        LOG.success(f'LazyLLM webmodule launched successfully: Running on local URL: {self.broadcast_url}', flush=True)
 
     def _update(self, *, mode=None, recursive=True):
         super(__class__, self)._update(mode=mode, recursive=recursive)

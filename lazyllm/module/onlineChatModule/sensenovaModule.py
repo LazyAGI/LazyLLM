@@ -12,7 +12,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ["nova-ptc-s-v2"]
 
     def __init__(self,
-                 base_url: str = "https://api.sensenova.cn/v1/llm",
+                 base_url: str = "https://api.sensenova.cn/v1/llm/",
                  model: str = "SenseChat-5",
                  api_key: str = None,
                  secret_key: str = None,

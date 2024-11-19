@@ -117,9 +117,8 @@ class Job(object):
         cmd = self.get_executable_cmd(fixed=fixed)
         LOG.info(f'Command: {cmd}')
         if lazyllm.config['mode'] == lazyllm.Mode.Display: return
-        cmd_path = subprocess.run(["where", "cmd"], capture_output=True, text=True).stdout[:-1]
-        self.ps = subprocess.Popen(cmd.cmd, shell=True, executable=cmd_path,
-                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.ps = subprocess.Popen(cmd.cmd, shell=True, stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT)
         self._get_jobid()
         self._enqueue_subprocess_output(hooks=self.output_hooks)
 
@@ -230,9 +229,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             self.jobid = self.ps.pid if self.ps else None
 
         def get_jobip(self):
-            if os.name == 'nt':
-                return '127.0.0.1'
-            return '0.0.0.0'
+            return 'localhost'
 
         def wait(self):
             if self.ps:

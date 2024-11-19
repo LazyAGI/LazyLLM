@@ -219,10 +219,11 @@ class DocWebModule(ModuleBase):
         self.api_url = self.doc_server._url.rsplit("/", 1)[0]
         self.web_ui = WebUi(self.api_url)
         self.demo = self.web_ui.create_ui()
-        self.url = f'http://0.0.0.0:{port}'
-
+        self.url = f'http://localhost:{port}'
+        self.broadcast_url = f'http://0.0.0.0:{port}'
+        
         self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True)
-        LOG.success(f'LazyLLM docwebmodule launched successfully: Running on local URL: {self.url}', flush=True)
+        LOG.success(f'LazyLLM docwebmodule launched successfully: Running on local URL: {self.broadcast_url}', flush=True)
 
     def _get_deploy_tasks(self):
         return Pipeline(self._work)

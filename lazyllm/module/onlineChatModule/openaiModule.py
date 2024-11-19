@@ -13,7 +13,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
                             "davinci-002", "gpt-4-0613"]
 
     def __init__(self,
-                 base_url: str = "https://api.openai.com/v1",
+                 base_url: str = "https://api.openai.com/v1/",
                  model: str = "gpt-3.5-turbo",
                  api_key: str = None,
                  stream: bool = True,

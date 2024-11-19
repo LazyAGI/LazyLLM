@@ -1,5 +1,6 @@
 from functools import lru_cache
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Union, Dict, Any
+import requests
 
 import lazyllm
 from lazyllm import ModuleBase, LOG
@@ -105,6 +106,7 @@ class ModuleReranker(Reranker):
         results = [nodes[i] for i in sorted_indices]
         LOG.debug(f"Rerank use `{self._name}` and get nodes: {results}")
         return self._post_process(results)
+
 
 # User-defined similarity decorator
 def register_reranker(func=None, batch=False):
