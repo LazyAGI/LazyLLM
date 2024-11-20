@@ -1,9 +1,6 @@
 import unittest
 from lazyllm.tools import SQLiteManger, SqlCall, SqlManager
 import lazyllm
-import tempfile
-from pathlib import Path
-import uuid
 from .utils import SqlEgsData, get_sql_init_keywords
 import datetime
 import re

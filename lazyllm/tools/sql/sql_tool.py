@@ -5,7 +5,6 @@ from lazyllm.tools.utils import chat_history_to_str
 from lazyllm import pipeline, globals, bind, _0, switch
 import json
 from typing import List, Any, Dict, Union
-from pathlib import Path
 import datetime
 import re
 import sqlalchemy
