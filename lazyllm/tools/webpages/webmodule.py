@@ -6,7 +6,7 @@ import socket
 import sys
 import requests
 import traceback
-import gradio as gr
+from lazyllm.thirdparty import gradio as gr
 import time
 from PIL import Image
 import re

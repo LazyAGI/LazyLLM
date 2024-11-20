@@ -6,60 +6,68 @@ from .map_store import MapStore
 from .utils import parallel_do_embedding
 from .index_base import IndexBase
 from .store_base import StoreBase
-from .doc_field_desc import DocFieldDesc
+from .global_metadata import GlobalMetadataDesc, RAG_DOC_PATH, RAG_DOC_ID
 from lazyllm.common import override
 import pickle
 import base64
 
 class MilvusStore(StoreBase):
-    _primary_key = 'uid'
+    # we define these variables as members so that pymilvus is not imported until MilvusStore is instantiated.
+    def _def_constants(self) -> None:
+        self._primary_key = 'uid'
 
-    _embedding_key_prefix = 'embedding_'
-    _field_key_prefix = 'field_'
+        self._embedding_key_prefix = 'embedding_'
+        self._global_metadata_key_prefix = 'global_metadata_'
 
-    _builtin_keys = {
-        _primary_key: {
-            'dtype': pymilvus.DataType.VARCHAR,
-            'max_length': 256,
-            'is_primary': True,
-        },
-        'parent': {
-            'dtype': pymilvus.DataType.VARCHAR,
-            'max_length': 256,
-        },
-        'text': {
-            'dtype': pymilvus.DataType.VARCHAR,
-            'max_length': 65535,
-        },
-        'metadata': {
-            'dtype': pymilvus.DataType.VARCHAR,
-            'max_length': 65535,
-        },
-    }
+        self._builtin_keys = {
+            self._primary_key: {
+                'dtype': pymilvus.DataType.VARCHAR,
+                'max_length': 256,
+                'is_primary': True,
+            },
+            'parent': {
+                'dtype': pymilvus.DataType.VARCHAR,
+                'max_length': 256,
+            },
+            'text': {
+                'dtype': pymilvus.DataType.VARCHAR,
+                'max_length': 65535,
+            },
+            'metadata': {
+                'dtype': pymilvus.DataType.VARCHAR,
+                'max_length': 65535,
+            },
+        }
 
-    _builtin_fields_desc = {
-        'lazyllm_doc_path': DocFieldDesc(data_type=DocFieldDesc.DTYPE_VARCHAR,
-                                         default_value=' ', max_length=65535),
-    }
+        self._builtin_global_metadata_desc = {
+            RAG_DOC_ID: GlobalMetadataDesc(data_type=GlobalMetadataDesc.DTYPE_VARCHAR,
+                                           default_value=' ', max_size=512),
+            RAG_DOC_PATH: GlobalMetadataDesc(data_type=GlobalMetadataDesc.DTYPE_VARCHAR,
+                                             default_value=' ', max_size=65535),
+        }
 
-    _type2milvus = [
-        pymilvus.DataType.VARCHAR,
-    ]
+        self._type2milvus = [
+            pymilvus.DataType.VARCHAR,
+            pymilvus.DataType.ARRAY,
+            pymilvus.DataType.INT32,
+        ]
 
-    def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable],
-                 embed_dims: Dict[str, int], fields_desc: Dict[str, DocFieldDesc],
+    def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable], # noqa C901
+                 embed_dims: Dict[str, int], global_metadata_desc: Dict[str, GlobalMetadataDesc],
                  uri: str, embedding_index_type: Optional[str] = None,
                  embedding_metric_type: Optional[str] = None, **kwargs):
+        self._def_constants()
+
         self._group_embed_keys = group_embed_keys
         self._embed = embed
         self._client = pymilvus.MilvusClient(uri=uri)
 
         # XXX milvus 2.4.x doesn't support `default_value`
         # https://milvus.io/docs/product_faq.md#Does-Milvus-support-specifying-default-values-for-scalar-or-vector-fields
-        if fields_desc:
-            self._fields_desc = fields_desc | self._builtin_fields_desc
+        if global_metadata_desc:
+            self._global_metadata_desc = global_metadata_desc | self._builtin_global_metadata_desc
         else:
-            self._fields_desc = self._builtin_fields_desc
+            self._global_metadata_desc = self._builtin_global_metadata_desc
 
         if not embedding_index_type:
             embedding_index_type = 'HNSW'
@@ -67,7 +75,11 @@ class MilvusStore(StoreBase):
         if not embedding_metric_type:
             embedding_metric_type = 'COSINE'
 
+        collections = self._client.list_collections()
         for group, embed_keys in group_embed_keys.items():
+            if group in collections:
+                continue
+
             field_list = []
             index_params = self._client.prepare_index_params()
 
@@ -84,16 +96,29 @@ class MilvusStore(StoreBase):
                 index_params.add_index(field_name=field_name, index_type=embedding_index_type,
                                        metric_type=embedding_metric_type)
 
-            if self._fields_desc:
-                for key, desc in self._fields_desc.items():
+            if self._global_metadata_desc:
+                for key, desc in self._global_metadata_desc.items():
+                    if desc.data_type == GlobalMetadataDesc.DTYPE_ARRAY:
+                        if not desc.element_type:
+                            raise ValueError(f'Milvus field [{key}]: `element_type` is required when '
+                                             '`data_type` is DTYPE_ARRAY.')
+                        field_args = {
+                            'element_type': self._type2milvus[desc.element_type],
+                            'max_capacity': desc.max_size,
+                        }
+                    elif desc.data_type == GlobalMetadataDesc.DTYPE_VARCHAR:
+                        field_args = {
+                            'max_length': desc.max_size,
+                        }
+                    else:
+                        field_args = {}
                     field_list.append(pymilvus.FieldSchema(name=self._gen_field_key(key),
                                                            dtype=self._type2milvus[desc.data_type],
-                                                           max_length=desc.max_length,
-                                                           default_value=desc.default_value))
+                                                           default_value=desc.default_value,
+                                                           **field_args))
 
-            schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_fields=False)
-            self._client.create_collection(collection_name=group, schema=schema,
-                                           index_params=index_params)
+            schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_field=False)
+            self._client.create_collection(collection_name=group, schema=schema, index_params=index_params)
 
         self._map_store = MapStore(node_groups=list(group_embed_keys.keys()), embed=embed)
         self._load_all_nodes_to(self._map_store)
@@ -149,6 +174,7 @@ class MilvusStore(StoreBase):
               similarity_cut_off: Optional[Union[float, Dict[str, float]]] = None,
               topk: int = 10,
               embed_keys: Optional[List[str]] = None,
+              filters: Optional[Dict[str, Union[List, set]]] = None,
               **kwargs) -> List[DocNode]:
         if similarity_name is not None:
             raise ValueError('`similarity` MUST be None when Milvus backend is used.')
@@ -156,12 +182,15 @@ class MilvusStore(StoreBase):
         if not embed_keys:
             raise ValueError('empty or None `embed_keys` is not supported.')
 
+        filter_str = self._construct_filter_expr(filters) if filters else ""
+
         uidset = set()
         for key in embed_keys:
             embed_func = self._embed.get(key)
             query_embedding = embed_func(query)
             results = self._client.search(collection_name=group_name, data=[query_embedding],
-                                          limit=topk, anns_field=self._gen_embedding_key(key))
+                                          limit=topk, anns_field=self._gen_embedding_key(key),
+                                          filter=filter_str)
             # we have only one `data` for search() so there is only one result in `results`
             if len(results) != 1:
                 raise ValueError(f'number of results [{len(results)}] != expected [1]')
@@ -173,31 +202,53 @@ class MilvusStore(StoreBase):
 
     # ----- internal helper functions ----- #
 
-    @classmethod
-    def _gen_embedding_key(cls, k: str) -> str:
-        return cls._embedding_key_prefix + k
+    def _gen_embedding_key(self, k: str) -> str:
+        return self._embedding_key_prefix + k
 
-    @classmethod
-    def _gen_field_key(cls, k: str) -> str:
-        return cls._field_key_prefix + k
+    def _gen_field_key(self, k: str) -> str:
+        return self._global_metadata_key_prefix + k
 
-    def _load_all_nodes_to(self, store: StoreBase):
+    def _load_all_nodes_to(self, store: StoreBase) -> None:
+        uid2node = {}
         for group_name in self._client.list_collections():
             results = self._client.query(collection_name=group_name,
                                          filter=f'{self._primary_key} != ""')
             for result in results:
-                doc = self._deserialize_node_partial(result)
-                doc.group = group_name
-                store.update_nodes([doc], group_name)
+                node = self._deserialize_node_partial(result)
+                node.group = group_name
+                uid2node.setdefault(node.uid, node)
 
         # construct DocNode::parent and DocNode::children
-        for group in self.all_groups():
-            for node in self.get_nodes(group):
-                if node.parent:
-                    parent_uid = node.parent
-                    parent_node = self._map_store.find_node_by_uid(parent_uid)
-                    node.parent = parent_node
-                    parent_node.children[node.group].append(node)
+        for node in uid2node.values():
+            if node.parent:
+                parent_uid = node.parent
+                parent_node = uid2node.get(parent_uid)
+                node.parent = parent_node
+                parent_node.children[node.group].append(node)
+
+        store.update_nodes(list(uid2node.values()))
+
+    def _construct_filter_expr(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
+        ret_str = ""
+        for name, candidates in filters.items():
+            desc = self._global_metadata_desc.get(name)
+            if not desc:
+                raise ValueError(f'cannot find desc of field [{name}]')
+
+            key = self._gen_field_key(name)
+            if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
+                candidates = list(candidates)
+            if desc.data_type == GlobalMetadataDesc.DTYPE_ARRAY:
+                # https://github.com/milvus-io/milvus/discussions/35279
+                # `array_contains_any` requires milvus >= 2.4.3 and is not supported in local(aka lite) mode.
+                ret_str += f'array_contains_any({key}, {candidates}) and '
+            else:
+                ret_str += f'{key} in {candidates} and '
+
+        if len(ret_str) > 0:
+            return ret_str[:-5]  # truncate the last ' and '
+
+        return ret_str
 
     def _serialize_node_partial(self, node: DocNode) -> Dict:
         res = {
@@ -210,8 +261,8 @@ class MilvusStore(StoreBase):
         for k, v in node.embedding.items():
             res[self._gen_embedding_key(k)] = v
 
-        for name, desc in self._fields_desc.items():
-            val = node.fields.get(name, desc.default_value)
+        for name, desc in self._global_metadata_desc.items():
+            val = node.global_metadata.get(name, desc.default_value)
             if val:
                 res[self._gen_field_key(name)] = val
 
@@ -230,8 +281,8 @@ class MilvusStore(StoreBase):
         for k, v in record.items():
             if k.startswith(self._embedding_key_prefix):
                 doc.embedding[k[len(self._embedding_key_prefix):]] = v
-            elif k.startswith(self._field_key_prefix):
+            elif k.startswith(self._global_metadata_key_prefix):
                 if doc.parent:
-                    doc._fields[k[len(self._field_key_prefix):]] = v
+                    doc._global_metadata[k[len(self._global_metadata_key_prefix):]] = v
 
         return doc
