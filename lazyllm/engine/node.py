@@ -9,13 +9,14 @@ from lazyllm.tools.http_request.http_request import HttpRequest
 
 @dataclass
 class Node():
-    id: int
+    id: str
     kind: str
     name: str
     args: Optional[Dict] = None
 
     func: Optional[Callable] = None
     arg_names: Optional[List[str]] = None
+    enable_data_reflow: bool = False
     subitem_name: Optional[Union[List[str], str]] = None
 
     @property
@@ -50,7 +51,7 @@ all_nodes['LocalLLM'] = dict(
     init_arguments=dict(
         base_model=NodeArgs(str),
         target_path=NodeArgs(str),
-        stream=NodeArgs(bool, True),
+        stream=NodeArgs(bool, False),
         return_trace=NodeArgs(bool, False)),
     builder_argument=dict(
         trainset=NodeArgs(str),
@@ -66,7 +67,7 @@ all_nodes['OnlineLLM'] = dict(
         base_url=NodeArgs(str),
         api_key=NodeArgs(str, None),
         secret_key=NodeArgs(str, None),
-        stream=NodeArgs(bool, True),
+        stream=NodeArgs(bool, False),
         return_trace=NodeArgs(bool, False)),
     builder_argument=dict(
         prompt=NodeArgs(str)),
@@ -88,7 +89,7 @@ all_nodes['OnlineEmbedding'] = dict(
         secret_key=NodeArgs(str, None))
 )
 
-all_nodes['SD'] = all_nodes['TTS'] = all_nodes['STT'] = dict(
+all_nodes['SD'] = all_nodes['TTS'] = dict(
     module=lazyllm.TrainableModule,
     init_arguments=dict(base_model=NodeArgs(str))
 )

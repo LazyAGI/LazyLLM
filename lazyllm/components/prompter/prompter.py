@@ -1,6 +1,7 @@
 import re
 import json
 import collections
+from lazyllm import LOG
 
 templates = dict(
     # Template used by Alpaca-LoRA.
@@ -75,7 +76,7 @@ class Prompter(object):
                 raise RuntimeError(f'Generate prompt failed, and prompt is {self._prompt}; chat-prompt'
                                    f' is {self._chat_prompt}; input is {input}; history is {history}')
             if label: input += label
-        if self._show or show: print(input)
+        if self._show or show: LOG.info(input)
         return input
 
     def get_response(self, response, input=None):

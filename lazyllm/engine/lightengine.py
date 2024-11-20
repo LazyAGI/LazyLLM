@@ -1,8 +1,19 @@
-from .engine import Engine, Node
+from .engine import Engine, Node, ServerGraph
+import lazyllm
 from lazyllm import once_wrapper
 from typing import List, Dict, Optional, Set, Union
 import copy
 import uuid
+from contextlib import contextmanager
+
+
+@contextmanager
+def set_resources(resource):
+    lazyllm.globals['engine_resource'] = {r['id']: r for r in resource}
+    try:
+        yield
+    finally:
+        lazyllm.globals.pop('engine_resource', None)
 
 
 class LightEngine(Engine):
@@ -22,7 +33,10 @@ class LightEngine(Engine):
     def build_node(self, node):
         if not isinstance(node, Node):
             if isinstance(node, str):
-                return self._nodes.get(node)
+                if node not in self._nodes and (resource := lazyllm.globals.get('engine_resource', {}).get(node)):
+                    node = resource
+                else:
+                    return self._nodes.get(node)
             node = Node(id=node['id'], kind=node['kind'], name=node['name'], args=node['args'])
         if node.id not in self._nodes:
             self._nodes[node.id] = super(__class__, self).build_node(node)
@@ -42,7 +56,7 @@ class LightEngine(Engine):
         self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]
 
-    def start(self, nodes, edges=[], resources=[], gid=None, name=None):
+    def start(self, nodes, edges=[], resources=[], gid=None, name=None, _history_ids=None):
         if isinstance(nodes, str):
             assert not edges and not resources and not gid and not name
             self.build_node(nodes).func.start()
@@ -51,8 +65,10 @@ class LightEngine(Engine):
         else:
             gid, name = gid or str(uuid.uuid4().hex), name or str(uuid.uuid4().hex)
             node = Node(id=gid, kind='Graph', name=name, args=dict(
-                nodes=copy.copy(nodes), edges=copy.copy(edges), resources=copy.copy(resources)))
-            self.build_node(node).func.start()
+                nodes=copy.copy(nodes), edges=copy.copy(edges),
+                resources=copy.copy(resources), _history_ids=_history_ids))
+            with set_resources(resources):
+                self.build_node(node).func.start()
             return gid
 
     def status(self, node_id: str, task_name: Optional[str] = None):
@@ -90,5 +106,22 @@ class LightEngine(Engine):
         else:
             for node in gid_or_nodes: self.update_node(node)
 
-    def run(self, id: str, *args, **kw):
-        return self.build_node(id).func(*args, **kw)
+    def run(self, id: str, *args, _lazyllm_files: Optional[Union[str, List[str]]] = None,
+            _file_resources: Optional[Dict[str, Union[str, List[str]]]] = None,
+            _lazyllm_history: Optional[List[List[str]]] = None, **kw):
+        if files := _lazyllm_files:
+            assert len(args) <= 1 and len(kw) == 0, 'At most one query is enabled when file exists'
+            args = [lazyllm.formatter.file(formatter='encode')(dict(query=args[0] if args else '', files=files))]
+        if _file_resources:
+            lazyllm.globals['lazyllm_files'] = _file_resources
+        f = self.build_node(id).func
+        lazyllm.FileSystemQueue().dequeue()
+        if history := _lazyllm_history:
+            assert isinstance(f, ServerGraph) and (ids := f._history_ids), 'Only graph can support history'
+            if not isinstance(history, list) and all([isinstance(h, list) for h in history]):
+                raise RuntimeError('History shoule be [[str, str], ..., [str, str]] (list of list of str)')
+            lazyllm.globals['chat_history'] = {Engine().build_node(i).func._module_id: history for i in ids}
+        result = self.build_node(id).func(*args, **kw)
+        lazyllm.globals['lazyllm_files'] = {}
+        lazyllm.globals['chat_history'] = {}
+        return result

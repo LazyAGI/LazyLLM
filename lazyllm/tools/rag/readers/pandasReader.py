@@ -2,10 +2,10 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from fsspec import AbstractFileSystem
 import importlib
-import pandas as pd
+from lazyllm.thirdparty import pandas as pd
 
 from .readerBase import LazyLLMReaderBase
-from ..store import DocNode
+from ..doc_node import DocNode
 
 class PandasCSVReader(LazyLLMReaderBase):
     def __init__(self, concat_rows: bool = True, col_joiner: str = ", ", row_joiner: str = "\n",

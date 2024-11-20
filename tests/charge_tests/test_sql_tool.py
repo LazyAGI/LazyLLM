@@ -116,13 +116,6 @@ class TestSqlManager(unittest.TestCase):
             str_results = sql_call("去年一整年销售额最多的员工是谁，销售额是多少？")
             self.assertIn("张三", str_results)
 
-    @unittest.skip("Charge test has no scc support")
-    def test_llm_query_local(self):
-        local_llm = lazyllm.TrainableModule("qwen2-7b-instruct").deploy_method(lazyllm.deploy.vllm).start()
-        sql_call = SqlCall(local_llm, self.sql_managers[0], use_llm_for_sql_result=True, return_trace=True)
-        str_results = sql_call("员工编号是3的人来自哪个部门？")
-        self.assertIn("销售三部", str_results)
-
 
 if __name__ == "__main__":
     unittest.main()

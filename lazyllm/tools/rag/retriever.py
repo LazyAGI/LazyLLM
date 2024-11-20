@@ -1,7 +1,8 @@
 from lazyllm import ModuleBase, pipeline, once_wrapper
-from .store import DocNode
+from .doc_node import DocNode
 from .document import Document, DocImpl
-from typing import List, Optional, Union, Dict
+from typing import List, Optional, Union, Dict, Set
+from .similarity import registered_similarities
 
 class _PostProcess(object):
     def __init__(self, target: Optional[str] = None,
@@ -33,7 +34,7 @@ class Retriever(ModuleBase, _PostProcess):
         self,
         doc: object,
         group_name: str,
-        similarity: str = "dummy",
+        similarity: Optional[str] = None,
         similarity_cut_off: Union[float, Dict[str, float]] = float("-inf"),
         index: str = "default",
         topk: int = 6,
@@ -45,10 +46,19 @@ class Retriever(ModuleBase, _PostProcess):
     ):
         super().__init__()
 
+        if similarity:
+            _, mode, _ = registered_similarities[similarity]
+        else:
+            mode = 'embedding'  # TODO FIXME XXX should be removed after similarity args refactor
+
         self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
         for doc in self._docs:
             assert isinstance(doc, Document), 'Only Document or List[Document] are supported'
             self._submodules.append(doc)
+            if mode == 'embedding' and not embed_keys:
+                embed_keys = list(doc._impl.embed.keys())
+            if embed_keys:
+                doc._impl._activated_embeddings.setdefault(group_name, set()).update(embed_keys)
 
         self._group_name = group_name
         self._similarity = similarity  # similarity function str
@@ -69,11 +79,14 @@ class Retriever(ModuleBase, _PostProcess):
     def _get_post_process_tasks(self):
         return pipeline(lambda *a: self('Test Query'))
 
-    def forward(self, query: str) -> Union[List[DocNode], str]:
+    def forward(
+            self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None
+    ) -> Union[List[DocNode], str]:
         self._lazy_init()
         nodes = []
         for doc in self._docs:
             nodes.extend(doc.forward(query=query, group_name=self._group_name, similarity=self._similarity,
                                      similarity_cut_off=self._similarity_cut_off, index=self._index,
-                                     topk=self._topk, similarity_kws=self._similarity_kw, embed_keys=self._embed_keys))
+                                     topk=self._topk, similarity_kws=self._similarity_kw, embed_keys=self._embed_keys,
+                                     filters=filters))
         return self._post_process(nodes)

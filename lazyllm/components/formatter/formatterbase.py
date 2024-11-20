@@ -113,10 +113,11 @@ class EmptyFormatter(LazyLLMFormatterBase):
 
 LAZYLLM_QUERY_PREFIX = '<lazyllm-query>'
 
-def encode_query_with_filepaths(query: str = None, files: List[str] = None) -> str:
+def encode_query_with_filepaths(query: str = None, files: Union[str, List[str]] = None) -> str:
     query = query if query else ''
     query_with_docs = {'query': query, 'files': files}
     if files:
+        if isinstance(files, str): files = [files]
         assert isinstance(files, list), "files must be a list."
         assert all(isinstance(item, str) for item in files), "All items in files must be strings"
         return LAZYLLM_QUERY_PREFIX + json.dumps(query_with_docs)

@@ -1,6 +1,6 @@
 import lazyllm
 from lazyllm.tools.rag.transform import SentenceSplitter
-from lazyllm.tools.rag.store import DocNode
+from lazyllm.tools.rag.doc_node import DocNode
 
 
 class TestSentenceSplitter:

@@ -639,8 +639,8 @@ class ScoLauncher(LazyLLMLaunchersBase):
 
 
 class RemoteLauncher(LazyLLMLaunchersBase):
-    def __new__(cls, *args, sync=False, **kwargs):
-        return getattr(lazyllm.launchers, lazyllm.config['launcher'])(*args, sync=sync, **kwargs)
+    def __new__(cls, *args, sync=False, ngpus=1, **kwargs):
+        return getattr(lazyllm.launchers, lazyllm.config['launcher'])(*args, sync=sync, ngpus=ngpus, **kwargs)
 
 
 def cleanup():

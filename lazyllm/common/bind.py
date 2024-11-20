@@ -104,8 +104,8 @@ class Bind(object):
         self._f = __bind_func() if isinstance(__bind_func, type) and __bind_func is not Bind._None else __bind_func
         self._args = args
         self._kw = kw
-        self._has_root = any([isinstance(a, AttrTree) for a in args])
-        self._has_root = self._has_root or any([isinstance(v, AttrTree) for k, v in kw.items()])
+        self._has_root = (any([isinstance(a, AttrTree) for a in args])
+                          or any([isinstance(v, AttrTree) for v in kw.values()]))
 
     def __ror__(self, __value: Callable):
         if self._f is not Bind._None: self._args = (self._f,) + self._args

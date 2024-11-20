@@ -9,10 +9,10 @@ from functools import partial
 import re
 from typing import Any, Callable, Dict, List, Tuple, Union, Optional
 from lazyllm.components import AlpacaPrompter
-import nltk
+from lazyllm.thirdparty import nltk
 import tiktoken
 
-from .store import DocNode, MetadataMode
+from .doc_node import DocNode, MetadataMode
 from lazyllm import LOG, TrainableModule, ThreadPoolExecutor
 
 

@@ -1,12 +1,40 @@
 import lazyllm
-from lazyllm.engine import LightEngine
+from lazyllm.engine import LightEngine, NodeMetaHook
 import pytest
 from .utils import SqlEgsData, get_sql_init_keywords
 from lazyllm.tools import SqlManager
 from .tools import (get_current_weather_code, get_current_weather_vars, get_current_weather_doc,
                     get_n_day_weather_forecast_code, multiply_tool_code, add_tool_code, dummy_code)
+import unittest
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from fastapi.testclient import TestClient
+import json
 
-class TestEngine(object):
+app = FastAPI()
+
+
+@app.post("/mock_post")
+async def receive_json(data: dict):
+    return JSONResponse(content=data)
+
+
+class TestEngine(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        client = TestClient(app)
+
+        def mock_report(self):
+            headers = {"Content-Type": "application/json; charset=utf-8"}
+            json_data = json.dumps(self._meta_info, ensure_ascii=False)
+            try:
+                lazyllm.LOG.info(f"meta_info: {self._meta_info}")
+                response = client.post(self.URL, data=json_data, headers=headers)
+                assert response.json() == self._meta_info, "mock response should be same as input"
+            except Exception as e:
+                lazyllm.LOG.warning(f"Error sending collected data: {e}")
+
+        NodeMetaHook.report = mock_report
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
@@ -49,6 +77,7 @@ class TestEngine(object):
                       args=dict(tools=['1001', '1002', '1003', '1004']))]
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
+        engine.set_report_url("mock_post")
         gid = engine.start(nodes, edges, resources)
         assert '22' in engine.run(gid, [dict(name='get_current_weather', arguments=dict(location='Paris'))])[0]
 
@@ -149,13 +178,22 @@ class TestEngine(object):
                     tables_info_dict=SqlEgsData.TEST_TABLES_INFO,
                 ),
             ),
-            dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="sensenova")),
+            dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="qwen")),
         ]
-        nodes = [dict(id="2", kind="SqlCall", name="sql_call", args=dict(sql_manager="0", llm="1", sql_examples=""))]
+        nodes = [
+            dict(
+                id="2",
+                kind="SqlCall",
+                name="sql_call",
+                args=dict(sql_manager="0", llm="1", sql_examples="", _lazyllm_enable_report=True),
+            )
+        ]
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
         engine = LightEngine()
+        # Note: Set real http://ip:port/uri ...
+        engine.set_report_url("mock_post")
         gid = engine.start(nodes, edges, resources)
-        str_answer = engine.run(gid, "员工编号是3的人来自哪个部门？")
+        str_answer = engine.run(gid, "员工编号是11的人来自哪个部门？")
         assert "销售三部" in str_answer
 
         # 3. Release: delete data and table from database
@@ -184,3 +222,37 @@ class TestEngine(object):
         unit = 'Celsius'
         ret = engine.run(gid, f"What is the temperature in {city_name} today in {unit}?")
         assert city_name in ret and unit in ret and '10' in ret
+
+    def test_stream_and_hostory(self):
+        nodes = [dict(id='1', kind='OnlineLLM', name='m1', args=dict(source='glm', stream=True, prompt=dict(
+                      system='请将我的问题翻译成中文。请注意，请直接输出翻译后的问题，不要反问和发挥',
+                      user='问题: {query} \n, 翻译:'))),
+                 dict(id='2', kind='OnlineLLM', name='m2',
+                      args=dict(source='glm', stream=True,
+                                prompt=dict(system='请参考历史对话，回答问题，并保持格式不变。', user='{query}'))),
+                 dict(id='3', kind='JoinFormatter', name='join', args=dict(type='to_dict', names=['query', 'answer'])),
+                 dict(id='4', kind='OnlineLLM', stream=False, name='m3', args=dict(source='glm', prompt=dict(
+                     system='你是一个问答机器人，会根据用户的问题作出回答。',
+                     user='请结合历史对话和本轮的问题，总结我们的全部对话。本轮情况如下:\n {query}, 回答: {answer}')))]
+        engine = LightEngine()
+        gid = engine.start(nodes, edges=[['__start__', '1'], ['1', '2'], ['1', '3'], ['2', '3'],
+                                         ['3', '4'], ['4', '__end__']], _history_ids=['2', '4'])
+        history = [['水的沸点是多少？', '您好，我的答案是：水的沸点在标准大气压下是100摄氏度。'],
+                   ['世界上最大的动物是什么？', '您好，我的答案是：蓝鲸是世界上最大的动物。'],
+                   ['人一天需要喝多少水？', '您好，我的答案是：一般建议每天喝8杯水，大约2升。'],
+                   ['雨后为什么会有彩虹？', '您好，我的答案是：雨后阳光通过水滴发生折射和反射形成了彩虹。'],
+                   ['月亮会发光吗？', '您好，我的答案是：月亮本身不会发光，它反射太阳光。'],
+                   ['一年有多少天', '您好，我的答案是：一年有365天，闰年有366天。']]
+
+        stream_result = ''
+        with lazyllm.ThreadPoolExecutor(1) as executor:
+            future = executor.submit(engine.run, gid, 'How many hours are there in a day?', _lazyllm_history=history)
+            while True:
+                if value := lazyllm.FileSystemQueue().dequeue():
+                    stream_result += f"{''.join(value)}"
+                elif future.done():
+                    break
+            result = future.result()
+            assert '一天' in stream_result and '小时' in stream_result
+            assert '您好，我的答案是' in stream_result and '24' in stream_result
+            assert '蓝鲸' in result and '水' in result

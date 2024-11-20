@@ -1,8 +1,7 @@
 from typing import List, Tuple
-from ..store import DocNode
-import bm25s
+from ..doc_node import DocNode
 import Stemmer
-from lazyllm.thirdparty import jieba
+from lazyllm.thirdparty import jieba, bm25s
 from .stopwords import STOPWORDS_CHINESE
 
 

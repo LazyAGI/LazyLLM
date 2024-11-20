@@ -19,7 +19,7 @@ class ModelManager():
         self.model_source = model_source
         self.token = token
         self.cache_dir = cache_dir
-        self.model_pathes = model_path.split(":") if len(model_path) > 0 else []
+        self.model_paths = model_path.split(":") if len(model_path) > 0 else []
 
     @classmethod
     def get_model_type(cls, model) -> str:
@@ -111,7 +111,7 @@ class ModelManager():
             return model_save_dir if model_save_dir else model
 
     def _model_exists_at_path(self, model_name):
-        if len(self.model_pathes) == 0:
+        if len(self.model_paths) == 0:
             return None
         model_dirs = []
 
@@ -122,10 +122,10 @@ class ModelManager():
                     model_dirs.append(model_name_mapping[model_name.lower()]['source'][source].replace('/', os.sep))
         model_dirs.append(model_name.replace('/', os.sep))
 
-        for model_path in self.model_pathes:
+        for model_path in self.model_paths:
             if len(model_path) == 0: continue
             if model_path[0] != os.sep:
-                print(f"[WARNING] skipping path {model_path} as only absolute pathes is accepted.")
+                print(f"[WARNING] skipping path {model_path} as only absolute paths is accepted.")
                 continue
             for model_dir in model_dirs:
                 full_model_dir = os.path.join(model_path, model_dir)

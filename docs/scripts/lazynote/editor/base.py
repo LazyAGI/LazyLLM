@@ -23,7 +23,7 @@ class BaseEditor(cst.CSTTransformer):
         self.pattern = pattern
         self.module = module
         self.module_dict = self.create_module_dict(module)
-        self.current_class: Optional[str] = None
+        self.current_class: Optional[str] = ''
 
     def create_module_dict(self, module: Any) -> Dict[str, Any]:
         """
@@ -89,7 +89,7 @@ class BaseEditor(cst.CSTTransformer):
         Args:
             node (cst.ClassDef): The ClassDef node.
         """
-        self.current_class = node.name.value
+        self.current_class = f'{self.current_class}.{node.name.value}'.lstrip('.')
 
     def leave_ClassDef(self, original_node: cst.ClassDef, updated_node: cst.ClassDef) -> cst.ClassDef:
         """
@@ -102,7 +102,7 @@ class BaseEditor(cst.CSTTransformer):
         Returns:
             cst.ClassDef: The updated ClassDef node with a new docstring.
         """
-        self.current_class = None
+        self.current_class = self.current_class[:(lambda x: 0 if x < 0 else x)(self.current_class.rfind('.'))]
         obj = self._get_obj_by_name(original_node.name.value)
         docstring = obj.__doc__ if obj else None
         return self._update_node_with_new_docstring(original_node, updated_node, docstring)
