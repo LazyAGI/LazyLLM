@@ -12,6 +12,7 @@ import sqlalchemy
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
 from sqlalchemy.orm import declarative_base
 import pydantic
+from urllib.parse import quote_plus
 
 
 class ColumnInfo(pydantic.BaseModel):
@@ -55,6 +56,7 @@ class SqlManager(ModuleBase):
     ) -> None:
         super().__init__()
         if db_type.lower() != "sqlite":
+            password = quote_plus(password)
             conn_url = f"{db_type.lower()}://{user}:{password}@{host}:{port}/{db_name}"
             self.reset_db(db_type, conn_url, tables_info_dict, options_str)
 
@@ -267,8 +269,8 @@ class SqlManager(ModuleBase):
 
 
 class SQLiteManger(SqlManager):
+
     def __init__(self, db_file, tables_info_dict: dict):
-        assert Path(db_file).is_file()
         super().__init__("SQLite", "", "", "", 0, "", {}, "")
         super().reset_db("SQLite", f"sqlite:///{db_file}", tables_info_dict)
 
