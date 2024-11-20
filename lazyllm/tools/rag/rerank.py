@@ -95,6 +95,9 @@ class ModuleReranker(Reranker):
         self._reranker = lazyllm.TrainableModule(self._kwargs['model'])
 
     def forward(self, nodes: List[DocNode], query: str = "") -> List[DocNode]:
+        if not nodes:
+            return self._post_process([])
+
         docs = [node.get_text(metadata_mode=MetadataMode.EMBED) for node in nodes]
         top_n = self._kwargs['topk'] if 'topk' in self._kwargs else len(docs)
         if self._reranker._deploy_type == lazyllm.deploy.Infinity:

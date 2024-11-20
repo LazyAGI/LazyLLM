@@ -117,10 +117,10 @@ class LightEngine(Engine):
         f = self.build_node(id).func
         lazyllm.FileSystemQueue().dequeue()
         if history := _lazyllm_history:
-            assert isinstance(f, ServerGraph) and (ids := f._history_ids), 'Only graph can support history'
+            assert isinstance(f, ServerGraph), 'Only graph can support history'
             if not isinstance(history, list) and all([isinstance(h, list) for h in history]):
                 raise RuntimeError('History shoule be [[str, str], ..., [str, str]] (list of list of str)')
-            lazyllm.globals['chat_history'] = {Engine().build_node(i).func._module_id: history for i in ids}
+            lazyllm.globals['chat_history'] = {Engine().build_node(i).func._module_id: history for i in f._history_ids}
         result = self.build_node(id).func(*args, **kw)
         lazyllm.globals['lazyllm_files'] = {}
         lazyllm.globals['chat_history'] = {}
