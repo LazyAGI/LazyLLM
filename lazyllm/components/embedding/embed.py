@@ -2,11 +2,7 @@ import os
 import json
 import lazyllm
 from lazyllm import LOG
-from lazyllm.thirdparty import transformers as tf
-from lazyllm.thirdparty import torch
-
-from sentence_transformers import CrossEncoder
-import numpy as np
+from lazyllm.thirdparty import transformers as tf, torch, sentence_transformers, numpy as np
 
 
 class LazyHuggingFaceEmbedding(object):
@@ -59,7 +55,7 @@ class LazyHuggingFaceRerank(object):
             lazyllm.call_once(self.init_flag, self.load_reranker)
 
     def load_reranker(self):
-        self.reranker = CrossEncoder(self.base_rerank)
+        self.reranker = sentence_transformers.CrossEncoder(self.base_rerank)
 
     def __call__(self, inps):
         lazyllm.call_once(self.init_flag, self.load_reranker)

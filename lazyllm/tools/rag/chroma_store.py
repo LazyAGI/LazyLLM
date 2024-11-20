@@ -1,8 +1,7 @@
 from typing import Any, Dict, List, Optional, Callable, Set
-import chromadb
+from lazyllm.thirdparty import chromadb
 from lazyllm import LOG
 from lazyllm.common import override
-from chromadb.api.models.Collection import Collection
 from .store_base import StoreBase, LAZY_ROOT_NAME
 from .doc_node import DocNode
 from .index_base import IndexBase
@@ -20,7 +19,7 @@ class ChromadbStore(StoreBase):
         self._db_client = chromadb.PersistentClient(path=dir)
         LOG.success(f"Initialzed chromadb in path: {dir}")
         node_groups = list(group_embed_keys.keys())
-        self._collections: Dict[str, Collection] = {
+        self._collections: Dict[str, chromadb.api.models.Collection.Collection] = {
             group: self._db_client.get_or_create_collection(group)
             for group in node_groups
         }
@@ -78,21 +77,23 @@ class ChromadbStore(StoreBase):
             return
 
         # Restore all nodes
+        uid2node = {}
         for group in self._collections.keys():
             results = self._peek_all_documents(group)
             nodes = self._build_nodes_from_chroma(results, embed_dims)
-            self._map_store.update_nodes(nodes)
+            for node in nodes:
+                uid2node[node.uid] = node
 
         # Rebuild relationships
-        for group_name in self._map_store.all_groups():
-            nodes = self._map_store.get_nodes(group_name)
-            for node in nodes:
-                if node.parent:
-                    parent_uid = node.parent
-                    parent_node = self._map_store.find_node_by_uid(parent_uid)
-                    node.parent = parent_node
-                    parent_node.children[node.group].append(node)
-            LOG.debug(f"build {group} nodes from chromadb: {nodes}")
+        for node in uid2node.values():
+            if node.parent:
+                parent_uid = node.parent
+                parent_node = uid2node.get(parent_uid)
+                node.parent = parent_node
+                parent_node.children[node.group].append(node)
+        LOG.debug(f"build {group} nodes from chromadb: {nodes}")
+
+        self._map_store.update_nodes(list(uid2node.values()))
         LOG.success("Successfully Built nodes from chromadb.")
 
     def _save_nodes(self, nodes: List[DocNode]) -> None:
@@ -131,8 +132,10 @@ class ChromadbStore(StoreBase):
             chroma_metadata = results['metadatas'][i]
 
             parent = chroma_metadata['parent']
-            fields = pickle.loads(base64.b64decode(chroma_metadata['fields'].encode('utf-8')))\
-                if parent else None
+            local_metadata = pickle.loads(base64.b64decode(chroma_metadata['metadata'].encode('utf-8')))
+
+            global_metadata = pickle.loads(base64.b64decode(chroma_metadata['global_metadata'].encode('utf-8')))\
+                if not parent else None
 
             node = DocNode(
                 uid=uid,
@@ -140,7 +143,8 @@ class ChromadbStore(StoreBase):
                 group=chroma_metadata["group"],
                 embedding=pickle.loads(base64.b64decode(chroma_metadata['embedding'].encode('utf-8'))),
                 parent=parent,
-                fields=fields,
+                metadata=local_metadata,
+                global_metadata=global_metadata,
             )
 
             if node.embedding:
@@ -167,10 +171,11 @@ class ChromadbStore(StoreBase):
             "group": node.group,
             "parent": node.parent.uid if node.parent else "",
             "embedding": base64.b64encode(pickle.dumps(node.embedding)).decode('utf-8'),
+            "metadata": base64.b64encode(pickle.dumps(node.metadata)).decode('utf-8'),
         }
 
-        if node.parent:
-            metadata["fields"] = base64.b64encode(pickle.dumps(node.fields)).decode('utf-8')
+        if not node.parent:
+            metadata["global_metadata"] = base64.b64encode(pickle.dumps(node.global_metadata)).decode('utf-8')
 
         return metadata
 

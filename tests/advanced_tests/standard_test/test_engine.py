@@ -1,5 +1,6 @@
 import lazyllm
 import os
+import pytest
 from lazyllm.engine import LightEngine
 
 class TestEngine(object):
@@ -10,6 +11,13 @@ class TestEngine(object):
         edge = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
         engine.start(node, edge, resource)
+
+    @pytest.fixture(autouse=True)
+    def run_around_tests(self):
+        yield
+        LightEngine().reset()
+        lazyllm.FileSystemQueue().dequeue()
+        lazyllm.FileSystemQueue(klass="lazy_trace").dequeue()
 
     def test_http(self):
         nodes = [
@@ -92,3 +100,38 @@ class TestEngine(object):
 
         r = engine.run(gid, '生成音乐，长笛独奏，大自然之声。')
         assert '.wav' in r
+
+    def test_stream_and_hostory(self):
+        resources = [dict(id='0', kind='LocalLLM', name='base', args=dict(base_model='internlm2-chat-7b'))]
+        nodes = [dict(id='1', kind='SharedLLM', name='m1', args=dict(llm='0', stream=True, prompt=dict(
+                      system='请将我的问题翻译成中文。请注意，请直接输出翻译后的问题，不要反问和发挥',
+                      user='问题: {query} \n, 翻译:'))),
+                 dict(id='2', kind='SharedLLM', name='m2',
+                      args=dict(llm='0', stream=True,
+                                prompt=dict(system='请参考历史对话，回答问题，并保持格式不变。', user='{query}'))),
+                 dict(id='3', kind='JoinFormatter', name='join', args=dict(type='to_dict', names=['query', 'answer'])),
+                 dict(id='4', kind='SharedLLM', stream=False, name='m3',
+                      args=dict(llm='0', prompt=dict(system='你是一个问答机器人，会根据用户的问题作出回答。',
+                                                     user='请结合历史对话和本轮的问题，总结我们的全部对话。本轮情况如下:\n {query}, 回答: {answer}')))]
+        engine = LightEngine()
+        gid = engine.start(nodes, edges=[['__start__', '1'], ['1', '2'], ['1', '3'], ['2', '3'], ['3', '4'],
+                                         ['4', '__end__']], resources=resources, _history_ids=['2', '4'])
+        history = [['水的沸点是多少？', '您好，我的答案是：水的沸点在标准大气压下是100摄氏度。'],
+                   ['世界上最大的动物是什么？', '您好，我的答案是：蓝鲸是世界上最大的动物。'],
+                   ['人一天需要喝多少水？', '您好，我的答案是：一般建议每天喝8杯水，大约2升。'],
+                   ['雨后为什么会有彩虹？', '您好，我的答案是：雨后阳光通过水滴发生折射和反射形成了彩虹。'],
+                   ['月亮会发光吗？', '您好，我的答案是：月亮本身不会发光，它反射太阳光。'],
+                   ['一年有多少天', '您好，我的答案是：一年有365天，闰年有366天。']]
+
+        stream_result = ''
+        with lazyllm.ThreadPoolExecutor(1) as executor:
+            future = executor.submit(engine.run, gid, 'How many hours are there in a day?', _lazyllm_history=history)
+            while True:
+                if value := lazyllm.FileSystemQueue().dequeue():
+                    stream_result += f"{''.join(value)}"
+                elif future.done():
+                    break
+            result = future.result()
+            assert '一天' in stream_result and '小时' in stream_result
+            assert '您好，我的答案是' in stream_result and '24' in stream_result
+            assert '蓝鲸' in result and '水' in result

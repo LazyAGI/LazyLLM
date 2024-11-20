@@ -6,6 +6,7 @@ from ..configs import config
 import os
 from typing import Type
 from lazyllm.thirdparty import redis
+from filelock import FileLock
 
 config.add("default_fsqueue", str, "sqlite", "DEFAULT_FSQUEUE")
 config.add("fsqredis_url", str, "", "FSQREDIS_URL")
@@ -64,16 +65,27 @@ class FileSystemQueue(ABC):
     @abstractmethod
     def _clear(self, id): pass
 
+# true means one connection can be used in multiple thread
+# refer to: https://sqlite.org/compile.html#threadsafe
+def sqlite3_check_threadsafety() -> bool:
+    conn = sqlite3.connect(":memory:")
+    res = conn.execute("""
+        select * from pragma_compile_options
+        where compile_options like 'THREADSAFE=%'
+    """).fetchall()
+    conn.close()
+    return True if res[0][0] == 'THREADSAFE=1' else False
 
 class SQLiteQueue(FileSystemQueue):
     def __init__(self, klass='__default__'):
         super(__class__, self).__init__(klass=klass)
         self.db_path = os.path.expanduser(os.path.join(config['home'], '.lazyllm_filesystem_queue.db'))
-        self._lock = threading.Lock()
+        self._lock = FileLock(self.db_path + '.lock')
+        self._check_same_thread = not sqlite3_check_threadsafety()
         self._initialize_db()
 
     def _initialize_db(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with self._lock, sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
             cursor = conn.cursor()
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS queue (
@@ -87,7 +99,7 @@ class SQLiteQueue(FileSystemQueue):
 
     def _enqueue(self, id, message):
         with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                 SELECT MAX(position) FROM queue WHERE id = ?
@@ -103,7 +115,7 @@ class SQLiteQueue(FileSystemQueue):
     def _dequeue(self, id, limit=None):
         """Retrieve and remove all messages from the queue."""
         with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
                 cursor = conn.cursor()
                 if limit:
                     cursor.execute('SELECT message, position FROM queue WHERE id = ? '
@@ -123,7 +135,7 @@ class SQLiteQueue(FileSystemQueue):
 
     def _peek(self, id):
         with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                 SELECT message FROM queue WHERE id = ? ORDER BY position ASC LIMIT 1
@@ -135,7 +147,7 @@ class SQLiteQueue(FileSystemQueue):
 
     def _size(self, id):
         with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                 SELECT COUNT(*) FROM queue WHERE id = ?
@@ -144,7 +156,7 @@ class SQLiteQueue(FileSystemQueue):
 
     def _clear(self, id):
         with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                 DELETE FROM queue WHERE id = ?

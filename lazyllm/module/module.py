@@ -707,6 +707,7 @@ class TrainableModule(UrlModule):
                                           None, lazyllm.finetune.auto, lazyllm.deploy.auto)
         self._impl._add_father(self)
         self.prompt()
+        self._stream = stream
 
     base_model = property(lambda self: self._impl._base_model)
     target_path = property(lambda self: self._impl._target_path)
@@ -719,6 +720,14 @@ class TrainableModule(UrlModule):
     @property
     def type(self):
         return ModelManager.get_model_type(self.base_model).upper()
+
+    @property
+    def stream(self):
+        return self._stream
+
+    @stream.setter
+    def stream(self, v: bool):
+        self._stream = v
 
     def get_all_finetuned_models(self):
         return self._impl._get_all_finetuned_models()

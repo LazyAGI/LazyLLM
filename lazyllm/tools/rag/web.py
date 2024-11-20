@@ -7,7 +7,7 @@ from typing import Union
 import lazyllm
 from lazyllm import LOG
 from lazyllm import ModuleBase, ServerModule
-import gradio as gr
+from lazyllm.thirdparty import gradio as gr
 from lazyllm.flow import Pipeline
 
 

@@ -6,9 +6,8 @@ import socket
 import sys
 import requests
 import traceback
-import gradio as gr
+from lazyllm.thirdparty import gradio as gr, PIL
 import time
-from PIL import Image
 import re
 
 import lazyllm
@@ -322,7 +321,7 @@ class WebModule(ModuleBase):
                 for i, file_path in enumerate(file_paths):
                     suffix = os.path.splitext(file_path)[-1].lower()
                     file = None
-                    if suffix in Image.registered_extensions().keys():
+                    if suffix in PIL.Image.registered_extensions().keys():
                         file = gr.Image(file_path)
                     elif suffix in ('.mp3', '.wav'):
                         file = gr.Audio(file_path)
