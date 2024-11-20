@@ -33,10 +33,6 @@ class ChromadbStore(StoreBase):
             'file_node_map': _FileNodeIndex(),
         }
 
-    def __del__(self):
-        self._db_client.reset()
-        del self._db_client
-
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
         self._map_store.update_nodes(nodes)
