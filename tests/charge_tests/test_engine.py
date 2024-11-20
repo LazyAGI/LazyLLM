@@ -152,7 +152,6 @@ class TestEngine(unittest.TestCase):
 
     def test_sql_call(self):
         db_type = "PostgreSQL"
-        db_type = "MySQL"
         username, password, host, port, database = get_db_init_keywords(db_type)
 
         # 1.  Init: insert data to database
