@@ -67,3 +67,4 @@ ctranslate2
 optimum>=1.16.2
 typer
 pymongo
+pymysql
