@@ -499,7 +499,6 @@ class K8sLauncher(LazyLLMLaunchersBase):
             self._create_httproute()
             self.jobid = self._get_jobid()
             self.launcher.all_processes[self.launcher._id].append((self.jobid, self))
-            # if self.sync:
             ret = self.wait()
             LOG.info(ret)
 
