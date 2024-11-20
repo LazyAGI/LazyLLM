@@ -30,6 +30,14 @@ class TestLauncher(object):
         )
         assert launcher.partition == 'pat_rd'
 
+    def test_k8s(self):
+        launcher = launchers.k8s(
+            kube_config_path="~/.kube/config",
+            namespace="lazyllm",
+            host="myapp.lazyllm.com"
+        )
+        assert launcher.namespace == "lazyllm"
+
     def test_remote(self):
         # empty launcher
         origin_launcher = lazyllm.config.impl['launcher']
@@ -54,6 +62,13 @@ class TestLauncher(object):
         )
         assert type(launcher) is launchers.sco
         assert not launcher.sync
+        os.environ["LAZYLLM_DEFAULT_LAUNCHER"] = 'k8s'
+        lazyllm.config.add('launcher', str, 'empty', 'DEFAULT_LAUNCHER')
+        launcher = launchers.remote(
+            sync=True
+        )
+        assert type(launcher) is launchers.k8s
+        assert launcher.sync
 
         os.environ["LAZYLLM_DEFAULT_LAUNCHER"] = origin_launcher
         lazyllm.config.add('launcher', str, 'empty', 'DEFAULT_LAUNCHER')

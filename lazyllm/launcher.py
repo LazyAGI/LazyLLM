@@ -826,24 +826,25 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 return Status.Failed
 
     def __init__(self, kube_config_path=None, volume_config=None, image=None, resource_config=None,
-                 namespace="default", gateway_name="lazyllm-gateway", host=None, path='/generate',
-                 svc_type: Literal["LoadBalancer", "NodePort", "ClusterIP"] = "LoadBalancer", retry=3,
+                 namespace=None, gateway_name=None, host=None, path=None,
+                 svc_type: Literal["LoadBalancer", "NodePort", "ClusterIP"] = None, retry=3,
                  sync=True, ngpus=None, **kwargs):
         super().__init__()
         self.gateway_retry = retry
         self.sync = sync
         self.ngpus = ngpus
-        config_data = self._read_config_file(lazyllm.config['k8s_config_path'])
+        config_data = self._read_config_file(lazyllm.config['k8s_config_path']) if lazyllm.config['k8s_config_path'] \
+            else {}
         self.volume_config = volume_config if volume_config else config_data.get('volume', {})
         self.image = image if image else config_data.get('container_image', "lazyllm/lazyllm:k8s_launcher")
         self.resource_config = resource_config if resource_config else config_data.get('resource', {})
         self.kube_config_path = kube_config_path if kube_config_path \
             else config_data.get('kube_config_path', "~/.kube/config")
-        self.svc_type = config_data.get("svc_type") if config_data.get("svc_type", None) else svc_type
-        self.namespace = config_data.get("namespace") if config_data.get("namespace", None) else namespace
-        self.gateway_name = config_data.get("gateway_name") if config_data.get("gateway_name", None) else gateway_name
-        self.http_host = config_data.get("host") if config_data.get("host", None) else host
-        self.http_path = config_data.get("path") if config_data.get("path", None) else path
+        self.svc_type = svc_type if svc_type else config_data.get("svc_type", "LoadBalancer")
+        self.namespace = namespace if namespace else config_data.get("namespace", "default")
+        self.gateway_name = gateway_name if gateway_name else config_data.get("gateway_name", "lazyllm-gateway")
+        self.http_host = host if host else config_data.get("host", None)
+        self.http_path = path if path else config_data.get("path", '/generate')
 
     def _read_config_file(self, file_path):
         assert os.path.isabs(file_path), "Resource config file path must be an absolute path."
