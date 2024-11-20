@@ -1,7 +1,7 @@
 import json
 from typing import Union
 import sqlalchemy
-from sqlalchemy.exc import SQLAlchemyError, OperationalError, ProgrammingError
+from sqlalchemy.exc import SQLAlchemyError, OperationalError
 from sqlalchemy.orm import declarative_base, DeclarativeMeta
 import pydantic
 from .db_manager import DBManager, DBStatus, DBResult
@@ -201,7 +201,7 @@ class SqlManagerBase(DBManager):
         try:
             table.__table__.create(bind=self._engine)
             return DBResult()
-        except ProgrammingError as e:
+        except Exception as e:
             if "already exists" in str(e):
                 return self._match_exist_table(table)
 

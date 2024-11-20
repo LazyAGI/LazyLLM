@@ -136,7 +136,7 @@ def get_db_init_keywords(db_type: str):
     conn_url = os.environ.get(env_key, None)
     assert conn_url is not None
     pattern = (
-        rf"{db_type.lower()}://(?P<username>[^:]+):(?P<password>[^@]+)@(?P<host>[^:]+):(?P<port>\d+)/(?P<database>.+)"
+        rf"{db_type.lower()}://(?P<username>[^:]+):(?P<password>.+)@(?P<host>[^:]+):(?P<port>\d+)/(?P<database>.+)"
     )
     match = re.search(pattern, conn_url)
     assert match
