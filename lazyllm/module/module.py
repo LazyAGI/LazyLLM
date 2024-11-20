@@ -314,6 +314,8 @@ class UrlModule(ModuleBase, UrlTemplate):
         self.__url = url
 
     def _estimate_token_usage(self, text):
+        if not isinstance(text, str):
+            return 0
         # extract english words, number and comma
         pattern = r"\b[a-zA-Z0-9]+\b|,"
         ascii_words = re.findall(pattern, text)
@@ -425,7 +427,8 @@ class UrlModule(ModuleBase, UrlTemplate):
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
             temp_output = self._extract_and_format(messages)
             usage["completion_tokens"] = self._estimate_token_usage(temp_output)
-            self._record_usage(usage)
+            if isinstance(self, TrainableModule):
+                self._record_usage(usage)
             return self._formatter.format(temp_output)
 
     def prompt(self, prompt=None):
