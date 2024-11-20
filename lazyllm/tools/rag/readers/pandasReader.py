@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from fsspec import AbstractFileSystem
 import importlib
-import pandas as pd
+from lazyllm.thirdparty import pandas as pd
 
 from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode

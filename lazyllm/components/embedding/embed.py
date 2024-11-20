@@ -2,10 +2,7 @@ import os
 import json
 import lazyllm
 from lazyllm import LOG
-from lazyllm.thirdparty import transformers as tf
-from lazyllm.thirdparty import torch
-from lazyllm.thirdparty import sentence_transformers
-import numpy as np
+from lazyllm.thirdparty import transformers as tf, torch, sentence_transformers, numpy as np
 
 
 class LazyHuggingFaceEmbedding(object):
