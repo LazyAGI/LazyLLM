@@ -465,7 +465,7 @@ def make_stt(base_model: str):
                     return True
         return False
 
-    return lazyllm.ifs(cond, tpath=lazyllm.TrainableModule(base_model), fpath=lazyllm.Identity())
+    return lazyllm.ActionModule(lazyllm.ifs(cond, tpath=lazyllm.TrainableModule(base_model), fpath=lazyllm.Identity()))
 
 
 @NodeConstructor.register('Constant')
