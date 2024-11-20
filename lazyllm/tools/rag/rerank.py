@@ -96,7 +96,7 @@ class ModuleReranker(Reranker):
 
     def forward(self, nodes: List[DocNode], query: str = "") -> List[DocNode]:
         if not nodes:
-            return []
+            return self._post_process([])
 
         docs = [node.get_text(metadata_mode=MetadataMode.EMBED) for node in nodes]
         top_n = self._kwargs['topk'] if 'topk' in self._kwargs else len(docs)
