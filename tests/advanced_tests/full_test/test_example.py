@@ -7,7 +7,7 @@ import httpx
 import pytest
 import random
 from gradio_client import Client
-from PIL import Image
+from lazyllm.thirdparty import PIL
 
 import lazyllm
 from lazyllm.launcher import cleanup
@@ -130,7 +130,7 @@ class TestExamples(object):
         assert type(res) is dict
         assert "files" in res
         assert len(res['files']) == 1
-        image = Image.open(res['files'][0])
+        image = PIL.Image.open(res['files'][0])
         assert image.size == (1024, 1024)
 
         # test painting warpped in web

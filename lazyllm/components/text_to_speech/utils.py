@@ -4,7 +4,7 @@ from lazyllm.thirdparty import scipy, numpy as np
 from ..utils.file_operate import delete_old_files
 
 
-def sound_to_file(sound: np.array, file_path: str, sample_rate: int = 24000) -> str:
+def sound_to_file(sound: 'np.array', file_path: str, sample_rate: int = 24000) -> str:
     scaled_audio = np.int16(sound / np.max(np.abs(sound)) * 32767)
     scipy.io.wavfile.write(file_path, sample_rate, scaled_audio)
     return [file_path]
