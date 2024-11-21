@@ -511,11 +511,7 @@ class TestEngine(unittest.TestCase):
         web = engine.build_node('graph-1').func._web
         assert engine.build_node('graph-1').func.api_url is not None
         assert engine.build_node('graph-1').func.web_url == web.url
-        url = web.url
-        import os
-        if os.name == 'nt' and '0.0.0.0' in url:
-            url = url.replace('0.0.0.0', '127.0.0.1')
-        client = Client(url, download_files=web.cach_path)
+        client = Client(web.url, download_files=web.cach_path)
         chat_history = [['123', None]]
         ans = client.predict(False, chat_history, False, False, api_name="/_respond_stream")
         assert ans[0][-1][-1] == '123123'

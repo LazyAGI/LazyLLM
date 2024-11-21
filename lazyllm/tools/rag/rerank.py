@@ -114,7 +114,7 @@ class ModuleReranker(Reranker):
         results = [nodes[i] for i in sorted_indices]
         LOG.debug(f"Rerank use `{self._name}` and get nodes: {results}")
         return self._post_process(results)
-    
+
 # User-defined similarity decorator
 def register_reranker(func=None, batch=False):
     return Reranker.register_reranker(func, batch)

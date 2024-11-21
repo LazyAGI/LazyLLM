@@ -137,11 +137,7 @@ class TestModule:
         m = lazyllm.WebModule(func)
         m.update()
         time.sleep(4)
-        url = m.url
-        import os
-        if os.name == 'nt' and '0.0.0.0' in url:
-            url = url.replace('0.0.0.0', '127.0.0.1')
-        response = requests.get(url)
+        response = requests.get(m.url)
         assert response.status_code == 200
         m.stop()
 
