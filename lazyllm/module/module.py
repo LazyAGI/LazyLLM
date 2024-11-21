@@ -313,6 +313,33 @@ class UrlModule(ModuleBase, UrlTemplate):
         LOG.debug(f'url: {url}')
         self.__url = url
 
+    def _estimate_token_usage(self, text):
+        if not isinstance(text, str):
+            return 0
+        # extract english words, number and comma
+        pattern = r"\b[a-zA-Z0-9]+\b|,"
+        ascii_words = re.findall(pattern, text)
+        ascii_ch_count = sum(len(ele) for ele in ascii_words)
+        non_ascii_pattern = r"[^\x00-\x7F]"
+        non_ascii_chars = re.findall(non_ascii_pattern, text)
+        non_ascii_char_count = len(non_ascii_chars)
+        return int(ascii_ch_count / 3.0 + non_ascii_char_count + 1)
+
+    def _record_usage(self, usage: dict):
+        globals["usage"][self._module_id] = usage
+        par_muduleid = self._used_by_moduleid
+        if par_muduleid is None:
+            return
+        if par_muduleid not in globals["usage"]:
+            globals["usage"][par_muduleid] = usage
+            return
+        existing_usage = globals["usage"][par_muduleid]
+        if existing_usage["prompt_tokens"] == -1 or usage["prompt_tokens"] == -1:
+            globals["usage"][par_muduleid] = {"prompt_tokens": -1, "completion_tokens": -1}
+        else:
+            for k in globals["usage"][par_muduleid]:
+                globals["usage"][par_muduleid][k] += usage[k]
+
     # Cannot modify or add any attrubute of self
     # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
     # deploy parameters keys are in **kw
@@ -336,6 +363,7 @@ class UrlModule(ModuleBase, UrlTemplate):
         query = __input
         __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
         headers = {'Content-Type': 'application/json'}
+        text_input_for_token_usage = __input
 
         if isinstance(self, ServerModule):
             assert llm_chat_history is None and tools is None
@@ -396,7 +424,12 @@ class UrlModule(ModuleBase, UrlTemplate):
                             cache = ""
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
-            return self._formatter.format(self._extract_and_format(messages))
+            temp_output = self._extract_and_format(messages)
+            if isinstance(self, TrainableModule):
+                usage = {"prompt_tokens": self._estimate_token_usage(text_input_for_token_usage)}
+                usage["completion_tokens"] = self._estimate_token_usage(temp_output)
+                self._record_usage(usage)
+            return self._formatter.format(temp_output)
 
     def prompt(self, prompt=None):
         if prompt is None:
