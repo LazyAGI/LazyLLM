@@ -87,10 +87,3 @@ class MapStore(StoreBase):
         if type is None:
             type = 'default'
         return self._name2index.get(type)
-
-    def find_node_by_uid(self, uid: str) -> Optional[DocNode]:
-        for docs in self._group2docs.values():
-            doc = docs.get(uid)
-            if doc:
-                return doc
-        return None
