@@ -1,4 +1,3 @@
-import pytest
 import unittest
 from lazyllm.tools import SQLiteManger, SqlCall, SqlManager
 import lazyllm
@@ -77,7 +76,6 @@ class TestSqlManager(unittest.TestCase):
                 rt, err_msg = sql_manager.execute_sql_update(insert_script)
                 assert rt, err_msg
 
-    @pytest.mark.skip_on_win
     def test_manager_table_delete_insert_query(self):
         # 1. Delete, as rows already exists during setUp
         for sql_manager in self.sql_managers:
