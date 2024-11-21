@@ -363,8 +363,7 @@ class UrlModule(ModuleBase, UrlTemplate):
         query = __input
         __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
         headers = {'Content-Type': 'application/json'}
-
-        usage = {"prompt_tokens": self._estimate_token_usage(__input), "completion_tokens": 0}
+        text_input_for_token_usage = __input
 
         if isinstance(self, ServerModule):
             assert llm_chat_history is None and tools is None
@@ -426,8 +425,9 @@ class UrlModule(ModuleBase, UrlTemplate):
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
             temp_output = self._extract_and_format(messages)
-            usage["completion_tokens"] = self._estimate_token_usage(temp_output)
             if isinstance(self, TrainableModule):
+                usage = {"prompt_tokens": self._estimate_token_usage(text_input_for_token_usage)}
+                usage["completion_tokens"] = self._estimate_token_usage(temp_output)
                 self._record_usage(usage)
             return self._formatter.format(temp_output)
 
