@@ -229,7 +229,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             self.jobid = self.ps.pid if self.ps else None
 
         def get_jobip(self):
-            return 'localhost'
+            return '127.0.0.1'
 
         def wait(self):
             if self.ps:

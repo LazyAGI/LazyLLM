@@ -361,7 +361,7 @@ class WebModule(ModuleBase):
             port = self.port
             assert self._verify_port_access(port), f'port {port} is occupied'
 
-        self.url = f'http://localhost:{port}'
+        self.url = f'http://127.0.0.1:{port}'
         self.broadcast_url = f'http://0.0.0.0:{port}' 
 
         self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True)
@@ -399,5 +399,5 @@ class WebModule(ModuleBase):
 
     def _verify_port_access(self, port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            result = s.connect_ex(('localhost', port))
+            result = s.connect_ex(('127.0.0.1', port))
             return result != 0
