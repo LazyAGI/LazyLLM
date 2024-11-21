@@ -76,8 +76,7 @@ class WebModule(ModuleBase):
         if 'GRADIO_TEMP_DIR' in os.environ:
             cach_path = os.environ['GRADIO_TEMP_DIR']
         else:
-            cach_path = lazyllm.config['temp_dir'] if lazyllm.config['temp_dir'] \
-                else os.path.join(os.getcwd(), '.temp/gradio_cach')
+            cach_path = os.path.join(lazyllm.config['temp_dir'], 'gradio_cach')
             os.environ['GRADIO_TEMP_DIR'] = cach_path
         if not os.path.exists(cach_path):
             os.makedirs(cach_path)

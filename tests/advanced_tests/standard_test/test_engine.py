@@ -1,6 +1,9 @@
-import lazyllm
 import os
+import time
+
+import lazyllm
 from lazyllm.engine import LightEngine
+
 
 class TestEngine(object):
     # This test requires 4 GPUs and takes about 4 minutes to execute, skip this test to save time.
@@ -127,3 +130,57 @@ class TestEngine(object):
             assert '一天' in stream_result and '小时' in stream_result
             assert '您好，我的答案是' in stream_result and '24' in stream_result
             assert '蓝鲸' in result and '水' in result
+
+    def test_engine_train_serve(self):
+        train_config = {
+            'finetune_model_name': 'my_super_model',
+            'base_model': 'qwen1.5-0.5b-chat',
+            'training_type': 'SFT',
+            'finetuning_type': 'LoRA',
+            'data_path': 'alpaca/alpaca_data_zh_128.json',
+            'val_size': 0.1,
+            'num_epochs': 1,
+            'learning_rate': 0.1,
+            'lr_scheduler_type': 'cosine',
+            'batch_size': 32,
+            'cutoff_len': 1024,
+            'lora_r': 8,
+            'lora_alpha': 32,
+            'lora_rate': 0.1,
+        }
+        engine = LightEngine()
+        engine.launch_localllm_train_service()
+
+        token = 'test'
+        job_id = None
+
+        # Launch train
+        res = engine.local_model_train(train_config, token=token)
+        job_id = res[0]
+        assert len(job_id) > 0
+        status = res[1]
+
+        n = 0
+        while status != 'Running':
+            time.sleep(1)
+            status = engine.local_model_get_training_status(token, job_id)
+            n += 1
+            assert n < 300, 'Launch training timeout.'
+
+        # After Launch, training 20s
+        time.sleep(20)
+
+        res = engine.local_model_cancel_training(token, job_id)
+        assert isinstance(res, bool)
+
+        res = engine.local_model_get_training_status(token, job_id)
+        assert res == 'Cancelled'
+
+        res = engine.local_model_get_training_log(token, job_id)
+        assert os.path.exists(res)
+
+        res = engine.local_model_get_all_trained_models(token)
+        assert len(res[0]) == 3
+
+        res = engine.local_model_get_training_cost(token, job_id)
+        assert res > 15

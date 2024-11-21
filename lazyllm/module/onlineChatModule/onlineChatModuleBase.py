@@ -341,8 +341,7 @@ class OnlineChatModuleBase(ModuleBase):
             raise ValueError(f"Cannot find modle({model_id}), in fintuned model list: {valid_model_id}")
 
     def _get_temp_save_dir_path(self):
-        save_dir = lazyllm.config['temp_dir'] if lazyllm.config['temp_dir'] \
-            else os.path.join(os.getcwd(), '.temp/online_model_sft_log')
+        save_dir = os.path.join(lazyllm.config['temp_dir'], 'online_model_sft_log')
         if not os.path.exists(save_dir):
             os.system(f'mkdir -p {save_dir}')
         else:

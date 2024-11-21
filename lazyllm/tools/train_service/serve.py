@@ -37,10 +37,10 @@ class JobCreate(BaseModel):
 class TrainServer:
 
     def __init__(self):
-        self._big_data = {'default': dict()}
-        self._run_jobs = dict()
-        self._big_lock = threading.Lock()
-        self._run_lock = threading.Lock()
+        self._user_job_training_info = {'default': dict()}
+        self._active_job_trainings = dict()
+        self._info_lock = threading.Lock()
+        self._active_lock = threading.Lock()
         self._time_format = '%y%m%d%H%M%S%f'
         self._polling_thread = None
 
@@ -65,9 +65,9 @@ class TrainServer:
                 dicts[k1][k2] = {}
             if dict_value is None:
                 return
-            if isinstance(dict_value, tuple):  # for self._run_jobs
+            if isinstance(dict_value, tuple):  # for self._active_job_trainings
                 dicts[k1][k2] = dict_value
-            elif isinstance(dict_value, dict):  # for self._big_data
+            elif isinstance(dict_value, dict):  # for self._user_job_training_info
                 dicts[k1][k2].update(dict_value)
             else:
                 raise RuntimeError('dict_value only supported: dict and tuple')
@@ -110,43 +110,51 @@ class TrainServer:
             else:
                 raise RuntimeError('At least specific k1.')
 
-    def _update_big_data(self, token, job_id=None, dict_value=None):
-        self._update_dict(self._big_lock, self._big_data, token, job_id, dict_value)
+    def _update_user_job_training_info(self, token, job_id=None, dict_value=None):
+        self._update_dict(self._info_lock, self._user_job_training_info, token, job_id, dict_value)
 
-    def _update_run_jobs(self, token, job_id=None, dict_value=None):
-        self._update_dict(self._run_lock, self._run_jobs, token, job_id, dict_value)
+    def _update_active_job_trainings(self, token, job_id=None, dict_value=None):
+        self._update_dict(self._active_lock, self._active_job_trainings, token, job_id, dict_value)
 
-    def _read_big_data(self, token, job_id=None, key=None):
-        return self._read_dict(self._big_lock, self._big_data, token, job_id, key)
+    def _read_user_job_training_info(self, token, job_id=None, key=None):
+        return self._read_dict(self._info_lock, self._user_job_training_info, token, job_id, key)
 
-    def _read_run_jobs(self, token, job_id=None):
-        return self._read_dict(self._run_lock, self._run_jobs, token, job_id, deepcopy=False)
+    def _read_active_job_trainings(self, token, job_id=None):
+        return self._read_dict(self._active_lock, self._active_job_trainings, token, job_id, deepcopy=False)
 
-    def _in_big_data(self, token, job_id=None, key=None):
-        return self._in_dict(self._big_lock, self._big_data, token, job_id, key)
+    def _in_user_job_training_info(self, token, job_id=None, key=None):
+        return self._in_dict(self._info_lock, self._user_job_training_info, token, job_id, key)
 
-    def _in_run_jobs(self, token, job_id=None):
-        return self._in_dict(self._run_lock, self._run_jobs, token, job_id)
+    def _in_active_job_trainings(self, token, job_id=None):
+        return self._in_dict(self._active_lock, self._active_job_trainings, token, job_id)
 
-    def _pop_big_data(self, token, job_id=None, key=None):
-        return self._pop_dict(self._big_lock, self._big_data, token, job_id, key)
+    def _pop_user_job_training_info(self, token, job_id=None, key=None):
+        return self._pop_dict(self._info_lock, self._user_job_training_info, token, job_id, key)
 
-    def _pop_run_jobs(self, token, job_id=None):
-        return self._pop_dict(self._run_lock, self._run_jobs, token, job_id)
+    def _pop_active_job_trainings(self, token, job_id=None):
+        return self._pop_dict(self._active_lock, self._active_job_trainings, token, job_id)
 
     def _update_status(self, token, job_id):
-        if not self._in_run_jobs(token, job_id):
+        if not self._in_active_job_trainings(token, job_id):
             return
         # Get basic info
-        info = self._read_big_data(token, job_id)
+        info = self._read_user_job_training_info(token, job_id)
         save_path = info['fine_tuned_model']
         log_path = info['log_path']
 
         # Get status
-        m, _ = self._read_run_jobs(token, job_id)
+        m, _ = self._read_active_job_trainings(token, job_id)
         status = m.status(info['model_id']).name
 
         update = {'status': status}
+
+        # Some tasks not run when they are just created
+        if Status[status] == Status.Running and not info['started_at']:
+            update = {
+                'status': status,
+                'started_at': datetime.now().strftime(self._time_format),
+            }
+
         # Some tasks cannot obtain the storage path when they are just started
         if not save_path:
             update['fine_tuned_model'] = self._get_save_path(m)
@@ -154,27 +162,33 @@ class TrainServer:
             update['log_path'] = self._get_log_path(m)
 
         # Update Status
-        self._update_big_data(token, job_id, update)
+        self._update_user_job_training_info(token, job_id, update)
 
         # Pop and kill jobs with status: Done, Failed
         if Status[status] in (Status.Done, Status.Failed):
-            m, _ = self._pop_run_jobs(token, job_id)
+            m, _ = self._pop_active_job_trainings(token, job_id)
             m.stop(info['model_id'])
+            if info['started_at'] and not info['cost']:
+                cost = (datetime.now() - datetime.strptime(info['started_at'], self._time_format)).total_seconds()
+                self._update_user_job_training_info(token, job_id, {'cost': cost})
             return
 
-        start_time = datetime.strptime(info['created_at'], self._time_format)
-        delta_time = (datetime.now() - start_time).total_seconds()
+        create_time = datetime.strptime(info['created_at'], self._time_format)
+        delta_time = (datetime.now() - create_time).total_seconds()
 
         # More than 5 min pop and kill jobs with status: Cancelled. Because of
         # some tasks have just been started and their status cannot be checked.
         if delta_time > 300 and Status[status] == Status.Cancelled:
-            m, _ = self._pop_run_jobs(token, job_id)
+            m, _ = self._pop_active_job_trainings(token, job_id)
             m.stop(info['model_id'])
+            if info['started_at'] and not info['cost']:
+                cost = (datetime.now() - datetime.strptime(info['started_at'], self._time_format)).total_seconds()
+                self._update_user_job_training_info(token, job_id, {'cost': cost})
             return
 
         # More than 50 min pop and kill jobs with status: TBSubmitted, InQueue, Pending
         if delta_time > 3000 and Status[status] in (Status.TBSubmitted, Status.InQueue, Status.Pending):
-            m, _ = self._pop_run_jobs(token, job_id)
+            m, _ = self._pop_active_job_trainings(token, job_id)
             m.stop(info['model_id'])
             return
 
@@ -206,9 +220,9 @@ class TrainServer:
         def polling():
             while True:
                 # Thread-safe access to two-level keys
-                with self._run_lock:
-                    loop_items = [(token, job_id) for token in self._run_jobs.keys()
-                                  for job_id in self._run_jobs[token]]
+                with self._active_lock:
+                    loop_items = [(token, job_id) for token in self._active_job_trainings.keys()
+                                  for job_id in self._active_job_trainings[token]]
                 # Update the status of all jobs in sequence
                 for token, job_id in loop_items:
                     self._update_status(token, job_id)
@@ -219,26 +233,18 @@ class TrainServer:
         self._polling_thread.start()
 
     async def authorize_current_user(self, Bearer: str = None):
-        if not self._in_big_data(Bearer):
+        if not self._in_user_job_training_info(Bearer):
             raise HTTPException(
                 status_code=401,
                 detail="Invalid token",
             )
         return Bearer
 
-    @app.post("/register_bearer")
-    async def register_bearer(self, bearer: str = None):
-        if not bearer:
-            return HTTPException(status_code=400, detail="Bearer token is required.")
-        if not self._in_big_data(bearer):
-            self._update_big_data(bearer)
-            return {"message": "Bearer registered successfully."}
-        else:
-            return HTTPException(status_code=409, detail="Bearer already registered.")
-
     @app.post("/v1/fine_tuning/jobs")
     async def create_job(self, job: JobCreate, token: str = Header(None)):
-        await self.authorize_current_user(token)
+        # await self.authorize_current_user(token)
+        if not self._in_user_job_training_info(token):
+            self._update_user_job_training_info(token)
         # Build Job-ID:
         create_time = datetime.now().strftime(self._time_format)
         job_id = '-'.join(['ft', create_time, str(uuid.uuid4())[:5]])
@@ -251,9 +257,7 @@ class TrainServer:
         # Build checkpoint save dir:
         # - No-Env-Set: (work/path + save_ckpt) + token + job_id;
         # - Env-Set:    (train_target_root)     + token + job_id;
-        save_root = lazyllm.config['train_target_root'] if lazyllm.config['train_target_root'] \
-            else os.path.join(os.getcwd(), 'save_ckpt')
-        save_root = os.path.join(save_root, token, job_id)
+        save_root = os.path.join(lazyllm.config['train_target_root'], token, job_id)
 
         # Add launcher into hyperparameters:
         hypram = job.hyperparameters
@@ -265,15 +269,11 @@ class TrainServer:
 
         # Set params for TrainableModule:
         m = lazyllm.TrainableModule(job.base_model, save_root)\
-            .mode('finetune')\
             .trainset(job.data_path)\
-            .finetune_method((lazyllm.finetune.llamafactory, hypram))
-
-        # Register launcher wtih model_id:
-        m._impl._launchers['manual'][model_id] = hypram.pop('launcher')
+            .finetune_method(lazyllm.finetune.llamafactory)
 
         # Launch Training:
-        thread = threading.Thread(target=m._update, kwargs={'mode': ['train']})
+        thread = threading.Thread(target=m._impl._async_finetune, args=(model_id,), kwargs=hypram)
         thread.start()
 
         # Sleep 5s for launch cmd.
@@ -290,8 +290,12 @@ class TrainServer:
 
         # Save status
         status = m.status(model_id).name
-        self._update_run_jobs(token, job_id, (m, thread))
-        self._update_big_data(token, job_id, {
+        if Status[status] == Status.Running:
+            started_time = datetime.now().strftime(self._time_format)
+        else:
+            started_time = None
+        self._update_active_job_trainings(token, job_id, (m, thread))
+        self._update_user_job_training_info(token, job_id, {
             "model_id": model_id,
             "job_id": job_id,
             "base_model": job.base_model,
@@ -301,6 +305,8 @@ class TrainServer:
             "data_path": job.data_path,
             "hyperparameters": hypram,
             "log_path": log_path,
+            "started_at": started_time,
+            "cost": None,
         })
 
         return {"job_id": job_id, 'status': status}
@@ -308,11 +314,11 @@ class TrainServer:
     @app.post("/v1/fine_tuning/jobs/{job_id}/cancel")
     async def cancel_job(self, job_id: str, token: str = Header(None)):
         await self.authorize_current_user(token)
-        if not self._in_run_jobs(token, job_id):
+        if not self._in_active_job_trainings(token, job_id):
             raise HTTPException(status_code=404, detail="Job not found")
 
-        m, _ = self._pop_run_jobs(token, job_id)
-        info = self._read_big_data(token, job_id)
+        m, _ = self._pop_active_job_trainings(token, job_id)
+        info = self._read_user_job_training_info(token, job_id)
         m.stop(info['model_id'])
 
         total_sleep = 0
@@ -323,33 +329,65 @@ class TrainServer:
                 raise HTTPException(status_code=404, detail=f"Task {job_id}, ccancelled timed out.")
 
         status = m.status(info['model_id']).name
-        self._update_big_data(token, job_id, {'status': status})
+        update_dict = {'status': status}
+        if info['started_at'] and not info['cost']:
+            update_dict['cost'] = (datetime.now() - datetime.strptime(info['started_at'],
+                                                                      self._time_format)).total_seconds()
+        self._update_user_job_training_info(token, job_id, update_dict)
 
         return {"status": status}
 
     @app.get("/v1/fine_tuning/jobs")
     async def list_jobs(self, token: str = Header(None)):
-        await self.authorize_current_user(token)
-        return self._read_big_data(token)
+        # await self.authorize_current_user(token)
+        if not self._in_user_job_training_info(token):
+            self._update_user_job_training_info(token)
+        save_root = os.path.join(lazyllm.config['train_target_root'], token)
+        server_running_dict = self._read_user_job_training_info(token)
+        m = lazyllm.TrainableModule('dummpy', save_root)
+        valid_models, invalid_models = m.get_all_models()
+        for model_id, model_path in valid_models:
+            job_id = model_path[len(save_root):].lstrip(os.sep).split(os.sep)[0]
+            if job_id in server_running_dict and server_running_dict[job_id]['status'] != 'Done':
+                server_running_dict[job_id]['status'] = 'Done'
+                server_running_dict[job_id]['fine_tuned_model'] = model_path
+            elif job_id not in server_running_dict:
+                server_running_dict[job_id] = {
+                    'status': 'Done',
+                    'model_id': model_id,
+                    'fine_tuned_model': model_path,
+                }
+        for model_id, model_path in invalid_models:
+            job_id = model_path[len(save_root):].lstrip(os.sep).split(os.sep)[0]
+            if job_id in server_running_dict and server_running_dict[job_id]['status'] == 'Done':
+                server_running_dict[job_id]['status'] = 'Failed'
+                server_running_dict[job_id]['fine_tuned_model'] = model_path
+            elif job_id not in server_running_dict:
+                server_running_dict[job_id] = {
+                    'status': 'Failed',
+                    'model_id': model_id,
+                    'fine_tuned_model': model_path,
+                }
+        return server_running_dict
 
     @app.get("/v1/fine_tuning/jobs/{job_id}")
     async def get_job_info(self, job_id: str, token: str = Header(None)):
         await self.authorize_current_user(token)
-        if not self._in_big_data(token, job_id):
+        if not self._in_user_job_training_info(token, job_id):
             raise HTTPException(status_code=404, detail="Job not found")
 
         self._update_status(token, job_id)
 
-        return self._read_big_data(token, job_id)
+        return self._read_user_job_training_info(token, job_id)
 
     @app.get("/v1/fine_tuning/jobs/{job_id}/events")
     async def get_job_log(self, job_id: str, token: str = Header(None)):
         await self.authorize_current_user(token)
-        if not self._in_big_data(token, job_id):
+        if not self._in_user_job_training_info(token, job_id):
             raise HTTPException(status_code=404, detail="Job not found")
 
         self._update_status(token, job_id)
-        info = self._read_big_data(token, job_id)
+        info = self._read_user_job_training_info(token, job_id)
 
         if info['log_path']:
             return {"log": info['log_path']}

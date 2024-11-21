@@ -1,12 +1,12 @@
 
-def txt2pt(dataset_path: str) -> str:
+def txt2pretrain(dataset_path: str) -> str:
     return dataset_path
 
-def csv2pt(dataset_path: str) -> str:
+def csv2pretrain(dataset_path: str) -> str:
     return dataset_path
 
-def parquet2pt(dataset_path: str) -> str:
+def parquet2pretrain(dataset_path: str) -> str:
     return dataset_path
 
-def json2pt(dataset_path: str) -> str:
+def json2pretrain(dataset_path: str) -> str:
     return dataset_path

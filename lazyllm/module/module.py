@@ -552,12 +552,11 @@ class _TrainableModuleImpl(ModuleBase):
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
         self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model)
-        save_root = lazyllm.config['train_target_root'] if lazyllm.config['train_target_root'] \
-            else os.path.join(os.getcwd(), 'save_ckpt')
-        self._target_path = os.path.join(save_root, target_path)
+        self._target_path = os.path.join(lazyllm.config['train_target_root'], target_path)
         self._stream = stream
         self._father = []
         self._launchers: Dict[str, Dict[str, Launcher]] = dict(default=dict(), manual=dict())
+        self._delimiter = '-LazySplit-'
         self._deployer = None
         self._file_name = None
         self._specific_target_path = None
@@ -573,7 +572,7 @@ class _TrainableModuleImpl(ModuleBase):
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
                              '{arg_cls}_args, please pass them from Module.__init__()')
         if 'url' not in args:
-            args['launcher'] = args['launcher'] if args.get('launcher') else launchers.remote(sync=False)
+            args['launcher'] = args['launcher'].clone() if args.get('launcher') else launchers.remote(sync=False)
             self._launchers['default'][arg_cls] = args['launcher']
         return args
 
@@ -597,16 +596,16 @@ class _TrainableModuleImpl(ModuleBase):
             return real_target_path
         return Pipeline(*self._get_train_tasks_impl(), after_train)
 
-    def _trian(self, name: str, ngpus: int = 1, mode: str = None, batch_size: int = 16,
-               micro_batch_size: int = 2, num_epochs: int = 3, learning_rate: float = 5e-4,
-               lora_r: int = 8, lora_alpha: int = 32, lora_dropout: float = 0.05, **kw):
+    def _async_finetune(self, name: str, ngpus: int = 1, **kw):
         assert name and isinstance(name, str), 'Invalid name: {name}, expect a valid string'
         assert name not in self._launchers['manual'], 'Duplicate name: {name}'
         self._launchers['manual'][name] = kw['launcher'] = launchers.remote(sync=False, ngpus=ngpus)
+        self._set_file_name(name)
 
-        Pipeline(*self._get_train_tasks_impl(
-            mode=mode, batch_size=batch_size, micro_batch_size=micro_batch_size, num_epochs=num_epochs,
-            learning_rate=learning_rate, lora_r=lora_r, lora_alpha=lora_alpha, lora_dropout=lora_dropout, **kw))()
+        def after_train(real_target_path):
+            self._finetuned_model_path = real_target_path
+            return real_target_path
+        return Pipeline(*self._get_train_tasks_impl(mode='finetune', **kw), after_train)()
 
     def _get_all_finetuned_models(self):
         valid_paths = []
@@ -614,7 +613,7 @@ class _TrainableModuleImpl(ModuleBase):
         for root, dirs, files in os.walk(self._target_path):
             if root.endswith('lazyllm_merge'):
                 model_path = os.path.abspath(root)
-                model_id = model_path.split(os.sep)[-2].split('-x-')[0]
+                model_id = model_path.split(os.sep)[-2].split(self._delimiter)[0]
                 if any(file.endswith(('.bin', '.safetensors')) for file in files):
                     valid_paths.append((model_id, model_path))
                 else:
@@ -699,7 +698,7 @@ class _TrainableModuleImpl(ModuleBase):
         train_set_name = optimize_name(train_set_name)
 
         target_path = os.path.join(self._target_path, base_model_name,
-                                   f"{file_name}-x-{train_set_name}-x-"
+                                   f"{file_name}{self._delimiter}{train_set_name}{self._delimiter}"
                                    f"{datetime.now().strftime('%y%m%d%H%M%S%f')[:14]}")
         return target_path
 
@@ -756,16 +755,16 @@ class TrainableModule(UrlModule):
         if launcher := self._impl._launchers['default'].get('deploy'):
             launcher.wait()
 
-    def stop(self, task_name: Optional[str] = None, task_type: str = 'deploy'):
+    def stop(self, task_name: Optional[str] = None):
         try:
-            launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or task_type]
+            launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
         except KeyError:
             raise RuntimeError('Cannot stop an unstarted task')
         if not task_name: self._impl._get_deploy_tasks.flag.reset()
         launcher.cleanup()
 
-    def status(self, task_name: Optional[str] = None, task_type: str = 'deploy'):
-        launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or task_type]
+    def status(self, task_name: Optional[str] = None):
+        launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
         return launcher.status
 
     # modify default value to ''

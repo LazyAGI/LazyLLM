@@ -125,8 +125,7 @@ def _build_target_dir(target_path: str = None) -> str:
         if os.path.exists(save_dir):
             raise RuntimeError(f"The target_path at {save_dir} does not exist.")
     else:
-        save_dir = lazyllm.config['temp_dir'] if lazyllm.config['temp_dir'] \
-            else os.path.join(os.getcwd(), '.temp/dataset')
+        save_dir = os.path.join(lazyllm.config['temp_dir'], 'dataset')
         if not os.path.exists(save_dir):
             os.system(f'mkdir -p {save_dir}')
         else:
@@ -139,27 +138,3 @@ def _save_dataset(data: list, save_dir: str, base_name: str) -> str:
     with open(output_json_path, 'w', encoding='utf-8') as json_file:
         json.dump(data, json_file, ensure_ascii=False, indent=4)
     return output_json_path
-
-if __name__ == '__main__':
-    #  test: csv
-    res = csv2alpaca('alpaca_gpt4_data_zh.csv')
-    print(res)
-
-    #  test: parquet
-    res = parquet2alpaca('tatsu-lab-alpaca_head_100.parquet')
-    print(res)
-
-    #  test: jsonl
-    header_mapping = {'problem': 'instruction', 'solution': 'output'}
-    res = json2alpaca('geometry.jsonl', header_mapping)
-    print(res)
-
-    # test: Merge
-    dataset_paths = [
-        '.temp/dataset/alpaca_gpt4.json',
-        '.temp/dataset/tatsu.json',
-        '.temp/dataset/geometry.json',
-        '.temp/dataset/fake.jsonl',
-    ]
-    res = merge2alpaca(dataset_paths)
-    print(res)

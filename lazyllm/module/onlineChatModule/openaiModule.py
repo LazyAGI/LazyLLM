@@ -147,21 +147,13 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _get_finetuned_model_names(self) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
         model_data = self._query_finetuned_jobs()
-        names_valid = []
-        names_invalid = []
+        res = list()
         for model in model_data['data']:
-            if 'successful' in model['message']:
-                names_valid.append((model['id'], model['fine_tuned_model']))
-            else:
-                names_invalid.append((model['id'], model['fine_tuned_model']))
-        return names_valid, names_invalid
+            status = 'Done'if 'successful' in model['message'] else 'Failed'
+            res.append([model['id'], model['fine_tuned_model'], status])
+        return res
 
-    def _query_job_status(self, fine_tuning_job_id=None):
-        if not fine_tuning_job_id and not self.fine_tuning_job_id:
-            raise RuntimeError("No job ID specified. Please ensure that a valid 'fine_tuning_job_id' is "
-                               "provided as an argument or started a training job.")
-        job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
-        _, status = self._query_finetuning_job(job_id)
+    def _status_mapping(self, status):
         if status == 'succeeded':
             return 'Done'
         elif status == 'failed':
@@ -172,6 +164,14 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
             return 'Running'
         else:  # validating_files, queued
             return 'Pending'
+
+    def _query_job_status(self, fine_tuning_job_id=None):
+        if not fine_tuning_job_id and not self.fine_tuning_job_id:
+            raise RuntimeError("No job ID specified. Please ensure that a valid 'fine_tuning_job_id' is "
+                               "provided as an argument or started a training job.")
+        job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
+        _, status = self._query_finetuning_job(job_id)
+        return self._status_mapping(status)
 
     def _get_log(self, fine_tuning_job_id=None):
         if not fine_tuning_job_id and not self.fine_tuning_job_id:
@@ -193,7 +193,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
         model_id, _ = self._query_finetuning_job(self.fine_tuning_job_id)
         return self.fine_tuning_job_id, model_id
 
-    def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
+    def _query_finetuning_job_info(self, fine_tuning_job_id):
         fine_tune_url = os.path.join(self._base_url, f"fine_tuning/jobs/{fine_tuning_job_id}")
         headers = {
             "Authorization": f"Bearer {self._api_key}"
@@ -201,11 +201,20 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
         with requests.get(fine_tune_url, headers=headers) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+        return r.json()
 
-        info = r.json()
+    def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
+        info = self._query_finetuning_job_info(fine_tuning_job_id)
         status = info['status']
         fine_tuned_model = info["fine_tuned_model"] if 'fine_tuned_model' in info else None
         return (fine_tuned_model, status)
+
+    def _query_finetuning_cost(self, fine_tuning_job_id):
+        info = self._query_finetuning_job_info(fine_tuning_job_id)
+        if 'trained_tokens' in info and info['trained_tokens']:
+            return info['trained_tokens']
+        else:
+            return None
 
     def _create_deployment(self) -> Tuple[str, str]:
         return (self._model_name, "RUNNING")

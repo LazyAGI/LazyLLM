@@ -180,22 +180,17 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _get_finetuned_model_names(self) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
         model_data = self._query_finetuned_jobs()
-        names_valid = []
-        names_invalid = []
+        res = list()
         for model in model_data['output']['jobs']:
-            if model['status'] == 'SUCCEEDED':
-                names_valid.append((model['job_id'], model['finetuned_output']))
+            status = self._status_mapping(model['status'])
+            if status == 'Done':
+                model_id = model['finetuned_output']
             else:
                 model_id = model['model'] + '-' + model['job_id']
-                names_invalid.append((model['job_id'], model_id))
-        return names_valid, names_invalid
+            res.append([model['job_id'], model_id, status])
+        return res
 
-    def _query_job_status(self, fine_tuning_job_id=None):
-        if not fine_tuning_job_id and not self.fine_tuning_job_id:
-            raise RuntimeError("No job ID specified. Please ensure that a valid 'fine_tuning_job_id' is "
-                               "provided as an argument or started a training job.")
-        job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
-        _, status = self._query_finetuning_job(job_id)
+    def _status_mapping(self, status):
         if status == 'SUCCEEDED':
             return 'Done'
         elif status == 'FAILED':
@@ -206,6 +201,14 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             return 'Running'
         else:  # PENDING, QUEUING
             return 'Pending'
+
+    def _query_job_status(self, fine_tuning_job_id=None):
+        if not fine_tuning_job_id and not self.fine_tuning_job_id:
+            raise RuntimeError("No job ID specified. Please ensure that a valid 'fine_tuning_job_id' is "
+                               "provided as an argument or started a training job.")
+        job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
+        _, status = self._query_finetuning_job(job_id)
+        return self._status_mapping(status)
 
     def _get_log(self, fine_tuning_job_id=None):
         if not fine_tuning_job_id and not self.fine_tuning_job_id:
@@ -228,7 +231,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         model_id, _ = self._query_finetuning_job(self.fine_tuning_job_id)
         return self.fine_tuning_job_id, model_id
 
-    def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
+    def _query_finetuning_job_info(self, fine_tuning_job_id):
         fine_tune_url = os.path.join(self._base_url, f"api/v1/fine-tunes/{fine_tuning_job_id}")
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -237,8 +240,10 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         with requests.get(fine_tune_url, headers=headers) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+        return r.json()['output']
 
-        info = r.json()["output"]
+    def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
+        info = self._query_finetuning_job_info(fine_tuning_job_id)
         status = info['status']
         # QWen only status == 'SUCCEEDED' can have `finetuned_output`
         if 'finetuned_output' in info:
@@ -246,6 +251,13 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         else:
             fine_tuned_model = info["model"] + '-' + info["job_id"]
         return (fine_tuned_model, status)
+
+    def _query_finetuning_cost(self, fine_tuning_job_id):
+        info = self._query_finetuning_job_info(fine_tuning_job_id)
+        if 'usage' in info and info['usage']:
+            return info['usage']
+        else:
+            return None
 
     def set_deploy_parameters(self, **kw):
         self._deploy_paramters = kw

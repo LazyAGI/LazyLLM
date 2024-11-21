@@ -96,8 +96,7 @@ def save_jsonl(data: list, output_json_path: str) -> None:
             json_file.write(json.dumps(row, ensure_ascii=False) + '\n')
 
 def save_dataset(save_data: list, save_suffix='json', base_name='train_data') -> str:
-    directory = lazyllm.config['temp_dir'] if lazyllm.config['temp_dir'] \
-        else os.path.join(os.getcwd(), '.temp/dataset')
+    directory = os.path.join(lazyllm.config['temp_dir'], 'dataset')
     if not os.path.exists(directory):
         os.makedirs(directory)
     delete_old_files(directory)
