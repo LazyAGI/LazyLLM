@@ -2,6 +2,7 @@ from typing import Optional, Dict, Any, Union, Callable, List
 from enum import Enum, auto
 from collections import defaultdict
 from lazyllm import config, reset_on_pickle
+from .global_metadata import RAG_DOC_PATH
 import uuid
 import threading
 import time
@@ -17,7 +18,7 @@ class MetadataMode(str, Enum):
 class DocNode:
     def __init__(self, uid: Optional[str] = None, text: Optional[str] = None, group: Optional[str] = None,
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
-                 metadata: Optional[Dict[str, Any]] = None, fields: Optional[Dict[str, Any]] = None):
+                 metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None):
         self.uid: str = uid if uid else str(uuid.uuid4())
         self.text: Optional[str] = text
         self.group: Optional[str] = group
@@ -32,9 +33,9 @@ class DocNode:
         self._lock = threading.Lock()
         self._embedding_state = set()
 
-        if fields and parent:
-            raise ValueError('only ROOT node can set fields.')
-        self._fields = fields if fields else {}
+        if global_metadata and parent:
+            raise ValueError('only ROOT node can set global metadata.')
+        self._global_metadata = global_metadata if global_metadata else {}
 
     @property
     def root_node(self) -> Optional["DocNode"]:
@@ -44,8 +45,14 @@ class DocNode:
         return root or self
 
     @property
-    def fields(self) -> Dict[str, Any]:
-        return self.root_node._fields
+    def global_metadata(self) -> Dict[str, Any]:
+        return self.root_node._global_metadata
+
+    @global_metadata.setter
+    def global_metadata(self, global_metadata: Dict) -> None:
+        if self.parent:
+            raise ValueError("only root node can set global metadata.")
+        self._global_metadata = global_metadata
 
     @property
     def metadata(self) -> Dict:
@@ -73,12 +80,12 @@ class DocNode:
 
     @property
     def docpath(self) -> str:
-        return self.root_node._fields.get('lazyllm_doc_path', '')
+        return self.root_node._global_metadata.get(RAG_DOC_PATH, '')
 
     @docpath.setter
     def docpath(self, path):
         assert not self.parent, 'Only root node can set docpath'
-        self._fields['lazyllm_doc_path'] = str(path)
+        self._global_metadata[RAG_DOC_PATH] = str(path)
 
     def get_children_str(self) -> str:
         return str(

@@ -1,13 +1,23 @@
 import lazyllm
 from lazyllm.tools.rag.doc_impl import DocImpl
-from lazyllm.tools.rag.utils import _FileNodeIndex
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
+from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH, RAG_DOC_ID
 from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform
+from lazyllm.tools.rag.doc_manager import DocManager
+from lazyllm.tools.rag.utils import DocListManager
 from lazyllm.launcher import cleanup
+from lazyllm import config
 from unittest.mock import MagicMock
 import unittest
+import httpx
+import os
+import shutil
+import io
+import re
+import json
+import time
 
 
 class TestDocImpl(unittest.TestCase):
@@ -16,7 +26,7 @@ class TestDocImpl(unittest.TestCase):
         self.mock_embed = MagicMock()
         self.mock_directory_reader = MagicMock()
         mock_node = DocNode(group=LAZY_ROOT_NAME, text="dummy text")
-        mock_node.metadata = {"file_name": "dummy_file.txt"}
+        mock_node._global_metadata = {RAG_DOC_PATH: "dummy_file.txt"}
         self.mock_directory_reader.load_data.return_value = [mock_node]
 
         self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=["dummy_file.txt"])
@@ -63,7 +73,7 @@ class TestDocImpl(unittest.TestCase):
         self.doc_impl._lazy_init()
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
-        new_doc.metadata = {"file_name": "new_file.txt"}
+        new_doc._global_metadata = {RAG_DOC_PATH: "new_file.txt"}
         self.mock_directory_reader.load_data.return_value = [new_doc]
         self.doc_impl._add_files(["new_file.txt"])
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 2
@@ -166,38 +176,64 @@ class TestDocument(unittest.TestCase):
         assert response.status_code == 200
         doc.stop()
 
-class TestFileNodeIndex(unittest.TestCase):
+class TmpDir:
+    def __init__(self):
+        self.root_dir = os.path.expanduser(os.path.join(config['home'], 'rag_for_document_ut'))
+        self.rag_dir = os.path.join(self.root_dir, 'rag_master')
+        os.makedirs(self.rag_dir, exist_ok=True)
+
+    def __del__(self):
+        shutil.rmtree(self.root_dir)
+
+class TestDocumentServer(unittest.TestCase):
     def setUp(self):
-        self.index = _FileNodeIndex()
-        self.node1 = DocNode(uid='1', group=LAZY_ROOT_NAME, metadata={"file_name": "d1"})
-        self.node2 = DocNode(uid='2', group=LAZY_ROOT_NAME, metadata={"file_name": "d2"})
-        self.files = [self.node1.metadata['file_name'], self.node1.metadata['file_name']]
+        self.dir = TmpDir()
+        self.dlm = DocListManager(path=self.dir.rag_dir, name=None)
+        self.dlm.init_tables()
 
-    def test_update(self):
-        self.index.update([self.node1, self.node2])
+        self.doc_impl = DocImpl(embed=MagicMock(), dlm=self.dlm)
+        self.doc_impl._lazy_init()
 
-        nodes = self.index.query(self.files)
-        assert len(nodes) == len(self.files)
+        self.server = lazyllm.ServerModule(DocManager(self.dlm))
+        self.server.start()
 
-        ret = [node.metadata['file_name'] for node in nodes]
-        assert set(ret) == set(self.files)
+        url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
+        self.doc_server_addr = re.findall(url_pattern, self.server._url)[0]
 
-    def test_remove(self):
-        self.index.update([self.node1, self.node2])
+    def test_delete_files_in_store(self):
+        files = [('files', ('test1.txt', io.BytesIO(b"John's house is in Beijing"), 'text/palin')),
+                 ('files', ('test2.txt', io.BytesIO(b"John's house is in Shanghai"), 'text/plain'))]
+        metadatas = [{"comment": "comment1"}, {"signature": "signature2"}]
+        params = dict(override='true', metadatas=json.dumps(metadatas))
 
-        self.index.remove([self.node2.uid])
-        ret = self.index.query([self.node2.metadata['file_name']])
-        assert len(ret) == 1
-        assert ret[0] is None
+        url = f'{self.doc_server_addr}/upload_files'
+        response = httpx.post(url, params=params, files=files, timeout=10)
+        assert response.status_code == 200 and response.json().get('code') == 200, response.json()
+        ids = response.json().get('data')[0]
+        lazyllm.LOG.error(f'debug!!! ids -> {ids}')
+        assert len(ids) == 2
 
-    def test_query(self):
-        self.index.update([self.node1, self.node2])
-        ret = self.index.query([self.node2.metadata['file_name']])
-        assert len(ret) == 1
-        assert ret[0] is self.node2
-        ret = self.index.query([self.node1.metadata['file_name']])
-        assert len(ret) == 1
-        assert ret[0] is self.node1
+        time.sleep(20)  # waiting for worker thread to update newly uploaded files
+
+        # make sure that ids are written into the store
+        nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
+        for node in nodes:
+            if node.global_metadata[RAG_DOC_PATH].endswith('test1.txt'):
+                test1_docid = node.global_metadata[RAG_DOC_ID]
+            elif node.global_metadata[RAG_DOC_PATH].endswith('test2.txt'):
+                test2_docid = node.global_metadata[RAG_DOC_ID]
+        assert test1_docid and test2_docid
+        assert set([test1_docid, test2_docid]) == set(ids)
+
+        url = f'{self.doc_server_addr}/delete_files'
+        response = httpx.post(url, json=dict(file_ids=[test1_docid]))
+        assert response.status_code == 200 and response.json().get('code') == 200
+
+        time.sleep(20)  # waiting for worker thread to delete files
+
+        nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
+        assert len(nodes) == 1
+        assert nodes[0].global_metadata[RAG_DOC_ID] == test2_docid
 
 if __name__ == "__main__":
     unittest.main()

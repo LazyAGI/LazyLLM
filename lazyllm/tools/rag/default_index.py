@@ -4,7 +4,7 @@ from .store_base import StoreBase
 from .index_base import IndexBase
 from lazyllm import LOG
 from lazyllm.common import override
-from .utils import parallel_do_embedding
+from .utils import parallel_do_embedding, generic_process_filters
 from .similarity import registered_similarities
 
 # ---------------------------------------------------------------------------- #
@@ -31,6 +31,7 @@ class DefaultIndex(IndexBase):
         similarity_cut_off: Union[float, Dict[str, float]],
         topk: int,
         embed_keys: Optional[List[str]] = None,
+        filters: Optional[Dict[str, List]] = None,
         **kwargs,
     ) -> List[DocNode]:
         if similarity_name not in registered_similarities:
@@ -41,6 +42,9 @@ class DefaultIndex(IndexBase):
         similarity_func, mode, descend = registered_similarities[similarity_name]
 
         nodes = self.store.get_nodes(group_name)
+        if filters:
+            nodes = generic_process_filters(nodes, filters)
+
         if mode == "embedding":
             assert self.embed, "Chosen similarity needs embed model."
             assert len(query) > 0, "Query should not be empty."

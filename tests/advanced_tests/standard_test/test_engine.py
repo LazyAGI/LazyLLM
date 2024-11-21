@@ -1,5 +1,6 @@
 import os
 import time
+import pytest
 
 import lazyllm
 from lazyllm.engine import LightEngine
@@ -13,6 +14,13 @@ class TestEngine(object):
         edge = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
         engine.start(node, edge, resource)
+
+    @pytest.fixture(autouse=True)
+    def run_around_tests(self):
+        yield
+        LightEngine().reset()
+        lazyllm.FileSystemQueue().dequeue()
+        lazyllm.FileSystemQueue(klass="lazy_trace").dequeue()
 
     def test_http(self):
         nodes = [

@@ -4,19 +4,19 @@ from io import BytesIO
 from pathlib import Path
 from typing import Dict, List, Optional, cast
 from fsspec import AbstractFileSystem
-from PIL import Image
+from lazyllm.thirdparty import PIL
 
 from .readerBase import LazyLLMReaderBase, infer_torch_device
 from ..doc_node import DocNode
 
-def img_2_b64(image: Image, format: str = "JPEG") -> str:
+def img_2_b64(image: 'PIL.Image', format: str = "JPEG") -> str:
     buff = BytesIO()
     image.save(buff, format=format)
     return cast(str, base64.b64encode(buff.getvalue()))
 
-def b64_2_img(data: str) -> Image:
+def b64_2_img(data: str) -> 'PIL.Image':
     buff = BytesIO(base64.b64decode(data))
-    return Image.open(buff)
+    return 'PIL.Image'.open(buff)
 
 class ImageReader(LazyLLMReaderBase):
     def __init__(self, parser_config: Optional[Dict] = None, keep_image: bool = False, parse_text: bool = False,
@@ -59,9 +59,9 @@ class ImageReader(LazyLLMReaderBase):
 
         if fs:
             with fs.open(path=file) as f:
-                image = Image.open(f.read())
+                image = PIL.Image.open(f.read())
         else:
-            image = Image.open(file)
+            image = PIL.Image.open(file)
 
         if image.mode != "RGB": image = image.convert("RGB")
 

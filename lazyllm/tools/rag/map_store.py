@@ -44,7 +44,7 @@ class MapStore(StoreBase):
         else:
             docs = self._group2docs.pop(group_name, None)
             if docs:
-                _remove_from_indices(self._name2index, [doc.uid for doc in docs])
+                _remove_from_indices(self._name2index, list(docs.keys()))
 
     @override
     def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
@@ -87,10 +87,3 @@ class MapStore(StoreBase):
         if type is None:
             type = 'default'
         return self._name2index.get(type)
-
-    def find_node_by_uid(self, uid: str) -> Optional[DocNode]:
-        for docs in self._group2docs.values():
-            doc = docs.get(uid)
-            if doc:
-                return doc
-        return None
