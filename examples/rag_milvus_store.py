@@ -8,12 +8,9 @@ import shutil
 
 class TmpDir:
     def __init__(self):
-        self.root_dir = os.path.expanduser(os.path.join(config['home'], 'rag_for_ut'))
+        self.root_dir = os.path.expanduser(os.path.join(config['home'], 'rag_for_example_ut'))
         self.rag_dir = os.path.join(self.root_dir, 'rag_master')
         os.makedirs(self.rag_dir, exist_ok=True)
-        # creates a dummy file for rag
-        with open(os.path.join(self.rag_dir, '_dummy.txt'), "wb") as fd:
-            fd.write(b'dsfjfasfkjdsfewifjewofjefiejw')
         self.store_file = os.path.join(self.root_dir, "milvus.db")
 
     def __del__(self):

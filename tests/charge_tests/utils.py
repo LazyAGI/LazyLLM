@@ -61,7 +61,7 @@ def get_sql_init_keywords(db_type):
     env_key = f"LAZYLLM_{db_type.replace(' ', '_')}_URL"
     conn_url = os.environ.get(env_key, None)
     assert conn_url is not None
-    pattern = r"postgresql://(?P<username>[^:]+):(?P<password>[^@]+)@(?P<host>[^:]+):(?P<port>\d+)/(?P<database>.+)"
+    pattern = r"postgresql://(?P<username>[^:]+):(?P<password>.+)@(?P<host>[^:]+):(?P<port>\d+)/(?P<database>.+)"
     match = re.search(pattern, conn_url)
     assert match
     username = match.group("username")
