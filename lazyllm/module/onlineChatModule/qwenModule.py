@@ -16,7 +16,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ["qwen-turbo", "qwen-7b-chat", "qwen-72b-chat"]
 
     def __init__(self,
-                 base_url: str = "https://dashscope.aliyuncs.com",
+                 base_url: str = "https://dashscope.aliyuncs.com/",
                  model: str = "qwen-plus",
                  api_key: str = None,
                  stream: bool = True,
@@ -61,10 +61,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                 "your name is Tongyi Qianwen, and you are a useful assistant.")
 
     def _set_chat_url(self):
-        self._url = os.path.join(self._base_url, 'compatible-mode/v1/chat/completions')
-
-    # def _set_chat_sft_url(self):
-    #     self._url = os.path.join(self._base_url, )
+        self._url = urljoin(self._base_url, 'compatible-mode/v1/chat/completions')
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:
@@ -154,7 +151,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         if not fine_tuning_job_id and not self.fine_tuning_job_id:
             return 'Invalid'
         job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
-        fine_tune_url = os.path.join(self._base_url, f"api/v1/fine-tunes/{job_id}/cancel")
+        fine_tune_url = urljoin(self._base_url, f"api/v1/fine-tunes/{job_id}/cancel")
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json"
@@ -169,7 +166,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             return f'JOB {job_id} status: {status}'
 
     def _query_finetuned_jobs(self):
-        fine_tune_url = os.path.join(self._base_url, "api/v1/fine-tunes")
+        fine_tune_url = urljoin(self._base_url, "api/v1/fine-tunes")
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json"
@@ -218,7 +215,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             raise RuntimeError("No job ID specified. Please ensure that a valid 'fine_tuning_job_id' is "
                                "provided as an argument or started a training job.")
         job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
-        fine_tune_url = os.path.join(self._base_url, f"api/v1/fine-tunes/{job_id}/logs")
+        fine_tune_url = urljoin(self._base_url, f"api/v1/fine-tunes/{job_id}/logs")
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json"
@@ -235,7 +232,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         return self.fine_tuning_job_id, model_id
 
     def _query_finetuning_job_info(self, fine_tuning_job_id):
-        fine_tune_url = os.path.join(self._base_url, f"api/v1/fine-tunes/{fine_tuning_job_id}")
+        fine_tune_url = urljoin(self._base_url, f"api/v1/fine-tunes/{fine_tuning_job_id}")
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json"
