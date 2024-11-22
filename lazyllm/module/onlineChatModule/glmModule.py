@@ -76,7 +76,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
             "Authorization": "Bearer " + self._api_key
         }
 
-        url = urljoin(bself._base_url, "files")
+        url = urljoin(self._base_url, "files")
         self.get_finetune_data(train_file)
 
         file_object = {

@@ -17,9 +17,9 @@ class __EmbedModuleMeta(type):
 
 class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
     EMBED_MODELS = {'openai': OpenAIEmbedding,
-              'sensenova': SenseNovaEmbedding,
-              'glm': GLMEmbedding,
-              'qwen': QwenEmbedding}
+                    'sensenova': SenseNovaEmbedding,
+                    'glm': GLMEmbedding,
+                    'qwen': QwenEmbedding}
     RERANK_MODELS = {'qwen': QwenReranking}
 
     @staticmethod
@@ -33,17 +33,17 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
             params["embed_model_name"] = embed_model_name
         params.update(kwargs)
         return params
-    
+
     @staticmethod
     def _check_available_source(available_models):
         for source in available_models.keys():
             if lazyllm.config[f'{source}_api_key']: break
         else:
             raise KeyError(f"No api_key is configured for any of the models {available_models.keys()}.")
-        
+
         assert source in available_models.keys(), f"Unsupported source: {source}"
         return source
-    
+
     def __new__(self,
                 source: str = None,
                 embed_url: str = None,
@@ -53,7 +53,7 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
 
         if source is None and "api_key" in kwargs and kwargs["api_key"]:
             raise ValueError("No source is given but an api_key is provided.")
-        
+
         if kwargs.get("type", "embed") == "embed":
             if source is None:
                 source = OnlineEmbeddingModule._check_available_source(OnlineEmbeddingModule.EMBED_MODELS)

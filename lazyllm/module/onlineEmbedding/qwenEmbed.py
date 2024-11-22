@@ -35,7 +35,7 @@ class QwenReranking(OnlineEmbeddingModuleBase):
                  embed_model_name: str = "gte-rerank",
                  api_key: str = None, **kwargs):
         super().__init__("QWEN", embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name)
-    
+
     @property
     def type(self):
         return "ONLINE_RERANK"

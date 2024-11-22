@@ -1,4 +1,3 @@
-import os
 import lazyllm
 from urllib.parse import urljoin
 from .onlineChatModuleBase import OnlineChatModuleBase
