@@ -4,10 +4,12 @@ import uuid
 import copy
 import string
 import random
+import asyncio
 import threading
 from datetime import datetime
 from pydantic import BaseModel, Field
 from fastapi import HTTPException, Header
+from async_timeout import timeout
 
 import lazyllm
 from lazyllm.launcher import Status
@@ -15,7 +17,7 @@ from lazyllm.module.utils import uniform_sft_dataset
 from lazyllm import FastapiApp as app
 
 
-class JobCreate(BaseModel):
+class JobDescription(BaseModel):
     finetune_model_name: str
     base_model: str = Field(default="qwen1.5-0.5b-chat")
     data_path: str = Field(default="alpaca/alpaca_data_zh_128.json")
@@ -48,12 +50,8 @@ class TrainServer:
         if not self._polling_thread:
             self._polling_status_checker()
 
-    @classmethod
-    def rebuild(cls,):
-        return cls()
-
     def __reduce__(self):
-        return TrainServer.rebuild, ()
+        return (self.__class__, ())
 
     def _update_dict(sef, lock, dicts, k1, k2=None, dict_value=None):
         with lock:
@@ -241,7 +239,7 @@ class TrainServer:
         return Bearer
 
     @app.post("/v1/fine_tuning/jobs")
-    async def create_job(self, job: JobCreate, token: str = Header(None)):
+    async def create_job(self, job: JobDescription, token: str = Header(None)):
         # await self.authorize_current_user(token)
         if not self._in_user_job_training_info(token):
             self._update_user_job_training_info(token)
@@ -277,12 +275,12 @@ class TrainServer:
         thread.start()
 
         # Sleep 5s for launch cmd.
-        total_sleep = 0
-        while m.status(model_id) == Status.Cancelled:
-            time.sleep(1)
-            total_sleep += 1
-            if total_sleep > 5:
-                break
+        try:
+            async with timeout(5):
+                while m.status(model_id) == Status.Cancelled:
+                    await asyncio.sleep(1)
+        except asyncio.TimeoutError:
+            pass
 
         # The first getting the path may be invalid, and it will be getted with each update.
         save_path = self._get_save_path(m)

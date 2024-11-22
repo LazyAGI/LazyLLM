@@ -181,6 +181,8 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
     def _get_finetuned_model_names(self) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
         model_data = self._query_finetuned_jobs()
         res = list()
+        if 'jobs' not in model_data['output']:
+            return res
         for model in model_data['output']['jobs']:
             status = self._status_mapping(model['status'])
             if status == 'Done':
