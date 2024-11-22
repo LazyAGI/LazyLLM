@@ -5,17 +5,18 @@ import concurrent
 from typing import List, Callable, Generator, Dict, Any, Optional, Union, Tuple, Set
 from abc import ABC, abstractmethod
 from .index_base import IndexBase
-from .store_base import LAZY_ROOT_NAME
 from .doc_node import DocNode
+from .global_metadata import RAG_DOC_PATH, RAG_DOC_ID
 from lazyllm.common import override
+from lazyllm.common.queue import sqlite3_check_threadsafety
 
 import pydantic
 import sqlite3
 from pydantic import BaseModel
 from fastapi import UploadFile
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
 import json
+from filelock import FileLock
 
 import lazyllm
 from lazyllm import config
@@ -30,8 +31,11 @@ config.add(
 
 config.add("default_dlmanager", str, "sqlite", "DEFAULT_DOCLIST_MANAGER")
 
+def gen_docid(file_path: str) -> str:
+    return hashlib.sha256(file_path.encode()).hexdigest()
+
 class DocListManager(ABC):
-    DEDAULT_GROUP_NAME = '__default__'
+    DEFAULT_GROUP_NAME = '__default__'
     __pool__ = dict()
 
     class Status:
@@ -48,7 +52,7 @@ class DocListManager(ABC):
         self._name = name
         self._id = hashlib.sha256(f'{name}@+@{path}'.encode()).hexdigest()
         if not os.path.isabs(path):
-            raise ValueError("directory must be an absolute path")
+            raise ValueError(f"path [{path}] is not an absolute path")
 
     def __new__(cls, *args, **kw):
         if cls is not DocListManager:
@@ -58,7 +62,7 @@ class DocListManager(ABC):
     def init_tables(self) -> 'DocListManager':
         if not self.table_inited():
             self._init_tables()
-            self.add_kb_group(DocListManager.DEDAULT_GROUP_NAME)
+            self.add_kb_group(DocListManager.DEFAULT_GROUP_NAME)
 
         files_list = []
         for root, _, files in os.walk(self._path):
@@ -95,10 +99,10 @@ class DocListManager(ABC):
                             upload_status: Union[str, List[str]] = Status.all,
                             exclude_upload_status: Optional[Union[str, List[str]]] = None): pass
 
-    def add_files(self, files: List[str], metadatas: Optional[List] = None,
+    def add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None,
                   status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[str]:
         ids = self._add_files(files, metadatas, status, batch_size)
-        self.add_files_to_kb_group(ids, group=DocListManager.DEDAULT_GROUP_NAME)
+        self.add_files_to_kb_group(ids, group=DocListManager.DEFAULT_GROUP_NAME)
         return ids
 
     @abstractmethod
@@ -135,18 +139,15 @@ class SqliteDocListManager(DocListManager):
     def __init__(self, path, name):
         super().__init__(path, name)
         root_dir = os.path.expanduser(os.path.join(config['home'], '.dbs'))
-        os.system(f'mkdir -p {root_dir}')
+        os.makedirs(root_dir, exist_ok=True)
         self._db_path = os.path.join(root_dir, f'.lazyllm_dlmanager.{self._id}.db')
-        self._conns = threading.local()
-
-    @property
-    def _conn(self):
-        if not hasattr(self._conns, 'impl'): self._conns.impl = sqlite3.connect(self._db_path)
-        return self._conns.impl
+        self._db_lock = FileLock(self._db_path + '.lock')
+        # ensure that this connection is not used in another thread when sqlite3 is not threadsafe
+        self._check_same_thread = not sqlite3_check_threadsafety()
 
     def _init_tables(self):
-        with self._conn:
-            self._conn.execute("""
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS documents (
                     doc_id TEXT PRIMARY KEY,
                     filename TEXT NOT NULL,
@@ -156,18 +157,17 @@ class SqliteDocListManager(DocListManager):
                     count INTEGER DEFAULT 0
                 )
             """)
-            self._conn.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS document_groups (
                     group_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     group_name TEXT NOT NULL UNIQUE
                 )
             """)
-            self._conn.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS kb_group_documents (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     doc_id TEXT NOT NULL,
                     group_name TEXT NOT NULL,
-                    classification TEXT,
                     status TEXT,
                     log TEXT,
                     UNIQUE (doc_id, group_name),
@@ -175,10 +175,12 @@ class SqliteDocListManager(DocListManager):
                     FOREIGN KEY(group_name) REFERENCES document_groups(group_name)
                 )
             """)
+            conn.commit()
 
     def table_inited(self):
-        cursor = self._conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='documents'")
-        return cursor.fetchone() is not None
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='documents'")
+            return cursor.fetchone() is not None
 
     @staticmethod
     def get_status_cond_and_params(status: Union[str, List[str]],
@@ -216,16 +218,19 @@ class SqliteDocListManager(DocListManager):
         if limit:
             query += " LIMIT ?"
             params.append(limit)
-        cursor = self._conn.execute(query, params)
-        return cursor.fetchall() if details else [row[0] for row in cursor]
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            cursor = conn.execute(query, params)
+            return cursor.fetchall() if details else [row[0] for row in cursor]
 
     def list_all_kb_group(self):
-        cursor = self._conn.execute("SELECT group_name FROM document_groups")
-        return [row[0] for row in cursor]
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            cursor = conn.execute("SELECT group_name FROM document_groups")
+            return [row[0] for row in cursor]
 
     def add_kb_group(self, name):
-        with self._conn:
-            self._conn.execute('INSERT OR IGNORE INTO document_groups (group_name) VALUES (?)', (name,))
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            conn.execute('INSERT OR IGNORE INTO document_groups (group_name) VALUES (?)', (name,))
+            conn.commit()
 
     def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
                             status: Union[str, List[str]] = DocListManager.Status.all,
@@ -233,9 +238,8 @@ class SqliteDocListManager(DocListManager):
                             upload_status: Union[str, List[str]] = DocListManager.Status.all,
                             exclude_upload_status: Optional[Union[str, List[str]]] = None):
         query = """
-            SELECT documents.doc_id, documents.path, documents.status,
-                   kb_group_documents.group_name, kb_group_documents.classification,
-                   kb_group_documents.status, kb_group_documents.log
+            SELECT documents.doc_id, documents.path, documents.status, documents.metadata,
+                   kb_group_documents.group_name, kb_group_documents.status, kb_group_documents.log
             FROM kb_group_documents
             JOIN documents ON kb_group_documents.doc_id = documents.doc_id
         """
@@ -261,14 +265,14 @@ class SqliteDocListManager(DocListManager):
             query += ' LIMIT ?'
             params.append(limit)
 
-        with self._conn:
-            cursor = self._conn.execute(query, params)
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            cursor = conn.execute(query, params)
             rows = cursor.fetchall()
 
         if not details: return [row[:2] for row in rows]
         return rows
 
-    def _add_files(self, files: List[str], metadatas: Optional[List] = None,
+    def _add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None,
                    status: Optional[str] = DocListManager.Status.waiting, batch_size: int = 64):
         results = []
         for i in range(0, len(files), batch_size):
@@ -278,50 +282,60 @@ class SqliteDocListManager(DocListManager):
 
             for i, file_path in enumerate(batch_files):
                 filename = os.path.basename(file_path)
-                metadata = json.dumps(batch_metadatas[i]) if batch_metadatas else ''
-                doc_id = hashlib.sha256(f'{file_path}'.encode()).hexdigest()
-                insert_values.append("(?, ?, ?, ?, ?, ?)")
-                params.extend([doc_id, filename, file_path, metadata, status, 1])
+                doc_id = gen_docid(file_path)
 
-            with self._conn:
+                metadata = batch_metadatas[i].copy() if batch_metadatas else {}
+                metadata.setdefault(RAG_DOC_ID, doc_id)
+                metadata.setdefault(RAG_DOC_PATH, file_path)
+                metadata_str = json.dumps(metadata)
+
+                insert_values.append("(?, ?, ?, ?, ?, ?)")
+                params.extend([doc_id, filename, file_path, metadata_str, status, 1])
+
+            with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
                 query = f"""
                     INSERT OR IGNORE INTO documents (doc_id, filename, path, metadata, status, count)
                     VALUES {', '.join(insert_values)} RETURNING doc_id;
                 """
-                cursor = self._conn.execute(query, params)
+                cursor = conn.execute(query, params)
                 results.extend([row[0] for row in cursor.fetchall()])
+                conn.commit()
         return results
 
     # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):
         set_clause = ", ".join([f"{k} = ?" for k in kw.keys()])
         params = list(kw.values()) + [fileid]
-        with self._conn:
-            self._conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
+            conn.commit()
 
     def add_files_to_kb_group(self, file_ids: List[str], group: str):
-        with self._conn:
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             for doc_id in file_ids:
-                self._conn.execute("""
+                conn.execute("""
                     INSERT OR IGNORE INTO kb_group_documents (doc_id, group_name, status)
                     VALUES (?, ?, ?)
                 """, (doc_id, group, DocListManager.Status.waiting))
+                conn.commit()
 
     def _delete_files(self, file_ids: List[str], real: bool = False):
         if not real:
             return self.update_file_status(file_ids, DocListManager.Status.deleted)
-        with self._conn:
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             for doc_id in file_ids:
-                self._conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
+                conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
+                conn.commit()
 
     def delete_files_from_kb_group(self, file_ids: List[str], group: str):
-        with self._conn:
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             for doc_id in file_ids:
-                self._conn.execute("DELETE FROM kb_group_documents WHERE doc_id = ? AND group_name = ?", (doc_id, group))
+                conn.execute("DELETE FROM kb_group_documents WHERE doc_id = ? AND group_name = ?", (doc_id, group))
+                conn.commit()
 
     def get_file_status(self, fileid: str):
-        with self._conn:
-            cursor = self._conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            cursor = conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
         return cursor.fetchone()
 
     def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]:
@@ -332,9 +346,10 @@ class SqliteDocListManager(DocListManager):
             placeholders = ', '.join('?' for _ in batch)
             sql = f'UPDATE documents SET status = ? WHERE doc_id IN ({placeholders}) RETURNING doc_id, path'
 
-            with self._conn:
-                cursor = self._conn.execute(sql, [status] + batch)
+            with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+                cursor = conn.execute(sql, [status] + batch)
                 updated_files.extend(cursor.fetchall())
+                conn.commit()
         return updated_files
 
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
@@ -344,12 +359,16 @@ class SqliteDocListManager(DocListManager):
             query += 'group_name = ? AND '
             params.append(group)
         query += f'doc_id IN ({",".join("?" * len(file_ids))})'
-        with self._conn:
-            self._conn.execute(query, (params + file_ids))
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            conn.execute(query, (params + file_ids))
+            conn.commit()
 
     def release(self):
-        self._conn.close()
-        os.system(f'rm {self._db_path}')
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            conn.execute('delete from documents')
+            conn.execute('delete from document_groups')
+            conn.execute('delete from kb_group_documents')
+            conn.commit()
 
     def __reduce__(self):
         return (__class__, (self._path, self._name))
@@ -510,26 +529,43 @@ def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union
 
 class _FileNodeIndex(IndexBase):
     def __init__(self):
-        self._file_node_map = {}
+        self._file_node_map = {}  # Dict[path, Dict[uid, DocNode]]
 
     @override
     def update(self, nodes: List[DocNode]) -> None:
         for node in nodes:
-            if node.group != LAZY_ROOT_NAME:
-                continue
-            file_name = node.metadata.get("file_name")
-            if file_name:
-                self._file_node_map[file_name] = node
+            path = node.global_metadata.get(RAG_DOC_PATH)
+            if path:
+                self._file_node_map.setdefault(path, {}).setdefault(node.uid, node)
 
     @override
     def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
-        # group_name is ignored
-        left = {k: v for k, v in self._file_node_map.items() if v.uid not in uids}
-        self._file_node_map = left
+        for path in list(self._file_node_map.keys()):
+            uid2node = self._file_node_map[path]
+            for uid in uids:
+                uid2node.pop(uid, None)
+            if not uid2node:
+                del self._file_node_map[path]
 
     @override
     def query(self, files: List[str]) -> List[DocNode]:
         ret = []
         for file in files:
-            ret.append(self._file_node_map.get(file))
+            nodes = self._file_node_map.get(file)
+            if nodes:
+                ret.extend(list(nodes.values()))
         return ret
+
+def generic_process_filters(nodes: List[DocNode], filters: Dict[str, Union[str, int, List, Set]]) -> List[DocNode]:
+    res = []
+    for node in nodes:
+        for name, candidates in filters.items():
+            value = node.global_metadata.get(name)
+            if (not isinstance(candidates, list)) and (not isinstance(candidates, set)):
+                if value != candidates:
+                    break
+            elif (not value) or (value not in candidates):
+                break
+        else:
+            res.append(node)
+    return res

@@ -69,6 +69,8 @@ jobs:
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
+          mkdir -p $LAZYLLM_HOME
           python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/basic_tests/
 
   AdvancedStandardTests:
@@ -85,6 +87,8 @@ jobs:
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
+          mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
           python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/advanced_tests/standard_test/
 
@@ -101,6 +105,8 @@ jobs:
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
+          mkdir -p $LAZYLLM_HOME
           python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/advanced_tests/full_test/
 
   ChargeTests:
@@ -114,5 +120,7 @@ jobs:
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
+          mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
           python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/charge_tests

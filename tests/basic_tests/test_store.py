@@ -8,7 +8,7 @@ from lazyllm.tools.rag.map_store import MapStore
 from lazyllm.tools.rag.chroma_store import ChromadbStore
 from lazyllm.tools.rag.milvus_store import MilvusStore
 from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.doc_field_desc import DocFieldDesc
+from lazyllm.tools.rag.global_metadata import GlobalMetadataDesc
 
 
 def clear_directory(directory_path):
@@ -188,33 +188,38 @@ class TestMilvusStore(unittest.TestCase):
             'vec1': MagicMock(return_value=[1.0, 2.0, 3.0]),
             'vec2': MagicMock(return_value=[400.0, 500.0, 600.0, 700.0, 800.0]),
         }
-        self.fields_desc = {
-            'comment': DocFieldDesc(data_type=DocFieldDesc.DTYPE_VARCHAR, max_length=65535),
+        self.global_metadata_desc = {
+            'comment': GlobalMetadataDesc(data_type=GlobalMetadataDesc.DTYPE_VARCHAR, max_size=65535, default_value=' '),
         }
 
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
         _, self.store_file = tempfile.mkstemp(suffix=".db")
 
         embed_keys = set(['vec1', 'vec2'])
-        group_embed_keys = {
+        self.group_embed_keys = {
             LAZY_ROOT_NAME: embed_keys,
             'group1': embed_keys,
             'group2': embed_keys,
         }
-        embed_dims = {
+        self.embed_dims = {
             "vec1": 3,
             "vec2": 5,
         }
-        self.store = MilvusStore(group_embed_keys=group_embed_keys, embed=self.mock_embed,
-                                 embed_dims=embed_dims, fields_desc=self.fields_desc,
+        self.store = MilvusStore(group_embed_keys=self.group_embed_keys, embed=self.mock_embed,
+                                 embed_dims=self.embed_dims, global_metadata_desc=self.global_metadata_desc,
                                  uri=self.store_file)
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
                              embedding={"vec1": [8.0, 9.0, 10.0], "vec2": [11.0, 12.0, 13.0, 14.0, 15.0]},
-                             metadata={'comment': 'comment1'}, fields={'comment': 'comment3'})
+                             metadata={'comment': 'comment1'},
+                             global_metadata={'comment': 'comment3', 'signature': 'node1', 'tags': [1, 3, 5]})
         self.node2 = DocNode(uid="2", text="text2", group="group1", parent=self.node1,
                              embedding={"vec1": [100.0, 200.0, 300.0], "vec2": [400.0, 500.0, 600.0, 700.0, 800.0]},
-                             metadata={'comment': 'comment2'})
+                             metadata={'comment': 'comment2', 'signature': 'node2'})
+        self.node3 = DocNode(uid="3", text="text3", group="group1", parent=None,
+                             embedding={"vec1": [4.0, 5.0, 6.0], "vec2": [16.0, 17.0, 18.0, 19.0, 20.0]},
+                             metadata={'comment': 'comment3', 'signature': 'node3'},
+                             global_metadata={'tags': [1, 2, 3]})
 
     def tearDown(self):
         os.remove(self.store_file)
@@ -248,3 +253,40 @@ class TestMilvusStore(unittest.TestCase):
         self.store.update_nodes([self.node1, self.node2])
         self.assertEqual(self.store.is_group_active("group1"), True)
         self.assertEqual(self.store.is_group_active("group2"), False)
+
+    def test_query_with_filter_exist_1(self):
+        self.store.update_nodes([self.node1, self.node3])
+        ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=10,
+                               filters={'comment': ['comment3']})
+        self.assertEqual(len(ret), 1)
+        self.assertEqual(ret[0].uid, self.node1.uid)
+
+    def test_query_with_filter_exist_2(self):
+        self.store.update_nodes([self.node1, self.node2, self.node3])
+        ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=10,
+                               filters={'comment': ['comment3']})
+        self.assertEqual(len(ret), 2)
+        self.assertEqual(set([ret[0].uid, ret[1].uid]), set([self.node1.uid, self.node2.uid]))
+
+    def test_query_with_filter_non_exist(self):
+        self.store.update_nodes([self.node1, self.node3])
+        ret = self.store.query(query='test', group_name='group1', embed_keys=['vec1'], topk=10,
+                               filters={'comment': ['non-exist']})
+        self.assertEqual(len(ret), 0)
+
+    def test_reload(self):
+        self.store.update_nodes([self.node1, self.node2, self.node3])
+        del self.store
+        self.store = MilvusStore(group_embed_keys=self.group_embed_keys, embed=self.mock_embed,
+                                 embed_dims=self.embed_dims, global_metadata_desc=self.global_metadata_desc,
+                                 uri=self.store_file)
+        self.assertEqual(set([node.uid for node in self.store.get_nodes('group1')]),
+                         set([self.node1.uid, self.node2.uid, self.node3.uid]))
+
+    # XXX `array_contains_any` is not supported in local(aka lite) mode. skip this ut
+    def _test_query_with_array_filter(self):
+        self.store.update_nodes([self.node1, self.node3])
+        ret = self.store.query(query='test', group_name='group1', embed_keys=['vec1'], topk=10,
+                               filters={'tags': [2]})
+        self.assertEqual(len(ret), 2)
+        self.assertEqual(set([ret[0].uid, ret[1].uid]), set([self.node1.uid, self.node2.uid]))
