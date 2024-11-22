@@ -16,7 +16,7 @@ import copy
 import psutil
 
 import lazyllm
-from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final, timeout, LOG
+from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final, LOG
 
 class Status(Enum):
     TBSubmitted = 0,
@@ -125,10 +125,15 @@ class Job(object):
         if self.sync:
             self.ps.wait()
         else:
-            with timeout(3600, msg='Launch failed: No computing resources are available.'):
-                while self.status in (Status.TBSubmitted, Status.InQueue, Status.Pending):
-                    time.sleep(2)
             self.launcher.all_processes[self.launcher._id].append((self.jobid, self))
+            n = 0
+            while self.status in (Status.TBSubmitted, Status.InQueue, Status.Pending):
+                time.sleep(2)
+                n += 1
+                if n > 1800:  # 3600s
+                    self.launcher.all_processes[self.launcher._id].pop()
+                    LOG.error('Launch failed: No computing resources are available.')
+                    break
 
     def restart(self, *, fixed=False):
         self.stop()
@@ -570,9 +575,12 @@ class ScoLauncher(LazyLLMLaunchersBase):
                     self._scancel_job(cmd)
                     time.sleep(0.5)  # Avoid the execution of scancel and scontrol too close together.
 
-            with lazyllm.timeout(25):
-                while self.status not in (Status.Done, Status.Cancelled, Status.Failed):
-                    time.sleep(1)
+            n = 0
+            while self.status not in (Status.Done, Status.Cancelled, Status.Failed):
+                time.sleep(1)
+                n += 1
+                if n > 25:
+                    break
 
             if self.ps:
                 self.ps.terminate()

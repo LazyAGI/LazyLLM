@@ -1,7 +1,10 @@
 import sys
 import argparse
 import json
+
+import lazyllm
 from lazyllm.engine.lightengine import LightEngine
+from lazyllm.tools.train_service.serve import TrainServer
 
 # lazyllm run xx.json / xx.dsl / xx.lazyml
 # lazyllm run chatbot --model=xx --framework=xx --source=xx
@@ -47,9 +50,17 @@ def graph(json_file):
         res = engine.run(eid, query)
         print(f'answer: {res}')
 
+def training_service():
+    train_server = TrainServer()
+    local_server = lazyllm.ServerModule(train_server, launcher=lazyllm.launcher.EmptyLauncher(sync=False))
+    local_server.start()
+    local_server()
+    local_server.wait()
+
 def run(commands):
     if not commands:
-        print('Usage:\n  lazyllm run graph.json\n  lazyllm run chatbot\n  lazyllm run rag\n')
+        print('Usage:\n  lazyllm run graph.json\n  lazyllm run chatbot\n  '
+              'lazyllm run rag\n  lazyllm run training_service\n')
 
     parser = argparse.ArgumentParser(description='lazyllm deploy command')
     parser.add_argument('command', type=str, help='command')
@@ -75,6 +86,8 @@ def run(commands):
             rag(llm, args.documents)
     elif args.command.endswith('.json'):
         graph(args.command)
+    elif args.command == 'training_service':
+        training_service()
     else:
         print('lazyllm run is not ready yet.')
         sys.exit(0)
