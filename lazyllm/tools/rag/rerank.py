@@ -10,7 +10,7 @@ from .retriever import _PostProcess
 class Reranker(ModuleBase, _PostProcess):
     registered_reranker = dict()
 
-    def __new__(cls, name: Optional[Union[Callable, str]] = "ModuleReranker", *args, **kwargs):
+    def __new__(cls, name: str = "ModuleReranker", *args, **kwargs):
         if isinstance(name, str):
             assert name in cls.registered_reranker, f"Reranker: {name} is not registered, please register first."
             item = cls.registered_reranker[name]
@@ -91,14 +91,14 @@ def KeywordFilter(
 @Reranker.register_reranker()
 class ModuleReranker(Reranker):
 
-    def __init__(self, name: Optional[Union[Callable, str]] = "ModuleReranker", target: Optional[str] = None,
+    def __init__(self, name: str = "ModuleReranker", model: Optional[Union[Callable, str]] = None, target: Optional[str] = None,
                  output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs) -> None:
         super().__init__(name, target, output_format, join, **kwargs)
-        if isinstance(name, str):
-            assert 'model' in self._kwargs
-            self._reranker = lazyllm.TrainableModule(self._kwargs['model'])
+        assert model is not None, "Reranker model must be specified as a model name or a callable."
+        if isinstance(model, str):
+            self._reranker = lazyllm.TrainableModule(model)
         else:
-            self._reranker = name
+            self._reranker = model
 
     def forward(self, nodes: List[DocNode], query: str = "") -> List[DocNode]:
         if not nodes:

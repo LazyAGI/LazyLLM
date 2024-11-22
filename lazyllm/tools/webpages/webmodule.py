@@ -365,7 +365,7 @@ class WebModule(ModuleBase):
         self.broadcast_url = f'http://0.0.0.0:{port}' 
 
         self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True)
-        LOG.success(f'LazyLLM webmodule launched successfully: Running on local URL: {self.broadcast_url}', flush=True)
+        LOG.success(f'LazyLLM webmodule launched successfully: Running on: {self.broadcast_url}, local URL: {self.url}', flush=True)
 
     def _update(self, *, mode=None, recursive=True):
         super(__class__, self)._update(mode=mode, recursive=recursive)
