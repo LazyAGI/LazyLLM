@@ -255,7 +255,7 @@ class DocImpl:
         all_groups = self.store.all_groups()
         LOG.info(f"add_files: Trying to merge store with {all_groups}")
         for group in all_groups:
-            if not self.store.is_group_active(group):
+            if group != LAZY_ROOT_NAME and not self.store.is_group_active(group):
                 continue
             # Duplicate group will be discarded automatically
             nodes = self._get_nodes(group, temp_store)

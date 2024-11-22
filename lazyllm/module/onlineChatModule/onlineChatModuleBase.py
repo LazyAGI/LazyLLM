@@ -6,11 +6,14 @@ import requests
 import re
 from typing import Tuple, List, Dict, Union, Any
 import time
+
 import lazyllm
 from lazyllm import globals, FileSystemQueue
 from lazyllm.components.prompter import PrompterBase, ChatPrompter
 from lazyllm.components.formatter import FormatterBase, EmptyFormatter
+from lazyllm.components.utils.file_operate import delete_old_files
 from ..module import ModuleBase, Pipeline
+
 
 class OnlineChatModuleBase(ModuleBase):
 
@@ -318,9 +321,32 @@ class OnlineChatModuleBase(ModuleBase):
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
         raise NotImplementedError(f"{self._model_series} not implemented _query_finetuning_job method in subclass")
 
+    def _query_finetuned_jobs(self) -> dict:
+        raise NotImplementedError(f"{self._model_series} not implemented _query_finetuned_jobs method in subclass")
+
+    def _get_finetuned_model_names(self) -> (List[str], List[str]):
+        raise NotImplementedError(f"{self._model_series} not implemented _get_finetuned_model_names method in subclass")
+
     def set_train_tasks(self, train_file, **kw):
         self._train_file = train_file
         self._train_parameters = kw
+
+    def set_specific_finetuned_model(self, model_id):
+        valid_jobs, _ = self._get_finetuned_model_names()
+        valid_model_id = [model for _, model in valid_jobs]
+        if model_id in valid_model_id:
+            self._model_name = model_id
+            self._is_trained = True
+        else:
+            raise ValueError(f"Cannot find modle({model_id}), in fintuned model list: {valid_model_id}")
+
+    def _get_temp_save_dir_path(self):
+        save_dir = os.path.join(lazyllm.config['temp_dir'], 'online_model_sft_log')
+        if not os.path.exists(save_dir):
+            os.system(f'mkdir -p {save_dir}')
+        else:
+            delete_old_files(save_dir)
+        return save_dir
 
     def _get_train_tasks(self):
         if not self._model_name or not self._train_file:

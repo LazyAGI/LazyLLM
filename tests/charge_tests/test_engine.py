@@ -259,3 +259,13 @@ class TestEngine(unittest.TestCase):
             assert '一天' in stream_result and '小时' in stream_result
             assert '您好，我的答案是' in stream_result and '24' in stream_result
             assert '蓝鲸' in result and '水' in result
+
+    def test_egine_online_serve_train(self):
+        envs = ['glm_api_key', 'qwen_api_key']
+        sources = ['glm', 'qwen']
+        engine = LightEngine()
+
+        for env, source in list(zip(envs, sources)):
+            token = lazyllm.config[env]
+            res = engine.online_model_get_all_trained_models(token, source=source)
+            assert isinstance(res, list)
