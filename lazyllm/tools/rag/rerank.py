@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Union, Dict, Any
 
 import lazyllm
 from lazyllm import ModuleBase, LOG
@@ -11,17 +11,20 @@ class Reranker(ModuleBase, _PostProcess):
     registered_reranker = dict()
 
     def __new__(cls, name: str = "ModuleReranker", *args, **kwargs):
-        assert name in cls.registered_reranker, f"Reranker: {name} is not registered, please register first."
-        item = cls.registered_reranker[name]
+        if isinstance(name, str):
+            assert name in cls.registered_reranker, f"Reranker: {name} is not registered, please register first."
+            item = cls.registered_reranker[name]
+        else:
+            item = cls.registered_reranker["ModuleReranker"]
         if isinstance(item, type) and issubclass(item, Reranker):
             return super(Reranker, cls).__new__(item)
         else:
             return super(Reranker, cls).__new__(cls)
 
-    def __init__(self, name: str = "ModuleReranker", target: Optional[str] = None,
+    def __init__(self, name: Optional[Union[Callable, str]] = "ModuleReranker", target: Optional[str] = None,
                  output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs) -> None:
         super().__init__()
-        self._name = name
+        self._name = name if isinstance(name, str) else "ModuleReranker"
         self._kwargs = kwargs
         _PostProcess.__init__(self, target, output_format, join)
 
@@ -88,11 +91,14 @@ def KeywordFilter(
 @Reranker.register_reranker()
 class ModuleReranker(Reranker):
 
-    def __init__(self, name: str = "ModuleReranker", target: Optional[str] = None,
+    def __init__(self, name: str = "ModuleReranker", model: Optional[Union[Callable, str]] = None, target: Optional[str] = None,
                  output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs) -> None:
         super().__init__(name, target, output_format, join, **kwargs)
-        assert 'model' in self._kwargs
-        self._reranker = lazyllm.TrainableModule(self._kwargs['model'])
+        assert model is not None, "Reranker model must be specified as a model name or a callable."
+        if isinstance(model, str):
+            self._reranker = lazyllm.TrainableModule(model)
+        else:
+            self._reranker = model
 
     def forward(self, nodes: List[DocNode], query: str = "") -> List[DocNode]:
         if not nodes:
@@ -100,7 +106,7 @@ class ModuleReranker(Reranker):
 
         docs = [node.get_text(metadata_mode=MetadataMode.EMBED) for node in nodes]
         top_n = self._kwargs['topk'] if 'topk' in self._kwargs else len(docs)
-        if self._reranker._deploy_type == lazyllm.deploy.Infinity:
+        if self._reranker.type == "ONLINE_RERANK" or self._reranker._deploy_type == lazyllm.deploy.Infinity:
             sorted_indices = self._reranker(query, documents=docs, top_n=top_n)
         else:
             inps = {'query': query, 'documents': docs, 'top_n': top_n}

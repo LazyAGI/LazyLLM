@@ -219,10 +219,11 @@ class DocWebModule(ModuleBase):
         self.api_url = self.doc_server._url.rsplit("/", 1)[0]
         self.web_ui = WebUi(self.api_url)
         self.demo = self.web_ui.create_ui()
-        self.url = f'http://0.0.0.0:{port}'
-
+        self.url = f'http://127.0.0.1:{port}'
+        self.broadcast_url = f'http://0.0.0.0:{port}'
+        
         self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True)
-        LOG.success(f'LazyLLM docwebmodule launched successfully: Running on local URL: {self.url}', flush=True)
+        LOG.success(f'LazyLLM docwebmodule launched successfully: Running on: {self.broadcast_url}, local URL: {self.url}', flush=True)
 
     def _get_deploy_tasks(self):
         return Pipeline(self._work)
@@ -256,7 +257,7 @@ class DocWebModule(ModuleBase):
 
     def _verify_port_access(self, port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            result = s.connect_ex(("localhost", port))
+            result = s.connect_ex(("127.0.0.1", port))
             return result != 0
 
     def __repr__(self):

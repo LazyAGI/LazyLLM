@@ -5,6 +5,7 @@ import os
 import requests
 import re
 from typing import Tuple, List, Dict, Union, Any
+from urllib.parse import urljoin
 import time
 
 import lazyllm
@@ -88,10 +89,10 @@ class OnlineChatModuleBase(ModuleBase):
         }
 
     def _set_chat_url(self):
-        self._url = os.path.join(self._base_url, 'chat/completions')
+        self._url = urljoin(self._base_url, 'chat/completions')
 
     def _get_models_list(self):
-        url = os.path.join(self._base_url, 'models')
+        url = urljoin(self._base_url, 'models')
         headers = {'Authorization': 'Bearer ' + self._api_key}
         with requests.get(url, headers=headers) as r:
             if r.status_code != 200:

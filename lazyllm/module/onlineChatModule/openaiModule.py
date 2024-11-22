@@ -2,6 +2,7 @@ import json
 import os
 import requests
 from typing import Tuple, List
+from urllib.parse import urljoin
 import lazyllm
 from .onlineChatModuleBase import OnlineChatModuleBase
 from .fileHandler import FileHandlerBase
@@ -12,7 +13,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
                             "davinci-002", "gpt-4-0613"]
 
     def __init__(self,
-                 base_url: str = "https://api.openai.com/v1",
+                 base_url: str = "https://api.openai.com/v1/",
                  model: str = "gpt-3.5-turbo",
                  api_key: str = None,
                  stream: bool = True,
@@ -65,7 +66,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
             "Authorization": "Bearer " + self._api_key
         }
 
-        url = os.path.join(self._base_url, "files")
+        url = urljoin(self._base_url, "files")
 
         self.get_finetune_data(train_file)
 
@@ -94,7 +95,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
         return current_train_data
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
-        url = os.path.join(self._base_url, "fine_tuning/jobs")
+        url = urljoin(self._base_url, "fine_tuning/jobs")
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}",
