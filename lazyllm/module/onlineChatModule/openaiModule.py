@@ -2,6 +2,7 @@ import json
 import os
 import requests
 from typing import Tuple, List
+from urllib.parse import urljoin
 import lazyllm
 from .onlineChatModuleBase import OnlineChatModuleBase
 from .fileHandler import FileHandlerBase
@@ -12,7 +13,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
                             "davinci-002", "gpt-4-0613"]
 
     def __init__(self,
-                 base_url: str = "https://api.openai.com/v1",
+                 base_url: str = "https://api.openai.com/v1/",
                  model: str = "gpt-3.5-turbo",
                  api_key: str = None,
                  stream: bool = True,
@@ -65,7 +66,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
             "Authorization": "Bearer " + self._api_key
         }
 
-        url = os.path.join(self._base_url, "files")
+        url = urljoin(self._base_url, "files")
 
         self.get_finetune_data(train_file)
 
@@ -94,7 +95,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
         return current_train_data
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
-        url = os.path.join(self._base_url, "fine_tuning/jobs")
+        url = urljoin(self._base_url, "fine_tuning/jobs")
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}",
@@ -122,7 +123,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
         if not fine_tuning_job_id and not self.fine_tuning_job_id:
             return 'Invalid'
         job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
-        fine_tune_url = os.path.join(self._base_url, f"fine_tuning/jobs/{job_id}/cancel")
+        fine_tune_url = urljoin(self._base_url, f"fine_tuning/jobs/{job_id}/cancel")
         headers = {
             "Authorization": f"Bearer {self._api_key}"
         }
@@ -136,7 +137,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
             return f'JOB {job_id} status: {status}'
 
     def _query_finetuned_jobs(self):
-        fine_tune_url = os.path.join(self._base_url, "fine_tuning/jobs")
+        fine_tune_url = urljoin(self._base_url, "fine_tuning/jobs")
         headers = {
             "Authorization": f"Bearer {self._api_key}",
         }
@@ -178,7 +179,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
             raise RuntimeError("No job ID specified. Please ensure that a valid 'fine_tuning_job_id' is "
                                "provided as an argument or started a training job.")
         job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
-        fine_tune_url = os.path.join(self._base_url, f"fine_tuning/jobs/{job_id}/events")
+        fine_tune_url = urljoin(self._base_url, f"fine_tuning/jobs/{job_id}/events")
         headers = {
             "Authorization": f"Bearer {self._api_key}"
         }
@@ -194,7 +195,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
         return self.fine_tuning_job_id, model_id
 
     def _query_finetuning_job_info(self, fine_tuning_job_id):
-        fine_tune_url = os.path.join(self._base_url, f"fine_tuning/jobs/{fine_tuning_job_id}")
+        fine_tune_url = urljoin(self._base_url, f"fine_tuning/jobs/{fine_tuning_job_id}")
         headers = {
             "Authorization": f"Bearer {self._api_key}"
         }

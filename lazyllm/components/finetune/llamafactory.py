@@ -47,7 +47,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.export_config_path = export_config_path
         self.config_folder_path = os.path.dirname(os.path.abspath(__file__))
 
-        default_config_path = os.path.join(self.config_folder_path, 'llamafactory/sft.yaml')
+        default_config_path = os.path.join(self.config_folder_path, 'llamafactory', 'sft.yaml')
         self.template_dict = ArgsDict(self.load_yaml(default_config_path))
 
         if self.config_path:
@@ -64,7 +64,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.template_dict['template'] = self.get_template_name(base_model)
         self.template_dict.check_and_update(kw)
 
-        default_export_config_path = os.path.join(self.config_folder_path, 'llamafactory/lora_export.yaml')
+        default_export_config_path = os.path.join(self.config_folder_path, 'llamafactory', 'lora_export.yaml')
         self.export_dict = ArgsDict(self.load_yaml(default_export_config_path))
 
         if self.export_config_path:

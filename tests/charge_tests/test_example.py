@@ -18,7 +18,6 @@ class TestExamples(object):
         self.env_vars = [
             'LAZYLLM_OPENAI_API_KEY',
             'LAZYLLM_KIMI_API_KEY',
-            'LAZYLLM_QWEN_API_KEY',
             'LAZYLLM_SENSENOVA_API_KEY',
         ]
         self.webs = []

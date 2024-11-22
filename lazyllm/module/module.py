@@ -617,7 +617,7 @@ class _TrainableModuleImpl(ModuleBase):
             self._trainset, str) else self._trainset
         target_path = self._generate_target_path()
         if not os.path.exists(target_path):
-            os.system(f'mkdir -p {target_path}')
+            os.makedirs(target_path, exist_ok=True)
 
         kw = kw or self._get_train_or_deploy_args(mode, disable=['base_model', 'target_path'])
         task = getattr(self, f'_{mode}')(base_model=self._base_model, target_path=target_path, **kw)
