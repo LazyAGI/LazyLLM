@@ -17,7 +17,7 @@ class Bark(object):
         self.processor, self.bark = None, None
         self.init_flag = lazyllm.once_flag()
         self.device = 'cpu'
-        self.save_path = save_path if save_path else os.path.join(os.getcwd(), '.temp', 'bark')
+        self.save_path = save_path or os.path.join(lazyllm.config['temp_dir'], 'bark')
         if init:
             lazyllm.call_once(self.init_flag, self.load_bark)
 

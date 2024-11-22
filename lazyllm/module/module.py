@@ -585,11 +585,13 @@ class _TrainableModuleImpl(ModuleBase):
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
         self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model)
-        self._target_path = target_path if target_path else os.path.join(os.getcwd(), 'save_ckpt')
+        self._target_path = os.path.join(lazyllm.config['train_target_root'], target_path)
         self._stream = stream
         self._father = []
         self._launchers: Dict[str, Dict[str, Launcher]] = dict(default=dict(), manual=dict())
+        self._delimiter = '-LazySplit-'
         self._deployer = None
+        self._file_name = None
         self._specific_target_path = None
         self._train, self._finetune = train, finetune
         self.deploy_method(deploy)
@@ -627,26 +629,28 @@ class _TrainableModuleImpl(ModuleBase):
             return real_target_path
         return Pipeline(*self._get_train_tasks_impl(), after_train)
 
-    def _trian(self, name: str, ngpus: int = 1, mode: str = None, batch_size: int = 16,
-               micro_batch_size: int = 2, num_epochs: int = 3, learning_rate: float = 5e-4,
-               lora_r: int = 8, lora_alpha: int = 32, lora_dropout: float = 0.05, **kw):
+    def _async_finetune(self, name: str, ngpus: int = 1, **kw):
         assert name and isinstance(name, str), 'Invalid name: {name}, expect a valid string'
         assert name not in self._launchers['manual'], 'Duplicate name: {name}'
         self._launchers['manual'][name] = kw['launcher'] = launchers.remote(sync=False, ngpus=ngpus)
+        self._set_file_name(name)
 
-        Pipeline(*self._get_train_tasks_impl(
-            mode=mode, batch_size=batch_size, micro_batch_size=micro_batch_size, num_epochs=num_epochs,
-            learning_rate=learning_rate, lora_r=lora_r, lora_alpha=lora_alpha, lora_dropout=lora_dropout, **kw))()
+        def after_train(real_target_path):
+            self._finetuned_model_path = real_target_path
+            return real_target_path
+        return Pipeline(*self._get_train_tasks_impl(mode='finetune', **kw), after_train)()
 
     def _get_all_finetuned_models(self):
         valid_paths = []
         invalid_paths = []
         for root, dirs, files in os.walk(self._target_path):
             if root.endswith('lazyllm_merge'):
+                model_path = os.path.abspath(root)
+                model_id = model_path.split(os.sep)[-2].split(self._delimiter)[0]
                 if any(file.endswith(('.bin', '.safetensors')) for file in files):
-                    valid_paths.append(os.path.abspath(root))
+                    valid_paths.append((model_id, model_path))
                 else:
-                    invalid_paths.append(os.path.abspath(root))
+                    invalid_paths.append((model_id, model_path))
         return valid_paths, invalid_paths
 
     def _set_specific_finetuned_model(self, model_path):
@@ -723,13 +727,16 @@ class _TrainableModuleImpl(ModuleBase):
                 return name[:5] + '_' + name[-4:]
             return name
         base_model_name = optimize_name(base_model_name)
+        file_name = base_model_name if not self._file_name else self._file_name
         train_set_name = optimize_name(train_set_name)
 
-        target_path = os.path.join(self._target_path,
-                                   f"{base_model_name}-{train_set_name}-"
+        target_path = os.path.join(self._target_path, base_model_name,
+                                   f"{file_name}{self._delimiter}{train_set_name}{self._delimiter}"
                                    f"{datetime.now().strftime('%y%m%d%H%M%S%f')[:14]}")
         return target_path
 
+    def _set_file_name(self, name):
+        self._file_name = name
 
 class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
@@ -762,7 +769,7 @@ class TrainableModule(UrlModule):
     def stream(self, v: bool):
         self._stream = v
 
-    def get_all_finetuned_models(self):
+    def get_all_models(self):
         return self._impl._get_all_finetuned_models()
 
     def set_specific_finetuned_model(self, model_path):

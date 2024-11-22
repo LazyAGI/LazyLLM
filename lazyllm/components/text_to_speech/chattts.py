@@ -17,7 +17,7 @@ class ChatTTSModule(object):
         self.init_flag = lazyllm.once_flag()
         self.device = 'cpu'
         self.seed = 1024
-        self.save_path = save_path if save_path else os.path.join(os.getcwd(), '.temp', 'chattts')
+        self.save_path = save_path or os.path.join(lazyllm.config['temp_dir'], 'chattts')
         if init:
             lazyllm.call_once(self.init_flag, self.load_tts)
 

@@ -39,7 +39,7 @@ class CollieFinetune(LazyLLMFinetuneBase):
                  **kw
                  ):
         if not merge_path:
-            save_path = os.path.join(os.getcwd(), target_path)
+            save_path = os.path.join(lazyllm.config['train_target_root'], target_path)
             target_path, merge_path = os.path.join(save_path, "lazyllm_lora"), os.path.join(save_path, "lazyllm_merge")
             os.makedirs(target_path, exist_ok=True)
             os.makedirs(merge_path, exist_ok=True)
