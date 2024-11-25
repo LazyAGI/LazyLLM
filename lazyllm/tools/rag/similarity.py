@@ -1,6 +1,6 @@
 from typing import Optional, Callable, Literal, List
 from .component.bm25 import BM25
-import numpy as np
+from lazyllm.thirdparty import numpy as np
 from .doc_node import DocNode
 
 registered_similarities = dict()

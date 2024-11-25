@@ -163,9 +163,14 @@ class TestDocListServer(object):
         cls.manager = DocListManager(str(test_dir), "TestManager")
         cls.manager.init_tables()
         cls.manager.add_kb_group('group1')
+        cls.manager.add_kb_group('extra_group')
         cls.server = lazyllm.ServerModule(DocManager(cls.manager))
         cls.server.start()
         cls._test_inited = True
+
+        test_file_extra = test_dir.join("test_extra.txt")
+        test_file_extra.write("This is a test file extra.")
+        cls.test_file_extra = str(test_file_extra)
 
     def get_url(self, url, **kw):
         url = (self.server._url.rsplit("/", 1)[0] + '/' + url).rstrip('/')
@@ -186,7 +191,7 @@ class TestDocListServer(object):
     def test_list_kb_groups(self):
         response = requests.get(self.get_url('list_kb_groups'))
         assert response.status_code == 200
-        assert response.json().get('data') == [DocListManager.DEFAULT_GROUP_NAME, 'group1']
+        assert response.json().get('data') == [DocListManager.DEFAULT_GROUP_NAME, 'group1', 'extra_group']
 
     @pytest.mark.order(2)
     def test_list_files(self):
@@ -258,3 +263,14 @@ class TestDocListServer(object):
         assert response.status_code == 200 and len(response.json().get('data')) == 3
         response = requests.get(self.get_url('list_files_in_group', group_name='group1', alive=True))
         assert response.status_code == 200 and len(response.json().get('data')) == 1
+
+    @pytest.mark.order(6)
+    def test_add_files(self):
+        json_data = {
+            'files': [self.test_file_extra, "fake path"],
+            'group_name': "extra_group",
+            'metadatas': json.dumps([{"key": "value"}, {"key": "value"}])
+        }
+        response = requests.post(self.get_url('add_files'), json=json_data)
+        assert response.status_code == 200
+        assert len(response.json().get('data')) == 2 and response.json().get('data')[1] is None

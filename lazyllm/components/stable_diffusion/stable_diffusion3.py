@@ -1,8 +1,8 @@
 import os
 import base64
 import uuid
-from PIL import Image
-import numpy as np
+from lazyllm.thirdparty import PIL
+from lazyllm.thirdparty import numpy as np
 from io import BytesIO
 
 import lazyllm
@@ -20,7 +20,7 @@ class StableDiffusion3(object):
         self.trust_remote_code = trust_remote_code
         self.sd = None
         self.init_flag = lazyllm.once_flag()
-        self.save_path = save_path if save_path else os.path.join(os.getcwd(), '.temp/sd3')
+        self.save_path = save_path or os.path.join(lazyllm.config['temp_dir'], 'sd3')
         if init:
             lazyllm.call_once(self.init_flag, self.load_sd)
 
@@ -31,12 +31,12 @@ class StableDiffusion3(object):
 
     @staticmethod
     def image_to_base64(image):
-        if isinstance(image, Image.Image):
+        if isinstance(image, PIL.Image.Image):
             buffered = BytesIO()
             image.save(buffered, format="PNG")
             img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
         elif isinstance(image, np.ndarray):
-            image = Image.fromarray(image)
+            image = PIL.Image.fromarray(image)
             buffered = BytesIO()
             image.save(buffered, format="PNG")
             img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
@@ -50,10 +50,10 @@ class StableDiffusion3(object):
 
     @staticmethod
     def image_to_file(image, file_path):
-        if isinstance(image, Image.Image):
+        if isinstance(image, PIL.Image.Image):
             image.save(file_path, format="PNG")
         elif isinstance(image, np.ndarray):
-            image = Image.fromarray(image)
+            image = PIL.Image.fromarray(image)
             image.save(file_path, format="PNG")
         else:
             raise ValueError("Unsupported image type")

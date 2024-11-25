@@ -32,3 +32,4 @@ pypdf
 pytest
 numpy==1.26.4
 pymilvus
+async-timeout
