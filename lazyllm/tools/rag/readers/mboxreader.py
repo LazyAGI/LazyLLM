@@ -65,4 +65,4 @@ class MboxReader(LazyLLMReaderBase):
 
             i += 1
             if self._max_count > 0 and i >= self._max_count: break
-        return [DocNode(text=result, metadata=extra_info or {}) for result in results]
+        return [DocNode(content=result, metadata=extra_info or {}) for result in results]

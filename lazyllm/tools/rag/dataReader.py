@@ -220,7 +220,7 @@ class SimpleDirectoryReader(ModuleBase):
             with fs.open(input_file, encoding=encoding) as f:
                 data = f.read().decode(encoding)
 
-            doc = DocNode(text=data, metadata=metadata or {})
+            doc = DocNode(content=data, metadata=metadata or {})
             doc.docpath = str(input_file)
             if filename_as_id: doc.uid = str(input_file)
             documents.append(doc)

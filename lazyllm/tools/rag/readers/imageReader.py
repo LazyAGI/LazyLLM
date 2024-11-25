@@ -99,4 +99,4 @@ class ImageReader(LazyLLMReaderBase):
                 model = cast(pytesseract, self._parser_config['model'])
                 text_str = model.image_to_string(image, **self._pytesseract_model_kwargs)
 
-        return [DocNode(text=text_str, metadata=extra_info or {})]
+        return [DocNode(content=text_str, metadata=extra_info or {})]

@@ -11,7 +11,7 @@ from .deprecated import deprecated
 from .globals import globals, LazyLlmResponse, LazyLlmRequest, encode_request, decode_request
 from .bind import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9
 from .queue import FileSystemQueue
-from .utils import compile_func
+from .utils import compile_func, obj2str, str2obj
 
 __all__ = [
     # registry
@@ -33,6 +33,8 @@ __all__ = [
     'DynamicDescriptor',
     'singleton',
     'reset_on_pickle',
+    'obj2str',
+    'str2obj',
 
     # arg praser
     'LazyLLMCMD',

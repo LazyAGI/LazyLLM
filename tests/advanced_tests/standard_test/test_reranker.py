@@ -8,11 +8,11 @@ from lazyllm.tools.rag.rerank import Reranker, register_reranker
 class TestReranker(unittest.TestCase):
 
     def setUp(self):
-        self.doc1 = DocNode(text="This is a test document with the keyword apple.")
+        self.doc1 = DocNode(content="This is a test document with the keyword apple.")
         self.doc2 = DocNode(
-            text="This is another test document with the keyword banana."
+            content="This is another test document with the keyword banana."
         )
-        self.doc3 = DocNode(text="This document contains the keyword cherry.")
+        self.doc3 = DocNode(content="This document contains the keyword cherry.")
         self.nodes = [self.doc1, self.doc2, self.doc3]
         self.query = "test query"
 
@@ -63,7 +63,7 @@ class TestReranker(unittest.TestCase):
                 return node
             return None
 
-        custom_doc = DocNode(text="This document contains custom keyword.")
+        custom_doc = DocNode(content="This document contains custom keyword.")
         nodes = [self.doc1, self.doc2, self.doc3, custom_doc]
 
         reranker = Reranker(name="CustomReranker")

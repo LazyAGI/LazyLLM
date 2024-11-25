@@ -22,4 +22,4 @@ class DocxReader(LazyLLMReaderBase):
         metadata = {"file_name": file.name}
         if extra_info is not None: metadata.update(extra_info)
 
-        return [DocNode(text=text, metadata=metadata)]
+        return [DocNode(content=text, metadata=metadata)]

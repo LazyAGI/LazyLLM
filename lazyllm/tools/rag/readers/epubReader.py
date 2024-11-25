@@ -30,4 +30,4 @@ class EpubReader(LazyLLMReaderBase):
             if item.get_type() == ebooklib.ITEM_DOCUMENT:
                 text_list.append(html2text.html2text(item.get_content().decode("utf-8")))
         text = "\n".join(text_list)
-        return [DocNode(text=text, metadata=extra_info or {})]
+        return [DocNode(content=text, metadata=extra_info or {})]

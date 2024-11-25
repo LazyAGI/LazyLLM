@@ -46,7 +46,7 @@ class TestChromadbStore(unittest.TestCase):
                                    embed_dims=self.embed_dims, dir=self.store_dir)
 
         self.store.update_nodes(
-            [DocNode(uid="1", text="text1", group=LAZY_ROOT_NAME, parent=None)],
+            [DocNode(uid="1", content="text1", group=LAZY_ROOT_NAME, parent=None)],
         )
 
     def tearDown(self):
@@ -56,8 +56,8 @@ class TestChromadbStore(unittest.TestCase):
         self.assertEqual(set(self.store._collections.keys()), set(self.node_groups))
 
     def test_update_nodes(self):
-        node1 = DocNode(uid="1", text="text1", group="group1")
-        node2 = DocNode(uid="2", text="text2", group="group2")
+        node1 = DocNode(uid="1", content="text1", group="group1")
+        node2 = DocNode(uid="2", content="text2", group="group2")
         self.store.update_nodes([node1, node2])
         collection = self.store._collections["group1"]
         self.assertEqual(set(collection.peek(collection.count())["ids"]), set(["1", "2"]))
@@ -65,8 +65,8 @@ class TestChromadbStore(unittest.TestCase):
         self.assertEqual(nodes, [node1])
 
     def test_remove_group_nodes(self):
-        node1 = DocNode(uid="1", text="text1", group="group1")
-        node2 = DocNode(uid="2", text="text2", group="group2")
+        node1 = DocNode(uid="1", content="text1", group="group1")
+        node2 = DocNode(uid="2", content="text2", group="group2")
         self.store.update_nodes([node1, node2])
         collection = self.store._collections["group1"]
         self.assertEqual(collection.peek(collection.count())["ids"], ["1", "2"])
@@ -75,8 +75,8 @@ class TestChromadbStore(unittest.TestCase):
 
     def test_load_store(self):
         # Set up initial data to be loaded
-        node1 = DocNode(uid="1", text="text1", group="group1", parent=None)
-        node2 = DocNode(uid="2", text="text2", group="group1", parent=node1)
+        node1 = DocNode(uid="1", content="text1", group="group1", parent=None)
+        node2 = DocNode(uid="2", content="text2", group="group1", parent=node1)
         self.store.update_nodes([node1, node2])
 
         # Reset store and load from "persistent" storage
@@ -90,8 +90,8 @@ class TestChromadbStore(unittest.TestCase):
         self.assertEqual(nodes[1].parent.uid, "1")
 
     def test_insert_dict_as_sparse_embedding(self):
-        node1 = DocNode(uid="1", text="text1", group="group1", embedding={'default': {1: 10, 2: 20}})
-        node2 = DocNode(uid="2", text="text2", group="group1", embedding={'default': {0: 30, 2: 50}})
+        node1 = DocNode(uid="1", content="text1", group="group1", embedding={'default': {1: 10, 2: 20}})
+        node2 = DocNode(uid="2", content="text2", group="group1", embedding={'default': {0: 30, 2: 50}})
         orig_embedding_dict = {
             node1.uid: [0, 10, 20],
             node2.uid: [30, 0, 50],
@@ -112,16 +112,16 @@ class TestChromadbStore(unittest.TestCase):
         self.assertEqual(set(self.store.all_groups()), set(self.node_groups))
 
     def test_query(self):
-        node1 = DocNode(uid="1", text="text1", group="group1", parent=None)
-        node2 = DocNode(uid="2", text="text2", group="group1", parent=node1)
+        node1 = DocNode(uid="1", content="text1", group="group1", parent=None)
+        node2 = DocNode(uid="2", content="text2", group="group1", parent=node1)
         self.store.update_nodes([node1, node2])
         res = self.store.query(query='text1', group_name='group1', embed_keys=['default'], topk=2,
                                similarity_name='cosine', similarity_cut_off=0.000001)
         self.assertEqual(set([node1, node2]), set(res))
 
     def test_group_others(self):
-        node1 = DocNode(uid="1", text="text1", group="group1", parent=None)
-        node2 = DocNode(uid="2", text="text2", group="group1", parent=node1)
+        node1 = DocNode(uid="1", content="text1", group="group1", parent=None)
+        node2 = DocNode(uid="2", content="text2", group="group1", parent=node1)
         self.store.update_nodes([node1, node2])
         self.assertEqual(self.store.is_group_active("group1"), True)
         self.assertEqual(self.store.is_group_active("group2"), False)
@@ -133,8 +133,8 @@ class TestMapStore(unittest.TestCase):
         }
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
         self.store = MapStore(node_groups=self.node_groups, embed=self.mock_embed)
-        self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None)
-        self.node2 = DocNode(uid="2", text="text2", group="group1", parent=self.node1)
+        self.node1 = DocNode(uid="1", content="text1", group="group1", parent=None)
+        self.node2 = DocNode(uid="2", content="text2", group="group1", parent=self.node1)
 
     def test_update_nodes(self):
         self.store.update_nodes([self.node1, self.node2])
@@ -211,14 +211,14 @@ class TestMilvusStore(unittest.TestCase):
                                  embed_dims=self.embed_dims, global_metadata_desc=self.global_metadata_desc,
                                  uri=self.store_file)
 
-        self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
+        self.node1 = DocNode(uid="1", content="text1", group="group1", parent=None,
                              embedding={"vec1": [8.0, 9.0, 10.0], "vec2": [11.0, 12.0, 13.0, 14.0, 15.0]},
                              metadata={'comment': 'comment1'},
                              global_metadata={'comment': 'comment3', 'signature': 'node1', 'tags': [1, 3, 5]})
-        self.node2 = DocNode(uid="2", text="text2", group="group1", parent=self.node1,
+        self.node2 = DocNode(uid="2", content="text2", group="group1", parent=self.node1,
                              embedding={"vec1": [100.0, 200.0, 300.0], "vec2": [400.0, 500.0, 600.0, 700.0, 800.0]},
                              metadata={'comment': 'comment2', 'signature': 'node2'})
-        self.node3 = DocNode(uid="3", text="text3", group="group1", parent=None,
+        self.node3 = DocNode(uid="3", content="text3", group="group1", parent=None,
                              embedding={"vec1": [4.0, 5.0, 6.0], "vec2": [16.0, 17.0, 18.0, 19.0, 20.0]},
                              metadata={'comment': 'comment3', 'signature': 'node3'},
                              global_metadata={'tags': [1, 2, 3]})

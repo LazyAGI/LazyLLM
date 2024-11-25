@@ -7,9 +7,9 @@ from lazyllm.thirdparty import numpy as np
 class TestBM25(unittest.TestCase):
     def setUp(self):
         self.nodes = [
-            DocNode(text="This is a test document."),
-            DocNode(text="This document is for testing BM25."),
-            DocNode(text="BM25 is a ranking function used in information retrieval."),
+            DocNode(content="This is a test document."),
+            DocNode(content="This document is for testing BM25."),
+            DocNode(content="BM25 is a ranking function used in information retrieval."),
         ]
 
         self.bm25_en = BM25(self.nodes, language="en", topk=2)
@@ -36,16 +36,16 @@ class TestBM25(unittest.TestCase):
 class TestBM25Chinese(unittest.TestCase):
     def setUp(self):
         self.nodes = [
-            DocNode(text="这是一个测试文档。这个文档用于测试BM25。"),
+            DocNode(content="这是一个测试文档。这个文档用于测试BM25。"),
             DocNode(
-                text="BM25是一种在信息检索中使用的排序函数。信息检索系统通过BM25算法来排序文档和分数。"
+                content="BM25是一种在信息检索中使用的排序函数。信息检索系统通过BM25算法来排序文档和分数。"
             ),
-            DocNode(text="中文文档的测试内容。测试文档中包含多个句子。"),
+            DocNode(content="中文文档的测试内容。测试文档中包含多个句子。"),
             DocNode(
-                text="这个测试是为了验证BM25在中文文档中的表现。我们需要对多个文档进行排序测试。"
+                content="这个测试是为了验证BM25在中文文档中的表现。我们需要对多个文档进行排序测试。"
             ),
             DocNode(
-                text="文档的内容可以影响BM25的评分。排序函数的性能对于信息检索非常重要。"
+                content="文档的内容可以影响BM25的评分。排序函数的性能对于信息检索非常重要。"
             ),
         ]
 
