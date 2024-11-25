@@ -281,6 +281,19 @@ class LightEngine(Engine):
         """
         return self.online_train_client.get_training_cost(token, job_id, source)
 
+    def online_model_validate_api_key(self, token, source):
+        """
+        Validates the API key for a given supplier.
+
+        Args:
+        - token (str): API-Key provided by the user, used for authentication.
+        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+
+        Returns:
+        - bool: True if the API key is valid, False otherwise.
+        """
+        return self.online_train_client.validate_api_key(token, source)
+
     def build_node(self, node):
         if not isinstance(node, Node):
             if isinstance(node, str):

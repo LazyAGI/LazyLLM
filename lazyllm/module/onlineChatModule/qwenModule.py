@@ -176,6 +176,13 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         return r.json()
 
+    def _validate_api_key(self):
+        try:
+            self._query_finetuned_jobs()
+            return True
+        except Exception:
+            return False
+
     def _get_finetuned_model_names(self) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
         model_data = self._query_finetuned_jobs()
         res = list()

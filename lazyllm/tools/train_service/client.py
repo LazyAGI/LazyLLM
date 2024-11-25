@@ -406,3 +406,17 @@ class OnlineTrainClient:
             error = f"Failed to get cost. Because: {str(e)}"
             lazyllm.LOG.error(error)
             return error
+
+    def validate_api_key(self, token, source):
+        """
+        Validates the API key for a given supplier.
+
+        Args:
+        - token (str): API-Key provided by the user, used for authentication.
+        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+
+        Returns:
+        - bool: True if the API key is valid, False otherwise.
+        """
+        m = lazyllm.OnlineChatModule(source=source, api_key=token)
+        return m._validate_api_key()

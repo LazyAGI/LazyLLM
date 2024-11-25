@@ -266,3 +266,6 @@ class TestEngine(unittest.TestCase):
             token = lazyllm.config[env]
             res = engine.online_model_get_all_trained_models(token, source=source)
             assert isinstance(res, list)
+
+            res = engine.online_model_validate_api_key(token + 'ss', source=source)
+            assert res is False
