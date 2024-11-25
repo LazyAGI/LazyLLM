@@ -131,7 +131,12 @@ class TestEngine(unittest.TestCase):
 
     def test_engine_hook_multi_share(self):
         resources = [
-            dict(id='publish-llm', kind='LocalLLM', name='publish-llm', args=dict(base_model='internlm2-chat-7b'))
+            dict(
+                id='publish-llm',
+                kind='LocalLLM',
+                name='publish-llm',
+                args=dict(base_model='', deploy_method='dummy'),
+            )
         ]
         nodes = [
             {
