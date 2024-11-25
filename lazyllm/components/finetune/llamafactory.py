@@ -1,6 +1,7 @@
 import os
 import yaml
 import json
+import uuid
 import tempfile
 import random
 from datetime import datetime
@@ -75,7 +76,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.export_dict['export_dir'] = merge_path
         self.export_dict['template'] = self.template_dict['template']
 
-        self.temp_folder = os.path.join(lazyllm.config['temp_dir'], 'llamafactory_config')
+        self.temp_folder = os.path.join(lazyllm.config['temp_dir'], 'llamafactory_config', str(uuid.uuid4())[:10])
         if not os.path.exists(self.temp_folder):
             os.makedirs(self.temp_folder)
         self.log_file_path = None

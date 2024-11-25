@@ -49,6 +49,7 @@ class LocalTrainClient:
         - finetune_model_name: The name of the model to be fine-tuned.
         - base_model: The base model to use for traning.
         - data_path: The path to the training data.
+        - num_gpus: The number of gpus, default: 1.
         - training_type: The type of training (e.g., 'sft').
         - finetuning_type: The type of finetuning (e.g., 'lora').
         - val_size: The ratio of validation data set to training data set.
@@ -70,6 +71,7 @@ class LocalTrainClient:
             'finetune_model_name': train_config['finetune_model_name'],
             'base_model': train_config['base_model'],
             'data_path': train_config['data_path'],
+            'num_gpus': train_config['num_gpus'],
             'hyperparameters': {
                 'stage': train_config['training_type'].strip().lower(),
                 'finetuning_type': train_config['finetuning_type'].strip().lower(),

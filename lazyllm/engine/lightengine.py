@@ -66,6 +66,7 @@ class LightEngine(Engine):
         - training_type: The type of training (e.g., 'sft').
         - finetuning_type: The type of finetuning (e.g., 'lora').
         - val_size: The ratio of validation data set to training data set.
+        - num_gpus: The number of gpus, default: 1.
         - num_epochs: The number of training epochs.
         - learning_rate: The learning rate for training.
         - lr_scheduler_type: The type of learning rate scheduler.
