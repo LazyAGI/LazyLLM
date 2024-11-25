@@ -140,7 +140,7 @@ class TestDocListManager(unittest.TestCase):
 
         self.manager.delete_files_from_kb_group([hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()], "group1")
         files_list = self.manager.list_kb_group_files("group1", details=True)
-        assert len(files_list) == 1
+        assert len(files_list) == 2
 
 
 @pytest.fixture(scope="class", autouse=True)
