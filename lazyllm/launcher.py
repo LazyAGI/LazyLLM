@@ -16,7 +16,7 @@ import copy
 import psutil
 
 import lazyllm
-from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final, timeout, LOG
+from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final, LOG
 
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
@@ -125,18 +125,23 @@ class Job(object):
         cmd = self.get_executable_cmd(fixed=fixed)
         LOG.info(f'Command: {cmd}')
         if lazyllm.config['mode'] == lazyllm.Mode.Display: return
-        self.ps = subprocess.Popen(cmd.cmd, shell=True, executable='/bin/bash',
-                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.ps = subprocess.Popen(cmd.cmd, shell=True, stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT)
         self._get_jobid()
         self._enqueue_subprocess_output(hooks=self.output_hooks)
 
         if self.sync:
             self.ps.wait()
         else:
-            with timeout(3600, msg='Launch failed: No computing resources are available.'):
-                while self.status in (Status.TBSubmitted, Status.InQueue, Status.Pending):
-                    time.sleep(2)
             self.launcher.all_processes[self.launcher._id].append((self.jobid, self))
+            n = 0
+            while self.status in (Status.TBSubmitted, Status.InQueue, Status.Pending):
+                time.sleep(2)
+                n += 1
+                if n > 1800:  # 3600s
+                    self.launcher.all_processes[self.launcher._id].pop()
+                    LOG.error('Launch failed: No computing resources are available.')
+                    break
 
     def restart(self, *, fixed=False):
         self.stop()
@@ -924,7 +929,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             self.jobid = self.ps.pid if self.ps else None
 
         def get_jobip(self):
-            return '0.0.0.0'
+            return '127.0.0.1'
 
         def wait(self):
             if self.ps:
@@ -1265,9 +1270,12 @@ class ScoLauncher(LazyLLMLaunchersBase):
                     self._scancel_job(cmd)
                     time.sleep(0.5)  # Avoid the execution of scancel and scontrol too close together.
 
-            with lazyllm.timeout(25):
-                while self.status not in (Status.Done, Status.Cancelled, Status.Failed):
-                    time.sleep(1)
+            n = 0
+            while self.status not in (Status.Done, Status.Cancelled, Status.Failed):
+                time.sleep(1)
+                n += 1
+                if n > 25:
+                    break
 
             if self.ps:
                 self.ps.terminate()

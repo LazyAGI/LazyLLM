@@ -313,6 +313,33 @@ class UrlModule(ModuleBase, UrlTemplate):
         LOG.debug(f'url: {url}')
         self.__url = url
 
+    def _estimate_token_usage(self, text):
+        if not isinstance(text, str):
+            return 0
+        # extract english words, number and comma
+        pattern = r"\b[a-zA-Z0-9]+\b|,"
+        ascii_words = re.findall(pattern, text)
+        ascii_ch_count = sum(len(ele) for ele in ascii_words)
+        non_ascii_pattern = r"[^\x00-\x7F]"
+        non_ascii_chars = re.findall(non_ascii_pattern, text)
+        non_ascii_char_count = len(non_ascii_chars)
+        return int(ascii_ch_count / 3.0 + non_ascii_char_count + 1)
+
+    def _record_usage(self, usage: dict):
+        globals["usage"][self._module_id] = usage
+        par_muduleid = self._used_by_moduleid
+        if par_muduleid is None:
+            return
+        if par_muduleid not in globals["usage"]:
+            globals["usage"][par_muduleid] = usage
+            return
+        existing_usage = globals["usage"][par_muduleid]
+        if existing_usage["prompt_tokens"] == -1 or usage["prompt_tokens"] == -1:
+            globals["usage"][par_muduleid] = {"prompt_tokens": -1, "completion_tokens": -1}
+        else:
+            for k in globals["usage"][par_muduleid]:
+                globals["usage"][par_muduleid][k] += usage[k]
+
     # Cannot modify or add any attrubute of self
     # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
     # deploy parameters keys are in **kw
@@ -336,6 +363,7 @@ class UrlModule(ModuleBase, UrlTemplate):
         query = __input
         __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
         headers = {'Content-Type': 'application/json'}
+        text_input_for_token_usage = __input
 
         if isinstance(self, ServerModule):
             assert llm_chat_history is None and tools is None
@@ -396,7 +424,12 @@ class UrlModule(ModuleBase, UrlTemplate):
                             cache = ""
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
-            return self._formatter.format(self._extract_and_format(messages))
+            temp_output = self._extract_and_format(messages)
+            if isinstance(self, TrainableModule):
+                usage = {"prompt_tokens": self._estimate_token_usage(text_input_for_token_usage)}
+                usage["completion_tokens"] = self._estimate_token_usage(temp_output)
+                self._record_usage(usage)
+            return self._formatter.format(temp_output)
 
     def prompt(self, prompt=None):
         if prompt is None:
@@ -552,11 +585,13 @@ class _TrainableModuleImpl(ModuleBase):
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
         self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model)
-        self._target_path = target_path if target_path else os.path.join(os.getcwd(), 'save_ckpt')
+        self._target_path = os.path.join(lazyllm.config['train_target_root'], target_path)
         self._stream = stream
         self._father = []
         self._launchers: Dict[str, Dict[str, Launcher]] = dict(default=dict(), manual=dict())
+        self._delimiter = '-LazySplit-'
         self._deployer = None
+        self._file_name = None
         self._specific_target_path = None
         self._train, self._finetune = train, finetune
         self.deploy_method(deploy)
@@ -582,7 +617,7 @@ class _TrainableModuleImpl(ModuleBase):
             self._trainset, str) else self._trainset
         target_path = self._generate_target_path()
         if not os.path.exists(target_path):
-            os.system(f'mkdir -p {target_path}')
+            os.makedirs(target_path, exist_ok=True)
 
         kw = kw or self._get_train_or_deploy_args(mode, disable=['base_model', 'target_path'])
         task = getattr(self, f'_{mode}')(base_model=self._base_model, target_path=target_path, **kw)
@@ -594,26 +629,28 @@ class _TrainableModuleImpl(ModuleBase):
             return real_target_path
         return Pipeline(*self._get_train_tasks_impl(), after_train)
 
-    def _trian(self, name: str, ngpus: int = 1, mode: str = None, batch_size: int = 16,
-               micro_batch_size: int = 2, num_epochs: int = 3, learning_rate: float = 5e-4,
-               lora_r: int = 8, lora_alpha: int = 32, lora_dropout: float = 0.05, **kw):
+    def _async_finetune(self, name: str, ngpus: int = 1, **kw):
         assert name and isinstance(name, str), 'Invalid name: {name}, expect a valid string'
         assert name not in self._launchers['manual'], 'Duplicate name: {name}'
         self._launchers['manual'][name] = kw['launcher'] = launchers.remote(sync=False, ngpus=ngpus)
+        self._set_file_name(name)
 
-        Pipeline(*self._get_train_tasks_impl(
-            mode=mode, batch_size=batch_size, micro_batch_size=micro_batch_size, num_epochs=num_epochs,
-            learning_rate=learning_rate, lora_r=lora_r, lora_alpha=lora_alpha, lora_dropout=lora_dropout, **kw))()
+        def after_train(real_target_path):
+            self._finetuned_model_path = real_target_path
+            return real_target_path
+        return Pipeline(*self._get_train_tasks_impl(mode='finetune', **kw), after_train)()
 
     def _get_all_finetuned_models(self):
         valid_paths = []
         invalid_paths = []
         for root, dirs, files in os.walk(self._target_path):
             if root.endswith('lazyllm_merge'):
+                model_path = os.path.abspath(root)
+                model_id = model_path.split(os.sep)[-2].split(self._delimiter)[0]
                 if any(file.endswith(('.bin', '.safetensors')) for file in files):
-                    valid_paths.append(os.path.abspath(root))
+                    valid_paths.append((model_id, model_path))
                 else:
-                    invalid_paths.append(os.path.abspath(root))
+                    invalid_paths.append((model_id, model_path))
         return valid_paths, invalid_paths
 
     def _set_specific_finetuned_model(self, model_path):
@@ -690,13 +727,16 @@ class _TrainableModuleImpl(ModuleBase):
                 return name[:5] + '_' + name[-4:]
             return name
         base_model_name = optimize_name(base_model_name)
+        file_name = base_model_name if not self._file_name else self._file_name
         train_set_name = optimize_name(train_set_name)
 
-        target_path = os.path.join(self._target_path,
-                                   f"{base_model_name}-{train_set_name}-"
+        target_path = os.path.join(self._target_path, base_model_name,
+                                   f"{file_name}{self._delimiter}{train_set_name}{self._delimiter}"
                                    f"{datetime.now().strftime('%y%m%d%H%M%S%f')[:14]}")
         return target_path
 
+    def _set_file_name(self, name):
+        self._file_name = name
 
 class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
@@ -729,7 +769,7 @@ class TrainableModule(UrlModule):
     def stream(self, v: bool):
         self._stream = v
 
-    def get_all_finetuned_models(self):
+    def get_all_models(self):
         return self._impl._get_all_finetuned_models()
 
     def set_specific_finetuned_model(self, model_path):

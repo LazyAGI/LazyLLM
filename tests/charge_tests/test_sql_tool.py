@@ -1,9 +1,6 @@
 import unittest
 from lazyllm.tools import SQLiteManger, SqlCall, SqlManager
 import lazyllm
-import tempfile
-from pathlib import Path
-import uuid
 from .utils import SqlEgsData, get_sql_init_keywords
 import datetime
 import re
@@ -27,13 +24,7 @@ class TestSqlManager(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.sql_managers: list[SqlManager] = []
-
-        filepath = str(Path(tempfile.gettempdir()) / f"{str(uuid.uuid4().hex)}.db")
-        cls.db_filepath = filepath
-        with open(filepath, "w") as _:
-            pass
-        cls.sql_managers.append(SQLiteManger(filepath, SqlEgsData.TEST_TABLES_INFO))
+        cls.sql_managers: list[SqlManager] = [SQLiteManger(":memory:", SqlEgsData.TEST_TABLES_INFO)]
         for db_type in ["PostgreSQL"]:
             username, password, host, port, database = get_sql_init_keywords(db_type)
             cls.sql_managers.append(
@@ -60,9 +51,6 @@ class TestSqlManager(unittest.TestCase):
             for table_name in SqlEgsData.TEST_TABLES:
                 rt, err_msg = sql_manager._drop_table_by_name(table_name)
                 assert rt, f"sql_manager table {table_name} error: {err_msg}"
-        db_path = Path(cls.db_filepath)
-        if db_path.is_file():
-            db_path.unlink()
 
     def test_manager_status(self):
         for sql_manager in self.sql_managers:

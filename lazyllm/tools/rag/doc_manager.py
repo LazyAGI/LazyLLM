@@ -5,7 +5,7 @@ from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
 
 from starlette.responses import RedirectResponse
-from fastapi import UploadFile
+from fastapi import UploadFile, Body
 
 import lazyllm
 from lazyllm import FastapiApp as app
@@ -81,6 +81,51 @@ class DocManager(lazyllm.ModuleBase):
             return BaseResponse(data=[ids, results])
         except Exception as e:
             lazyllm.LOG.error(f'upload_files exception: {e}')
+            return BaseResponse(code=500, msg=str(e), data=None)
+
+    @app.post("/add_files")
+    def add_files(self, files: List[str] = Body(...),
+                  group_name: str = Body(None),
+                  metadatas: Optional[str] = Body(None)):
+        try:
+            if metadatas:
+                metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)
+                assert len(files) == len(metadatas), 'Length of files and metadatas should be the same'
+
+            exists_files_info = self._manager.list_files(limit=None, details=True, status=DocListManager.Status.all)
+            exists_files_info = {row[2]: row[0] for row in exists_files_info}
+
+            exist_ids = []
+            new_files = []
+            new_metadatas = []
+            id_mapping = {}
+
+            for idx, file in enumerate(files):
+                if os.path.exists(file):
+                    exist_id = exists_files_info.get(file, None)
+                    if exist_id:
+                        update_kws = dict(fileid=exist_id, status=DocListManager.Status.success)
+                        if metadatas: update_kws["metadata"] = json.dumps(metadatas[idx])
+                        self._manager.update_file_message(**update_kws)
+                        exist_ids.append(exist_id)
+                        id_mapping[file] = exist_id
+                    else:
+                        new_files.append(file)
+                        if metadatas:
+                            new_metadatas.append(metadatas[idx])
+                else:
+                    id_mapping[file] = None
+
+            new_ids = self._manager.add_files(new_files, metadatas=new_metadatas, status=DocListManager.Status.success)
+            if group_name:
+                self._manager.add_files_to_kb_group(new_ids + exist_ids, group=group_name)
+
+            for file, new_id in zip(new_files, new_ids):
+                id_mapping[file] = new_id
+            return_ids = [id_mapping[file] for file in files]
+
+            return BaseResponse(data=return_ids)
+        except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.get("/list_files")

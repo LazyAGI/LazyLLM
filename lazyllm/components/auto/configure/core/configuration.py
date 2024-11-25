@@ -84,6 +84,6 @@ configer = None
 def get_configer():
     global configer
     if configer is None:
-        configer = AutoConfig(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs/finetune.csv'),
-                              os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs/deploy.csv'))
+        configer = AutoConfig(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs', 'finetune.csv'),
+                              os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs', 'deploy.csv'))
     return configer

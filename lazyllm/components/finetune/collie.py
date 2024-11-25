@@ -39,9 +39,10 @@ class CollieFinetune(LazyLLMFinetuneBase):
                  **kw
                  ):
         if not merge_path:
-            save_path = os.path.join(os.getcwd(), target_path)
+            save_path = os.path.join(lazyllm.config['train_target_root'], target_path)
             target_path, merge_path = os.path.join(save_path, "lazyllm_lora"), os.path.join(save_path, "lazyllm_merge")
-            os.system(f'mkdir -p {target_path} {merge_path}')
+            os.makedirs(target_path, exist_ok=True)
+            os.makedirs(merge_path, exist_ok=True)
         super().__init__(
             base_model,
             target_path,
@@ -63,23 +64,23 @@ class CollieFinetune(LazyLLMFinetuneBase):
         if not self.kw['data_path']:
             self.kw['data_path'] = trainset
 
-        run_file_path = os.path.join(self.folder_path, 'collie/finetune.py')
+        run_file_path = os.path.join(self.folder_path, 'collie', 'finetune.py')
         cmd = (f'python {run_file_path} '
                f'--base_model={self.base_model} '
                f'--output_dir={self.target_path} '
             )
         cmd += self.kw.parse_kwargs()
-        cmd += f' 2>&1 | tee {self.target_path}/{self.model_name}_$(date +"%Y-%m-%d_%H-%M-%S").log'
+        cmd += f' 2>&1 | tee {os.path.join(self.target_path, self.model_name)}_$(date +"%Y-%m-%d_%H-%M-%S").log'
 
         if self.merge_path:
-            run_file_path = os.path.join(self.folder_path, 'alpaca-lora/utils/merge_weights.py')
+            run_file_path = os.path.join(self.folder_path, 'alpaca-lora', 'utils', 'merge_weights.py')
 
             cmd = [cmd,
                    f'python {run_file_path} '
                    f'--base={self.base_model} '
                    f'--adapter={self.target_path} '
                    f'--save_path={self.merge_path} ',
-                   f' cp {self.base_model}/{self.cp_files} {self.merge_path} '
+                   f' cp {os.path.join(self.base_model,self.cp_files)} {self.merge_path} '
                 ]
 
         return cmd

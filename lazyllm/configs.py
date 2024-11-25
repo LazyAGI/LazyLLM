@@ -11,13 +11,13 @@ class Mode(Enum):
 
 
 class Config(object):
-    def __init__(self, prefix='LAZYLLM', home='~/.lazyllm/'):
+    def __init__(self, prefix='LAZYLLM', home=os.path.join(os.path.expanduser('~'), '.lazyllm')):
         self._config_params = dict()
         self._env_map_name = dict()
         self.prefix = prefix
         self.impl, self.cfgs = dict(), dict()
         self.add('home', str, os.path.expanduser(home), 'HOME')
-        os.system(f'mkdir -p {home}')
+        os.makedirs(home, exist_ok=True)
         self.cgf_path = os.path.join(self['home'], 'config.json')
         if os.path.exists(self.cgf_path):
             with open(self.cgf_path, 'r+') as f:
@@ -91,4 +91,6 @@ config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBU
                 ).add('repr_ml', bool, False, 'REPR_USE_ML'
                 ).add('rag_store', str, 'none', 'RAG_STORE'
                 ).add('gpu_type', str, 'A100', 'GPU_TYPE'
+                ).add('train_target_root', str, os.path.join(os.getcwd(), 'save_ckpt'), 'TRAIN_TARGET_ROOT'
+                ).add('temp_dir', str, os.path.join(os.getcwd(), '.temp'), 'TEMP_DIR'
                 )

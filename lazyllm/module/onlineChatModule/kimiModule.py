@@ -1,5 +1,5 @@
-import os
 import lazyllm
+from urllib.parse import urljoin
 from .onlineChatModuleBase import OnlineChatModuleBase
 
 class KimiModule(OnlineChatModuleBase):
@@ -29,4 +29,4 @@ class KimiModule(OnlineChatModuleBase):
                 "into other languages.")
 
     def _set_chat_url(self):
-        self._url = os.path.join(self._base_url, 'v1/chat/completions')
+        self._url = urljoin(self._base_url, 'v1/chat/completions')

@@ -6,9 +6,8 @@ import socket
 import sys
 import requests
 import traceback
-from lazyllm.thirdparty import gradio as gr
+from lazyllm.thirdparty import gradio as gr, PIL
 import time
-from PIL import Image
 import re
 
 import lazyllm
@@ -76,7 +75,7 @@ class WebModule(ModuleBase):
         if 'GRADIO_TEMP_DIR' in os.environ:
             cach_path = os.environ['GRADIO_TEMP_DIR']
         else:
-            cach_path = os.path.join(os.getcwd(), '.temp')
+            cach_path = os.path.join(lazyllm.config['temp_dir'], 'gradio_cach')
             os.environ['GRADIO_TEMP_DIR'] = cach_path
         if not os.path.exists(cach_path):
             os.makedirs(cach_path)
@@ -322,7 +321,7 @@ class WebModule(ModuleBase):
                 for i, file_path in enumerate(file_paths):
                     suffix = os.path.splitext(file_path)[-1].lower()
                     file = None
-                    if suffix in Image.registered_extensions().keys():
+                    if suffix in PIL.Image.registered_extensions().keys():
                         file = gr.Image(file_path)
                     elif suffix in ('.mp3', '.wav'):
                         file = gr.Audio(file_path)
@@ -362,10 +361,12 @@ class WebModule(ModuleBase):
             port = self.port
             assert self._verify_port_access(port), f'port {port} is occupied'
 
-        self.url = f'http://0.0.0.0:{port}'
+        self.url = f'http://127.0.0.1:{port}'
+        self.broadcast_url = f'http://0.0.0.0:{port}'
 
         self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True)
-        LOG.success(f'LazyLLM webmodule launched successfully: Running on local URL: {self.url}', flush=True)
+        LOG.success('LazyLLM webmodule launched successfully: Running on: '
+                    f'{self.broadcast_url}, local URL: {self.url}', flush=True)
 
     def _update(self, *, mode=None, recursive=True):
         super(__class__, self)._update(mode=mode, recursive=recursive)
@@ -399,5 +400,5 @@ class WebModule(ModuleBase):
 
     def _verify_port_access(self, port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            result = s.connect_ex(('localhost', port))
+            result = s.connect_ex(('127.0.0.1', port))
             return result != 0
