@@ -131,12 +131,7 @@ class TestEngine(unittest.TestCase):
 
     def test_engine_hook_multi_share(self):
         resources = [
-            {
-                "id": "publish-llm",
-                "kind": "OnlineLLM",
-                "name": "publish-llm",
-                "args": {"source": "sensenova", "base_model": "Sensechat-32K", "stream": False},
-            }
+            dict(id='publish-llm', kind='LocalLLM', name='publish-llm', args=dict(base_model='internlm2-chat-7b'))
         ]
         nodes = [
             {
