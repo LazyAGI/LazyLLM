@@ -36,6 +36,13 @@ async def get_last_report():
     else:
         return {{}}
 
+@app.get("/get_all_reports")
+async def get_all_reports():
+    if len(received_datas) > 0:
+        return list(received_datas)
+    else:
+        return []
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port={port})
@@ -56,6 +63,7 @@ class TestEngine(unittest.TestCase):
         ip_address = socket.gethostbyname(hostname)
         cls.report_url = f"http://{ip_address}:{HOOK_PORT}/{HOOK_ROUTE}"
         cls.get_url = f"http://{ip_address}:{HOOK_PORT}/get_last_report"
+        cls.get_all_url = f"http://{ip_address}:{HOOK_PORT}/get_all_reports"
 
         def read_stdout(process):
             for line in iter(process.stdout.readline, b''):
@@ -73,14 +81,23 @@ class TestEngine(unittest.TestCase):
         cls.fastapi_process.terminate()
         cls.fastapi_process.wait()
 
-    def get_last_report(self):
-        r = requests.get(self.get_url)
-        json_obj = {}
-        try:
-            json_obj = json.loads(r.content)
-        except Exception as e:
-            lazyllm.LOG.warning(str(e))
-        return json_obj
+    def get_report(self, only_last=True):
+        if only_last:
+            r = requests.get(self.get_url)
+            json_obj = {}
+            try:
+                json_obj = json.loads(r.content)
+            except Exception as e:
+                lazyllm.LOG.warning(str(e))
+            return json_obj
+        else:
+            r = requests.get(self.get_all_url)
+            json_obj = []
+            try:
+                json_obj = json.loads(r.content)
+            except Exception as e:
+                lazyllm.LOG.warning(str(e))
+            return json_obj
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
@@ -111,6 +128,43 @@ class TestEngine(unittest.TestCase):
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 1) == 2
         assert engine.run(gid, 2) == 4
+
+    def test_engine_hook_multi_share(self):
+        resources = [
+            {
+                "id": "publish-llm",
+                "kind": "OnlineLLM",
+                "name": "publish-llm",
+                "args": {"source": "sensenova", "base_model": "Sensechat-32K", "stream": False},
+            }
+        ]
+        nodes = [
+            {
+                "id": "draft-1",
+                "kind": "SharedLLM",
+                "name": "1732431852399",
+                "args": {"llm": "publish-llm", "prompt": "", "_lazyllm_enable_report": True},
+            },
+            {
+                "id": "draft-2",
+                "kind": "SharedLLM",
+                "name": "1732437478030",
+                "args": {"llm": "publish-llm", "_lazyllm_enable_report": True},
+            },
+        ]
+        edges = [
+            {"iid": "__start__", "oid": "draft-1"},
+            {"iid": "draft-1", "oid": "__end__"},
+            {"iid": "__start__", "oid": "draft-2"},
+            {"iid": "draft-2", "oid": "__end__"},
+        ]
+        engine = LightEngine()
+        engine.set_report_url(self.report_url)
+        gid = engine.start(nodes, edges, resources)
+        old_reports = self.get_report(only_last=False)
+        engine.run(gid, "你好")
+        new_reports = self.get_report(only_last=False)
+        assert len(new_reports) - len(old_reports) == 2
 
     def test_engine_switch(self):
         plus1 = dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
@@ -155,7 +209,7 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 'case1', 2) == 4
         assert engine.run(gid, 'case2', 2) == 6
         assert engine.run(gid, 'case3', 3) == 9
-        assert "prompt_tokens" in self.get_last_report()
+        assert "prompt_tokens" in self.get_report()
 
     def test_engine_ifs(self):
         plus1 = dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
@@ -180,7 +234,7 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 1) == 4
         assert engine.run(gid, 5) == 12
         assert engine.run(gid, 10) == 100
-        assert "prompt_tokens" in self.get_last_report()
+        assert "prompt_tokens" in self.get_report()
 
     def test_data_reflow_in_server(self):
         nodes = [
@@ -242,7 +296,7 @@ class TestEngine(unittest.TestCase):
         engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges, resources)
         assert engine.run(gid, 1) == 7
-        assert "prompt_tokens" in self.get_last_report()
+        assert "prompt_tokens" in self.get_report()
 
     def test_engine_loop(self):
         nodes = [dict(id='1', kind='Code', name='code', args=dict(code='def square(x: int): return x * x'))]
@@ -267,7 +321,7 @@ class TestEngine(unittest.TestCase):
         engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2) == 16
-        assert "prompt_tokens" in self.get_last_report()
+        assert "prompt_tokens" in self.get_report()
 
     def test_engine_warp(self):
         nodes = [dict(id='1', kind='Code', name='code', args=dict(code='def square(x: int): return x * x'))]
@@ -291,7 +345,7 @@ class TestEngine(unittest.TestCase):
         engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2, 3, 4, 5) == (4, 9, 16, 25)
-        assert "prompt_tokens" in self.get_last_report()
+        assert "prompt_tokens" in self.get_report()
 
     def test_engine_formatter(self):
         nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='python', rule='[:]'))]
