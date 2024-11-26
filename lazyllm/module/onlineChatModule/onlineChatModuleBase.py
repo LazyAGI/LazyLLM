@@ -349,6 +349,13 @@ class OnlineChatModuleBase(ModuleBase):
             delete_old_files(save_dir)
         return save_dir
 
+    def _validate_api_key(self):
+        try:
+            self._query_finetuned_jobs()
+            return True
+        except Exception:
+            return False
+
     def _get_train_tasks(self):
         if not self._model_name or not self._train_file:
             raise ValueError("train_model and train_file is required")

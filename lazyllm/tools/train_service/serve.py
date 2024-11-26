@@ -21,6 +21,7 @@ class JobDescription(BaseModel):
     finetune_model_name: str
     base_model: str = Field(default="qwen1.5-0.5b-chat")
     data_path: str = Field(default="alpaca/alpaca_data_zh_128.json")
+    num_gpus: int = Field(default=1)
     hyperparameters: dict = Field(
         default={
             "stage": "sft",
@@ -259,7 +260,7 @@ class TrainServer:
 
         # Add launcher into hyperparameters:
         hypram = job.hyperparameters
-        hypram['launcher'] = lazyllm.launcher.RemoteLauncher(sync=False, ngpus=1)
+        hypram['ngpus'] = job.num_gpus
 
         # Uniform Training DataSet:
         job.data_path = os.path.join(lazyllm.config['data_path'], job.data_path)
