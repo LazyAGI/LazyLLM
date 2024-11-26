@@ -66,6 +66,7 @@ class LightEngine(Engine):
         - training_type: The type of training (e.g., 'sft').
         - finetuning_type: The type of finetuning (e.g., 'lora').
         - val_size: The ratio of validation data set to training data set.
+        - num_gpus: The number of gpus, default: 1.
         - num_epochs: The number of training epochs.
         - learning_rate: The learning rate for training.
         - lr_scheduler_type: The type of learning rate scheduler.
@@ -279,6 +280,19 @@ class LightEngine(Engine):
             If an error occurs, a string containing the error message is returned.
         """
         return self.online_train_client.get_training_cost(token, job_id, source)
+
+    def online_model_validate_api_key(self, token, source):
+        """
+        Validates the API key for a given supplier.
+
+        Args:
+        - token (str): API-Key provided by the user, used for authentication.
+        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+
+        Returns:
+        - bool: True if the API key is valid, False otherwise.
+        """
+        return self.online_train_client.validate_api_key(token, source)
 
     def build_node(self, node):
         if not isinstance(node, Node):
