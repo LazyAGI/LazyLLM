@@ -74,6 +74,7 @@ class OnlineChatModuleBase(ModuleBase):
 
     def share(self, prompt: PrompterBase = None, format: FormatterBase = None):
         new = copy.copy(self)
+        new._hooks = set()
         new._set_mid()
         if prompt is not None: new.prompt(prompt)
         if format is not None: new.formatter(format)
