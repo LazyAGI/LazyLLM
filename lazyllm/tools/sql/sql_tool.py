@@ -38,6 +38,7 @@ class SqlManager(ModuleBase):
     SUPPORTED_DATA_TYPES = {
         "integer": sqlalchemy.Integer,
         "string": sqlalchemy.String,
+        "text": sqlalchemy.Text,
         "boolean": sqlalchemy.Boolean,
         "float": sqlalchemy.Float,
     }
