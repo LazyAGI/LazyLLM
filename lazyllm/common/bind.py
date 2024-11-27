@@ -119,7 +119,7 @@ class Bind(object):
         assert len(keys) == 0, f'Keys `{keys}` are already bind!'
         bind_args = args if len(self._args) == 0 else (
             [args[a.idx] if isinstance(a, Placeholder) else a for a in self._args])
-        kwargs = self._kw
+        kwargs = {k: args[v.idx] if isinstance(v, Placeholder) else v for k, v in self._kw.items()}
 
         bind_args = [a.get_arg(_bind_args_source) if isinstance(a, Bind.Args) else a for a in bind_args]
         kwargs = {k: v.get_arg(_bind_args_source) if isinstance(v, Bind.Args) else v for k, v in kwargs.items()}
