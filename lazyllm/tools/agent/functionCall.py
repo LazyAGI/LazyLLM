@@ -1,7 +1,7 @@
 from lazyllm.module import ModuleBase, OnlineChatModule
 from lazyllm.components import ChatPrompter
 from .functionCallFormatter import FunctionCallFormatter
-from lazyllm import pipeline, ifs, loop, globals, bind, LOG
+from lazyllm import pipeline, ifs, loop, globals, bind, LOG, Color, package, FileSystemQueue, colored_text
 import json5 as json
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable
@@ -34,7 +34,24 @@ FC_PROMPT_ONLINE = ("Don't make assumptions about what values to plug into funct
                     "Ask for clarification if a user request is ambiguous.\n")
 
 class FunctionCall(ModuleBase):
-    def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False, _prompt: str = None):
+
+    class StreamResponse():
+        def __init__(self, prefix: str, prefix_color: str = None, color: str = None, stream: bool = False):
+            self.stream = stream
+            self.prefix = prefix
+            self.prefix_color = prefix_color
+            self.color = color
+
+        def __call__(self, *inputs):
+            if self.stream: FileSystemQueue().enqueue(colored_text(f'\n{self.prefix}\n', self.prefix_color))
+            if len(inputs) == 1:
+                if self.stream: FileSystemQueue().enqueue(colored_text(f'{inputs[0]}', self.color))
+                return inputs[0]
+            if self.stream: FileSystemQueue().enqueue(colored_text(f'{inputs}', self.color))
+            return package(*inputs)
+
+    def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False,
+                 stream: bool = False, _prompt: str = None):
         super().__init__(return_trace=return_trace)
         if isinstance(llm, OnlineChatModule) and llm.series == "QWEN" and llm._stream is True:
             raise ValueError("The qwen platform does not currently support stream function calls.")
@@ -46,9 +63,16 @@ class FunctionCall(ModuleBase):
             .pre_hook(function_call_hook)
         self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
         with pipeline() as self._impl:
+            self._impl.ins = FunctionCall.StreamResponse('Received instruction:', prefix_color=Color.yellow,
+                                                         color=Color.green, stream=stream)
             self._impl.m1 = self._llm
             self._impl.m2 = self._parser
-            self._impl.m3 = ifs(lambda x: isinstance(x, list), self._tools_manager, lambda out: out)
+            self._impl.dis = FunctionCall.StreamResponse('Decision-making or result in this round:',
+                                                         prefix_color=Color.yellow, color=Color.green, stream=stream)
+            self._impl.m3 = ifs(lambda x: isinstance(x, list),
+                                pipeline(self._tools_manager, FunctionCall.StreamResponse('Tool-Call result:',
+                                         prefix_color=Color.yellow, color=Color.green, stream=stream)),
+                                lambda out: out)
             self._impl.m4 = self._tool_post_action | bind(input=self._impl.input, llm_output=self._impl.m1)
 
     def _parser(self, llm_output: Union[str, List[Dict[str, Any]]]):
@@ -101,10 +125,10 @@ class FunctionCall(ModuleBase):
         return self._impl(input)
 
 class FunctionCallAgent(ModuleBase):
-    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False):
+    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
-        self._agent = loop(FunctionCall(llm, tools, return_trace=return_trace),
+        self._agent = loop(FunctionCall(llm, tools, return_trace=return_trace, stream=stream),
                            stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
