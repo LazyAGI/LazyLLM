@@ -201,7 +201,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             self.sync = sync
             self.deployment_name = f"deployment-{uuid.uuid4().hex[:8]}"
             self.namespace = launcher.namespace
-            self.volume_config = launcher.volume_config
+            self.volume_configs = launcher.volume_configs
             self.gateway_name = launcher.gateway_name
             self.deployment_port = 8080
             self.host = launcher.http_host
@@ -233,7 +233,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 raise ValueError("Failed to obtain application port.")
             return precmd + " " + cmd
 
-        def _create_deployment_spec(self, cmd, volume_config=None):
+        def _create_deployment_spec(self, cmd, volume_configs=None):
             container = client.V1Container(
                 name=self.deployment_name,
                 image=self.image,
@@ -242,25 +242,41 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     requests=self.resource_config.get("requests", {"cpu": "2", "memory": "16Gi"}),
                     limits=self.resource_config.get("requests", {"cpu": "2", "memory": "16Gi"})
                 ),
-                volume_mounts=[] if not volume_config else [
+                volume_mounts=[] if not volume_configs else [
                     client.V1VolumeMount(
-                        mount_path=volume_config['mount_path'],
-                        name=volume_config.get("name", "lazyllm-k8s")
-                    )
+                        mount_path=vol_config["mount_path"],
+                        name=vol_config["name"]
+                    ) for vol_config in volume_configs
                 ]
             )
 
             volumes = []
-            if volume_config:
-                volumes.append(
-                    client.V1Volume(
-                        name=volume_config.get("name", "lazyllm-k8s"),
-                        host_path=client.V1HostPathVolumeSource(
-                            path=volume_config["host_path"],
-                            type="Directory"
+            if volume_configs:
+                for vol_config in volume_configs:
+                    if "nfs_server" in vol_config and "nfs_path" in vol_config:
+                        volumes.append(
+                            client.V1Volume(
+                                name=vol_config["name"],
+                                nfs=client.V1NFSVolumeSource(
+                                    server=vol_config["nfs_server"],
+                                    path=vol_config["nfs_path"],
+                                    read_only=vol_config.get("read_only", False)
+                                )
+                            )
                         )
-                    )
-                )
+                    elif "host_path" in vol_config:
+                        volumes.append(
+                            client.V1Volume(
+                                name=vol_config["name"],
+                                host_path=client.V1HostPathVolumeSource(
+                                    path=vol_config["host_path"],
+                                    type="Directory"
+                                )
+                            )
+                        )
+                    else:
+                        LOG.error(f"{vol_config} configuration error.")
+
             template = client.V1PodTemplateSpec(
                 metadata=client.V1ObjectMeta(labels={"app": self.deployment_name}),
                 spec=client.V1PodSpec(restart_policy="Always", containers=[container], volumes=volumes)
@@ -280,7 +296,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
         def _create_deployment(self, *, fixed=False):
             api_instance = client.AppsV1Api()
             cmd = self.get_executable_cmd(fixed=fixed)
-            deployment = self._create_deployment_spec(cmd.cmd, self.volume_config)
+            deployment = self._create_deployment_spec(cmd.cmd, self.volume_configs)
             try:
                 api_instance.create_namespaced_deployment(
                     body=deployment,
@@ -830,7 +846,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 LOG.error(f"Exception when reading Deployment status: {e}")
                 return Status.Failed
 
-    def __init__(self, kube_config_path=None, volume_config=None, image=None, resource_config=None,
+    def __init__(self, kube_config_path=None, volume_configs=None, image=None, resource_config=None,
                  namespace=None, gateway_name=None, host=None, path=None,
                  svc_type: Literal["LoadBalancer", "NodePort", "ClusterIP"] = None, retry=3,
                  sync=True, ngpus=None, **kwargs):
@@ -840,7 +856,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
         self.ngpus = ngpus
         config_data = self._read_config_file(lazyllm.config['k8s_config_path']) if lazyllm.config['k8s_config_path'] \
             else {}
-        self.volume_config = volume_config if volume_config else config_data.get('volume', {})
+        self.volume_configs = volume_configs if volume_configs else config_data.get('volume', [])
         self.image = image if image else config_data.get('container_image', "lazyllm/lazyllm:k8s_launcher")
         self.resource_config = resource_config if resource_config else config_data.get('resource', {})
         self.kube_config_path = kube_config_path if kube_config_path \
