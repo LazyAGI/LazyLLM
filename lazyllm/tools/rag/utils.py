@@ -330,8 +330,9 @@ class SqliteDocListManager(DocListManager):
     def delete_files_from_kb_group(self, file_ids: List[str], group: str):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             for doc_id in file_ids:
-                conn.execute("DELETE FROM kb_group_documents WHERE doc_id = ? AND group_name = ?", (doc_id, group))
-                conn.commit()
+                conn.execute("UPDATE kb_group_documents SET status = ? WHERE doc_id = ? AND group_name = ?",
+                             (DocListManager.Status.deleted, doc_id, group))
+            conn.commit()
 
     def get_file_status(self, fileid: str):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:

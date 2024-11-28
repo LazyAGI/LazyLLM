@@ -74,6 +74,7 @@ class OnlineChatModuleBase(ModuleBase):
 
     def share(self, prompt: PrompterBase = None, format: FormatterBase = None):
         new = copy.copy(self)
+        new._hooks = set()
         new._set_mid()
         if prompt is not None: new.prompt(prompt)
         if format is not None: new.formatter(format)
@@ -348,6 +349,13 @@ class OnlineChatModuleBase(ModuleBase):
         else:
             delete_old_files(save_dir)
         return save_dir
+
+    def _validate_api_key(self):
+        try:
+            self._query_finetuned_jobs()
+            return True
+        except Exception:
+            return False
 
     def _get_train_tasks(self):
         if not self._model_name or not self._train_file:

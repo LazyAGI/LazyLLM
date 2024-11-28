@@ -1,5 +1,6 @@
 import json
 import os
+import uuid
 import requests
 from typing import Tuple, List
 from urllib.parse import urljoin
@@ -101,7 +102,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
         cur_data["hyperparameters"]["learning_rate_multiplier"] = normal_config["learning_rate"]
         cur_data["hyperparameters"]["batch_size"] = normal_config["batch_size"]
         cur_data["hyperparameters"]["n_epochs"] = normal_config["num_epochs"]
-        cur_data["suffix"] = normal_config["finetune_model_name"]
+        cur_data["suffix"] = str(uuid.uuid4())[:7]
         return cur_data
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
