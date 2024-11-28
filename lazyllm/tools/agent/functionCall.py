@@ -33,22 +33,23 @@ which can be called zero or multiple times according to your needs:
 FC_PROMPT_ONLINE = ("Don't make assumptions about what values to plug into functions."
                     "Ask for clarification if a user request is ambiguous.\n")
 
+class StreamResponse():
+    def __init__(self, prefix: str, prefix_color: str = None, color: str = None, stream: bool = False):
+        self.stream = stream
+        self.prefix = prefix
+        self.prefix_color = prefix_color
+        self.color = color
+
+    def __call__(self, *inputs):
+        if self.stream: FileSystemQueue().enqueue(colored_text(f'\n{self.prefix}\n', self.prefix_color))
+        if len(inputs) == 1:
+            if self.stream: FileSystemQueue().enqueue(colored_text(f'{inputs[0]}', self.color))
+            return inputs[0]
+        if self.stream: FileSystemQueue().enqueue(colored_text(f'{inputs}', self.color))
+        return package(*inputs)
+
+
 class FunctionCall(ModuleBase):
-
-    class StreamResponse():
-        def __init__(self, prefix: str, prefix_color: str = None, color: str = None, stream: bool = False):
-            self.stream = stream
-            self.prefix = prefix
-            self.prefix_color = prefix_color
-            self.color = color
-
-        def __call__(self, *inputs):
-            if self.stream: FileSystemQueue().enqueue(colored_text(f'\n{self.prefix}\n', self.prefix_color))
-            if len(inputs) == 1:
-                if self.stream: FileSystemQueue().enqueue(colored_text(f'{inputs[0]}', self.color))
-                return inputs[0]
-            if self.stream: FileSystemQueue().enqueue(colored_text(f'{inputs}', self.color))
-            return package(*inputs)
 
     def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False,
                  stream: bool = False, _prompt: str = None):
@@ -63,14 +64,14 @@ class FunctionCall(ModuleBase):
             .pre_hook(function_call_hook)
         self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
         with pipeline() as self._impl:
-            self._impl.ins = FunctionCall.StreamResponse('Received instruction:', prefix_color=Color.yellow,
-                                                         color=Color.green, stream=stream)
+            self._impl.ins = StreamResponse('Received instruction:', prefix_color=Color.yellow,
+                                            color=Color.green, stream=stream)
             self._impl.m1 = self._llm
             self._impl.m2 = self._parser
-            self._impl.dis = FunctionCall.StreamResponse('Decision-making or result in this round:',
-                                                         prefix_color=Color.yellow, color=Color.green, stream=stream)
+            self._impl.dis = StreamResponse('Decision-making or result in this round:',
+                                            prefix_color=Color.yellow, color=Color.green, stream=stream)
             self._impl.m3 = ifs(lambda x: isinstance(x, list),
-                                pipeline(self._tools_manager, FunctionCall.StreamResponse('Tool-Call result:',
+                                pipeline(self._tools_manager, StreamResponse('Tool-Call result:',
                                          prefix_color=Color.yellow, color=Color.green, stream=stream)),
                                 lambda out: out)
             self._impl.m4 = self._tool_post_action | bind(input=self._impl.input, llm_output=self._impl.m1)

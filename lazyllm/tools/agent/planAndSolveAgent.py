@@ -45,9 +45,7 @@ class PlanAndSolveAgent(ModuleBase):
             self._agent.parse = (lambda text, query: package([], '', [v for v in re.split("\n\\s*\\d+\\. ", text)[1:]],
                                  query)) | bind(query=self._agent.input)
             with loop(stop_condition=lambda pre, res, steps, query: len(steps) == 0) as self._agent.lp:
-                self._agent.lp.pre_action = lambda pre_steps, response, steps, query: \
-                    package(SOLVER_PROMPT.format(previous_steps="\n".join(pre_steps), current_step=steps[0],
-                            objective=query) + "input: " + response + "\n" + steps[0], [])
+                self._agent.lp.pre_action = self._pre_action
                 self._agent.lp.solve = FunctionCallAgent(self._solve_llm, tools=self._tools,
                                                          return_trace=return_trace, stream=stream)
                 self._agent.lp.post_action = self._post_action | bind(self._agent.lp.input[0][0], _0,
@@ -55,6 +53,11 @@ class PlanAndSolveAgent(ModuleBase):
                                                                       self._agent.lp.input[0][3])
 
             self._agent.post_action = lambda pre, res, steps, query: res
+
+    def _pre_action(self, pre_steps, response, steps, query):
+        result = package(SOLVER_PROMPT.format(previous_steps="\n".join(pre_steps), current_step=steps[0],
+                                              objective=query) + "input: " + response + "\n" + steps[0], [])
+        return result
 
     def _post_action(self, pre_steps: List[str], response: str, steps: List[str], query: str):
         LOG.debug(f"current step: {steps[0]}, response: {response}")
