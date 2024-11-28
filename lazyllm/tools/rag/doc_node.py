@@ -166,4 +166,4 @@ class DocNode:
         return f"{metadata_str}\n\n{self.text}".strip()
 
     def to_dict(self) -> Dict:
-        return dict(text=self.text, embedding=self.embedding, metadata=self.metadata)
+        return dict(content=self.content, embedding=self.embedding, metadata=self.metadata)
