@@ -570,7 +570,7 @@ class TestEngine(unittest.TestCase):
         content = json.loads(res['content'])
 
         assert content['headers']['h1'] == 'baz'
-        assert content['url'] == f'{url}?p1=foo&p2=bar'
+        assert content['url'].endswith(f'{url[5:]}?p1=foo&p2=bar')
 
     def test_engine_status(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]

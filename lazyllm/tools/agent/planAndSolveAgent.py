@@ -13,7 +13,9 @@ PLANNER_PROMPT = (
     "to accurately complete the task. If the task is a question, "
     "the final step should almost always be 'Given the above steps taken, "
     "please respond to the users original question'. "
-    "At the end of your plan, say '<END_OF_PLAN>'"
+    "At the end of your plan, say '<END_OF_PLAN>'. Just output the plan itself "
+    "without any additional prompt information, such as mentioning that tools cannot be used directly. "
+    "You should not echo any other words after '<END_OF_PLAN>'"
 )
 
 SOLVER_PROMPT = (
