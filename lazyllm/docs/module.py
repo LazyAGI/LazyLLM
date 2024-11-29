@@ -743,11 +743,21 @@ Args:
 
 add_example('OnlineChatModule', '''\
 >>> import lazyllm
+>>> from functools import partial
 >>> m = lazyllm.OnlineChatModule(source="sensenova", stream=True)
 >>> query = "Hello!"
->>> resp = m(query)
->>> print(resp)
-"Hello! How can I assist you today?"
+>>> with lazyllm.ThreadPoolExecutor(1) as executor:
+...     future = executor.submit(partial(m, llm_chat_history=[]), query)
+...     while True:
+...         if value := lazyllm.FileSystemQueue().dequeue():
+...             print(f"output: {''.join(value)}")
+...         elif future.done():
+...             break
+...     print(f"ret: {future.result()}")
+...
+output: Hello
+output: ! How can I assist you today?
+ret: Hello! How can I assist you today?
 ''')
 
 add_chinese_doc('OnlineEmbeddingModule', '''\
