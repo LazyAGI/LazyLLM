@@ -1337,7 +1337,7 @@ add_example(
 >>> agent = ReWOOAgent(llm, tools)
 >>> query = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
 >>> res = agent(query)
->>> print(f"{res!r}")
+>>> print(res)
 '\nHennessy '
 """,
 )
