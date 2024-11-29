@@ -42,10 +42,10 @@ add_example('ModuleBase', '''\
 ... 
 >>> m = Module2()
 >>> m.submodules
-[<__main__.Module object at 0x7f3dc3bb16f0>]
+[<Module type=Module>]
 >>> m.m3 = Module()
 >>> m.submodules
-[<__main__.Module object at 0x7f3dc3bb16f0>, <__main__.Module object at 0x7f3dc3bb0be0>]
+[<Module type=Module>, <Module type=Module>]
 ''')
 
 add_chinese_doc('ModuleBase.forward', '''\
@@ -116,7 +116,7 @@ Args:
 
 add_example('ModuleBase.update', '''\
 >>> import lazyllm
->>> m = lazyllm.module.TrainableModule().finetune_method(lazyllm.finetune.dummy).deploy_method(lazyllm.deploy.dummy).mode('finetune').prompt(None)
+>>> m = lazyllm.module.TrainableModule().finetune_method(lazyllm.finetune.dummy).deploy_method(lazyllm.deploy.dummy).trainset("").mode('finetune').prompt(None)
 >>> m.evalset([1, 2, 3])
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
@@ -134,7 +134,7 @@ during update or eval, and the results will be stored in the eval_result variabl
 
 add_example('ModuleBase.evalset', '''\
 >>> import lazyllm
->>> m = lazyllm.module.TrainableModule().deploy_method(layzllm.deploy.dummy).finetune_method(lazyllm.finetune.dummy).mode("finetune").prompt(None)
+>>> m = lazyllm.module.TrainableModule().deploy_method(lazyllm.deploy.dummy).finetune_method(lazyllm.finetune.dummy).trainset("").mode("finetune").prompt(None)
 >>> m.evalset([1, 2, 3])
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
@@ -749,39 +749,40 @@ add_example('OnlineChatModule', '''\
 >>> for r in resp:
 ...     print(r)
 ...
-{'content': '你好'}
-{'content': '！'}
-{'content': '有什么'}
-{'content': '我可以'}
-{'content': '帮助'}
-{'content': '你的'}
-{'content': '吗'}
-{'content': '？'}
-{'content': ''}
->>> m = lazyllm.OnlineChatModule(source="sensenova", model="nova-ptc-s-v2", stream=False)
->>> train_file = "toy_chat_fine_tuning.jsonl"
->>> m.set_train_tasks(train_file=train_file, upload_url="https://file.sensenova.cn/v1/files")
->>> m._get_train_tasks()
-Num examples:
-First example:
-{'role': 'system', 'content': 'Marv is a factual chatbot that is also sarcastic.'}
-{'role': 'user', 'content': "What's the capital of France?"}
-{'role': 'assistant', 'content': "Paris, as if everyone doesn't know that already."}
-No errors found
-train file id: 7193d9a3-8b6e-4332-99cc-724dec75d9dd
-toy_chat_fine_tuning.jsonl upload success! file id is d632e591-f668-43a1-b5bf-49418e9c0fec
-fine tuning job ft-85f7bc96034441f2b64f9a5fff5d5b9c created, status: SUBMITTED
-fine tuning job ft-85f7bc96034441f2b64f9a5fff5d5b9c status: RUNNING
-...
-fine tuning job ft-85f7bc96034441f2b64f9a5fff5d5b9c status: SUCCEEDED
-fine tuned model: nova-ptc-s-v2:ft-fee492082cbe4a6d880d396f34f1bc50 finished  
->>> m._get_deploy_tasks()
-deployment c5aaf3bf-ef9b-4797-8c15-12ff04ed5372 created, status: SUBMITTED
-...
-deployment c5aaf3bf-ef9b-4797-8c15-12ff04ed5372 status: PENDING
-...
-deployment c5aaf3bf-ef9b-4797-8c15-12ff04ed5372 status: RUNNING
-deployment c5aaf3bf-ef9b-4797-8c15-12ff04ed5372 finished
+H
+e
+l
+l
+o
+!
+
+H
+o
+w
+
+c
+a
+n
+
+I
+
+a
+s
+s
+i
+s
+t
+
+y
+o
+u
+
+t
+o
+d
+a
+y
+?
 ''')
 
 add_chinese_doc('OnlineEmbeddingModule', '''\

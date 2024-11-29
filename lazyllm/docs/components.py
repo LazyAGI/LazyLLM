@@ -963,21 +963,21 @@ add_example('ChatPrompter', '''\
 >>> from lazyllm import ChatPrompter
 >>> p = ChatPrompter('hello world')
 >>> p.generate_prompt('this is my input')
-'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is my input\\\\n<|Assistant|>:\\\\n'
+'You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n\\\\n\\\\n\\\\n\\\\nthis is my input\\\\n\\\\n'
 >>> p.generate_prompt('this is my input', return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is my input'}]}
 >>>
 >>> p = ChatPrompter('hello world {instruction}', extro_keys=['knowledge'])
 >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'))
-'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is my inp\\\\n<|Assistant|>:\\\\n'
+'You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\nthis is my inp\\\\n\\\\n'
 >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n'}, {'role': 'user', 'content': 'this is my inp'}]}
 >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), history=[['s1', 'e1'], ['s2', 'e2']])
-'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n<|end_system|>\\\\n\\\\n<|Human|>:s1<|Assistant|>:e1<|Human|>:s2<|Assistant|>:e2\\\\n<|Human|>:\\\\nthis is my inp\\\\n<|Assistant|>:\\\\n'
+'You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n\\\\n\\\\ns1e1s2e2\\\\n\\\\nthis is my inp\\\\n\\\\n'
 >>>
 >>> p = ChatPrompter(dict(system="hello world", user="this is user instruction {input} "))
 >>> p.generate_prompt(dict(input="my input", query="this is user query"))
-'<|start_system|>You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n<|end_system|>\\\\n\\\\n\\\\n<|Human|>:\\\\nthis is user instruction my input this is user query\\\\n<|Assistant|>:\\\\n'
+'You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n\\\\n\\\\nthis is user instruction my input this is user query\\\\n\\\\n'
 >>> p.generate_prompt(dict(input="my input", query="this is user query"), return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
 ''')

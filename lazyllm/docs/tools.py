@@ -201,9 +201,9 @@ add_example('Document.add_reader', '''
 >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc1.add_reader("**/*.yml", YmlReader)
->>> print(doc1._local_file_reader)
+>>> print(doc1._impl._local_file_reader)
 # {'**/*.yml': <class '__main__.YmlReader'>}
->>> print(doc2._local_file_reader)
+>>> print(doc2._impl._local_file_reader)
 # {}
 >>> files = ["your_yml_files"]
 >>> Document.register_global_reader("**/*.yml", processYml)
@@ -1337,7 +1337,7 @@ add_example(
 >>> agent = ReWOOAgent(llm, tools)
 >>> query = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
 >>> res = agent(query)
->>> print(res)
+>>> print(f"{res!r}")
 '\nHennessy '
 """,
 )
