@@ -746,43 +746,8 @@ add_example('OnlineChatModule', '''\
 >>> m = lazyllm.OnlineChatModule(source="sensenova", stream=True)
 >>> query = "Hello!"
 >>> resp = m(query)
->>> for r in resp:
-...     print(r)
-...
-H
-e
-l
-l
-o
-!
-
-H
-o
-w
-
-c
-a
-n
-
-I
-
-a
-s
-s
-i
-s
-t
-
-y
-o
-u
-
-t
-o
-d
-a
-y
-?
+>>> print(resp)
+"Hello! How can I assist you today?"
 ''')
 
 add_chinese_doc('OnlineEmbeddingModule', '''\
