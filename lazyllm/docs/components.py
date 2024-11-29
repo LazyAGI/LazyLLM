@@ -1198,6 +1198,7 @@ Args:
 Notes:
     - 推理的输入：字符串。待生成音频的对应文字。
     - 推理的返回值：从生成的文件路径编码的字符串， 编码标志以 "<lazyllm-query>"开头，后面跟序列化后的字典, 字典中 `files`键存放了一个列表，元素是生成的音频文件路径。
+    - 支持的模型为：[musicgen-small](https://huggingface.co/facebook/musicgen-small)
 ''')
 
 add_example('MusicGenDeploy', ['''\
