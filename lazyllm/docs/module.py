@@ -116,7 +116,7 @@ Args:
 
 add_example('ModuleBase.update', '''\
 >>> import lazyllm
->>> m = lazyllm.module.TrainableModule().finetune_method(lazyllm.finetune.dummy).deploy_method(lazyllm.deploy.dummy).trainset("").mode('finetune').prompt(None)
+>>> m = lazyllm.module.TrainableModule().finetune_method(lazyllm.finetune.dummy).trainset("").deploy_method(lazyllm.deploy.dummy).mode('finetune').prompt(None)
 >>> m.evalset([1, 2, 3])
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
