@@ -1,5 +1,6 @@
 import json
 import os
+import uuid
 import requests
 from typing import Tuple, List
 from urllib.parse import urljoin
@@ -87,10 +88,10 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
         current_train_data = self.default_train_data.copy()
         current_train_data.update(data)
 
-        current_train_data["hyper_parameters"]["n_epochs"] = normal_config["num_epochs"]
-        current_train_data["hyper_parameters"]["learning_rate_multiplier"] = str(normal_config["learning_rate"])
-        current_train_data["hyper_parameters"]["batch_size"] = normal_config["batch_size"]
-        current_train_data["suffix"] = normal_config["finetune_model_name"]
+        current_train_data["hyperparameters"]["n_epochs"] = normal_config["num_epochs"]
+        current_train_data["hyperparameters"]["learning_rate_multiplier"] = str(normal_config["learning_rate"])
+        current_train_data["hyperparameters"]["batch_size"] = normal_config["batch_size"]
+        current_train_data["suffix"] = str(uuid.uuid4())[:7]
 
         return current_train_data
 
@@ -150,8 +151,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
         model_data = self._query_finetuned_jobs()
         res = list()
         for model in model_data['data']:
-            status = 'Done'if 'successful' in model['message'] else 'Failed'
-            res.append([model['id'], model['fine_tuned_model'], status])
+            res.append([model['id'], model['fine_tuned_model'], self._status_mapping(model['status'])])
         return res
 
     def _status_mapping(self, status):
