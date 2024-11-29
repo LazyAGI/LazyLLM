@@ -979,7 +979,7 @@ add_example('ChatPrompter', '''\
 >>> p.generate_prompt(dict(input="my input", query="this is user query"))
 'You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n\\\\n\\\\nthis is user instruction my input this is user query\\\\n\\\\n'
 >>> p.generate_prompt(dict(input="my input", query="this is user query"), return_dict=True)
-{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
 ''')
 
 # ============= MultiModal
