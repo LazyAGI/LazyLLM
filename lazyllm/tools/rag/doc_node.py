@@ -21,7 +21,7 @@ class DocNode:
                  parent: Optional["DocNode"] = None, metadata: Optional[Dict[str, Any]] = None,
                  global_metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
         if text and content:
-            raise ValueError(f'`text` and `content` cannot be set at the same time.')
+            raise ValueError('`text` and `content` cannot be set at the same time.')
 
         self.uid: str = uid if uid else str(uuid.uuid4())
         self.content: Optional[Union[str, List[Any]]] = content if content else text

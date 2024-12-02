@@ -293,7 +293,6 @@ class TestMilvusStore(unittest.TestCase):
                     self.assertEqual(node.text, orig_node.text)
                     break
 
-
     # XXX `array_contains_any` is not supported in local(aka lite) mode. skip this ut
     def _test_query_with_array_filter(self):
         self.store.update_nodes([self.node1, self.node3])
