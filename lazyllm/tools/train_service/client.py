@@ -253,7 +253,7 @@ class OnlineTrainClient:
         Args:
         - train_config (dict): Configuration parameters for the training task.
         - token (str): API-Key provided by the supplier, used for authentication.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - tuple: A tuple containing the Job-ID and its status if the training starts successfully.
@@ -284,7 +284,7 @@ class OnlineTrainClient:
 
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - list of lists: Each sublist contains [job_id, model_name, status] for each trained model.
@@ -307,7 +307,7 @@ class OnlineTrainClient:
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
         - job_id (str): The unique identifier of the training job to query.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - str: A string representing the current status of the training task. This could be one of:
@@ -332,7 +332,7 @@ class OnlineTrainClient:
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
         - job_id (str): The unique identifier of the training job to be cancelled.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - bool or str: Returns True if the training task was successfully cancelled. If the cancellation fails,
@@ -360,7 +360,7 @@ class OnlineTrainClient:
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
         - job_id (str): The unique identifier of the training job for which to retrieve the log.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
         - target_path (str, optional): The path where the log file should be saved. If not provided,
             the log will be saved to a temporary directory.
 
@@ -389,7 +389,7 @@ class OnlineTrainClient:
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
         - job_id (str): The unique identifier of the traning job for which to retrieve the token consumption.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - int or str: The number of tokens consumed by the traning task if the query is successful.
@@ -413,7 +413,7 @@ class OnlineTrainClient:
 
         Args:
         - token (str): API-Key provided by the user, used for authentication.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - bool: True if the API key is valid, False otherwise.

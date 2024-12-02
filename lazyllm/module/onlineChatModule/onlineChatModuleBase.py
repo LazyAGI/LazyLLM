@@ -4,7 +4,7 @@ import json
 import os
 import requests
 import re
-from typing import Tuple, List, Dict, Union, Any
+from typing import Tuple, List, Dict, Union, Any, Optional
 from urllib.parse import urljoin
 import time
 
@@ -23,7 +23,7 @@ class OnlineChatModuleBase(ModuleBase):
                  api_key: str,
                  base_url: str,
                  model_name: str,
-                 stream: bool,
+                 stream: Union[bool, Dict[str, str]],
                  trainable_models: List[str],
                  return_trace: bool = False,
                  **kwargs):
@@ -57,7 +57,7 @@ class OnlineChatModuleBase(ModuleBase):
         return self._stream
 
     @stream.setter
-    def stream(self, v: bool):
+    def stream(self, v: Union[bool, Dict[str, str]]):
         self._stream = v
 
     def prompt(self, prompt=None):
@@ -72,12 +72,13 @@ class OnlineChatModuleBase(ModuleBase):
         self._prompt._set_model_configs(system=self._get_system_prompt())
         return self
 
-    def share(self, prompt: PrompterBase = None, format: FormatterBase = None):
+    def share(self, prompt: PrompterBase = None, format: FormatterBase = None, stream: Optional[bool] = None):
         new = copy.copy(self)
         new._hooks = set()
         new._set_mid()
         if prompt is not None: new.prompt(prompt)
         if format is not None: new.formatter(format)
+        if stream is not None: new.stream = stream
         return new
 
     def _get_system_prompt(self):
@@ -143,10 +144,12 @@ class OnlineChatModuleBase(ModuleBase):
             chunk = json.loads(msg)
             message = self._convert_msg_format(chunk)
             if stream_output:
+                color = stream_output.get('color') if isinstance(stream_output, dict) else None
                 for item in message.get("choices", []):
                     delta = item.get("delta", {})
                     content = delta.get("content", '')
-                    if content and "tool_calls" not in delta: FileSystemQueue().enqueue(content)
+                    if content and "tool_calls" not in delta:
+                        FileSystemQueue().enqueue(lazyllm.colored_text(content, color))
             lazyllm.LOG.debug(f"message: {message}")
             return message
         except Exception:
@@ -258,7 +261,7 @@ class OnlineChatModuleBase(ModuleBase):
         data = self._prompt.generate_prompt(**params)
 
         data["model"] = self._model_name
-        data["stream"] = stream_output
+        data["stream"] = bool(stream_output)
         if len(kw) > 0:
             data.update(kw)
 
@@ -270,20 +273,15 @@ class OnlineChatModuleBase(ModuleBase):
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
                     if stream_output else requests.RequestException(r.text)
 
-            msg_json = list(
-                filter(
-                    lambda x: x,
-                    (
-                        [
-                            self._str_to_json(line, stream_output)
-                            for line in r.iter_lines()
-                            if len(line)
-                        ]
-                        if stream_output
-                        else [self._str_to_json(r.text, stream_output)]
-                    ),
-                )
-            )
+            if isinstance(stream_output, dict):
+                prefix, prefix_color = stream_output.get('prefix', ''), stream_output.get('prefix_color', '')
+                if prefix: FileSystemQueue().enqueue(lazyllm.colored_text(prefix, prefix_color))
+            msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()
+                            if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]),))
+            if isinstance(stream_output, dict):
+                suffix, suffix_color = stream_output.get('suffix', ''), stream_output.get('suffix_color', '')
+                if suffix: FileSystemQueue().enqueue(lazyllm.colored_text(suffix, suffix_color))
+
             usage = {"prompt_tokens": -1, "completion_tokens": -1}
             if len(msg_json) > 0 and "usage" in msg_json[-1] and isinstance(msg_json[-1]["usage"], dict):
                 for k in usage:
@@ -425,4 +423,4 @@ class OnlineChatModuleBase(ModuleBase):
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'OnlineChat', name=self._module_name, url=self._base_url,
-                                 stream=self._stream, return_trace=self._return_trace)
+                                 stream=bool(self._stream), return_trace=self._return_trace)
