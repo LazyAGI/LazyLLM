@@ -33,3 +33,4 @@ pytest
 numpy==1.26.4
 pymilvus
 async-timeout
+httpx<0.28.0
