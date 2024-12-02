@@ -1003,7 +1003,7 @@ Args:
 
 Notes: 
     - Input for infer: `str`. A description of the image to be generated.
-    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “lazyllm_images”, corresponding to a list whose elements are images encoded in base64.
+    - Return of infer: The string encoded from the generated file paths, starting with the encoding flag "<lazyllm-query>", followed by the serialized dictionary. The key `files` in the dictionary stores a list, with elements being the paths of the generated image files.
     - Supported models: [stable-diffusion-3-medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
 ''')
 
@@ -1026,7 +1026,7 @@ Args:
 
 Notes:
     - 推理的输入：字符串。待生成图像的描述。
-    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"lazyllm_images", 对应值为一个列表，其中的元素是被base64编码的图像。
+    - 推理的返回值：从生成的文件路径编码的字符串， 编码标志以 "<lazyllm-query>"开头，后面跟序列化后的字典, 字典中 `files`键存放了一个列表，元素是生成的图像文件路径。
     - 支持的模型为：[stable-diffusion-3-medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
 ''')
 
@@ -1037,8 +1037,8 @@ add_example('StableDiffusionDeploy', ['''\
 >>> url = deployer(base_model='stable-diffusion-3-medium')
 >>> model = UrlModule(url=url)
 >>> res = model('a tiny cat.')
->>> print(len(res), res[:50])
-... 1384335 {"lazyllm_images": ["iVBORw0KGgoAAAANSUhEUgAABAAAAA
+>>> print(res)
+... <lazyllm-query>{"query": "", "files": ["path/to/sd3/image_xxx.png"]}
 '''])
 
 add_english_doc('ChatTTSDeploy', '''\
@@ -1060,7 +1060,7 @@ Args:
 
 Notes:
     - Input for infer: `str`.  The text corresponding to the audio to be generated.
-    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “lazyllm_sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
+    - Return of infer: The string encoded from the generated file paths, starting with the encoding flag "<lazyllm-query>", followed by the serialized dictionary. The key `files` in the dictionary stores a list, with elements being the paths of the generated audio files.
     - Supported models: [ChatTTS](https://huggingface.co/2Noise/ChatTTS)
 ''')
 
@@ -1083,7 +1083,7 @@ Args:
 
 Notes:
     - 推理的输入：字符串。待生成音频的对应文字。
-    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"lazyllm_sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
+    - 推理的返回值：从生成的文件路径编码的字符串， 编码标志以 "<lazyllm-query>"开头，后面跟序列化后的字典, 字典中 `files`键存放了一个列表，元素是生成的音频文件路径。
     - 支持的模型为：[ChatTTS](https://huggingface.co/2Noise/ChatTTS)
 ''')
 
@@ -1094,8 +1094,8 @@ add_example('ChatTTSDeploy', ['''\
 >>> url = deployer(base_model='ChatTTS')
 >>> model = UrlModule(url=url)
 >>> res = model('Hello World!')
->>> print(len(res), res[:50])
-... {"lazyllm_sounds": [24000, [-0.006741484627127647, 0.00795
+>>> print(res)
+... <lazyllm-query>{"query": "", "files": ["path/to/chattts/sound_xxx.wav"]}
 '''])
 
 add_english_doc('BarkDeploy', '''\
@@ -1117,7 +1117,7 @@ Args:
 
 Notes:
     - Input for infer: `str`.  The text corresponding to the audio to be generated.
-    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “lazyllm_sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
+    - Return of infer: The string encoded from the generated file paths, starting with the encoding flag "<lazyllm-query>", followed by the serialized dictionary. The key `files` in the dictionary stores a list, with elements being the paths of the generated audio files.
     - Supported models: [bark](https://huggingface.co/suno/bark)
 ''')
 
@@ -1140,7 +1140,7 @@ Args:
 
 Notes:
     - 推理的输入：字符串。待生成音频的对应文字。
-    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"lazyllm_sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
+    - 推理的返回值：从生成的文件路径编码的字符串， 编码标志以 "<lazyllm-query>"开头，后面跟序列化后的字典, 字典中 `files`键存放了一个列表，元素是生成的音频文件路径。
     - 支持的模型为：[bark](https://huggingface.co/suno/bark)
 ''')
 
@@ -1151,8 +1151,8 @@ add_example('BarkDeploy', ['''\
 >>> url = deployer(base_model='bark')
 >>> model = UrlModule(url=url)
 >>> res = model('Hello World!')
->>> print(len(res), res[:50])
-... 373843 {"lazyllm_sounds": [24000, [-66.9375, -62.0625, -60.5, -60
+>>> print(res)
+... <lazyllm-query>{"query": "", "files": ["path/to/bark/sound_xxx.wav"]}
 '''])
 
 add_english_doc('MusicGenDeploy', '''\
@@ -1174,7 +1174,7 @@ Args:
 
 Notes:
     - Input for infer: `str`.  The text corresponding to the audio to be generated.
-    - Return of infer: A `str` that is the serialized form of a dictionary, with the keyword “lazyllm_sounds”, corresponding to a list where the first element is the sampling rate, and the second element is a list of audio data.
+    - Return of infer: The string encoded from the generated file paths, starting with the encoding flag "<lazyllm-query>", followed by the serialized dictionary. The key `files` in the dictionary stores a list, with elements being the paths of the generated audio files.
     - Supported models: [musicgen-small](https://huggingface.co/facebook/musicgen-small)
 ''')
 
@@ -1197,7 +1197,7 @@ Args:
 
 Notes:
     - 推理的输入：字符串。待生成音频的对应文字。
-    - 推理的返回值：一个字典被序列化后的字符串， 关键字是"lazyllm_sounds", 对应值为一个列表，其中第一个元素是采样率，第二个元素是一个音频数据对应的列表。
+    - 推理的返回值：从生成的文件路径编码的字符串， 编码标志以 "<lazyllm-query>"开头，后面跟序列化后的字典, 字典中 `files`键存放了一个列表，元素是生成的音频文件路径。
     - 支持的模型为：[musicgen-small](https://huggingface.co/facebook/musicgen-small)
 ''')
 
@@ -1208,7 +1208,7 @@ add_example('MusicGenDeploy', ['''\
 >>> url = deployer(base_model='musicgen-small')
 >>> model = UrlModule(url=url)
 >>> model('Symphony with flute as the main melody')
-4981065 {"lazyllm_sounds": [32000, [-931, -1206, -1170, -1078, -10, ...
+... <lazyllm-query>{"query": "", "files": ["path/to/musicgen/sound_xxx.wav"]}
 '''])
 
 add_english_doc('SenseVoiceDeploy', '''\
@@ -1310,8 +1310,8 @@ add_example('TTSDeploy', ['''\
 >>> url = deployer(base_model=model_name)
 >>> model = UrlModule(url=url)
 >>> res = model('Hello World!')
->>> print(len(res), res[:50])
-... 387355 {"lazyllm_sounds": [24000, [-111.9375, -106.4375, -106.875
+>>> print(res)
+... <lazyllm-query>{"query": "", "files": ["path/to/chattts/sound_xxx.wav"]}
 '''])
 
 # ============= Launcher
