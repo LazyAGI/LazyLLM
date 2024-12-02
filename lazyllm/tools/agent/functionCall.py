@@ -129,8 +129,9 @@ class FunctionCallAgent(ModuleBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
-        self._agent = loop(FunctionCall(llm, tools, return_trace=return_trace, stream=stream),
-                           stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+        self._fc = FunctionCall(llm, tools, return_trace=return_trace, stream=stream)
+        self._agent = loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+        self._fc._llm.used_by(self._module_id)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
         ret = self._agent(query, llm_chat_history) if llm_chat_history is not None else self._agent(query)
