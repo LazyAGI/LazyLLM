@@ -201,16 +201,16 @@ add_example('Document.add_reader', '''
 >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc1.add_reader("**/*.yml", YmlReader)
->>> print(doc1._local_file_reader)
-# {'**/*.yml': <class '__main__.YmlReader'>}
->>> print(doc2._local_file_reader)
-# {}
+>>> print(doc1._impl._local_file_reader)
+{'**/*.yml': <class '__main__.YmlReader'>}
+>>> print(doc2._impl._local_file_reader)
+{}
 >>> files = ["your_yml_files"]
 >>> Document.register_global_reader("**/*.yml", processYml)
 >>> doc1._impl._reader.load_data(input_files=files)
-# Call the class YmlReader.
+Call the class YmlReader.
 >>> doc2._impl._reader.load_data(input_files=files)
-# Call the function processYml.
+Call the function processYml.
 ''')
 
 add_english_doc('rag.readers.ReaderBase', '''
