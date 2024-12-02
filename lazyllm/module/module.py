@@ -726,7 +726,8 @@ class _TrainableModuleImpl(ModuleBase):
                 self._get_deploy_tasks.flag.set()
 
     def __del__(self):
-        [[launcher.cleanup() for launcher in group.values()] for group in self._launchers.values()]
+        if hasattr(self, '_launchers'):
+            [[launcher.cleanup() for launcher in group.values()] for group in self._launchers.values()]
 
     def _generate_target_path(self):
         base_model_name = os.path.basename(self._base_model)
