@@ -7,9 +7,7 @@ from .utils import parallel_do_embedding
 from .index_base import IndexBase
 from .store_base import StoreBase
 from .global_metadata import GlobalMetadataDesc, RAG_DOC_PATH, RAG_DOC_ID
-from lazyllm.common import override
-import pickle
-import base64
+from lazyllm.common import override, obj2str, str2obj
 
 class MilvusStore(StoreBase):
     # we define these variables as members so that pymilvus is not imported until MilvusStore is instantiated.
@@ -29,7 +27,7 @@ class MilvusStore(StoreBase):
                 'dtype': pymilvus.DataType.VARCHAR,
                 'max_length': 256,
             },
-            'text': {
+            'content': {
                 'dtype': pymilvus.DataType.VARCHAR,
                 'max_length': 65535,
             },
@@ -253,9 +251,9 @@ class MilvusStore(StoreBase):
     def _serialize_node_partial(self, node: DocNode) -> Dict:
         res = {
             'uid': node.uid,
-            'text': node.text,
+            'content': obj2str(node.content),
             'parent': node.parent.uid if node.parent else '',
-            'metadata': base64.b64encode(pickle.dumps(node._metadata)).decode('utf-8'),
+            'metadata': obj2str(node._metadata),
         }
 
         for k, v in node.embedding.items():
@@ -273,9 +271,9 @@ class MilvusStore(StoreBase):
 
         doc = DocNode(
             uid=record.pop('uid'),
-            text=record.pop('text'),
+            content=str2obj(record.pop('content')),
             parent=record.pop('parent'),  # this is the parent's uid
-            metadata=pickle.loads(base64.b64decode(record.pop('metadata').encode('utf-8'))),
+            metadata=str2obj(record.pop('metadata')),
         )
 
         for k, v in record.items():

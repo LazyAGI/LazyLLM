@@ -1,15 +1,13 @@
 from typing import Any, Dict, List, Optional, Callable, Set
 from lazyllm.thirdparty import chromadb
 from lazyllm import LOG
-from lazyllm.common import override
+from lazyllm.common import override, obj2str, str2obj
 from .store_base import StoreBase, LAZY_ROOT_NAME
 from .doc_node import DocNode
 from .index_base import IndexBase
 from .utils import _FileNodeIndex
 from .default_index import DefaultIndex
 from .map_store import MapStore
-import pickle
-import base64
 
 # ---------------------------------------------------------------------------- #
 
@@ -111,7 +109,7 @@ class ChromadbStore(StoreBase):
             ids.append(node.uid)
             embeddings.append([0])  # we don't use chroma for retrieving
             metadatas.append(metadata)
-            documents.append(node.get_text())
+            documents.append(obj2str(node.content))
         if ids:
             collection.upsert(
                 embeddings=embeddings,
@@ -132,16 +130,14 @@ class ChromadbStore(StoreBase):
             chroma_metadata = results['metadatas'][i]
 
             parent = chroma_metadata['parent']
-            local_metadata = pickle.loads(base64.b64decode(chroma_metadata['metadata'].encode('utf-8')))
-
-            global_metadata = pickle.loads(base64.b64decode(chroma_metadata['global_metadata'].encode('utf-8')))\
-                if not parent else None
+            local_metadata = str2obj(chroma_metadata['metadata'])
+            global_metadata = str2obj(chroma_metadata['global_metadata']) if not parent else None
 
             node = DocNode(
                 uid=uid,
-                text=results["documents"][i],
+                content=str2obj(results["documents"][i]),
                 group=chroma_metadata["group"],
-                embedding=pickle.loads(base64.b64decode(chroma_metadata['embedding'].encode('utf-8'))),
+                embedding=str2obj(chroma_metadata['embedding']),
                 parent=parent,
                 metadata=local_metadata,
                 global_metadata=global_metadata,
@@ -170,12 +166,12 @@ class ChromadbStore(StoreBase):
         metadata = {
             "group": node.group,
             "parent": node.parent.uid if node.parent else "",
-            "embedding": base64.b64encode(pickle.dumps(node.embedding)).decode('utf-8'),
-            "metadata": base64.b64encode(pickle.dumps(node.metadata)).decode('utf-8'),
+            "embedding": obj2str(node.embedding),
+            "metadata": obj2str(node.metadata),
         }
 
         if not node.parent:
-            metadata["global_metadata"] = base64.b64encode(pickle.dumps(node.global_metadata)).decode('utf-8')
+            metadata["global_metadata"] = obj2str(node.global_metadata)
 
         return metadata
 

@@ -3,6 +3,8 @@ from os.path import expanduser, expandvars, isfile, join, normpath
 from typing import Union, Dict, Callable, Any, Optional
 import re
 import ast
+import pickle
+import base64
 
 def check_path(
     path: Union[str, PathLike],
@@ -34,3 +36,9 @@ def compile_func(func_code: str, global_env: Optional[Dict[str, Any]] = None) ->
     local_dict = {}
     exec(func, global_env, local_dict)
     return local_dict[fname]
+
+def obj2str(obj: Any) -> str:
+    return base64.b64encode(pickle.dumps(obj)).decode('utf-8')
+
+def str2obj(data: str) -> Any:
+    return None if data is None else pickle.loads(base64.b64decode(data.encode('utf-8')))

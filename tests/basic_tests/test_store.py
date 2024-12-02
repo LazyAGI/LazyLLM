@@ -282,8 +282,16 @@ class TestMilvusStore(unittest.TestCase):
         self.store = MilvusStore(group_embed_keys=self.group_embed_keys, embed=self.mock_embed,
                                  embed_dims=self.embed_dims, global_metadata_desc=self.global_metadata_desc,
                                  uri=self.store_file)
-        self.assertEqual(set([node.uid for node in self.store.get_nodes('group1')]),
-                         set([self.node1.uid, self.node2.uid, self.node3.uid]))
+
+        nodes = self.store.get_nodes('group1')
+        orig_nodes = [self.node1, self.node2, self.node3]
+        self.assertEqual(set([node.uid for node in nodes]), set([node.uid for node in orig_nodes]))
+
+        for node in nodes:
+            for orig_node in orig_nodes:
+                if node.uid == orig_node.uid:
+                    self.assertEqual(node.text, orig_node.text)
+                    break
 
     # XXX `array_contains_any` is not supported in local(aka lite) mode. skip this ut
     def _test_query_with_array_filter(self):

@@ -16,11 +16,15 @@ class MetadataMode(str, Enum):
 
 @reset_on_pickle(('_lock', threading.Lock))
 class DocNode:
-    def __init__(self, uid: Optional[str] = None, text: Optional[str] = None, group: Optional[str] = None,
-                 embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
-                 metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None):
+    def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = None,
+                 group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
+                 parent: Optional["DocNode"] = None, metadata: Optional[Dict[str, Any]] = None,
+                 global_metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
+        if text and content:
+            raise ValueError('`text` and `content` cannot be set at the same time.')
+
         self.uid: str = uid if uid else str(uuid.uuid4())
-        self.text: Optional[str] = text
+        self.content: Optional[Union[str, List[Any]]] = content if content else text
         self.group: Optional[str] = group
         self.embedding: Optional[Dict[str, List[float]]] = embedding or {}
         self._metadata: Dict[str, Any] = metadata or {}
@@ -36,6 +40,12 @@ class DocNode:
         if global_metadata and parent:
             raise ValueError('only ROOT node can set global metadata.')
         self._global_metadata = global_metadata if global_metadata else {}
+
+    @property
+    def text(self) -> str:
+        if not isinstance(self.content, str):
+            raise TypeError(f"node content type '{type(self.content)}' is not a string")
+        return self.content
 
     @property
     def root_node(self) -> Optional["DocNode"]:
@@ -97,7 +107,7 @@ class DocNode:
 
     def __str__(self) -> str:
         return (
-            f"DocNode(id: {self.uid}, group: {self.group}, text: {self.get_text()}) parent: {self.get_parent_id()}, "
+            f"DocNode(id: {self.uid}, group: {self.group}, content: {self.content}) parent: {self.get_parent_id()}, "
             f"children: {self.get_children_str()}"
         )
 
@@ -159,4 +169,4 @@ class DocNode:
         return f"{metadata_str}\n\n{self.text}".strip()
 
     def to_dict(self) -> Dict:
-        return dict(text=self.text, embedding=self.embedding, metadata=self.metadata)
+        return dict(content=self.content, embedding=self.embedding, metadata=self.metadata)
