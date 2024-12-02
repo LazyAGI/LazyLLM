@@ -78,4 +78,4 @@ class PPTXReader(LazyLLMReaderBase):
                         os.unlink(f.name)
 
                 if hasattr(shape, "text"): result += f"{shape.text}\n"
-        return [DocNode(content=result, metadata=extra_info or {})]
+        return [DocNode(text=result, metadata=extra_info or {})]

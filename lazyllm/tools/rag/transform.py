@@ -46,7 +46,7 @@ def build_nodes_from_splits(
         if not text_chunk:
             continue
         node = DocNode(
-            content=text_chunk,
+            text=text_chunk,
             group=node_group,
             parent=doc,
         )
@@ -104,7 +104,7 @@ class NodeTransform(ABC):
         # Parent and child should not be set here.
         results = self.transform(node, **kwargs)
         if isinstance(results, (DocNode, str)): results = [results]
-        return [DocNode(content=chunk) if isinstance(chunk, str) else chunk for chunk in results if chunk]
+        return [DocNode(text=chunk) if isinstance(chunk, str) else chunk for chunk in results if chunk]
 
 
 def make_transform(t):

@@ -25,7 +25,7 @@ class TestDocImpl(unittest.TestCase):
     def setUp(self):
         self.mock_embed = MagicMock()
         self.mock_directory_reader = MagicMock()
-        mock_node = DocNode(group=LAZY_ROOT_NAME, content="dummy text")
+        mock_node = DocNode(group=LAZY_ROOT_NAME, text="dummy text")
         mock_node._global_metadata = {RAG_DOC_PATH: "dummy_file.txt"}
         self.mock_directory_reader.load_data.return_value = [mock_node]
 
@@ -72,7 +72,7 @@ class TestDocImpl(unittest.TestCase):
         assert self.doc_impl.store is None
         self.doc_impl._lazy_init()
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 1
-        new_doc = DocNode(content="new dummy text", group=LAZY_ROOT_NAME)
+        new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
         new_doc._global_metadata = {RAG_DOC_PATH: "new_file.txt"}
         self.mock_directory_reader.load_data.return_value = [new_doc]
         self.doc_impl._add_files(["new_file.txt"])
@@ -210,6 +210,7 @@ class TestDocumentServer(unittest.TestCase):
         response = httpx.post(url, params=params, files=files, timeout=10)
         assert response.status_code == 200 and response.json().get('code') == 200, response.json()
         ids = response.json().get('data')[0]
+        lazyllm.LOG.error(f'debug!!! ids -> {ids}')
         assert len(ids) == 2
 
         time.sleep(20)  # waiting for worker thread to update newly uploaded files

@@ -31,7 +31,7 @@ class IPYNBReader(LazyLLMReaderBase):
         splits = re.split(r"In\[\d+\]:", doc_str)
         splits.pop(0)
 
-        if self._concatenate: docs = [DocNode(content="\n\n".join(splits), metadata=extra_info or {})]
-        else: docs = [DocNode(content=s, metadata=extra_info or {}) for s in splits]
+        if self._concatenate: docs = [DocNode(text="\n\n".join(splits), metadata=extra_info or {})]
+        else: docs = [DocNode(text=s, metadata=extra_info or {}) for s in splits]
 
         return docs

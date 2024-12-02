@@ -9,7 +9,7 @@ class TestDocNode:
         self.metadata = {"author": "John Doe", "date": "2023-07-01"}
         self.embedding = [0.1, 0.2, 0.3]
         self.node = DocNode(
-            content=self.text,
+            text=self.text,
             embedding={"default": self.embedding},
         )
         self.node.metadata = self.metadata
@@ -71,7 +71,7 @@ class TestDocNode:
 
     def test_root_node(self):
         """Test the root_node property."""
-        child_node = DocNode(content="Child node", parent=self.node)
+        child_node = DocNode(text="Child node", parent=self.node)
         assert child_node.root_node == self.node
 
     def test_metadata_property(self):

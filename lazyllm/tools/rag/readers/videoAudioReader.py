@@ -45,4 +45,4 @@ class VideoAudioReader(LazyLLMReaderBase):
         result = model.transcribe(str(file))
 
         transcript = result['text']
-        return [DocNode(content=transcript, metadata=extra_info or {})]
+        return [DocNode(text=transcript, metadata=extra_info or {})]

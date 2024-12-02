@@ -28,8 +28,8 @@ class PandasCSVReader(LazyLLMReaderBase):
 
         text_list = df.apply(lambda row: (self._col_joiner).join(row.astype(str).tolist()), axis=1).tolist()
 
-        if self._concat_rows: return [DocNode(content=(self._row_joiner).join(text_list), metadata=extra_info or {})]
-        else: return [DocNode(content=text, metadata=extra_info or {}) for text in text_list]
+        if self._concat_rows: return [DocNode(text=(self._row_joiner).join(text_list), metadata=extra_info or {})]
+        else: return [DocNode(text=text, metadata=extra_info or {}) for text in text_list]
 
 class PandasExcelReader(LazyLLMReaderBase):
     def __init__(self, concat_rows: bool = True, sheet_name: Optional[str] = None,
@@ -58,14 +58,14 @@ class PandasExcelReader(LazyLLMReaderBase):
             df = dfs.fillna("")
             text_list = (df.astype(str).apply(lambda row: " ".join(row.values), axis=1).tolist())
 
-            if self._concat_rows: documents.append(DocNode(content="\n".join(text_list), metadata=extra_info or {}))
-            else: documents.extend([DocNode(content=text, metadata=extra_info or {}) for text in text_list])
+            if self._concat_rows: documents.append(DocNode(text="\n".join(text_list), metadata=extra_info or {}))
+            else: documents.extend([DocNode(text=text, metadata=extra_info or {}) for text in text_list])
         else:
             for df in dfs.values():
                 df = df.fillna("")
                 text_list = (df.astype(str).apply(lambda row: " ".join(row), axis=1).tolist())
 
-                if self._concat_rows: documents.append(DocNode(content="\n".join(text_list), metadata=extra_info or {}))
-                else: documents.extend([DocNode(content=text, metadata=extra_info or {}) for text in text_list])
+                if self._concat_rows: documents.append(DocNode(text="\n".join(text_list), metadata=extra_info or {}))
+                else: documents.extend([DocNode(text=text, metadata=extra_info or {}) for text in text_list])
 
         return documents

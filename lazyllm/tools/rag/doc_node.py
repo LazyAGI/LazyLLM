@@ -19,9 +19,12 @@ class DocNode:
     def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = None,
                  group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
                  parent: Optional["DocNode"] = None, metadata: Optional[Dict[str, Any]] = None,
-                 global_metadata: Optional[Dict[str, Any]] = None):
+                 global_metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
+        if text and content:
+            raise ValueError(f'`text` and `content` cannot be set at the same time.')
+
         self.uid: str = uid if uid else str(uuid.uuid4())
-        self.content: Optional[Union[str, List[Any]]] = content
+        self.content: Optional[Union[str, List[Any]]] = content if content else text
         self.group: Optional[str] = group
         self.embedding: Optional[Dict[str, List[float]]] = embedding or {}
         self._metadata: Dict[str, Any] = metadata or {}
