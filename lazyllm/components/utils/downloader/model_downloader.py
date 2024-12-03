@@ -73,7 +73,8 @@ class ModelManager():
     def download(self, model=''):
         assert isinstance(model, str), "model name should be a string."
         self._try_add_mapping(model)
-        if len(model) == 0 or model[0] in (os.sep, '.', '~'): return model  # Dummy or local model.
+        # Dummy or local model.
+        if len(model) == 0 or model[0] in (os.sep, '.', '~') or os.path.isabs(model): return model
 
         model_at_path = self._model_exists_at_path(model)
         if model_at_path: return model_at_path
