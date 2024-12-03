@@ -70,16 +70,15 @@ class Bind(object):
     class Args(object):
         class _None: pass
 
-        def __init__(self, source_id: str, target_id: str = 'input', *, similarity: Callable = (lambda x, y: x == y)):
+        def __init__(self, source_id: str, target_id: str = 'input'):
             self._item_key, self._attr_key = Bind.Args._None, Bind.Args._None
             self._source_id, self._target_id = source_id, target_id
-            self._similarity = similarity
 
-        def __getitem__(self, key):
+        def __getitem__(self, key: str):
             self._item_key = key
             return self
 
-        def __getattr__(self, key):
+        def __getattr__(self, key: str):
             if key.startswith('__') and key.endswith('__'):
                 raise AttributeError(f'Args has no attribute {key}')
             self._attr_key = key
@@ -94,7 +93,7 @@ class Bind(object):
         def get_arg(self, source):
             if self._source_id in globals['bind_args']:
                 source = globals['bind_args'][self._source_id].get(threading.get_ident(), source)
-            if not source or not self._similarity(source['source'], self._source_id):
+            if not source or source['source'] != self._source_id:
                 raise RuntimeError('Unable to find the bound parameter, possibly due to pipeline.input/output can only '
                                    'be bind in direct member of pipeline! You may solve this by defining the pipeline '
                                    'in a `with lazyllm.save_pipeline_result():` block.')
