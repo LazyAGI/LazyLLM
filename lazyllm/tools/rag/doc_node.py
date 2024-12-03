@@ -43,9 +43,14 @@ class DocNode:
 
     @property
     def text(self) -> str:
-        if not isinstance(self.content, str):
-            raise TypeError(f"node content type '{type(self.content)}' is not a string")
-        return self.content
+        if isinstance(self.content, str):
+            return self.content
+        elif isinstance(self.content, list):
+            if not all([isinstance(ele, str) for ele in self.content]):
+                raise TypeError("Found non-string element in content")
+            return '\n'.join(self.content)
+        else:
+            raise TypeError(f"content type '{type(self.content)}' is neither a str nor a list")
 
     @property
     def root_node(self) -> Optional["DocNode"]:
