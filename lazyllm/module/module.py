@@ -210,6 +210,15 @@ class ModuleBase(metaclass=_MetaBind):
                 if 'eval' in mode: eval_tasks.absorb(top._get_eval_tasks())
                 post_process_tasks.absorb(top._get_post_process_tasks())
 
+        if proxy := os.getenv('http_proxy', None):
+            os.environ['LAZYLLM_HTTP_PROXY'] = proxy
+            lazyllm.config.refresh('LAZYLLM_HTTP_PROXY')
+            del os.environ['http_proxy']
+        if proxy := os.getenv('https_proxy', None):
+            os.environ['LAZYLLM_HTTPS_PROXY'] = proxy
+            lazyllm.config.refresh('LAZYLLM_HTTPS_PROXY')
+            del os.environ['https_proxy']
+
         if 'train' in mode and len(train_tasks) > 0:
             Parallel(*train_tasks).set_sync(True)()
         if 'server' in mode and len(deploy_tasks) > 0:

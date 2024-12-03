@@ -4,7 +4,7 @@ import lazyllm
 from .model_mapping import model_name_mapping, model_provider, model_groups
 from lazyllm.common.common import EnvVarContextManager
 
-lazyllm.config.add('model_source', str, 'huggingface', 'MODEL_SOURCE')
+lazyllm.config.add('model_source', str, 'modelscope', 'MODEL_SOURCE')
 lazyllm.config.add('model_cache_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'model'),
                    'MODEL_CACHE_DIR')
 lazyllm.config.add('model_path', str, '', 'MODEL_PATH')
@@ -167,7 +167,7 @@ class ModelManager():
             self.token = True
         # else token would be a string from the user.
         env_vars = {'https_proxy': lazyllm.config['https_proxy'] or os.environ.get("https_proxy", None),
-                    'http_proxy': lazyllm.config['https_proxy'] or os.environ.get("http_proxy", None)}
+                    'http_proxy': lazyllm.config['http_proxy'] or os.environ.get("http_proxy", None)}
         with EnvVarContextManager(env_vars):
             if not os.environ.get("https_proxy", None):
                 lazyllm.LOG.warning('If there is no download response or if downloads repeatedly fail over an '
