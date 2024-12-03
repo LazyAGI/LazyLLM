@@ -79,7 +79,7 @@ class LocalTrainClient:
                 'num_train_epochs': train_config['num_epochs'],
                 'learning_rate': train_config['learning_rate'],
                 'lr_scheduler_type': train_config['lr_scheduler_type'],
-                'per_device_train_batch_size': train_config['batch_size'],
+                'per_device_train_batch_size': train_config['batch_size'] // train_config['num_gpus'],
                 'cutoff_len': train_config['cutoff_len'],
                 'lora_r': train_config['lora_r'],
                 'lora_alpha': train_config['lora_alpha'],
