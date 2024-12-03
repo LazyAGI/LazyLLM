@@ -46,13 +46,15 @@ class DocNode:
         if isinstance(self.content, str):
             return self.content
         elif isinstance(self.content, list):
-            if len(self.content) == 0:
-                return ""
-            else:
-                return "\n".join([str(ele) for ele in self.content])
+            str_return = ""
+            for ele in self.content:
+                if isinstance(ele, str):
+                    str_return += ele + "\n"
+                else:
+                    raise TypeError(f"content element is expected to be str, but got '{type(ele)}'")
+            return str_return
         else:
-            raise TypeError(f"node content type '{type(self.content)}' is neigher a str or a list")
-        return self.content
+            raise TypeError(f"content type '{type(self.content)}' is neither a str nor a list")
 
     @property
     def root_node(self) -> Optional["DocNode"]:
