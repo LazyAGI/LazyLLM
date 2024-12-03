@@ -46,13 +46,9 @@ class DocNode:
         if isinstance(self.content, str):
             return self.content
         elif isinstance(self.content, list):
-            str_return = ""
-            for ele in self.content:
-                if isinstance(ele, str):
-                    str_return += ele + "\n"
-                else:
-                    raise TypeError(f"content element is expected to be str, but got '{type(ele)}'")
-            return str_return
+            if not all([isinstance(ele, str) for ele in self.content]):
+                raise TypeError(f"Found non-string element in content")
+            return '\n'.join(self.content)
         else:
             raise TypeError(f"content type '{type(self.content)}' is neither a str nor a list")
 
