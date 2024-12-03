@@ -1,4 +1,5 @@
 import copy
+import threading
 import builtins
 from typing import Callable, Any
 from .globals import globals
@@ -69,9 +70,10 @@ class Bind(object):
     class Args(object):
         class _None: pass
 
-        def __init__(self, source_id, target_id='input'):
+        def __init__(self, source_id: str, target_id: str = 'input', *, similarity: Callable = (lambda x, y: x == y)):
             self._item_key, self._attr_key = Bind.Args._None, Bind.Args._None
             self._source_id, self._target_id = source_id, target_id
+            self._similarity = similarity
 
         def __getitem__(self, key):
             self._item_key = key
@@ -90,8 +92,9 @@ class Bind(object):
             self._item_key, self._attr_key, self._source_id, self._target_id = state
 
         def get_arg(self, source):
-            if self._source_id in globals['bind_args']: source = globals['bind_args'][self._source_id]
-            if not source or source['source'] != self._source_id:
+            if self._source_id in globals['bind_args']:
+                source = globals['bind_args'][self._source_id].get(threading.get_ident(), source)
+            if not source or not self._similarity(source['source'], self._source_id):
                 raise RuntimeError('Unable to find the bound parameter, possibly due to pipeline.input/output can only '
                                    'be bind in direct member of pipeline! You may solve this by defining the pipeline '
                                    'in a `with lazyllm.save_pipeline_result():` block.')

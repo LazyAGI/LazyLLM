@@ -2,6 +2,7 @@ import threading
 import contextvars
 import copy
 from typing import Any, Tuple, Optional, List, Dict
+from collections import defaultdict
 from pydantic import BaseModel as struct
 from .common import package, kwargs
 from .deprecated import deprecated
@@ -121,7 +122,8 @@ class ThreadSafeDict(dict):
 
 class Globals(object):
     __global_attrs__ = ThreadSafeDict(
-        chat_history={}, global_parameters={}, bind_args={}, tool_delimiter="<|tool_calls|>", lazyllm_files={}, usage={}
+        chat_history={}, global_parameters={}, bind_args=defaultdict(dict),
+        tool_delimiter="<|tool_calls|>", lazyllm_files={}, usage={}
     )
 
     def __init__(self):
