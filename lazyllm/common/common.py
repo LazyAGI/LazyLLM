@@ -1,4 +1,5 @@
 import re
+import os
 import builtins
 import typing
 from typing import Any, Callable
@@ -405,3 +406,22 @@ def reset_on_pickle(*fields):
         cls.__setstate__ = __setstate__
         return cls
     return decorator
+
+class EnvVarContextManager:
+    def __init__(self, env_vars_dict):
+        self.env_vars_dict = {var: value for var, value in env_vars_dict.items() if value is not None}
+        self.original_values = {}
+
+    def __enter__(self):
+        for var, value in self.env_vars_dict.items():
+            if var in os.environ:
+                self.original_values[var] = os.environ[var]
+            os.environ[var] = value
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        for var in self.env_vars_dict:
+            if var in self.original_values:
+                os.environ[var] = self.original_values[var]
+            else:
+                del os.environ[var]
