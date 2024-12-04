@@ -286,7 +286,7 @@ class Pipeline(LazyLLMFlowsBase):
         bind_args_source = dict(source=self.id(), input=output, kwargs=kw.copy())
         if config['save_flow_result'] or __class__.g_save_flow_result or (
                 self.save_flow_result and __class__.g_save_flow_result is not False):
-            globals['bind_args'][self.id()][threading.get_ident()] = bind_args_source
+            globals['bind_args'][self.id()] = bind_args_source
         for _ in range(self._loop_count):
             for it in self._items:
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
@@ -298,7 +298,7 @@ class Pipeline(LazyLLMFlowsBase):
                 exp = output[0]
                 output = output[1:]
             if callable(self._stop_condition) and self.invoke(self._stop_condition, exp): break
-        globals['bind_args'][self.id()].pop(threading.get_ident(), None)
+        globals['bind_args'].pop(self.id(), None)
         return output
 
 
