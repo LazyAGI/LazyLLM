@@ -7,6 +7,7 @@ from .utils import parallel_do_embedding
 from .index_base import IndexBase
 from .store_base import StoreBase
 from .global_metadata import GlobalMetadataDesc, RAG_DOC_PATH, RAG_DOC_ID
+from .data_type import DataType
 from lazyllm.common import override, obj2str, str2obj
 
 class MilvusStore(StoreBase):
@@ -38,9 +39,9 @@ class MilvusStore(StoreBase):
         }
 
         self._builtin_global_metadata_desc = {
-            RAG_DOC_ID: GlobalMetadataDesc(data_type=GlobalMetadataDesc.DTYPE_VARCHAR,
+            RAG_DOC_ID: GlobalMetadataDesc(data_type=DataType.VARCHAR,
                                            default_value=' ', max_size=512),
-            RAG_DOC_PATH: GlobalMetadataDesc(data_type=GlobalMetadataDesc.DTYPE_VARCHAR,
+            RAG_DOC_PATH: GlobalMetadataDesc(data_type=DataType.VARCHAR,
                                              default_value=' ', max_size=65535),
         }
 
@@ -48,10 +49,13 @@ class MilvusStore(StoreBase):
             pymilvus.DataType.VARCHAR,
             pymilvus.DataType.ARRAY,
             pymilvus.DataType.INT32,
+            pymilvus.DataType.FLOAT_VECTOR,
+            pymilvus.DataType.SPARSE_FLOAT_VECTOR,
         ]
 
     def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable], # noqa C901
-                 embed_dims: Dict[str, int], global_metadata_desc: Dict[str, GlobalMetadataDesc],
+                 embed_dims: Dict[str, int], embed_datatypes: Dict[str, DataType],
+                 global_metadata_desc: Dict[str, GlobalMetadataDesc],
                  uri: str, embedding_index_type: Optional[str] = None,
                  embedding_metric_type: Optional[str] = None, **kwargs):
         self._def_constants()
@@ -59,6 +63,11 @@ class MilvusStore(StoreBase):
         self._group_embed_keys = group_embed_keys
         self._embed = embed
         self._client = pymilvus.MilvusClient(uri=uri)
+
+        if embed_dims is None:
+            embed_dims = {}
+        if embed_datatypes is None:
+            embed_datatypes = {}
 
         # XXX milvus 2.4.x doesn't support `default_value`
         # https://milvus.io/docs/product_faq.md#Does-Milvus-support-specifying-default-values-for-scalar-or-vector-fields
@@ -85,26 +94,32 @@ class MilvusStore(StoreBase):
                 field_list.append(pymilvus.FieldSchema(name=key, **info))
 
             for key in embed_keys:
-                dim = embed_dims.get(key)
-                if not dim:
-                    raise ValueError(f'cannot find embedding dim of embed [{key}] in [{embed_dims}]')
+                datatype = embed_datatypes.get(key)
+                if not datatype:
+                    raise ValueError(f'cannot find embedding datatype if embed [{key}] in [{embed_datatypes}]')
+
+                field_kwargs = {}
+                dim = embed_dims.get(key)  # can be empty if embedding is sparse
+                if dim:
+                    field_kwargs['dim'] = dim
 
                 field_name = self._gen_embedding_key(key)
-                field_list.append(pymilvus.FieldSchema(name=field_name, dtype=pymilvus.DataType.FLOAT_VECTOR, dim=dim))
+                field_list.append(pymilvus.FieldSchema(name=field_name, dtype=self._type2milvus[datatype],
+                                                       **field_kwargs))
                 index_params.add_index(field_name=field_name, index_type=embedding_index_type,
                                        metric_type=embedding_metric_type)
 
             if self._global_metadata_desc:
                 for key, desc in self._global_metadata_desc.items():
-                    if desc.data_type == GlobalMetadataDesc.DTYPE_ARRAY:
+                    if desc.data_type == DataType.ARRAY:
                         if not desc.element_type:
                             raise ValueError(f'Milvus field [{key}]: `element_type` is required when '
-                                             '`data_type` is DTYPE_ARRAY.')
+                                             '`data_type` is ARRAY.')
                         field_args = {
                             'element_type': self._type2milvus[desc.element_type],
                             'max_capacity': desc.max_size,
                         }
-                    elif desc.data_type == GlobalMetadataDesc.DTYPE_VARCHAR:
+                    elif desc.data_type == DataType.VARCHAR:
                         field_args = {
                             'max_length': desc.max_size,
                         }
@@ -236,7 +251,7 @@ class MilvusStore(StoreBase):
             key = self._gen_field_key(name)
             if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
                 candidates = list(candidates)
-            if desc.data_type == GlobalMetadataDesc.DTYPE_ARRAY:
+            if desc.data_type == DataType.ARRAY:
                 # https://github.com/milvus-io/milvus/discussions/35279
                 # `array_contains_any` requires milvus >= 2.4.3 and is not supported in local(aka lite) mode.
                 ret_str += f'array_contains_any({key}, {candidates}) and '
