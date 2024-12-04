@@ -454,18 +454,37 @@ def make_shared_llm(llm: str, prompt: Optional[str] = None, stream: Optional[boo
     if stream is not None: r.stream = stream
     return r
 
+class STT(lazyllm.Module):
+    def __init__(self, base_model: Union[str, lazyllm.TrainableModule]):
+        super().__init__()
+        self._m = lazyllm.TrainableModule(base_model) if isinstance(base_model, str) else base_model.share()
+
+    def forward(self, query: str):
+        if '<lazyllm-query>' in query:
+            for ext in ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma']:
+                if ext in query or ext.upper() in query:
+                    return self._m(query)
+        return query
+
+    def share(self, prompt: str = None):
+        assert prompt is None, 'STT has no promot'
+        return STT(self._m)
+
+    def status(self, task_name: Optional[str] = None):
+        return self._m.status(task_name)
+
+    @property
+    def stream(self):
+        return self._m._stream
+
+    @stream.setter
+    def stream(self, v: bool):
+        self._m._stream = v
+
 
 @NodeConstructor.register('STT')
 def make_stt(base_model: str):
-    # TODO: support multi-files with pictures
-    def cond(x):
-        if '<lazyllm-query>' in x:
-            for ext in ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma']:
-                if ext in x or ext.upper() in x:
-                    return True
-        return False
-
-    return lazyllm.ActionModule(lazyllm.ifs(cond, tpath=lazyllm.TrainableModule(base_model), fpath=lazyllm.Identity()))
+    return STT(base_model)
 
 
 @NodeConstructor.register('Constant')
