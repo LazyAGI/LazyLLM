@@ -454,6 +454,7 @@ def make_shared_llm(llm: str, prompt: Optional[str] = None, stream: Optional[boo
     if stream is not None: r.stream = stream
     return r
 
+
 class STT(lazyllm.Module):
     def __init__(self, base_model: Union[str, lazyllm.TrainableModule]):
         super().__init__()

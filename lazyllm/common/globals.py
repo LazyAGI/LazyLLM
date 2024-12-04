@@ -130,14 +130,12 @@ class Globals(object):
         self._init_sid()
 
     def _init_sid(self, sid: Optional[str] = None):
-        from .logger import LOG
         if sid is None:
             try:
                 sid = f'aid-{hex(id(asyncio.current_task()))}'
             except Exception:
                 sid = f'tid-{hex(threading.get_ident())}'
         self.__sid.set(sid)
-        LOG.warning(f'here in _init_sid: {sid}')
         return sid
 
     @property
@@ -145,9 +143,7 @@ class Globals(object):
         try:
             sid = self.__sid.get()
         except Exception:
-            from .logger import LOG
             sid = self._init_sid()
-            LOG.warning(f'here in exception init: {sid}')
         if sid not in self.__data:
             self.__data[sid] = copy.deepcopy(__class__.__global_attrs__)
         return sid
