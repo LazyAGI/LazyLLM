@@ -1,4 +1,4 @@
-from typing import List, Callable, Optional, Dict, Union, Tuple
+from typing import List, Callable, Optional, Dict, Union, Tuple, Any
 from .doc_node import DocNode
 from .store_base import StoreBase
 from .index_base import IndexBase
