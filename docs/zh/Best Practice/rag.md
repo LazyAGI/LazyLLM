@@ -27,7 +27,11 @@ docs = Document(dataset_path='/path/to/doc/dir', embed=MyEmbeddingModule(), mana
 * `dataset_path`：指定从哪个文件目录构建；
 * `embed`：使用指定的模型来对文本进行 embedding。 如果需要对文本生成多个 embedding，此处需要通过字典的方式指定，key 标识 embedding 的名字，value 为对应的 embedding 模型；
 * `manager`：是否使用 ui 界面会影响 `Document` 内部的处理逻辑，默认为 `False`；
-* `launcher`：启动服务的方式，集群应用会用到这个参数，单机应用可以忽略。
+* `launcher`：启动服务的方式，集群应用会用到这个参数，单机应用可以忽略；
+* `store_conf`：配置使用哪种存储后端及索引后端；
+* `doc_fields`：配置需要存储和检索的字段及对应的类型（目前只有 Milvus 后端会用到）。
+
+#### Node 和 NodeGroup
 
 一个 `Document` 实例可能会按照指定的规则（在 `LazyLLM` 中被称为 `Transformer`），被进一步细分成若干粒度不同的被称为 `Node` 的节点集合（`Node Group`）。这些 `Node` 除了包含的文档内容外，还记录了自己是从哪一个`Node` 拆分而来，以及本身又被拆分成哪些更细粒度的 `Node`这些信息。用户可以通过 `Document.create_node_group()` 来创建自己的 `Node Group`。
 
@@ -91,6 +95,52 @@ docs.create_node_group(name='sentence-len',
 
 这些 `Node Group` 的拆分粒度和规则各不相同，反映了文档不同方面的特征。在后续的处理中，我们通过在不同的场合使用这些特征，从而更好地判断文档和用户输入的查询内容的相关性。
 
+#### 存储和索引
+
+`LazyLLM` 提供了可配置存储和索引后端的功能，可以满足不同的存储和检索需求。
+
+配置项参数 `store_conf` 是一个 dict，包含的字段如下：
+
+* `type`：是存储后端类型。目前支持的存储后端有：
+    - `map`：内存 key/value 存储；
+    - `chroma`：使用 Chroma 存储数据；
+    - `milvus`：使用 Milvus 存储数据。
+* `indices`：是一个 dict，key 是索引类型名称，value 是该索引类型所需要的参数。索引类型目前支持：
+    - `smart_embedding_index`：提供 embedding 检索功能。支持的后端有：
+        - `milvus`：使用 Milvus 作为 embedding 检索的后端。可供使用的参数 `kwargs` 有：
+            - `uri`：Milvus 存储地址，可以是一个文件路径或者如 `ip:port` 格式的 url；
+            - `embedding_index_type`：Milvus 支持的 embedding 索引类型，默认是 `HNSW`；
+            - `embedding_metric_type`：根据 embedding 索引类型不同配置的检索参数，默认是 `COSINE`。
+
+下面是一个使用 Chroma 作为存储后端，Milvus 作为检索后端的配置样例：
+
+```python
+store_conf = {
+    'type': 'chroma',
+    'indices': {
+        'smart_embedding_index': {
+            'backend': 'milvus',
+            'kwargs': {
+                'uri': store_file,
+                'embedding_index_type': 'HNSW',
+                'embedding_metric_type': 'COSINE',
+            },
+        },
+    },
+}
+```
+
+注意：如果使用 Milvus 作为存储后端或者索引后端，还需要提供需要存储或检索的字段说明，通过 `doc_fields` 这个参数传入。`doc_fields` 是一个 dict，其中 key 为需要存储或检索的字段名称，value 是一个 `GlobalMetadataDesc` 类型的结构体，包含字段类型等信息。
+
+例如，如果需要存储文档的作者信息和发表年份可以这样配置：
+
+```python
+doc_fields = {
+    'author': DocField(data_type=DataType.VARCHAR, max_size=128, default_value=' '),
+    'public_year': DocField(data_type=DataType.INT32),
+}
+```
+
 ### Retriever
 
 文档集合中的文档不一定都和用户要查询的内容相关，因此接下来我们要使用 `Retriever` 从 `Document` 中筛选出和用户查询相关的文档。
@@ -109,9 +159,9 @@ retriever = Retriever(documents, group_name="sentence", similarity="cosine", top
 * `group_name`：要使用文档的哪个 `Node Group` 来检索，使用 `LAZY_ROOT_NAME` 表示在原始文档内容中进行检索；
 * `similarity`：指定用来计算 `Node` 和用户查询内容之间的相似度的函数名称，`LazyLLM` 内置的相似度计算函数有 `bm25`，`bm25_chinese` 和 `cosine`，用户也可以自定义自己的计算函数；
 * `similarity_cut_off`：丢弃相似度小于指定值的结果，默认为 `-inf`，表示不丢弃。 在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则该参数需要以字典的方式指定，key 表示指定的是哪个 embedding， value 表示相应的阈值。如果所有 embedding 使用同一个阈值，则此参数只传一个数值即可；
-* `index`：在哪个索引上进行查找，目前只支持 `default`；
+* `index`：在哪个索引上进行查找，目前只支持 `default` 和 `smart_embedding_index`；
 * `topk`：表示返回最相关的文档数，默认值为 6；
-* `embed_keys`：表示通过哪些 embedding 做检索，不指定表示用全部 embedding 进行检索:
+* `embed_keys`：表示通过哪些 embedding 做检索，不指定表示用全部 embedding 进行检索；
 * `similarity_kw`：需要透传给 `similarity` 函数的参数。
 
 用户可以通过使用 `LazyLLM` 提供的 `register_similarity()` 函数来注册自己的相似度计算函数。`register_similarity()` 有以下参数：
@@ -145,13 +195,17 @@ def dummy_similarity_func(query: List[float], nodes: List[DocNode], **kwargs) ->
 def dummy_similarity_func(query: List[float], node: DocNode, **kwargs) -> float:
 ```
 
-`Retriever` 实例可以这样使用：
+`Retriever` 实例使用时需要传入要查询的 `query` 字符串，还有可选的过滤器 `filters` 用于字段过滤。`filters` 是一个 dict，其中 key 是要过滤的字段，value 是一个可取值列表，表示只要该字段的值匹配列表中的任意一个值即可。只有当所有的条件都满足该 node 才会被返回。
+
+下面是使用 filters 的例子：
 
 ```python
-doc_list = retriever(query=query)
+filters = {
+    "author": ["A", "B", "C"],
+    "public_year": [2002, 2003, 2004],
+}
+doc_list = retriever(query=query, filters=filters)
 ```
-
-来检索和 `query` 相关的文档。
 
 ### Reranker
 
