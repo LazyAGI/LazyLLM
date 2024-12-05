@@ -13,8 +13,9 @@ from .milvus_store import MilvusStore
 from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import DocListManager, gen_docid
+from .utils import DocListManager, gen_docid, is_sparse
 from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH
+from .data_type import DataType
 import threading
 import time
 
@@ -49,7 +50,6 @@ class DocImpl:
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
-        self._embed_dims = None
         self._global_metadata_desc = global_metadata_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
         self._activated_embeddings = {}
@@ -65,7 +65,15 @@ class DocImpl:
         for group in node_groups.keys():
             self._activated_embeddings.setdefault(group, set())
 
-        self._embed_dims = {k: len(e('a')) for k, e in self.embed.items()}
+        embed_dims = {}
+        embed_datatypes = {}
+        for k, e in self.embed.items():
+            embedding = e('a')
+            if is_sparse(embedding):
+                embed_datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
+            else:
+                embed_dims[k] = len(embedding)
+                embed_datatypes[k] = DataType.FLOAT_VECTOR
 
         if self.store is None:
             self.store = {
@@ -73,7 +81,8 @@ class DocImpl:
             }
 
         if isinstance(self.store, Dict):
-            self.store = self._create_store(self.store)
+            self.store = self._create_store(store_conf=self.store, embed_dims=embed_dims,
+                                            embed_datatypes=embed_datatypes)
         else:
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
 
@@ -95,7 +104,8 @@ class DocImpl:
             self._daemon.daemon = True
             self._daemon.start()
 
-    def _create_store(self, store_conf: Optional[Dict]) -> StoreBase:
+    def _create_store(self, store_conf: Optional[Dict], embed_dims: Optional[Dict[str, int]] = None,
+                      embed_datatypes: Optional[Dict[str, DataType]] = None) -> StoreBase:
         store_type = store_conf.get('type')
         if not store_type:
             raise ValueError('store type is not specified.')
@@ -108,11 +118,11 @@ class DocImpl:
             store = MapStore(node_groups=list(self._activated_embeddings.keys()), embed=self.embed, **kwargs)
         elif store_type == "chroma":
             store = ChromadbStore(group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                  embed_dims=self._embed_dims, **kwargs)
+                                  embed_dims=embed_dims, **kwargs)
         elif store_type == "milvus":
             store = MilvusStore(group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                embed_dims=self._embed_dims, global_metadata_desc=self._global_metadata_desc,
-                                **kwargs)
+                                embed_dims=embed_dims, embed_datatypes=embed_datatypes,
+                                global_metadata_desc=self._global_metadata_desc, **kwargs)
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {store_type}"
@@ -131,7 +141,8 @@ class DocImpl:
                 index = SmartEmbeddingIndex(backend_type=backend_type,
                                             group_embed_keys=self._activated_embeddings,
                                             embed=self.embed,
-                                            embed_dims=self._embed_dims,
+                                            embed_dims=embed_dims,
+                                            embed_datatypes=embed_datatypes,
                                             global_metadata_desc=self._global_metadata_desc,
                                             **kwargs)
             else:
@@ -323,9 +334,12 @@ class DocImpl:
         if not index_instance:
             raise NotImplementedError(f"index type '{index}' is not supported currently.")
 
-        return index_instance.query(query=query, group_name=group_name, similarity_name=similarity,
-                                    similarity_cut_off=similarity_cut_off, topk=topk,
-                                    embed_keys=embed_keys, filters=filters, **similarity_kws)
+        try:
+            return index_instance.query(query=query, group_name=group_name, similarity_name=similarity,
+                                        similarity_cut_off=similarity_cut_off, topk=topk,
+                                        embed_keys=embed_keys, filters=filters, **similarity_kws)
+        except Exception as e:
+            raise RuntimeError(f'index type `{index}` of store `{type(self.store)}` query failed: {e}')
 
     @staticmethod
     def find_parent(nodes: List[DocNode], group: str) -> List[DocNode]:

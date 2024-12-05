@@ -1,10 +1,10 @@
-from typing import List, Callable, Optional, Dict, Union, Tuple
+from typing import List, Callable, Optional, Dict, Union, Tuple, Any
 from .doc_node import DocNode
 from .store_base import StoreBase
 from .index_base import IndexBase
 from lazyllm import LOG
 from lazyllm.common import override
-from .utils import parallel_do_embedding, generic_process_filters
+from .utils import parallel_do_embedding, generic_process_filters, is_sparse
 from .similarity import registered_similarities
 
 # ---------------------------------------------------------------------------- #
@@ -51,6 +51,7 @@ class DefaultIndex(IndexBase):
             if not embed_keys:
                 embed_keys = list(self.embed.keys())
             query_embedding = {k: self.embed[k](query) for k in embed_keys}
+            self._check_supported(similarity_name, query_embedding)
             modified_nodes = parallel_do_embedding(self.embed, embed_keys, nodes)
             self.store.update_nodes(modified_nodes)
             similarities = similarity_func(query_embedding, nodes, topk=topk, **kwargs)
@@ -78,3 +79,9 @@ class DefaultIndex(IndexBase):
             similarities = similarities[:topk]
 
         return [node for node, score in similarities if score > similarity_cut_off]
+
+    def _check_supported(self, similarity_name: str, query_embedding: Dict[str, Any]) -> None:
+        if similarity_name.lower() == 'cosine':
+            for k, e in query_embedding.items():
+                if is_sparse(e):
+                    raise NotImplementedError(f'embed `{k}`, which is sparse, is not supported.')
