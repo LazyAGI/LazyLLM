@@ -23,17 +23,17 @@ class DocNode:
         if text and content:
             raise ValueError('`text` and `content` cannot be set at the same time.')
 
-        self.uid: str = uid if uid else str(uuid.uuid4())
-        self.content: Optional[Union[str, List[Any]]] = content if content else text
-        self.group: Optional[str] = group
-        self.embedding: Optional[Dict[str, List[float]]] = embedding or {}
+        self._uid: str = uid if uid else str(uuid.uuid4())
+        self._content: Optional[Union[str, List[Any]]] = content if content else text
+        self._group: Optional[str] = group
+        self._embedding: Optional[Dict[str, List[float]]] = embedding or {}
         self._metadata: Dict[str, Any] = metadata or {}
         # Metadata keys that are excluded from text for the embed model.
         self._excluded_embed_metadata_keys: List[str] = []
         # Metadata keys that are excluded from text for the LLM.
         self._excluded_llm_metadata_keys: List[str] = []
-        self.parent: Optional["DocNode"] = parent
-        self.children: Dict[str, List["DocNode"]] = defaultdict(list)
+        self._parent: Optional["DocNode"] = parent
+        self._children: Dict[str, List["DocNode"]] = defaultdict(list)
         self._lock = threading.Lock()
         self._embedding_state = set()
 
@@ -43,14 +43,38 @@ class DocNode:
 
     @property
     def text(self) -> str:
-        if isinstance(self.content, str):
-            return self.content
-        elif isinstance(self.content, list):
-            if not all([isinstance(ele, str) for ele in self.content]):
+        if isinstance(self._content, str):
+            return self._content
+        elif isinstance(self._content, list):
+            if not all([isinstance(ele, str) for ele in self._content]):
                 raise TypeError("Found non-string element in content")
-            return '\n'.join(self.content)
+            return '\n'.join(self._content)
         else:
-            raise TypeError(f"content type '{type(self.content)}' is neither a str nor a list")
+            raise TypeError(f"content type '{type(self._content)}' is neither a str nor a list")
+
+    @property
+    def embedding(self):
+        return self._embedding
+
+    @embedding.setter
+    def embedding(self, v: Optional[Dict[str, List[float]]]):
+        self._embedding = v
+
+    @property
+    def parent(self):
+        return self._parent
+
+    @parent.setter
+    def parent(self, v: Optional["DocNode"]):
+        self._parent = v
+
+    @property
+    def children(self):
+        return self._children
+
+    @children.setter
+    def children(self, v: Dict[str, List["DocNode"]]):
+        self._children = v
 
     @property
     def root_node(self) -> Optional["DocNode"]:
@@ -104,28 +128,28 @@ class DocNode:
 
     def get_children_str(self) -> str:
         return str(
-            {key: [node.uid for node in nodes] for key, nodes in self.children.items()}
+            {key: [node._uid for node in nodes] for key, nodes in self.children.items()}
         )
 
     def get_parent_id(self) -> str:
-        return self.parent.uid if self.parent else ""
+        return self.parent._uid if self.parent else ""
 
     def __str__(self) -> str:
         return (
-            f"DocNode(id: {self.uid}, group: {self.group}, content: {self.content}) parent: {self.get_parent_id()}, "
+            f"DocNode(id: {self._uid}, group: {self._group}, content: {self._content}) parent: {self.get_parent_id()}, "
             f"children: {self.get_children_str()}"
         )
 
     def __repr__(self) -> str:
-        return str(self) if config["debug"] else f'<Node id={self.uid}>'
+        return str(self) if config["debug"] else f'<Node id={self._uid}>'
 
     def __eq__(self, other):
         if isinstance(other, DocNode):
-            return self.uid == other.uid
+            return self._uid == other._uid
         return False
 
     def __hash__(self):
-        return hash(self.uid)
+        return hash(self._uid)
 
     def has_missing_embedding(self, embed_keys: Union[str, List[str]]) -> List[str]:
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
@@ -174,4 +198,4 @@ class DocNode:
         return f"{metadata_str}\n\n{self.text}".strip()
 
     def to_dict(self) -> Dict:
-        return dict(content=self.content, embedding=self.embedding, metadata=self.metadata)
+        return dict(content=self._content, embedding=self.embedding, metadata=self.metadata)

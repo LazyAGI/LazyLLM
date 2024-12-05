@@ -211,7 +211,7 @@ class SimpleDirectoryReader(ModuleBase):
 
                 if filename_as_id:
                     for i, doc in enumerate(docs):
-                        doc.uid = f"{input_file!s}_index_{i}"
+                        doc._uid = f"{input_file!s}_index_{i}"
                         doc.docpath = str(input_file)
                 documents.extend(docs)
                 break
@@ -222,7 +222,7 @@ class SimpleDirectoryReader(ModuleBase):
 
             doc = DocNode(text=data, metadata=metadata or {})
             doc.docpath = str(input_file)
-            if filename_as_id: doc.uid = str(input_file)
+            if filename_as_id: doc._uid = str(input_file)
             documents.append(doc)
 
         return documents

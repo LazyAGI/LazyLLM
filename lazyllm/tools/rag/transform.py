@@ -85,7 +85,7 @@ class NodeTransform(ABC):
                 splits = self(node, **kwargs)
                 for s in splits:
                     s.parent = node
-                    s.group = node_group
+                    s._group = node_group
                 node.children[node_group] = splits
                 return splits
 

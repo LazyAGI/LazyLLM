@@ -80,7 +80,7 @@ class ChromadbStore(StoreBase):
             results = self._peek_all_documents(group)
             nodes = self._build_nodes_from_chroma(results, embed_dims)
             for node in nodes:
-                uid2node[node.uid] = node
+                uid2node[node._uid] = node
 
         # Rebuild relationships
         for node in uid2node.values():
@@ -88,7 +88,7 @@ class ChromadbStore(StoreBase):
                 parent_uid = node.parent
                 parent_node = uid2node.get(parent_uid)
                 node.parent = parent_node
-                parent_node.children[node.group].append(node)
+                parent_node.children[node._group].append(node)
         LOG.debug(f"build {group} nodes from chromadb: {nodes}")
 
         self._map_store.update_nodes(list(uid2node.values()))
@@ -98,7 +98,7 @@ class ChromadbStore(StoreBase):
         if not nodes:
             return
         # Note: It's caller's duty to make sure this batch of nodes has the same group.
-        group = nodes[0].group
+        group = nodes[0]._group
         ids, embeddings, metadatas, documents = [], [], [], []
         collection = self._collections.get(group)
         assert (
@@ -106,10 +106,10 @@ class ChromadbStore(StoreBase):
         ), f"Group {group} is not found in collections {self._collections}"
         for node in nodes:
             metadata = self._make_chroma_metadata(node)
-            ids.append(node.uid)
+            ids.append(node._uid)
             embeddings.append([0])  # we don't use chroma for retrieving
             metadatas.append(metadata)
-            documents.append(obj2str(node.content))
+            documents.append(obj2str(node._content))
         if ids:
             collection.upsert(
                 embeddings=embeddings,
@@ -164,8 +164,8 @@ class ChromadbStore(StoreBase):
 
     def _make_chroma_metadata(self, node: DocNode) -> Dict[str, Any]:
         metadata = {
-            "group": node.group,
-            "parent": node.parent.uid if node.parent else "",
+            "group": node._group,
+            "parent": node.parent._uid if node.parent else "",
             "embedding": obj2str(node.embedding),
             "metadata": obj2str(node.metadata),
         }
