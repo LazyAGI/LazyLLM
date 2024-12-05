@@ -334,9 +334,12 @@ class DocImpl:
         if not index_instance:
             raise NotImplementedError(f"index type '{index}' is not supported currently.")
 
-        return index_instance.query(query=query, group_name=group_name, similarity_name=similarity,
-                                    similarity_cut_off=similarity_cut_off, topk=topk,
-                                    embed_keys=embed_keys, filters=filters, **similarity_kws)
+        try:
+            return index_instance.query(query=query, group_name=group_name, similarity_name=similarity,
+                                        similarity_cut_off=similarity_cut_off, topk=topk,
+                                        embed_keys=embed_keys, filters=filters, **similarity_kws)
+        except Exception as e:
+            raise RuntimeError(f'index type `{index}` of store `{type(self.store)}` query failed: {e}')
 
     @staticmethod
     def find_parent(nodes: List[DocNode], group: str) -> List[DocNode]:

@@ -84,4 +84,4 @@ class DefaultIndex(IndexBase):
         if similarity_name.lower() == 'cosine':
             for k, e in query_embedding.items():
                 if is_sparse(e):
-                    raise NotImplementedError(f'embed `{k}` which is sparse is not supported.')
+                    raise NotImplementedError(f'embed `{k}`, which is sparse, is not supported.')
