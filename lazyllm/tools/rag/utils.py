@@ -537,7 +537,7 @@ class _FileNodeIndex(IndexBase):
         for node in nodes:
             path = node.global_metadata.get(RAG_DOC_PATH)
             if path:
-                self._file_node_map.setdefault(path, {}).setdefault(node.uid, node)
+                self._file_node_map.setdefault(path, {}).setdefault(node._uid, node)
 
     @override
     def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:

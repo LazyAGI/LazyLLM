@@ -61,10 +61,7 @@ class MarkdownReader(LazyLLMReaderBase):
         if not isinstance(file, Path): file = Path(file)
 
         tups = self._parse_tups(file, fs=fs)
-        results = [
-            DocNode(
-                content=[value if header is None else f"\n\n{header}\n{value}" for header, value in tups],
-                metadata=extra_info or {},
-            )
-        ]
+        results = [DocNode(
+            content=[value if header is None else f"\n\n{header}\n{value}" for header, value in tups],
+            global_metadata=extra_info)]
         return results

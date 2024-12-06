@@ -36,7 +36,7 @@ class HWPReader(LazyLLMReaderBase):
         if self._is_valid(file_dir) is False: raise Exception("Not Valid HwpFile")
 
         result_text = self._get_text(load_file, file_dir)
-        return [DocNode(text=result_text, metadata=extra_info or {})]
+        return [DocNode(text=result_text, global_metadata=extra_info)]
 
     def _is_valid(self, dirs: List[str]) -> bool:
         if [self._FILE_HEADER_SECTION] not in dirs: return False

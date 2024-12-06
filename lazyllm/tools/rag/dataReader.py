@@ -180,22 +180,22 @@ class SimpleDirectoryReader(ModuleBase):
 
     def _exclude_metadata(self, documents: List[DocNode]) -> List[DocNode]:
         for doc in documents:
-            doc.excluded_embed_metadata_keys.extend(
+            doc._excluded_embed_metadata_keys.extend(
                 ["file_name", "file_type", "file_size", "creation_date",
                  "last_modified_date", "last_accessed_date"])
-            doc.excluded_llm_metadata_keys.extend(
+            doc._excluded_llm_metadata_keys.extend(
                 ["file_name", "file_type", "file_size", "creation_date",
                  "last_modified_date", "last_accessed_date"])
         return documents
 
     @staticmethod
-    def load_file(input_file: Path, file_metadata: Callable[[str], Dict], file_extractor: Dict[str, Callable],
+    def load_file(input_file: Path, metadata_genf: Callable[[str], Dict], file_extractor: Dict[str, Callable],
                   filename_as_id: bool = False, encoding: str = "utf-8", pathm: PurePath = Path,
                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         metadata: Optional[dict] = None
         documents: List[DocNode] = []
 
-        if file_metadata is not None: metadata = file_metadata(str(input_file))
+        if metadata_genf is not None: metadata = metadata_genf(str(input_file))
 
         file_reader_patterns = list(file_extractor.keys())
 
@@ -211,7 +211,7 @@ class SimpleDirectoryReader(ModuleBase):
 
                 if filename_as_id:
                     for i, doc in enumerate(docs):
-                        doc.uid = f"{input_file!s}_index_{i}"
+                        doc._uid = f"{input_file!s}_index_{i}"
                         doc.docpath = str(input_file)
                 documents.extend(docs)
                 break
@@ -222,7 +222,7 @@ class SimpleDirectoryReader(ModuleBase):
 
             doc = DocNode(text=data, metadata=metadata or {})
             doc.docpath = str(input_file)
-            if filename_as_id: doc.uid = str(input_file)
+            if filename_as_id: doc._uid = str(input_file)
             documents.append(doc)
 
         return documents

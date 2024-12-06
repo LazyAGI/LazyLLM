@@ -66,6 +66,6 @@ class PandasExcelReader(LazyLLMReaderBase):
                 text_list = (df.astype(str).apply(lambda row: " ".join(row), axis=1).tolist())
 
                 if self._concat_rows: documents.append(DocNode(text="\n".join(text_list), metadata=extra_info or {}))
-                else: documents.extend([DocNode(text=text, metadata=extra_info or {}) for text in text_list])
+                else: documents.extend([DocNode(text=text, global_metadata=extra_info) for text in text_list])
 
         return documents
