@@ -167,7 +167,7 @@ class ChromadbStore(StoreBase):
             "group": node._group,
             "parent": node.parent._uid if node.parent else "",
             "embedding": obj2str(node.embedding),
-            "metadata": obj2str(node.metadata),
+            "metadata": obj2str(node._metadata),
         }
 
         if not node.parent:

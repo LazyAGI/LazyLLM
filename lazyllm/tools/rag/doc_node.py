@@ -95,7 +95,7 @@ class DocNode:
 
     @property
     def metadata(self) -> Dict:
-        return self.root_node._metadata
+        return {**self.root_node._metadata, **self._metadata}
 
     @metadata.setter
     def metadata(self, metadata: Dict) -> None:
@@ -103,7 +103,7 @@ class DocNode:
 
     @property
     def excluded_embed_metadata_keys(self) -> List:
-        return self.root_node._excluded_embed_metadata_keys
+        return self.root_node._excluded_embed_metadata_keys + self._excluded_embed_metadata_keys
 
     @excluded_embed_metadata_keys.setter
     def excluded_embed_metadata_keys(self, excluded_embed_metadata_keys: List) -> None:
@@ -111,7 +111,7 @@ class DocNode:
 
     @property
     def excluded_llm_metadata_keys(self) -> List:
-        return self.root_node._excluded_llm_metadata_keys
+        return self.root_node._excluded_llm_metadata_keys + self._excluded_llm_metadata_keys
 
     @excluded_llm_metadata_keys.setter
     def excluded_llm_metadata_keys(self, excluded_llm_metadata_keys: List) -> None:
@@ -206,6 +206,6 @@ class QADocNode(DocNode):
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
                  metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
         if not metadata: metadata = {}
-        metadata['_answer'] = answer
+        metadata['answer'] = answer
         super().__init__(uid, query, group, embedding, parent, metadata, None, text=text)
-        self.excluded_embed_metadata_keys.append('_answer')
+        self.excluded_embed_metadata_keys.append('answer')

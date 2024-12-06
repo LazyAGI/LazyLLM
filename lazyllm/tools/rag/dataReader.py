@@ -180,10 +180,10 @@ class SimpleDirectoryReader(ModuleBase):
 
     def _exclude_metadata(self, documents: List[DocNode]) -> List[DocNode]:
         for doc in documents:
-            doc.excluded_embed_metadata_keys.extend(
+            doc._excluded_embed_metadata_keys.extend(
                 ["file_name", "file_type", "file_size", "creation_date",
                  "last_modified_date", "last_accessed_date"])
-            doc.excluded_llm_metadata_keys.extend(
+            doc._excluded_llm_metadata_keys.extend(
                 ["file_name", "file_type", "file_size", "creation_date",
                  "last_modified_date", "last_accessed_date"])
         return documents
