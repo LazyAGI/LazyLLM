@@ -82,7 +82,7 @@ class DocImpl:
             if paths:
                 root_nodes = self._reader.load_data(paths)
                 for idx, node in enumerate(root_nodes):
-                    node.global_metadata = metadatas[idx].copy() if metadatas else {}
+                    node.global_metadata.update(metadatas[idx].copy() if metadatas else {})
                     node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else gen_docid(paths[idx])
                     node.global_metadata[RAG_DOC_PATH] = paths[idx]
                 self.store.update_nodes(root_nodes)

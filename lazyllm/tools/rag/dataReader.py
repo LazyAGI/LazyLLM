@@ -189,13 +189,13 @@ class SimpleDirectoryReader(ModuleBase):
         return documents
 
     @staticmethod
-    def load_file(input_file: Path, file_metadata: Callable[[str], Dict], file_extractor: Dict[str, Callable],
+    def load_file(input_file: Path, metadata_genf: Callable[[str], Dict], file_extractor: Dict[str, Callable],
                   filename_as_id: bool = False, encoding: str = "utf-8", pathm: PurePath = Path,
                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         metadata: Optional[dict] = None
         documents: List[DocNode] = []
 
-        if file_metadata is not None: metadata = file_metadata(str(input_file))
+        if metadata_genf is not None: metadata = metadata_genf(str(input_file))
 
         file_reader_patterns = list(file_extractor.keys())
 

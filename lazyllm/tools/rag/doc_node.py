@@ -39,15 +39,15 @@ class DocNode:
 
         if global_metadata and parent:
             raise ValueError('only ROOT node can set global metadata.')
-        self._global_metadata = global_metadata if global_metadata else {}
+        self._global_metadata = global_metadata or {}
 
     @property
     def text(self) -> str:
         if isinstance(self._content, str):
             return self._content
         elif isinstance(self._content, list):
-            if not all([isinstance(ele, str) for ele in self._content]):
-                raise TypeError("Found non-string element in content")
+            if unexcepted := set([type(ele) for ele in self._content if not isinstance(ele, str)]):
+                raise TypeError(f"Found non-string element in content: {unexcepted}")
             return '\n'.join(self._content)
         else:
             raise TypeError(f"content type '{type(self._content)}' is neither a str nor a list")
@@ -199,3 +199,13 @@ class DocNode:
 
     def to_dict(self) -> Dict:
         return dict(content=self._content, embedding=self.embedding, metadata=self.metadata)
+
+
+class QADocNode(DocNode):
+    def __init__(self, query: str, answer: str, uid: Optional[str] = None, group: Optional[str] = None,
+                 embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
+                 metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
+        if not metadata: metadata = {}
+        metadata['_answer'] = answer
+        super().__init__(uid, query, group, embedding, parent, metadata, None, text=text)
+        self.excluded_embed_metadata_keys.append('_answer')
