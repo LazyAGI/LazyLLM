@@ -27,6 +27,11 @@ class SenseVoice(object):
             lazyllm.call_once(self.init_flag, self.load_stt)
 
     def load_stt(self):
+        import importlib.util
+        if importlib.util.find_spec("torch_npu") is not None:
+            import torch_npu
+            from torch_npu.contrib import transfer_to_npu
+
         self.model = funasr.AutoModel(
             model=self.base_path,
             trust_remote_code=False,

@@ -22,12 +22,23 @@ class Bark(object):
             lazyllm.call_once(self.init_flag, self.load_bark)
 
     def load_bark(self):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.processor = tf.AutoProcessor.from_pretrained(self.base_path)
-        self.processor.speaker_embeddings['repo_or_path'] = self.base_path
-        self.bark = tf.BarkModel.from_pretrained(self.base_path,
-                                                 torch_dtype=torch.float16,
-                                                 attn_implementation="flash_attention_2").to(self.device)
+        import importlib.util
+        
+        if importlib.util.find_spec("torch_npu") is not None:
+            import torch_npu
+            from torch_npu.contrib import transfer_to_npu
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.processor = tf.AutoProcessor.from_pretrained(self.base_path)
+            self.processor.speaker_embeddings['repo_or_path'] = self.base_path
+            self.bark = tf.BarkModel.from_pretrained(self.base_path,
+                                                    torch_dtype=torch.float16).to(self.device)
+        else:
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.processor = tf.AutoProcessor.from_pretrained(self.base_path)
+            self.processor.speaker_embeddings['repo_or_path'] = self.base_path
+            self.bark = tf.BarkModel.from_pretrained(self.base_path,
+                                                    torch_dtype=torch.float16,
+                                                    attn_implementation="flash_attention_2").to(self.device)
 
     def __call__(self, string):
         lazyllm.call_once(self.init_flag, self.load_bark)
