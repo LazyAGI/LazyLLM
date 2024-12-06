@@ -20,13 +20,10 @@ concurrency:
 
 jobs:
   k8s_tests:
-    if: |
-      !contains(github.event.head_commit.message, '[skip ci]')
-      && !contains(github.event.pull_request.title, '[skip ci]')
     runs-on: tps_k8s
 
     container:
-      image: ai-expert-service/lazyllm_ci:latest
+      image: registry.cn-sh-01.sensecore.cn/ai-expert-service/lazyllm_ci:latest
       options: --mount type=bind,source=/mnt/nfs_share,target=/mnt/nfs_share --mount type=bind,source=/mnt/lustre/share_data,target=/mnt/lustre/share_data
       env:
         HTTPS_PROXY: http://wangzhihong:4b2ffc8c@10.54.0.93:3128
