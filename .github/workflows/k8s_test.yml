@@ -26,8 +26,10 @@ jobs:
     runs-on: tps_k8s
 
     container:
-      image: registry.cn-sh-01.sensecore.cn/ai-expert-service/lazyllm_ci:0.3.0
+      image: ai-expert-service/lazyllm_ci:latest
       options: --mount type=bind,source=/mnt/nfs_share,target=/mnt/nfs_share --mount type=bind,source=/mnt/lustre/share_data,target=/mnt/lustre/share_data
+      env:
+        HTTPS_PROXY: http://wangzhihong:4b2ffc8c@10.54.0.93:3128
 
     steps:
       - name: Checkout code
