@@ -51,9 +51,16 @@ jobs:
       - name: test
         run: |
           cd ${{ env.CI_PATH }}
+          ls -l
+          whoami
+          id
+          which python
+          python -V
+          pip list
           echo "Listing NFS share directory:"
-          ls /mnt/nfs_share
+          ls -l /mnt/nfs_share
           echo "Listing Lustre share directory:"
           ls /mnt/lustre/share_data
+          sleep 300
 
 
