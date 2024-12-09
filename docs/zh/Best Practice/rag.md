@@ -101,16 +101,17 @@ docs.create_node_group(name='sentence-len',
 
 配置项参数 `store_conf` 是一个 dict，包含的字段如下：
 
-* `type`：是存储后端类型。目前支持的存储后端有：
+* `type`：是存储后端类型。目前支持的存储后端及可传递的参数 `kwargs` 如下：
     - `map`：内存 key/value 存储；
     - `chroma`：使用 Chroma 存储数据；
+        - `dir`（必填）：存储数据的目录。
     - `milvus`：使用 Milvus 存储数据。
+        - `uri`（必填）：Milvus 存储地址，可以是一个文件路径或者如 `ip:port` 格式的 url；
+        - `embedding_index_type`（可选）：Milvus 支持的 embedding 索引类型，默认是 `HNSW`；
+        - `embedding_metric_type`（可选）：根据 embedding 索引类型不同配置的检索参数，默认是 `COSINE`。
 * `indices`：是一个 dict，key 是索引类型名称，value 是该索引类型所需要的参数。索引类型目前支持：
     - `smart_embedding_index`：提供 embedding 检索功能。支持的后端有：
-        - `milvus`：使用 Milvus 作为 embedding 检索的后端。可供使用的参数 `kwargs` 有：
-            - `uri`：Milvus 存储地址，可以是一个文件路径或者如 `ip:port` 格式的 url；
-            - `embedding_index_type`：Milvus 支持的 embedding 索引类型，默认是 `HNSW`；
-            - `embedding_metric_type`：根据 embedding 索引类型不同配置的检索参数，默认是 `COSINE`。
+        - `milvus`：使用 Milvus 作为 embedding 检索的后端。可供使用的参数 `kwargs` 和作为存储后端时的参数一样。
 
 下面是一个使用 Chroma 作为存储后端，Milvus 作为检索后端的配置样例：
 
@@ -197,7 +198,7 @@ def dummy_similarity_func(query: List[float], node: DocNode, **kwargs) -> float:
 
 `Retriever` 实例使用时需要传入要查询的 `query` 字符串，还有可选的过滤器 `filters` 用于字段过滤。`filters` 是一个 dict，其中 key 是要过滤的字段，value 是一个可取值列表，表示只要该字段的值匹配列表中的任意一个值即可。只有当所有的条件都满足该 node 才会被返回。
 
-下面是使用 filters 的例子：
+下面是使用 filters 的例子（`doc_fields` 的配置参考 [Document 的介绍](../Best%20Practice/rag.md#Document)）：
 
 ```python
 filters = {
