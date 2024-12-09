@@ -3,7 +3,6 @@ from unittest.mock import MagicMock
 from lazyllm import LLMParser, TrainableModule
 from lazyllm.launcher import cleanup
 from lazyllm.tools.rag import DocNode
-import lazyllm
 
 
 class TestLLMParser(unittest.TestCase):
