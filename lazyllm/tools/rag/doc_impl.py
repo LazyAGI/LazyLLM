@@ -82,7 +82,7 @@ class DocImpl:
             if paths:
                 root_nodes = self._reader.load_data(paths)
                 for idx, node in enumerate(root_nodes):
-                    node.global_metadata = metadatas[idx].copy() if metadatas else {}
+                    node.global_metadata.update(metadatas[idx].copy() if metadatas else {})
                     node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else gen_docid(paths[idx])
                     node.global_metadata[RAG_DOC_PATH] = paths[idx]
                 self.store.update_nodes(root_nodes)
@@ -271,13 +271,13 @@ class DocImpl:
 
     def _delete_nodes_recursively(self, root_nodes: List[DocNode]) -> None:
         uids_to_delete = defaultdict(list)
-        uids_to_delete[LAZY_ROOT_NAME] = [node.uid for node in root_nodes]
+        uids_to_delete[LAZY_ROOT_NAME] = [node._uid for node in root_nodes]
 
         # Gather all nodes to be deleted including their children
         def gather_children(node: DocNode):
             for children_group, children_list in node.children.items():
                 for child in children_list:
-                    uids_to_delete[children_group].append(child.uid)
+                    uids_to_delete[children_group].append(child._uid)
                     gather_children(child)
 
         for node in root_nodes:
@@ -331,7 +331,7 @@ class DocImpl:
     def find_parent(nodes: List[DocNode], group: str) -> List[DocNode]:
         def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
             if node.parent:
-                if node.parent.group == group:
+                if node.parent._group == group:
                     visited.add(node.parent)
                 recurse_parents(node.parent, visited)
 

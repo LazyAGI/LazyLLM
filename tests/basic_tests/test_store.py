@@ -85,23 +85,23 @@ class TestChromadbStore(unittest.TestCase):
 
         nodes = self.store.get_nodes("group1")
         self.assertEqual(len(nodes), 2)
-        self.assertEqual(nodes[0].uid, "1")
-        self.assertEqual(nodes[1].uid, "2")
-        self.assertEqual(nodes[1].parent.uid, "1")
+        self.assertEqual(nodes[0]._uid, "1")
+        self.assertEqual(nodes[1]._uid, "2")
+        self.assertEqual(nodes[1].parent._uid, "1")
 
     def test_insert_dict_as_sparse_embedding(self):
         node1 = DocNode(uid="1", text="text1", group="group1", embedding={'default': {1: 10, 2: 20}})
         node2 = DocNode(uid="2", text="text2", group="group1", embedding={'default': {0: 30, 2: 50}})
         orig_embedding_dict = {
-            node1.uid: [0, 10, 20],
-            node2.uid: [30, 0, 50],
+            node1._uid: [0, 10, 20],
+            node2._uid: [30, 0, 50],
         }
         self.store.update_nodes([node1, node2])
 
         results = self.store._peek_all_documents('group1')
         nodes = self.store._build_nodes_from_chroma(results, self.embed_dims)
         nodes_dict = {
-            node.uid: node for node in nodes
+            node._uid: node for node in nodes
         }
 
         assert nodes_dict.keys() == orig_embedding_dict.keys()
@@ -140,9 +140,9 @@ class TestMapStore(unittest.TestCase):
         self.store.update_nodes([self.node1, self.node2])
         nodes = self.store.get_nodes("group1")
         self.assertEqual(len(nodes), 2)
-        self.assertEqual(nodes[0].uid, "1")
-        self.assertEqual(nodes[1].uid, "2")
-        self.assertEqual(nodes[1].parent.uid, "1")
+        self.assertEqual(nodes[0]._uid, "1")
+        self.assertEqual(nodes[1]._uid, "2")
+        self.assertEqual(nodes[1].parent._uid, "1")
 
     def test_get_group_nodes(self):
         self.store.update_nodes([self.node1, self.node2])
@@ -150,9 +150,9 @@ class TestMapStore(unittest.TestCase):
         self.assertEqual(n1.text, self.node1.text)
         n2 = self.store.get_nodes("group1", ["2"])[0]
         self.assertEqual(n2.text, self.node2.text)
-        ids = set([self.node1.uid, self.node2.uid])
+        ids = set([self.node1._uid, self.node2._uid])
         docs = self.store.get_nodes("group1")
-        self.assertEqual(ids, set([doc.uid for doc in docs]))
+        self.assertEqual(ids, set([doc._uid for doc in docs]))
 
     def test_remove_group_nodes(self):
         self.store.update_nodes([self.node1, self.node2])
@@ -230,23 +230,23 @@ class TestMilvusStore(unittest.TestCase):
         self.store.update_nodes([self.node1])
         ret = self.store.query(query='text1', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
-        self.assertEqual(ret[0].uid, self.node1.uid)
+        self.assertEqual(ret[0]._uid, self.node1._uid)
 
         self.store.update_nodes([self.node2])
         ret = self.store.query(query='text2', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
-        self.assertEqual(ret[0].uid, self.node2.uid)
+        self.assertEqual(ret[0]._uid, self.node2._uid)
 
     def test_remove_and_query(self):
         self.store.update_nodes([self.node1, self.node2])
         ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
-        self.assertEqual(ret[0].uid, self.node2.uid)
+        self.assertEqual(ret[0]._uid, self.node2._uid)
 
-        self.store.remove_nodes("group1", [self.node2.uid])
+        self.store.remove_nodes("group1", [self.node2._uid])
         ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
-        self.assertEqual(ret[0].uid, self.node1.uid)
+        self.assertEqual(ret[0]._uid, self.node1._uid)
 
     def test_all_groups(self):
         self.assertEqual(set(self.store.all_groups()), set(self.node_groups))
@@ -261,14 +261,14 @@ class TestMilvusStore(unittest.TestCase):
         ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=10,
                                filters={'comment': ['comment3']})
         self.assertEqual(len(ret), 1)
-        self.assertEqual(ret[0].uid, self.node1.uid)
+        self.assertEqual(ret[0]._uid, self.node1._uid)
 
     def test_query_with_filter_exist_2(self):
         self.store.update_nodes([self.node1, self.node2, self.node3])
         ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=10,
                                filters={'comment': ['comment3']})
         self.assertEqual(len(ret), 2)
-        self.assertEqual(set([ret[0].uid, ret[1].uid]), set([self.node1.uid, self.node2.uid]))
+        self.assertEqual(set([ret[0]._uid, ret[1]._uid]), set([self.node1._uid, self.node2._uid]))
 
     def test_query_with_filter_non_exist(self):
         self.store.update_nodes([self.node1, self.node3])
@@ -285,11 +285,11 @@ class TestMilvusStore(unittest.TestCase):
 
         nodes = self.store.get_nodes('group1')
         orig_nodes = [self.node1, self.node2, self.node3]
-        self.assertEqual(set([node.uid for node in nodes]), set([node.uid for node in orig_nodes]))
+        self.assertEqual(set([node._uid for node in nodes]), set([node._uid for node in orig_nodes]))
 
         for node in nodes:
             for orig_node in orig_nodes:
-                if node.uid == orig_node.uid:
+                if node._uid == orig_node._uid:
                     self.assertEqual(node.text, orig_node.text)
                     break
 
@@ -299,4 +299,4 @@ class TestMilvusStore(unittest.TestCase):
         ret = self.store.query(query='test', group_name='group1', embed_keys=['vec1'], topk=10,
                                filters={'tags': [2]})
         self.assertEqual(len(ret), 2)
-        self.assertEqual(set([ret[0].uid, ret[1].uid]), set([self.node1.uid, self.node2.uid]))
+        self.assertEqual(set([ret[0]._uid, ret[1]._uid]), set([self.node1._uid, self.node2._uid]))
