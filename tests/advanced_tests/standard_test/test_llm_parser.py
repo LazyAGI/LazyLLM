@@ -29,7 +29,6 @@ class TestLLMParser(unittest.TestCase):
         assert isinstance(result, list)
         assert isinstance(result[0], str)
         assert len(result[0]) < 150
-        lazyllm.LOG.warning(result[0])
         assert "LazyLLM" in result[0]
 
     def test_keywords_transform(self):
