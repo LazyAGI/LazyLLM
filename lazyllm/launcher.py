@@ -18,8 +18,7 @@ import psutil
 import lazyllm
 from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final, LOG
 
-from kubernetes import client, config
-from kubernetes.client.rest import ApiException
+from lazyllm.thirdparty import kubernetes as k8s
 import requests
 import yaml
 from typing import Literal
@@ -203,6 +202,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             self.namespace = launcher.namespace
             self.volume_configs = launcher.volume_configs
             self.gateway_name = launcher.gateway_name
+            self.gateway_class_name = launcher.gateway_class_name
             self.deployment_port = 8080
             self.host = launcher.http_host
             self.path = launcher.http_path
@@ -234,16 +234,16 @@ class K8sLauncher(LazyLLMLaunchersBase):
             return precmd + " " + cmd
 
         def _create_deployment_spec(self, cmd, volume_configs=None):
-            container = client.V1Container(
+            container = k8s.client.V1Container(
                 name=self.deployment_name,
                 image=self.image,
                 command=["bash", "-c", cmd],
-                resources=client.V1ResourceRequirements(
+                resources=k8s.client.V1ResourceRequirements(
                     requests=self.resource_config.get("requests", {"cpu": "2", "memory": "16Gi"}),
                     limits=self.resource_config.get("requests", {"cpu": "2", "memory": "16Gi"})
                 ),
                 volume_mounts=[] if not volume_configs else [
-                    client.V1VolumeMount(
+                    k8s.client.V1VolumeMount(
                         mount_path=vol_config["mount_path"],
                         name=vol_config["name"]
                     ) for vol_config in volume_configs
@@ -255,9 +255,9 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 for vol_config in volume_configs:
                     if "nfs_server" in vol_config and "nfs_path" in vol_config:
                         volumes.append(
-                            client.V1Volume(
+                            k8s.client.V1Volume(
                                 name=vol_config["name"],
-                                nfs=client.V1NFSVolumeSource(
+                                nfs=k8s.client.V1NFSVolumeSource(
                                     server=vol_config["nfs_server"],
                                     path=vol_config["nfs_path"],
                                     read_only=vol_config.get("read_only", False)
@@ -266,9 +266,9 @@ class K8sLauncher(LazyLLMLaunchersBase):
                         )
                     elif "host_path" in vol_config:
                         volumes.append(
-                            client.V1Volume(
+                            k8s.client.V1Volume(
                                 name=vol_config["name"],
-                                host_path=client.V1HostPathVolumeSource(
+                                host_path=k8s.client.V1HostPathVolumeSource(
                                     path=vol_config["host_path"],
                                     type="Directory"
                                 )
@@ -277,24 +277,24 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     else:
                         LOG.error(f"{vol_config} configuration error.")
 
-            template = client.V1PodTemplateSpec(
-                metadata=client.V1ObjectMeta(labels={"app": self.deployment_name}),
-                spec=client.V1PodSpec(restart_policy="Always", containers=[container], volumes=volumes)
+            template = k8s.client.V1PodTemplateSpec(
+                metadata=k8s.client.V1ObjectMeta(labels={"app": self.deployment_name}),
+                spec=k8s.client.V1PodSpec(restart_policy="Always", containers=[container], volumes=volumes)
             )
-            deployment_spec = client.V1DeploymentSpec(
+            deployment_spec = k8s.client.V1DeploymentSpec(
                 replicas=1,
                 template=template,
-                selector=client.V1LabelSelector(match_labels={"app": self.deployment_name})
+                selector=k8s.client.V1LabelSelector(match_labels={"app": self.deployment_name})
             )
-            return client.V1Deployment(
+            return k8s.client.V1Deployment(
                 api_version="apps/v1",
                 kind="Deployment",
-                metadata=client.V1ObjectMeta(name=self.deployment_name),
+                metadata=k8s.client.V1ObjectMeta(name=self.deployment_name),
                 spec=deployment_spec
             )
 
         def _create_deployment(self, *, fixed=False):
-            api_instance = client.AppsV1Api()
+            api_instance = k8s.client.AppsV1Api()
             cmd = self.get_executable_cmd(fixed=fixed)
             deployment = self._create_deployment_spec(cmd.cmd, self.volume_configs)
             try:
@@ -303,32 +303,32 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     namespace=self.namespace
                 )
                 LOG.info(f"Kubernetes Deployment '{self.deployment_name}' created successfully.")
-            except ApiException as e:
+            except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when creating Kubernetes Deployment: {e}")
                 raise
 
         def _delete_deployment(self):
-            config.load_kube_config(self.launcher.kube_config_path)
-            api_instance = client.AppsV1Api()
+            k8s.config.load_kube_config(self.launcher.kube_config_path)
+            api_instance = k8s.client.AppsV1Api()
             try:
                 api_instance.delete_namespaced_deployment(
                     name=self.deployment_name,
                     namespace=self.namespace,
-                    body=client.V1DeleteOptions(propagation_policy="Foreground")
+                    body=k8s.client.V1DeleteOptions(propagation_policy="Foreground")
                 )
                 LOG.info(f"Kubernetes Deployment {self.deployment_name} deleted.")
-            except ApiException as e:
+            except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when deleting Kubernetes Deployment: {e}")
 
         def _expose_deployment(self):
-            api_instance = client.CoreV1Api()
-            service = client.V1Service(
+            api_instance = k8s.client.CoreV1Api()
+            service = k8s.client.V1Service(
                 api_version="v1",
                 kind="Service",
-                metadata=client.V1ObjectMeta(name=f"service-{self.deployment_name}"),
-                spec=client.V1ServiceSpec(
+                metadata=k8s.client.V1ObjectMeta(name=f"service-{self.deployment_name}"),
+                spec=k8s.client.V1ServiceSpec(
                     selector={"app": self.deployment_name},
-                    ports=[client.V1ServicePort(port=self.deployment_port, target_port=self.deployment_port)],
+                    ports=[k8s.client.V1ServicePort(port=self.deployment_port, target_port=self.deployment_port)],
                     type="ClusterIP"
                 )
             )
@@ -338,25 +338,25 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     body=service
                 )
                 LOG.info(f"Kubernetes Service 'service-{self.deployment_name}' created and exposed successfully.")
-            except ApiException as e:
+            except k8s.client.rest.ApiException as e:
                 LOG.info(f"Exception when creating Service: {e}")
                 raise
 
         def _delete_service(self):
-            config.load_kube_config(self.launcher.kube_config_path)
-            svc_instance = client.CoreV1Api()
+            k8s.config.load_kube_config(self.launcher.kube_config_path)
+            svc_instance = k8s.client.CoreV1Api()
             try:
                 svc_instance.delete_namespaced_service(
                     name=f"service-{self.deployment_name}",
                     namespace=self.namespace,
-                    body=client.V1DeleteOptions(propagation_policy="Foreground")
+                    body=k8s.client.V1DeleteOptions(propagation_policy="Foreground")
                 )
                 LOG.info(f"Kubernetes Service 'service-{self.deployment_name}' deleted.")
-            except ApiException as e:
+            except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when deleting Kubernetes Service: {e}")
 
         def _create_or_update_gateway(self):
-            networking_api = client.CustomObjectsApi()
+            networking_api = k8s.client.CustomObjectsApi()
             gateway_spec = {
                 "apiVersion": "gateway.networking.k8s.io/v1beta1",
                 "kind": "Gateway",
@@ -368,7 +368,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     }
                 },
                 "spec": {
-                    "gatewayClassName": "istio",
+                    "gatewayClassName": self.gateway_class_name,
                     "listeners": [
                         {
                             "name": f"httproute-{self.deployment_name}",
@@ -398,7 +398,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     body=existing_gateway
                 )
                 LOG.info(f"Kubernetes Gateway '{self.gateway_name}' updated successfully.")
-            except ApiException as e:
+            except k8s.client.rest.ApiException as e:
                 if e.status == 404:
                     try:
                         networking_api.create_namespaced_custom_object(
@@ -409,14 +409,14 @@ class K8sLauncher(LazyLLMLaunchersBase):
                             body=gateway_spec
                         )
                         LOG.info(f"Kubernetes Gateway '{self.gateway_name}' created successfully.")
-                    except ApiException as e_create:
+                    except k8s.client.rest.ApiException as e_create:
                         LOG.error(f"Exception when creating Gateway: {e_create}")
                 else:
                     LOG.error(f"Exception when updating Gateway: {e}")
 
         def _delete_or_update_gateway(self):
-            config.load_kube_config(self.launcher.kube_config_path)
-            gateway_instance = client.CustomObjectsApi()
+            k8s.config.load_kube_config(self.launcher.kube_config_path)
+            gateway_instance = k8s.client.CustomObjectsApi()
             try:
                 gateway = gateway_instance.get_namespaced_custom_object(
                     group="gateway.networking.k8s.io",
@@ -450,11 +450,11 @@ class K8sLauncher(LazyLLMLaunchersBase):
                         name=self.gateway_name
                     )
                     LOG.info(f"Kubernetes Gateway '{self.gateway_name}' deleted.")
-            except ApiException as e:
+            except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when deleting or updating Gateway: {e}")
 
         def _create_httproute(self):
-            custom_api = client.CustomObjectsApi()
+            custom_api = k8s.client.CustomObjectsApi()
 
             httproute_spec = {
                 "apiVersion": "gateway.networking.k8s.io/v1beta1",
@@ -495,12 +495,12 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     body=httproute_spec
                 )
                 LOG.info(f"Kubernetes HTTPRoute 'httproute-{self.deployment_name}' created successfully.")
-            except ApiException as e:
+            except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when creating HTTPRoute: {e}")
 
         def _delete_httproute(self):
-            config.load_kube_config(self.launcher.kube_config_path)
-            httproute_instance = client.CustomObjectsApi()
+            k8s.config.load_kube_config(self.launcher.kube_config_path)
+            httproute_instance = k8s.client.CustomObjectsApi()
             try:
                 httproute_instance.delete_namespaced_custom_object(
                     group="gateway.networking.k8s.io",
@@ -510,7 +510,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     name=f"httproute-{self.deployment_name}"
                 )
                 LOG.info(f"Kubernetes HTTPRoute 'httproute-{self.deployment_name}' delete.")
-            except ApiException as e:
+            except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when deleting HTTPRoute: {e}")
 
         def _start(self, *, fixed=False):
@@ -546,7 +546,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             return f"service-{self.deployment_name}"
 
         def _get_gateway_service_name(self):
-            core_api = client.CoreV1Api()
+            core_api = k8s.client.CoreV1Api()
             try:
                 services = core_api.list_namespaced_service(namespace=self.namespace)
 
@@ -558,13 +558,13 @@ class K8sLauncher(LazyLLMLaunchersBase):
 
                 LOG.warning("No Service was found corresponding to the specified Gateway.")
                 return None
-            except ApiException as e:
+            except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when retrieving Gateway Service: {e}")
                 return None
 
         def _get_gateway_deployment_name(self):
-            core_api = client.CoreV1Api()
-            apps_v1 = client.AppsV1Api()
+            core_api = k8s.client.CoreV1Api()
+            apps_v1 = k8s.client.AppsV1Api()
 
             gateway_service_name = self._get_gateway_service_name()
             try:
@@ -584,12 +584,12 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 else:
                     LOG.warning(f"Kubernetes Service '{gateway_service_name}' does not have a selector.")
                     return None
-            except ApiException as e:
+            except k8s.client.rest.ApiException as e:
                 LOG.error(f"Error fetching Service '{gateway_service_name}': {e}")
                 return None
 
         def _get_gateway_ip(self):
-            core_api = client.CoreV1Api()
+            core_api = k8s.client.CoreV1Api()
             gateway_service_name = self._get_gateway_service_name()
             if gateway_service_name is None:
                 raise ValueError("Kubernetes Gateway service name not found.")
@@ -615,12 +615,12 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 else:
                     LOG.warning("Unsupported Service type.")
                     return None
-            except ApiException as e:
+            except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when retrieving gateway IP: {e}")
                 return None
 
         def _get_httproute_host(self):
-            custom_api = client.CustomObjectsApi()
+            custom_api = k8s.client.CustomObjectsApi()
             try:
                 httproute = custom_api.get_namespaced_custom_object(
                     group="gateway.networking.k8s.io",
@@ -636,7 +636,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 else:
                     LOG.warning("Kubernetes HTTPRoute has no configured hostnames.")
                     return None
-            except ApiException as e:
+            except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when retrieving HTTPRoute host: {e}")
                 return None
 
@@ -647,7 +647,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             return host if host else ip
 
         def wait_for_deployment_ready(self, timeout=300):
-            api_instance = client.AppsV1Api()
+            api_instance = k8s.client.AppsV1Api()
             start_time = time.time()
             while time.time() - start_time < timeout:
                 try:
@@ -659,14 +659,14 @@ class K8sLauncher(LazyLLMLaunchersBase):
                         LOG.info(f"Kubernetes Deployment '{self.deployment_name}' is running.")
                         return True
                     time.sleep(2)
-                except ApiException as e:
+                except k8s.client.rest.ApiException as e:
                     LOG.error(f"Exception when reading Deployment status: {e}")
                     raise
             LOG.warning(f"Timed out waiting for Deployment '{self.deployment_name}' to be ready.")
             return False
 
         def wait_for_service_ready(self, timeout=300):
-            svc_instance = client.CoreV1Api()
+            svc_instance = k8s.client.CoreV1Api()
             start_time = time.time()
             while time.time() - start_time < timeout:
                 try:
@@ -700,7 +700,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                                         return {"ip": node_ip, "ports": node_ports}
                     LOG.info(f"Kubernetes Service 'service-{self.deployment_name}' is not ready yet. Retrying...")
                     time.sleep(2)
-                except ApiException as e:
+                except k8s.client.rest.ApiException as e:
                     LOG.error(f"Exception when reading Service status: {e}")
                     raise
             LOG.warning(f"Timed out waiting for Service 'service-{self.deployment_name}' to be ready.")
@@ -725,8 +725,8 @@ class K8sLauncher(LazyLLMLaunchersBase):
             return False
 
         def wait_for_gateway(self, timeout=300, interval=5):  # noqa: C901
-            core_v1 = client.CoreV1Api()
-            apps_v1 = client.AppsV1Api()
+            core_v1 = k8s.client.CoreV1Api()
+            apps_v1 = k8s.client.AppsV1Api()
             gateway_service_name = self._get_gateway_service_name()
             gateway_deployment_names = self._get_gateway_deployment_name()
             service_ready = False
@@ -758,7 +758,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                         else:
                             LOG.error(f"Unexpected Kubernetes Service type: {service.spec.type}.")
                             service_ready = False
-                    except ApiException as e:
+                    except k8s.client.rest.ApiException as e:
                         LOG.error(f"Kubernetes Service '{gateway_service_name}' not found yet: {e}")
                         service_ready = False
                 if not deployment_ready:
@@ -773,7 +773,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                             else:
                                 LOG.info(f"Kubernetes Deployment '{deployment_name}' is not fully ready yet.")
                                 deployment_ready = False
-                        except ApiException as e:
+                        except k8s.client.rest.ApiException as e:
                             LOG.warning(f"Kubernetes Deployment '{deployment_name}' not found yet: {e}")
                             deployment_ready = False
 
@@ -787,7 +787,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             return False
 
         def wait_for_httproute(self, timeout=300):
-            custom_api = client.CustomObjectsApi()
+            custom_api = k8s.client.CustomObjectsApi()
             start_time = time.time()
             while time.time() - start_time < timeout:
                 try:
@@ -803,7 +803,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                             LOG.info(f"Kubernetes HTTPRoute 'httproute-{self.deployment_name}' is ready.")
                             return True
                     LOG.info(f"Waiting for HTTPRoute 'httproute-{self.deployment_name}' to be ready...")
-                except ApiException as e:
+                except k8s.client.rest.ApiException as e:
                     LOG.error(f"Exception when checking HTTPRoute status: {e}")
 
                 time.sleep(2)
@@ -832,7 +832,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
 
         @property
         def status(self):
-            api_instance = client.AppsV1Api()
+            api_instance = k8s.client.AppsV1Api()
             try:
                 deployment_status = api_instance.read_namespaced_deployment_status(
                     name=self.deployment_name,
@@ -842,12 +842,12 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     return Status.Running
                 else:
                     return Status.Pending
-            except ApiException as e:
+            except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when reading Deployment status: {e}")
                 return Status.Failed
 
     def __init__(self, kube_config_path=None, volume_configs=None, image=None, resource_config=None,
-                 namespace=None, gateway_name=None, host=None, path=None,
+                 namespace=None, gateway_name=None, gateway_class_name=None, host=None, path=None,
                  svc_type: Literal["LoadBalancer", "NodePort", "ClusterIP"] = None, retry=3,
                  sync=True, ngpus=None, **kwargs):
         super().__init__()
@@ -864,6 +864,8 @@ class K8sLauncher(LazyLLMLaunchersBase):
         self.svc_type = svc_type if svc_type else config_data.get("svc_type", "LoadBalancer")
         self.namespace = namespace if namespace else config_data.get("namespace", "default")
         self.gateway_name = gateway_name if gateway_name else config_data.get("gateway_name", "lazyllm-gateway")
+        self.gateway_class_name = gateway_class_name if gateway_class_name \
+            else config_data.get("gateway_class_name", "istio")
         self.http_host = host if host else config_data.get("host", None)
         self.http_path = path if path else config_data.get("path", '/generate')
 
@@ -878,7 +880,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 raise ValueError("Kubernetes resource configuration file format error.")
 
     def makejob(self, cmd):
-        config.load_kube_config(self.kube_config_path)
+        k8s.config.load_kube_config(self.kube_config_path)
         return K8sLauncher.Job(cmd, launcher=self, sync=self.sync)
 
     def launch(self, f, *args, **kw):
