@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-import json
 import requests
 import os
 import fnmatch
@@ -12,7 +11,7 @@ from lazyllm.components import AlpacaPrompter
 from lazyllm.thirdparty import nltk
 import tiktoken
 
-from .doc_node import DocNode, MetadataMode
+from .doc_node import DocNode, MetadataMode, QADocNode
 from lazyllm import LOG, TrainableModule, ThreadPoolExecutor
 
 
@@ -98,7 +97,7 @@ class NodeTransform(ABC):
 
     @abstractmethod
     def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
-        raise NotImplementedError("Not implemented")
+        raise NotImplementedError('Not implemented')
 
     def __call__(self, node: DocNode, **kwargs: Any) -> List[DocNode]:
         # Parent and child should not be set here.
@@ -125,7 +124,7 @@ class AdaptiveTransform(NodeTransform):
 
     def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
         for pt, transform in self._transformers:
-            if pt and not pt.startswith("*"): pt = os.path.join(str(os.cwd()), pt)
+            if pt and not pt.startswith('*'): pt = os.path.join(str(os.cwd()), pt)
             if not isinstance(document, DocNode):
                 LOG.warning(f'Invalud document type {type(document)} got')
             if not pt or fnmatch.fnmatch(document.docpath, pt):
@@ -138,37 +137,37 @@ class SentenceSplitter(NodeTransform):
         super(__class__, self).__init__(num_workers=num_workers)
         if chunk_overlap > chunk_size:
             raise ValueError(
-                f"Got a larger chunk overlap ({chunk_overlap}) than chunk size "
-                f"({chunk_size}), should be smaller."
+                f'Got a larger chunk overlap ({chunk_overlap}) than chunk size '
+                f'({chunk_size}), should be smaller.'
             )
 
         assert (
             chunk_size > 0 and chunk_overlap >= 0
-        ), "chunk size should > 0 and chunk_overlap should >= 0"
+        ), 'chunk size should > 0 and chunk_overlap should >= 0'
 
         try:
-            self._tiktoken_tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo")
+            self._tiktoken_tokenizer = tiktoken.encoding_for_model('gpt-3.5-turbo')
         except requests.exceptions.ConnectionError:
             LOG.error(
-                "Unable to download the vocabulary file for tiktoken `gpt-3.5-turbo`. "
-                "Please check your internet connection. "
-                "Alternatively, you can manually download the file "
-                "and set the `TIKTOKEN_CACHE_DIR` environment variable."
+                'Unable to download the vocabulary file for tiktoken `gpt-3.5-turbo`. '
+                'Please check your internet connection. '
+                'Alternatively, you can manually download the file '
+                'and set the `TIKTOKEN_CACHE_DIR` environment variable.'
             )
             raise
         except Exception as e:
-            LOG.error(f"Unable to build tiktoken tokenizer with error `{e}`")
+            LOG.error(f'Unable to build tiktoken tokenizer with error `{e}`')
             raise
         self._punkt_st_tokenizer = nltk.tokenize.PunktSentenceTokenizer()
 
         self._sentence_split_fns = [
-            partial(split_text_keep_separator, separator="\n\n\n"),  # paragraph
+            partial(split_text_keep_separator, separator='\n\n\n'),  # paragraph
             self._punkt_st_tokenizer.tokenize,
         ]
 
         self._sub_sentence_split_fns = [
-            lambda t: re.findall(r"[^,.;。？！]+[,.;。？！]?", t),
-            partial(split_text_keep_separator, separator=" "),
+            lambda t: re.findall(r'[^,.;。？！]+[,.;。？！]?', t),
+            partial(split_text_keep_separator, separator=' '),
             list,  # split by character
         ]
 
@@ -189,21 +188,21 @@ class SentenceSplitter(NodeTransform):
         )
 
     def split_text(self, text: str, metadata_size: int) -> List[str]:
-        if text == "":
-            return [""]
+        if text == '':
+            return ['']
         effective_chunk_size = self.chunk_size - metadata_size
         if effective_chunk_size <= 0:
             raise ValueError(
-                f"Metadata length ({metadata_size}) is longer than chunk size "
-                f"({self.chunk_size}). Consider increasing the chunk size or "
-                "decreasing the size of your metadata to avoid this."
+                f'Metadata length ({metadata_size}) is longer than chunk size '
+                f'({self.chunk_size}). Consider increasing the chunk size or '
+                'decreasing the size of your metadata to avoid this.'
             )
         elif effective_chunk_size < 50:
             LOG.warning(
-                f"Metadata length ({metadata_size}) is close to chunk size "
-                f"({self.chunk_size}). Resulting chunks are less than 50 tokens. "
-                "Consider increasing the chunk size or decreasing the size of "
-                "your metadata to avoid this.",
+                f'Metadata length ({metadata_size}) is close to chunk size '
+                f'({self.chunk_size}). Resulting chunks are less than 50 tokens. '
+                'Consider increasing the chunk size or decreasing the size of '
+                'your metadata to avoid this.',
                 flush=True,
             )
 
@@ -218,7 +217,7 @@ class SentenceSplitter(NodeTransform):
         1. split by paragraph separator
         2. split by chunking tokenizer
         3. split by second chunking regex
-        4. split by default separator (" ")
+        4. split by default separator (' ')
         5. split by character
         """
         token_size = self._token_size(text)
@@ -252,7 +251,7 @@ class SentenceSplitter(NodeTransform):
         def close_chunk() -> None:
             nonlocal chunks, cur_chunk, cur_chunk_len, is_chunk_new
 
-            chunks.append("".join([text for text, _ in cur_chunk]))
+            chunks.append(''.join([text for text, _ in cur_chunk]))
             last_chunk = cur_chunk
             cur_chunk = []
             cur_chunk_len = 0
@@ -272,7 +271,7 @@ class SentenceSplitter(NodeTransform):
         while i < len(splits):
             cur_split = splits[i]
             if cur_split.token_size > chunk_size:
-                raise ValueError("Single token exceeded chunk size")
+                raise ValueError('Single token exceeded chunk size')
             if cur_chunk_len + cur_split.token_size > chunk_size and not is_chunk_new:
                 # if adding split to current chunk exceeds chunk size
                 close_chunk()
@@ -292,13 +291,13 @@ class SentenceSplitter(NodeTransform):
 
         # handle the last chunk
         if not is_chunk_new:
-            chunks.append("".join([text for text, _ in cur_chunk]))
+            chunks.append(''.join([text for text, _ in cur_chunk]))
 
         # Remove whitespace only chunks and remove leading and trailing whitespace.
         return [stripped_chunk for chunk in chunks if (stripped_chunk := chunk.strip())]
 
     def _token_size(self, text: str) -> int:
-        return len(self._tiktoken_tokenizer.encode(text, allowed_special="all"))
+        return len(self._tiktoken_tokenizer.encode(text, allowed_special='all'))
 
     def _get_splits_by_fns(self, text: str) -> Tuple[List[str], bool]:
         for split_fn in self._sentence_split_fns:
@@ -337,97 +336,149 @@ class FuncNodeTransform(NodeTransform):
         return self._func(node if self._trans_node else node.get_text())
 
 
-en_prompt_template = """
-## Role: Text Summarizer/Keyword Extractor
-You are a text summarization and keyword extraction engine responsible for analyzing user input text
-and providing a concise summary or extracting relevant keywords based on the requested task.
+templates = dict(
+    en=dict(summary="""
+## Role: Text Summarizer
+You are a text summarization engine responsible for analyzing user input text and providing a concise summary based on \
+the requested task.
 
 ## Constraints:
-- Respond only with the requested output: either a brief summary or a list of keywords, as specified by the task type.
+- Respond only with the requested output: a brief summary.
 - Do not add any extra fields, explanations, or translations.
 
-## Task Types:
-- "summary": Provide a concise summary of the input text.
-- "keywords": Extract and list relevant keywords from the input text.
-
 ## Text Format:
-The input is in JSON format, where "input" contains the user's raw input text
-and "task_type" specifies whether a summary or keywords are requested.
+The input is a string contains the user's raw input text
 
 ## Example:
-User: {{"input": "Hello, I am an AI robot developed by SenseTime, named LazyLLM.
-My mission is to assist you in building the most powerful large-scale model applications with minimal cost.",
-"task_type": "summary"}}
-Assistant: Introduction of AI robot LazyLLM
+#input:
+Hello, I am an AI robot developed by SenseTime, named LazyLLM.
+My mission is to assist you in building the most powerful large-scale model applications with minimal cost.
+#output:
+Introduction of AI robot LazyLLM
 
-User: {{"input": "Hello, I am an AI robot developed by SenseTime, named LazyLLM.
-My mission is to assist you in building the most powerful large-scale model applications with minimal cost.",
-"task_type": "keywords"}}
-Assistant: LazyLLM, SenseTime, AI robot, large-scale model applications
+You should not have any unnecessary output. Lets begin:
+""", keywords="""
+## Role: Keyword Extractor
+You are a text keyword extraction engine responsible for analyzing user input text and providing a extracting relevant \
+keywords based on the requested task.
 
-Input text is as follows:
-{input}
-"""
+## Constraints:
+- Respond only with a list of keywords.
+- Do not add any extra fields, explanations, or translations.
 
-ch_prompt_template = """
-## 角色：文本摘要/关键词提取器
-你是一个文本摘要和关键词提取引擎，负责分析用户输入的文本，并根据请求任务提供简洁的摘要或提取相关关键词。
+## Text Format:
+The input is a string contains the user's raw input text
+
+## Example:
+#input:
+"Hello, I am an AI robot developed by SenseTime, named LazyLLM.
+My mission is to assist you in building the most powerful large-scale model applications with minimal cost."
+#output:
+LazyLLM, SenseTime, AI robot, large-scale model applications
+
+You should not have any unnecessary output. Lets begin:
+""", qa="""
+## Role: QA-pair Extractor
+You are a question-answer extraction engine responsible for analyzing user input text and providing a extracting \
+query and answer based on the requested task.
+
+## Constraints:
+- Respond only with a list of question and answer pairs.
+- Do not add any extra fields, explanations, or translations.
+
+## Text Format:
+The input is a string contains the user's raw input text
+
+## Example:
+#input:
+"Hello, I am an AI robot developed by SenseTime, named LazyLLM.
+My mission is to assist you in building the most powerful large-scale model applications with minimal cost."
+#output:
+Q: What is LazyLLM developed by?
+A: LazyLLM is developed by SenseTime.
+Q: What can LazyLLM do?
+A: LazyLLM can assist you in building the most powerful large-scale model applications with minimal cost.
+
+You should not have any unnecessary output. Lets begin:
+"""),
+    cn=dict(summary="""
+## 角色：文本摘要
+你是一个文本摘要引擎，负责分析用户输入的文本，并根据请求任务提供简洁的摘要。
 
 ## 约束条件:
-- 仅回复请求的输出内容：根据任务类型提供简短摘要或关键词列表。
+- 仅回复请求的输出内容：提供简短摘要。
 - 不要添加额外字段、解释或翻译。
 
-## 任务类型:
-- "summary"：提供输入文本的简短摘要。
-- "keywords"：提取并列出输入文本中的相关关键词。
-
 ## 文本格式:
-输入文本为JSON格式，其中“input”包含用户的原始输入文本，“task_type”指定请求的是摘要还是关键词。
+输入文本为string格式，包含用户的原始输入文本
 
 ## 示例:
-User: {{"input": "你好，我是由商汤开发的人工智能机器人，我叫LazyLLM。我的使命是协助您，用最低的成本，构建最强大的大模型应用。", "task_type": "summary"}}
-Assistant: 人工智能机器人LazyLLM的简介
+#input:
+你好，我是由商汤开发的人工智能机器人，我叫LazyLLM。我的使命是协助您，用最低的成本，构建最强大的大模型应用。
+#output:
+人工智能机器人LazyLLM的简介
 
-User: {{"input": "你好，我是由商汤开发的人工智能机器人，我叫LazyLLM。我的使命是协助您，用最低的成本，构建最强大的大模型应用。", "task_type": "keywords"}}
-Assistant: LazyLLM, 商汤, 人工智能机器人, 大模型应用
+你不应输出任何多余的字符，现在我们开始吧
+""", keywords="""
+## 角色：关键词提取引擎
+你是一个关键词提取引擎，负责分析用户输入的文本，提取其中的关键词。
 
-输入文本如下:
-${input}
-"""
+## 约束条件:
+- 仅回复请求的输出内容：抽取关键词。
+- 不要添加额外字段、解释或翻译。
 
+## 文本格式:
+输入文本为string格式，包含用户的原始输入文本
+
+## 示例:
+#input:
+你好，我是由商汤开发的人工智能机器人，我叫LazyLLM。我的使命是协助您，用最低的成本，构建最强大的大模型应用。
+#output:
+LazyLLM, 商汤, 人工智能机器人, 大模型应用
+
+你不应输出任何多余的字符，现在我们开始吧
+""", qa="""
+## 角色：问答对提取引擎
+你是一个问答对提取引擎，负责分析用户输入的文本，提取其中的问答对。
+
+## 约束条件:
+- 仅回复请求的输出内容：抽取问答对。
+- 不要添加额外字段、解释或翻译。
+
+## 文本格式:
+输入文本为string格式，包含用户的原始输入文本
+
+## 示例:
+#input:
+你好，我是由商汤开发的人工智能机器人，我叫LazyLLM。我的使命是协助您，用最低的成本，构建最强大的大模型应用。
+#output:
+Q: LazyLLM是由谁开发的？
+A: LazyLLM是由商汤科技开发的。
+Q: LazyLLM能做什么？
+A: LazyLLM可以协助用户，用最低的成本，构建最强大的大模型应用
+
+你不应输出任何多余的字符，现在我们开始吧
+"""))
 
 class LLMParser(NodeTransform):
     def __init__(self, llm: TrainableModule, language: str, task_type: str, num_workers: int = 0):
         super(__class__, self).__init__(num_workers=num_workers)
-        assert language in ["en", "zh"], f"Not supported language {language}"
-        assert task_type in [
-            "summary",
-            "keywords",
-        ], f"Not supported task_type {task_type}"
-        prompt = en_prompt_template if language == "en" else ch_prompt_template
-        self._llm = llm.share(
-            prompt=AlpacaPrompter(prompt).pre_hook(self.prompt_pre_hook)
-        )
+        assert language in ['en', 'zh'], f'Not supported language {language}'
+        assert task_type in ['summary', 'keywords', 'qa'], f'Not supported task_type {task_type}'
         self._task_type = task_type
-
-    def prompt_pre_hook(
-        self,
-        input: Union[str, List, Dict[str, str], None] = None,
-        history: List[Union[List[str], Dict[str, Any]]] = [],
-        tools: Union[List[Dict[str, Any]], None] = None,
-        label: Union[str, None] = None,
-    ):
-        input_json = {}
-        if isinstance(input, str):
-            input_json = {"input": input, "task_type": self._task_type}
-        else:
-            raise ValueError(f"Unexpected type for input: {type(input)}")
-
-        input_text = json.dumps(input_json, ensure_ascii=False)
-        return dict(input=input_text), history, tools, label
+        self._llm = llm.share(prompt=AlpacaPrompter(dict(
+            system=templates[language][task_type], user='#input:\n{input}\n#output:\n'))).formatter(self._format)
+        self._task_type = task_type
 
     def transform(self, node: DocNode, **kwargs) -> List[str]:
         result = self._llm(node.get_text())
-        results = [result] if isinstance(result, str) else result
-        LOG.debug(f"LLMParser({self._task_type}) with input: {node.get_text()}")
-        return results
+        return [result] if isinstance(result, str) else result
+
+    def _format(self, input):
+        if self._task_type == 'keywords':
+            return [s.strip() for s in input.split(',')]
+        elif self._task_type == 'qa':
+            return [QADocNode(query=q.strip()[3:].strip(), answer=a.strip()[3:].strip()) for q, a in zip(
+                list(filter(None, map(str.strip, input.split("\n"))))[::2],
+                list(filter(None, map(str.strip, input.split("\n"))))[1::2])]
+        return input

@@ -103,7 +103,7 @@ class DocNode:
 
     @property
     def excluded_embed_metadata_keys(self) -> List:
-        return self.root_node._excluded_embed_metadata_keys + self._excluded_embed_metadata_keys
+        return list(set(self.root_node._excluded_embed_metadata_keys + self._excluded_embed_metadata_keys))
 
     @excluded_embed_metadata_keys.setter
     def excluded_embed_metadata_keys(self, excluded_embed_metadata_keys: List) -> None:
@@ -111,7 +111,7 @@ class DocNode:
 
     @property
     def excluded_llm_metadata_keys(self) -> List:
-        return self.root_node._excluded_llm_metadata_keys + self._excluded_llm_metadata_keys
+        return list(set(self.root_node._excluded_llm_metadata_keys + self._excluded_llm_metadata_keys))
 
     @excluded_llm_metadata_keys.setter
     def excluded_llm_metadata_keys(self, excluded_llm_metadata_keys: List) -> None:
@@ -205,7 +205,10 @@ class QADocNode(DocNode):
     def __init__(self, query: str, answer: str, uid: Optional[str] = None, group: Optional[str] = None,
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
                  metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
-        if not metadata: metadata = {}
-        metadata['answer'] = answer
         super().__init__(uid, query, group, embedding, parent, metadata, None, text=text)
-        self.excluded_embed_metadata_keys.append('answer')
+        self._answer = answer.strip()
+
+    def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
+        if metadata_mode == MetadataMode.LLM:
+            return f'query:\n{self.text}\nanswer\n{self._answer}'
+        return super().get_text(metadata_mode)

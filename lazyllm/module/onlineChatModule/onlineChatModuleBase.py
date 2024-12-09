@@ -112,7 +112,7 @@ class OnlineChatModuleBase(ModuleBase):
             raise ValueError(f"The response {data} does not contain a 'choices' field.")
 
     def formatter(self, format: FormatterBase = None):
-        if isinstance(format, FormatterBase):
+        if isinstance(format, FormatterBase) or callable(format):
             self._formatter = format
         elif format is None:
             self._formatter = EmptyFormatter()
@@ -290,7 +290,7 @@ class OnlineChatModuleBase(ModuleBase):
             extractor = self._extract_specified_key_fields(
                 self._merge_stream_result(msg_json)
             )
-            return self._formatter.format(extractor) if extractor else ""
+            return self._formatter(extractor) if extractor else ""
 
     def _record_usage(self, usage: dict):
         globals["usage"][self._module_id] = usage

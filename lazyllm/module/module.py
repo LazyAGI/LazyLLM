@@ -448,7 +448,7 @@ class UrlModule(ModuleBase, UrlTemplate):
                 usage = {"prompt_tokens": self._estimate_token_usage(text_input_for_token_usage)}
                 usage["completion_tokens"] = self._estimate_token_usage(temp_output)
                 self._record_usage(usage)
-            return self._formatter.format(temp_output)
+            return self._formatter(temp_output)
 
     def prompt(self, prompt=None):
         if prompt is None:
@@ -463,7 +463,7 @@ class UrlModule(ModuleBase, UrlTemplate):
         return output
 
     def formatter(self, format: FormatterBase = None):
-        if isinstance(format, FormatterBase):
+        if isinstance(format, FormatterBase) or callable(format):
             self._formatter = format
         elif format is None:
             self._formatter = EmptyFormatter()
