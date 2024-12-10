@@ -130,7 +130,7 @@ store_conf = {
 }
 ```
 
-Note: If using Milvus as the storage backend or index backend, you also need to provide a description of the fields that need to be stored or retrieved, passed in through the `doc_fields` parameter. `doc_fields` is a dictionary where the key is the name of the field to be stored or retrieved, and the value is a structure of type `GlobalMetadataDesc`, which includes information such as the field type.
+Note: If using Milvus as the storage backend or index backend, you also need to provide a description of the fields that need to be stored or retrieved, passed in through the `doc_fields` parameter. `doc_fields` is a dictionary where the key is the name of the field to be stored or retrieved, and the value is a structure of type `DocField`, which includes information such as the field type.
 
 For example, if you need to store the author information and publication year of documents, you can configure it as follows:
 

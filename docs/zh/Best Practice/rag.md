@@ -131,7 +131,7 @@ store_conf = {
 }
 ```
 
-注意：如果使用 Milvus 作为存储后端或者索引后端，还需要提供需要存储或检索的字段说明，通过 `doc_fields` 这个参数传入。`doc_fields` 是一个 dict，其中 key 为需要存储或检索的字段名称，value 是一个 `GlobalMetadataDesc` 类型的结构体，包含字段类型等信息。
+注意：如果使用 Milvus 作为存储后端或者索引后端，还需要提供需要存储或检索的字段说明，通过 `doc_fields` 这个参数传入。`doc_fields` 是一个 dict，其中 key 为需要存储或检索的字段名称，value 是一个 `DocField` 类型的结构体，包含字段类型等信息。
 
 例如，如果需要存储文档的作者信息和发表年份可以这样配置：
 
