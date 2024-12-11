@@ -28,8 +28,8 @@ class StableDiffusion3(object):
         import torch
         import importlib.util
         if importlib.util.find_spec("torch_npu") is not None:
-            import torch_npu
-            from torch_npu.contrib import transfer_to_npu
+            import torch_npu  # noqa F401
+            from torch_npu.contrib import transfer_to_npu  # noqa F401
 
         from diffusers import StableDiffusion3Pipeline
         self.sd = StableDiffusion3Pipeline.from_pretrained(self.base_sd, torch_dtype=torch.float16).to("cuda")

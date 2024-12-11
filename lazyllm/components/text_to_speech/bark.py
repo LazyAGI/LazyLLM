@@ -6,6 +6,7 @@ from lazyllm.thirdparty import torch
 from lazyllm.thirdparty import transformers as tf
 from lazyllm.components.formatter import encode_query_with_filepaths
 from ..utils.downloader import ModelManager
+import importlib.util
 from .utils import sounds_to_files
 
 class Bark(object):
@@ -22,23 +23,15 @@ class Bark(object):
             lazyllm.call_once(self.init_flag, self.load_bark)
 
     def load_bark(self):
-        import importlib.util
-        
+        kw = {}
         if importlib.util.find_spec("torch_npu") is not None:
-            import torch_npu
-            from torch_npu.contrib import transfer_to_npu
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.processor = tf.AutoProcessor.from_pretrained(self.base_path)
-            self.processor.speaker_embeddings['repo_or_path'] = self.base_path
-            self.bark = tf.BarkModel.from_pretrained(self.base_path,
-                                                    torch_dtype=torch.float16).to(self.device)
-        else:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.processor = tf.AutoProcessor.from_pretrained(self.base_path)
-            self.processor.speaker_embeddings['repo_or_path'] = self.base_path
-            self.bark = tf.BarkModel.from_pretrained(self.base_path,
-                                                    torch_dtype=torch.float16,
-                                                    attn_implementation="flash_attention_2").to(self.device)
+            import torch_npu  # noqa F401
+            from torch_npu.contrib import transfer_to_npu  # noqa F401
+            kw = dict(attn_implementation="flash_attention_2")
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.processor = tf.AutoProcessor.from_pretrained(self.base_path)
+        self.processor.speaker_embeddings['repo_or_path'] = self.base_path
+        self.bark = tf.BarkModel.from_pretrained(self.base_path, torch_dtype=torch.float16, **kw).to(self.device)
 
     def __call__(self, string):
         lazyllm.call_once(self.init_flag, self.load_bark)
