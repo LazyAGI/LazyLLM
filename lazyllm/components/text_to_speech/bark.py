@@ -23,11 +23,11 @@ class Bark(object):
             lazyllm.call_once(self.init_flag, self.load_bark)
 
     def load_bark(self):
-        kw = {}
+        kw = dict(attn_implementation="flash_attention_2")
         if importlib.util.find_spec("torch_npu") is not None:
             import torch_npu  # noqa F401
             from torch_npu.contrib import transfer_to_npu  # noqa F401
-            kw = dict(attn_implementation="flash_attention_2")
+            kw = dict()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.processor = tf.AutoProcessor.from_pretrained(self.base_path)
         self.processor.speaker_embeddings['repo_or_path'] = self.base_path
