@@ -75,7 +75,7 @@ class MilvusStore(StoreBase):
         else:
             self._global_metadata_desc = self._builtin_global_metadata_desc
 
-        index_kwargs_list = kwargs.get('index_kwargs', None)
+        index_kwargs_list = kwargs.get('index_kwargs', {})
 
         collections = self._client.list_collections()
         for group, embed_keys in group_embed_keys.items():
