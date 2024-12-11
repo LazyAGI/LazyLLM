@@ -22,8 +22,10 @@ milvus_store_conf = {
     'type': 'milvus',
     'kwargs': {
         'uri': tmp_dir.store_file,
-        'embedding_index_type': 'HNSW',
-        'embedding_metric_type': 'COSINE',
+        'index_kwargs': {
+            'index_type': 'HNSW',
+            'metric_type': 'COSINE',
+        }
     },
 }
 

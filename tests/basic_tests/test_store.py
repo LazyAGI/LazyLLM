@@ -213,10 +213,17 @@ class TestMilvusStoreWithNormalEmbedding(unittest.TestCase):
             'vec2': DataType.FLOAT_VECTOR,
         }
 
+        self.kwargs = {
+            'uri': self.store_file,
+            'index_kwargs': {
+                'index_type': 'HNSW',
+                'metric_type': 'COSINE',
+            }
+        }
+
         self.store = MilvusStore(group_embed_keys=self.group_embed_keys, embed=self.mock_embed,
                                  embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
-                                 global_metadata_desc=self.global_metadata_desc,
-                                 uri=self.store_file)
+                                 global_metadata_desc=self.global_metadata_desc, **self.kwargs)
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
                              embedding={"vec1": [8.0, 9.0, 10.0], "vec2": [11.0, 12.0, 13.0, 14.0, 15.0]},
@@ -288,7 +295,7 @@ class TestMilvusStoreWithNormalEmbedding(unittest.TestCase):
         del self.store
         self.store = MilvusStore(group_embed_keys=self.group_embed_keys, embed=self.mock_embed,
                                  embed_dims=self.embed_dims, global_metadata_desc=self.global_metadata_desc,
-                                 embed_datatypes=self.embed_datatypes, uri=self.store_file)
+                                 embed_datatypes=self.embed_datatypes, **self.kwargs)
 
         nodes = self.store.get_nodes('group1')
         orig_nodes = [self.node1, self.node2, self.node3]
@@ -334,11 +341,22 @@ class TestMilvusStoreWithSparseEmbedding(unittest.TestCase):
             'vec2': DataType.SPARSE_FLOAT_VECTOR,
         }
 
+        self.kwargs = {
+            'uri': self.store_file,
+            'index_kwargs': [{
+                    '__embed_key__': 'vec1',
+                    'index_type': 'SPARSE_INVERTED_INDEX',
+                    'metric_type': 'IP',
+                },{
+                    '__embed_key__': 'vec2',
+                    'index_type': 'SPARSE_INVERTED_INDEX',
+                    'metric_type': 'IP',
+            }]
+        }
+
         self.store = MilvusStore(group_embed_keys=self.group_embed_keys, embed=self.mock_embed,
                                  embed_dims=None, embed_datatypes=self.embed_datatypes,
-                                 global_metadata_desc=self.global_metadata_desc,
-                                 uri=self.store_file, embedding_index_type='SPARSE_INVERTED_INDEX',
-                                 embedding_metric_type='IP')
+                                 global_metadata_desc=self.global_metadata_desc, **self.kwargs)
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
                              embedding={"vec1": {0: 1.0, 1: 2.0, 2: 3.0},
