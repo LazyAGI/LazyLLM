@@ -59,8 +59,10 @@ add_example('Document', '''\
 >>>             'backend': 'milvus',
 >>>             'kwargs': {
 >>>                 'uri': '/tmp/tmp.db',
->>>                 'embedding_index_type': 'HNSW',
->>>                 'embedding_metric_type': 'COSINE',
+>>>                 'index_kwargs': {
+>>>                     'index_type': 'HNSW',
+>>>                     'metric_type': 'COSINE'
+>>>                  }
 >>>             },
 >>>         },
 >>>     },

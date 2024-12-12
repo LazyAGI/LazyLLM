@@ -107,8 +107,9 @@ docs.create_node_group(name='sentence-len',
         - `dir`（必填）：存储数据的目录。
     - `milvus`：使用 Milvus 存储数据。
         - `uri`（必填）：Milvus 存储地址，可以是一个文件路径或者如 `ip:port` 格式的 url；
-        - `embedding_index_type`（可选）：Milvus 支持的 embedding 索引类型，默认是 `HNSW`；
-        - `embedding_metric_type`（可选）：根据 embedding 索引类型不同配置的检索参数，默认是 `COSINE`。
+        - `index_kwargs`(必填)：Milvus索引配置, 可以是一个 dict 或者列表;
+            - `index_type`（必填）：Milvus 支持的 embedding 索引类型；
+            - `metric_type`（必填）：根据 embedding 索引类型不同配置的检索参数。
 * `indices`：是一个 dict，key 是索引类型名称，value 是该索引类型所需要的参数。索引类型目前支持：
     - `smart_embedding_index`：提供 embedding 检索功能。支持的后端有：
         - `milvus`：使用 Milvus 作为 embedding 检索的后端。可供使用的参数 `kwargs` 和作为存储后端时的参数一样。
@@ -123,11 +124,30 @@ store_conf = {
             'backend': 'milvus',
             'kwargs': {
                 'uri': store_file,
-                'embedding_index_type': 'HNSW',
-                'embedding_metric_type': 'COSINE',
+                'index_kwargs': {
+                    'index_type': 'HNSW',
+                    'metric_type': 'COSINE',
+                }
             },
         },
     },
+}
+```
+如需对Milvus检索后端进行多组参数配置，可参考如下格式，此处`__embed_key_`需要与Document多embedding的key一一对应:
+```python
+{
+    ...
+    'index_kwargs' = [
+        {  
+            '__embed_key__': 'vec1',
+            'index_type': 'HNSW',
+            'metric_type': 'COSINE',
+        },{
+            '__embed_key__': 'vec2',
+            'index_type': 'SPARSE_INVERTED_INDEX',
+            'metric_type': 'IP',
+        }
+    ]   
 }
 ```
 

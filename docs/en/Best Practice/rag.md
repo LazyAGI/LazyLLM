@@ -109,8 +109,9 @@ The configuration parameter `store_conf` is a `dict` type that includes the foll
     - `smart_embedding_index`: Provides embedding retrieval functionality. The supported backends include:
         - `milvus`: Uses Milvus as the backend for embedding retrieval. The available parameters `kwargs` include:
             - `uri`: The Milvus storage address, which can be a file path or a URL in the format of `ip:port`.
-            - `embedding_index_type`: The type of embedding index supported by Milvus, with the default being `HNSW`.
-            - `embedding_metric_type`: Retrieval parameters configured based on the type of embedding index, with the default being `COSINE`.
+            - `index_kwargs`: The arguments sent to Milvus backend.
+                - `index_type`: The type of embedding index supported by Milvus, with the default being `HNSW`.
+                - `metric_type`: Retrieval parameters configured based on the type of embedding index, with the default being `COSINE`.
 
 Here is an example configuration using Chroma as the storage backend and Milvus as the retrieval backend:
 
@@ -122,11 +123,31 @@ store_conf = {
             'backend': 'milvus',
             'kwargs': {
                 'uri': store_file,
-                'embedding_index_type': 'HNSW',
-                'embedding_metric_type': 'COSINE',
+                'index_kwargs': {
+                    'index_type': 'HNSW',
+                    'metric_type': 'COSINE',
+                }
             },
         },
     },
+}
+```
+Also you can configure multi index type for Milvus backend as follow, where the `__embed_key__` should match the key of multi embeddings passed to Document:
+
+```python
+{
+    ...
+    'index_kwargs' = [
+        {
+            '__embed_key__': 'vec1',
+            'index_type': 'HNSW',
+            'metric_type': 'COSINE',
+        },{
+            '__embed_key__': 'vec2',
+            'index_type': 'SPARSE_INVERTED_INDEX',
+            'metric_type': 'IP',
+        }
+    ]
 }
 ```
 

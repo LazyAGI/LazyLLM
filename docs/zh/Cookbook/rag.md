@@ -334,8 +334,10 @@ milvus_store_conf = {
     'type': 'milvus',
     'kwargs': {
         'uri': store_file,
-        'embedding_index_type': 'HNSW',
-        'embedding_metric_type': 'COSINE',
+        'index_kwargs': {
+            'index_type': 'HNSW',
+            'metric_type': 'COSINE',
+        }
     },
 }
 ```
@@ -346,8 +348,9 @@ milvus_store_conf = {
     - `map`：基于 dict 的内存 key/value 后端；
     - `milvus`：使用 Milvus 存储数据。`kwargs` 包括：
         - `uri`（必填）：Milvus 后端所在的路径，可以是一个 `ip:port` 形式的字符串，或者是一个文件路径：
-        - `embedding_index_type`（可选）：Milvus 支持的 embedding 索引类型，默认是 `HNSW`；
-        - `embedding_metric_type`（可选）：根据 embedding 索引类型不同配置的检索参数，默认是 `COSINE`。
+        - `index_kwargs`（必填）: Milvus 后端索引配置，可以是一个字典，或者是一个包含多个字典的列表，表示指定多组索引配置；
+            - `index_type`（必填）：Milvus 支持的 embedding 索引类型；
+            - `metric_type`（必填）：根据 embedding 索引类型不同配置的检索参数。
     - `chroma`：使用 Chroma 存储数据。`kwargs` 包括：
         - `dir`（必填）：数据存放的目录。
 
@@ -394,8 +397,10 @@ milvus_store_conf = {
     'type': 'milvus',
     'kwargs': {
         'uri': tmp_dir.store_file,
-        'embedding_index_type': 'HNSW',
-        'embedding_metric_type': 'COSINE',
+        'index_kwargs': {
+            'index_type': 'HNSW',
+            'metric_type': 'COSINE',
+        }
     },
 }
 
@@ -454,8 +459,10 @@ milvus_store_conf = {
             'backend': 'milvus',
             'kwargs': {
                 'uri': store_file,
-                'embedding_index_type': 'HNSW',
-                'embedding_metric_type': 'COSINE',
+                'index_kwargs': {
+                    'index_type': 'HNSW',
+                    'metric_type': 'COSINE',
+                }
             },
         },
     },
@@ -493,8 +500,10 @@ def run(query):
                 'backend': 'milvus',
                 'kwargs': {
                     'uri': store_file,
-                    'embedding_index_type': 'HNSW',
-                    'embedding_metric_type': 'COSINE',
+                    'index_kwargs': {
+                        'index_type': 'HNSW',
+                        'metric_type': 'COSINE',
+                    }
                 },
             },
         },
