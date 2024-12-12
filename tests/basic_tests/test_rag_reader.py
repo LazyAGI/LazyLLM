@@ -8,14 +8,14 @@ class YmlReader(ReaderBase):
         with open(file, 'r') as f:
             data = f.read()
             node = DocNode(text=data, metadata=extra_info or {})
-            node.content = "Call the class YmlReader."
+            node._content = "Call the class YmlReader."
             return [node]
 
 def processYml(file, extra_info=None):
     with open(file, 'r') as f:
         data = f.read()
         node = DocNode(text=data, metadata=extra_info or {})
-        node.content = "Call the function processYml."
+        node._content = "Call the function processYml."
         return [node]
 
 class TestRagReader(object):
