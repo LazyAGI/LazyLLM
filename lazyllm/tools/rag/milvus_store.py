@@ -56,7 +56,7 @@ class MilvusStore(StoreBase):
     def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable], # noqa C901
                  embed_dims: Dict[str, int], embed_datatypes: Dict[str, DataType],
                  global_metadata_desc: Dict[str, GlobalMetadataDesc],
-                 uri: str, **kwargs):
+                 uri: str, index_kwargs: Optional[Union[Dict, List]] = None):
         self._def_constants()
 
         self._group_embed_keys = group_embed_keys
@@ -74,8 +74,6 @@ class MilvusStore(StoreBase):
             self._global_metadata_desc = global_metadata_desc | self._builtin_global_metadata_desc
         else:
             self._global_metadata_desc = self._builtin_global_metadata_desc
-
-        index_kwargs_list = kwargs.get('index_kwargs', {})
 
         collections = self._client.list_collections()
         for group, embed_keys in group_embed_keys.items():
@@ -101,15 +99,19 @@ class MilvusStore(StoreBase):
                 field_name = self._gen_embedding_key(key)
                 field_list.append(pymilvus.FieldSchema(name=field_name, dtype=self._type2milvus[datatype],
                                                        **field_kwargs))
-                if isinstance(index_kwargs_list, list):
-                    for index_kwargs in index_kwargs_list:
-                        if index_kwargs.get("__embed_key__", None) == key:
-                            index_kwarg = index_kwargs
+                if isinstance(index_kwargs, list):
+                    for item in index_kwargs:
+                        item_key = item.get("__embed_key__", None)
+                        if not item_key:
+                            raise ValueError(f'cannot find `__embed_key__` in `index_kwargs` of `{field_name}`')
+                        if item_key == key:
+                            index_kwarg = item.copy()
                             index_kwarg.pop(key, None)
                             index_params.add_index(field_name=field_name, **index_kwarg)
-                elif isinstance(index_kwargs_list, dict):
-                    index_params.add_index(field_name=field_name, **index_kwargs_list)
-                    
+                            break
+                elif isinstance(index_kwargs, dict):
+                    index_params.add_index(field_name=field_name, **index_kwargs)
+
             if self._global_metadata_desc:
                 for key, desc in self._global_metadata_desc.items():
                     if desc.data_type == DataType.ARRAY:

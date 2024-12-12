@@ -343,15 +343,18 @@ class TestMilvusStoreWithSparseEmbedding(unittest.TestCase):
 
         self.kwargs = {
             'uri': self.store_file,
-            'index_kwargs': [{
+            'index_kwargs': [
+                {
                     '__embed_key__': 'vec1',
                     'index_type': 'SPARSE_INVERTED_INDEX',
                     'metric_type': 'IP',
-                },{
+                },
+                {
                     '__embed_key__': 'vec2',
                     'index_type': 'SPARSE_INVERTED_INDEX',
                     'metric_type': 'IP',
-            }]
+                }
+            ]
         }
 
         self.store = MilvusStore(group_embed_keys=self.group_embed_keys, embed=self.mock_embed,
