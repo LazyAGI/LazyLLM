@@ -1,5 +1,9 @@
 import os
+import time
+import tqdm
 import shutil
+import threading
+
 import lazyllm
 from .model_mapping import model_name_mapping, model_provider, model_groups
 from lazyllm.common.common import EnvVarContextManager
@@ -21,6 +25,7 @@ class ModelManager():
         self.token = token
         self.cache_dir = cache_dir
         self.model_paths = model_path.split(":") if len(model_path) > 0 else []
+        self.progress = ProgressTracker()
 
     @classmethod
     def get_model_type(cls, model) -> str:
@@ -70,7 +75,7 @@ class ModelManager():
                     "source": {k: v + '/' + model_base for k, v in model_provider[matched_model_prefix].items()}
                 }
 
-    def download(self, model=''):
+    def download(self, model='', call_back=None):
         assert isinstance(model, str), "model name should be a string."
         self._try_add_mapping(model)
         # Dummy or local model.
@@ -82,6 +87,9 @@ class ModelManager():
         if self.model_source == '' or self.model_source not in ('huggingface', 'modelscope'):
             print("[WARNING] model automatic downloads only support Huggingface and Modelscope currently.")
             return model
+
+        if call_back:
+            self.progress.set_callback(call_back)
 
         if model.lower() in model_name_mapping.keys() and \
                 self.model_source in model_name_mapping[model.lower()]['source'].keys():
@@ -159,7 +167,7 @@ class ModelManager():
         return model
 
     def _download_model_from_hf(self, model_name='', model_dir=''):
-        from huggingface_hub import snapshot_download
+
         # refer to https://huggingface.co/docs/huggingface_hub/v0.23.1/en/package_reference/file_download
         if self.token == '':
             self.token = None
@@ -175,20 +183,84 @@ class ModelManager():
                                     'to configure a proxy. Do not directly set the `https_proxy` and `http_proxy` '
                                     'environment variables in your environment, as doing so may disrupt model '
                                     'deployment and result in deployment failures.')
-            model_dir_result = snapshot_download(repo_id=model_name, local_dir=model_dir, token=self.token)
+            with self.progress:
+                from huggingface_hub import snapshot_download
+                model_dir_result = snapshot_download(repo_id=model_name, local_dir=model_dir, token=self.token)
 
         lazyllm.LOG.info(f"model downloaded at {model_dir_result}")
         return model_dir_result
 
     def _download_model_from_ms(self, model_name='', model_dir=''):
-        from modelscope.hub.snapshot_download import snapshot_download
-        # refer to https://www.modelscope.cn/docs/models/download
 
+        # refer to https://www.modelscope.cn/docs/models/download
         if (len(self.token) > 0):
             from modelscope.hub.api import HubApi
             api = HubApi()
             api.login(self.token)
-        model_dir_result = snapshot_download(model_id=model_name, local_dir=model_dir)
+
+        with self.progress:
+            from modelscope.hub.snapshot_download import snapshot_download
+            model_dir_result = snapshot_download(model_id=model_name, local_dir=model_dir)
 
         lazyllm.LOG.info(f"Model downloaded at {model_dir_result}")
         return model_dir_result
+
+def custom_tqdm_factory():
+    instance = []  # Stores tqdm objects in all threads in the current context
+
+    class CustomTqdm(tqdm.std.tqdm):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            if self not in instance:
+                instance.append(self)
+
+    return CustomTqdm, instance
+
+class ProgressTracker:
+    def __init__(self):
+        self.tqdm_list = []  # Stores tqdm objects in all threads in the current context
+        self.origin_tqdm = tqdm.std.tqdm
+        self.start_flag = True
+        self.polling_thread = None
+        self.call_back = None
+
+    def set_callback(self, callback):
+        if not callable(callback):
+            raise ValueError("Callback must be callable.")
+        self.call_back = callback
+
+    def print_progress(self):
+        while self.start_flag:
+            n, total = self.get_progress()
+            if total:
+                print("\033[33m======= LazyLLM Model Download Total "
+                      f"Progress: {n/total*100:.2f}% =======\033[0m", flush=True, end='\r')
+            if callable(self.call_back):
+                try:
+                    self.call_back(n, total)
+                except Exception as e:
+                    print(f"Error in callback: {e}")
+            time.sleep(1)
+
+    def get_progress(self):
+        n, total = 0, 0
+        for tqdm_obj in self.tqdm_list:
+            n += tqdm_obj.n
+            total += tqdm_obj.total
+        return n, total
+
+    def __enter__(self):
+        CustomTqdm, self.tqdm_list = custom_tqdm_factory()
+        tqdm.std.tqdm = CustomTqdm
+        self.polling_thread = threading.Thread(target=self.print_progress)
+        self.polling_thread.daemon = True
+        self.polling_thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        time.sleep(1)  # Wait for the check to stabilize and get the result when the model has been downloaded
+        self.start_flag = False
+        self.polling_thread.join()
+        tqdm.std.tqdm = self.origin_tqdm
+        self.call_back = None
+        self.tqdm_list = []
