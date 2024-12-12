@@ -3,7 +3,7 @@
 import os
 import lazyllm
 from lazyllm import bind, config
-from lazyllm.tools.rag import DocField
+from lazyllm.tools.rag import DocField, DataType
 import shutil
 
 class TmpDir:
@@ -22,14 +22,16 @@ milvus_store_conf = {
     'type': 'milvus',
     'kwargs': {
         'uri': tmp_dir.store_file,
-        'embedding_index_type': 'HNSW',
-        'embedding_metric_type': 'COSINE',
+        'index_kwargs': {
+            'index_type': 'HNSW',
+            'metric_type': 'COSINE',
+        }
     },
 }
 
 doc_fields = {
-    'comment': DocField(data_type=DocField.DTYPE_VARCHAR, max_size=65535, default_value=' '),
-    'signature': DocField(data_type=DocField.DTYPE_VARCHAR, max_size=32, default_value=' '),
+    'comment': DocField(data_type=DataType.VARCHAR, max_size=65535, default_value=' '),
+    'signature': DocField(data_type=DataType.VARCHAR, max_size=32, default_value=' '),
 }
 
 prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task.'\
