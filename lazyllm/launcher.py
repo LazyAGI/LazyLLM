@@ -195,9 +195,6 @@ class K8sLauncher(LazyLLMLaunchersBase):
     class Job(Job):
         def __init__(self, cmd, launcher, *, sync=True):
             super().__init__(cmd, launcher, sync=sync)
-            self.cmd = cmd
-            self.launcher = launcher
-            self.sync = sync
             self.deployment_name = f"deployment-{uuid.uuid4().hex[:8]}"
             self.namespace = launcher.namespace
             self.volume_configs = launcher.volume_configs
@@ -276,6 +273,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                         )
                     else:
                         LOG.error(f"{vol_config} configuration error.")
+                        raise
 
             template = k8s.client.V1PodTemplateSpec(
                 metadata=k8s.client.V1ObjectMeta(labels={"app": self.deployment_name}),
@@ -339,7 +337,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 )
                 LOG.info(f"Kubernetes Service 'service-{self.deployment_name}' created and exposed successfully.")
             except k8s.client.rest.ApiException as e:
-                LOG.info(f"Exception when creating Service: {e}")
+                LOG.error(f"Exception when creating Service: {e}")
                 raise
 
         def _delete_service(self):
@@ -411,8 +409,10 @@ class K8sLauncher(LazyLLMLaunchersBase):
                         LOG.info(f"Kubernetes Gateway '{self.gateway_name}' created successfully.")
                     except k8s.client.rest.ApiException as e_create:
                         LOG.error(f"Exception when creating Gateway: {e_create}")
+                        raise
                 else:
                     LOG.error(f"Exception when updating Gateway: {e}")
+                    raise
 
         def _delete_or_update_gateway(self):
             k8s.config.load_kube_config(self.launcher.kube_config_path)
@@ -452,6 +452,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     LOG.info(f"Kubernetes Gateway '{self.gateway_name}' deleted.")
             except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when deleting or updating Gateway: {e}")
+                raise
 
         def _create_httproute(self):
             custom_api = k8s.client.CustomObjectsApi()
@@ -497,6 +498,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 LOG.info(f"Kubernetes HTTPRoute 'httproute-{self.deployment_name}' created successfully.")
             except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when creating HTTPRoute: {e}")
+                raise
 
         def _delete_httproute(self):
             k8s.config.load_kube_config(self.launcher.kube_config_path)
@@ -522,19 +524,6 @@ class K8sLauncher(LazyLLMLaunchersBase):
             self.launcher.all_processes[self.launcher._id].append((self.jobid, self))
             ret = self.wait()
             LOG.info(ret)
-
-        def start(self, *, restart=3, fixed=False):
-            self._start(fixed=fixed)
-            if not (lazyllm.config['mode'] == lazyllm.Mode.Display or self._fixed_cmd.checkf(self)):
-                if restart > 0:
-                    for _ in range(restart):
-                        self.restart(fixed=fixed)
-                        if self._fixed_cmd.checkf(self): break
-                    else:
-                        raise RuntimeError(f'Job failed after retrying {restart} times')
-                else:
-                    raise RuntimeError('Job failed without retries')
-            self._set_return_value()
 
         def stop(self):
             self._delete_or_update_gateway()
@@ -562,7 +551,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 LOG.error(f"Exception when retrieving Gateway Service: {e}")
                 return None
 
-        def _get_gateway_deployment_name(self):
+        def _get_gateway_deployment_name(self):  # noqa: C901
             core_api = k8s.client.CoreV1Api()
             apps_v1 = k8s.client.AppsV1Api()
 
@@ -572,11 +561,34 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 selector = service.spec.selector
                 if selector:
                     label_selector = ",".join(f"{k}={v}" for k, v in selector.items())
-                    deployments = apps_v1.list_namespaced_deployment(self.namespace, label_selector=label_selector)
-                    if deployments.items:
-                        deployments = [dep.metadata.name for dep in deployments.items]
-                        LOG.info(f"Kubernetes Gateway deployment name: {deployments}")
-                        return deployments
+                    pods = core_api.list_namespaced_pod(self.namespace, label_selector=label_selector).items
+                    if not pods:
+                        LOG.warning(f"No Pods found for Service '{gateway_service_name}' in namespace "
+                                    f"'{self.namespace}'.")
+                        return None
+
+                    deployments = set()
+                    for pod in pods:
+                        for owner in pod.metadata.owner_references:
+                            if owner.kind == "ReplicaSet":
+                                rs = apps_v1.read_namespaced_replica_set(owner.name, self.namespace)
+                                for rs_owner in rs.metadata.owner_references:
+                                    if rs_owner.kind == "Deployment":
+                                        deployments.add(rs_owner.name)
+
+                    if deployments:
+                        for deployment_name in deployments:
+                            isRestart = False
+                            deployment = apps_v1.read_namespaced_deployment(deployment_name, self.namespace)
+                            for container in deployment.spec.template.spec.containers:
+                                if container.name == "istio-proxy" and container.image_pull_policy == "Always":
+                                    container.image_pull_policy = "IfNotPresent"
+                                    isRestart = True
+                            if isRestart:
+                                apps_v1.replace_namespaced_deployment(name=deployment_name, namespace=self.namespace,
+                                                                      body=deployment)
+                                LOG.info(f"Updated {deployment_name} with imagePullPolicy 'IfNotPresent'")
+                        return list(deployments)
                     else:
                         LOG.warning(f"No Deployment found for Gateway '{self.gateway_name}' in namespace "
                                     f"'{self.namespace}'.")
@@ -719,6 +731,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                         LOG.info(f"Kubernetes Service at '{url}' returned status code {response.status_code}")
                 except requests.RequestException as e:
                     LOG.error(f"Failed to access service at '{url}': {e}")
+                    raise
                 time.sleep(timeout)
 
             self.queue.put(f"ERROR: Kubernetes Service failed to start on '{url}'.")
@@ -793,7 +806,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 try:
                     httproutes = custom_api.list_namespaced_custom_object(
                         group="gateway.networking.k8s.io",
-                        version="v1alpha2",
+                        version="v1beta1",
                         namespace=self.namespace,
                         plural="httproutes"
                     ).get('items', [])
@@ -805,6 +818,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     LOG.info(f"Waiting for HTTPRoute 'httproute-{self.deployment_name}' to be ready...")
                 except k8s.client.rest.ApiException as e:
                     LOG.error(f"Exception when checking HTTPRoute status: {e}")
+                    raise
 
                 time.sleep(2)
             LOG.warning(f"Timeout waiting for HTTPRoute 'httproute-{self.deployment_name}' to be ready.")
