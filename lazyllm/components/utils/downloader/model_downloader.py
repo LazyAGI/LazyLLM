@@ -229,12 +229,9 @@ class ProgressTracker:
             raise ValueError("Callback must be callable.")
         self.call_back = callback
 
-    def print_progress(self):
+    def polling_progress(self):
         while self.start_flag:
             n, total = self.get_progress()
-            if total:
-                print("\033[33m======= LazyLLM Model Download Total "
-                      f"Progress: {n/total*100:.2f}% =======\033[0m", flush=True, end='\r')
             if callable(self.call_back):
                 try:
                     self.call_back(n, total)
@@ -252,15 +249,17 @@ class ProgressTracker:
     def __enter__(self):
         CustomTqdm, self.tqdm_list = custom_tqdm_factory()
         tqdm.std.tqdm = CustomTqdm
-        self.polling_thread = threading.Thread(target=self.print_progress)
-        self.polling_thread.daemon = True
-        self.polling_thread.start()
+        if self.call_back:
+            self.polling_thread = threading.Thread(target=self.polling_progress)
+            self.polling_thread.daemon = True
+            self.polling_thread.start()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         time.sleep(1)  # Wait for the check to stabilize and get the result when the model has been downloaded
         self.start_flag = False
-        self.polling_thread.join()
+        if self.call_back:
+            self.polling_thread.join()
         tqdm.std.tqdm = self.origin_tqdm
         self.call_back = None
         self.tqdm_list = []
