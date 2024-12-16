@@ -234,6 +234,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             container = k8s.client.V1Container(
                 name=self.deployment_name,
                 image=self.image,
+                image_pull_policy="IfNotPresent",
                 command=["bash", "-c", cmd],
                 resources=k8s.client.V1ResourceRequirements(
                     requests=self.resource_config.get("requests", {"cpu": "2", "memory": "16Gi"}),
@@ -305,7 +306,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 LOG.error(f"Exception when creating Kubernetes Deployment: {e}")
                 raise
 
-        def _delete_deployment(self):
+        def _delete_deployment(self, wait_for_completion=True, timeout=60, check_interval=5):
             k8s.config.load_kube_config(self.launcher.kube_config_path)
             api_instance = k8s.client.AppsV1Api()
             try:
@@ -315,8 +316,32 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     body=k8s.client.V1DeleteOptions(propagation_policy="Foreground")
                 )
                 LOG.info(f"Kubernetes Deployment {self.deployment_name} deleted.")
+
+                if wait_for_completion:
+                    self._wait_for_deployment_deletion(timeout=timeout, check_interval=check_interval)
             except k8s.client.rest.ApiException as e:
-                LOG.error(f"Exception when deleting Kubernetes Deployment: {e}")
+                if e.status == 404:
+                    LOG.info(f"Kubernetes Deployment '{self.deployment_name}' already deleted.")
+                else:
+                    LOG.error(f"Exception when deleting Kubernetes Deployment: {e}")
+                    raise
+
+        def _wait_for_deployment_deletion(self, timeout, check_interval):
+            api_instance = k8s.client.AppsV1Api()
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                try:
+                    api_instance.read_namespaced_deployment(name=self.deployment_name, namespace=self.namespace)
+                    LOG.info(f"Waiting for Kubernetes Deployment '{self.deployment_name}' to be deleted...")
+                except k8s.client.rest.ApiException as e:
+                    if e.status == 404:
+                        LOG.info(f"Kubernetes Deployment '{self.deployment_name}' successfully deleted.")
+                        return
+                    else:
+                        LOG.error(f"Error while checking Deployment deletion status: {e}")
+                        raise
+                time.sleep(check_interval)
+            LOG.warning(f"Timeout while waiting for Kubernetes Deployment '{self.deployment_name}' to be deleted.")
 
         def _expose_deployment(self):
             api_instance = k8s.client.CoreV1Api()
@@ -340,18 +365,45 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 LOG.error(f"Exception when creating Service: {e}")
                 raise
 
-        def _delete_service(self):
+        def _delete_service(self, wait_for_completion=True, timeout=60, check_interval=5):
             k8s.config.load_kube_config(self.launcher.kube_config_path)
             svc_instance = k8s.client.CoreV1Api()
+            service_name = f"service-{self.deployment_name}"
             try:
                 svc_instance.delete_namespaced_service(
-                    name=f"service-{self.deployment_name}",
+                    name=service_name,
                     namespace=self.namespace,
                     body=k8s.client.V1DeleteOptions(propagation_policy="Foreground")
                 )
-                LOG.info(f"Kubernetes Service 'service-{self.deployment_name}' deleted.")
+                LOG.info(f"Kubernetes Service '{service_name}' deleted.")
+
+                if wait_for_completion:
+                    self._wait_for_service_deletion(service_name=service_name,
+                                                    timeout=timeout,
+                                                    check_interval=check_interval)
             except k8s.client.rest.ApiException as e:
-                LOG.error(f"Exception when deleting Kubernetes Service: {e}")
+                if e.status == 404:
+                    LOG.info(f"Kubernetes Service '{service_name}' already deleted.")
+                else:
+                    LOG.error(f"Exception when deleting Kubernetes Service: {e}")
+                    raise
+
+        def _wait_for_service_deletion(self, service_name, timeout, check_interval):
+            svc_instance = k8s.client.CoreV1Api()
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                try:
+                    svc_instance.read_namespaced_service(name=service_name, namespace=self.namespace)
+                    LOG.info(f"Waiting for kubernetes Service '{service_name}' to be deleted...")
+                except k8s.client.rest.ApiException as e:
+                    if e.status == 404:
+                        LOG.info(f"Kubernetes Service '{service_name}' successfully deleted.")
+                        return
+                    else:
+                        LOG.error(f"Error while checking Service deletion status: {e}")
+                        raise
+                time.sleep(check_interval)
+            LOG.warning(f"Timeout while waiting for kubernetes Service '{service_name}' to be deleted.")
 
         def _create_or_update_gateway(self):
             networking_api = k8s.client.CustomObjectsApi()
@@ -414,7 +466,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     LOG.error(f"Exception when updating Gateway: {e}")
                     raise
 
-        def _delete_or_update_gateway(self):
+        def _delete_or_update_gateway(self, wait_for_completion=True, timeout=60, check_interval=5):
             k8s.config.load_kube_config(self.launcher.kube_config_path)
             gateway_instance = k8s.client.CustomObjectsApi()
             try:
@@ -441,6 +493,9 @@ class K8sLauncher(LazyLLMLaunchersBase):
                         body=gateway
                     )
                     LOG.info(f"Kubernetes Gateway '{self.gateway_name}' deleted updated.")
+
+                    if wait_for_completion:
+                        self._wait_for_gateway_update(timeout=timeout, check_interval=check_interval)
                 else:
                     gateway_instance.delete_namespaced_custom_object(
                         group="gateway.networking.k8s.io",
@@ -450,9 +505,58 @@ class K8sLauncher(LazyLLMLaunchersBase):
                         name=self.gateway_name
                     )
                     LOG.info(f"Kubernetes Gateway '{self.gateway_name}' deleted.")
+
+                    if wait_for_completion:
+                        self._wait_for_gateway_deletion(timeout=timeout, check_interval=check_interval)
             except k8s.client.rest.ApiException as e:
-                LOG.error(f"Exception when deleting or updating Gateway: {e}")
-                raise
+                if e.status == 404:
+                    LOG.info(f"Gateway '{self.gateway_name}' already deleted.")
+                else:
+                    LOG.error(f"Exception when deleting or updating Gateway: {e}")
+                    raise
+
+        def _wait_for_gateway_deletion(self, timeout, check_interval):
+            gateway_instance = k8s.client.CustomObjectsApi()
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                try:
+                    gateway_instance.get_namespaced_custom_object(
+                        group="gateway.networking.k8s.io",
+                        version="v1beta1",
+                        namespace=self.namespace,
+                        plural="gateways",
+                        name=self.gateway_name
+                    )
+                    LOG.info(f"Waiting for Gateway '{self.gateway_name}' to be deleted...")
+                except k8s.client.rest.ApiException as e:
+                    if e.status == 404:
+                        LOG.info(f"Gateway '{self.gateway_name}' successfully deleted.")
+                        return
+                    else:
+                        LOG.error(f"Error while checking Gateway deletion status: {e}")
+                        raise
+                time.sleep(check_interval)
+            LOG.warning(f"Timeout while waiting for Gateway '{self.gateway_name}' to be deleted.")
+
+        def _wait_for_gateway_update(self, timeout, check_interval):
+            gateway_instance = k8s.client.CustomObjectsApi()
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                try:
+                    gateway_instance.get_namespaced_custom_object(
+                        group="gateway.networking.k8s.io",
+                        version="v1beta1",
+                        namespace=self.namespace,
+                        plural="gateways",
+                        name=self.gateway_name
+                    )
+                    LOG.info(f"Gateway '{self.gateway_name}' status check passed.")
+                    return
+                except k8s.client.rest.ApiException as e:
+                    LOG.error(f"Error while checking Gateway update status: {e}")
+                    raise
+                time.sleep(check_interval)
+            LOG.warning(f"Timeout while waiting for Gateway '{self.gateway_name}' update.")
 
         def _create_httproute(self):
             custom_api = k8s.client.CustomObjectsApi()
@@ -500,20 +604,48 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 LOG.error(f"Exception when creating HTTPRoute: {e}")
                 raise
 
-        def _delete_httproute(self):
+        def _delete_httproute(self, wait_for_deletion=True, timeout=60, check_interval=5):
             k8s.config.load_kube_config(self.launcher.kube_config_path)
             httproute_instance = k8s.client.CustomObjectsApi()
+            httproute_name = f"httproute-{self.deployment_name}"
             try:
                 httproute_instance.delete_namespaced_custom_object(
                     group="gateway.networking.k8s.io",
                     version="v1beta1",
                     namespace=self.namespace,
                     plural="httproutes",
-                    name=f"httproute-{self.deployment_name}"
+                    name=httproute_name
                 )
-                LOG.info(f"Kubernetes HTTPRoute 'httproute-{self.deployment_name}' delete.")
+                LOG.info(f"Kubernetes HTTPRoute '{httproute_name}' delete initiated.")
             except k8s.client.rest.ApiException as e:
-                LOG.error(f"Exception when deleting HTTPRoute: {e}")
+                if e.status == 404:
+                    LOG.info(f"HTTPRoute '{httproute_name}' already deleted.")
+                    return
+                else:
+                    LOG.error(f"Exception when deleting HTTPRoute: {e}")
+                    raise
+
+            if wait_for_deletion:
+                start_time = time.time()
+                while time.time() - start_time < timeout:
+                    try:
+                        httproute_instance.get_namespaced_custom_object(
+                            group="gateway.networking.k8s.io",
+                            version="v1beta1",
+                            namespace=self.namespace,
+                            plural="httproutes",
+                            name=httproute_name
+                        )
+                        LOG.info(f"Waiting for HTTPRoute '{httproute_name}' to be deleted...")
+                    except k8s.client.rest.ApiException as e:
+                        if e.status == 404:
+                            LOG.info(f"HTTPRoute '{httproute_name}' successfully deleted.")
+                            return
+                        else:
+                            LOG.error(f"Error while checking HTTPRoute status: {e}")
+                            raise
+                    time.sleep(check_interval)
+                LOG.warning(f"Timeout while waiting for HTTPRoute '{httproute_name}' to be deleted.")
 
         def _start(self, *, fixed=False):
             self._create_deployment(fixed=fixed)

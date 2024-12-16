@@ -1,0 +1,61 @@
+name: Test on k8s
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+
+env:
+  CI_PATH: '/mnt/nfs_share/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  k8s_tests:
+    runs-on: tps_k8s
+
+    container:
+      image: registry.cn-sh-01.sensecore.cn/ai-expert-service/lazyllm_ci:latest
+      options: --mount type=bind,source=/mnt/nfs_share,target=/mnt/nfs_share --mount type=bind,source=/mnt/lustre/share_data,target=/mnt/lustre/share_data
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create custom directory
+        run: |
+          set -ex
+          echo ${{ env.CI_PATH }}
+          mkdir -p ${{ env.CI_PATH }}
+
+      - name: Clean custom directory
+        run: |
+          set -ex
+          if [ -d "${{ env.CI_PATH }}" ]; then
+            rm -rf ${{ env.CI_PATH }}/*
+          fi
+
+      - name: Move code to custom directory
+        run: |
+          set -ex
+          mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
+
+      - name: test
+        run: |
+          cd ${{ env.CI_PATH }}
+          export PYTHONPATH=$PWD:$PYTHONPATH
+          export LAZYLLM_DEFAULT_LAUNCHER="k8s"
+          export LAZYLLM_DATA_PATH="/mnt/lustre/share_data/lazyllm/data"
+          export LAZYLLM_K8S_ENV_NAME="lazyllm"
+          export LAZYLLM_K8S_CONFIG_PATH="/mnt/nfs_share/k8s_config.yaml"
+          mkdir -p $LAZYLLM_HOME
+          source ~/ENV/env.sh
+          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/k8s_tests
