@@ -104,14 +104,15 @@ The configuration parameter `store_conf` is a `dict` type that includes the foll
 * `type`: This is the type of storage backend. Currently supported storage backends include:
     - `map`: In-memory key/value storage.
     - `chroma`: Uses Chroma for data storage.
+        - `dir`(required): Directory where data is stored.
     - `milvus`: Uses Milvus for data storage.
+        - `uri`: The Milvus storage address, which can be a file path or a URL in the format of `ip:port`.
+        - `index_kwargs` (optional): Milvus index configuration, which can be a dictionary or a list. If it is a dictionary, it means that all embedding indexes use the same configuration; if it is a list, the elements in the list are dictionaries, representing the configuration used by the embeddings specified by `__embed_key__`. Currently, only `floating point embedding` and `sparse embedding` are supported for the two types of embeddings, with the following supported parameters respectively:
+            - `floating point embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
+            - `sparse embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
 * `indices`: This is a dictionary where the key is the name of the index type, and the value is the parameters required for that index type. The currently supported index types are:
     - `smart_embedding_index`: Provides embedding retrieval functionality. The supported backends include:
-        - `milvus`: Uses Milvus as the backend for embedding retrieval. The available parameters `kwargs` include:
-            - `uri`: The Milvus storage address, which can be a file path or a URL in the format of `ip:port`.
-            - `index_kwargs`: The arguments sent to Milvus backend.
-                - `index_type`: The type of embedding index supported by Milvus, with the default being `HNSW`.
-                - `metric_type`: Retrieval parameters configured based on the type of embedding index, with the default being `COSINE`.
+        - `milvus`: Use Milvus as the backend for embedding search. The available parameters `kwargs` are the same as when used as a storage backend.
 
 Here is an example configuration using Chroma as the storage backend and Milvus as the retrieval backend:
 
