@@ -54,7 +54,10 @@ class DocManager(lazyllm.ModuleBase):
                         return BaseResponse(code=400, msg=f'file [{files[idx].filename}]: {err_msg}', data=None)
 
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
-            ids = self._manager.add_files(file_paths, metadatas=metadatas, status=DocListManager.Status.working)
+            ids, file_paths = self._manager.add_files(
+                file_paths, metadatas=metadatas, status=DocListManager.Status.working
+            )
+            assert len(files) == len(ids), "len(files) uploaded vs len(ids) recorede"
             results = []
             for file, path in zip(files, file_paths):
                 if os.path.exists(path):
@@ -116,7 +119,9 @@ class DocManager(lazyllm.ModuleBase):
                 else:
                     id_mapping[file] = None
 
-            new_ids = self._manager.add_files(new_files, metadatas=new_metadatas, status=DocListManager.Status.success)
+            new_ids, _ = self._manager.add_files(
+                new_files, metadatas=new_metadatas, status=DocListManager.Status.success
+            )
             if group_name:
                 self._manager.add_files_to_kb_group(new_ids + exist_ids, group=group_name)
 
@@ -178,6 +183,12 @@ class DocManager(lazyllm.ModuleBase):
             if request.group_name:
                 return self.delete_files_from_group(request)
             else:
+                safe_delete_ids = set(self._manager.get_safe_delete_files())
+                tmp = request.file_ids
+                request.file_ids = []
+                for file_id in tmp:
+                    if file_id in safe_delete_ids:
+                        request.file_ids.append(file_id)
                 self._manager.update_kb_group_file_status(
                     file_ids=request.file_ids, status=DocListManager.Status.deleting)
                 docs = self._manager.update_file_status(file_ids=request.file_ids, status=DocListManager.Status.deleting)

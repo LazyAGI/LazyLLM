@@ -9,6 +9,9 @@ from .doc_node import DocNode
 from .global_metadata import RAG_DOC_PATH, RAG_DOC_ID
 from lazyllm.common import override
 from lazyllm.common.queue import sqlite3_check_threadsafety
+import sqlalchemy
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import Column, insert, update, select
 
 import pydantic
 import sqlite3
@@ -20,6 +23,7 @@ from filelock import FileLock
 
 import lazyllm
 from lazyllm import config
+import uuid
 
 # min(32, (os.cpu_count() or 1) + 4) is the default number of workers for ThreadPoolExecutor
 config.add(
@@ -33,6 +37,42 @@ config.add("default_dlmanager", str, "sqlite", "DEFAULT_DOCLIST_MANAGER")
 
 def gen_docid(file_path: str) -> str:
     return hashlib.sha256(file_path.encode()).hexdigest()
+
+
+class KBDataBase(DeclarativeBase):
+    pass
+
+
+class KBDocument(KBDataBase):
+    __tablename__ = "documents"
+
+    doc_id = Column(sqlalchemy.Text)
+    filename = Column(sqlalchemy.Text, nullable=False, index=True)
+    path = Column(sqlalchemy.Text, nullable=False, index=True, primary_key=True)
+    created_at = Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), nullable=False)
+    meta = Column(sqlalchemy.Text, nullable=True)
+    status = Column(sqlalchemy.Text, nullable=False)
+    count = Column(sqlalchemy.Integer, default=0)
+
+
+class KBGroup(KBDataBase):
+    __tablename__ = "document_groups"
+
+    group_id = Column(sqlalchemy.Integer, primary_key=True, autoincrement=True)
+    group_name = Column(sqlalchemy.String, nullable=False, unique=True)
+
+
+class KBGroupDocuments(KBDataBase):
+    __tablename__ = "kb_group_documents"
+
+    id = Column(sqlalchemy.Integer, primary_key=True, autoincrement=True)
+    doc_id = Column(sqlalchemy.String, sqlalchemy.ForeignKey("documents.doc_id"), nullable=False)
+    group_name = Column(sqlalchemy.String, sqlalchemy.ForeignKey("document_groups.group_name"), nullable=False)
+    status = Column(sqlalchemy.Text, nullable=True)
+    log = Column(sqlalchemy.Text, nullable=True)
+    # unique constraint
+    __table_args__ = (sqlalchemy.UniqueConstraint('doc_id', 'group_name', name='uq_doc_to_group'),)
+
 
 class DocListManager(ABC):
     DEFAULT_GROUP_NAME = '__default__'
@@ -57,7 +97,7 @@ class DocListManager(ABC):
     def __new__(cls, *args, **kw):
         if cls is not DocListManager:
             return super().__new__(cls)
-        return __class__.__pool__[config['default_dlmanager']](*args, **kw)
+        return super().__new__(__class__.__pool__[config['default_dlmanager']])
 
     def init_tables(self) -> 'DocListManager':
         if not self.table_inited():
@@ -76,63 +116,116 @@ class DocListManager(ABC):
         self._delete_files(file_ids, real)
 
     @abstractmethod
-    def table_inited(self): pass
+    def table_inited(self):
+        pass
 
     @abstractmethod
-    def _init_tables(self): pass
+    def _init_tables(self):
+        pass
 
     @abstractmethod
-    def list_files(self, limit: Optional[int] = None, details: bool = False,
-                   status: Union[str, List[str]] = Status.all,
-                   exclude_status: Optional[Union[str, List[str]]] = None): pass
+    def list_files(
+        self,
+        limit: Optional[int] = None,
+        details: bool = False,
+        status: Union[str, List[str]] = Status.all,
+        exclude_status: Optional[Union[str, List[str]]] = None,
+    ):
+        pass
 
     @abstractmethod
-    def list_all_kb_group(self): pass
+    def list_all_kb_group(self):
+        pass
 
     @abstractmethod
-    def add_kb_group(self, name): pass
+    def add_kb_group(self, name):
+        pass
 
     @abstractmethod
-    def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
-                            status: Union[str, List[str]] = Status.all,
-                            exclude_status: Optional[Union[str, List[str]]] = None,
-                            upload_status: Union[str, List[str]] = Status.all,
-                            exclude_upload_status: Optional[Union[str, List[str]]] = None): pass
+    def list_kb_group_files(
+        self,
+        group: str = None,
+        limit: Optional[int] = None,
+        details: bool = False,
+        status: Union[str, List[str]] = Status.all,
+        exclude_status: Optional[Union[str, List[str]]] = None,
+        upload_status: Union[str, List[str]] = Status.all,
+        exclude_upload_status: Optional[Union[str, List[str]]] = None,
+    ):
+        pass
 
     def add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None,
                   status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[str]:
-        ids = self._add_files(files, metadatas, status, batch_size)
+        ids, filepaths = self._add_files(files, metadatas, status, batch_size)
         self.add_files_to_kb_group(ids, group=DocListManager.DEFAULT_GROUP_NAME)
-        return ids
+        return ids, filepaths
 
     @abstractmethod
-    def _add_files(self, files: List[str], metadatas: Optional[List] = None,
-                   status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[str]: pass
+    def get_filepaths(self, file_ids: List[str]):
+        pass
 
     @abstractmethod
-    def update_file_message(self, fileid: str, **kw): pass
+    def _add_files(
+        self,
+        files: List[str],
+        metadatas: Optional[List] = None,
+        status: Optional[str] = Status.waiting,
+        batch_size: int = 64,
+    ) -> List[str]:
+        pass
 
     @abstractmethod
-    def add_files_to_kb_group(self, file_ids: List[str], group: str): pass
+    def update_file_message(self, fileid: str, **kw):
+        pass
 
     @abstractmethod
-    def _delete_files(self, file_ids: List[str], real: bool = False): pass
+    def get_safe_delete_files(self):
+        pass
 
     @abstractmethod
-    def delete_files_from_kb_group(self, file_ids: List[str], group: str): pass
+    def add_files_to_kb_group(self, file_ids: List[str], group: str):
+        pass
 
     @abstractmethod
-    def get_file_status(self, fileid: str): pass
+    def _delete_files(self, file_ids: List[str], real: bool = False):
+        pass
 
     @abstractmethod
-    def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]: pass
+    def delete_files_from_kb_group(self, file_ids: List[str], group: str):
+        pass
 
     @abstractmethod
-    def update_kb_group_file_status(self, file_ids: Union[str, List[str]],
-                                    status: str, group: Optional[str] = None): pass
+    def get_file_status(self, fileid: str):
+        pass
 
     @abstractmethod
-    def release(self): pass
+    def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]:
+        pass
+
+    @abstractmethod
+    def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
+        pass
+
+    @abstractmethod
+    def release(self):
+        pass
+
+
+def gen_unique_filepaths(ori_filepath: str) -> str:
+    """
+    根据传入的 base_filename 查询 KBDocument 表，确保生成唯一的 filename。
+    如果存在冲突，则在文件名后添加计数，直到找到唯一值。
+    """
+    if not os.path.exists(ori_filepath):
+        return ori_filepath
+    directory, filename = os.path.split(ori_filepath)
+    name, ext = os.path.splitext(filename)
+    ct = 1
+    new_filepath = f"{os.path.join(directory, name)}_{ct}{ext}"
+    while os.path.exists(new_filepath):
+        ct += 1
+        new_filepath = f"{os.path.join(directory, name)}_{ct}{ext}"
+    return new_filepath
 
 
 class SqliteDocListManager(DocListManager):
@@ -144,38 +237,12 @@ class SqliteDocListManager(DocListManager):
         self._db_lock = FileLock(self._db_path + '.lock')
         # ensure that this connection is not used in another thread when sqlite3 is not threadsafe
         self._check_same_thread = not sqlite3_check_threadsafety()
+        self._engine = sqlalchemy.create_engine(
+            f"sqlite:///{self._db_path}?check_same_thread={self._check_same_thread}"
+        )
 
     def _init_tables(self):
-        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS documents (
-                    doc_id TEXT PRIMARY KEY,
-                    filename TEXT NOT NULL,
-                    path TEXT NOT NULL,
-                    metadata TEXT,
-                    status TEXT,
-                    count INTEGER DEFAULT 0
-                )
-            """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS document_groups (
-                    group_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    group_name TEXT NOT NULL UNIQUE
-                )
-            """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS kb_group_documents (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    doc_id TEXT NOT NULL,
-                    group_name TEXT NOT NULL,
-                    status TEXT,
-                    log TEXT,
-                    UNIQUE (doc_id, group_name),
-                    FOREIGN KEY(doc_id) REFERENCES documents(doc_id),
-                    FOREIGN KEY(group_name) REFERENCES document_groups(group_name)
-                )
-            """)
-            conn.commit()
+        KBDataBase.metadata.create_all(bind=self._engine)
 
     def table_inited(self):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
@@ -238,7 +305,7 @@ class SqliteDocListManager(DocListManager):
                             upload_status: Union[str, List[str]] = DocListManager.Status.all,
                             exclude_upload_status: Optional[Union[str, List[str]]] = None):
         query = """
-            SELECT documents.doc_id, documents.path, documents.status, documents.metadata,
+            SELECT documents.doc_id, documents.path, documents.status, documents.meta,
                    kb_group_documents.group_name, kb_group_documents.status, kb_group_documents.log
             FROM kb_group_documents
             JOIN documents ON kb_group_documents.doc_id = documents.doc_id
@@ -272,35 +339,50 @@ class SqliteDocListManager(DocListManager):
         if not details: return [row[:2] for row in rows]
         return rows
 
+    def get_filepaths(self, file_ids: List[str]) -> List[str]:
+        pass
+
     def _add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None,
                    status: Optional[str] = DocListManager.Status.waiting, batch_size: int = 64):
-        results = []
+        ids = []
+        filepaths = []
         for i in range(0, len(files), batch_size):
             batch_files = files[i:i + batch_size]
             batch_metadatas = metadatas[i:i + batch_size] if metadatas else None
-            insert_values, params = [], []
+            vals = []
 
             for i, file_path in enumerate(batch_files):
-                filename = os.path.basename(file_path)
-                doc_id = gen_docid(file_path)
+                new_file_path = gen_unique_filepaths(file_path)
+                doc_id = gen_docid(new_file_path)
 
                 metadata = batch_metadatas[i].copy() if batch_metadatas else {}
                 metadata.setdefault(RAG_DOC_ID, doc_id)
-                metadata.setdefault(RAG_DOC_PATH, file_path)
-                metadata_str = json.dumps(metadata)
+                metadata.setdefault(RAG_DOC_PATH, new_file_path)
 
-                insert_values.append("(?, ?, ?, ?, ?, ?)")
-                params.extend([doc_id, filename, file_path, metadata_str, status, 1])
-
-            with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
-                query = f"""
-                    INSERT OR IGNORE INTO documents (doc_id, filename, path, metadata, status, count)
-                    VALUES {', '.join(insert_values)} RETURNING doc_id;
-                """
-                cursor = conn.execute(query, params)
-                results.extend([row[0] for row in cursor.fetchall()])
+                vals.append(
+                    {
+                        KBDocument.doc_id.name: doc_id,
+                        KBDocument.filename.name: os.path.basename(file_path),
+                        KBDocument.path.name: new_file_path,
+                        KBDocument.meta.name: json.dumps(metadata),
+                        KBDocument.status.name: status,
+                        KBDocument.count.name: 1,
+                    }
+                )
+            with self._db_lock, self._engine.connect() as conn:
+                result = conn.execute(
+                    insert(KBDocument)
+                    .values(vals)
+                    .prefix_with('OR IGNORE')
+                    .returning(KBDocument.doc_id, KBDocument.path)
+                )
+                returned_values = result.fetchall()
                 conn.commit()
-        return results
+                ids.extend([ele.doc_id for ele in returned_values])
+                filepaths.extend([ele.path for ele in returned_values])
+            if "conn" in locals():
+                conn.close()
+        return ids, filepaths
 
     # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):
@@ -309,6 +391,17 @@ class SqliteDocListManager(DocListManager):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
             conn.commit()
+
+    def get_safe_delete_files(self):
+        ids = []
+        with self._db_lock, self._engine.connect() as conn:
+            stmt = select(KBDocument.doc_id).where(KBDocument.status.in_(["success", "failed"]))
+            result = conn.execute(stmt)
+            returned_values = result.fetchall()
+            ids = [ele.doc_id for ele in returned_values]
+        if "conn" in locals():
+            conn.close()
+        return ids
 
     def add_files_to_kb_group(self, file_ids: List[str], group: str):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
@@ -341,21 +434,37 @@ class SqliteDocListManager(DocListManager):
 
     def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]:
         updated_files = []
-
-        for i in range(0, len(file_ids), batch_size):
-            batch = file_ids[i:i + batch_size]
-            placeholders = ', '.join('?' for _ in batch)
-            sql = f'UPDATE documents SET status = ? WHERE doc_id IN ({placeholders}) RETURNING doc_id, path'
-
-            with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
-                cursor = conn.execute(sql, [status] + batch)
-                updated_files.extend(cursor.fetchall())
+        with self._db_lock, self._engine.connect() as conn:
+            for i in range(0, len(file_ids), batch_size):
+                ids = file_ids[i : i + batch_size]
+                if status == "deleted":
+                    stmt = (
+                        update(KBDocument)
+                        .where(KBDocument.doc_id.in_(ids))
+                        .values(status=status, doc_id="deleted_doc")
+                        .returning(KBDocument.doc_id, KBDocument.path)
+                    )
+                else:
+                    stmt = (
+                        update(KBDocument)
+                        .where(KBDocument.doc_id.in_(ids))
+                        .values(status=status)
+                        .returning(KBDocument.doc_id, KBDocument.path)
+                    )
+                result = conn.execute(stmt)
+                returned_values = result.fetchall()
                 conn.commit()
+            updated_files.extend([(row.doc_id, row.path) for row in returned_values])
+        if "conn" in locals():
+            conn.close()
         return updated_files
 
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
         if isinstance(file_ids, str): file_ids = [file_ids]
-        query, params = 'UPDATE kb_group_documents SET status = ? WHERE ', [status]
+        if "status" == "deleted":
+            query, params = 'UPDATE kb_group_documents SET doc_id = "deleted_doc", status = ? WHERE ', [status]
+        else:
+            query, params = 'UPDATE kb_group_documents SET status = ? WHERE ', [status]
         if group:
             query += 'group_name = ? AND '
             params.append(group)
