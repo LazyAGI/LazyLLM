@@ -153,7 +153,7 @@ class ModelManager():
                 return self._download_model_from_ms(model, full_model_dir, call_back)
         # Use `BaseException` to capture `KeyboardInterrupt` and normal `Exceptioin`.
         except BaseException as e:
-            lazyllm.LOG.warning(f"Huggingface: {e}")
+            lazyllm.LOG.warning(f"Download encountered an error: {e}")
             if not self.token:
                 lazyllm.LOG.warning('Token is empty, which may prevent private models from being downloaded, '
                                     'as indicated by "the model does not exist." Please set the token with the '
@@ -223,7 +223,6 @@ def custom_tqdm_factory(shared_list):
     class CustomTqdm(tqdm.std.tqdm):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            print("TTTTTTTTTTTTTTT: ", flush=True)
             if self not in shared_list:
                 shared_list.append(self)
 
