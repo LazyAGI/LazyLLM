@@ -100,7 +100,7 @@ class MilvusStore(StoreBase):
                 field_list.append(pymilvus.FieldSchema(name=field_name, dtype=self._type2milvus[datatype],
                                                        **field_kwargs))
                 if isinstance(index_kwargs, list):
-                    embed_key_field_name = "__embed_key__"
+                    embed_key_field_name = "embed_key"
                     for item in index_kwargs:
                         item_key = item.get(embed_key_field_name, None)
                         if not item_key:

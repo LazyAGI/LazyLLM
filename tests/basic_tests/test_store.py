@@ -345,12 +345,12 @@ class TestMilvusStoreWithSparseEmbedding(unittest.TestCase):
             'uri': self.store_file,
             'index_kwargs': [
                 {
-                    '__embed_key__': 'vec1',
+                    'embed_key': 'vec1',
                     'index_type': 'SPARSE_INVERTED_INDEX',
                     'metric_type': 'IP',
                 },
                 {
-                    '__embed_key__': 'vec2',
+                    'embed_key': 'vec2',
                     'index_type': 'SPARSE_INVERTED_INDEX',
                     'metric_type': 'IP',
                 }
