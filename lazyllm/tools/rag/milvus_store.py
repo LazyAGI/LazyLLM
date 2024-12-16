@@ -100,13 +100,14 @@ class MilvusStore(StoreBase):
                 field_list.append(pymilvus.FieldSchema(name=field_name, dtype=self._type2milvus[datatype],
                                                        **field_kwargs))
                 if isinstance(index_kwargs, list):
+                    embed_key_field_name = "__embed_key__"
                     for item in index_kwargs:
-                        item_key = item.get("__embed_key__", None)
+                        item_key = item.get(embed_key_field_name, None)
                         if not item_key:
-                            raise ValueError(f'cannot find `__embed_key__` in `index_kwargs` of `{field_name}`')
+                            raise ValueError(f'cannot find `{embed_key_field_name}` in `index_kwargs` of `{field_name}`')
                         if item_key == key:
                             index_kwarg = item.copy()
-                            index_kwarg.pop(key, None)
+                            index_kwarg.pop(embed_key_field_name, None)
                             index_params.add_index(field_name=field_name, **index_kwarg)
                             break
                 elif isinstance(index_kwargs, dict):
