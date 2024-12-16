@@ -107,7 +107,7 @@ docs.create_node_group(name='sentence-len',
         - `dir`（必填）：存储数据的目录。
     - `milvus`：使用 Milvus 存储数据。
         - `uri`（必填）：Milvus 存储地址，可以是一个文件路径或者如 `ip:port` 格式的 url；
-        - `index_kwargs`（可选）：Milvus 索引配置，可以是一个 dict 或者 list。如果是一个 dict 表示所有的 embedding index 使用同样的配置；如果是一个 list，list 中的元素是 dict，表示由 `__embed_key__` 所指定的 embedding 所使用的配置。当前只支持 floaing point embedding 和 sparse embedding 两种 embedding 类型，分别支持的参数如下：
+        - `index_kwargs`（可选）：Milvus 索引配置，可以是一个 dict 或者 list。如果是一个 dict 表示所有的 embedding index 使用同样的配置；如果是一个 list，list 中的元素是 dict，表示由 `embed_key` 所指定的 embedding 所使用的配置。当前只支持 floaing point embedding 和 sparse embedding 两种 embedding 类型，分别支持的参数如下：
             - `floating point embedding`：[https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
             - `sparse embedding`：[https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
 * `indices`：是一个 dict，key 是索引类型名称，value 是该索引类型所需要的参数。索引类型目前支持：
@@ -139,11 +139,11 @@ store_conf = {
     ...
     'index_kwargs' = [
         {
-            '__embed_key__': 'vec1',
+            'embed_key': 'vec1',
             'index_type': 'HNSW',
             'metric_type': 'COSINE',
         },{
-            '__embed_key__': 'vec2',
+            'embed_key': 'vec2',
             'index_type': 'SPARSE_INVERTED_INDEX',
             'metric_type': 'IP',
         }

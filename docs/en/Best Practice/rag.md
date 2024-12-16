@@ -107,7 +107,7 @@ The configuration parameter `store_conf` is a `dict` type that includes the foll
         - `dir`(required): Directory where data is stored.
     - `milvus`: Uses Milvus for data storage.
         - `uri`: The Milvus storage address, which can be a file path or a URL in the format of `ip:port`.
-        - `index_kwargs` (optional): Milvus index configuration, which can be a dictionary or a list. If it is a dictionary, it means that all embedding indexes use the same configuration; if it is a list, the elements in the list are dictionaries, representing the configuration used by the embeddings specified by `__embed_key__`. Currently, only `floating point embedding` and `sparse embedding` are supported for the two types of embeddings, with the following supported parameters respectively:
+        - `index_kwargs` (optional): Milvus index configuration, which can be a dictionary or a list. If it is a dictionary, it means that all embedding indexes use the same configuration; if it is a list, the elements in the list are dictionaries, representing the configuration used by the embeddings specified by `embed_key`. Currently, only `floating point embedding` and `sparse embedding` are supported for the two types of embeddings, with the following supported parameters respectively:
             - `floating point embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
             - `sparse embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
 * `indices`: This is a dictionary where the key is the name of the index type, and the value is the parameters required for that index type. The currently supported index types are:
@@ -133,18 +133,18 @@ store_conf = {
     },
 }
 ```
-Also you can configure multi index type for Milvus backend as follow, where the `__embed_key__` should match the key of multi embeddings passed to Document:
+Also you can configure multi index type for Milvus backend as follow, where the `embed_key` should match the key of multi embeddings passed to Document:
 
 ```python
 {
     ...
     'index_kwargs' = [
         {
-            '__embed_key__': 'vec1',
+            'embed_key': 'vec1',
             'index_type': 'HNSW',
             'metric_type': 'COSINE',
         },{
-            '__embed_key__': 'vec2',
+            'embed_key': 'vec2',
             'index_type': 'SPARSE_INVERTED_INDEX',
             'metric_type': 'IP',
         }
