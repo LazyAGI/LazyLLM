@@ -15,11 +15,11 @@ class TestRagUtils:
 
         res = generic_process_filters(nodes, {'k1': 'v1'})
         assert len(res) == 2
-        assert set([res[0].uid, res[1].uid]) == set(["1", "2"])
+        assert set([res[0]._uid, res[1]._uid]) == set(["1", "2"])
 
         res = generic_process_filters(nodes, {'k6': 'v6'})
         assert len(res) == 1
-        assert res[0].uid == '3'
+        assert res[0]._uid == '3'
 
         res = generic_process_filters(nodes, {'k2': 'v6'})
         assert len(res) == 0
@@ -42,7 +42,7 @@ class TestFileNodeIndex(unittest.TestCase):
 
     def test_remove(self):
         self.index.update([self.node1, self.node2])
-        self.index.remove([self.node2.uid])
+        self.index.remove([self.node2._uid])
         ret = self.index.query([self.node2.global_metadata[RAG_DOC_PATH]])
         assert len(ret) == 0
 

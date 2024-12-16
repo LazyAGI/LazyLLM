@@ -124,11 +124,11 @@ class MilvusStore(StoreBase):
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
         for node in nodes:
-            embed_keys = self._group_embed_keys.get(node.group)
+            embed_keys = self._group_embed_keys.get(node._group)
             if embed_keys:
                 parallel_do_embedding(self._embed, embed_keys, [node])
             data = self._serialize_node_partial(node)
-            self._client.upsert(collection_name=node.group, data=[data])
+            self._client.upsert(collection_name=node._group, data=[data])
 
         self._map_store.update_nodes(nodes)
 
@@ -213,8 +213,8 @@ class MilvusStore(StoreBase):
                                          filter=f'{self._primary_key} != ""')
             for result in results:
                 node = self._deserialize_node_partial(result)
-                node.group = group_name
-                uid2node.setdefault(node.uid, node)
+                node._group = group_name
+                uid2node.setdefault(node._uid, node)
 
         # construct DocNode::parent and DocNode::children
         for node in uid2node.values():
@@ -222,7 +222,7 @@ class MilvusStore(StoreBase):
                 parent_uid = node.parent
                 parent_node = uid2node.get(parent_uid)
                 node.parent = parent_node
-                parent_node.children[node.group].append(node)
+                parent_node.children[node._group].append(node)
 
         store.update_nodes(list(uid2node.values()))
 
@@ -250,9 +250,9 @@ class MilvusStore(StoreBase):
 
     def _serialize_node_partial(self, node: DocNode) -> Dict:
         res = {
-            'uid': node.uid,
-            'content': obj2str(node.content),
-            'parent': node.parent.uid if node.parent else '',
+            'uid': node._uid,
+            'content': obj2str(node._content),
+            'parent': node.parent._uid if node.parent else '',
             'metadata': obj2str(node._metadata),
         }
 

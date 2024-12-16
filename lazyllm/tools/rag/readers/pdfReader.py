@@ -31,15 +31,12 @@ class PDFReader(LazyLLMReaderBase):
             num_pages = len(pdf.pages)
             docs = []
             if self._return_full_document:
-                metadata = {"file_name": file.name}
-                if extra_info is not None: metadata.update(extra_info)
                 text = "\n".join(pdf.pages[page].extract_text() for page in range(num_pages))
-                docs.append(DocNode(text=text, metadata=metadata))
+                docs.append(DocNode(text=text, global_metadata=extra_info))
             else:
                 for page in range(num_pages):
                     page_text = pdf.pages[page].extract_text()
                     page_label = pdf.page_labels[page]
-                    metadata = {"page_label": page_label, "file_name": file.name}
-                    if extra_info is not None: metadata.update(extra_info)
-                    docs.append(DocNode(text=page_text, metadata=metadata))
+                    metadata = {"page_label": page_label}
+                    docs.append(DocNode(text=page_text, metadata=metadata, global_metadata=extra_info))
             return docs
