@@ -163,6 +163,12 @@ class ModelManager():
                 lazyllm.LOG.warning(f"{full_model_dir} removed due to exceptions.")
         return model
 
+    def _real_download_model_from_hf(self, model_name, model_dir, token, progress_class, call_back, result_queue):
+        with progress_class(call_back):
+            from huggingface_hub import snapshot_download
+            model_dir_result = snapshot_download(repo_id=model_name, local_dir=model_dir, token=token)
+        result_queue.put(model_dir_result)
+
     def _download_model_from_hf(self, model_name='', model_dir='', call_back=None):
 
         # refer to https://huggingface.co/docs/huggingface_hub/v0.23.1/en/package_reference/file_download
@@ -171,12 +177,6 @@ class ModelManager():
         elif isinstance(self.token, str) and self.token.lower() == 'true':
             self.token = True
         # else token would be a string from the user.
-
-        def download(model_name, model_dir, token, progress_class, call_back, result_queue):
-            with progress_class(call_back):
-                from huggingface_hub import snapshot_download
-                model_dir_result = snapshot_download(repo_id=model_name, local_dir=model_dir, token=token)
-            result_queue.put(model_dir_result)
 
         env_vars = {'https_proxy': lazyllm.config['https_proxy'] or os.environ.get("https_proxy", None),
                     'http_proxy': lazyllm.config['http_proxy'] or os.environ.get("http_proxy", None)}
@@ -188,8 +188,8 @@ class ModelManager():
                                     'environment variables in your environment, as doing so may disrupt model '
                                     'deployment and result in deployment failures.')
             result_queue = Queue()
-            process = Process(target=download, args=(model_name, model_dir, self.token,
-                                                     ProgressTracker, call_back, result_queue))
+            process = Process(target=self._real_download_model_from_hf,
+                              args=(model_name, model_dir, self.token, ProgressTracker, call_back, result_queue))
             process.start()
             process.join()
             model_dir_result = result_queue.get()
@@ -197,22 +197,21 @@ class ModelManager():
         lazyllm.LOG.info(f"model downloaded at {model_dir_result}")
         return model_dir_result
 
+    def _real_download_model_from_ms(self, model_name, model_dir, token, progress_class, call_back, result_queue):
+        with progress_class(call_back):
+            if (len(token) > 0):
+                # refer to https://www.modelscope.cn/docs/models/download
+                from modelscope.hub.api import HubApi
+                api = HubApi()
+                api.login(token)
+            from modelscope.hub.snapshot_download import snapshot_download
+            model_dir_result = snapshot_download(model_id=model_name, local_dir=model_dir)
+        result_queue.put(model_dir_result)
+
     def _download_model_from_ms(self, model_name='', model_dir='', call_back=None):
-
-        def download(model_name, model_dir, token, progress_class, call_back, result_queue):
-            with progress_class(call_back):
-                if (len(token) > 0):
-                    # refer to https://www.modelscope.cn/docs/models/download
-                    from modelscope.hub.api import HubApi
-                    api = HubApi()
-                    api.login(token)
-                from modelscope.hub.snapshot_download import snapshot_download
-                model_dir_result = snapshot_download(model_id=model_name, local_dir=model_dir)
-            result_queue.put(model_dir_result)
-
         result_queue = Queue()
-        process = Process(target=download, args=(model_name, model_dir, self.token,
-                                                 ProgressTracker, call_back, result_queue))
+        process = Process(target=self._real_download_model_from_ms,
+                          args=(model_name, model_dir, self.token, ProgressTracker, call_back, result_queue))
         process.start()
         process.join()
         model_dir_result = result_queue.get()
