@@ -345,15 +345,14 @@ milvus_store_conf = {
 其中 `type` 为后端类型，`kwargs` 时需要传递给后端的参数。各字段含义如下：
 
 * `type`：需要使用的后端类型。目前支持：
-    - `map`：基于 dict 的内存 key/value 后端；
-    - `milvus`：使用 Milvus 存储数据。`kwargs` 包括：
-        - `uri`（必填）：Milvus 后端所在的路径，可以是一个 `ip:port` 形式的字符串，或者是一个文件路径：
-        - `index_kwargs`（必填）: Milvus 后端索引配置，可以是一个字典，或者是一个包含多个字典的列表，表示指定多组索引配置；
-            - `index_type`（必填）：Milvus 支持的 embedding 索引类型；
-            - `metric_type`（必填）：根据 embedding 索引类型不同配置的检索参数。
-    - `chroma`：使用 Chroma 存储数据。`kwargs` 包括：
-        - `dir`（必填）：数据存放的目录。
-
+    - `map`：内存 key/value 存储；
+    - `chroma`：使用 Chroma 存储数据；
+        - `dir`（必填）：存储数据的目录。
+    - `milvus`：使用 Milvus 存储数据。
+        - `uri`（必填）：Milvus 存储地址，可以是一个文件路径或者如 `ip:port` 格式的 url；
+        - `index_kwargs`（可选）：Milvus 索引配置，可以是一个 dict 或者 list。如果是一个 dict 表示所有的 embedding index 使用同样的配置；如果是一个 list，list 中的元素是 dict，表示由 `embed_key` 所指定的 embedding 所使用的配置。当前只支持 `floaing point embedding` 和 `sparse embedding` 两种 embedding 类型，分别支持的参数如下：
+            - `floating point embedding`：[https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
+            - `sparse embedding`：[https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
 
 如果使用 Milvus，我们还需要给 `Document` 传递 `doc_fields` 参数，用于指定需要存储的字段及类型等信息。例如下面的配置：
 
