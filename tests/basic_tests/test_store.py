@@ -194,7 +194,7 @@ class TestMilvusStore(unittest.TestCase):
             'comment': GlobalMetadataDesc(data_type=GlobalMetadataDesc.DTYPE_VARCHAR, max_size=65535, default_value=' '),
             'signature': GlobalMetadataDesc(data_type=GlobalMetadataDesc.DTYPE_VARCHAR, max_size=256, default_value=' '),
             'tags': GlobalMetadataDesc(data_type=GlobalMetadataDesc.DTYPE_ARRAY, element_type=GlobalMetadataDesc.DTYPE_INT32,
-                                       max_size=128),
+                                       max_size=128, default_value=[]),
         }
 
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
