@@ -193,6 +193,9 @@ class TestMilvusStoreWithNormalEmbedding(unittest.TestCase):
         }
         self.global_metadata_desc = {
             'comment': GlobalMetadataDesc(data_type=DataType.VARCHAR, max_size=65535, default_value=' '),
+            'signature': GlobalMetadataDesc(data_type=DataType.VARCHAR, max_size=256, default_value=' '),
+            'tags': GlobalMetadataDesc(data_type=DataType.ARRAY, element_type=DataType.INT32, max_size=128,
+                                       default_value=[]),
         }
 
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
@@ -292,6 +295,7 @@ class TestMilvusStoreWithNormalEmbedding(unittest.TestCase):
 
     def test_reload(self):
         self.store.update_nodes([self.node1, self.node2, self.node3])
+        # reload from storage
         del self.store
         self.store = MilvusStore(group_embed_keys=self.group_embed_keys, embed=self.mock_embed,
                                  embed_dims=self.embed_dims, global_metadata_desc=self.global_metadata_desc,
@@ -305,6 +309,10 @@ class TestMilvusStoreWithNormalEmbedding(unittest.TestCase):
             for orig_node in orig_nodes:
                 if node._uid == orig_node._uid:
                     self.assertEqual(node.text, orig_node.text)
+                    # builtin fields are not in orig node, so we can not use
+                    # node.global_metadata == orig_node.global_metadata
+                    for k, v in orig_node.global_metadata.items():
+                        self.assertEqual(node.global_metadata[k], v)
                     break
 
     # XXX `array_contains_any` is not supported in local(aka lite) mode. skip this ut
