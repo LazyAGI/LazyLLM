@@ -48,10 +48,11 @@ jobs:
           set -ex
           mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
-      - name: test
+      - name: k8s_test
         shell: bash
         run: |
           cd ${{ env.CI_PATH }}
+          source activate lazyllm
           pip install -r tests/requirements.txt
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DEFAULT_LAUNCHER="k8s"
