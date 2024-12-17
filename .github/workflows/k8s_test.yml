@@ -52,6 +52,7 @@ jobs:
         shell: bash
         run: |
           cd ${{ env.CI_PATH }}
+          pip install -r tests/requirements.txt
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DEFAULT_LAUNCHER="k8s"
           export LAZYLLM_DATA_PATH="/mnt/lustre/share_data/lazyllm/data"
