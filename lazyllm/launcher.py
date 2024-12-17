@@ -242,7 +242,8 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 ),
                 volume_mounts=[] if not volume_configs else [
                     k8s.client.V1VolumeMount(
-                        mount_path=vol_config["mount_path"],
+                        mount_path=vol_config["mount_path"] if "__CURRENT_DIR__" not in vol_config['mount_path']
+                        else vol_config['mount_path'].replace("__CURRENT_DIR__", os.getcwd()),
                         name=vol_config["name"]
                     ) for vol_config in volume_configs
                 ]
@@ -257,7 +258,8 @@ class K8sLauncher(LazyLLMLaunchersBase):
                                 name=vol_config["name"],
                                 nfs=k8s.client.V1NFSVolumeSource(
                                     server=vol_config["nfs_server"],
-                                    path=vol_config["nfs_path"],
+                                    path=vol_config["nfs_path"] if "__CURRENT_DIR__" not in vol_config['nfs_path']
+                                    else vol_config['nfs_path'].replace("__CURRENT_DIR__", os.getcwd()),
                                     read_only=vol_config.get("read_only", False)
                                 )
                             )
@@ -267,7 +269,8 @@ class K8sLauncher(LazyLLMLaunchersBase):
                             k8s.client.V1Volume(
                                 name=vol_config["name"],
                                 host_path=k8s.client.V1HostPathVolumeSource(
-                                    path=vol_config["host_path"],
+                                    path=vol_config["host_path"] if "__CURRENT_DIR__" not in vol_config['host_path']
+                                    else vol_config['host_path'].replace("__CURRENT_DIR__", os.getcwd()),
                                     type="Directory"
                                 )
                             )
