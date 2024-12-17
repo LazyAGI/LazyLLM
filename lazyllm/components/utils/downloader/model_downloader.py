@@ -101,17 +101,18 @@ class ModelManager():
                     os.unlink(full_model_dir)
                 os.symlink(model_save_dir, full_model_dir, target_is_directory=True)
                 return full_model_dir
-            return model  # failed to download model, keep model as it is
+            return model_save_dir  # return False
         else:
             model_name_for_download = model
 
-            # Try to figure out a possible model provider
-            matched_model_prefix = next((key for key in model_provider if model.lower().startswith(key)), None)
-            if matched_model_prefix and self.model_source in model_provider[matched_model_prefix]:
-                model_name_for_download = model_provider[matched_model_prefix][self.model_source] + '/' + model
+            if '/' not in model_name_for_download:
+                # Try to figure out a possible model provider
+                matched_model_prefix = next((key for key in model_provider if model.lower().startswith(key)), None)
+                if matched_model_prefix and self.model_source in model_provider[matched_model_prefix]:
+                    model_name_for_download = model_provider[matched_model_prefix][self.model_source] + '/' + model
 
             model_save_dir = self._do_download(model_name_for_download, call_back)
-            return model_save_dir if model_save_dir else model
+            return model_save_dir
 
     def validate_token(self):
         if self.model_source == 'huggingface':
