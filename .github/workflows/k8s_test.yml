@@ -39,7 +39,7 @@ jobs:
       - name: Clean custom directory
         run: |
           set -ex
-          if [ -d "${{ env.CI_PATH }}" ]; then
+systemctl status nfs-server          if [ -d "${{ env.CI_PATH }}" ]; then
             rm -rf ${{ env.CI_PATH }}/*
           fi
 
@@ -62,5 +62,4 @@ jobs:
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source /mnt/nfs_share/env.sh 
-          sleep inf
           python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/k8s_tests
