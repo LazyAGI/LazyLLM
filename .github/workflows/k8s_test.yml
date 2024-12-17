@@ -49,6 +49,7 @@ jobs:
           mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
       - name: test
+        shell: bash
         run: |
           cd ${{ env.CI_PATH }}
           export PYTHONPATH=$PWD:$PYTHONPATH
