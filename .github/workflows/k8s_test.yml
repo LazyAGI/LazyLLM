@@ -56,6 +56,7 @@ jobs:
           export LAZYLLM_DATA_PATH="/mnt/lustre/share_data/lazyllm/data"
           export LAZYLLM_K8S_ENV_NAME="lazyllm"
           export LAZYLLM_K8S_CONFIG_PATH="/mnt/nfs_share/k8s_config.yaml"
+          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
-          source ~/ENV/env.sh
+          source /mnt/nfs_share/env.sh 
           python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/k8s_tests
