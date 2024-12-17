@@ -178,7 +178,7 @@ class ModelManager():
             if os.path.isdir(full_model_dir):
                 shutil.rmtree(full_model_dir)
                 lazyllm.LOG.warning(f"{full_model_dir} removed due to exceptions.")
-        return model
+        return False
 
 class HubDownloader(ABC):
 
@@ -303,7 +303,8 @@ class HuggingfaceDownloader(HubDownloader):
                                     'environment variables in your environment, as doing so may disrupt model '
                                     'deployment and result in deployment failures.')
             if not self._verify_model_id(model_id):
-                raise RuntimeError(f"Invalid model id:{model_id}")
+                lazyllm.LOG.warning(f"Invalid model id:{model_id}")
+                return False
             downloaded_path = snapshot_download(repo_id=model_id, local_dir=model_dir, token=self._token)
         lazyllm.LOG.info(f"model downloaded at {downloaded_path}")
         return downloaded_path
@@ -356,7 +357,8 @@ class ModelscopeDownloader(HubDownloader):
         from modelscope.hub.snapshot_download import snapshot_download
         # refer to https://www.modelscope.cn/docs/models/download
         if not self._verify_model_id(model_id):
-            raise RuntimeError(f"Invalid model id:{model_id}")
+            lazyllm.LOG.warning(f"Invalid model id:{model_id}")
+            return False
         downloaded_path = snapshot_download(model_id=model_id, local_dir=model_dir)
         lazyllm.LOG.info(f"Model downloaded at {downloaded_path}")
         return downloaded_path
