@@ -11,7 +11,7 @@ from lazyllm.common import override
 from lazyllm.common.queue import sqlite3_check_threadsafety
 import sqlalchemy
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import Column, insert, update, select
+from sqlalchemy import Column, insert, update, select, delete
 
 import pydantic
 import sqlite3
@@ -23,7 +23,6 @@ from filelock import FileLock
 
 import lazyllm
 from lazyllm import config
-import uuid
 
 # min(32, (os.cpu_count() or 1) + 4) is the default number of workers for ThreadPoolExecutor
 config.add(
@@ -436,12 +435,11 @@ class SqliteDocListManager(DocListManager):
         updated_files = []
         with self._db_lock, self._engine.connect() as conn:
             for i in range(0, len(file_ids), batch_size):
-                ids = file_ids[i : i + batch_size]
+                ids = file_ids[i: i + batch_size]
                 if status == "deleted":
                     stmt = (
-                        update(KBDocument)
+                        delete(KBDocument)
                         .where(KBDocument.doc_id.in_(ids))
-                        .values(status=status, doc_id="deleted_doc")
                         .returning(KBDocument.doc_id, KBDocument.path)
                     )
                 else:
