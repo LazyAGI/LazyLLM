@@ -170,7 +170,7 @@ class ChromadbStore(StoreBase):
             "metadata": obj2str(node._metadata),
         }
 
-        if not node.parent:
+        if node.is_root_node:
             metadata["global_metadata"] = obj2str(node.global_metadata)
 
         return metadata

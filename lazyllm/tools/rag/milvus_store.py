@@ -280,7 +280,7 @@ class MilvusStore(StoreBase):
             if k.startswith(self._embedding_key_prefix):
                 doc.embedding[k[len(self._embedding_key_prefix):]] = v
             elif k.startswith(self._global_metadata_key_prefix):
-                if doc.parent:
+                if doc.is_root_node:
                     doc._global_metadata[k[len(self._global_metadata_key_prefix):]] = v
 
         return doc
