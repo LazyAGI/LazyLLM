@@ -40,11 +40,11 @@ class TestRagReader(object):
     def test_reader_dir(self):
         input_dir = self.datasets
         reader = SimpleDirectoryReader(input_dir=input_dir,
-                                       exclude=["*.jpg", "*.mp3", "*.yml", "*.pdf", ".docx", "*.pptx"])
+                                       exclude=["*.yml", "*.pdf", "*.docx", "*.mp4"])
         docs = []
         for doc in reader():
             docs.append(doc)
-        assert len(docs) == 3
+        assert len(docs) == 23
 
     def test_register_local_reader(self):
         self.doc1.add_reader("**/*.yml", processYml)
