@@ -39,7 +39,7 @@ jobs:
       - name: Clean custom directory
         run: |
           set -ex
-systemctl status nfs-server          if [ -d "${{ env.CI_PATH }}" ]; then
+          if [ -d "${{ env.CI_PATH }}" ]; then
             rm -rf ${{ env.CI_PATH }}/*
           fi
 
