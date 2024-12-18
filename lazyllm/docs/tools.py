@@ -26,6 +26,8 @@ Args:
     embed (Optional[Union[Callable, Dict[str, Callable]]]): The object used to generate document embeddings. If you need to generate multiple embeddings for the text, you need to specify multiple embedding models in a dictionary format. The key identifies the name corresponding to the embedding, and the value is the corresponding embedding model.
     manager (bool, optional): A flag indicating whether to create a user interface for the document module. Defaults to False.
     launcher (optional): An object or function responsible for launching the server module. If not provided, the default asynchronous launcher from `lazyllm.launchers` is used (`sync=False`).
+    store_conf (optional): Configure which storage backend and index backend to use.
+    doc_fields (optional): Configure the fields that need to be stored and retrieved along with their corresponding types (currently only used by the Milvus backend).
 ''')
 
 add_chinese_doc('Document', '''\
@@ -36,8 +38,10 @@ add_chinese_doc('Document', '''\
 Args:
     dataset_path (str): 数据集目录的路径。此目录应包含要由文档模块管理的文档。
     embed (Optional[Union[Callable, Dict[str, Callable]]]): 用于生成文档 embedding 的对象。如果需要对文本生成多个 embedding，此处需要通过字典的方式指定多个 embedding 模型，key 标识 embedding 对应的名字, value 为对应的 embedding 模型。
-    manager (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 False
+    manager (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 False。
     launcher (optional): 负责启动服务器模块的对象或函数。如果未提供，则使用 `lazyllm.launchers` 中的默认异步启动器 (`sync=False`)。
+    store_conf (optional): 配置使用哪种存储后端和索引后端。
+    doc_fields (optional): 配置需要存储和检索的字段继对应的类型（目前只有 Milvus 后端会用到）。
 ''')
 
 add_example('Document', '''\
@@ -47,6 +51,27 @@ add_example('Document', '''\
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)  # or documents = Document(dataset_path='your_doc_path', embed={"key": m}, manager=False)
 >>> m1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
 >>> document1 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, manager=False)
+
+>>> store_conf = {
+>>>     'type': 'chroma',
+>>>     'indices': {
+>>>         'smart_embedding_index': {
+>>>             'backend': 'milvus',
+>>>             'kwargs': {
+>>>                 'uri': '/tmp/tmp.db',
+>>>                 'index_kwargs': {
+>>>                     'index_type': 'HNSW',
+>>>                     'metric_type': 'COSINE'
+>>>                  }
+>>>             },
+>>>         },
+>>>     },
+>>> }
+>>> doc_fields = {
+>>>     'author': DocField(data_type=DataType.VARCHAR, max_size=128, default_value=' '),
+>>>     'public_year': DocField(data_type=DataType.INT32),
+>>> }
+>>> document2 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, store_conf=store_conf, doc_fields=doc_fields)
 ''')
 
 add_english_doc('Document.create_node_group', '''
@@ -152,7 +177,7 @@ add_example('Document.register_global_reader', '''
 ...     with open(file, 'r') as f:
 ...         data = f.read()
 ...     return [DocNode(text=data, metadata=extra_info or {})]
-... 
+...
 >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
 >>> files = ["your_yml_files"]
@@ -191,7 +216,7 @@ add_example('Document.add_reader', '''
 ...             data = yaml.safe_load(f)
 ...         print("Call the class YmlReader.")
 ...         return [DocNode(text=data, metadata=extra_info or {})]
-... 
+...
 >>> def processYml(file, extra_info=None):
 ...     with open(file, 'r') as f:
 ...         data = f.read()
@@ -248,7 +273,7 @@ add_example('rag.readers.ReaderBase', '''
 ...             data = yaml.safe_load(f)
 ...         print("Call the class YmlReader.")
 ...         return [DocNode(text=data, metadata=extra_info or {})]
-... 
+...
 >>> files = ["your_yml_files"]
 >>> doc = Document(dataset_path="your_files_path", create_ui=False)
 >>> reader = doc._impl._reader.load_data(input_files=files)
@@ -329,7 +354,7 @@ Args:
     doc: 文档模块实例。该文档模块可以是单个实例，也可以是一个实例的列表。如果是单个实例，表示对单个Document进行检索，如果是实例的列表，则表示对多个Document进行检索。
     group_name: 在哪个 node group 上进行检索。
     similarity: 用于设置文档检索的相似度函数。默认为 'dummy'。候选集包括 ["bm25", "bm25_chinese", "cosine"]。
-    similarity_cut_off: 当相似度低于指定值时丢弃该文档。在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则需要使用字典的方式指定，key 表示指定的是哪个 embedding，value 表示相应的阈值。如果所有的 embedding 使用同一个阈值，则只指定一个数值即可。 
+    similarity_cut_off: 当相似度低于指定值时丢弃该文档。在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则需要使用字典的方式指定，key 表示指定的是哪个 embedding，value 表示相应的阈值。如果所有的 embedding 使用同一个阈值，则只指定一个数值即可。
     index: 用于文档检索的索引类型。目前仅支持 'default'。
     topk: 表示取相似度最高的多少篇文档。
     embed_keys: 表示通过哪些 embedding 做检索，不指定表示用全部 embedding 进行检索。
@@ -359,6 +384,15 @@ add_example('Retriever', '''
 >>> document2.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
 >>> retriever2 = Retriever([document1, document2], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
 >>> print(retriever2("user query"))
+>>>
+>>> filters = {
+>>>     "author": ["A", "B", "C"],
+>>>     "public_year": [2002, 2003, 2004],
+>>> }
+>>> document3 = Document(dataset_path='/path/to/user/data', embed={'online':m , 'local': m1}, manager=False)
+>>> document3.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+>>> retriever3 = Retriever([document1, document3], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
+>>> print(retriever3(query="user query", filters=filters))
 ''')
 
 # ---------------------------------------------------------------------------- #

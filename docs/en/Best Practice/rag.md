@@ -28,6 +28,10 @@ The Document constructor has the following parameters:
 * `embed`: Uses the specified model to perform text embedding. If you need to generate multiple embeddings for the text, you need to specify them in a dictionary, where the key identifies the name of the embedding and the value is the corresponding embedding model.
 * `manager`: Whether to use the UI interface, which will affect the internal processing logic of Document; the default is True.
 * `launcher`: The method of launching the service, which is used in cluster applications; it can be ignored for single-machine applications.
+* `store_conf`: Configure which storage backend and index backend to use.
+* `doc_fields`: Configure the fields and corresponding types that need to be stored and retrieved (currently only used by the Milvus backend).
+
+#### Node and NodeGroup
 
 A `Document` instance may be further subdivided into several sets of nodes with different granularities, known as `Node` sets (the `Node Group`), according to specified rules (referred to as `Transformer` in `LazyLLM`). These `Node`s not only contain the document content but also record which `Node` they were split from and which finer-grained `Node`s they themselves were split into. Users can create their own `Node Group` by using the `Document.create_node_group()` method.
 
@@ -91,6 +95,74 @@ The relationship of these `Node Group`s is shown in the diagram below:
 
 These `Node Group`s have different granularities and rules, reflecting various characteristics of the document. In subsequent processing, we use these characteristics in different contexts to better judge the relevance between the document and the user's query content.
 
+#### Store and Index
+
+`LazyLLM` offers the functionality of configurable storage and index backends, which can meet various storage and retrieval needs.
+
+The configuration parameter `store_conf` is a `dict` type that includes the following fields:
+
+* `type`: This is the type of storage backend. Currently supported storage backends include:
+    - `map`: In-memory key/value storage.
+    - `chroma`: Uses Chroma for data storage.
+        - `dir`(required): Directory where data is stored.
+    - `milvus`: Uses Milvus for data storage.
+        - `uri`(required): The Milvus storage address, which can be a file path or a URL in the format of `ip:port`.
+        - `index_kwargs` (optional): Milvus index configuration, which can be a dictionary or a list. If it is a dictionary, it means that all embedding indexes use the same configuration; if it is a list, the elements in the list are dictionaries, representing the configuration used by the embeddings specified by `embed_key`. Currently, only `floating point embedding` and `sparse embedding` are supported for the two types of embeddings, with the following supported parameters respectively:
+            - `floating point embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
+            - `sparse embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
+* `indices`: This is a dictionary where the key is the name of the index type, and the value is the parameters required for that index type. The currently supported index types are:
+    - `smart_embedding_index`: Provides embedding retrieval functionality. The supported backends include:
+        - `milvus`: Use Milvus as the backend for embedding search. The available parameters `kwargs` are the same as when used as a storage backend.
+
+Here is an example configuration using Chroma as the storage backend and Milvus as the retrieval backend:
+
+```python
+store_conf = {
+    'type': 'chroma',
+    'indices': {
+        'smart_embedding_index': {
+            'backend': 'milvus',
+            'kwargs': {
+                'uri': store_file,
+                'index_kwargs': {
+                    'index_type': 'HNSW',
+                    'metric_type': 'COSINE',
+                }
+            },
+        },
+    },
+}
+```
+Also you can configure multi index type for Milvus backend as follow, where the `embed_key` should match the key of multi embeddings passed to Document:
+
+```python
+{
+    ...
+    'index_kwargs' = [
+        {
+            'embed_key': 'vec1',
+            'index_type': 'HNSW',
+            'metric_type': 'COSINE',
+        },{
+            'embed_key': 'vec2',
+            'index_type': 'SPARSE_INVERTED_INDEX',
+            'metric_type': 'IP',
+        }
+    ]
+}
+```
+
+Note: If Milvus is used as a storage backend or indexing backend, you also need to provide a description of special fields that may be used as search conditions, passed in through the `doc_fields` parameter. `doc_fields` is a dictionary where the key is the name of the field that needs to be stored or retrieved, and the value is a `DocField` type structure containing information such as the field type.
+
+For example, if you need to store the author information and publication year of documents, you can configure it as follows:
+
+```python
+doc_fields = {
+    'author': DocField(data_type=DataType.VARCHAR, max_size=128, default_value=' '),
+    'public_year': DocField(data_type=DataType.INT32),
+}
+```
+
 ### Retriever
 
 The documents in the document collection may not all be relevant to the content the user wants to query. Therefore, next, we will use the `Retriever` to filter out documents from the `Document` that are relevant to the user's query.
@@ -109,7 +181,7 @@ The constructor of the `Retriever` has the following parameters:
 * `group_name`: Specifies which `Node Group` of the document to use for retrieval. Use `LAZY_ROOT_NAME` to indicate that the retrieval should be performed on the original document content.
 * `similarity`: Specifies the name of the function to calculate the similarity between a `Node` and the user's query content. The similarity calculation functions built into `LazyLLM` include `bm25`, `bm25_chinese`, and `cosine`. Users can also define their own calculation functions.
 * `similarity_cut_off`: Discards results with a similarity less than the specified value. The default is `-inf`, which means no results are discarded. In a multi-embedding scenario, if you need to specify different values for different embeddings, this parameter needs to be specified in a dictionary format, where the key indicates which embedding is specified and the value indicates the corresponding threshold. If all embeddings use the same threshold, this parameter only needs to pass a single value.
-* `index`: Specifies on which index to perform the search. Currently, only `default` is supported.
+* `index`: On which index to search, currently only `default` and `smart_embedding_index` are supported.
 * `topk`: Specifies the number of most relevant documents to return. The default value is 6.
 * `embed_keys`: Indicates which embeddings to use for retrieval. If not specified, all embeddings will be used for retrieval.
 * `similarity_kw`: Parameters that need to be passed through to the `similarity` function.
@@ -145,10 +217,16 @@ def dummy_similarity_func(query: List[float], nodes: List[DocNode], **kwargs) ->
 def dummy_similarity_func(query: List[float], node: DocNode, **kwargs) -> float:
 ```
 
-An instance of `Retriever` can be used as follows to retrieve documents related to the `query`:
+The `Retriever` instance requires the `query` string to be passed in when used, along with optional `filters` for field filtering. `filters` is a dictionary where the key is the field to be filtered on, and the value is a list of acceptable values, indicating that the node will be returned if the field’s value matches any one of the values in the list. Only when all conditions are met will the node be returned.
+
+Here is an example of using `filters`(refer to [Document](../Best%20Practice/rag.md#Document) for configurations of `doc_fields`):
 
 ```python
-doc_list = retriever(query=query)
+filters = {
+    "author": ["A", "B", "C"],
+    "public_year": [2002, 2003, 2004],
+}
+doc_list = retriever(query=query, filters=filters)
 ```
 
 ### Reranker
