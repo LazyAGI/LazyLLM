@@ -436,9 +436,12 @@ with lazyllm.pipeline() as ppl:
         lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
 
 if __name__ == '__main__':
+    filters = {
+        'signature': ['sig_value'],
+    }
     rag = lazyllm.ActionModule(ppl)
     rag.start()
-    res = rag('何为天道？')
+    res = rag('何为天道？', filters=filters)
     print(f'answer: {res}')
 ```
 

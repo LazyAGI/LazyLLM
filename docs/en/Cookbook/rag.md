@@ -438,9 +438,12 @@ with lazyllm.pipeline() as ppl:
         lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
 
 if __name__ == '__main__':
+    filters = {
+        'signature': ['sig_value'],
+    }
     rag = lazyllm.ActionModule(ppl)
     rag.start()
-    res = rag('何为天道？')
+    res = rag('What is the way of heaven?', filters=filters)
     print(f'answer: {res}')
 ```
 
@@ -547,7 +550,7 @@ def run(query):
     return res
 
 if __name__ == '__main__':
-    res = run('何为天道？')
+    res = run('What is the way of heaven?')
     print(f'answer: {res}')
 ```
 

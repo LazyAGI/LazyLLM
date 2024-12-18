@@ -152,7 +152,7 @@ Also you can configure multi index type for Milvus backend as follow, where the 
 }
 ```
 
-Note: If using Milvus as the storage backend or index backend, you also need to provide a description of the fields that need to be stored or retrieved, passed in through the `doc_fields` parameter. `doc_fields` is a dictionary where the key is the name of the field to be stored or retrieved, and the value is a structure of type `DocField`, which includes information such as the field type.
+Note: If Milvus is used as a storage backend or indexing backend, you also need to provide a description of special fields that may be used as search conditions, passed in through the `doc_fields` parameter. `doc_fields` is a dictionary where the key is the name of the field that needs to be stored or retrieved, and the value is a `DocField` type structure containing information such as the field type.
 
 For example, if you need to store the author information and publication year of documents, you can configure it as follows:
 
