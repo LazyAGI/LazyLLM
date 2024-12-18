@@ -28,7 +28,7 @@ def parse_requirement(line):
     return None, None
 
 def compare_versions(version_spec, req_version):
-    if version_spec.startswith('^') and req_version == '*':
+    if version_spec.startswith('^'):
         return True
     return version_spec == req_version
 

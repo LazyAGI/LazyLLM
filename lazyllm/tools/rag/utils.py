@@ -570,3 +570,37 @@ def generic_process_filters(nodes: List[DocNode], filters: Dict[str, Union[str, 
         else:
             res.append(node)
     return res
+
+def sparse2normal(embedding: Union[Dict[int, float], List[Tuple[int, float]]], dim: int) -> List[float]:
+    if not embedding:
+        return []
+
+    new_embedding = [0] * dim
+    if isinstance(embedding, dict):
+        for idx, val in embedding.items():
+            new_embedding[int(idx)] = val
+    elif isinstance(embedding, list) and isinstance(embedding[0], tuple):
+        for pair in embedding:
+            new_embedding[int(pair[0])] = pair[1]
+    else:
+        raise TypeError(f'unsupported embedding datatype `{type(embedding[0])}`')
+
+    return new_embedding
+
+def is_sparse(embedding: Union[Dict[int, float], List[Tuple[int, float]], List[float]]) -> bool:
+    if isinstance(embedding, dict):
+        return True
+
+    if not isinstance(embedding, list):
+        raise TypeError(f'unsupported embedding type `{type(embedding)}`')
+
+    if len(embedding) == 0:
+        raise ValueError('empty embedding type is not determined.')
+
+    if isinstance(embedding[0], tuple):
+        return True
+
+    if isinstance(embedding[0], float) or isinstance(embedding[0], int):
+        return False
+
+    raise TypeError(f'unsupported embedding type `{type(embedding[0])}`')
