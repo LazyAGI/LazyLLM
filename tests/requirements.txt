@@ -4,3 +4,4 @@ olefile
 pytest-rerunfailures
 pytest-order
 pymilvus>=2.4.7, <2.5.0
+openpyxl
