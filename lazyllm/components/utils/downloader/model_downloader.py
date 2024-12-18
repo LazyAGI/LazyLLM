@@ -185,11 +185,9 @@ class ModelManager():
 class HubDownloader(ABC):
 
     def __init__(self, call_back=None, token=None):
-        self.token_valid = None
+        self._token = token if self._verify_hub_token(token) else None
         self._call_back = call_back
-        self._token = token
         self._api = self._build_hub_api(self._token)
-        self._polling_event = threading.Event()
 
     @abstractmethod
     def _verify_hub_token(self, token):
@@ -211,8 +209,8 @@ class HubDownloader(ABC):
     def _get_repo_files(self, model_id):
         pass
 
-    def _polling_progress(self, model_dir, total):
-        while not self._polling_event.is_set():
+    def _polling_progress(self, model_dir, total, polling_event):
+        while not polling_event.is_set():
             n = self._get_current_files_size(model_dir)
             n = min(n, total)
             if callable(self._call_back):
@@ -240,21 +238,18 @@ class HubDownloader(ABC):
     def download(self, model_id, model_dir):
         total = self._get_files_total_size(self._get_repo_files(model_id))
         if self._call_back:
-            self._polling_event.clear()
-            polling_thread = threading.Thread(target=self._polling_progress, args=(model_dir, total))
+            polling_event = threading.Event()
+            polling_thread = threading.Thread(target=self._polling_progress, args=(model_dir, total, polling_event))
             polling_thread.daemon = True
             polling_thread.start()
         downloaded_path = self._do_download(model_id, model_dir)
         if self._call_back and polling_thread:
-            self._polling_event.set()
+            polling_event.set()
             polling_thread.join()
         return downloaded_path
 
     def verify_hub_token(self):
-        if self.token_valid is not None:
-            return self.token_valid
-        else:
-            return self._verify_hub_token(self._token)
+        return True if self._token else False
 
 class HuggingfaceDownloader(HubDownloader):
 
@@ -276,13 +271,7 @@ class HuggingfaceDownloader(HubDownloader):
 
     def _build_hub_api(self, token):
         from huggingface_hub import HfApi
-        if token and self._verify_hub_token(token):
-            self.token_valid = True
-            return HfApi(token=token)
-        else:
-            self.token_valid = False
-            self._token = None
-            return HfApi()
+        return HfApi(token=token)
 
     @_envs_manager
     def _verify_hub_token(self, token):
@@ -334,12 +323,8 @@ class ModelscopeDownloader(HubDownloader):
     def _build_hub_api(self, token):
         from modelscope.hub.api import HubApi
         api = HubApi()
-        if token and self._verify_hub_token(token):
+        if token:
             api.login(token)
-            self.token_valid = True
-        else:
-            self._token = None
-            self.token_valid = False
         return api
 
     def _verify_hub_token(self, token):
