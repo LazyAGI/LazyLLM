@@ -1,6 +1,7 @@
 import os
 import time
 import shutil
+import functools
 import threading
 from abc import ABC, abstractmethod
 
@@ -184,12 +185,11 @@ class ModelManager():
 class HubDownloader(ABC):
 
     def __init__(self, call_back=None, token=None):
+        self.token_valid = None
         self._call_back = call_back
         self._token = token
         self._api = self._build_hub_api(self._token)
-        self.hub_model_info = None
-        self.total = None
-        self._run_polling = True
+        self._polling_event = threading.Event()
 
     @abstractmethod
     def _verify_hub_token(self, token):
@@ -200,7 +200,7 @@ class HubDownloader(ABC):
         pass
 
     @abstractmethod
-    def _verify_model_id(self, model_id):
+    def verify_model_id(self, model_id):
         pass
 
     @abstractmethod
@@ -211,14 +211,13 @@ class HubDownloader(ABC):
     def _get_repo_files(self, model_id):
         pass
 
-    def _polling_progress(self, model_dir):
-        assert self.total
-        while self._run_polling:
+    def _polling_progress(self, model_dir, total):
+        while not self._polling_event.is_set():
             n = self._get_current_files_size(model_dir)
-            n = min(n, self.total)
+            n = min(n, total)
             if callable(self._call_back):
                 try:
-                    self._call_back(n, self.total)
+                    self._call_back(n, total)
                 except Exception as e:
                     print(f"Error in callback: {e}")
             time.sleep(1)
@@ -239,31 +238,29 @@ class HubDownloader(ABC):
         return size
 
     def download(self, model_id, model_dir):
-        self.hub_model_info = self._get_repo_files(model_id)
-        self.total = self._get_files_total_size(self.hub_model_info)
+        total = self._get_files_total_size(self._get_repo_files(model_id))
         if self._call_back:
-            self._run_polling = True
-            polling_thread = threading.Thread(target=self._polling_progress, args=(model_dir,))
+            self._polling_event.clear()
+            polling_thread = threading.Thread(target=self._polling_progress, args=(model_dir, total))
             polling_thread.daemon = True
             polling_thread.start()
         downloaded_path = self._do_download(model_id, model_dir)
         if self._call_back and polling_thread:
-            self._run_polling = False
+            self._polling_event.set()
             polling_thread.join()
         return downloaded_path
 
     def verify_hub_token(self):
-        if hasattr(self, 'token_valid'):
+        if self.token_valid is not None:
             return self.token_valid
         else:
             return self._verify_hub_token(self._token)
 
-    def verify_model_id(self, model_id):
-        return self._verify_model_id(model_id)
-
 class HuggingfaceDownloader(HubDownloader):
 
     def _envs_manager(func):
+
+        @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
             env_vars = {'https_proxy': lazyllm.config['https_proxy'] or os.environ.get("https_proxy", None),
                         'http_proxy': lazyllm.config['http_proxy'] or os.environ.get("http_proxy", None)}
@@ -299,7 +296,7 @@ class HuggingfaceDownloader(HubDownloader):
             return False
 
     @_envs_manager
-    def _verify_model_id(self, model_id):
+    def verify_model_id(self, model_id):
         try:
             self._api.model_info(model_id)
             return True
@@ -311,7 +308,7 @@ class HuggingfaceDownloader(HubDownloader):
     def _do_download(self, model_id, model_dir):
         from huggingface_hub import snapshot_download
         # refer to https://huggingface.co/docs/huggingface_hub/v0.23.1/en/package_reference/file_download
-        if not self._verify_model_id(model_id):
+        if not self.verify_model_id(model_id):
             lazyllm.LOG.warning(f"Invalid model id:{model_id}")
             return False
         downloaded_path = snapshot_download(repo_id=model_id, local_dir=model_dir, token=self._token)
@@ -355,7 +352,7 @@ class ModelscopeDownloader(HubDownloader):
             lazyllm.LOG.warning('Verify failed: ', e)
             return False
 
-    def _verify_model_id(self, model_id):
+    def verify_model_id(self, model_id):
         try:
             self._api.get_model(model_id)
             return True
@@ -366,7 +363,7 @@ class ModelscopeDownloader(HubDownloader):
     def _do_download(self, model_id, model_dir):
         from modelscope.hub.snapshot_download import snapshot_download
         # refer to https://www.modelscope.cn/docs/models/download
-        if not self._verify_model_id(model_id):
+        if not self.verify_model_id(model_id):
             lazyllm.LOG.warning(f"Invalid model id:{model_id}")
             return False
         downloaded_path = snapshot_download(model_id=model_id, local_dir=model_dir)
