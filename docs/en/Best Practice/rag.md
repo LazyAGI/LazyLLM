@@ -106,7 +106,7 @@ The configuration parameter `store_conf` is a `dict` type that includes the foll
     - `chroma`: Uses Chroma for data storage.
         - `dir`(required): Directory where data is stored.
     - `milvus`: Uses Milvus for data storage.
-        - `uri`: The Milvus storage address, which can be a file path or a URL in the format of `ip:port`.
+        - `uri`(required): The Milvus storage address, which can be a file path or a URL in the format of `ip:port`.
         - `index_kwargs` (optional): Milvus index configuration, which can be a dictionary or a list. If it is a dictionary, it means that all embedding indexes use the same configuration; if it is a list, the elements in the list are dictionaries, representing the configuration used by the embeddings specified by `embed_key`. Currently, only `floating point embedding` and `sparse embedding` are supported for the two types of embeddings, with the following supported parameters respectively:
             - `floating point embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
             - `sparse embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
@@ -217,9 +217,9 @@ def dummy_similarity_func(query: List[float], nodes: List[DocNode], **kwargs) ->
 def dummy_similarity_func(query: List[float], node: DocNode, **kwargs) -> float:
 ```
 
-The Retriever instance requires the query string to be passed in when used, along with optional filters for field filtering. filters is a dictionary where the key is the field to be filtered on, and the value is a list of acceptable values, indicating that the node will be returned if the field’s value matches any one of the values in the list. Only when all conditions are met will the node be returned.
+The `Retriever` instance requires the `query` string to be passed in when used, along with optional `filters` for field filtering. `filters` is a dictionary where the key is the field to be filtered on, and the value is a list of acceptable values, indicating that the node will be returned if the field’s value matches any one of the values in the list. Only when all conditions are met will the node be returned.
 
-Here is an example of using filters:
+Here is an example of using `filters`(refer to [Document](../Best%20Practice/rag.md#Document) for configurations of `doc_fields`):
 
 ```python
 filters = {

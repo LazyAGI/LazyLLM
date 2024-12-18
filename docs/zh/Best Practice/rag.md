@@ -218,7 +218,7 @@ def dummy_similarity_func(query: List[float], node: DocNode, **kwargs) -> float:
 
 `Retriever` 实例使用时需要传入要查询的 `query` 字符串，还有可选的过滤器 `filters` 用于字段过滤。`filters` 是一个 dict，其中 key 是要过滤的字段，value 是一个可取值列表，表示只要该字段的值匹配列表中的任意一个值即可。只有当所有的条件都满足该 node 才会被返回。
 
-下面是使用 filters 的例子（`doc_fields` 的配置参考 [Document 的介绍](../Best%20Practice/rag.md#Document)）：
+下面是使用 `filters` 的例子（`doc_fields` 的配置参考 [Document 的介绍](../Best%20Practice/rag.md#Document)）：
 
 ```python
 filters = {
