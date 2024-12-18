@@ -358,8 +358,8 @@ milvus_store_conf = {
 
 ```python
 doc_fields = {
-    'comment': DocField(data_type=DocField.DTYPE_VARCHAR, max_size=65535, default_value=' '),
-    'signature': DocField(data_type=DocField.DTYPE_VARCHAR, max_size=32, default_value=' '),
+    'comment': DocField(data_type=DataType.VARCHAR, max_size=65535, default_value=' '),
+    'signature': DocField(data_type=DataType.VARCHAR, max_size=32, default_value=' '),
 }
 ```
 
@@ -377,7 +377,7 @@ doc_fields = {
 import os
 import lazyllm
 from lazyllm import bind, config
-from lazyllm.tools.rag import DocField
+from lazyllm.tools.rag import DocField, DataType
 import shutil
 
 class TmpDir:
@@ -404,8 +404,8 @@ milvus_store_conf = {
 }
 
 doc_fields = {
-    'comment': DocField(data_type=DocField.DTYPE_VARCHAR, max_size=65535, default_value=' '),
-    'signature': DocField(data_type=DocField.DTYPE_VARCHAR, max_size=32, default_value=' '),
+    'comment': DocField(data_type=DataType.VARCHAR, max_size=65535, default_value=' '),
+    'signature': DocField(data_type=DataType.VARCHAR, max_size=32, default_value=' '),
 }
 
 prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task.'\

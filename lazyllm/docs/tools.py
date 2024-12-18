@@ -384,7 +384,7 @@ add_example('Retriever', '''
 >>> document2.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
 >>> retriever2 = Retriever([document1, document2], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
 >>> print(retriever2("user query"))
-
+>>>
 >>> filters = {
 >>>     "author": ["A", "B", "C"],
 >>>     "public_year": [2002, 2003, 2004],
