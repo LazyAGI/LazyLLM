@@ -3,4 +3,4 @@ docx2txt
 olefile
 pytest-rerunfailures
 pytest-order
-pymilvus
+pymilvus>=2.4.7, <2.5.0

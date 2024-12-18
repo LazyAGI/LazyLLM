@@ -30,7 +30,7 @@ class MapStore(StoreBase):
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
         for node in nodes:
-            self._group2docs[node.group][node.uid] = node
+            self._group2docs[node._group][node._uid] = node
         _update_indices(self._name2index, nodes)
 
     @override

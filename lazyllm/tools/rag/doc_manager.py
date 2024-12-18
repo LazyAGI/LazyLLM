@@ -1,5 +1,4 @@
 import os
-import hashlib
 import json
 from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
@@ -10,6 +9,7 @@ from fastapi import UploadFile, Body
 import lazyllm
 from lazyllm import FastapiApp as app
 from .utils import DocListManager, BaseResponse
+from .doc_impl import gen_docid
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 
 
@@ -74,7 +74,7 @@ class DocManager(lazyllm.ModuleBase):
                     lazyllm.LOG.error(f'writing file [{path}] to disk failed: [{e}]')
                     raise e
 
-                file_id = hashlib.sha256(path.encode()).hexdigest()
+                file_id = gen_docid(path)
                 self._manager.update_file_status([file_id], status=DocListManager.Status.success)
                 results.append('Success')
 

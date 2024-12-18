@@ -18,7 +18,7 @@
 import lazyllm
 
 llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True)  # or llm = lazyllm.OnlineChatModule(stream=True)
-lazyllm.WebModule(llm, port=23333).start().wait()
+lazyllm.WebModule(llm, port=23333, stream=True).start().wait()
 ```
 
 实现是不是很简单，只需要定义好模型使用流式，其余工作交给 [WebModule][lazyllm.tools.webpages.WebModule] 来处理即可，则在前端界面上会流式的显示展示给用户的消息。
@@ -129,7 +129,7 @@ agent = FunctionCallAgent(llm, tools)
 
 ```python
 import lazyllm
-lazyllm.WebModule(agent, port=23333).start().wait()
+lazyllm.WebModule(agent, port=23333, stream=True).start().wait()
 ```
 
 现在便完成了支持流式输出和 [FunctionCall][lazyllm.tools.agent.FunctionCall] 的对话机器人。当有给用户展示的信息时，界面便会流式的输出消息内容。而 [FunctionCall][lazyllm.tools.agent.FunctionCall] 会正常执行。
@@ -186,7 +186,7 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True).start()  # or llm = lazyllm.OnlineChatModule()
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
 agent = FunctionCallAgent(llm, tools)
-lazyllm.WebModule(agent, port=23333).start().wait()
+lazyllm.WebModule(agent, port=23333, stream=True).start().wait()
 ```
 
 效果如下：
@@ -256,7 +256,7 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True, return_trace=True).start()  # or llm = lazyllm.OnlineChatModule(return_trace=True)
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
 agent = FunctionCallAgent(llm, tools, return_trace=True)
-lazyllm.WebModule(agent, port=23333).start().wait()
+lazyllm.WebModule(agent, port=23333, stream=True).start().wait()
 ```
 
 效果如下：

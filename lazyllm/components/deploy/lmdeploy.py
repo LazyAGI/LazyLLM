@@ -73,6 +73,11 @@ class LMDeploy(LazyLLMDeployBase):
             if self.random_port:
                 self.kw['server-port'] = random.randint(30000, 40000)
             cmd = f"lmdeploy serve api_server {finetuned_model} "
+
+            import importlib.util
+            if importlib.util.find_spec("torch_npu") is not None:
+                cmd += "--device ascend --eager-mode "
+
             cmd += self.kw.parse_kwargs()
             return cmd
 

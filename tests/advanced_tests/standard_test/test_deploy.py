@@ -100,7 +100,7 @@ class TestDeploy(object):
         assert len(res['files']) == 1
 
     def test_musicgen(self):
-        m = lazyllm.TrainableModule('musicgen-small')
+        m = lazyllm.TrainableModule('musicgen-stereo-small')
         m.update_server()
         r = m('lo-fi music with a soothing melody')
         res = decode_query_with_filepaths(r)

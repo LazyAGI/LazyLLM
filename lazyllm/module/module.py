@@ -13,7 +13,7 @@ from lazyllm import ThreadPoolExecutor, FileSystemQueue
 from typing import Dict, List, Any, Union, Optional, Tuple
 
 import lazyllm
-from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals
+from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals, colored_text
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
@@ -210,6 +210,15 @@ class ModuleBase(metaclass=_MetaBind):
                 if 'eval' in mode: eval_tasks.absorb(top._get_eval_tasks())
                 post_process_tasks.absorb(top._get_post_process_tasks())
 
+        if proxy := os.getenv('http_proxy', None):
+            os.environ['LAZYLLM_HTTP_PROXY'] = proxy
+            lazyllm.config.refresh('LAZYLLM_HTTP_PROXY')
+            del os.environ['http_proxy']
+        if proxy := os.getenv('https_proxy', None):
+            os.environ['LAZYLLM_HTTPS_PROXY'] = proxy
+            lazyllm.config.refresh('LAZYLLM_HTTPS_PROXY')
+            del os.environ['https_proxy']
+
         if 'train' in mode and len(train_tasks) > 0:
             Parallel(*train_tasks).set_sync(True)()
         if 'server' in mode and len(deploy_tasks) > 0:
@@ -386,6 +395,11 @@ class UrlModule(ModuleBase, UrlTemplate):
             if self._stream_url_suffix and not url.endswith(self._stream_url_suffix):
                 url += self._stream_url_suffix
             if "stream" in data: data['stream'] = stream_output
+
+            if isinstance(stream_output, dict):
+                prefix, prefix_color = stream_output.get('prefix', ''), stream_output.get('prefix_color', '')
+                if prefix: FileSystemQueue().enqueue(lazyllm.colored_text(prefix, prefix_color))
+
         parse_parameters = self._stream_parse_parameters if stream_output else {"delimiter": b"<|lazyllm_delimiter|>"}
 
         token = getattr(self, "_tool_start_token", '')
@@ -409,19 +423,24 @@ class UrlModule(ModuleBase, UrlTemplate):
                         messages = chunk
 
                     if not stream_output: continue
+                    color = stream_output.get('color') if isinstance(stream_output, dict) else None
                     if not cache:
                         if token.startswith(chunk.lstrip('\n') if not token.startswith('\n') else chunk) \
                            or token in chunk: cache = chunk
-                        else: FileSystemQueue().enqueue(chunk)
+                        else: FileSystemQueue().enqueue(colored_text(chunk, color))
                     elif token in cache:
                         stream_output = False
-                        if not cache.startswith(token): FileSystemQueue().enqueue(cache.split(token)[0])
+                        if not cache.startswith(token):
+                            FileSystemQueue().enqueue(colored_text(cache.split(token)[0], color))
                     else:
                         cache += chunk
                         if not (token.startswith(cache.lstrip('\n') if not token.startswith('\n') else cache)
                                 or token in cache):
-                            FileSystemQueue().enqueue(cache)
+                            FileSystemQueue().enqueue(colored_text(cache, color))
                             cache = ""
+                if isinstance(stream_output, dict):
+                    suffix, suffix_color = stream_output.get('suffix', ''), stream_output.get('suffix_color', '')
+                    if suffix: FileSystemQueue().enqueue(lazyllm.colored_text(suffix, suffix_color))
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
             temp_output = self._extract_and_format(messages)
@@ -429,7 +448,7 @@ class UrlModule(ModuleBase, UrlTemplate):
                 usage = {"prompt_tokens": self._estimate_token_usage(text_input_for_token_usage)}
                 usage["completion_tokens"] = self._estimate_token_usage(temp_output)
                 self._record_usage(usage)
-            return self._formatter.format(temp_output)
+            return self._formatter(temp_output)
 
     def prompt(self, prompt=None):
         if prompt is None:
@@ -444,7 +463,7 @@ class UrlModule(ModuleBase, UrlTemplate):
         return output
 
     def formatter(self, format: FormatterBase = None):
-        if isinstance(format, FormatterBase):
+        if isinstance(format, FormatterBase) or callable(format):
             self._formatter = format
         elif format is None:
             self._formatter = EmptyFormatter()
@@ -671,10 +690,10 @@ class _TrainableModuleImpl(ModuleBase):
         if self._deploy is None: return None
 
         if self._deploy is lazyllm.deploy.AutoDeploy:
-            self._deployer = self._deploy(base_model=self._base_model, stream=self._stream, **self._deploy_args)
+            self._deployer = self._deploy(base_model=self._base_model, stream=bool(self._stream), **self._deploy_args)
             self._set_template(self._deployer)
         else:
-            self._deployer = self._deploy(stream=self._stream, **self._deploy_args)
+            self._deployer = self._deploy(stream=bool(self._stream), **self._deploy_args)
 
         def before_deploy(*no_use_args):
             if hasattr(self, '_finetuned_model_path') and self._finetuned_model_path:
@@ -716,7 +735,8 @@ class _TrainableModuleImpl(ModuleBase):
                 self._get_deploy_tasks.flag.set()
 
     def __del__(self):
-        [[launcher.cleanup() for launcher in group.values()] for group in self._launchers.values()]
+        if hasattr(self, '_launchers'):
+            [[launcher.cleanup() for launcher in group.values()] for group in self._launchers.values()]
 
     def _generate_target_path(self):
         base_model_name = os.path.basename(self._base_model)
@@ -741,7 +761,8 @@ class _TrainableModuleImpl(ModuleBase):
 class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
 
-    def __init__(self, base_model: Option = '', target_path='', *, stream=False, return_trace=False):
+    def __init__(self, base_model: Option = '', target_path='', *,
+                 stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False):
         super().__init__(url=None, stream=stream, return_trace=return_trace)
         self._impl = _TrainableModuleImpl(base_model, target_path, stream,
                                           None, lazyllm.finetune.auto, lazyllm.deploy.auto)
@@ -766,7 +787,7 @@ class TrainableModule(UrlModule):
         return self._stream
 
     @stream.setter
-    def stream(self, v: bool):
+    def stream(self, v: Union[bool, Dict[str, str]]):
         self._stream = v
 
     def get_all_models(self):
@@ -938,18 +959,20 @@ class TrainableModule(UrlModule):
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Trainable', mode=self._impl._mode, basemodel=self.base_model,
                                  target=self.target_path, name=self._module_name, deploy_type=self._deploy_type,
-                                 stream=self._stream, return_trace=self._return_trace)
+                                 stream=bool(self._stream), return_trace=self._return_trace)
 
     def __getattr__(self, key):
         if key in self.__class__.builder_keys:
             return functools.partial(getattr(self._impl, key), _return_value=self)
         raise AttributeError(f'{__class__} object has no attribute {key}')
 
-    def share(self, prompt=None, format=None):
+    def share(self, prompt=None, format=None, stream=None):
         new = copy.copy(self)
+        new._hooks = set()
         new._set_mid()
         if prompt is not None: new.prompt(prompt)
         if format is not None: new.formatter(format)
+        if stream is not None: new.stream = stream
         new._impl._add_father(new)
         return new
 

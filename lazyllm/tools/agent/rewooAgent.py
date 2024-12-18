@@ -1,5 +1,5 @@
 from lazyllm.module import ModuleBase
-from lazyllm import pipeline, package, LOG, globals, bind
+from lazyllm import pipeline, package, LOG, globals, bind, Color
 from .toolsManager import ToolManager
 from typing import List, Dict, Union, Callable
 import re
@@ -33,14 +33,16 @@ S_PROMPT_SUFFIX = ("\nNow begin to solve the task or problem. Respond with "
 class ReWOOAgent(ModuleBase):
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[Union[str, Callable]] = [], *,
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
-                 return_trace: bool = False):
+                 return_trace: bool = False, stream: bool = False):
         super().__init__(return_trace=return_trace)
         assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), 'Either specify only llm \
                without specify plan and solve, or specify only plan and solve without specifying llm, or specify \
                both llm and solve. Other situations are not allowed.'
         assert tools, "tools cannot be empty."
-        self._planner = plan_llm or llm
-        self._solver = solve_llm or llm
+        self._planner = (plan_llm or llm).share(stream=dict(
+            prefix='\nI will give a plan first:\n', prefix_color=Color.blue, color=Color.green) if stream else False)
+        self._solver = (solve_llm or llm).share(stream=dict(
+            prefix='\nI will solve the problem:\n', prefix_color=Color.blue, color=Color.green) if stream else False)
         self._name2tool = ToolManager(tools, return_trace=return_trace).tools_info
         with pipeline() as self._agent:
             self._agent.planner_pre_action = self._build_planner_prompt
@@ -55,7 +57,6 @@ class ReWOOAgent(ModuleBase):
         for name, tool in self._name2tool.items():
             prompt += f"{name}[search query]: {tool.description}\n"
         prompt += P_FEWSHOT + "\n" + P_PROMPT_SUFFIX + input + "\n"
-        LOG.info(f"planner prompt: {prompt}")
         globals['chat_history'][self._planner._module_id] = []
         return prompt
 

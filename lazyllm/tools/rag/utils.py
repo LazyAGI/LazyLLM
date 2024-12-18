@@ -330,8 +330,9 @@ class SqliteDocListManager(DocListManager):
     def delete_files_from_kb_group(self, file_ids: List[str], group: str):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             for doc_id in file_ids:
-                conn.execute("DELETE FROM kb_group_documents WHERE doc_id = ? AND group_name = ?", (doc_id, group))
-                conn.commit()
+                conn.execute("UPDATE kb_group_documents SET status = ? WHERE doc_id = ? AND group_name = ?",
+                             (DocListManager.Status.deleted, doc_id, group))
+            conn.commit()
 
     def get_file_status(self, fileid: str):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
@@ -536,7 +537,7 @@ class _FileNodeIndex(IndexBase):
         for node in nodes:
             path = node.global_metadata.get(RAG_DOC_PATH)
             if path:
-                self._file_node_map.setdefault(path, {}).setdefault(node.uid, node)
+                self._file_node_map.setdefault(path, {}).setdefault(node._uid, node)
 
     @override
     def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
@@ -569,3 +570,37 @@ def generic_process_filters(nodes: List[DocNode], filters: Dict[str, Union[str, 
         else:
             res.append(node)
     return res
+
+def sparse2normal(embedding: Union[Dict[int, float], List[Tuple[int, float]]], dim: int) -> List[float]:
+    if not embedding:
+        return []
+
+    new_embedding = [0] * dim
+    if isinstance(embedding, dict):
+        for idx, val in embedding.items():
+            new_embedding[int(idx)] = val
+    elif isinstance(embedding, list) and isinstance(embedding[0], tuple):
+        for pair in embedding:
+            new_embedding[int(pair[0])] = pair[1]
+    else:
+        raise TypeError(f'unsupported embedding datatype `{type(embedding[0])}`')
+
+    return new_embedding
+
+def is_sparse(embedding: Union[Dict[int, float], List[Tuple[int, float]], List[float]]) -> bool:
+    if isinstance(embedding, dict):
+        return True
+
+    if not isinstance(embedding, list):
+        raise TypeError(f'unsupported embedding type `{type(embedding)}`')
+
+    if len(embedding) == 0:
+        raise ValueError('empty embedding type is not determined.')
+
+    if isinstance(embedding[0], tuple):
+        return True
+
+    if isinstance(embedding[0], float) or isinstance(embedding[0], int):
+        return False
+
+    raise TypeError(f'unsupported embedding type `{type(embedding[0])}`')

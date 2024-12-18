@@ -1402,6 +1402,8 @@ class ScoLauncher(LazyLLMLaunchersBase):
         def _scancel_job(self, cmd, max_retries=3):
             retries = 0
             while retries < max_retries:
+                if self.status in (Status.Failed, Status.Cancelled, Status.Done):
+                    break
                 ps = subprocess.Popen(
                     cmd, shell=True, stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
