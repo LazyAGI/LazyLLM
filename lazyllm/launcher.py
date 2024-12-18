@@ -219,7 +219,6 @@ class K8sLauncher(LazyLLMLaunchersBase):
             if lazyllm_vars:
                 precmd += " && ".join(f"export {k}={v}" for k, v in lazyllm_vars.items()) + " && "
             precmd += '''ifconfig | grep "inet " | awk "{printf \\"LAZYLLMIP %s\\\\n\\", \$2}" &&'''  # noqa W605
-            LOG.info(f"precmd: {precmd}\n cmd: {cmd}")
             port_match = re.search(r"--open_port=(\d+)", cmd)
             if port_match:
                 port = port_match.group(1)
@@ -1035,7 +1034,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
     def launch(self, f, *args, **kw):
         if isinstance(f, K8sLauncher.Job):
             f.start()
-            LOG.info("launch come here.")
+            LOG.info("Launcher started successfully.")
             self.job = f
             return f.return_value
         elif callable(f):
