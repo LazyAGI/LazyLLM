@@ -20,7 +20,7 @@ class DirectoryReader:
         reader = SimpleDirectoryReader(input_files=input_files, file_extractor=file_readers)
         nodes: List[DocNode] = []
         for doc in reader():
-            doc.group = LAZY_ROOT_NAME
+            doc._group = LAZY_ROOT_NAME
             nodes.append(doc)
         if not nodes:
             LOG.warning(

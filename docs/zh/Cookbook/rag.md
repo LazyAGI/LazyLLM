@@ -179,7 +179,7 @@ retriever2 = lazyllm.Retriever(doc=documents,
 # Part8
 
 reranker = lazyllm.Reranker(name='ModuleReranker',
-                            model="bge-reranker-large",
+                            model=lazyllm.OnlineEmbeddingModule(type="rerank"),
                             topk=1)
 
 # Part3
@@ -250,7 +250,7 @@ with lazyllm.pipeline() as ppl:
                                            topk=3)
 
     ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
-                                    model="bge-reranker-large",
+                                    model=lazyllm.OnlineEmbeddingModule(type="rerank"),
                                     topk=1) | bind(query=ppl.input)
 
     ppl.formatter = (

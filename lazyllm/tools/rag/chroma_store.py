@@ -1,15 +1,13 @@
 from typing import Any, Dict, List, Optional, Callable, Set
 from lazyllm.thirdparty import chromadb
 from lazyllm import LOG
-from lazyllm.common import override
+from lazyllm.common import override, obj2str, str2obj
 from .store_base import StoreBase, LAZY_ROOT_NAME
 from .doc_node import DocNode
 from .index_base import IndexBase
-from .utils import _FileNodeIndex
+from .utils import _FileNodeIndex, sparse2normal
 from .default_index import DefaultIndex
 from .map_store import MapStore
-import pickle
-import base64
 
 # ---------------------------------------------------------------------------- #
 
@@ -82,7 +80,7 @@ class ChromadbStore(StoreBase):
             results = self._peek_all_documents(group)
             nodes = self._build_nodes_from_chroma(results, embed_dims)
             for node in nodes:
-                uid2node[node.uid] = node
+                uid2node[node._uid] = node
 
         # Rebuild relationships
         for node in uid2node.values():
@@ -90,7 +88,7 @@ class ChromadbStore(StoreBase):
                 parent_uid = node.parent
                 parent_node = uid2node.get(parent_uid)
                 node.parent = parent_node
-                parent_node.children[node.group].append(node)
+                parent_node.children[node._group].append(node)
         LOG.debug(f"build {group} nodes from chromadb: {nodes}")
 
         self._map_store.update_nodes(list(uid2node.values()))
@@ -100,7 +98,7 @@ class ChromadbStore(StoreBase):
         if not nodes:
             return
         # Note: It's caller's duty to make sure this batch of nodes has the same group.
-        group = nodes[0].group
+        group = nodes[0]._group
         ids, embeddings, metadatas, documents = [], [], [], []
         collection = self._collections.get(group)
         assert (
@@ -108,10 +106,10 @@ class ChromadbStore(StoreBase):
         ), f"Group {group} is not found in collections {self._collections}"
         for node in nodes:
             metadata = self._make_chroma_metadata(node)
-            ids.append(node.uid)
+            ids.append(node._uid)
             embeddings.append([0])  # we don't use chroma for retrieving
             metadatas.append(metadata)
-            documents.append(node.get_text())
+            documents.append(obj2str(node._content))
         if ids:
             collection.upsert(
                 embeddings=embeddings,
@@ -132,16 +130,14 @@ class ChromadbStore(StoreBase):
             chroma_metadata = results['metadatas'][i]
 
             parent = chroma_metadata['parent']
-            local_metadata = pickle.loads(base64.b64decode(chroma_metadata['metadata'].encode('utf-8')))
-
-            global_metadata = pickle.loads(base64.b64decode(chroma_metadata['global_metadata'].encode('utf-8')))\
-                if not parent else None
+            local_metadata = str2obj(chroma_metadata['metadata'])
+            global_metadata = str2obj(chroma_metadata['global_metadata']) if not parent else None
 
             node = DocNode(
                 uid=uid,
-                text=results["documents"][i],
+                content=str2obj(results["documents"][i]),
                 group=chroma_metadata["group"],
-                embedding=pickle.loads(base64.b64decode(chroma_metadata['embedding'].encode('utf-8'))),
+                embedding=str2obj(chroma_metadata['embedding']),
                 parent=parent,
                 metadata=local_metadata,
                 global_metadata=global_metadata,
@@ -155,10 +151,7 @@ class ChromadbStore(StoreBase):
                         dim = embed_dims.get(key)
                         if not dim:
                             raise ValueError(f'dim of embed [{key}] is not determined.')
-                        new_embedding = [0] * dim
-                        for idx, val in embedding.items():
-                            new_embedding[int(idx)] = val
-                        new_embedding_dict[key] = new_embedding
+                        new_embedding_dict[key] = sparse2normal(embedding, dim)
                     else:
                         new_embedding_dict[key] = embedding
                 node.embedding = new_embedding_dict
@@ -168,14 +161,14 @@ class ChromadbStore(StoreBase):
 
     def _make_chroma_metadata(self, node: DocNode) -> Dict[str, Any]:
         metadata = {
-            "group": node.group,
-            "parent": node.parent.uid if node.parent else "",
-            "embedding": base64.b64encode(pickle.dumps(node.embedding)).decode('utf-8'),
-            "metadata": base64.b64encode(pickle.dumps(node.metadata)).decode('utf-8'),
+            "group": node._group,
+            "parent": node.parent._uid if node.parent else "",
+            "embedding": obj2str(node.embedding),
+            "metadata": obj2str(node._metadata),
         }
 
-        if not node.parent:
-            metadata["global_metadata"] = base64.b64encode(pickle.dumps(node.global_metadata)).decode('utf-8')
+        if node.is_root_node:
+            metadata["global_metadata"] = obj2str(node.global_metadata)
 
         return metadata
 

@@ -18,7 +18,7 @@ Let's first simply implement a streaming conversational robot with a front-end i
 import lazyllm
 
 llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True)  # or llm = lazyllm.OnlineChatModule(stream=True)
-lazyllm.WebModule(llm, port=23333).start().wait()
+lazyllm.WebModule(llm, port=23333, stream=True).start().wait()
 ```
 
 Isn't the implementation very simple? You just need to define the model using streaming, and leave the rest of the work to [WebModule][lazyllm.tools.webpages.WebModule] to handle it. Then the messages displayed to the user will be displayed in a streaming manner on the front-end interface.
@@ -129,7 +129,7 @@ Now there is only one last step left. We use [WebModule][lazyllm.tools.webpages.
 
 ```python
 import lazyllm
-lazyllm.WebModule(agent, port=23333).start().wait()
+lazyllm.WebModule(agent, port=23333, stream=True).start().wait()
 ```
 
 Now we have completed a conversational robot that supports streaming output and [FunctionCall][lazyllm.tools.agent.FunctionCall]. When there is information to show to the user, the interface will stream the message content. And [FunctionCall][lazyllm.tools.agent.FunctionCall] will execute normally.
@@ -186,7 +186,7 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True).start()  # or llm = lazyllm.OnlineChatModule()
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
 agent = FunctionCallAgent(llm, tools)
-lazyllm.WebModule(agent, port=23333).start().wait()
+lazyllm.WebModule(agent, port=23333, stream=True).start().wait()
 ```
 
 The effect is as follows:
@@ -255,7 +255,7 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True, return_trace=True).start()  # or llm = lazyllm.OnlineChatModule(return_trace=True)
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
 agent = FunctionCallAgent(llm, tools, return_trace=True)
-lazyllm.WebModule(agent, port=23333).start().wait()
+lazyllm.WebModule(agent, port=23333, stream=True).start().wait()
 ```
 
 The effect is as follows:

@@ -32,6 +32,6 @@ class IPYNBReader(LazyLLMReaderBase):
         splits.pop(0)
 
         if self._concatenate: docs = [DocNode(text="\n\n".join(splits), metadata=extra_info or {})]
-        else: docs = [DocNode(text=s, metadata=extra_info or {}) for s in splits]
+        else: docs = [DocNode(text=s, global_metadata=extra_info) for s in splits]
 
         return docs

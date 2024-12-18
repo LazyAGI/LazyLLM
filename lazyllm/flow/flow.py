@@ -423,6 +423,10 @@ class Diverter(Parallel):
 # Attention: Cannot be used in async tasks, ie: training and deploy
 # TODO: add check for async tasks
 class Warp(Parallel):
+    def __init__(self, *args, _scatter=False, _concurrent=True, auto_capture=False, **kw):
+        super().__init__(*args, _scatter=_scatter, _concurrent=_concurrent, auto_capture=auto_capture, **kw)
+        if len(self._items) > 1: self._items = [Pipeline(*self._items)]
+
     def _run(self, __input, **kw):
         assert 1 == len(self._items), 'Only one function is enabled in warp'
         inputs = _split_input(__input)
@@ -494,7 +498,11 @@ class IFS(LazyLLMFlowsBase):
 
     def _run(self, __input, **kw):
         cond, tpath, fpath = self._items
-        return self.invoke(tpath if self.invoke(cond, __input, **kw) else fpath, __input, **kw)
+        try:
+            flag = cond()
+        except Exception:
+            flag = cond if isinstance(cond, bool) else self.invoke(cond, __input, **kw)
+        return self.invoke(tpath if flag else fpath, __input, **kw)
 
 
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out

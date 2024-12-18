@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lazyllm"
-version = "0.2.3"
+version = "0.3.0"
 description = "A Low-code Development Tool For Building Multi-agent LLMs Applications."
 authors = ["wangzhihong <wangzhihong@sensetime.com>"]
 license = "Apache-2.0 license"
@@ -46,6 +46,7 @@ pytest = "^8.3.3"
 numpy = "==1.26.4"
 pymilvus = "^2.4.8"
 async-timeout = "^5.0.1"
+httpx = "<0.28.0"
 redis = { version = ">=5.0.4", optional = true }
 huggingface-hub = { version = ">=0.23.1", optional = true }
 pandas = { version = ">=2.2.2", optional = true }

@@ -201,16 +201,16 @@ add_example('Document.add_reader', '''
 >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc1.add_reader("**/*.yml", YmlReader)
->>> print(doc1._local_file_reader)
-# {'**/*.yml': <class '__main__.YmlReader'>}
->>> print(doc2._local_file_reader)
-# {}
+>>> print(doc1._impl._local_file_reader)
+{'**/*.yml': <class '__main__.YmlReader'>}
+>>> print(doc2._impl._local_file_reader)
+{}
 >>> files = ["your_yml_files"]
 >>> Document.register_global_reader("**/*.yml", processYml)
 >>> doc1._impl._reader.load_data(input_files=files)
-# Call the class YmlReader.
+Call the class YmlReader.
 >>> doc2._impl._reader.load_data(input_files=files)
-# Call the function processYml.
+Call the function processYml.
 ''')
 
 add_english_doc('rag.readers.ReaderBase', '''
@@ -290,12 +290,12 @@ add_example('Reranker', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Document, Reranker, Retriever
 >>> m = lazyllm.OnlineEmbeddingModule()
->>> documents = Document(dataset_path='rag_master', embed=m, manager=False)
+>>> documents = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
 >>> retriever = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
->>> reranker = Reranker(name='ModuleReranker', model='bg-reranker-large', topk=1)
+>>> reranker = Reranker(name='ModuleReranker', model='bge-reranker-large', topk=1)
 >>> ppl = lazyllm.ActionModule(retriever, reranker)
 >>> ppl.start()
->>> print(ppl("query"))
+>>> print(ppl("user query"))
 ''')
 
 # ---------------------------------------------------------------------------- #
@@ -346,19 +346,19 @@ add_example('Retriever', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Retriever, Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule()
->>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+>>> documents = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
 >>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
 >>> rm.start()
->>> print(rm("query"))
+>>> print(rm("user query"))
 >>> m1 = lazyllm.TrainableModule('bge-large-zh-v1.5').start()
->>> document1 = Document(dataset_path='your_doc_path', embed={'online':m , 'local': m1}, manager=False)
+>>> document1 = Document(dataset_path='/path/to/user/data', embed={'online':m , 'local': m1}, manager=False)
 >>> document1.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 >>> retriever = Retriever(document1, group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
->>> print(retriever("query"))
->>> document2 = Document(dataset_path='your_doc_path', embed={'online':m , 'local': m1}, manager=False)
+>>> print(retriever("user query"))
+>>> document2 = Document(dataset_path='/path/to/user/data', embed={'online':m , 'local': m1}, manager=False)
 >>> document2.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
 >>> retriever2 = Retriever([document1, document2], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
->>> print(retriever2("query"))
+>>> print(retriever2("user query"))
 ''')
 
 # ---------------------------------------------------------------------------- #
@@ -430,15 +430,16 @@ Args:
 
 add_example('LLMParser.transform', '''
 >>> import lazyllm
->>> from lazyllm.tools import LLMParser, TrainableModule
->>> llm = TrainableModule("internlm2-chat-7b")
->>> m = lazyllm.TrainableModule("bge-large-zh-v1.5")
+>>> from lazyllm.tools import LLMParser
+>>> llm = lazyllm.TrainableModule("internlm2-chat-7b").start()
+>>> m = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
 >>> summary_parser = LLMParser(llm, language="en", task_type="summary")
 >>> keywords_parser = LLMParser(llm, language="en", task_type="keywords")
->>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
->>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
->>> summary_result = summary_parser.transform(rm[0])
->>> keywords_result = keywords_parser.transform(rm[0])
+>>> documents = lazyllm.Document(dataset_path="/path/to/your/data", embed=m, manager=False)
+>>> rm = lazyllm.Retriever(documents, group_name='CoarseChunk', similarity='bm25', topk=6)
+>>> doc_nodes = rm("test")
+>>> summary_result = summary_parser.transform(doc_nodes[0])
+>>> keywords_result = keywords_parser.transform(doc_nodes[0])
 ''')
 
 # ---------------------------------------------------------------------------- #
