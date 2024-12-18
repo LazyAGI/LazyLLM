@@ -359,7 +359,7 @@ class TestMilvusStoreWithSparseEmbedding(unittest.TestCase):
                 },
                 {
                     'embed_key': 'vec2',
-                    'index_type': 'SPARSE_INVERTED_INDEX',
+                    'index_type': 'SPARSE_WAND',
                     'metric_type': 'IP',
                 }
             ]
