@@ -15,7 +15,7 @@ from ..utils.file_operate import delete_old_files
 class StableDiffusion3(object):
     def __init__(self, base_sd, source=None, embed_batch_size=30, trust_remote_code=True, save_path=None, init=False):
         source = lazyllm.config['model_source'] if not source else source
-        self.base_sd = ModelManager(source).download(base_sd)
+        self.base_sd = ModelManager(source).download(base_sd) or ''
         self.embed_batch_size = embed_batch_size
         self.trust_remote_code = trust_remote_code
         self.sd = None
