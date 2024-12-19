@@ -99,6 +99,9 @@ jobs:
         shell: bash
         run: |
           git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git D:/a/LazyLLM/data
+          powershell -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force; irm get.scoop.sh | iex"
+          export PATH="$HOME/scoop/shims:$PATH"
+          scoop install ffmpeg
           pip install -r tests/requirements.txt
           export LAZYLLM_DATA_PATH=D:/a/LazyLLM/data
           python -m pytest -m "not skip_on_win" -v --reruns=2 tests/basic_tests
