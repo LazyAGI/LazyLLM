@@ -137,12 +137,10 @@ class DocListManager(ABC):
         return document_list
 
     @abstractmethod
-    def table_inited(self):
-        pass
+    def table_inited(self): pass
 
     @abstractmethod
-    def _init_tables(self):
-        pass
+    def _init_tables(self): pass
 
     @abstractmethod
     def list_files(
@@ -155,12 +153,10 @@ class DocListManager(ABC):
         pass
 
     @abstractmethod
-    def list_all_kb_group(self):
-        pass
+    def list_all_kb_group(self): pass
 
     @abstractmethod
-    def add_kb_group(self, name):
-        pass
+    def add_kb_group(self, name): pass
 
     @abstractmethod
     def list_kb_group_files(
@@ -182,12 +178,10 @@ class DocListManager(ABC):
         return ids
 
     @abstractmethod
-    def get_filepaths(self, file_ids: List[str]):
-        pass
+    def get_filepaths(self, file_ids: List[str]): pass
 
     @abstractmethod
-    def delete_obsolete_files(self):
-        pass
+    def delete_obsolete_files(self): pass
 
     @abstractmethod
     def _add_files(
@@ -200,8 +194,7 @@ class DocListManager(ABC):
         pass
 
     @abstractmethod
-    def update_file_message(self, fileid: str, **kw):
-        pass
+    def update_file_message(self, fileid: str, **kw): pass
 
     @abstractmethod
     def update_file_status_by_cond(
@@ -210,32 +203,26 @@ class DocListManager(ABC):
         pass
 
     @abstractmethod
-    def add_files_to_kb_group(self, file_ids: List[str], group: str):
-        pass
+    def add_files_to_kb_group(self, file_ids: List[str], group: str): pass
 
     @abstractmethod
-    def _delete_files(self, file_ids: List[str], real: bool = False):
-        pass
+    def _delete_files(self, file_ids: List[str], real: bool = False): pass
 
     @abstractmethod
-    def delete_files_from_kb_group(self, file_ids: List[str], group: str):
-        pass
+    def delete_files_from_kb_group(self, file_ids: List[str], group: str): pass
 
     @abstractmethod
-    def get_file_status(self, fileid: str):
-        pass
+    def get_file_status(self, fileid: str): pass
 
     @abstractmethod
-    def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]:
-        pass
+    def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]: pass
 
     @abstractmethod
-    def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
-        pass
+    def update_kb_group_file_status(self, file_ids: Union[str, List[str]],
+                                    status: str, group: Optional[str] = None): pass
 
     @abstractmethod
-    def release(self):
-        pass
+    def release(self): pass
 
 
 class SqliteDocListManager(DocListManager):
