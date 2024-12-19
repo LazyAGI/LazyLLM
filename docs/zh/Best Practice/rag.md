@@ -218,15 +218,17 @@ def dummy_similarity_func(query: List[float], node: DocNode, **kwargs) -> float:
 
 `Retriever` 实例使用时需要传入要查询的 `query` 字符串，还有可选的过滤器 `filters` 用于字段过滤。`filters` 是一个 dict，其中 key 是要过滤的字段，value 是一个可取值列表，表示只要该字段的值匹配列表中的任意一个值即可。只有当所有的条件都满足该 node 才会被返回。
 
-下面是使用 `filters` 的例子（`doc_fields` 的配置参考 [Document 的介绍](../Best%20Practice/rag.md#Document)）：
+`filters` 的用法如下方代码所示：
 
 ```python
 filters = {
     "author": ["A", "B", "C"],
-    "public_year": [2002, 2003, 2004],
+    "publish_year": [2002, 2003, 2004],
 }
 doc_list = retriever(query=query, filters=filters)
 ```
+
+其中 `filters` 的键值可以在初始化`Document`时传入`doc_fields`参数进行自定义（具体可参考 [Document 用法介绍](../Best%20Practice/rag.md#Document)）。除此之外，`filters`也支持通过以下内置元数据进行过滤，分别是：file_name（文件名）、file_type（文件类型）、file_size（文件大小）、creation_date（创建日期）、last_modified_date（最终修改日期）、last_accessed_date（最后访问日期）。
 
 ### Reranker
 

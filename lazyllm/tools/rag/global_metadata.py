@@ -13,3 +13,9 @@ class GlobalMetadataDesc:
 
 RAG_DOC_ID = 'docid'
 RAG_DOC_PATH = 'lazyllm_doc_path'
+RAG_DOC_FILE_NAME = 'file_name'
+RAG_DOC_FILE_TYPE = 'file_type'
+RAG_DOC_FILE_SIZE = 'file_size'
+RAG_DOC_CREATION_DATE = 'creation_date'
+RAG_DOC_LAST_MODIFIED_DATE = 'last_modified_date'
+RAG_DOC_LAST_ACCESSED_DATE = 'last_accessed_date'
