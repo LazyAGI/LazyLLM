@@ -30,18 +30,16 @@ class TestDocListManager(unittest.TestCase):
         self.test_dir = test_dir = self.tmpdir.mkdir("test_documents")
 
         test_file_1, test_file_2 = test_dir.join("test1.txt"), test_dir.join("test2.txt")
+        test_file_1.write("This is a test file 1.")
+        test_file_2.write("This is a test file 2.")
         self.test_file_1, self.test_file_2 = str(test_file_1), str(test_file_2)
+        print(f"test_file_1:{test_file_1}, test_file_2:{test_file_2}")
 
         self.manager = DocListManager(str(test_dir), "TestManager")
 
     def tearDown(self):
         shutil.rmtree(str(self.test_dir))
         self.manager.release()
-
-    def mock_upload_file(self):
-        test_file_1, test_file_2 = self.test_dir.join("test1.txt"), self.test_dir.join("test2.txt")
-        test_file_1.write("This is a test file 1.")
-        test_file_2.write("This is a test file 2.")
 
     def test_init_tables(self):
         self.manager.init_tables()
@@ -51,7 +49,6 @@ class TestDocListManager(unittest.TestCase):
         self.manager.init_tables()
 
         self.manager.add_files([self.test_file_1, self.test_file_2])
-        self.mock_upload_file()
         files_list = self.manager.list_files(details=True)
         assert len(files_list) == 2
         assert any(self.test_file_1.endswith(row[1]) for row in files_list)
@@ -59,10 +56,6 @@ class TestDocListManager(unittest.TestCase):
 
     def test_list_kb_group_files(self):
         self.manager.init_tables()
-
-        self.manager.add_files([self.test_file_1, self.test_file_2])
-        self.mock_upload_file()
-
         files_list = self.manager.list_kb_group_files(DocListManager.DEFAULT_GROUP_NAME, details=True)
         assert len(files_list) == 2
         files_list = self.manager.list_kb_group_files('group1', details=True)
@@ -90,7 +83,6 @@ class TestDocListManager(unittest.TestCase):
         self.manager.init_tables()
 
         self.manager.add_files([self.test_file_1, self.test_file_2])
-        self.mock_upload_file()
         self.manager.delete_files([hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()])
         files_list = self.manager.list_files(details=True)
         assert len(files_list) == 2
@@ -102,12 +94,11 @@ class TestDocListManager(unittest.TestCase):
         self.manager.init_tables()
 
         self.manager.add_files([self.test_file_1])
-        self.mock_upload_file()
         file_id = hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()
-        self.manager.update_file_message(file_id, meta="New metadata", status="processed")
+        self.manager.update_file_message(file_id, metadata="New metadata", status="processed")
 
         conn = sqlite3.connect(self.manager._db_path)
-        cursor = conn.execute("SELECT meta, status FROM documents WHERE doc_id = ?", (file_id,))
+        cursor = conn.execute("SELECT metadata, status FROM documents WHERE doc_id = ?", (file_id,))
         row = cursor.fetchone()
         conn.close()
 
@@ -117,27 +108,30 @@ class TestDocListManager(unittest.TestCase):
     def test_get_and_update_file_status(self):
         self.manager.init_tables()
 
-        self.manager.add_files([self.test_file_1], status=DocListManager.Status.waiting)
-        self.mock_upload_file()
-
         file_id = hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()
         status = self.manager.get_file_status(file_id)
-        assert status[0] == DocListManager.Status.waiting
+        assert status[0] == DocListManager.Status.success
 
-        self.manager.update_file_status([file_id], DocListManager.Status.success)
+        self.manager.add_files([self.test_file_1], status=DocListManager.Status.waiting)
         status = self.manager.get_file_status(file_id)
         assert status[0] == DocListManager.Status.success
+
+        self.manager.update_file_status([file_id], DocListManager.Status.waiting)
+        status = self.manager.get_file_status(file_id)
+        assert status[0] == DocListManager.Status.waiting
 
     def test_add_files_to_kb_group(self):
         self.manager.init_tables()
         files_list = self.manager.list_kb_group_files("group1", details=True)
         assert len(files_list) == 0
 
-        self.manager.add_files([self.test_file_1, self.test_file_2])
+        print("\nCall add_files in unittest")
+        doc_ids = [self.manager.get_active_docid(ele) for ele in [self.test_file_1, self.test_file_2]]
+        print("doc_ids : ", doc_ids)
         files_list = self.manager.list_kb_group_files("group1", details=True)
         assert len(files_list) == 0
 
-        self.manager.add_files_to_kb_group(get_fid([self.test_file_1, self.test_file_2]), group="group1")
+        self.manager.add_files_to_kb_group(doc_ids, group="group1")
         files_list = self.manager.list_kb_group_files("group1", details=True)
         assert len(files_list) == 2
 
@@ -165,14 +159,12 @@ class TestDocListServer(object):
         cls.test_dir = test_dir = cls.tmpdir.mkdir("test_server")
 
         test_file_1, test_file_2 = test_dir.join("test1.txt"), test_dir.join("test2.txt")
-
+        test_file_1.write("This is a test file 1.")
+        test_file_2.write("This is a test file 2.")
         cls.test_file_1, cls.test_file_2 = str(test_file_1), str(test_file_2)
 
         cls.manager = DocListManager(str(test_dir), "TestManager")
         cls.manager.init_tables()
-        cls.manager.add_files([cls.test_file_1, cls.test_file_2])
-        test_file_1.write("This is a test file 1.")
-        test_file_2.write("This is a test file 2.")
         cls.manager.add_kb_group('group1')
         cls.manager.add_kb_group('extra_group')
         cls.server = lazyllm.ServerModule(DocManager(cls.manager))
@@ -266,13 +258,12 @@ class TestDocListServer(object):
         assert response.status_code == 200 and response.json().get('code') == 200
 
         response = requests.get(self.get_url('list_files'))
-        assert response.status_code == 200 and len(response.json().get('data')) == 5, response.json().get('data')
+        assert response.status_code == 200 and len(response.json().get('data')) == 5
         response = requests.get(self.get_url('list_files', alive=True))
         assert response.status_code == 200 and len(response.json().get('data')) == 4
 
         response = requests.get(self.get_url('list_files_in_group', group_name='group1'))
-        # one file is deleted, its docid become "deleted"
-        assert response.status_code == 200 and len(response.json().get('data')) == 2, response.json().get('data')
+        assert response.status_code == 200 and len(response.json().get('data')) == 3
         response = requests.get(self.get_url('list_files_in_group', group_name='group1', alive=True))
         assert response.status_code == 200 and len(response.json().get('data')) == 1
 

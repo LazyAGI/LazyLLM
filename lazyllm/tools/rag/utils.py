@@ -12,6 +12,7 @@ from lazyllm.common.queue import sqlite3_check_threadsafety
 import sqlalchemy
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import Column, insert, update, select, delete
+import uuid
 
 import pydantic
 import sqlite3
@@ -34,7 +35,8 @@ config.add(
 
 config.add("default_dlmanager", str, "sqlite", "DEFAULT_DOCLIST_MANAGER")
 
-def gen_docid(file_path: str) -> str:
+
+def gen_docid_wo_dlm(file_path: str) -> str:
     return hashlib.sha256(file_path.encode()).hexdigest()
 
 
@@ -42,15 +44,24 @@ class KBDataBase(DeclarativeBase):
     pass
 
 
+class KBPrcessedFile(KBDataBase):
+    __tablename__ = "processed_file"
+
+    path = Column(sqlalchemy.Text, nullable=False, primary_key=True)
+    meta = Column(sqlalchemy.Text, nullable=True)
+    created_at = Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), nullable=False)
+
+
 class KBDocument(KBDataBase):
     __tablename__ = "documents"
 
-    doc_id = Column(sqlalchemy.Text)
+    doc_id = Column(sqlalchemy.String(36), primary_key=True)
     filename = Column(sqlalchemy.Text, nullable=False, index=True)
-    path = Column(sqlalchemy.Text, nullable=False, index=True, primary_key=True)
+    path = Column(sqlalchemy.Text, nullable=False, index=True)
     created_at = Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), nullable=False)
     meta = Column(sqlalchemy.Text, nullable=True)
-    status = Column(sqlalchemy.Text, nullable=False)
+    status = Column(sqlalchemy.Text, nullable=False, index=True)
+    # active = Column(sqlalchemy.Boolean, default=True)
     count = Column(sqlalchemy.Integer, default=0)
 
 
@@ -113,6 +124,10 @@ class DocListManager(ABC):
     def delete_files(self, file_ids: List[str], real: bool = False):
         self.update_kb_group_file_status(file_ids=file_ids, status=DocListManager.Status.deleting)
         self._delete_files(file_ids, real)
+
+    @abstractmethod
+    def get_active_docid(self, file_path: str) -> str:
+        pass
 
     @abstractmethod
     def table_inited(self):
@@ -210,29 +225,13 @@ class DocListManager(ABC):
         pass
 
 
-def gen_unique_filepaths(ori_filepath: str) -> str:
-    """
-    根据传入的 base_filename 查询 KBDocument 表，确保生成唯一的 filename。
-    如果存在冲突，则在文件名后添加计数，直到找到唯一值。
-    """
-    if not os.path.exists(ori_filepath):
-        return ori_filepath
-    directory, filename = os.path.split(ori_filepath)
-    name, ext = os.path.splitext(filename)
-    ct = 1
-    new_filepath = f"{os.path.join(directory, name)}_{ct}{ext}"
-    while os.path.exists(new_filepath):
-        ct += 1
-        new_filepath = f"{os.path.join(directory, name)}_{ct}{ext}"
-    return new_filepath
-
-
 class SqliteDocListManager(DocListManager):
     def __init__(self, path, name):
         super().__init__(path, name)
         root_dir = os.path.expanduser(os.path.join(config['home'], '.dbs'))
         os.makedirs(root_dir, exist_ok=True)
         self._db_path = os.path.join(root_dir, f'.lazyllm_dlmanager.{self._id}.db')
+        print(f"Database path: {self._db_path}")
         self._db_lock = FileLock(self._db_path + '.lock')
         # ensure that this connection is not used in another thread when sqlite3 is not threadsafe
         self._check_same_thread = not sqlite3_check_threadsafety()
@@ -242,6 +241,24 @@ class SqliteDocListManager(DocListManager):
 
     def _init_tables(self):
         KBDataBase.metadata.create_all(bind=self._engine)
+
+    def get_active_docid(self, file_path: str) -> str:
+        doc_id = ""
+        with self._db_lock, self._engine.connect() as conn:
+            stmt = select(KBDocument.doc_id).where(KBDocument.path == file_path, KBDocument.status != "deleted")
+            result = conn.execute(stmt)
+            returned_values = result.fetchall()
+            if len(returned_values) == 0:
+                lazyllm.LOG.warning(f"No active docid for {file_path}")
+            elif len(returned_values) == 1:
+                print(f"Found 1 active docid for {file_path}: {returned_values[0].doc_id}")
+                doc_id = returned_values[0].doc_id
+            else:
+                doc_id = returned_values[0].doc_id
+                lazyllm.LOG.warning(f"Get len(returned_values) active docids:")
+        if "conn" in locals():
+            conn.close()
+        return doc_id
 
     def table_inited(self):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
@@ -345,24 +362,41 @@ class SqliteDocListManager(DocListManager):
                    status: Optional[str] = DocListManager.Status.waiting, batch_size: int = 64):
         ids = []
         filepaths = []
+        if not files:
+            return ids, filepaths
+
+        newly_added_files = [], meta_str_list = []
+        with self._db_lock, self._engine.connect() as conn:
+            vals = [{KBPrcessedFile.path: ele, KBPrcessedFile.meta} for ele in files]
+            result = conn.execute(
+                insert(KBPrcessedFile)
+                .values(vals)
+                .prefix_with('OR IGNORE')
+                .returning(KBPrcessedFile.path, KBPrcessedFile.meta)
+            )
+            conn.commit()
+            returned_values = result.fetchall()
+            newly_added_files = [row.path for row in returned_values]
+            meta_str_list = [row.meta for row in returned_values]
+        
+        files = newly_added_files
         for i in range(0, len(files), batch_size):
             batch_files = files[i:i + batch_size]
             batch_metadatas = metadatas[i:i + batch_size] if metadatas else None
             vals = []
 
             for i, file_path in enumerate(batch_files):
-                new_file_path = gen_unique_filepaths(file_path)
-                doc_id = gen_docid(new_file_path)
+                doc_id = str(uuid.uuid4())
 
                 metadata = batch_metadatas[i].copy() if batch_metadatas else {}
                 metadata.setdefault(RAG_DOC_ID, doc_id)
-                metadata.setdefault(RAG_DOC_PATH, new_file_path)
+                metadata.setdefault(RAG_DOC_PATH, file_path)
 
                 vals.append(
                     {
                         KBDocument.doc_id.name: doc_id,
                         KBDocument.filename.name: os.path.basename(file_path),
-                        KBDocument.path.name: new_file_path,
+                        KBDocument.path.name: file_path,
                         KBDocument.meta.name: json.dumps(metadata),
                         KBDocument.status.name: status,
                         KBDocument.count.name: 1,
@@ -435,22 +469,19 @@ class SqliteDocListManager(DocListManager):
         updated_files = []
         with self._db_lock, self._engine.connect() as conn:
             for i in range(0, len(file_ids), batch_size):
-                ids = file_ids[i: i + batch_size]
-                if status == "deleted":
-                    stmt = (
-                        delete(KBDocument)
-                        .where(KBDocument.doc_id.in_(ids))
-                        .returning(KBDocument.doc_id, KBDocument.path)
-                    )
-                else:
-                    stmt = (
-                        update(KBDocument)
-                        .where(KBDocument.doc_id.in_(ids))
-                        .values(status=status)
-                        .returning(KBDocument.doc_id, KBDocument.path)
-                    )
+                ids = file_ids[i : i + batch_size]
+                stmt = (
+                    update(KBDocument)
+                    .where(KBDocument.doc_id.in_(ids))
+                    .values(status=status)
+                    .returning(KBDocument.doc_id, KBDocument.path)
+                )
                 result = conn.execute(stmt)
                 returned_values = result.fetchall()
+                if status == "deleted":
+                    filepaths = [row.path for row in returned_values]
+                    stmt = delete(KBPrcessedFile).where(KBPrcessedFile.path.in_(filepaths))
+                    conn.execute(stmt)
                 conn.commit()
             updated_files.extend([(row.doc_id, row.path) for row in returned_values])
         if "conn" in locals():
@@ -476,6 +507,7 @@ class SqliteDocListManager(DocListManager):
             conn.execute('delete from documents')
             conn.execute('delete from document_groups')
             conn.execute('delete from kb_group_documents')
+            conn.execute('delete from processed_file')
             conn.commit()
 
     def __reduce__(self):

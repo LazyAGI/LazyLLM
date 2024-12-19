@@ -9,8 +9,25 @@ from fastapi import UploadFile, Body
 import lazyllm
 from lazyllm import FastapiApp as app
 from .utils import DocListManager, BaseResponse
-from .doc_impl import gen_docid
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
+
+
+def gen_unique_filepaths(ori_filepath: str) -> str:
+    """
+    根据传入的 base_filename 确保生成唯一的 filepath。
+    如果存在冲突，则在文件名后添加计数，直到找到唯一值。
+    """
+    assert not os.path.exists(ori_filepath), f"file already exists: {ori_filepath}"
+    if not os.path.exists(ori_filepath):
+        return ori_filepath
+    directory, filename = os.path.split(ori_filepath)
+    name, ext = os.path.splitext(filename)
+    ct = 1
+    new_filepath = f"{os.path.join(directory, name)}_{ct}{ext}"
+    while os.path.exists(new_filepath):
+        ct += 1
+        new_filepath = f"{os.path.join(directory, name)}_{ct}{ext}"
+    return new_filepath
 
 
 class DocManager(lazyllm.ModuleBase):
@@ -54,9 +71,12 @@ class DocManager(lazyllm.ModuleBase):
                         return BaseResponse(code=400, msg=f'file [{files[idx].filename}]: {err_msg}', data=None)
 
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
+            file_paths = [gen_unique_filepaths(ele) for ele in file_paths]
+            print("FILE PATHS", file_paths)
             ids, file_paths = self._manager.add_files(
                 file_paths, metadatas=metadatas, status=DocListManager.Status.working
             )
+            print("AFTER self._manager.add_files")
             assert len(files) == len(ids), "len(files) uploaded vs len(ids) recorede"
             results = []
             for file, path in zip(files, file_paths):
@@ -76,8 +96,9 @@ class DocManager(lazyllm.ModuleBase):
                 except Exception as e:
                     lazyllm.LOG.error(f'writing file [{path}] to disk failed: [{e}]')
                     raise e
-
-                file_id = gen_docid(path)
+                print("in LOOP, path", path)
+                file_id = self._manager.get_active_docid(path)
+                print("after get_active_docid, file_id:", file_id)
                 self._manager.update_file_status([file_id], status=DocListManager.Status.success)
                 results.append('Success')
 
@@ -184,16 +205,19 @@ class DocManager(lazyllm.ModuleBase):
                 return self.delete_files_from_group(request)
             else:
                 safe_delete_ids = set(self._manager.get_safe_delete_files())
+                print("Input file ids:", request.file_ids, ", safe delete ids:", safe_delete_ids)
                 tmp = request.file_ids
                 request.file_ids = []
                 for file_id in tmp:
                     if file_id in safe_delete_ids:
                         request.file_ids.append(file_id)
+                print("New fildids after safe delete:", request.file_ids)
                 self._manager.update_kb_group_file_status(
                     file_ids=request.file_ids, status=DocListManager.Status.deleting)
                 docs = self._manager.update_file_status(file_ids=request.file_ids, status=DocListManager.Status.deleting)
 
                 for doc in docs:
+                    print("DELETE doc:", doc)
                     if os.path.exists(path := doc[1]):
                         os.remove(path)
 
