@@ -18,7 +18,7 @@ class AutoDeploy(LazyLLMDeployBase):
 
     def __new__(cls, base_model, source=lazyllm.config['model_source'], trust_remote_code=True, max_token_num=1024,
                 launcher=launchers.remote(ngpus=1), stream=False, type=None, **kw):
-        base_model = ModelManager(source).download(base_model)
+        base_model = ModelManager(source).download(base_model) or ''
         model_name = get_model_name(base_model)
         if not type:
             type = ModelManager.get_model_type(model_name)
