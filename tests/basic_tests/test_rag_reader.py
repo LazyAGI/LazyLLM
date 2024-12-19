@@ -20,9 +20,9 @@ def processYml(file, extra_info=None):
 
 class TestRagReader(object):
     def setup_method(self):
-        self.doc1 = Document(dataset_path="ci_data/rag_reader", manager=False)
-        self.doc2 = Document(dataset_path="ci_data/rag_reader", manager=False)
-        self.datasets = os.path.join(lazyllm.config['data_path'], "ci_data/rag_reader/default/__data/sources")
+        self.doc1 = Document(dataset_path="rag_reader", manager=False)
+        self.doc2 = Document(dataset_path="rag_reader", manager=False)
+        self.datasets = os.path.join(lazyllm.config['data_path'], "rag_reader")
 
     def teardown_method(self):
         self.doc1._impl._local_file_reader = {}
@@ -44,7 +44,7 @@ class TestRagReader(object):
         docs = []
         for doc in reader():
             docs.append(doc)
-        assert len(docs) == 23
+        assert len(docs) == 22
 
     def test_register_local_reader(self):
         self.doc1.add_reader("**/*.yml", processYml)
