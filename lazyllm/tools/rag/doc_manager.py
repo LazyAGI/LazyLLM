@@ -14,10 +14,6 @@ from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 
 
 def gen_unique_filepaths(ori_filepath: str) -> str:
-    """
-    根据传入的 base_filename 确保生成唯一的 filepath。
-    如果存在冲突，则在文件名后添加计数，直到找到唯一值。
-    """
     assert not os.path.exists(ori_filepath), f"file already exists: {ori_filepath}"
     if not os.path.exists(ori_filepath):
         return ori_filepath
