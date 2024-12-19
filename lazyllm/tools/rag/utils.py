@@ -12,6 +12,7 @@ from lazyllm.common.queue import sqlite3_check_threadsafety
 import sqlalchemy
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import Column, insert, update, select, delete
+from sqlalchemy.orm import sessionmaker
 import uuid
 
 import pydantic
@@ -40,28 +41,30 @@ def gen_docid_wo_dlm(file_path: str) -> str:
     return hashlib.sha256(file_path.encode()).hexdigest()
 
 
+def gen_docid(file_path: str) -> str:
+    return hashlib.sha256(file_path.encode()).hexdigest()
+
+
 class KBDataBase(DeclarativeBase):
     pass
 
 
-class KBPrcessedFile(KBDataBase):
-    __tablename__ = "processed_file"
-
-    path = Column(sqlalchemy.Text, nullable=False, primary_key=True)
-    meta = Column(sqlalchemy.Text, nullable=True)
+class KBOperationLogs(KBDataBase):
+    __tablename__ = "operation_logs"
+    id = Column(sqlalchemy.Integer, primary_key=True, autoincrement=True)
+    log = Column(sqlalchemy.Text, nullable=False)
     created_at = Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), nullable=False)
 
 
 class KBDocument(KBDataBase):
     __tablename__ = "documents"
 
-    doc_id = Column(sqlalchemy.String(36), primary_key=True)
+    doc_id = Column(sqlalchemy.Text, primary_key=True)
     filename = Column(sqlalchemy.Text, nullable=False, index=True)
-    path = Column(sqlalchemy.Text, nullable=False, index=True)
+    path = Column(sqlalchemy.Text, nullable=False)
     created_at = Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), nullable=False)
     meta = Column(sqlalchemy.Text, nullable=True)
     status = Column(sqlalchemy.Text, nullable=False, index=True)
-    # active = Column(sqlalchemy.Boolean, default=True)
     count = Column(sqlalchemy.Integer, default=0)
 
 
@@ -97,6 +100,7 @@ class DocListManager(ABC):
         deleting = 'deleting'
         deleted = 'deleted'
 
+    DELETE_SAFE_STATUS_LIST = [Status.waiting, Status.success, Status.failed]
     def __init__(self, path, name):
         self._path = path
         self._name = name
@@ -121,13 +125,16 @@ class DocListManager(ABC):
         self.add_files(files_list, status=DocListManager.Status.success)
         return self
 
-    def delete_files(self, file_ids: List[str], real: bool = False):
-        self.update_kb_group_file_status(file_ids=file_ids, status=DocListManager.Status.deleting)
-        self._delete_files(file_ids, real)
-
-    @abstractmethod
-    def get_active_docid(self, file_path: str) -> str:
-        pass
+    def delete_files(self, file_ids: List[str]) -> List[KBDocument]:
+        print("Delete files:", file_ids)
+        document_list = self.update_file_status_by_cond(
+            file_ids, self.DELETE_SAFE_STATUS_LIST, DocListManager.Status.deleting
+        )
+        print("document_list: ", document_list)
+        safe_delete_ids = [doc.doc_id for doc in document_list]
+        print("Input file ids:", file_ids, ", safe delete ids:", safe_delete_ids)
+        self.update_kb_group_file_status(file_ids=safe_delete_ids, status=DocListManager.Status.deleting)
+        return document_list
 
     @abstractmethod
     def table_inited(self):
@@ -170,12 +177,16 @@ class DocListManager(ABC):
 
     def add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None,
                   status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[str]:
-        ids, filepaths = self._add_files(files, metadatas, status, batch_size)
+        ids = self._add_files(files, metadatas, status, batch_size)
         self.add_files_to_kb_group(ids, group=DocListManager.DEFAULT_GROUP_NAME)
-        return ids, filepaths
+        return ids
 
     @abstractmethod
     def get_filepaths(self, file_ids: List[str]):
+        pass
+
+    @abstractmethod
+    def delete_obsolete_files(self):
         pass
 
     @abstractmethod
@@ -193,7 +204,9 @@ class DocListManager(ABC):
         pass
 
     @abstractmethod
-    def get_safe_delete_files(self):
+    def update_file_status_by_cond(
+        self, file_ids: List[str], cond_status_list: Union[None, List[str]], new_status: str
+    ) -> List[KBDocument]:
         pass
 
     @abstractmethod
@@ -238,27 +251,10 @@ class SqliteDocListManager(DocListManager):
         self._engine = sqlalchemy.create_engine(
             f"sqlite:///{self._db_path}?check_same_thread={self._check_same_thread}"
         )
+        self._Session = sessionmaker(bind=self._engine)
 
     def _init_tables(self):
         KBDataBase.metadata.create_all(bind=self._engine)
-
-    def get_active_docid(self, file_path: str) -> str:
-        doc_id = ""
-        with self._db_lock, self._engine.connect() as conn:
-            stmt = select(KBDocument.doc_id).where(KBDocument.path == file_path, KBDocument.status != "deleted")
-            result = conn.execute(stmt)
-            returned_values = result.fetchall()
-            if len(returned_values) == 0:
-                lazyllm.LOG.warning(f"No active docid for {file_path}")
-            elif len(returned_values) == 1:
-                print(f"Found 1 active docid for {file_path}: {returned_values[0].doc_id}")
-                doc_id = returned_values[0].doc_id
-            else:
-                doc_id = returned_values[0].doc_id
-                lazyllm.LOG.warning(f"Get len(returned_values) active docids:")
-        if "conn" in locals():
-            conn.close()
-        return doc_id
 
     def table_inited(self):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
@@ -358,35 +354,32 @@ class SqliteDocListManager(DocListManager):
     def get_filepaths(self, file_ids: List[str]) -> List[str]:
         pass
 
+    def delete_obsolete_files(self):
+        with self._db_lock, self._Session() as session:
+            docs_to_delete = (
+                session.query(KBDocument)
+                .filter(KBDocument.status == DocListManager.Status.deleting, KBDocument.count == 0)
+                .all()
+            )
+            for doc in docs_to_delete:
+                session.delete(doc)
+                log = KBOperationLogs(log=f"Delete obsolete file: {doc.doc_id}")
+                session.add(log)
+            session.commit()
+
     def _add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None,
                    status: Optional[str] = DocListManager.Status.waiting, batch_size: int = 64):
         ids = []
-        filepaths = []
         if not files:
-            return ids, filepaths
+            return []
 
-        newly_added_files = [], meta_str_list = []
-        with self._db_lock, self._engine.connect() as conn:
-            vals = [{KBPrcessedFile.path: ele, KBPrcessedFile.meta} for ele in files]
-            result = conn.execute(
-                insert(KBPrcessedFile)
-                .values(vals)
-                .prefix_with('OR IGNORE')
-                .returning(KBPrcessedFile.path, KBPrcessedFile.meta)
-            )
-            conn.commit()
-            returned_values = result.fetchall()
-            newly_added_files = [row.path for row in returned_values]
-            meta_str_list = [row.meta for row in returned_values]
-        
-        files = newly_added_files
         for i in range(0, len(files), batch_size):
             batch_files = files[i:i + batch_size]
             batch_metadatas = metadatas[i:i + batch_size] if metadatas else None
             vals = []
 
             for i, file_path in enumerate(batch_files):
-                doc_id = str(uuid.uuid4())
+                doc_id = gen_docid(file_path)
 
                 metadata = batch_metadatas[i].copy() if batch_metadatas else {}
                 metadata.setdefault(RAG_DOC_ID, doc_id)
@@ -399,23 +392,17 @@ class SqliteDocListManager(DocListManager):
                         KBDocument.path.name: file_path,
                         KBDocument.meta.name: json.dumps(metadata),
                         KBDocument.status.name: status,
-                        KBDocument.count.name: 1,
+                        KBDocument.count.name: 0,
                     }
                 )
-            with self._db_lock, self._engine.connect() as conn:
-                result = conn.execute(
-                    insert(KBDocument)
-                    .values(vals)
-                    .prefix_with('OR IGNORE')
-                    .returning(KBDocument.doc_id, KBDocument.path)
+            with self._db_lock, self._Session() as session:
+                result = session.execute(
+                    insert(KBDocument).values(vals).prefix_with('OR IGNORE').returning(KBDocument.doc_id)
                 )
                 returned_values = result.fetchall()
-                conn.commit()
+                session.commit()
                 ids.extend([ele.doc_id for ele in returned_values])
-                filepaths.extend([ele.path for ele in returned_values])
-            if "conn" in locals():
-                conn.close()
-        return ids, filepaths
+        return ids
 
     # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):
@@ -425,25 +412,44 @@ class SqliteDocListManager(DocListManager):
             conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
             conn.commit()
 
-    def get_safe_delete_files(self):
-        ids = []
-        with self._db_lock, self._engine.connect() as conn:
-            stmt = select(KBDocument.doc_id).where(KBDocument.status.in_(["success", "failed"]))
-            result = conn.execute(stmt)
-            returned_values = result.fetchall()
-            ids = [ele.doc_id for ele in returned_values]
-        if "conn" in locals():
-            conn.close()
-        return ids
+    def update_file_status_by_cond(
+        self, file_ids: List[str], cond_status_list: Union[None, List[str]], new_status: str
+    ) -> List[KBDocument]:
+        rows = []
+        if cond_status_list is None:
+            sql_cond = KBDocument.doc_id.in_(file_ids)
+        else:
+            sql_cond = sqlalchemy.and_(KBDocument.status.in_(cond_status_list), KBDocument.doc_id.in_(file_ids))
+        with self._db_lock, self._Session() as session:
+            stmt = (
+                update(KBDocument)
+                .where(sql_cond)
+                .values(status=new_status)
+                .returning(KBDocument.doc_id, KBDocument.path)
+            )
+            print("raw sql: ", str(stmt.compile(compile_kwargs={"literal_binds": True})))
+            rows = session.execute(stmt).fetchall()
+            session.commit()
+        return rows
 
     def add_files_to_kb_group(self, file_ids: List[str], group: str):
-        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+        with self._db_lock, self._Session() as session:
+            vals = []
             for doc_id in file_ids:
-                conn.execute("""
-                    INSERT OR IGNORE INTO kb_group_documents (doc_id, group_name, status)
-                    VALUES (?, ?, ?)
-                """, (doc_id, group, DocListManager.Status.waiting))
-                conn.commit()
+                vals = {
+                    KBGroupDocuments.doc_id.name: doc_id,
+                    KBGroupDocuments.group_name.name: group,
+                    KBGroupDocuments.status.name: DocListManager.Status.waiting,
+                }
+                rows = session.execute(
+                    insert(KBGroupDocuments).values(vals).prefix_with('OR IGNORE').returning(KBGroupDocuments.doc_id)
+                ).fetchall()
+                session.commit()
+                if not rows:
+                    continue
+                doc = session.query(KBDocument).filter_by(doc_id=rows[0].doc_id).one()
+                doc.count += 1
+                session.commit()
 
     def _delete_files(self, file_ids: List[str], real: bool = False):
         if not real:
@@ -454,46 +460,45 @@ class SqliteDocListManager(DocListManager):
                 conn.commit()
 
     def delete_files_from_kb_group(self, file_ids: List[str], group: str):
-        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+        with self._db_lock, self._Session() as session:
             for doc_id in file_ids:
-                conn.execute("UPDATE kb_group_documents SET status = ? WHERE doc_id = ? AND group_name = ?",
-                             (DocListManager.Status.deleted, doc_id, group))
-            conn.commit()
+                vals = {
+                    KBGroupDocuments.status.name: DocListManager.Status.deleted,
+                }
+                cond = sqlalchemy.and_(KBGroupDocuments.doc_id == doc_id, KBGroupDocuments.group_name == group)
+                rows = session.execute(
+                    update(KBGroupDocuments).where(cond).values(vals).returning(KBGroupDocuments.doc_id)
+                ).fetchall()
+                session.commit()
+                if not rows:
+                    continue
+                doc = session.query(KBDocument).filter_by(doc_id=rows[0].doc_id).one()
+                doc.count = max(0, doc.count - 1)
+                session.commit()
+
+    def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]:
+        updated_files = []
+
+        for i in range(0, len(file_ids), batch_size):
+            batch = file_ids[i : i + batch_size]
+            placeholders = ', '.join('?' for _ in batch)
+            sql = f'UPDATE documents SET status = ? WHERE doc_id IN ({placeholders}) RETURNING doc_id, path'
+
+            with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+                cursor = conn.execute(sql, [status] + batch)
+                updated_files.extend(cursor.fetchall())
+                conn.commit()
+        return updated_files
 
     def get_file_status(self, fileid: str):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             cursor = conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
         return cursor.fetchone()
 
-    def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]:
-        updated_files = []
-        with self._db_lock, self._engine.connect() as conn:
-            for i in range(0, len(file_ids), batch_size):
-                ids = file_ids[i : i + batch_size]
-                stmt = (
-                    update(KBDocument)
-                    .where(KBDocument.doc_id.in_(ids))
-                    .values(status=status)
-                    .returning(KBDocument.doc_id, KBDocument.path)
-                )
-                result = conn.execute(stmt)
-                returned_values = result.fetchall()
-                if status == "deleted":
-                    filepaths = [row.path for row in returned_values]
-                    stmt = delete(KBPrcessedFile).where(KBPrcessedFile.path.in_(filepaths))
-                    conn.execute(stmt)
-                conn.commit()
-            updated_files.extend([(row.doc_id, row.path) for row in returned_values])
-        if "conn" in locals():
-            conn.close()
-        return updated_files
-
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
-        if isinstance(file_ids, str): file_ids = [file_ids]
-        if "status" == "deleted":
-            query, params = 'UPDATE kb_group_documents SET doc_id = "deleted_doc", status = ? WHERE ', [status]
-        else:
-            query, params = 'UPDATE kb_group_documents SET status = ? WHERE ', [status]
+        if isinstance(file_ids, str):
+            file_ids = [file_ids]
+        query, params = 'UPDATE kb_group_documents SET status = ? WHERE ', [status]
         if group:
             query += 'group_name = ? AND '
             params.append(group)
@@ -507,7 +512,7 @@ class SqliteDocListManager(DocListManager):
             conn.execute('delete from documents')
             conn.execute('delete from document_groups')
             conn.execute('delete from kb_group_documents')
-            conn.execute('delete from processed_file')
+            conn.execute('delete from operation_logs')
             conn.commit()
 
     def __reduce__(self):

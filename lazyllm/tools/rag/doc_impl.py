@@ -13,7 +13,7 @@ from .milvus_store import MilvusStore
 from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import DocListManager, gen_docid_wo_dlm
+from .utils import DocListManager, gen_docid
 from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH
 import threading
 import time
@@ -83,10 +83,7 @@ class DocImpl:
                 root_nodes = self._reader.load_data(paths)
                 for idx, node in enumerate(root_nodes):
                     node.global_metadata.update(metadatas[idx].copy() if metadatas else {})
-                    if self._dlm:
-                        node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else self._dlm.get_active_docid(paths[idx])
-                    else:
-                        node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else gen_docid_wo_dlm(paths[idx])
+                    node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else gen_docid(paths[idx])
                     node.global_metadata[RAG_DOC_PATH] = paths[idx]
                 self.store.update_nodes(root_nodes)
                 if self._dlm: self._dlm.update_kb_group_file_status(
@@ -222,6 +219,7 @@ class DocImpl:
 
             if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
                 self._dlm.init_tables()
+                self._dlm.delete_obsolete_files()
             ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
                                                      upload_status=DocListManager.Status.success)
             if files:
@@ -252,10 +250,7 @@ class DocImpl:
         root_nodes = self._reader.load_data(input_files)
         for idx, node in enumerate(root_nodes):
             node.global_metadata = metadatas[idx].copy() if metadatas else {}
-            if self._dlm:
-                node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else self._dlm.get_active_docid(input_files[idx])
-            else:
-                node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else gen_docid_wo_dlm(input_files[idx])            
+            node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else gen_docid(input_files[idx])           
             node.global_metadata[RAG_DOC_PATH] = input_files[idx]
         temp_store = self._create_store({"type": "map"})
         temp_store.update_nodes(root_nodes)

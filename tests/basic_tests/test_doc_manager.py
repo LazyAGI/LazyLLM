@@ -86,7 +86,7 @@ class TestDocListManager(unittest.TestCase):
         self.manager.delete_files([hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()])
         files_list = self.manager.list_files(details=True)
         assert len(files_list) == 2
-        files_list = self.manager.list_files(details=True, exclude_status=DocListManager.Status.deleted)
+        files_list = self.manager.list_files(details=True, exclude_status=DocListManager.Status.deleting)
         assert len(files_list) == 1
         assert not any(self.test_file_1.endswith(row[1]) for row in files_list)
 
@@ -95,10 +95,10 @@ class TestDocListManager(unittest.TestCase):
 
         self.manager.add_files([self.test_file_1])
         file_id = hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()
-        self.manager.update_file_message(file_id, metadata="New metadata", status="processed")
+        self.manager.update_file_message(file_id, meta="New metadata", status="processed")
 
         conn = sqlite3.connect(self.manager._db_path)
-        cursor = conn.execute("SELECT metadata, status FROM documents WHERE doc_id = ?", (file_id,))
+        cursor = conn.execute("SELECT meta, status FROM documents WHERE doc_id = ?", (file_id,))
         row = cursor.fetchone()
         conn.close()
 
@@ -125,13 +125,11 @@ class TestDocListManager(unittest.TestCase):
         files_list = self.manager.list_kb_group_files("group1", details=True)
         assert len(files_list) == 0
 
-        print("\nCall add_files in unittest")
-        doc_ids = [self.manager.get_active_docid(ele) for ele in [self.test_file_1, self.test_file_2]]
-        print("doc_ids : ", doc_ids)
+        self.manager.add_files([self.test_file_1, self.test_file_2])
         files_list = self.manager.list_kb_group_files("group1", details=True)
         assert len(files_list) == 0
 
-        self.manager.add_files_to_kb_group(doc_ids, group="group1")
+        self.manager.add_files_to_kb_group(get_fid([self.test_file_1, self.test_file_2]), group="group1")
         files_list = self.manager.list_kb_group_files("group1", details=True)
         assert len(files_list) == 2
 
