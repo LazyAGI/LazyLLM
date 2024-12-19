@@ -65,7 +65,7 @@
     height: 34px;
     width: 34px;
     cursor: pointer;
-    background: url(../icon_dialog.png) 0 -78px;
+    background: url(assets/icon_dialog.png) 0 -78px;
     background-size: 34px 240px;
 }
 
@@ -82,7 +82,7 @@
     height: 30px;
     width: 34px;
     cursor: pointer;
-    background: url(../icon_dialog.png) 0 -60px;
+    background: url(assets/icon_dialog.png) 0 -60px;
     background-size: 34px 260px;
 }
 
@@ -103,7 +103,7 @@
     height: 24px;
     width: 24px;
     cursor: pointer;
-    background: url(../icon_dialog.png) 0 -109px;
+    background: url(assets/icon_dialog.png) 0 -109px;
     background-size: 34px 160px;
 }
 
@@ -217,7 +217,7 @@
 }
 
 .content pre {
-    position: relative; 
+    position: relative;
     margin: 0 10px;
     padding: 10px;
     overflow: auto;
@@ -237,7 +237,7 @@
         padding: 0.5em;
         height: 24px;
         width: 24px;
-        background: url(../icon_dialog.png) 0 -25px;
+        background: url(assets/icon_dialog.png) 0 -25px;
         background-size: 34px 240px;
         pointer-events: auto;
         cursor: pointer;
@@ -305,7 +305,7 @@
 }
 
 .useful-normal {
-    background: url(../icon_dialog.png) 0 -101px;
+    background: url(assets/icon_dialog.png) 0 -101px;
     background-size: 34px 230px;
     opacity: 0.4;
 }
@@ -315,7 +315,7 @@
 }
 
 .notuseful-normal {
-    background: url(../icon_dialog.png) 0 -153px;
+    background: url(assets/icon_dialog.png) 0 -153px;
     background-size: 34px 230px;
     opacity: 0.4;
 }
@@ -325,20 +325,30 @@
 }
 
 .useful {
-    background: url(../icon_dialog.png) 0 -125px;
+    background: url(assets/icon_dialog.png) 0 -125px;
     background-size: 34px 230px;
     opacity: 1;
 }
 
 .notuseful {
-    background: url(../icon_dialog.png) 0 -177px;
+    background: url(assets/icon_dialog.png) 0 -177px;
     background-size: 34px 230px;
     opacity: 1;
+}
+
+.state-word {
+    animation: flash 2s infinite;
 }
 
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+@keyframes flash {
+    0% { opacity: 1; }
+    50% { opacity: 0; }
+    100% { opacity: 1; }
 }
 
 #captcha-box {
@@ -359,7 +369,7 @@
     width: 310px;
     margin: 20px 0;
 }
-  
+
 .block {
     position: absolute;
     left: 0;
@@ -478,7 +488,7 @@
     right: 11px;
     width: 15px;
     height: 15px;
-    background: url(../icon_slider.png) 0 -38px;
+    background: url(assets/icon_slider.png) 0 -38px;
     background-size: 34px 471px;
 }
 
@@ -488,7 +498,7 @@
     left: 13px;
     width: 14px;
     height: 12px;
-    background: url(../icon_slider.png) 0 -25px;
+    background: url(assets/icon_slider.png) 0 -25px;
     background-size: 34px 471px;
 }
 
@@ -499,6 +509,6 @@
     width: 34px;
     height: 34px;
     cursor: pointer;
-    background: url(../icon_slider.png) 0 -400px;
+    background: url(assets/icon_slider.png) 0 -400px;
     background-size: 34px 471px;
 }
