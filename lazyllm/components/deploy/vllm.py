@@ -1,7 +1,8 @@
 import os
+import sys
 import json
 import random
-import sys
+from datetime import datetime
 
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
@@ -29,6 +30,7 @@ class Vllm(LazyLLMDeployBase):
                  trust_remote_code=True,
                  launcher=launchers.remote(ngpus=1),
                  stream=False,
+                 log_path=None,
                  **kw,
                  ):
         super().__init__(launcher=launcher)
@@ -47,6 +49,9 @@ class Vllm(LazyLLMDeployBase):
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
+        self.temp_folder = log_path or os.path.join(lazyllm.config['temp_dir'], 'deploy_log', 'vllm')
+        if not os.path.exists(self.temp_folder):
+            os.makedirs(self.temp_folder)
 
     def cmd(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
@@ -65,6 +70,10 @@ class Vllm(LazyLLMDeployBase):
             cmd += self.kw.parse_kwargs()
             if self.trust_remote_code:
                 cmd += ' --trust-remote-code '
+            formatted_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            random_value = random.randint(1000, 9999)
+            self.log_file_path = f'{self.temp_folder}/infer_{formatted_date}_{random_value}.log'
+            cmd += f' 2>&1 | tee {self.log_file_path}'
             return cmd
 
         return LazyLLMCMD(cmd=impl, return_value=self.geturl, checkf=verify_fastapi_func)
