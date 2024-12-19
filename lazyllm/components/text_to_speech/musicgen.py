@@ -11,7 +11,7 @@ class MusicGen(object):
 
     def __init__(self, base_path, source=None, save_path=None, init=False):
         source = lazyllm.config['model_source'] if not source else source
-        self.base_path = ModelManager(source).download(base_path)
+        self.base_path = ModelManager(source).download(base_path) or ''
         self.model = None
         self.init_flag = lazyllm.once_flag()
         self.save_path = save_path or os.path.join(lazyllm.config['temp_dir'], 'musicgen')
