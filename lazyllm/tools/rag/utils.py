@@ -126,13 +126,10 @@ class DocListManager(ABC):
         return self
 
     def delete_files(self, file_ids: List[str]) -> List[KBDocument]:
-        print("Delete files:", file_ids)
         document_list = self.update_file_status_by_cond(
             file_ids, self.DELETE_SAFE_STATUS_LIST, DocListManager.Status.deleting
         )
-        print("document_list: ", document_list)
         safe_delete_ids = [doc.doc_id for doc in document_list]
-        print("Input file ids:", file_ids, ", safe delete ids:", safe_delete_ids)
         self.update_kb_group_file_status(file_ids=safe_delete_ids, status=DocListManager.Status.deleting)
         return document_list
 
@@ -231,7 +228,6 @@ class SqliteDocListManager(DocListManager):
         root_dir = os.path.expanduser(os.path.join(config['home'], '.dbs'))
         os.makedirs(root_dir, exist_ok=True)
         self._db_path = os.path.join(root_dir, f'.lazyllm_dlmanager.{self._id}.db')
-        print(f"Database path: {self._db_path}")
         self._db_lock = FileLock(self._db_path + '.lock')
         # ensure that this connection is not used in another thread when sqlite3 is not threadsafe
         self._check_same_thread = not sqlite3_check_threadsafety()
@@ -414,7 +410,6 @@ class SqliteDocListManager(DocListManager):
                 .values(status=new_status)
                 .returning(KBDocument.doc_id, KBDocument.path)
             )
-            print("raw sql: ", str(stmt.compile(compile_kwargs={"literal_binds": True})))
             rows = session.execute(stmt).fetchall()
             session.commit()
         return rows

@@ -69,7 +69,6 @@ class DocManager(lazyllm.ModuleBase):
 
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
             file_paths = [gen_unique_filepaths(ele) for ele in file_paths]
-            print("FILE PATHS", file_paths)
             ids = self._manager.add_files(file_paths, metadatas=metadatas, status=DocListManager.Status.working)
             assert len(files) == len(ids), "len(files) uploaded vs len(ids) recored"
             results = []
