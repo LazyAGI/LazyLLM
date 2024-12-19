@@ -88,10 +88,12 @@ class Document(ModuleBase):
         return doc
 
     @property
-    def _impl(self): return self._impls.get_doc_by_kb_group(self._curr_group)
+    def _impl(self):
+        return self._impls.get_doc_by_kb_group(self._curr_group)
 
     @property
-    def manager(self): return getattr(self._impls, '_manager', None)
+    def manager(self):
+        return getattr(self._impls, '_manager', None)
 
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,

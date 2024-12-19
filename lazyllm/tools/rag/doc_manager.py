@@ -13,6 +13,20 @@ from .doc_impl import gen_docid
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 
 
+def gen_unique_filepaths(ori_filepath: str) -> str:
+    assert not os.path.exists(ori_filepath), f"file already exists: {ori_filepath}"
+    if not os.path.exists(ori_filepath):
+        return ori_filepath
+    directory, filename = os.path.split(ori_filepath)
+    name, ext = os.path.splitext(filename)
+    ct = 1
+    new_filepath = f"{os.path.join(directory, name)}_{ct}{ext}"
+    while os.path.exists(new_filepath):
+        ct += 1
+        new_filepath = f"{os.path.join(directory, name)}_{ct}{ext}"
+    return new_filepath
+
+
 class DocManager(lazyllm.ModuleBase):
     def __init__(self, dlm: DocListManager) -> None:
         super().__init__()
@@ -54,7 +68,9 @@ class DocManager(lazyllm.ModuleBase):
                         return BaseResponse(code=400, msg=f'file [{files[idx].filename}]: {err_msg}', data=None)
 
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
+            file_paths = [gen_unique_filepaths(ele) for ele in file_paths]
             ids = self._manager.add_files(file_paths, metadatas=metadatas, status=DocListManager.Status.working)
+            assert len(files) == len(ids), "len(files) uploaded vs len(ids) recored"
             results = []
             for file, path in zip(files, file_paths):
                 if os.path.exists(path):
@@ -73,7 +89,6 @@ class DocManager(lazyllm.ModuleBase):
                 except Exception as e:
                     lazyllm.LOG.error(f'writing file [{path}] to disk failed: [{e}]')
                     raise e
-
                 file_id = gen_docid(path)
                 self._manager.update_file_status([file_id], status=DocListManager.Status.success)
                 results.append('Success')
@@ -105,7 +120,8 @@ class DocManager(lazyllm.ModuleBase):
                     exist_id = exists_files_info.get(file, None)
                     if exist_id:
                         update_kws = dict(fileid=exist_id, status=DocListManager.Status.success)
-                        if metadatas: update_kws["metadata"] = json.dumps(metadatas[idx])
+                        if metadatas:
+                            update_kws["meta"] = json.dumps(metadatas[idx])
                         self._manager.update_file_message(**update_kws)
                         exist_ids.append(exist_id)
                         id_mapping[file] = exist_id
@@ -178,15 +194,11 @@ class DocManager(lazyllm.ModuleBase):
             if request.group_name:
                 return self.delete_files_from_group(request)
             else:
-                self._manager.update_kb_group_file_status(
-                    file_ids=request.file_ids, status=DocListManager.Status.deleting)
-                docs = self._manager.update_file_status(file_ids=request.file_ids, status=DocListManager.Status.deleting)
-
-                for doc in docs:
-                    if os.path.exists(path := doc[1]):
+                document_list = self._manager.delete_files(request.file_ids)
+                for doc in document_list:
+                    print("DELETE doc:", doc.path)
+                    if os.path.exists(path := doc.path):
                         os.remove(path)
-
-                self._manager.update_file_status(file_ids=request.file_ids, status=DocListManager.Status.deleted)
                 return BaseResponse()
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)

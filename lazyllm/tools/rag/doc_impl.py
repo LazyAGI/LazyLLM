@@ -230,12 +230,14 @@ class DocImpl:
 
             if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
                 self._dlm.init_tables()
+                self._dlm.delete_obsolete_files()
             ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
                                                      upload_status=DocListManager.Status.success)
             if files:
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
                 self._add_files(input_files=files, ids=ids, metadatas=metadatas)
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
+                time.sleep(3)
                 continue
             time.sleep(10)
 
@@ -264,7 +266,7 @@ class DocImpl:
         temp_store = self._create_store({"type": "map"})
         temp_store.update_nodes(root_nodes)
         all_groups = self.store.all_groups()
-        LOG.info(f"add_files: Trying to merge store with {all_groups}")
+        # LOG.info(f"add_files: Trying to merge store with {all_groups}")
         for group in all_groups:
             if group != LAZY_ROOT_NAME and not self.store.is_group_active(group):
                 continue
