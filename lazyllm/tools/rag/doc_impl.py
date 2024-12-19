@@ -250,7 +250,7 @@ class DocImpl:
         root_nodes = self._reader.load_data(input_files)
         for idx, node in enumerate(root_nodes):
             node.global_metadata = metadatas[idx].copy() if metadatas else {}
-            node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else gen_docid(input_files[idx])           
+            node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else gen_docid(input_files[idx])
             node.global_metadata[RAG_DOC_PATH] = input_files[idx]
         temp_store = self._create_store({"type": "map"})
         temp_store.update_nodes(root_nodes)

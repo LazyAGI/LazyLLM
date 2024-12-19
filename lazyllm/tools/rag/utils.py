@@ -11,9 +11,8 @@ from lazyllm.common import override
 from lazyllm.common.queue import sqlite3_check_threadsafety
 import sqlalchemy
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import Column, insert, update, select, delete
+from sqlalchemy import Column, insert, update
 from sqlalchemy.orm import sessionmaker
-import uuid
 
 import pydantic
 import sqlite3
@@ -101,6 +100,7 @@ class DocListManager(ABC):
         deleted = 'deleted'
 
     DELETE_SAFE_STATUS_LIST = [Status.waiting, Status.success, Status.failed]
+
     def __init__(self, path, name):
         self._path = path
         self._name = name
@@ -480,7 +480,7 @@ class SqliteDocListManager(DocListManager):
         updated_files = []
 
         for i in range(0, len(file_ids), batch_size):
-            batch = file_ids[i : i + batch_size]
+            batch = file_ids[i: i + batch_size]
             placeholders = ', '.join('?' for _ in batch)
             sql = f'UPDATE documents SET status = ? WHERE doc_id IN ({placeholders}) RETURNING doc_id, path'
 
