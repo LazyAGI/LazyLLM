@@ -161,7 +161,7 @@ class ModelManager():
         full_model_dir = os.path.join(self.cache_dir, self.model_source, model_dir)
 
         try:
-            self.hub_downloader.download(model, full_model_dir, call_back)
+            return self.hub_downloader.download(model, full_model_dir, call_back)
         # Use `BaseException` to capture `KeyboardInterrupt` and normal `Exceptioin`.
         except BaseException as e:
             lazyllm.LOG.warning(f"Download encountered an error: {e}")
