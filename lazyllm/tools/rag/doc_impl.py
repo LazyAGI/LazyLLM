@@ -255,7 +255,7 @@ class DocImpl:
         temp_store = self._create_store({"type": "map"})
         temp_store.update_nodes(root_nodes)
         all_groups = self.store.all_groups()
-        # LOG.info(f"add_files: Trying to merge store with {all_groups}")
+        LOG.info(f"add_files: Trying to merge store with {all_groups}")
         for group in all_groups:
             if group != LAZY_ROOT_NAME and not self.store.is_group_active(group):
                 continue

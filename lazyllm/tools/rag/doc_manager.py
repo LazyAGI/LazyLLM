@@ -70,7 +70,6 @@ class DocManager(lazyllm.ModuleBase):
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
             file_paths = [gen_unique_filepaths(ele) for ele in file_paths]
             ids = self._manager.add_files(file_paths, metadatas=metadatas, status=DocListManager.Status.working)
-            assert len(files) == len(ids), "len(files) uploaded vs len(ids) recored"
             results = []
             for file, path in zip(files, file_paths):
                 if os.path.exists(path):
@@ -120,8 +119,7 @@ class DocManager(lazyllm.ModuleBase):
                     exist_id = exists_files_info.get(file, None)
                     if exist_id:
                         update_kws = dict(fileid=exist_id, status=DocListManager.Status.success)
-                        if metadatas:
-                            update_kws["meta"] = json.dumps(metadatas[idx])
+                        if metadatas: update_kws["meta"] = json.dumps(metadatas[idx])
                         self._manager.update_file_message(**update_kws)
                         exist_ids.append(exist_id)
                         id_mapping[file] = exist_id

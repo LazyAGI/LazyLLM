@@ -35,11 +35,6 @@ config.add(
 
 config.add("default_dlmanager", str, "sqlite", "DEFAULT_DOCLIST_MANAGER")
 
-
-def gen_docid_wo_dlm(file_path: str) -> str:
-    return hashlib.sha256(file_path.encode()).hexdigest()
-
-
 def gen_docid(file_path: str) -> str:
     return hashlib.sha256(file_path.encode()).hexdigest()
 
@@ -140,14 +135,9 @@ class DocListManager(ABC):
     def _init_tables(self): pass
 
     @abstractmethod
-    def list_files(
-        self,
-        limit: Optional[int] = None,
-        details: bool = False,
-        status: Union[str, List[str]] = Status.all,
-        exclude_status: Optional[Union[str, List[str]]] = None,
-    ):
-        pass
+    def list_files(self, limit: Optional[int] = None, details: bool = False,
+                   status: Union[str, List[str]] = Status.all,
+                   exclude_status: Optional[Union[str, List[str]]] = None): pass
 
     @abstractmethod
     def list_all_kb_group(self): pass
@@ -156,17 +146,11 @@ class DocListManager(ABC):
     def add_kb_group(self, name): pass
 
     @abstractmethod
-    def list_kb_group_files(
-        self,
-        group: str = None,
-        limit: Optional[int] = None,
-        details: bool = False,
-        status: Union[str, List[str]] = Status.all,
-        exclude_status: Optional[Union[str, List[str]]] = None,
-        upload_status: Union[str, List[str]] = Status.all,
-        exclude_upload_status: Optional[Union[str, List[str]]] = None,
-    ):
-        pass
+    def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
+                            status: Union[str, List[str]] = Status.all,
+                            exclude_status: Optional[Union[str, List[str]]] = None,
+                            upload_status: Union[str, List[str]] = Status.all,
+                            exclude_upload_status: Optional[Union[str, List[str]]] = None): pass
 
     def add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None,
                   status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[str]:
@@ -175,20 +159,11 @@ class DocListManager(ABC):
         return ids
 
     @abstractmethod
-    def get_filepaths(self, file_ids: List[str]): pass
+    def _add_files(self, files: List[str], metadatas: Optional[List] = None,
+                   status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[str]: pass
 
     @abstractmethod
     def delete_obsolete_files(self): pass
-
-    @abstractmethod
-    def _add_files(
-        self,
-        files: List[str],
-        metadatas: Optional[List] = None,
-        status: Optional[str] = Status.waiting,
-        batch_size: int = 64,
-    ) -> List[str]:
-        pass
 
     @abstractmethod
     def update_file_message(self, fileid: str, **kw): pass
@@ -334,9 +309,6 @@ class SqliteDocListManager(DocListManager):
         if not details: return [row[:2] for row in rows]
         return rows
 
-    def get_filepaths(self, file_ids: List[str]) -> List[str]:
-        pass
-
     def delete_obsolete_files(self):
         with self._db_lock, self._Session() as session:
             docs_to_delete = (
@@ -458,11 +430,16 @@ class SqliteDocListManager(DocListManager):
                 doc.count = max(0, doc.count - 1)
                 session.commit()
 
+    def get_file_status(self, fileid: str):
+        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
+            cursor = conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
+        return cursor.fetchone()
+
     def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]:
         updated_files = []
 
         for i in range(0, len(file_ids), batch_size):
-            batch = file_ids[i: i + batch_size]
+            batch = file_ids[i:i + batch_size]
             placeholders = ', '.join('?' for _ in batch)
             sql = f'UPDATE documents SET status = ? WHERE doc_id IN ({placeholders}) RETURNING doc_id, path'
 
@@ -472,14 +449,8 @@ class SqliteDocListManager(DocListManager):
                 conn.commit()
         return updated_files
 
-    def get_file_status(self, fileid: str):
-        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
-            cursor = conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
-        return cursor.fetchone()
-
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
-        if isinstance(file_ids, str):
-            file_ids = [file_ids]
+        if isinstance(file_ids, str): file_ids = [file_ids]
         query, params = 'UPDATE kb_group_documents SET status = ? WHERE ', [status]
         if group:
             query += 'group_name = ? AND '
