@@ -33,6 +33,7 @@ class TestDocListManager(unittest.TestCase):
         test_file_1.write("This is a test file 1.")
         test_file_2.write("This is a test file 2.")
         self.test_file_1, self.test_file_2 = str(test_file_1), str(test_file_2)
+        print(f"test_file_1:{test_file_1}, test_file_2:{test_file_2}")
 
         self.manager = DocListManager(str(test_dir), "TestManager")
 
@@ -85,19 +86,31 @@ class TestDocListManager(unittest.TestCase):
         self.manager.delete_files([hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()])
         files_list = self.manager.list_files(details=True)
         assert len(files_list) == 2
-        files_list = self.manager.list_files(details=True, exclude_status=DocListManager.Status.deleted)
+        files_list = self.manager.list_files(details=True, exclude_status=DocListManager.Status.deleting)
         assert len(files_list) == 1
         assert not any(self.test_file_1.endswith(row[1]) for row in files_list)
+
+    def test_add_deleting_file(self):
+        self.manager.init_tables()
+
+        self.manager.add_files([self.test_file_1, self.test_file_2])
+        self.manager.delete_files([hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()])
+        files_list = self.manager.list_files(details=True)
+        assert len(files_list) == 2
+        files_list = self.manager.list_files(details=True, status=DocListManager.Status.deleting)
+        assert len(files_list) == 1
+        documents = self.manager.add_files([self.test_file_1])
+        assert documents == []
 
     def test_update_file_message(self):
         self.manager.init_tables()
 
         self.manager.add_files([self.test_file_1])
         file_id = hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()
-        self.manager.update_file_message(file_id, metadata="New metadata", status="processed")
+        self.manager.update_file_message(file_id, meta="New metadata", status="processed")
 
         conn = sqlite3.connect(self.manager._db_path)
-        cursor = conn.execute("SELECT metadata, status FROM documents WHERE doc_id = ?", (file_id,))
+        cursor = conn.execute("SELECT meta, status FROM documents WHERE doc_id = ?", (file_id,))
         row = cursor.fetchone()
         conn.close()
 
