@@ -11,7 +11,7 @@ from lazyllm.common import override
 from lazyllm.common.queue import sqlite3_check_threadsafety
 import sqlalchemy
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import Column, insert, update
+from sqlalchemy import Column, insert, update, Row
 from sqlalchemy.orm import sessionmaker
 
 import pydantic
@@ -50,6 +50,7 @@ class KBOperationLogs(KBDataBase):
     created_at = Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), nullable=False)
 
 
+DocPartRow = Row
 class KBDocument(KBDataBase):
     __tablename__ = "documents"
 
@@ -120,7 +121,7 @@ class DocListManager(ABC):
         self.add_files(files_list, status=DocListManager.Status.success)
         return self
 
-    def delete_files(self, file_ids: List[str]) -> List[KBDocument]:
+    def delete_files(self, file_ids: List[str]) -> List[DocPartRow]:
         document_list = self.update_file_status_by_cond(
             file_ids, self.DELETE_SAFE_STATUS_LIST, DocListManager.Status.deleting
         )
@@ -152,15 +153,21 @@ class DocListManager(ABC):
                             upload_status: Union[str, List[str]] = Status.all,
                             exclude_upload_status: Optional[Union[str, List[str]]] = None): pass
 
-    def add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None,
-                  status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[str]:
-        ids = self._add_files(files, metadatas, status, batch_size)
-        self.add_files_to_kb_group(ids, group=DocListManager.DEFAULT_GROUP_NAME)
-        return ids
+    def add_files(
+        self,
+        files: List[str],
+        metadatas: Optional[List[Dict[str, Any]]] = None,
+        status: Optional[str] = Status.waiting,
+        batch_size: int = 64,
+    ) -> List[DocPartRow]:
+        documents = self._add_files(files, metadatas, status, batch_size)
+        if documents:
+            self.add_files_to_kb_group([doc.doc_id for doc in documents], group=DocListManager.DEFAULT_GROUP_NAME)
+        return documents
 
     @abstractmethod
     def _add_files(self, files: List[str], metadatas: Optional[List] = None,
-                   status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[str]: pass
+                   status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[DocPartRow]: pass
 
     @abstractmethod
     def delete_obsolete_files(self): pass
@@ -171,7 +178,7 @@ class DocListManager(ABC):
     @abstractmethod
     def update_file_status_by_cond(
         self, file_ids: List[str], cond_status_list: Union[None, List[str]], new_status: str
-    ) -> List[KBDocument]:
+    ) -> List[DocPartRow]:
         pass
 
     @abstractmethod
@@ -324,7 +331,7 @@ class SqliteDocListManager(DocListManager):
 
     def _add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None,
                    status: Optional[str] = DocListManager.Status.waiting, batch_size: int = 64):
-        ids = []
+        documents = []
         if not files:
             return []
 
@@ -351,13 +358,15 @@ class SqliteDocListManager(DocListManager):
                     }
                 )
             with self._db_lock, self._Session() as session:
-                result = session.execute(
-                    insert(KBDocument).values(vals).prefix_with('OR IGNORE').returning(KBDocument.doc_id)
-                )
-                returned_values = result.fetchall()
+                rows = session.execute(
+                    insert(KBDocument)
+                    .values(vals)
+                    .prefix_with('OR IGNORE')
+                    .returning(KBDocument.doc_id, KBDocument.path)
+                ).fetchall()
                 session.commit()
-                ids.extend([ele.doc_id for ele in returned_values])
-        return ids
+                documents.extend(rows)
+        return documents
 
     # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):
@@ -369,7 +378,7 @@ class SqliteDocListManager(DocListManager):
 
     def update_file_status_by_cond(
         self, file_ids: List[str], cond_status_list: Union[None, List[str]], new_status: str
-    ) -> List[KBDocument]:
+    ) -> List[DocPartRow]:
         rows = []
         if cond_status_list is None:
             sql_cond = KBDocument.doc_id.in_(file_ids)

@@ -14,7 +14,6 @@ from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 
 
 def gen_unique_filepaths(ori_filepath: str) -> str:
-    assert not os.path.exists(ori_filepath), f"file already exists: {ori_filepath}"
     if not os.path.exists(ori_filepath):
         return ori_filepath
     directory, filename = os.path.split(ori_filepath)
@@ -69,28 +68,31 @@ class DocManager(lazyllm.ModuleBase):
 
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
             file_paths = [gen_unique_filepaths(ele) for ele in file_paths]
-            ids = self._manager.add_files(file_paths, metadatas=metadatas, status=DocListManager.Status.working)
-            results = []
+            # when adding same file which is deleting, it will be ignored
+            documents = self._manager.add_files(file_paths, metadatas=metadatas, status=DocListManager.Status.working)
+            ids, results = [], []
+            rev_index = {ele.path: i for i, ele in enumerate(documents)}
             for file, path in zip(files, file_paths):
-                if os.path.exists(path):
-                    if not override:
-                        results.append('Duplicated')
-                        continue
-
-                try:
-                    content = file.file.read()
-                    directory = os.path.dirname(path)
-                    if directory:
-                        os.makedirs(directory, exist_ok=True)
-
-                    with open(path, 'wb') as f:
-                        f.write(content)
-                except Exception as e:
-                    lazyllm.LOG.error(f'writing file [{path}] to disk failed: [{e}]')
-                    raise e
                 file_id = gen_docid(path)
-                self._manager.update_file_status([file_id], status=DocListManager.Status.success)
-                results.append('Success')
+                result = "Failed"
+                if path not in rev_index:
+                    result = "Failed, wait for deleting finished"
+                else:
+                    try:
+                        content = file.file.read()
+                        directory = os.path.dirname(path)
+                        if directory:
+                            os.makedirs(directory, exist_ok=True)
+
+                        with open(path, 'wb') as f:
+                            f.write(content)
+                    except Exception as e:
+                        lazyllm.LOG.error(f'writing file [{path}] to disk failed: [{e}]')
+                        raise e
+                    self._manager.update_file_status([file_id], status=DocListManager.Status.success)
+                    result = "Success"
+                ids.append(file_id)
+                results.append(result)
 
             return BaseResponse(data=[ids, results])
         except Exception as e:
@@ -192,12 +194,13 @@ class DocManager(lazyllm.ModuleBase):
             if request.group_name:
                 return self.delete_files_from_group(request)
             else:
-                document_list = self._manager.delete_files(request.file_ids)
-                for doc in document_list:
-                    print("DELETE doc:", doc.path)
+                documents = self._manager.delete_files(request.file_ids)
+                deleted_ids = set([ele.doc_id for ele in documents])
+                for doc in documents:
                     if os.path.exists(path := doc.path):
                         os.remove(path)
-                return BaseResponse()
+                results = ["Success" if ele.doc_id in deleted_ids else "Failed" for ele in documents]
+                return BaseResponse(data=[request.file_ids, results])
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 

@@ -90,6 +90,18 @@ class TestDocListManager(unittest.TestCase):
         assert len(files_list) == 1
         assert not any(self.test_file_1.endswith(row[1]) for row in files_list)
 
+    def test_add_deleting_file(self):
+        self.manager.init_tables()
+
+        self.manager.add_files([self.test_file_1, self.test_file_2])
+        self.manager.delete_files([hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()])
+        files_list = self.manager.list_files(details=True)
+        assert len(files_list) == 2
+        files_list = self.manager.list_files(details=True, status=DocListManager.Status.deleting)
+        assert len(files_list) == 1
+        documents = self.manager.add_files([self.test_file_1])
+        assert documents == []
+
     def test_update_file_message(self):
         self.manager.init_tables()
 
