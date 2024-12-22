@@ -51,8 +51,8 @@ class DocManager(lazyllm.ModuleBase):
             return f"metadata MUST not contain key `{RAG_DOC_PATH}`"
         return None
 
-    @app.post("/upload_files")
-    def upload_files(self, files: List[UploadFile], override: bool = False,  # noqa C901
+    @app.post("/upload_ori_files")
+    def upload_ori_files(self, files: List[UploadFile], override: bool = False,  # noqa C901
                      metadatas: Optional[str] = None, user_path: Optional[str] = None):
         try:
             if user_path: user_path = user_path.lstrip('/')
@@ -98,6 +98,36 @@ class DocManager(lazyllm.ModuleBase):
         except Exception as e:
             lazyllm.LOG.error(f'upload_files exception: {e}')
             return BaseResponse(code=500, msg=str(e), data=None)
+
+    @app.post("/upload_files")
+    def upload_files(self, files: List[UploadFile], override: bool = False,  # noqa C901
+                     metadatas: Optional[str] = None, user_path: Optional[str] = None):
+        try:
+            if user_path: user_path = user_path.lstrip('/')
+            if metadatas:
+                metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)
+                if len(files) != len(metadatas):
+                    return BaseResponse(code=400, msg='Length of files and metadatas should be the same',
+                                        data=None)
+                for idx, mt in enumerate(metadatas):
+                    err_msg = self._validate_metadata(mt)
+                    if err_msg:
+                        return BaseResponse(code=400, msg=f'file [{files[idx].filename}]: {err_msg}', data=None)
+
+            file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
+            ids, results = [], []
+            for i in range(len(files)):
+                file_path = file_paths[i]
+                content = files[i].file.read()
+                metadata = metadatas[i] if metadatas else None
+                doc_id, is_success, msg = self._manager.safe_parsing_path(file_path, content, metadata)
+                ids.append(doc_id)
+                results.append(msg)
+            return BaseResponse(data=[ids, results])
+        except Exception as e:
+            lazyllm.LOG.error(f'upload_files exception: {e}')
+            return BaseResponse(code=500, msg=str(e), data=None)
+        
 
     @app.post("/add_files")
     def add_files(self, files: List[str] = Body(...),

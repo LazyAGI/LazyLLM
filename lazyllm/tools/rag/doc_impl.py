@@ -13,7 +13,7 @@ from .milvus_store import MilvusStore
 from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import DocListManager, gen_docid
+from .utils import DocListManager, KBDocument, gen_docid
 from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH
 import threading
 import time
@@ -209,8 +209,31 @@ class DocImpl:
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
 
+    
+    def _reparse_success_failed_docs(self, docs: List[KBDocument]):
+        if len(docs) > 0:
+            self._delete_files([doc.path for doc in docs])
+            filepaths = [doc.path for doc in docs]
+            ids = [doc.doc_id for doc in docs]
+            metadatas = [doc.metadata for doc in docs]
+            self._add_files(input_files=filepaths, ids=ids, metadatas=metadatas)
+    
+    def _reparse_deleting_docs(self, docs: List[KBDocument]):
+        if len(docs) > 0:
+            files_list = [doc.path for doc in docs]
+            ids = [doc.doc_id for doc in docs]
+            metadatas = [doc.metadata for doc in docs]
+            self._dlm.add_files(files_list, status=DocListManager.Status.success)
+            self._add_files(input_files=files_list, ids=ids, metadatas=metadatas)
+            self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
+
     def worker(self):
         while True:
+            docs_need_reparse = self._dlm.get_docs_need_reparse()
+            self._reparse_success_failed_docs(docs_need_reparse[DocListManager.Status.success])
+            self._reparse_success_failed_docs(docs_need_reparse[DocListManager.Status.failed])
+            self._reparse_deleting_docs(docs_need_reparse[DocListManager.Status.deleting])
+            
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
             if files:
                 self._delete_files(files)

@@ -58,6 +58,8 @@ class KBDocument(KBDataBase):
     filename = Column(sqlalchemy.Text, nullable=False, index=True)
     path = Column(sqlalchemy.Text, nullable=False)
     created_at = Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), nullable=False)
+    last_updated = Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), onupdate=sqlalchemy.func.now())
+    need_reparse = Column(sqlalchemy.Boolean, default=False, nullable=False)
     meta = Column(sqlalchemy.Text, nullable=True)
     status = Column(sqlalchemy.Text, nullable=False, index=True)
     count = Column(sqlalchemy.Integer, default=0)
@@ -171,6 +173,13 @@ class DocListManager(ABC):
 
     @abstractmethod
     def delete_obsolete_files(self): pass
+
+    @abstractmethod
+    def get_docs_need_reparse(self) -> Dict[str, List[KBDocument]]: pass
+    
+    @abstractmethod
+    def safe_parsing_path(self, file_path: str, content: bytes,
+                              metadata: Union[None, Dict[str, Any]]=None) -> Tuple[str, bool, str]: pass
 
     @abstractmethod
     def update_file_message(self, fileid: str, **kw): pass
@@ -367,6 +376,62 @@ class SqliteDocListManager(DocListManager):
                 session.commit()
                 documents.extend(rows)
         return documents
+
+    def get_docs_need_reparse(self) -> Dict[str, List[KBDocument]]:
+        with self._db_lock, self._Session() as session:
+            docs_p1 = (
+                session.query(KBDocument)
+                .filter(KBDocument.need_reparse == True, KBDocument.status == DocListManager.Status.success)
+                .all()
+            )
+            docs_p2 = (
+                session.query(KBDocument)
+                .filter(KBDocument.need_reparse == True, KBDocument.status == DocListManager.Status.failed)
+                .all()
+            )            
+            docs_p3 = (
+                session.query(KBDocument)
+                .filter(KBDocument.need_reparse == True, KBDocument.status == DocListManager.Status.deleting,
+                        KBDocument.count == 0)
+                .all()
+            )
+            for doc in docs_p1 + docs_p2:
+                doc.need_reparse = False
+                doc.status = DocListManager.Status.success
+            session.commit()
+            return {DocListManager.Status.success: docs_p1, DocListManager.Status.failed: docs_p2,
+                    DocListManager.Status.deleting: docs_p3}
+
+    def safe_parsing_path(self, file_path: str, content: bytes,
+                              metadata: Union[None, Dict[str, Any]]=None) -> Tuple[str, bool, str]:
+        doc_id = gen_docid(file_path)
+        found = False
+        # process existing path: reparsing
+        with self._db_lock, self._Session() as session:
+            try:
+                doc_existing = session.query(KBDocument).filter_by(doc_id=doc_id).one()
+                found = True
+            except sqlalchemy.orm.exc.NoResultFound:
+                found = False
+            if found:
+                if doc_existing.status == DocListManager.Status.waiting:
+                    with open(file_path, 'wb') as f: f.write(content)
+                    return doc_id, True, "Success: Updated for waiting"
+                elif doc_existing.status == DocListManager.Status.working:
+                    return doc_id, False, "Failed: Cannot update while Working"
+                elif doc_existing.status in [DocListManager.Status.success, DocListManager.Status.failed,
+                                            DocListManager.Status.deleting]:
+                    with open(file_path, 'wb') as f: f.write(content)
+                    doc_existing.need_reparse = True
+                    session.commit()
+                    return doc_id, True, "Success"
+
+        # process new path     
+        metadatas = [metadata] if metadata else None
+        documents = self.add_files([file_path], metadatas=metadatas, status=DocListManager.Status.working)
+        with open(file_path, 'wb') as f: f.write(content)
+        self.update_file_status([doc_id], status=DocListManager.Status.success)
+        return doc_id, True, "Success: New"
 
     # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):
