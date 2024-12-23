@@ -148,13 +148,6 @@ model_name_mapping = {
         },
         "type": "vlm"
     },
-    "sensechatvl": {
-        "source": {
-            "huggingface": "sensetime/sensechatvl",
-            "modelscope": "sensetime/sensechatvl"
-        },
-        "type": "vlm"
-    },
     "yi-vl-6b": {
         "source": {
             "huggingface": "01-ai/Yi-VL-6B",
