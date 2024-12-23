@@ -177,10 +177,10 @@ class DocListManager(ABC):
 
     @abstractmethod
     def get_docs_need_reparse(self, group: Optional[str] = None) -> Dict[str, List[KBDocument]]: pass
-    
+
     @abstractmethod
     def safe_parsing_path(self, file_path: str, content: bytes,
-                              metadata: Union[None, Dict[str, Any]]=None) -> Tuple[str, bool, str]: pass
+                          metadata: Union[None, Dict[str, Any]] = None) -> Tuple[str, bool, str]: pass
 
     @abstractmethod
     def update_file_message(self, fileid: str, **kw): pass
@@ -381,9 +381,10 @@ class SqliteDocListManager(DocListManager):
     def get_docs_need_reparse(self, group: Optional[str] = None) -> Dict[str, List[KBDocument]]:
         with self._db_lock, self._Session() as session:
             if group is None:
-                sql_cond = KBGroupDocuments.need_reparse == True
+                sql_cond = KBGroupDocuments.need_reparse.is_(True)
             else:
-                sql_cond = sqlalchemy.and_(KBGroupDocuments.need_reparse == True, KBGroupDocuments.group_name == group)            
+                sql_cond = sqlalchemy.and_(
+                    KBGroupDocuments.need_reparse.is_(True), KBGroupDocuments.group_name == group)
             stmt = (
                 update(KBGroupDocuments)
                 .where(sql_cond)
@@ -409,82 +410,53 @@ class SqliteDocListManager(DocListManager):
                 document_by_status[status] = docs
             return document_by_status
 
-    def safe_parsing_path_old(self, file_path: str, content: bytes,
-                              metadata: Union[None, Dict[str, Any]]=None) -> Tuple[str, bool, str]:
-        doc_id = gen_docid(file_path)
-        found = False
-        # process existing path: reparsing
-        with self._db_lock, self._Session() as session:
-            try:
-                doc_existing = session.query(KBDocument).filter_by(doc_id=doc_id).one()
-                found = True
-            except NoResultFound:
-                found = False
-            if found:
-                if doc_existing.status == DocListManager.Status.waiting:
-                    with open(file_path, 'wb') as f: f.write(content)
-                    return doc_id, True, "Success: Updated for waiting"
-                elif doc_existing.status == DocListManager.Status.working:
-                    return doc_id, False, "Failed: Cannot update while Working"
-                elif doc_existing.status in [DocListManager.Status.success, DocListManager.Status.failed,
-                                            DocListManager.Status.deleting]:
-                    with open(file_path, 'wb') as f: f.write(content)
-                    doc_existing.need_reparse = True
-                    session.commit()
-                    return doc_id, True, "Success"
-
-        # process new path     
-        metadatas = [metadata] if metadata else None
-        documents = self.add_files([file_path], metadatas=metadatas, status=DocListManager.Status.working)
-        with open(file_path, 'wb') as f: f.write(content)
-        self.update_file_status([doc_id], status=DocListManager.Status.success)
-        return doc_id, True, "Success: New"
-
     def safe_parsing_path(self, file_path: str, content: bytes,
-                              metadata: Union[None, Dict[str, Any]]=None) -> Tuple[str, bool, str]:
+                          metadata: Union[None, Dict[str, Any]] = None) -> Tuple[str, bool, str]:
         doc_id = gen_docid(file_path)
 
-        def do_overwrite(file_path, content, doc_id, msg):
+        def do_file_overwrite(file_path, content, doc_id, msg):
             with open(file_path, 'wb') as f: f.write(content)
             return doc_id, True, msg
+
+        def do_parsing_by_doc_group_records(file_path, content, doc_id, doc_group_records: List[KBGroupDocuments]):
+            RowSatus = DocListManager.Status
+            if any([doc_group_record.need_reparse for doc_group_record in doc_group_records]):
+                return doc_id, False, "Failed: Document's lasttime reparsing has not been finished"
+            elif any([doc_group_record.status == RowSatus.working for doc_group_record in doc_group_records]):
+                return doc_id, False, "Failed: Document is being parsed by kbgroup"
+            elif any([doc_group_record.status == RowSatus.deleted for doc_group_record in doc_group_records]):
+                return doc_id, False, "Failed: Unexpected status 'deleted' in KBGroupDocuments"
+            elif any([doc_group_record.status == RowSatus.waiting for doc_group_record in doc_group_records]):
+                return do_file_overwrite(file_path, content, doc_id, "Success: Updated for waiting")
+            else:
+                # success, failed, deleting can overwrite
+                return do_file_overwrite(
+                    file_path, content, doc_id, "Success: Document will be reparsed in worker thread")
 
         # process existing path: reparsing
         with self._db_lock, self._Session() as session:
             doc_group_records = session.query(KBGroupDocuments).filter_by(doc_id=doc_id).all()
+            docs_existing = session.query(KBDocument).filter_by(doc_id=doc_id).all()
             if len(doc_group_records) == 0:
                 # no records in KBGroupDocuments means document has been deleted or never existed
-                try:
-                    doc_existing = session.query(KBDocument).filter_by(doc_id=doc_id).one()
-                    if doc_existing.status == DocListManager.Status.deleting:
-                        session.delete(doc_existing)
-                        session.commit()
-                        return do_overwrite(file_path, content, doc_id, "Success: Add new doc after deleting")
-                    else:
-                        return doc_id, False, "Failed: Document exist with status {doc_existing.status}"
-                except NoResultFound:
-                    return do_overwrite(file_path, content, doc_id, "Success: Add new doc" )
+                if len(docs_existing) == 0:
+                    return do_file_overwrite(file_path, content, doc_id, "Success: Add new doc")
+                doc_existing = docs_existing[0]
+                if doc_existing.status == DocListManager.Status.deleting:
+                    session.delete(doc_existing)
+                    session.commit()
+                    return do_file_overwrite(file_path, content, doc_id, "Success: Add new doc after deleting")
+                else:
+                    return doc_id, False, "Failed: Document exist with status {doc_existing.status}"
             else:
-                # records found in KBGroupDocuments. Check need_reparse flag and status
-                try:
-                    doc_existing = session.query(KBDocument).filter_by(doc_id=doc_id).one()
-                    RowSatus = DocListManager.Status
-                    if any([doc_group_record.need_reparse == True for doc_group_record in doc_group_records]):
-                        return doc_id, False, "Failed: Document's lasttime reparsing has not been finished"
-                    elif any([doc_group_record.status == RowSatus.working for doc_group_record in doc_group_records]):
-                        return doc_id, False, "Failed: Document is being parsed by kbgroup"
-                    elif any([doc_group_record.status == RowSatus.deleted for doc_group_record in doc_group_records]):
-                        return doc_id, False, "Failed: Unexpected status 'deleted' in KBGroupDocuments"
-                    elif any([doc_group_record.status == RowSatus.waiting for doc_group_record in doc_group_records]):
-                        return do_overwrite(file_path, content, doc_id, "Success: Updated for waiting")
-                    else:
-                        for doc_group_record in doc_group_records:
-                            doc_group_record.need_reparse = True
-                        session.commit()
-                        return do_overwrite(
-                            file_path, content, doc_id, "Success: Document will be reparsed in worker thread")
-                except NoResultFound:
+                if len(docs_existing) == 0:
                     return doc_id, False, "Failed: Document doesnt's exist while existing in KBGroupDocuments"
-        return doc_id, False, "Failed: Unkknown reason"   
+                # records found in KBGroupDocuments. Check need_reparse flag and status
+                for doc_group_record in doc_group_records:
+                    doc_group_record.need_reparse = True
+                session.commit()
+                return do_parsing_by_doc_group_records(file_path, content, doc_id, doc_group_records)
+        return doc_id, False, "Failed: Unkknown reason"
 
     # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):
@@ -492,7 +464,7 @@ class SqliteDocListManager(DocListManager):
         params = list(kw.values()) + [fileid]
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
-            conn.commit()            
+            conn.commit()
 
     def update_file_status_by_cond(
         self, file_ids: List[str], cond_status_list: Union[None, List[str]], new_status: str

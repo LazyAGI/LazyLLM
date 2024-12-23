@@ -209,7 +209,6 @@ class DocImpl:
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
 
-    
     def _reparse_success_failed_docs(self, docs: List[KBDocument]):
         if len(docs) > 0:
             self._delete_files([doc.path for doc in docs])
@@ -231,7 +230,7 @@ class DocImpl:
         if not files:
             return
         self._delete_files(files)
-        self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)        
+        self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
 
     def worker(self):
         while True:
@@ -239,10 +238,10 @@ class DocImpl:
             for k, docs in docs_need_reparse.items():
                 filepaths = [doc.path for doc in docs]
                 ids = [doc.doc_id for doc in docs]
-                metadatas = [doc.metadata for doc in docs]                
+                metadatas = [doc.metadata for doc in docs]
                 self._worker_delete_files(filepaths, ids)
                 self._worker_add_files(files=filepaths, ids=ids, metadatas=metadatas)
-            
+
             # 这里是检测自己kb_group的删除文件
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
             if files:

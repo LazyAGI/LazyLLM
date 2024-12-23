@@ -9,7 +9,6 @@ from fastapi import UploadFile, Body
 import lazyllm
 from lazyllm import FastapiApp as app
 from .utils import DocListManager, BaseResponse
-from .doc_impl import gen_docid
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 
 
@@ -51,54 +50,6 @@ class DocManager(lazyllm.ModuleBase):
             return f"metadata MUST not contain key `{RAG_DOC_PATH}`"
         return None
 
-    @app.post("/upload_ori_files")
-    def upload_ori_files(self, files: List[UploadFile], override: bool = False,  # noqa C901
-                     metadatas: Optional[str] = None, user_path: Optional[str] = None):
-        try:
-            if user_path: user_path = user_path.lstrip('/')
-            if metadatas:
-                metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)
-                if len(files) != len(metadatas):
-                    return BaseResponse(code=400, msg='Length of files and metadatas should be the same',
-                                        data=None)
-                for idx, mt in enumerate(metadatas):
-                    err_msg = self._validate_metadata(mt)
-                    if err_msg:
-                        return BaseResponse(code=400, msg=f'file [{files[idx].filename}]: {err_msg}', data=None)
-
-            file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
-            file_paths = [gen_unique_filepaths(ele) for ele in file_paths]
-            # when adding same file which is deleting, it will be ignored
-            documents = self._manager.add_files(file_paths, metadatas=metadatas, status=DocListManager.Status.working)
-            ids, results = [], []
-            rev_index = {ele.path: i for i, ele in enumerate(documents)}
-            for file, path in zip(files, file_paths):
-                file_id = gen_docid(path)
-                result = "Failed"
-                if path not in rev_index:
-                    result = "Failed, wait for deleting finished"
-                else:
-                    try:
-                        content = file.file.read()
-                        directory = os.path.dirname(path)
-                        if directory:
-                            os.makedirs(directory, exist_ok=True)
-
-                        with open(path, 'wb') as f:
-                            f.write(content)
-                    except Exception as e:
-                        lazyllm.LOG.error(f'writing file [{path}] to disk failed: [{e}]')
-                        raise e
-                    self._manager.update_file_status([file_id], status=DocListManager.Status.success)
-                    result = "Success"
-                ids.append(file_id)
-                results.append(result)
-
-            return BaseResponse(data=[ids, results])
-        except Exception as e:
-            lazyllm.LOG.error(f'upload_files exception: {e}')
-            return BaseResponse(code=500, msg=str(e), data=None)
-
     @app.post("/upload_files")
     def upload_files(self, files: List[UploadFile], override: bool = False,  # noqa C901
                      metadatas: Optional[str] = None, user_path: Optional[str] = None):
@@ -127,7 +78,6 @@ class DocManager(lazyllm.ModuleBase):
         except Exception as e:
             lazyllm.LOG.error(f'upload_files exception: {e}')
             return BaseResponse(code=500, msg=str(e), data=None)
-        
 
     @app.post("/add_files")
     def add_files(self, files: List[str] = Body(...),
