@@ -426,14 +426,11 @@ class SqliteDocListManager(DocListManager):
                 return doc_id, False, "Failed: Document is being parsed by kbgroup"
             elif any([doc_group_record.status == RowSatus.deleted for doc_group_record in doc_group_records]):
                 return doc_id, False, "Failed: Unexpected status 'deleted' in KBGroupDocuments"
-            elif any([doc_group_record.status == RowSatus.waiting for doc_group_record in doc_group_records]):
-                return do_file_overwrite(file_path, content, doc_id, "Success: Updated for waiting")
             else:
                 # success, failed, deleting can overwrite
                 return do_file_overwrite(
                     file_path, content, doc_id, "Success: Document will be reparsed in worker thread")
 
-        # process existing path: reparsing
         with self._db_lock, self._Session() as session:
             doc_group_records = session.query(KBGroupDocuments).filter_by(doc_id=doc_id).all()
             docs_existing = session.query(KBDocument).filter_by(doc_id=doc_id).all()
@@ -452,10 +449,12 @@ class SqliteDocListManager(DocListManager):
                 if len(docs_existing) == 0:
                     return doc_id, False, "Failed: Document doesnt's exist while existing in KBGroupDocuments"
                 # records found in KBGroupDocuments. Check need_reparse flag and status
-                for doc_group_record in doc_group_records:
-                    doc_group_record.need_reparse = True
-                session.commit()
-                return do_parsing_by_doc_group_records(file_path, content, doc_id, doc_group_records)
+                doc_id, is_success, msg = do_parsing_by_doc_group_records(file_path, content, doc_id, doc_group_records)
+                if is_success:
+                    for doc_group_record in doc_group_records:
+                        doc_group_record.need_reparse = True
+                    session.commit()
+                return doc_id, is_success, msg
         return doc_id, False, "Failed: Unkknown reason"
 
     # TODO(wangzhihong): set to metadatas and enable this function
