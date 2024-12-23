@@ -216,39 +216,48 @@ class DocImpl:
             filepaths = [doc.path for doc in docs]
             ids = [doc.doc_id for doc in docs]
             metadatas = [doc.metadata for doc in docs]
+            self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
             self._add_files(input_files=filepaths, ids=ids, metadatas=metadatas)
-    
-    def _reparse_deleting_docs(self, docs: List[KBDocument]):
-        if len(docs) > 0:
-            files_list = [doc.path for doc in docs]
-            ids = [doc.doc_id for doc in docs]
-            metadatas = [doc.metadata for doc in docs]
-            self._dlm.add_files(files_list, status=DocListManager.Status.success)
-            self._add_files(input_files=files_list, ids=ids, metadatas=metadatas)
             self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
+
+    def _worker_add_files(self, files: List[str], ids: List[str], metadatas: List[Dict[str, Any]]):
+        if not files:
+            return
+        self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
+        self._add_files(input_files=files, ids=ids, metadatas=metadatas)
+        self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
+
+    def _worker_delete_files(self, files: List[str], ids: List[str]):
+        if not files:
+            return
+        self._delete_files(files)
+        self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)        
 
     def worker(self):
         while True:
-            docs_need_reparse = self._dlm.get_docs_need_reparse()
-            self._reparse_success_failed_docs(docs_need_reparse[DocListManager.Status.success])
-            self._reparse_success_failed_docs(docs_need_reparse[DocListManager.Status.failed])
-            self._reparse_deleting_docs(docs_need_reparse[DocListManager.Status.deleting])
+            docs_need_reparse = self._dlm.get_docs_need_reparse(group=self._kb_group_name)
+            for k, docs in docs_need_reparse.items():
+                filepaths = [doc.path for doc in docs]
+                ids = [doc.doc_id for doc in docs]
+                metadatas = [doc.metadata for doc in docs]                
+                self._worker_delete_files(filepaths, ids)
+                self._worker_add_files(files=filepaths, ids=ids, metadatas=metadatas)
             
+            # 这里是检测自己kb_group的删除文件
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
             if files:
-                self._delete_files(files)
-                self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
+                self._worker_delete_files(files, ids)
                 continue
 
             if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
                 self._dlm.init_tables()
                 self._dlm.delete_obsolete_files()
+
+            # 这里是检测自己kb_group的添加文件
             ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
                                                      upload_status=DocListManager.Status.success)
             if files:
-                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
-                self._add_files(input_files=files, ids=ids, metadatas=metadatas)
-                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
+                self._worker_add_files(files, ids, metadatas)
                 time.sleep(3)
                 continue
             time.sleep(10)

@@ -10,9 +10,10 @@ from .global_metadata import RAG_DOC_PATH, RAG_DOC_ID
 from lazyllm.common import override
 from lazyllm.common.queue import sqlite3_check_threadsafety
 import sqlalchemy
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy import Column, insert, update, Row
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import NoResultFound
+import collections
 
 import pydantic
 import sqlite3
@@ -59,7 +60,6 @@ class KBDocument(KBDataBase):
     path = Column(sqlalchemy.Text, nullable=False)
     created_at = Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), nullable=False)
     last_updated = Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), onupdate=sqlalchemy.func.now())
-    need_reparse = Column(sqlalchemy.Boolean, default=False, nullable=False)
     meta = Column(sqlalchemy.Text, nullable=True)
     status = Column(sqlalchemy.Text, nullable=False, index=True)
     count = Column(sqlalchemy.Integer, default=0)
@@ -80,6 +80,7 @@ class KBGroupDocuments(KBDataBase):
     group_name = Column(sqlalchemy.String, sqlalchemy.ForeignKey("document_groups.group_name"), nullable=False)
     status = Column(sqlalchemy.Text, nullable=True)
     log = Column(sqlalchemy.Text, nullable=True)
+    need_reparse = Column(sqlalchemy.Boolean, default=False, nullable=False)
     # unique constraint
     __table_args__ = (sqlalchemy.UniqueConstraint('doc_id', 'group_name', name='uq_doc_to_group'),)
 
@@ -175,7 +176,7 @@ class DocListManager(ABC):
     def delete_obsolete_files(self): pass
 
     @abstractmethod
-    def get_docs_need_reparse(self) -> Dict[str, List[KBDocument]]: pass
+    def get_docs_need_reparse(self, group: Optional[str] = None) -> Dict[str, List[KBDocument]]: pass
     
     @abstractmethod
     def safe_parsing_path(self, file_path: str, content: bytes,
@@ -377,32 +378,38 @@ class SqliteDocListManager(DocListManager):
                 documents.extend(rows)
         return documents
 
-    def get_docs_need_reparse(self) -> Dict[str, List[KBDocument]]:
+    def get_docs_need_reparse(self, group: Optional[str] = None) -> Dict[str, List[KBDocument]]:
         with self._db_lock, self._Session() as session:
-            docs_p1 = (
-                session.query(KBDocument)
-                .filter(KBDocument.need_reparse == True, KBDocument.status == DocListManager.Status.success)
-                .all()
+            if group is None:
+                sql_cond = KBGroupDocuments.need_reparse == True
+            else:
+                sql_cond = sqlalchemy.and_(KBGroupDocuments.need_reparse == True, KBGroupDocuments.group_name == group)            
+            stmt = (
+                update(KBGroupDocuments)
+                .where(sql_cond)
+                .values(need_reparse=False)
+                .returning(KBGroupDocuments.doc_id, KBGroupDocuments.status)
             )
-            docs_p2 = (
-                session.query(KBDocument)
-                .filter(KBDocument.need_reparse == True, KBDocument.status == DocListManager.Status.failed)
-                .all()
-            )            
-            docs_p3 = (
-                session.query(KBDocument)
-                .filter(KBDocument.need_reparse == True, KBDocument.status == DocListManager.Status.deleting,
-                        KBDocument.count == 0)
-                .all()
-            )
-            for doc in docs_p1 + docs_p2:
-                doc.need_reparse = False
-                doc.status = DocListManager.Status.success
+            rows = session.execute(stmt).fetchall()
             session.commit()
-            return {DocListManager.Status.success: docs_p1, DocListManager.Status.failed: docs_p2,
-                    DocListManager.Status.deleting: docs_p3}
+            doc_ids_by_status = collections.defaultdict(list)
+            for row in rows:
+                doc_ids_by_status[row.status].append(row.doc_id)
+            valid_status_set = set([DocListManager.Status.success, DocListManager.Status.failed])
 
-    def safe_parsing_path(self, file_path: str, content: bytes,
+            document_by_status = {}
+            for status, doc_ids in doc_ids_by_status.items():
+                if status not in valid_status_set:
+                    continue
+                docs = (
+                    session.query(KBDocument)
+                    .filter(KBDocument.doc_id.in_(doc_ids))
+                    .all()
+                )
+                document_by_status[status] = docs
+            return document_by_status
+
+    def safe_parsing_path_old(self, file_path: str, content: bytes,
                               metadata: Union[None, Dict[str, Any]]=None) -> Tuple[str, bool, str]:
         doc_id = gen_docid(file_path)
         found = False
@@ -411,7 +418,7 @@ class SqliteDocListManager(DocListManager):
             try:
                 doc_existing = session.query(KBDocument).filter_by(doc_id=doc_id).one()
                 found = True
-            except sqlalchemy.orm.exc.NoResultFound:
+            except NoResultFound:
                 found = False
             if found:
                 if doc_existing.status == DocListManager.Status.waiting:
@@ -433,13 +440,59 @@ class SqliteDocListManager(DocListManager):
         self.update_file_status([doc_id], status=DocListManager.Status.success)
         return doc_id, True, "Success: New"
 
+    def safe_parsing_path(self, file_path: str, content: bytes,
+                              metadata: Union[None, Dict[str, Any]]=None) -> Tuple[str, bool, str]:
+        doc_id = gen_docid(file_path)
+
+        def do_overwrite(file_path, content, doc_id, msg):
+            with open(file_path, 'wb') as f: f.write(content)
+            return doc_id, True, msg
+
+        # process existing path: reparsing
+        with self._db_lock, self._Session() as session:
+            doc_group_records = session.query(KBGroupDocuments).filter_by(doc_id=doc_id).all()
+            if len(doc_group_records) == 0:
+                # no records in KBGroupDocuments means document has been deleted or never existed
+                try:
+                    doc_existing = session.query(KBDocument).filter_by(doc_id=doc_id).one()
+                    if doc_existing.status == DocListManager.Status.deleting:
+                        session.delete(doc_existing)
+                        session.commit()
+                        return do_overwrite(file_path, content, doc_id, "Success: Add new doc after deleting")
+                    else:
+                        return doc_id, False, "Failed: Document exist with status {doc_existing.status}"
+                except NoResultFound:
+                    return do_overwrite(file_path, content, doc_id, "Success: Add new doc" )
+            else:
+                # records found in KBGroupDocuments. Check need_reparse flag and status
+                try:
+                    doc_existing = session.query(KBDocument).filter_by(doc_id=doc_id).one()
+                    RowSatus = DocListManager.Status
+                    if any([doc_group_record.need_reparse == True for doc_group_record in doc_group_records]):
+                        return doc_id, False, "Failed: Document's lasttime reparsing has not been finished"
+                    elif any([doc_group_record.status == RowSatus.working for doc_group_record in doc_group_records]):
+                        return doc_id, False, "Failed: Document is being parsed by kbgroup"
+                    elif any([doc_group_record.status == RowSatus.deleted for doc_group_record in doc_group_records]):
+                        return doc_id, False, "Failed: Unexpected status 'deleted' in KBGroupDocuments"
+                    elif any([doc_group_record.status == RowSatus.waiting for doc_group_record in doc_group_records]):
+                        return do_overwrite(file_path, content, doc_id, "Success: Updated for waiting")
+                    else:
+                        for doc_group_record in doc_group_records:
+                            doc_group_record.need_reparse = True
+                        session.commit()
+                        return do_overwrite(
+                            file_path, content, doc_id, "Success: Document will be reparsed in worker thread")
+                except NoResultFound:
+                    return doc_id, False, "Failed: Document doesnt's exist while existing in KBGroupDocuments"
+        return doc_id, False, "Failed: Unkknown reason"   
+
     # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):
         set_clause = ", ".join([f"{k} = ?" for k in kw.keys()])
         params = list(kw.values()) + [fileid]
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
-            conn.commit()
+            conn.commit()            
 
     def update_file_status_by_cond(
         self, file_ids: List[str], cond_status_list: Union[None, List[str]], new_status: str
@@ -490,19 +543,22 @@ class SqliteDocListManager(DocListManager):
     def delete_files_from_kb_group(self, file_ids: List[str], group: str):
         with self._db_lock, self._Session() as session:
             for doc_id in file_ids:
-                vals = {
-                    KBGroupDocuments.status.name: DocListManager.Status.deleted,
-                }
-                cond = sqlalchemy.and_(KBGroupDocuments.doc_id == doc_id, KBGroupDocuments.group_name == group)
-                rows = session.execute(
-                    update(KBGroupDocuments).where(cond).values(vals).returning(KBGroupDocuments.doc_id)
-                ).fetchall()
+                records_to_delete = (
+                    session.query(KBGroupDocuments)
+                    .filter(KBGroupDocuments.doc_id == doc_id, KBGroupDocuments.group_name == group)
+                    .all()
+                )
+                for record in records_to_delete:
+                    session.delete(record)
                 session.commit()
-                if not rows:
+                if not records_to_delete:
                     continue
-                doc = session.query(KBDocument).filter_by(doc_id=rows[0].doc_id).one()
-                doc.count = max(0, doc.count - 1)
-                session.commit()
+                try:
+                    doc = session.query(KBDocument).filter_by(doc_id=records_to_delete[0].doc_id).one()
+                    doc.count = max(0, doc.count - 1)
+                    session.commit()
+                except NoResultFound:
+                    lazyllm.LOG.warning(f"No document found for {doc_id}")
 
     def get_file_status(self, fileid: str):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
