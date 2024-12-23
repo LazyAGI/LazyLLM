@@ -33,7 +33,6 @@ class TestDocListManager(unittest.TestCase):
         test_file_1.write("This is a test file 1.")
         test_file_2.write("This is a test file 2.")
         self.test_file_1, self.test_file_2 = str(test_file_1), str(test_file_2)
-        print(f"test_file_1:{test_file_1}, test_file_2:{test_file_2}")
 
         self.manager = DocListManager(str(test_dir), "TestManager")
 
@@ -153,7 +152,8 @@ class TestDocListManager(unittest.TestCase):
 
         self.manager.delete_files_from_kb_group([hashlib.sha256(f'{self.test_file_1}'.encode()).hexdigest()], "group1")
         files_list = self.manager.list_kb_group_files("group1", details=True)
-        assert len(files_list) == 2
+        # delete will literally erase the record
+        assert len(files_list) == 1
 
 
 @pytest.fixture(scope="class", autouse=True)
@@ -287,3 +287,4 @@ class TestDocListServer(object):
         response = requests.post(self.get_url('add_files'), json=json_data)
         assert response.status_code == 200
         assert len(response.json().get('data')) == 2 and response.json().get('data')[1] is None
+

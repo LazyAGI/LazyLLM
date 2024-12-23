@@ -66,13 +66,24 @@ class DocManager(lazyllm.ModuleBase):
                         return BaseResponse(code=400, msg=f'file [{files[idx].filename}]: {err_msg}', data=None)
 
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
+            for path in file_paths:
+                directory = os.path.dirname(path)
+                if directory:
+                    os.makedirs(directory, exist_ok=True)
             ids, results = [], []
             for i in range(len(files)):
                 file_path = file_paths[i]
                 content = files[i].file.read()
                 metadata = metadatas[i] if metadatas else None
-                doc_id, is_success, msg = self._manager.safe_parsing_path(file_path, content, metadata)
-                ids.append(doc_id)
+                doc_path_parsing_result = self._manager.safe_parsing_path(file_path, override, content, metadata)
+                # file_path may be changed
+                file_path = doc_path_parsing_result.file_path
+                msg = doc_path_parsing_result.msg
+                if doc_path_parsing_result.is_new:
+                    docs = self._manager.add_files([file_path], metadatas=[metadata], status=DocListManager.Status.success)
+                    if not docs:
+                        msg = "Failed: Call add_files failed"
+                ids.append(doc_path_parsing_result.doc_id)
                 results.append(msg)
             return BaseResponse(data=[ids, results])
         except Exception as e:
