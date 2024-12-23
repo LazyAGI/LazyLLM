@@ -219,15 +219,17 @@ def dummy_similarity_func(query: List[float], node: DocNode, **kwargs) -> float:
 
 The `Retriever` instance requires the `query` string to be passed in when used, along with optional `filters` for field filtering. `filters` is a dictionary where the key is the field to be filtered on, and the value is a list of acceptable values, indicating that the node will be returned if the field’s value matches any one of the values in the list. Only when all conditions are met will the node be returned.
 
-Here is an example of using `filters`(refer to [Document](../Best%20Practice/rag.md#Document) for configurations of `doc_fields`):
+Here is an example of using `filters`:
 
 ```python
 filters = {
     "author": ["A", "B", "C"],
-    "public_year": [2002, 2003, 2004],
+    "publish_year": [2002, 2003, 2004],
 }
 doc_list = retriever(query=query, filters=filters)
 ```
+
+You can customize the filtering keys by passing the parameter `doc_fields` when initializing `Document`(refer to [Document](../Best%20Practice/rag.md#Document)). Or you can choose the builtin global metadata from the given list: ["file_name", "file_type", "file_size", "creation_date", "last_modified_date", "last_accessed_date"].
 
 ### Reranker
 
