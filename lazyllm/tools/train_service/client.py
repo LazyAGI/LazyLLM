@@ -407,16 +407,18 @@ class OnlineTrainClient:
             lazyllm.LOG.error(error)
             return error
 
-    def validate_api_key(self, token, source):
+    def validate_api_key(self, token, source, secret_key=None):
         """
         Validates the API key for a given supplier.
 
         Args:
         - token (str): API-Key provided by the user, used for authentication.
         - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
+        - secret_key (str): The secret key provided by the user for authentication,
+            required only when the source is 'sensenova'. Default is None.
 
         Returns:
         - bool: True if the API key is valid, False otherwise.
         """
-        m = lazyllm.OnlineChatModule(source=source, api_key=token)
+        m = lazyllm.OnlineChatModule(source=source, api_key=token, secret_key=secret_key)
         return m._validate_api_key()
