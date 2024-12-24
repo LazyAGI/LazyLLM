@@ -351,8 +351,6 @@ class SqliteDocListManager(DocListManager):
     def _add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None,
                    status: Optional[str] = DocListManager.Status.waiting, batch_size: int = 64):
         documents = []
-        if not files:
-            return []
 
         for i in range(0, len(files), batch_size):
             batch_files = files[i:i + batch_size]
@@ -387,13 +385,10 @@ class SqliteDocListManager(DocListManager):
                 documents.extend(rows)
         return documents
 
-    def get_docs_need_reparse(self, group: Optional[str] = None) -> Dict[str, List[KBDocument]]:
+    def get_docs_need_reparse(self, group: str) -> Dict[str, List[KBDocument]]:
         with self._db_lock, self._Session() as session:
-            if group is None:
-                sql_cond = KBGroupDocuments.need_reparse.is_(True)
-            else:
-                sql_cond = sqlalchemy.and_(
-                    KBGroupDocuments.need_reparse.is_(True), KBGroupDocuments.group_name == group)
+            sql_cond = sqlalchemy.and_(
+                KBGroupDocuments.need_reparse.is_(True), KBGroupDocuments.group_name == group)
             stmt = (
                 update(KBGroupDocuments)
                 .where(sql_cond)
@@ -478,8 +473,6 @@ class SqliteDocListManager(DocListManager):
                 else:
                     return DocPathParsingResult(file_path=file_path, doc_id=doc_id, success=False, msg=f"Failed: Document exist with status {doc_existing.status}")
             else:
-                if len(docs_existing) == 0:
-                    return doc_id, False, "Failed: Document doesnt's exist while existing in KBGroupDocuments"
                 # records found in KBGroupDocuments. Check need_reparse flag and status
                 doc_path_parsing_result = do_parsing_by_doc_group_records(file_path, content, doc_id, doc_group_records)
                 if doc_path_parsing_result.success:
