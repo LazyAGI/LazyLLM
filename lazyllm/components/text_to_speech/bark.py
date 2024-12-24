@@ -13,7 +13,7 @@ class Bark(object):
 
     def __init__(self, base_path, source=None, trust_remote_code=True, save_path=None, init=False):
         source = lazyllm.config['model_source'] if not source else source
-        self.base_path = ModelManager(source).download(base_path)
+        self.base_path = ModelManager(source).download(base_path) or ''
         self.trust_remote_code = trust_remote_code
         self.processor, self.bark = None, None
         self.init_flag = lazyllm.once_flag()

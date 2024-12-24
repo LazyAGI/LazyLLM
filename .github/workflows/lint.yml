@@ -15,6 +15,9 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,6 +40,9 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,6 +83,9 @@ jobs:
 
   Check_requirements:
     runs-on: ubuntu-latest
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
     steps:
       - uses: actions/checkout@v4
         with:

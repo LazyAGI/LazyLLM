@@ -9,7 +9,7 @@ class LazyHuggingFaceEmbedding(object):
     def __init__(self, base_embed, source=None, init=False):
         from ..utils.downloader import ModelManager
         source = lazyllm.config['model_source'] if not source else source
-        self.base_embed = ModelManager(source).download(base_embed)
+        self.base_embed = ModelManager(source).download(base_embed) or ''
         self.embed = None
         self.tokenizer = None
         self.device = "cpu"
@@ -48,7 +48,7 @@ class LazyHuggingFaceRerank(object):
     def __init__(self, base_rerank, source=None, init=False):
         from ..utils.downloader import ModelManager
         source = lazyllm.config['model_source'] if not source else source
-        self.base_rerank = ModelManager(source).download(base_rerank)
+        self.base_rerank = ModelManager(source).download(base_rerank) or ''
         self.reranker = None
         self.init_flag = lazyllm.once_flag()
         if init:

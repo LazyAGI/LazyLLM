@@ -1,0 +1,10 @@
+pull_request_rules:
+  - name: Add label after CI lint passes
+    conditions:
+      - check-success=lint
+      - check-success=build
+      - check-success=Check_requirements
+    actions:
+      label:
+        add:
+          - lint_pass
