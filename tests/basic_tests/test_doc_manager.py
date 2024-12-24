@@ -287,4 +287,3 @@ class TestDocListServer(object):
         response = requests.post(self.get_url('add_files'), json=json_data)
         assert response.status_code == 200
         assert len(response.json().get('data')) == 2 and response.json().get('data')[1] is None
-

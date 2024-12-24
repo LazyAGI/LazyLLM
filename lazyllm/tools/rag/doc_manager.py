@@ -10,6 +10,7 @@ import lazyllm
 from lazyllm import FastapiApp as app
 from .utils import DocListManager, BaseResponse
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
+import uuid
 
 
 def gen_unique_filepaths(ori_filepath: str) -> str:
@@ -50,6 +51,20 @@ class DocManager(lazyllm.ModuleBase):
             return f"metadata MUST not contain key `{RAG_DOC_PATH}`"
         return None
 
+    def _gen_unique_filepath(self, file_path: str) -> str:
+        suffix = os.path.splitext(file_path)[1]
+        prefix = file_path[0: len(file_path) - len(suffix)]
+        pattern = f"{prefix}%{suffix}"
+        MAX_TRIES = 10000
+        exist_paths = set(self._manager.get_existing_paths_by_pattern(pattern))
+        if file_path not in exist_paths:
+            return file_path
+        for i in range(1, MAX_TRIES):
+            new_path = f"{prefix}-{i}{suffix}"
+            if new_path not in exist_paths:
+                return new_path
+        return f"{str(uuid.uuid4())}{suffix}"
+
     @app.post("/upload_files")
     def upload_files(self, files: List[UploadFile], override: bool = False,  # noqa C901
                      metadatas: Optional[str] = None, user_path: Optional[str] = None):
@@ -66,23 +81,22 @@ class DocManager(lazyllm.ModuleBase):
                         return BaseResponse(code=400, msg=f'file [{files[idx].filename}]: {err_msg}', data=None)
 
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
-            for path in file_paths:
-                directory = os.path.dirname(path)
-                if directory:
-                    os.makedirs(directory, exist_ok=True)
+            directorys = set(os.path.dirname(path) for path in file_paths)
+            [os.makedirs(directory, exist_ok=True) for directory in directorys if directory]
             ids, results = [], []
             for i in range(len(files)):
                 file_path = file_paths[i]
                 content = files[i].file.read()
                 metadata = metadatas[i] if metadatas else None
-                doc_path_parsing_result = self._manager.safe_parsing_path(file_path, override, content, metadata)
-                # file_path may be changed
-                file_path = doc_path_parsing_result.file_path
+                if override is False:
+                    file_path = self._gen_unique_filepath(file_path)
+                doc_path_parsing_result = self._manager.safe_parsing_path(file_path, content, metadata)
                 msg = doc_path_parsing_result.msg
                 if doc_path_parsing_result.is_new:
-                    docs = self._manager.add_files([file_path], metadatas=[metadata], status=DocListManager.Status.success)
+                    docs = self._manager.add_files(
+                        [file_path], metadatas=[metadata], status=DocListManager.Status.success)
                     if not docs:
-                        msg = "Failed: Call add_files failed"
+                        msg = f"Failed: path {file_path} already exists in Database."
                 ids.append(doc_path_parsing_result.doc_id)
                 results.append(msg)
             return BaseResponse(data=[ids, results])

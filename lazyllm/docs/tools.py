@@ -752,13 +752,6 @@ Args:
     group (str): 要添加的分组名称。
 """)
 
-add_chinese_doc('rag.DocListManager._delete_files', """\
-从数据库中删除指定的文件。
-
-Args:
-    file_ids (list of str): 要删除的文件ID列表。
-""")
-
 add_chinese_doc('rag.DocListManager.delete_files_from_kb_group', """\
 从指定的知识库分组中删除文件。
 
@@ -879,13 +872,6 @@ Adds files to the specified knowledge base group.
 Args:
     file_ids (list of str): List of file IDs to add.
     group (str): Name of the group to add the files to.
-""")
-
-add_english_doc('rag.DocListManager._delete_files', """\
-Deletes specified files from the database.
-
-Args:
-    file_ids (list of str): List of file IDs to delete.
 """)
 
 add_english_doc('rag.DocListManager.delete_files_from_kb_group', """\

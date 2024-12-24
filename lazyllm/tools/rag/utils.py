@@ -13,9 +13,6 @@ import sqlalchemy
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy import Column, insert, update, Row
 from sqlalchemy.exc import NoResultFound
-import collections
-from enum import Enum
-import uuid
 
 import pydantic
 import sqlite3
@@ -88,7 +85,6 @@ class KBGroupDocuments(KBDataBase):
 
 
 class DocPathParsingResult(BaseModel):
-    file_path: str
     doc_id: str
     success: bool
     msg: str
@@ -134,8 +130,8 @@ class DocListManager(ABC):
         return self
 
     def delete_files(self, file_ids: List[str]) -> List[DocPartRow]:
-        document_list = self.update_file_status_by_cond(
-            file_ids, self.DELETE_SAFE_STATUS_LIST, DocListManager.Status.deleting
+        document_list = self.update_file_status(
+            file_ids, DocListManager.Status.deleting, self.DELETE_SAFE_STATUS_LIST
         )
         safe_delete_ids = [doc.doc_id for doc in document_list]
         self.update_kb_group_file_status(file_ids=safe_delete_ids, status=DocListManager.Status.deleting)
@@ -185,35 +181,30 @@ class DocListManager(ABC):
     def delete_obsolete_files(self): pass
 
     @abstractmethod
-    def get_docs_need_reparse(self, group: Optional[str] = None) -> Dict[str, List[KBDocument]]: pass
+    def get_docs_need_reparse(self, group: Optional[str] = None) -> List[KBDocument]: pass
 
     @abstractmethod
-    def safe_parsing_path(self, file_path: str, override: bool, content: bytes,
+    def get_existing_paths_by_pattern(self, file_path: str) -> List[str]: pass
+
+    @abstractmethod
+    def safe_parsing_path(self, file_path: str, content: bytes,
                           metadata: Union[None, Dict[str, Any]] = None) -> DocPathParsingResult: pass
 
     @abstractmethod
     def update_file_message(self, fileid: str, **kw): pass
 
     @abstractmethod
-    def update_file_status_by_cond(
-        self, file_ids: List[str], cond_status_list: Union[None, List[str]], new_status: str
-    ) -> List[DocPartRow]:
-        pass
+    def update_file_status(self, file_ids: List[str], status: str,
+                           cond_status_list: Union[None, List[str]] = None) -> List[DocPartRow]: pass
 
     @abstractmethod
     def add_files_to_kb_group(self, file_ids: List[str], group: str): pass
-
-    @abstractmethod
-    def _delete_files(self, file_ids: List[str], real: bool = False): pass
 
     @abstractmethod
     def delete_files_from_kb_group(self, file_ids: List[str], group: str): pass
 
     @abstractmethod
     def get_file_status(self, fileid: str): pass
-
-    @abstractmethod
-    def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]: pass
 
     @abstractmethod
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]],
@@ -385,74 +376,43 @@ class SqliteDocListManager(DocListManager):
                 documents.extend(rows)
         return documents
 
-    def get_docs_need_reparse(self, group: str) -> Dict[str, List[KBDocument]]:
+    def get_docs_need_reparse(self, group: str) -> List[KBDocument]:
         with self._db_lock, self._Session() as session:
-            sql_cond = sqlalchemy.and_(
-                KBGroupDocuments.need_reparse.is_(True), KBGroupDocuments.group_name == group)
-            stmt = (
-                update(KBGroupDocuments)
-                .where(sql_cond)
-                .values(need_reparse=False)
-                .returning(KBGroupDocuments.doc_id, KBGroupDocuments.status)
-            )
-            rows = session.execute(stmt).fetchall()
-            session.commit()
-            doc_ids_by_status = collections.defaultdict(list)
-            for row in rows:
-                doc_ids_by_status[row.status].append(row.doc_id)
-            valid_status_set = set([DocListManager.Status.success, DocListManager.Status.failed])
+            filter_status_list = [DocListManager.Status.success, DocListManager.Status.failed]
+            documents = (
+                session.query(KBDocument).join(KBGroupDocuments, KBDocument.doc_id == KBGroupDocuments.doc_id)
+                .filter(KBGroupDocuments.need_reparse.is_(True),
+                        KBGroupDocuments.group_name == group,
+                        KBGroupDocuments.status.in_(filter_status_list)).all())
+            return documents
+        return []
 
-            document_by_status = {}
-            for status, doc_ids in doc_ids_by_status.items():
-                if status not in valid_status_set:
-                    continue
-                docs = (
-                    session.query(KBDocument)
-                    .filter(KBDocument.doc_id.in_(doc_ids))
-                    .all()
-                )
-                document_by_status[status] = docs
-            return document_by_status
-
-    def _gen_unique_filepath(self, file_path: str) -> str:
-        suffix = os.path.splitext(file_path)[1]
-        prefix = file_path[0: len(file_path) - len(suffix)]
-        pattern = f"{prefix}%{suffix}"
+    def get_existing_paths_by_pattern(self, pattern: str) -> List[str]:
         exist_paths = []
-        MAX_TRIES = 10000
         with self._db_lock, self._Session() as session:
             docs = session.query(KBDocument).filter(KBDocument.path.like(pattern)).all()
             exist_paths = [doc.path for doc in docs]
-        exist_paths = set(exist_paths)
-        if file_path not in exist_paths:
-            return file_path
-        for i in range(1, MAX_TRIES):
-            new_path = f"{prefix}-{i}{suffix}"
-            if new_path not in exist_paths:
-                return new_path
-        return str(uuid.uuid4())
+        return exist_paths
 
-    def safe_parsing_path(self, file_path: str, override: bool, content: bytes,
+    def safe_parsing_path(self, file_path: str, content: bytes,
                           metadata: Union[None, Dict[str, Any]] = None) -> DocPathParsingResult:
-        if override is False:
-            file_path = self._gen_unique_filepath(file_path)
         doc_id = gen_docid(file_path)
 
         def gen_result_after_save_file(file_path, content, doc_id, msg, is_new=False):
             with open(file_path, 'wb') as f: f.write(content)
-            return DocPathParsingResult(file_path=file_path, doc_id=doc_id, success=True, msg=msg, is_new=is_new)
+            return DocPathParsingResult(doc_id=doc_id, success=True, msg=msg, is_new=is_new)
 
         def do_parsing_by_doc_group_records(file_path, content, doc_id, doc_group_records: List[KBGroupDocuments]):
             RowSatus = DocListManager.Status
             if any([doc_group_record.need_reparse for doc_group_record in doc_group_records]):
                 return DocPathParsingResult(
-                    file_path=file_path, doc_id=doc_id, success=False,msg="Failed: Document's lasttime reparsing has not been finished")
+                    doc_id=doc_id, success=False, msg="Failed: Document's lasttime reparsing has not been finished")
             elif any([doc_group_record.status == RowSatus.working for doc_group_record in doc_group_records]):
                 return DocPathParsingResult(
-                    file_path=file_path, doc_id=doc_id, success=False, msg="Failed: Document is being parsed by kbgroup")
+                    doc_id=doc_id, success=False, msg="Failed: Document is being parsed by kbgroup")
             elif any([doc_group_record.status == RowSatus.deleted for doc_group_record in doc_group_records]):
                 return DocPathParsingResult(
-                    file_path=file_path, doc_id=doc_id, success=False, msg="Failed: Unexpected status 'deleted' in KBGroupDocuments")
+                    doc_id=doc_id, success=False, msg="Failed: Unexpected status 'deleted' in KBGroupDocuments")
             else:
                 # success, failed, deleting will be handled in worker
                 return gen_result_after_save_file(
@@ -469,18 +429,21 @@ class SqliteDocListManager(DocListManager):
                 if doc_existing.status == DocListManager.Status.deleting:
                     session.delete(doc_existing)
                     session.commit()
-                    return gen_result_after_save_file(file_path, content, doc_id, "Success: Add new doc after deleting", True)
+                    return gen_result_after_save_file(file_path, content, doc_id,
+                                                      "Success: Add new doc after deleting", True)
                 else:
-                    return DocPathParsingResult(file_path=file_path, doc_id=doc_id, success=False, msg=f"Failed: Document exist with status {doc_existing.status}")
+                    return DocPathParsingResult(
+                        doc_id=doc_id, success=False, msg=f"Failed: Document exist with status {doc_existing.status}")
             else:
                 # records found in KBGroupDocuments. Check need_reparse flag and status
-                doc_path_parsing_result = do_parsing_by_doc_group_records(file_path, content, doc_id, doc_group_records)
+                doc_path_parsing_result = do_parsing_by_doc_group_records(
+                    file_path, content, doc_id, doc_group_records)
                 if doc_path_parsing_result.success:
                     for doc_group_record in doc_group_records:
                         doc_group_record.need_reparse = True
                     session.commit()
                 return doc_path_parsing_result
-        return DocPathParsingResult(file_path=file_path, doc_id=doc_id, success=False, msg="Failed: Unkknown reason")
+        return DocPathParsingResult(doc_id=doc_id, success=False, msg="Failed: Unkknown reason")
 
     # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):
@@ -490,9 +453,8 @@ class SqliteDocListManager(DocListManager):
             conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
             conn.commit()
 
-    def update_file_status_by_cond(
-        self, file_ids: List[str], cond_status_list: Union[None, List[str]], new_status: str
-    ) -> List[DocPartRow]:
+    def update_file_status(self, file_ids: List[str], status: str,
+                           cond_status_list: Union[None, List[str]] = None) -> List[DocPartRow]:
         rows = []
         if cond_status_list is None:
             sql_cond = KBDocument.doc_id.in_(file_ids)
@@ -502,7 +464,7 @@ class SqliteDocListManager(DocListManager):
             stmt = (
                 update(KBDocument)
                 .where(sql_cond)
-                .values(status=new_status)
+                .values(status=status)
                 .returning(KBDocument.doc_id, KBDocument.path)
             )
             rows = session.execute(stmt).fetchall()
@@ -528,14 +490,6 @@ class SqliteDocListManager(DocListManager):
                 doc.count += 1
                 session.commit()
 
-    def _delete_files(self, file_ids: List[str], real: bool = False):
-        if not real:
-            return self.update_file_status(file_ids, DocListManager.Status.deleted)
-        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
-            for doc_id in file_ids:
-                conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
-                conn.commit()
-
     def delete_files_from_kb_group(self, file_ids: List[str], group: str):
         with self._db_lock, self._Session() as session:
             for doc_id in file_ids:
@@ -560,20 +514,6 @@ class SqliteDocListManager(DocListManager):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             cursor = conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
         return cursor.fetchone()
-
-    def update_file_status(self, file_ids: List[str], status: str, batch_size: int = 64) -> List[Tuple[str, str]]:
-        updated_files = []
-
-        for i in range(0, len(file_ids), batch_size):
-            batch = file_ids[i:i + batch_size]
-            placeholders = ', '.join('?' for _ in batch)
-            sql = f'UPDATE documents SET status = ? WHERE doc_id IN ({placeholders}) RETURNING doc_id, path'
-
-            with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
-                cursor = conn.execute(sql, [status] + batch)
-                updated_files.extend(cursor.fetchall())
-                conn.commit()
-        return updated_files
 
     def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
         if isinstance(file_ids, str): file_ids = [file_ids]
