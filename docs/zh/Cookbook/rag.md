@@ -322,3 +322,234 @@ my_reranker = Reranker(name="MyReranker")
 当然返回的结果可能会很奇怪 :)
 
 这里只是简单介绍了怎么使用 `LazyLLM` 注册扩展的机制。可以参考 [Retriever](../Best%20Practice/rag.md#Retriever) 和 [Reranker](../Best%20Practice/rag.md#Reranker) 的文档，在遇到不能满足需求的时候通过编写自己的相似度计算和排序策略来实现自己的应用。
+
+## 版本-5：自定义存储后端
+
+在定义好 Node Group 的转换规则之后，`LazyLLM` 会把检索过程中用到的转换得到的 Node Group 内容保存起来，这样后续使用的时候可以避免重复执行转换操作。为了方便用户存取不同种类的数据，`LazyLLM` 支持用户自定义存储后端。
+
+如果没有指定，`LazyLLM` 默认使用基于 dict 的 key/value 作为存储后端。用户可以通过 `Document` 的参数 `store_conf` 来指定其它存储后端。例如想使用 Milvus 作为存储后端，我们可以这样配置：
+
+```python
+milvus_store_conf = {
+    'type': 'milvus',
+    'kwargs': {
+        'uri': store_file,
+        'index_kwargs': {
+            'index_type': 'HNSW',
+            'metric_type': 'COSINE',
+        }
+    },
+}
+```
+
+其中 `type` 为后端类型，`kwargs` 时需要传递给后端的参数。各字段含义如下：
+
+* `type`：需要使用的后端类型。目前支持：
+    - `map`：内存 key/value 存储；
+    - `chroma`：使用 Chroma 存储数据；
+        - `dir`（必填）：存储数据的目录。
+    - `milvus`：使用 Milvus 存储数据。
+        - `uri`（必填）：Milvus 存储地址，可以是一个文件路径或者如 `ip:port` 格式的 url；
+        - `index_kwargs`（可选）：Milvus 索引配置，可以是一个 dict 或者 list。如果是一个 dict 表示所有的 embedding index 使用同样的配置；如果是一个 list，list 中的元素是 dict，表示由 `embed_key` 所指定的 embedding 所使用的配置。当前只支持 `floaing point embedding` 和 `sparse embedding` 两种 embedding 类型，分别支持的参数如下：
+            - `floating point embedding`：[https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
+            - `sparse embedding`：[https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
+
+如果使用 Milvus，我们还需要给 `Document` 传递 `doc_fields` 参数，用于指定需要存储的字段及类型等信息。例如下面的配置：
+
+```python
+doc_fields = {
+    'comment': DocField(data_type=DataType.VARCHAR, max_size=65535, default_value=' '),
+    'signature': DocField(data_type=DataType.VARCHAR, max_size=32, default_value=' '),
+}
+```
+
+配置了两个字段 `comment` 和 `signature` 两个字段。其中 `comment` 是一个字符串，最大长度是 65535，默认值为空；`signature` 类型是一个字符串，最大长度是 32，默认值为空。
+
+下面是一个使用 Milvus 作为存储后端的完整例子：
+
+<details>
+
+<summary>附完整代码（点击展开）：</summary>
+
+```python
+# -*- coding: utf-8 -*-
+
+import os
+import lazyllm
+from lazyllm import bind, config
+from lazyllm.tools.rag import DocField, DataType
+import shutil
+
+class TmpDir:
+    def __init__(self):
+        self.root_dir = os.path.expanduser(os.path.join(config['home'], 'rag_for_example_ut'))
+        self.rag_dir = os.path.join(self.root_dir, 'rag_master')
+        os.makedirs(self.rag_dir, exist_ok=True)
+        self.store_file = os.path.join(self.root_dir, "milvus.db")
+
+    def __del__(self):
+        shutil.rmtree(self.root_dir)
+
+tmp_dir = TmpDir()
+
+milvus_store_conf = {
+    'type': 'milvus',
+    'kwargs': {
+        'uri': tmp_dir.store_file,
+        'index_kwargs': {
+            'index_type': 'HNSW',
+            'metric_type': 'COSINE',
+        }
+    },
+}
+
+doc_fields = {
+    'comment': DocField(data_type=DataType.VARCHAR, max_size=65535, default_value=' '),
+    'signature': DocField(data_type=DataType.VARCHAR, max_size=32, default_value=' '),
+}
+
+prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task.'\
+    ' In this task, you need to provide your answer based on the given context and question.'
+
+documents = lazyllm.Document(dataset_path=tmp_dir.rag_dir,
+                             embed=lazyllm.TrainableModule("bge-large-zh-v1.5"),
+                             manager=False,
+                             store_conf=milvus_store_conf,
+                             doc_fields=doc_fields)
+
+documents.create_node_group(name="block", transform=lambda s: s.split("\n") if s else '')
+
+with lazyllm.pipeline() as ppl:
+    ppl.retriever = lazyllm.Retriever(doc=documents, group_name="block", topk=3)
+
+    ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
+                                    model="bge-reranker-large",
+                                    topk=1,
+                                    output_format='content',
+                                    join=True) | bind(query=ppl.input)
+
+    ppl.formatter = (
+        lambda nodes, query: dict(context_str=nodes, query=query)
+    ) | bind(query=ppl.input)
+
+    ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
+        lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+
+if __name__ == '__main__':
+    filters = {
+        'signature': ['sig_value'],
+    }
+    rag = lazyllm.ActionModule(ppl)
+    rag.start()
+    res = rag('何为天道？', filters=filters)
+    print(f'answer: {res}')
+```
+
+</details>
+
+## 版本-6：自定义索引后端
+
+为了加速数据检索和满足不同的检索需求，`LazyLLM` 还支持为不同的存储后端指定索引后端，可以通过 `Document` 的参数 `store_conf` 中的 `indices` 字段来指定。在 `indices` 配置的索引类型可以在 `Retriever` 时使用（通过 `index` 参数指定）。
+
+例如想使用基于 dict 的 key/value 存储，并且使用 Milvus 作为该存储的检索后端，我们可以这样配置：
+
+```python
+milvus_store_conf = {
+    'type': 'map',
+    'indices': {
+        'smart_embedding_index': {
+            'backend': 'milvus',
+            'kwargs': {
+                'uri': store_file,
+                'index_kwargs': {
+                    'index_type': 'HNSW',
+                    'metric_type': 'COSINE',
+                }
+            },
+        },
+    },
+}
+```
+
+其中的参数 `type` 在 版本-5 中已经介绍过，这里不再重复。`indices` 是一个 dict，其中 key 是索引类型，value 是一个 dict，取值根据不同的索引类型而不同。
+
+目前 `indices` 只支持 `smart_embedding_index`，其中的参数包括：
+
+* `backend`：指定用于进行 embedding 检索的索引后端类型。目前仅支持 `milvus`；
+* `kwargs`：需要传给索引后端的参数。在本例中传给 `milvus` 后端的参数和 版本-5 小节中介绍的 `milvus` 存储后端的参数一样。
+
+下面是一个使用 `milvus` 作为索引后端的完整例子：
+
+<details>
+
+<summary>附完整代码（点击展开）：</summary>
+
+```python
+# -*- coding: utf-8 -*-
+
+import os
+import lazyllm
+from lazyllm import bind
+import tempfile
+
+def run(query):
+    _, store_file = tempfile.mkstemp(suffix=".db")
+
+    milvus_store_conf = {
+        'type': 'map',
+        'indices': {
+            'smart_embedding_index': {
+                'backend': 'milvus',
+                'kwargs': {
+                    'uri': store_file,
+                    'index_kwargs': {
+                        'index_type': 'HNSW',
+                        'metric_type': 'COSINE',
+                    }
+                },
+            },
+        },
+    }
+
+    documents = lazyllm.Document(dataset_path="rag_master",
+                                 embed=lazyllm.TrainableModule("bge-large-zh-v1.5"),
+                                 manager=False,
+                                 store_conf=milvus_store_conf)
+
+    documents.create_node_group(name="sentences",
+                                transform=lambda s: '。'.split(s))
+
+    prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task.'\
+        ' In this task, you need to provide your answer based on the given context and question.'
+
+    with lazyllm.pipeline() as ppl:
+        ppl.retriever = lazyllm.Retriever(doc=documents, group_name="sentences", topk=3,
+                                          index='smart_embedding_index')
+
+        ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
+                                        model="bge-reranker-large",
+                                        topk=1,
+                                        output_format='content',
+                                        join=True) | bind(query=ppl.input)
+
+        ppl.formatter = (
+            lambda nodes, query: dict(context_str=nodes, query=query)
+        ) | bind(query=ppl.input)
+
+        ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
+            lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+
+        rag = lazyllm.ActionModule(ppl)
+        rag.start()
+        res = rag(query)
+
+    os.remove(store_file)
+
+    return res
+
+if __name__ == '__main__':
+    res = run('何为天道？')
+    print(f'answer: {res}')
+```
+
+</details>

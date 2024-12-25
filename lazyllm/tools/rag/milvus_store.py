@@ -6,7 +6,9 @@ from .map_store import MapStore
 from .utils import parallel_do_embedding
 from .index_base import IndexBase
 from .store_base import StoreBase
-from .global_metadata import GlobalMetadataDesc, RAG_DOC_PATH, RAG_DOC_ID
+from .global_metadata import (GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_FILE_NAME,
+                              RAG_DOC_FILE_TYPE, RAG_DOC_FILE_SIZE, RAG_DOC_CREATION_DATE,
+                              RAG_DOC_LAST_MODIFIED_DATE, RAG_DOC_LAST_ACCESSED_DATE)
 from .data_type import DataType
 from lazyllm.common import override, obj2str, str2obj
 
@@ -43,6 +45,18 @@ class MilvusStore(StoreBase):
                                            default_value=' ', max_size=512),
             RAG_DOC_PATH: GlobalMetadataDesc(data_type=DataType.VARCHAR,
                                              default_value=' ', max_size=65535),
+            RAG_DOC_FILE_NAME: GlobalMetadataDesc(data_type=DataType.VARCHAR,
+                                                  default_value=' ', max_size=128),
+            RAG_DOC_FILE_TYPE: GlobalMetadataDesc(data_type=DataType.VARCHAR,
+                                                  default_value=' ', max_size=64),
+            RAG_DOC_FILE_SIZE: GlobalMetadataDesc(data_type=DataType.INT32,
+                                                  default_value=0),
+            RAG_DOC_CREATION_DATE: GlobalMetadataDesc(data_type=DataType.VARCHAR,
+                                                      default_value=' ', max_size=10),
+            RAG_DOC_LAST_MODIFIED_DATE: GlobalMetadataDesc(data_type=DataType.VARCHAR,
+                                                           default_value=' ', max_size=10),
+            RAG_DOC_LAST_ACCESSED_DATE: GlobalMetadataDesc(data_type=DataType.VARCHAR,
+                                                           default_value=' ', max_size=10)
         }
 
         self._type2milvus = [
@@ -280,7 +294,7 @@ class MilvusStore(StoreBase):
 
         for name, desc in self._global_metadata_desc.items():
             val = node.global_metadata.get(name, desc.default_value)
-            if val:
+            if val is not None:
                 res[self._gen_field_key(name)] = val
 
         return res

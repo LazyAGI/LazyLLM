@@ -603,7 +603,7 @@ class _TrainableModuleImpl(ModuleBase):
         super().__init__()
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
-        self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model)
+        self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model) or ''
         self._target_path = os.path.join(lazyllm.config['train_target_root'], target_path)
         self._stream = stream
         self._father = []

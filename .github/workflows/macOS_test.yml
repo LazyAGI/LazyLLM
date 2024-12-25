@@ -5,6 +5,7 @@ on:
     branches:
       - main
   pull_request_target:
+    types: [opened, synchronize, labeled, reopened]
     branches:
       - main
   workflow_dispatch:
@@ -25,7 +26,24 @@ jobs:
     runs-on: macos-13
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check for required label
+        if: github.event_name == 'pull_request_target'
+        run: |
+          echo " Wait for lint "
+          sleep 10
+          LABEL=$(curl -s -X GET \
+              -H "Authorization: Bearer ${{ secrets.PERSONAL_GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.number }}/labels" | \
+              jq -r '.[].name' | grep -q 'lint_pass' && echo "true" || echo "false")
+          
+          if [ "$LABEL" == "false" ]; then
+            echo "The 'lint_pass' label is missing. Skipping CI process."
+            exit 1
+          fi
+          
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
           submodules: true
           fetch-depth: 0
@@ -89,6 +107,7 @@ jobs:
       - name: basic_tests
         run : |
          git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git /tmp/lazyllm/data
+         brew install ffmpeg
          pip install -r tests/requirements.txt
          export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
          python -m pytest -v  --reruns=2 tests/basic_tests/
@@ -103,7 +122,24 @@ jobs:
     runs-on: macos-13
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check for required label
+        if: github.event_name == 'pull_request_target'
+        run: |
+          echo " Wait for lint "
+          sleep 10
+          LABEL=$(curl -s -X GET \
+              -H "Authorization: Bearer ${{ secrets.PERSONAL_GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.number }}/labels" | \
+              jq -r '.[].name' | grep -q 'lint_pass' && echo "true" || echo "false")
+          
+          if [ "$LABEL" == "false" ]; then
+            echo "The 'lint_pass' label is missing. Skipping CI process."
+            exit 1
+          fi
+          
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
           submodules: true
           fetch-depth: 0

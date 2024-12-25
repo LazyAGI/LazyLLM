@@ -4,3 +4,11 @@ olefile
 pytest-rerunfailures
 pytest-order
 pymilvus>=2.4.7, <2.5.0
+openpyxl
+nbconvert
+python-pptx
+EbookLib
+html2text
+pytesseract
+git+https://github.com/openai/whisper.git
+pydub

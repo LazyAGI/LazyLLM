@@ -343,7 +343,7 @@ class TrainServer:
             self._update_user_job_training_info(token)
         save_root = os.path.join(lazyllm.config['train_target_root'], token)
         server_running_dict = self._read_user_job_training_info(token)
-        m = lazyllm.TrainableModule('dummpy', save_root)
+        m = lazyllm.TrainableModule('', save_root)
         valid_models, invalid_models = m.get_all_models()
         for model_id, model_path in valid_models:
             job_id = model_path[len(save_root):].lstrip(os.sep).split(os.sep)[0]
