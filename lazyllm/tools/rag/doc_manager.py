@@ -8,7 +8,7 @@ from fastapi import UploadFile, Body
 
 import lazyllm
 from lazyllm import FastapiApp as app
-from .utils import DocListManager, BaseResponse
+from .utils import DocListManager, BaseResponse, gen_docid
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 import uuid
 
@@ -79,8 +79,17 @@ class DocManager(lazyllm.ModuleBase):
                     err_msg = self._validate_metadata(mt)
                     if err_msg:
                         return BaseResponse(code=400, msg=f'file [{files[idx].filename}]: {err_msg}', data=None)
-
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
+            # When override is set to True, lock the path first in case of concurrency
+            paths_is_new = [True] * len(file_paths)
+            path_locks = []
+            if override is True:
+                path_locks, msg = self._manager.create_path_lock(file_paths)
+                if not path_locks:
+                    return BaseResponse(code=500, msg=msg, data=None)
+                paths_is_new, msg = self._manager.validate_paths_return_is_new(file_paths)
+                if not paths_is_new:
+                    return BaseResponse(code=500, msg=msg, data=None)
             directorys = set(os.path.dirname(path) for path in file_paths)
             [os.makedirs(directory, exist_ok=True) for directory in directorys if directory]
             ids, results = [], []
@@ -90,15 +99,21 @@ class DocManager(lazyllm.ModuleBase):
                 metadata = metadatas[i] if metadatas else None
                 if override is False:
                     file_path = self._gen_unique_filepath(file_path)
-                doc_path_parsing_result = self._manager.safe_parsing_path(file_path, content, metadata)
-                msg = doc_path_parsing_result.msg
-                if doc_path_parsing_result.is_new:
+                with open(file_path, 'wb') as f: f.write(content)
+                msg = "success"
+                doc_id = gen_docid(file_path)
+                if paths_is_new[i]:
                     docs = self._manager.add_files(
                         [file_path], metadatas=[metadata], status=DocListManager.Status.success)
                     if not docs:
                         msg = f"Failed: path {file_path} already exists in Database."
-                ids.append(doc_path_parsing_result.doc_id)
+                else:
+                    self._manager.update_need_reparsing(doc_id, True)
+                    msg = f"Success: path {file_path} will be reparsed."
+                ids.append(doc_id)
                 results.append(msg)
+            if override is True:
+                self._manager.delete_path_lock(path_locks)
             return BaseResponse(data=[ids, results])
         except Exception as e:
             lazyllm.LOG.error(f'upload_files exception: {e}')

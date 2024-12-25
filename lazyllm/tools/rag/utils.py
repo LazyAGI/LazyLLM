@@ -11,7 +11,7 @@ from lazyllm.common import override
 from lazyllm.common.queue import sqlite3_check_threadsafety
 import sqlalchemy
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from sqlalchemy import Column, insert, update, Row
+from sqlalchemy import Column, insert, update, delete, Row
 from sqlalchemy.exc import NoResultFound
 
 import pydantic
@@ -63,6 +63,11 @@ class KBDocument(KBDataBase):
     status = Column(sqlalchemy.Text, nullable=False, index=True)
     count = Column(sqlalchemy.Integer, default=0)
 
+PathLockRow = Row
+class KBPathLock(KBDataBase):
+    __tablename__ = "path_lock"
+
+    path = Column(sqlalchemy.Text, primary_key=True)
 
 class KBGroup(KBDataBase):
     __tablename__ = "document_groups"
@@ -144,6 +149,18 @@ class DocListManager(ABC):
     def _init_tables(self): pass
 
     @abstractmethod
+    def create_path_lock(self, paths: List[str]) -> Tuple[List[PathLockRow], str]: pass
+
+    @abstractmethod
+    def delete_path_lock(self, path_locks: List[PathLockRow]): pass
+
+    @abstractmethod
+    def validate_paths_return_is_new(self, paths: List[str]) -> Tuple[List[bool], str]: pass
+
+    @abstractmethod
+    def update_need_reparsing(self, doc_id: str, need_reparse: bool): pass
+
+    @abstractmethod
     def list_files(self, limit: Optional[int] = None, details: bool = False,
                    status: Union[str, List[str]] = Status.all,
                    exclude_status: Optional[Union[str, List[str]]] = None): pass
@@ -159,7 +176,8 @@ class DocListManager(ABC):
                             status: Union[str, List[str]] = Status.all,
                             exclude_status: Optional[Union[str, List[str]]] = None,
                             upload_status: Union[str, List[str]] = Status.all,
-                            exclude_upload_status: Optional[Union[str, List[str]]] = None): pass
+                            exclude_upload_status: Optional[Union[str, List[str]]] = None,
+                            need_reparse: Optional[bool] = False): pass
 
     def add_files(
         self,
@@ -185,10 +203,6 @@ class DocListManager(ABC):
 
     @abstractmethod
     def get_existing_paths_by_pattern(self, file_path: str) -> List[str]: pass
-
-    @abstractmethod
-    def safe_parsing_path(self, file_path: str, content: bytes,
-                          metadata: Union[None, Dict[str, Any]] = None) -> DocPathParsingResult: pass
 
     @abstractmethod
     def update_file_message(self, fileid: str, **kw): pass
@@ -260,6 +274,50 @@ class SqliteDocListManager(DocListManager):
 
         return ' AND '.join(conds), params
 
+    def create_path_lock(self, paths: List[str]) -> Tuple[List[PathLockRow], str]:
+        path_locks = []
+        msg = "Failed"
+        with self._db_lock, self._Session() as session:
+            vals = [{KBPathLock.path.name: path} for path in paths]
+            try:
+                path_locks = session.execute(insert(KBPathLock).values(vals).returning(KBPathLock.path)).fetchall()
+                session.commit()
+                msg = "Success"
+            except Exception as e:
+                session.rollback()
+                path_locks = []
+                msg = str(e)
+        return path_locks, msg
+
+    def delete_path_lock(self, path_locks: List[PathLockRow]):
+        with self._db_lock, self._Session() as session:
+            session.execute(delete(KBPathLock).where(KBPathLock.path.in_([ele.path for ele in path_locks])))
+            session.commit()
+
+    def validate_paths_return_is_new(self, paths: List[str]) -> Tuple[List[bool], str]:
+        # doc may change from waiting to working at any time in another thread
+        unsafe_staus_set = set([DocListManager.Status.working, DocListManager.Status.waiting])
+        paths_is_new = [False] * len(paths)
+        for i, path in enumerate(paths):
+            doc_id = gen_docid(path)
+            with self._db_lock, self._Session() as session:
+                docs = session.query(KBDocument).filter_by(doc_id=doc_id).all()
+                if len(docs) == 0:
+                    paths_is_new[i] = True
+                    continue
+                doc_group_records = session.query(KBGroupDocuments).filter_by(doc_id=doc_id).all()
+                if any([doc_group_record.need_reparse for doc_group_record in doc_group_records]):
+                    return [], f"Failed: {path} lasttime reparsing has not been finished"
+                elif any([doc_group_record.status in unsafe_staus_set for doc_group_record in doc_group_records]):
+                    return [], f"Failed: {path} is being parsed by kbgroup"
+        return paths_is_new, "Success"
+
+    def update_need_reparsing(self, doc_id: str, need_reparse: bool):
+        with self._db_lock, self._Session() as session:
+            session.execute(update(KBGroupDocuments).where(
+                KBGroupDocuments.doc_id == doc_id).values(need_reparse=need_reparse))
+            session.commit()
+
     def list_files(self, limit: Optional[int] = None, details: bool = False,
                    status: Union[str, List[str]] = DocListManager.Status.all,
                    exclude_status: Optional[Union[str, List[str]]] = None):
@@ -290,7 +348,8 @@ class SqliteDocListManager(DocListManager):
                             status: Union[str, List[str]] = DocListManager.Status.all,
                             exclude_status: Optional[Union[str, List[str]]] = None,
                             upload_status: Union[str, List[str]] = DocListManager.Status.all,
-                            exclude_upload_status: Optional[Union[str, List[str]]] = None):
+                            exclude_upload_status: Optional[Union[str, List[str]]] = None,
+                            need_reparse: Optional[bool] = None):
         query = """
             SELECT documents.doc_id, documents.path, documents.status, documents.meta,
                    kb_group_documents.group_name, kb_group_documents.status, kb_group_documents.log
@@ -301,6 +360,10 @@ class SqliteDocListManager(DocListManager):
         if group:
             conds.append('kb_group_documents.group_name = ?')
             params.append(group)
+
+        if need_reparse is not None:
+            conds.append('kb_group_documents.need_reparse = ?')
+            params.append(int(need_reparse))
 
         status_cond, status_params = self.get_status_cond_and_params(status, exclude_status, prefix='kb_group_documents')
         if status_cond:
@@ -394,57 +457,6 @@ class SqliteDocListManager(DocListManager):
             exist_paths = [doc.path for doc in docs]
         return exist_paths
 
-    def safe_parsing_path(self, file_path: str, content: bytes,
-                          metadata: Union[None, Dict[str, Any]] = None) -> DocPathParsingResult:
-        doc_id = gen_docid(file_path)
-
-        def gen_result_after_save_file(file_path, content, doc_id, msg, is_new=False):
-            with open(file_path, 'wb') as f: f.write(content)
-            return DocPathParsingResult(doc_id=doc_id, success=True, msg=msg, is_new=is_new)
-
-        def do_parsing_by_doc_group_records(file_path, content, doc_id, doc_group_records: List[KBGroupDocuments]):
-            RowSatus = DocListManager.Status
-            if any([doc_group_record.need_reparse for doc_group_record in doc_group_records]):
-                return DocPathParsingResult(
-                    doc_id=doc_id, success=False, msg="Failed: Document's lasttime reparsing has not been finished")
-            elif any([doc_group_record.status == RowSatus.working for doc_group_record in doc_group_records]):
-                return DocPathParsingResult(
-                    doc_id=doc_id, success=False, msg="Failed: Document is being parsed by kbgroup")
-            elif any([doc_group_record.status == RowSatus.deleted for doc_group_record in doc_group_records]):
-                return DocPathParsingResult(
-                    doc_id=doc_id, success=False, msg="Failed: Unexpected status 'deleted' in KBGroupDocuments")
-            else:
-                # success, failed, deleting will be handled in worker
-                return gen_result_after_save_file(
-                    file_path, content, doc_id, "Success: Document will be reparsed in worker thread")
-
-        with self._db_lock, self._Session() as session:
-            doc_group_records = session.query(KBGroupDocuments).filter_by(doc_id=doc_id).all()
-            docs_existing = session.query(KBDocument).filter_by(doc_id=doc_id).all()
-            if len(doc_group_records) == 0:
-                # no records in KBGroupDocuments means document has been deleted or never existed
-                if len(docs_existing) == 0:
-                    return gen_result_after_save_file(file_path, content, doc_id, "Success: Add new doc", True)
-                doc_existing = docs_existing[0]
-                if doc_existing.status == DocListManager.Status.deleting:
-                    session.delete(doc_existing)
-                    session.commit()
-                    return gen_result_after_save_file(file_path, content, doc_id,
-                                                      "Success: Add new doc after deleting", True)
-                else:
-                    return DocPathParsingResult(
-                        doc_id=doc_id, success=False, msg=f"Failed: Document exist with status {doc_existing.status}")
-            else:
-                # records found in KBGroupDocuments. Check need_reparse flag and status
-                doc_path_parsing_result = do_parsing_by_doc_group_records(
-                    file_path, content, doc_id, doc_group_records)
-                if doc_path_parsing_result.success:
-                    for doc_group_record in doc_group_records:
-                        doc_group_record.need_reparse = True
-                    session.commit()
-                return doc_path_parsing_result
-        return DocPathParsingResult(doc_id=doc_id, success=False, msg="Failed: Unkknown reason")
-
     # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):
         set_clause = ", ".join([f"{k} = ?" for k in kw.keys()])
@@ -532,6 +544,7 @@ class SqliteDocListManager(DocListManager):
             conn.execute('delete from document_groups')
             conn.execute('delete from kb_group_documents')
             conn.execute('delete from operation_logs')
+            conn.execute('delete from path_lock')
             conn.commit()
 
     def __reduce__(self):

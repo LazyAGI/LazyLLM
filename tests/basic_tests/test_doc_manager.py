@@ -222,7 +222,7 @@ class TestDocListServer(object):
         files = [('files', ('test1.txt', io.BytesIO(b"file1 content"), 'text/plain')),
                  ('files', ('test2.txt', io.BytesIO(b"file2 content"), 'text/plain'))]
 
-        data = dict(override='false', metadatas=json.dumps([{"key": "value"}, {"key": "value2"}]), user_path='path')
+        data = dict(override='true', metadatas=json.dumps([{"key": "value"}, {"key": "value2"}]), user_path='path')
         response = requests.post(self.get_url('upload_files', **data), files=files)
         assert response.status_code == 200 and response.json().get('code') == 200, response.json()
         assert len(response.json().get('data')[0]) == 2
