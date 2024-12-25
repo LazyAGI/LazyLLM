@@ -1,4 +1,5 @@
 import os
+import re
 import yaml
 import json
 import uuid
@@ -88,7 +89,12 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             # llamfactory need a gpu, 1st import raise error, so import 2nd.
             from llamafactory.extras.constants import DEFAULT_TEMPLATE
         teplate_dict = CaseInsensitiveDict(DEFAULT_TEMPLATE)
-        key = os.path.basename(base_model).split('-')[0]
+        base_name = os.path.basename(base_model).lower()
+        pattern = r'^llama-(\d+)-\d+'
+        if re.match(pattern, base_name):
+            key = 'llama-' + re.match(pattern, base_name).group(1)
+        else:
+            key = re.split('[_-]', base_name)[0]
         if key in teplate_dict:
             return teplate_dict[key]
         else:
