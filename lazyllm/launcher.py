@@ -563,17 +563,19 @@ class K8sLauncher(LazyLLMLaunchersBase):
         def _create_httproute(self):
             custom_api = k8s.client.CustomObjectsApi()
 
+            httproute_name = f"httproute-{self.deployment_name}"
             httproute_spec = {
                 "apiVersion": "gateway.networking.k8s.io/v1beta1",
                 "kind": "HTTPRoute",
                 "metadata": {
-                    "name": f"httproute-{self.deployment_name}",
+                    "name": httproute_name,
                     "namespace": self.namespace
                 },
                 "spec": {
                     "parentRefs": [{
                         "name": self.gateway_name,
-                        "port": self.deployment_port
+                        "port": self.deployment_port,
+                        "sectionName": httproute_name
                     }],
                     "rules": [{
                         "matches": [{
@@ -601,7 +603,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     plural="httproutes",
                     body=httproute_spec
                 )
-                LOG.info(f"Kubernetes HTTPRoute 'httproute-{self.deployment_name}' created successfully.")
+                LOG.info(f"Kubernetes HTTPRoute '{httproute_name}' created successfully.")
             except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when creating HTTPRoute: {e}")
                 raise
