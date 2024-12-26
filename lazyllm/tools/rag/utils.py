@@ -133,7 +133,6 @@ class DocListManager(ABC):
             file_ids, DocListManager.Status.deleting, self.DELETE_SAFE_STATUS_LIST
         )
         safe_delete_ids = [doc.doc_id for doc in document_list]
-        print("SUCCESS set deleting for:", safe_delete_ids)
         self.update_kb_group_file_status(file_ids=safe_delete_ids, status=DocListManager.Status.deleting)
         return document_list
 
