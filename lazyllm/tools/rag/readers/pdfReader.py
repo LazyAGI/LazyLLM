@@ -10,7 +10,7 @@ from ..doc_node import DocNode
 RETRY_TIMES = 3
 
 class PDFReader(LazyLLMReaderBase):
-    def __init__(self, return_full_document: bool = False, return_trace: bool = True) -> None:
+    def __init__(self, return_full_document: bool = True, return_trace: bool = True) -> None:
         super().__init__(return_trace=return_trace)
         self._return_full_document = return_full_document
 
