@@ -13,7 +13,7 @@ from .milvus_store import MilvusStore
 from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import DocListManager, KBDocument, gen_docid, is_sparse
+from .utils import DocListManager, gen_docid, is_sparse
 from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH
 from .data_type import DataType
 import threading
@@ -220,29 +220,6 @@ class DocImpl:
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
 
-    def _reparse_success_failed_docs(self, docs: List[KBDocument]):
-        if len(docs) > 0:
-            self._delete_files([doc.path for doc in docs])
-            filepaths = [doc.path for doc in docs]
-            ids = [doc.doc_id for doc in docs]
-            metadatas = [doc.metadata for doc in docs]
-            self._worker_add_files(filepaths, ids, metadatas)
-
-    def _worker_add_files(self, files: List[str], ids: List[str], metadatas: List[Dict[str, Any]]):
-        self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
-        self._add_files(input_files=files, ids=ids, metadatas=metadatas)
-        self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
-
-    def _worker_delete_files(self, files: List[str], ids: List[str]):
-        self._delete_files(files)
-        self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
-
-    def _worker_reparse_files(self, files: List[str], ids: List[str], metadatas: List[Dict[str, Any]]):
-        self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
-        self._delete_files(files)
-        self._add_files(input_files=files, ids=ids, metadatas=metadatas)
-        self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
-
     def worker(self):
         while True:
             docs = self._dlm.get_docs_need_reparse(group=self._kb_group_name)
@@ -250,11 +227,15 @@ class DocImpl:
                 filepaths = [doc.path for doc in docs]
                 ids = [doc.doc_id for doc in docs]
                 metadatas = [doc.metadata for doc in docs]
-                self._worker_reparse_files(files=filepaths, ids=ids, metadatas=metadatas)
+                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
+                self._delete_files(filepaths)
+                self._add_files(input_files=filepaths, ids=ids, metadatas=metadatas)
+                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
 
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
             if files:
-                self._worker_delete_files(files, ids)
+                self._delete_files(files)
+                self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
                 continue
 
             if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
@@ -264,7 +245,9 @@ class DocImpl:
             ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
                                                      upload_status=DocListManager.Status.success)
             if files:
-                self._worker_add_files(files, ids, metadatas)
+                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
+                self._add_files(input_files=files, ids=ids, metadatas=metadatas)
+                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
                 time.sleep(3)
                 continue
             time.sleep(10)

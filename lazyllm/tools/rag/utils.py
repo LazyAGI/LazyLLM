@@ -11,7 +11,7 @@ from lazyllm.common import override
 from lazyllm.common.queue import sqlite3_check_threadsafety
 import sqlalchemy
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from sqlalchemy import Column, insert, update, delete, Row
+from sqlalchemy import Column, insert, update, Row
 from sqlalchemy.exc import NoResultFound
 
 import pydantic
@@ -62,12 +62,6 @@ class KBDocument(KBDataBase):
     meta = Column(sqlalchemy.Text, nullable=True)
     status = Column(sqlalchemy.Text, nullable=False, index=True)
     count = Column(sqlalchemy.Integer, default=0)
-
-PathLockRow = Row
-class KBPathLock(KBDataBase):
-    __tablename__ = "path_lock"
-
-    path = Column(sqlalchemy.Text, primary_key=True)
 
 class KBGroup(KBDataBase):
     __tablename__ = "document_groups"
@@ -147,12 +141,6 @@ class DocListManager(ABC):
 
     @abstractmethod
     def _init_tables(self): pass
-
-    @abstractmethod
-    def create_path_lock(self, paths: List[str]) -> Tuple[List[PathLockRow], str]: pass
-
-    @abstractmethod
-    def delete_path_lock(self, path_locks: List[PathLockRow]): pass
 
     @abstractmethod
     def validate_paths_return_is_new(self, paths: List[str]) -> Tuple[List[bool], str]: pass
@@ -273,26 +261,6 @@ class SqliteDocListManager(DocListManager):
             params.extend(exclude_status)
 
         return ' AND '.join(conds), params
-
-    def create_path_lock(self, paths: List[str]) -> Tuple[List[PathLockRow], str]:
-        path_locks = []
-        msg = "Failed"
-        with self._db_lock, self._Session() as session:
-            vals = [{KBPathLock.path.name: path} for path in paths]
-            try:
-                path_locks = session.execute(insert(KBPathLock).values(vals).returning(KBPathLock.path)).fetchall()
-                session.commit()
-                msg = "Success"
-            except Exception as e:
-                session.rollback()
-                path_locks = []
-                msg = str(e)
-        return path_locks, msg
-
-    def delete_path_lock(self, path_locks: List[PathLockRow]):
-        with self._db_lock, self._Session() as session:
-            session.execute(delete(KBPathLock).where(KBPathLock.path.in_([ele.path for ele in path_locks])))
-            session.commit()
 
     def validate_paths_return_is_new(self, paths: List[str]) -> Tuple[List[bool], str]:
         # doc may change from waiting to working at any time in another thread
@@ -544,7 +512,6 @@ class SqliteDocListManager(DocListManager):
             conn.execute('delete from document_groups')
             conn.execute('delete from kb_group_documents')
             conn.execute('delete from operation_logs')
-            conn.execute('delete from path_lock')
             conn.commit()
 
     def __reduce__(self):

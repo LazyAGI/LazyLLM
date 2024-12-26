@@ -82,11 +82,7 @@ class DocManager(lazyllm.ModuleBase):
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
             # When override is set to True, lock the path first in case of concurrency
             paths_is_new = [True] * len(file_paths)
-            path_locks = []
             if override is True:
-                path_locks, msg = self._manager.create_path_lock(file_paths)
-                if not path_locks:
-                    return BaseResponse(code=500, msg=msg, data=None)
                 paths_is_new, msg = self._manager.validate_paths_return_is_new(file_paths)
                 if not paths_is_new:
                     return BaseResponse(code=500, msg=msg, data=None)
@@ -112,8 +108,6 @@ class DocManager(lazyllm.ModuleBase):
                     msg = f"Success: path {file_path} will be reparsed."
                 ids.append(doc_id)
                 results.append(msg)
-            if override is True:
-                self._manager.delete_path_lock(path_locks)
             return BaseResponse(data=[ids, results])
         except Exception as e:
             lazyllm.LOG.error(f'upload_files exception: {e}')
