@@ -191,6 +191,8 @@ class TestDocumentServer(unittest.TestCase):
         self.server = lazyllm.ServerModule(DocManager(self.dlm))
         self.server.start()
 
+        print(f"\nDBPATH:", self.dlm._db_path)
+
         url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
         self.doc_server_addr = re.findall(url_pattern, self.server._url)[0]
 
@@ -228,6 +230,10 @@ class TestDocumentServer(unittest.TestCase):
         nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
         assert len(nodes) == 1
         assert nodes[0].global_metadata[RAG_DOC_ID] == test2_docid
+
+        # make sure that only one file is left
+        response = httpx.get(f'{self.doc_server_addr}/list_files')
+        assert response.status_code == 200 and len(response.json().get('data')) == 1
 
 if __name__ == "__main__":
     unittest.main()
