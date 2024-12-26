@@ -67,6 +67,15 @@ class ModelManager():
         else:
             return dict()
 
+    @classmethod
+    def validate_model_path(cls, model_path):
+        extensions = {'.pt', '.bin', '.safetensors'}
+        for _, _, files in os.walk(model_path):
+            for file in files:
+                if any(file.endswith(ext) for ext in extensions):
+                    return True
+        return False
+
     def _try_add_mapping(self, model):
         model_base = os.path.basename(model)
         model = model_base.lower()
