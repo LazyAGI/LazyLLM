@@ -156,10 +156,8 @@ class MilvusStore(StoreBase):
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
+        parallel_do_embedding(self._embed, [], nodes)
         for node in nodes:
-            embed_keys = self._group_embed_keys.get(node._group)
-            if embed_keys:
-                parallel_do_embedding(self._embed, embed_keys, [node])
             data = self._serialize_node_partial(node)
             self._client.upsert(collection_name=node._group, data=[data])
 

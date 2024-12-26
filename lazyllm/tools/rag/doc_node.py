@@ -157,7 +157,7 @@ class DocNode:
 
     def has_missing_embedding(self, embed_keys: Union[str, List[str]]) -> List[str]:
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
-        assert len(embed_keys) > 0, "The ebmed_keys to be checked must be passed in."
+        if len(embed_keys) == 0: return []
         if self.embedding is None: return embed_keys
         return [k for k in embed_keys if k not in self.embedding]
 
