@@ -506,12 +506,15 @@ def save_files_in_threads(
     return (already_exist_files, new_add_files, overwritten_files)
 
 # returns a list of modified nodes
-def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union[List[str], Set[str]]],
+def parallel_do_embedding(embed: Dict[str, Callable], group_embed_keys: Dict[str, Set[str]], 
                           nodes: List[DocNode]) -> List[DocNode]:
     modified_nodes = []
     with ThreadPoolExecutor(config["max_embedding_workers"]) as executor:
         futures = []
         for node in nodes:
+            embed_keys = group_embed_keys.get(node._group)
+            if not embed_keys:
+                continue
             miss_keys = node.has_missing_embedding(embed_keys)
             if not miss_keys:
                 continue
