@@ -177,6 +177,17 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             status = r.json()["job"]["status"]
             return (fine_tuning_job_id, status)
 
+    def _validate_api_key(self):
+        fine_tune_url = urljoin(self._base_url, "models")
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json"
+        }
+        response = requests.get(fine_tune_url, headers=headers)
+        if response.status_code == 200:
+            return True
+        return False
+
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
         fine_tune_url = urljoin(self._base_url, f"fine-tunes/{fine_tuning_job_id}")
         headers = {
