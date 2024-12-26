@@ -322,8 +322,12 @@ def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False
     document = lazyllm.tools.rag.Document(
         dataset_path, Engine().build_node(embed).func if embed else None, server=server, manager=create_ui)
     for group in node_group:
-        if group['transform'] == 'LLMParser': group['llm'] = Engine().build_node(group['llm']).func
-        elif group['transform'] == 'FuncNode': group['function'] = make_code(group['function'])
+        if group['transform'] == 'LLMParser':
+            group['transform'] = 'llm'
+            group['llm'] = Engine().build_node(group['llm']).func
+        elif group['transform'] == 'FuncNode':
+            group['transform'] = 'function'
+            group['function'] = make_code(group['function'])
         document.create_node_group(**group)
     return document
 
