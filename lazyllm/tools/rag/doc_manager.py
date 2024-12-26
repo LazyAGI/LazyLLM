@@ -13,19 +13,6 @@ from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 import uuid
 
 
-def gen_unique_filepaths(ori_filepath: str) -> str:
-    if not os.path.exists(ori_filepath):
-        return ori_filepath
-    directory, filename = os.path.split(ori_filepath)
-    name, ext = os.path.splitext(filename)
-    ct = 1
-    new_filepath = f"{os.path.join(directory, name)}_{ct}{ext}"
-    while os.path.exists(new_filepath):
-        ct += 1
-        new_filepath = f"{os.path.join(directory, name)}_{ct}{ext}"
-    return new_filepath
-
-
 class DocManager(lazyllm.ModuleBase):
     def __init__(self, dlm: DocListManager) -> None:
         super().__init__()
@@ -80,11 +67,10 @@ class DocManager(lazyllm.ModuleBase):
                     if err_msg:
                         return BaseResponse(code=400, msg=f'file [{files[idx].filename}]: {err_msg}', data=None)
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
-            # When override is set to True, lock the path first in case of concurrency
             paths_is_new = [True] * len(file_paths)
             if override is True:
-                paths_is_new, msg = self._manager.validate_paths_return_is_new(file_paths)
-                if not paths_is_new:
+                is_success, msg, paths_is_new = self._manager.validate_paths(file_paths)
+                if not is_success:
                     return BaseResponse(code=500, msg=msg, data=None)
             directorys = set(os.path.dirname(path) for path in file_paths)
             [os.makedirs(directory, exist_ok=True) for directory in directorys if directory]

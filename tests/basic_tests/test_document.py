@@ -191,8 +191,6 @@ class TestDocumentServer(unittest.TestCase):
         self.server = lazyllm.ServerModule(DocManager(self.dlm))
         self.server.start()
 
-        print(f"\nDBPATH:", self.dlm._db_path)
-
         url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
         self.doc_server_addr = re.findall(url_pattern, self.server._url)[0]
 

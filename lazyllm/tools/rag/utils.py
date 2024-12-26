@@ -11,7 +11,7 @@ from lazyllm.common import override
 from lazyllm.common.queue import sqlite3_check_threadsafety
 import sqlalchemy
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from sqlalchemy import Column, insert, update, Row
+from sqlalchemy import Column, select, insert, update, Row
 from sqlalchemy.exc import NoResultFound
 
 import pydantic
@@ -133,6 +133,7 @@ class DocListManager(ABC):
             file_ids, DocListManager.Status.deleting, self.DELETE_SAFE_STATUS_LIST
         )
         safe_delete_ids = [doc.doc_id for doc in document_list]
+        print("SUCCESS set deleting for:", safe_delete_ids)
         self.update_kb_group_file_status(file_ids=safe_delete_ids, status=DocListManager.Status.deleting)
         return document_list
 
@@ -143,7 +144,7 @@ class DocListManager(ABC):
     def _init_tables(self): pass
 
     @abstractmethod
-    def validate_paths_return_is_new(self, paths: List[str]) -> Tuple[List[bool], str]: pass
+    def validate_paths(self, paths: List[str]) -> Tuple[bool, str, List[bool]]: pass
 
     @abstractmethod
     def update_need_reparsing(self, doc_id: str, need_reparse: bool): pass
@@ -262,23 +263,37 @@ class SqliteDocListManager(DocListManager):
 
         return ' AND '.join(conds), params
 
-    def validate_paths_return_is_new(self, paths: List[str]) -> Tuple[List[bool], str]:
-        # doc may change from waiting to working at any time in another thread
+    def validate_paths(self, paths: List[str]) -> Tuple[bool, str, List[bool]]:
+        # check and return: success, msg, path_is_new for each path
         unsafe_staus_set = set([DocListManager.Status.working, DocListManager.Status.waiting])
-        paths_is_new = [False] * len(paths)
-        for i, path in enumerate(paths):
-            doc_id = gen_docid(path)
-            with self._db_lock, self._Session() as session:
-                docs = session.query(KBDocument).filter_by(doc_id=doc_id).all()
-                if len(docs) == 0:
-                    paths_is_new[i] = True
-                    continue
-                doc_group_records = session.query(KBGroupDocuments).filter_by(doc_id=doc_id).all()
-                if any([doc_group_record.need_reparse for doc_group_record in doc_group_records]):
-                    return [], f"Failed: {path} lasttime reparsing has not been finished"
-                elif any([doc_group_record.status in unsafe_staus_set for doc_group_record in doc_group_records]):
-                    return [], f"Failed: {path} is being parsed by kbgroup"
-        return paths_is_new, "Success"
+        paths_is_new = [True] * len(paths)
+        doc_ids = [gen_docid(path) for path in paths]
+        doc_id_to_path = {doc_id: path for doc_id, path in zip(doc_ids, paths)}
+        found_doc_ids = []
+        found_doc_group_rows = []
+        with self._db_lock, self._Session() as session:
+            rows = session.execute(
+                select(KBDocument.doc_id).where(KBDocument.doc_id.in_(doc_ids))
+            ).fetchall()
+            if len(rows) == 0:
+                return True, "Success", paths_is_new
+            found_doc_ids = [row.doc_id for row in rows]
+            found_doc_group_rows = session.execute(
+                select(KBGroupDocuments.doc_id, KBGroupDocuments.need_reparse, KBGroupDocuments.status)
+                .where(KBGroupDocuments.doc_id.in_(found_doc_ids))).fetchall()
+
+        for doc_group_record in found_doc_group_rows:
+            if doc_group_record.need_reparse:
+                msg = f"Failed: {doc_id_to_path[doc_group_record.doc_id]} lasttime reparsing has not been finished"
+                return False, msg, None
+            if doc_group_record.status in unsafe_staus_set:
+                return False, f"Failed: {doc_id_to_path[doc_group_record.doc_id]} is being parsed by kbgroup", None
+        found_doc_ids = set(found_doc_ids)
+        for i in range(len(paths)):
+            cur_doc_id = doc_ids[i]
+            if cur_doc_id in found_doc_ids:
+                paths_is_new[i] = False
+        return True, "Success", paths_is_new
 
     def update_need_reparsing(self, doc_id: str, need_reparse: bool):
         with self._db_lock, self._Session() as session:
