@@ -8,9 +8,9 @@ from fastapi import UploadFile, Body
 
 import lazyllm
 from lazyllm import FastapiApp as app
-from .utils import DocListManager, BaseResponse
-from .doc_impl import gen_docid
+from .utils import DocListManager, BaseResponse, gen_docid
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
+import uuid
 
 
 class DocManager(lazyllm.ModuleBase):
@@ -38,6 +38,20 @@ class DocManager(lazyllm.ModuleBase):
             return f"metadata MUST not contain key `{RAG_DOC_PATH}`"
         return None
 
+    def _gen_unique_filepath(self, file_path: str) -> str:
+        suffix = os.path.splitext(file_path)[1]
+        prefix = file_path[0: len(file_path) - len(suffix)]
+        pattern = f"{prefix}%{suffix}"
+        MAX_TRIES = 10000
+        exist_paths = set(self._manager.get_existing_paths_by_pattern(pattern))
+        if file_path not in exist_paths:
+            return file_path
+        for i in range(1, MAX_TRIES):
+            new_path = f"{prefix}-{i}{suffix}"
+            if new_path not in exist_paths:
+                return new_path
+        return f"{str(uuid.uuid4())}{suffix}"
+
     @app.post("/upload_files")
     def upload_files(self, files: List[UploadFile], override: bool = False,  # noqa C901
                      metadatas: Optional[str] = None, user_path: Optional[str] = None):
@@ -52,32 +66,34 @@ class DocManager(lazyllm.ModuleBase):
                     err_msg = self._validate_metadata(mt)
                     if err_msg:
                         return BaseResponse(code=400, msg=f'file [{files[idx].filename}]: {err_msg}', data=None)
-
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
-            ids = self._manager.add_files(file_paths, metadatas=metadatas, status=DocListManager.Status.working)
-            results = []
-            for file, path in zip(files, file_paths):
-                if os.path.exists(path):
-                    if not override:
-                        results.append('Duplicated')
-                        continue
-
-                try:
-                    content = file.file.read()
-                    directory = os.path.dirname(path)
-                    if directory:
-                        os.makedirs(directory, exist_ok=True)
-
-                    with open(path, 'wb') as f:
-                        f.write(content)
-                except Exception as e:
-                    lazyllm.LOG.error(f'writing file [{path}] to disk failed: [{e}]')
-                    raise e
-
-                file_id = gen_docid(path)
-                self._manager.update_file_status([file_id], status=DocListManager.Status.success)
-                results.append('Success')
-
+            paths_is_new = [True] * len(file_paths)
+            if override is True:
+                is_success, msg, paths_is_new = self._manager.validate_paths(file_paths)
+                if not is_success:
+                    return BaseResponse(code=500, msg=msg, data=None)
+            directorys = set(os.path.dirname(path) for path in file_paths)
+            [os.makedirs(directory, exist_ok=True) for directory in directorys if directory]
+            ids, results = [], []
+            for i in range(len(files)):
+                file_path = file_paths[i]
+                content = files[i].file.read()
+                metadata = metadatas[i] if metadatas else None
+                if override is False:
+                    file_path = self._gen_unique_filepath(file_path)
+                with open(file_path, 'wb') as f: f.write(content)
+                msg = "success"
+                doc_id = gen_docid(file_path)
+                if paths_is_new[i]:
+                    docs = self._manager.add_files(
+                        [file_path], metadatas=[metadata], status=DocListManager.Status.success)
+                    if not docs:
+                        msg = f"Failed: path {file_path} already exists in Database."
+                else:
+                    self._manager.update_need_reparsing(doc_id, True)
+                    msg = f"Success: path {file_path} will be reparsed."
+                ids.append(doc_id)
+                results.append(msg)
             return BaseResponse(data=[ids, results])
         except Exception as e:
             lazyllm.LOG.error(f'upload_files exception: {e}')
@@ -105,7 +121,7 @@ class DocManager(lazyllm.ModuleBase):
                     exist_id = exists_files_info.get(file, None)
                     if exist_id:
                         update_kws = dict(fileid=exist_id, status=DocListManager.Status.success)
-                        if metadatas: update_kws["metadata"] = json.dumps(metadatas[idx])
+                        if metadatas: update_kws["meta"] = json.dumps(metadatas[idx])
                         self._manager.update_file_message(**update_kws)
                         exist_ids.append(exist_id)
                         id_mapping[file] = exist_id
@@ -178,16 +194,13 @@ class DocManager(lazyllm.ModuleBase):
             if request.group_name:
                 return self.delete_files_from_group(request)
             else:
-                self._manager.update_kb_group_file_status(
-                    file_ids=request.file_ids, status=DocListManager.Status.deleting)
-                docs = self._manager.update_file_status(file_ids=request.file_ids, status=DocListManager.Status.deleting)
-
-                for doc in docs:
-                    if os.path.exists(path := doc[1]):
+                documents = self._manager.delete_files(request.file_ids)
+                deleted_ids = set([ele.doc_id for ele in documents])
+                for doc in documents:
+                    if os.path.exists(path := doc.path):
                         os.remove(path)
-
-                self._manager.update_file_status(file_ids=request.file_ids, status=DocListManager.Status.deleted)
-                return BaseResponse()
+                results = ["Success" if ele.doc_id in deleted_ids else "Failed" for ele in documents]
+                return BaseResponse(data=[request.file_ids, results])
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 

@@ -78,12 +78,6 @@ class TestDocImpl(unittest.TestCase):
         self.doc_impl._add_files(["new_file.txt"])
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 2
 
-    def test_delete_files(self):
-        self.doc_impl._lazy_init()
-        self.doc_impl._delete_files(["dummy_file.txt"])
-        assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 0
-
-
 class TestDocument(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -234,6 +228,10 @@ class TestDocumentServer(unittest.TestCase):
         nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
         assert len(nodes) == 1
         assert nodes[0].global_metadata[RAG_DOC_ID] == test2_docid
+
+        # make sure that only one file is left
+        response = httpx.get(f'{self.doc_server_addr}/list_files')
+        assert response.status_code == 200 and len(response.json().get('data')) == 1
 
 if __name__ == "__main__":
     unittest.main()

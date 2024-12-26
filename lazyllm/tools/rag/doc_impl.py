@@ -222,6 +222,16 @@ class DocImpl:
 
     def worker(self):
         while True:
+            docs = self._dlm.get_docs_need_reparse(group=self._kb_group_name)
+            if docs:
+                filepaths = [doc.path for doc in docs]
+                ids = [doc.doc_id for doc in docs]
+                metadatas = [doc.metadata for doc in docs]
+                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
+                self._delete_files(filepaths)
+                self._add_files(input_files=filepaths, ids=ids, metadatas=metadatas)
+                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
+
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
             if files:
                 self._delete_files(files)
@@ -230,12 +240,15 @@ class DocImpl:
 
             if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
                 self._dlm.init_tables()
+                self._dlm.delete_obsolete_files()
+
             ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
                                                      upload_status=DocListManager.Status.success)
             if files:
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
                 self._add_files(input_files=files, ids=ids, metadatas=metadatas)
                 self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
+                time.sleep(3)
                 continue
             time.sleep(10)
 
