@@ -21,12 +21,42 @@ concurrency:
 jobs:
   k8s_tests:
     runs-on: tps_k8s
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
 
     container:
       image: registry.cn-sh-01.sensecore.cn/ai-expert-service/lazyllm_ci:latest
       options: --mount type=bind,source=/mnt/nfs_share,target=/mnt/nfs_share --mount type=bind,source=/mnt/lustre/share_data,target=/mnt/lustre/share_data
 
     steps:
+      - name: Check for required label
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Checking for 'lint_pass' label..."
+          TIMEOUT=360
+          INTERVAL=10
+          ELAPSED_TIME=0
+          while [ $ELAPSED_TIME -lt $TIMEOUT ]; do
+            echo $ELAPSED_TIME
+            PR_LABELS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.number }}/labels" | \
+              jq -r '.[].name')
+    
+            if echo "$PR_LABELS" | grep -q 'lint_pass'; then
+              echo "'lint_pass' label found, proceeding with CI process."
+              break
+            fi
+    
+            echo "Label not found, waiting $INTERVAL seconds..."
+            sleep $INTERVAL
+            ELAPSED_TIME=$((ELAPSED_TIME + INTERVAL))
+          done
+
+          if [ $ELAPSED_TIME -ge $TIMEOUT ]; then
+            echo "The 'lint_pass' label was not added within $TIMEOUT seconds. Skipping CI process."
+            exit 1
+          fi
+          
       - name: Checkout code
         uses: actions/checkout@v4
 
