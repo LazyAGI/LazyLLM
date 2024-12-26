@@ -13,7 +13,7 @@ class HttpTool(HttpRequest):
                  proxies: Optional[Dict[str, str]] = None,
                  code_str: Optional[str] = None,
                  vars_for_code: Optional[Dict[str, Any]] = None):
-        super().__init__(method, url, '', headers, params, body)
+        super().__init__(method, url, '', headers, params, body, timeout, proxies)
         self._has_http = True if url else False
         self._compiled_func = compile_func(code_str, vars_for_code) if code_str else None
 

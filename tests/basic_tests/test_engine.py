@@ -572,6 +572,29 @@ class TestEngine(unittest.TestCase):
         assert content['headers']['h1'] == 'baz'
         assert content['url'].endswith(f'{url[5:]}?p1=foo&p2=bar')
 
+    def test_engine_httptool_body(self):
+        body = {'b1': '{{b1}}', 'b2': '{{b2}}'}
+        headers = {'Content-Type': '{{h1}}'}
+        url = 'https://jsonplaceholder.typicode.com/posts'
+
+        nodes = [
+            dict(id='0', kind='Constant', name='header', args="application/json"),
+            dict(id='1', kind='Constant', name='body1', args="body1"),
+            dict(id='2', kind='Constant', name='body2', args="body2"),
+            dict(id='3', kind='HttpTool', name='http', args=dict(
+                method='POST', url=url, body=body, headers=headers, _lazyllm_arg_names=['h1', 'b1', 'b2']))
+        ]
+        edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
+                 dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
+
+        engine = LightEngine()
+        gid = engine.start(nodes, edges, gid='graph-1')
+        res = engine.run(gid)
+        content = json.loads(res['content'])
+
+        assert content['b1'] == 'body1'
+        assert content['b2'] == 'body2'
+
     def test_engine_status(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
         llm_node = dict(id='1', kind='SharedLLM', name='s1', args=dict(llm='0', prompt=None))

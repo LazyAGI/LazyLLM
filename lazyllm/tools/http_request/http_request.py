@@ -1,6 +1,6 @@
 import re
-
 import httpx
+import json
 from lazyllm.module.module import ModuleBase
 from lazyllm.tools.http_request.http_executor_response import HttpExecutorResponse
 
@@ -44,13 +44,10 @@ class HttpRequest(ModuleBase):
             return target_str
 
         self._url = _map_input(self._url)
-
-        if self._body:
-            self._body = _map_input(self._body)
-        if self._params:
-            self._params = {key: _map_input(value) for key, value in self._params.items()}
-        if self._headers:
-            self._headers = {key: _map_input(value) for key, value in self._headers.items()}
+        self._body = (json.dumps({k: _map_input(v) for k, v in self._body.items()})
+                      if isinstance(self._body, dict) else _map_input(self._body))
+        if self._params: self._params = {key: _map_input(value) for key, value in self._params.items()}
+        if self._headers: self._headers = {key: _map_input(value) for key, value in self._headers.items()}
 
         http_response = httpx.request(method=self._method, url=self._url, headers=self._headers,
                                       params=self._params, data=self._body, timeout=self._timeout,
