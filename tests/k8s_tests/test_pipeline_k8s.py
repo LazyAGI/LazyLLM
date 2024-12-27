@@ -1,16 +1,16 @@
 import lazyllm
 from lazyllm import launchers, pipeline
 
-def demo1(input): return input * 2
-
-def demo2(input): return input * 3
-
-def demo3(input): return input * 4
-
-def demo4(input): return input * 5
-
 class TestPipelineK8s(object):
     def test_single_pipeline(self):
+        def demo1(input): return input * 2
+
+        def demo2(input): return input * 3
+
+        def demo3(input): return input * 4
+
+        def demo4(input): return input * 5
+
         with pipeline() as ppl:
             ppl.m1 = lazyllm.ServerModule(demo1, launcher=launchers.k8s()).start()
             ppl.m2 = lazyllm.ServerModule(demo2, launcher=launchers.k8s()).start()
@@ -21,6 +21,14 @@ class TestPipelineK8s(object):
         lazyllm.launcher.cleanup()
 
     def test_pipeline_server(self):
+        def demo1(input): return input * 2
+
+        def demo2(input): return input * 3
+
+        def demo3(input): return input * 4
+
+        def demo4(input): return input * 5
+
         with pipeline() as p1:
             p1.m1 = demo1
             p1.m2 = demo2
@@ -42,6 +50,14 @@ class TestPipelineK8s(object):
         lazyllm.launcher.cleanup()
 
     def test_nesting_pipeline(self):
+        def demo1(input): return input * 2
+
+        def demo2(input): return input * 3
+
+        def demo3(input): return input * 4
+
+        def demo4(input): return input * 5
+
         with pipeline() as p:
             with pipeline() as p.m1:
                 with pipeline() as p.m1.mm1:
