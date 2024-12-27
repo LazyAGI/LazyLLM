@@ -5,6 +5,7 @@ import threading
 
 import lazyllm
 from lazyllm.common import ArgsDict, compile_func
+from lazyllm.common import once_wrapper
 from lazyllm.components.formatter import lazyllm_merge_query, encode_query_with_filepaths, decode_query_with_filepaths
 
 
@@ -102,6 +103,38 @@ class TestCommon(object):
         square = compile_func(str2)
         assert square(3) == 9
         assert square(18) == 324
+
+
+class TestCommonOnce(object):
+
+    @once_wrapper
+    def once_func(self):
+        self._count += 1
+
+    @once_wrapper
+    def once_func_with_exception(self):
+        self._count += 1
+        raise RuntimeError('once exception')
+
+    def test_callonce(self):
+        self._count = 0
+        assert not self.once_func.flag
+        self.once_func()
+        assert self._count == 1
+        assert self.once_func.flag
+        self.once_func()
+        assert self._count == 1
+
+    def test_callonce_exception(self):
+        self._count = 0
+        assert not self.once_func_with_exception.flag
+        with pytest.raises(RuntimeError, match='once exception'):
+            self.once_func_with_exception()
+        assert self._count == 1
+        assert self.once_func_with_exception.flag
+        with pytest.raises(RuntimeError, match='once exception'):
+            self.once_func_with_exception()
+        assert self._count == 1
 
 
 class TestCommonGlobals(object):
