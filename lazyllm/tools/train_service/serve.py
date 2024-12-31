@@ -19,21 +19,21 @@ from ..services import ServerBase
 
 class JobDescription(BaseModel):
     finetune_model_name: str
-    base_model: str = Field(default="qwen1.5-0.5b-chat")
-    data_path: str = Field(default="alpaca/alpaca_data_zh_128.json")
+    base_model: str = Field(default='qwen1.5-0.5b-chat')
+    data_path: str = Field(default='alpaca/alpaca_data_zh_128.json')
     num_gpus: int = Field(default=1)
     hyperparameters: dict = Field(
         default={
-            "stage": "sft",
-            "finetuning_type": "lora",
-            "val_size": 1,
-            "num_train_epochs": 1,
-            "learning_rate": 0.0001,
-            "lr_scheduler_type": "cosine",
-            "per_device_train_batch_size": 16,
-            "cutoff_len": 1024,
-            "lora_r": 8,
-            "lora_alpha": 32,
+            'stage': 'sft',
+            'finetuning_type': 'lora',
+            'val_size': 1,
+            'num_train_epochs': 1,
+            'learning_rate': 0.0001,
+            'lr_scheduler_type': 'cosine',
+            'per_device_train_batch_size': 16,
+            'cutoff_len': 1024,
+            'lora_r': 8,
+            'lora_alpha': 32,
         }
     )
 
@@ -114,14 +114,14 @@ class TrainServer(ServerBase):
 
         log_files_paths = []
         for file in os.listdir(log_dir):
-            if file.endswith(".log") and file.startswith("train_log_"):
+            if file.endswith('.log') and file.startswith('train_log_'):
                 log_files_paths.append(os.path.join(log_dir, file))
         if len(log_files_paths) == 0:
             return None
         assert len(log_files_paths) == 1
         return log_files_paths[-1]
 
-    @app.post("/v1/fine_tuning/jobs")
+    @app.post('/v1/fine_tuning/jobs')
     async def create_job(self, job: JobDescription, token: str = Header(None)):
         # await self.authorize_current_user(token)
         if not self._in_user_job_info(token):
@@ -177,26 +177,26 @@ class TrainServer(ServerBase):
             started_time = None
         self._update_active_jobs(token, job_id, (m, thread))
         self._update_user_job_info(token, job_id, {
-            "model_id": model_id,
-            "job_id": job_id,
-            "base_model": job.base_model,
-            "created_at": create_time,
-            "fine_tuned_model": save_path,
-            "status": status,
-            "data_path": job.data_path,
-            "hyperparameters": hypram,
-            "log_path": log_path,
-            "started_at": started_time,
-            "cost": None,
+            'model_id': model_id,
+            'job_id': job_id,
+            'base_model': job.base_model,
+            'created_at': create_time,
+            'fine_tuned_model': save_path,
+            'status': status,
+            'data_path': job.data_path,
+            'hyperparameters': hypram,
+            'log_path': log_path,
+            'started_at': started_time,
+            'cost': None,
         })
 
-        return {"job_id": job_id, 'status': status}
+        return {'job_id': job_id, 'status': status}
 
-    @app.post("/v1/fine_tuning/jobs/{job_id}/cancel")
+    @app.post('/v1/fine_tuning/jobs/{job_id}/cancel')
     async def cancel_job(self, job_id: str, token: str = Header(None)):
         await self.authorize_current_user(token)
         if not self._in_active_jobs(token, job_id):
-            raise HTTPException(status_code=404, detail="Job not found")
+            raise HTTPException(status_code=404, detail='Job not found')
 
         m, _ = self._pop_active_job(token, job_id)
         info = self._read_user_job_info(token, job_id)
@@ -207,7 +207,7 @@ class TrainServer(ServerBase):
             time.sleep(1)
             total_sleep += 1
             if total_sleep > 10:
-                raise HTTPException(status_code=404, detail=f"Task {job_id}, ccancelled timed out.")
+                raise HTTPException(status_code=404, detail=f'Task {job_id}, ccancelled timed out.')
 
         status = m.status(info['model_id']).name
         update_dict = {'status': status}
@@ -216,9 +216,9 @@ class TrainServer(ServerBase):
                                                                       self._time_format)).total_seconds()
         self._update_user_job_info(token, job_id, update_dict)
 
-        return {"status": status}
+        return {'status': status}
 
-    @app.get("/v1/fine_tuning/jobs")
+    @app.get('/v1/fine_tuning/jobs')
     async def list_jobs(self, token: str = Header(None)):
         # await self.authorize_current_user(token)
         if not self._in_user_job_info(token):
@@ -251,26 +251,26 @@ class TrainServer(ServerBase):
                 }
         return server_running_dict
 
-    @app.get("/v1/fine_tuning/jobs/{job_id}")
+    @app.get('/v1/fine_tuning/jobs/{job_id}')
     async def get_job_info(self, job_id: str, token: str = Header(None)):
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
-            raise HTTPException(status_code=404, detail="Job not found")
+            raise HTTPException(status_code=404, detail='Job not found')
 
         self._update_status(token, job_id)
 
         return self._read_user_job_info(token, job_id)
 
-    @app.get("/v1/fine_tuning/jobs/{job_id}/events")
+    @app.get('/v1/fine_tuning/jobs/{job_id}/events')
     async def get_job_log(self, job_id: str, token: str = Header(None)):
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
-            raise HTTPException(status_code=404, detail="Job not found")
+            raise HTTPException(status_code=404, detail='Job not found')
 
         self._update_status(token, job_id)
         info = self._read_user_job_info(token, job_id)
 
         if info['log_path']:
-            return {"log": info['log_path']}
+            return {'log': info['log_path']}
         else:
-            return {"log": 'invalid'}
+            return {'log': 'invalid'}

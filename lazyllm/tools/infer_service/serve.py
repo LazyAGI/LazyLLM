@@ -14,7 +14,7 @@ from lazyllm import FastapiApp as app
 from ..services import ServerBase
 
 class JobDescription(BaseModel):
-    deploy_model: str = Field(default="qwen1.5-0.5b-chat")
+    deploy_model: str = Field(default='qwen1.5-0.5b-chat')
     num_gpus: int = Field(default=1)
     deploy_parameters: dict = Field(
         default={
@@ -63,7 +63,7 @@ class InferServer(ServerBase):
         self._update_user_job_info(token, job_id, update)
 
         # Pop and kill jobs with status: Done, Failed
-        if Status[status] in (Status.Done, Status.Failed):
+        if Status[status] in (Status.Done, Status.Cancelled, Status.Failed):
             m, _ = self._pop_active_job(token, job_id)
             m.stop()
             if info['started_at'] and not info['cost']:
@@ -96,7 +96,7 @@ class InferServer(ServerBase):
 
         log_files_paths = []
         for file in os.listdir(log_dir):
-            if file.endswith(".log") and file.startswith("infer_"):
+            if file.endswith('.log') and file.startswith('infer_'):
                 log_files_paths.append(os.path.join(log_dir, file))
         if len(log_files_paths) == 0:
             return None
@@ -111,10 +111,10 @@ class InferServer(ServerBase):
                 newest_file = path
         return newest_file
 
-    @app.post("/v1/deploy/jobs")
+    @app.post('/v1/deploy/jobs')
     async def create_job(self, job: JobDescription, token: str = Header(None)):
         if not token:
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise HTTPException(status_code=401, detail='Invalid token')
         # await self.authorize_current_user(token)
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
@@ -133,7 +133,7 @@ class InferServer(ServerBase):
         hypram['log_path'] = save_root
 
         # Set params for TrainableModule:
-        m = lazyllm.TrainableModule(job.deploy_model).deploy_method((lazyllm.deploy.vllm, hypram))
+        m = lazyllm.TrainableModule(job.deploy_model).deploy_method((lazyllm.deploy.auto, hypram))
 
         # Launch Deploy:
         thread = threading.Thread(target=m.update_server)
@@ -157,23 +157,25 @@ class InferServer(ServerBase):
             started_time = None
         self._update_active_jobs(token, job_id, (m, thread))
         self._update_user_job_info(token, job_id, {
-            "job_id": job_id,
-            "base_model": job.deploy_model,
-            "created_at": create_time,
-            "status": status,
-            "hyperparameters": hypram,
-            "started_at": started_time,
-            "log_path": log_path,
-            "cost": None,
+            'job_id': job_id,
+            'base_model': job.deploy_model,
+            'created_at': create_time,
+            'status': status,
+            'hyperparameters': hypram,
+            'started_at': started_time,
+            'log_path': log_path,
+            'cost': None,
+            'deploy_method': m._deploy_type.__name__,
+            'url': m._url,
         })
 
-        return {"job_id": job_id, 'status': status}
+        return {'job_id': job_id, 'status': status}
 
-    @app.post("/v1/deploy/jobs/{job_id}/cancel")
+    @app.post('/v1/deploy/jobs/{job_id}/cancel')
     async def cancel_job(self, job_id: str, token: str = Header(None)):
         await self.authorize_current_user(token)
         if not self._in_active_jobs(token, job_id):
-            raise HTTPException(status_code=404, detail="Job not found")
+            raise HTTPException(status_code=404, detail='Job not found')
 
         m, _ = self._pop_active_job(token, job_id)
         info = self._read_user_job_info(token, job_id)
@@ -184,7 +186,7 @@ class InferServer(ServerBase):
             time.sleep(1)
             total_sleep += 1
             if total_sleep > 10:
-                raise HTTPException(status_code=404, detail=f"Task {job_id}, cancelled timed out.")
+                raise HTTPException(status_code=404, detail=f'Task {job_id}, cancelled timed out.')
 
         status = m.status().name
         update_dict = {'status': status}
@@ -193,9 +195,9 @@ class InferServer(ServerBase):
                                                                       self._time_format)).total_seconds()
         self._update_user_job_info(token, job_id, update_dict)
 
-        return {"status": status}
+        return {'status': status}
 
-    @app.get("/v1/deploy/jobs")
+    @app.get('/v1/deploy/jobs')
     async def list_jobs(self, token: str = Header(None)):
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
@@ -207,36 +209,38 @@ class InferServer(ServerBase):
                 creation_time = os.path.getctime(log_path)
                 formatted_time = datetime.fromtimestamp(creation_time).strftime(self._time_format)
                 server_running_dict[job_id] = {
-                    "job_id": job_id,
-                    "base_model": None,
-                    "created_at": formatted_time,
-                    "status": 'Done',
-                    "hyperparameters": None,
-                    "log_path": self._get_log_path(log_path),
-                    "cost": None,
+                    'job_id': job_id,
+                    'base_model': None,
+                    'created_at': formatted_time,
+                    'status': 'Cancelled',
+                    'hyperparameters': None,
+                    'log_path': self._get_log_path(log_path),
+                    'cost': None,
+                    'deploy_method': None,
+                    'url': None,
                 }
         return server_running_dict
 
-    @app.get("/v1/deploy/jobs/{job_id}")
+    @app.get('/v1/deploy/jobs/{job_id}')
     async def get_job_info(self, job_id: str, token: str = Header(None)):
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
-            raise HTTPException(status_code=404, detail="Job not found")
+            raise HTTPException(status_code=404, detail='Job not found')
 
         self._update_status(token, job_id)
 
         return self._read_user_job_info(token, job_id)
 
-    @app.get("/v1/deploy/jobs/{job_id}/events")
+    @app.get('/v1/deploy/jobs/{job_id}/events')
     async def get_job_log(self, job_id: str, token: str = Header(None)):
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
-            raise HTTPException(status_code=404, detail="Job not found")
+            raise HTTPException(status_code=404, detail='Job not found')
 
         self._update_status(token, job_id)
         info = self._read_user_job_info(token, job_id)
 
         if info['log_path']:
-            return {"log": info['log_path']}
+            return {'log': info['log_path']}
         else:
-            return {"log": 'invalid'}
+            return {'log': 'invalid'}

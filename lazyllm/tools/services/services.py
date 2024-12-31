@@ -98,6 +98,8 @@ class ServerBase(object):
     def _pop_active_job(self, token, job_id=None):
         return self._pop_dict(self._active_lock, self._active_jobs, token, job_id)
 
+    def _update_status(self, token, job_id): pass
+
     def _polling_status_checker(self, frequent=5):
         def polling():
             while True:
@@ -118,6 +120,6 @@ class ServerBase(object):
         if not self._in_user_job_info(Bearer):
             raise HTTPException(
                 status_code=401,
-                detail="Invalid token",
+                detail='Invalid token',
             )
         return Bearer

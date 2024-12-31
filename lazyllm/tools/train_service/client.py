@@ -4,29 +4,14 @@ import requests
 from urllib.parse import urljoin
 
 import lazyllm
-from lazyllm.launcher import Status
 from lazyllm.module.utils import update_config, TrainConfig, uniform_sft_dataset
+from ..services import ClientBase
 
 
-class LocalTrainClient:
+class LocalTrainClient(ClientBase):
 
     def __init__(self, url):
-        self.url = url
-
-    def uniform_status(self, status):
-        if status == 'Invalid':
-            res = 'Invalid'
-        elif Status[status] == Status.Done:
-            res = 'Done'
-        elif Status[status] == Status.Cancelled:
-            res = 'Cancelled'
-        elif Status[status] == Status.Failed:
-            res = 'Failed'
-        elif Status[status] == Status.Running:
-            res = 'Running'
-        else:  # TBSubmitted, InQueue, Pending
-            res = 'Pending'
-        return res
+        super().__init__(urljoin(url, 'v1/fine_tuning'))
 
     def train(self, train_config, token):
         """
@@ -61,7 +46,7 @@ class LocalTrainClient:
         - lora_r: The LoRA rank.
         - lora_alpha: The LoRA alpha parameter.
         """
-        url = urljoin(self.url, 'v1/fine_tuning/jobs')
+        url = urljoin(self.url, 'jobs')
         headers = {
             "Content-Type": "application/json",
             "token": token,
@@ -111,7 +96,7 @@ class LocalTrainClient:
         Raises:
         - Exception: If an error occurs during the request, it will be logged and an error message will be returned.
         """
-        url = urljoin(self.url, f'v1/fine_tuning/jobs/{job_id}/cancel')
+        url = urljoin(self.url, f'jobs/{job_id}/cancel')
         headers = {
             "token": token,
         }
@@ -147,7 +132,7 @@ class LocalTrainClient:
         - Exception: If an error occurs during the request, it will be logged and an error message will be returned.
 
         """
-        url = urljoin(self.url, f'v1/fine_tuning/jobs/{job_id}')
+        url = urljoin(self.url, f'jobs/{job_id}')
         headers = {"token": token}
         try:
             response = requests.get(url, headers=headers)
@@ -175,7 +160,7 @@ class LocalTrainClient:
         Raises:
         - Exception: If an error occurs during the request, it will be logged.
         """
-        url = urljoin(self.url, f'v1/fine_tuning/jobs/{job_id}')
+        url = urljoin(self.url, f'jobs/{job_id}')
         headers = {"token": token}
         try:
             response = requests.get(url, headers=headers)
@@ -203,7 +188,7 @@ class LocalTrainClient:
         Raises:
         - Exception: If an error occurs during the request, it will be logged.
         """
-        url = urljoin(self.url, f'v1/fine_tuning/jobs/{job_id}/events')
+        url = urljoin(self.url, f'jobs/{job_id}/events')
         headers = {"token": token}
         try:
             response = requests.get(url, headers=headers)
@@ -227,7 +212,7 @@ class LocalTrainClient:
         Raises:
         - Exception: If an error occurs during the request, it will be logged.
         """
-        url = urljoin(self.url, 'v1/fine_tuning/jobs')
+        url = urljoin(self.url, 'jobs')
         headers = {"token": token}
         try:
             response = requests.get(url, headers=headers)
