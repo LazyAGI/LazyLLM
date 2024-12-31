@@ -11,7 +11,7 @@ from ..services import ClientBase
 class LocalTrainClient(ClientBase):
 
     def __init__(self, url):
-        super().__init__(urljoin(url, 'v1/fine_tuning'))
+        super().__init__(urljoin(url, 'v1/fine_tuning/'))
 
     def train(self, train_config, token):
         '''

@@ -5,7 +5,7 @@ from ..services import ClientBase
 
 class InferClient(ClientBase):
     def __init__(self, url):
-        super().__init__(urljoin(url, 'v1/deploy'))
+        super().__init__(urljoin(url, 'v1/deploy/'))
 
     def deploy(self, base_model: str, token: str, num_gpus: int = 1):
         '''
