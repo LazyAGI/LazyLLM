@@ -7,10 +7,11 @@ from .node import all_nodes, Node
 from .node_meta_hook import NodeMetaHook
 import inspect
 import functools
+from abc import ABC, abstractclassmethod
 
 
 # Each session will have a separate engine
-class Engine(object):
+class Engine(ABC):
     __default_engine__ = None
     REPORT_URL = ""
 
@@ -74,6 +75,15 @@ class Engine(object):
                 yield id
                 if recursive: yield from self.subnodes(id, True)
         return list(_impl(nodeid, recursive))
+
+    @abstractclassmethod
+    def launch_localllm_train_service(self): pass
+
+    @abstractclassmethod
+    def launch_localllm_infer_service(self): pass
+
+    @abstractclassmethod
+    def get_infra_handle(self, token, mid) -> lazyllm.TrainableModule: pass
 
 
 class NodeConstructor(object):
@@ -450,11 +460,16 @@ def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
 
 
 @NodeConstructor.register('SharedLLM')
-def make_shared_llm(llm: str, prompt: Optional[str] = None, stream: Optional[bool] = None,
-                    file_resource_id: Optional[str] = None):
-    llm = Engine().build_node(llm).func
-    if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
-    r = VQA(llm._vqa.share(prompt=prompt), file_resource_id) if file_resource_id else llm.share(prompt=prompt)
+def make_shared_llm(llm: str, local: bool = False, prompt: Optional[str] = None, token: str = None,
+                    stream: Optional[bool] = None, file_resource_id: Optional[str] = None):
+    if local:
+        llm = Engine().build_node(llm).func
+        if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
+        r = VQA(llm._vqa.share(prompt=prompt), file_resource_id) if file_resource_id else llm.share(prompt=prompt)
+    else:
+        assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
+        r = Engine().get_infra_handle(token, llm)
+        if prompt: r.prompt(prompt)
     if stream is not None: r.stream = stream
     return r
 
