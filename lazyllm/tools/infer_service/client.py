@@ -8,7 +8,7 @@ class InferClient(ClientBase):
         super().__init__(urljoin(url, 'v1/deploy'))
 
     def deploy(self, base_model: str, token: str, num_gpus: int = 1):
-        """
+        '''
         Start a new deploy job on the LazyLLM infer service.
 
         This method sends a request to the LazyLLM API to launch a deploy job with the specified configuration.
@@ -24,11 +24,11 @@ class InferClient(ClientBase):
 
         Raises:
         - Exception: If an error occurs during the request, it will be logged.
-        """
+        '''
         url = urljoin(self.url, 'jobs')
         headers = {
-            "Content-Type": "application/json",
-            "token": token,
+            'Content-Type': 'application/json',
+            'token': token,
         }
         deploy_config = dict(deploy_model=base_model, num_gpus=num_gpus)
 
@@ -42,7 +42,7 @@ class InferClient(ClientBase):
             return (None, str(e))
 
     def cancel(self, token, job_id):
-        """
+        '''
         Cancel a deploy job on the LazyLLM infer service.
 
         This method sends a request to the LazyLLM API to cancel a specific deploy job.
@@ -56,23 +56,23 @@ class InferClient(ClientBase):
 
         Raises:
         - Exception: If an error occurs during the request, it will be logged and an error message will be returned.
-        """
+        '''
         url = urljoin(self.url, f'jobs/{job_id}/cancel')
         try:
-            response = requests.post(url, headers={"token": token})
+            response = requests.post(url, headers={'token': token})
             response.raise_for_status()
             status = response.json()['status']
             if status == 'Cancelled':
                 return True
             else:
-                return f"Failed to cancel task. Final status is {status}"
+                return f'Failed to cancel task. Final status is {status}'
         except Exception as e:
             status = str(e)
             lazyllm.LOG.error(str(e))
-            return f"Failed to cancel task. Because: {str(e)}"
+            return f'Failed to cancel task. Because: {str(e)}'
 
     def list_all_tasks(self, token):
-        """
+        '''
         List all models with their job-id, model-name and statuse for the LazyLLM infer service.
 
         Parameters:
@@ -84,9 +84,9 @@ class InferClient(ClientBase):
 
         Raises:
         - Exception: If an error occurs during the request, it will be logged.
-        """
+        '''
         url = urljoin(self.url, 'jobs')
-        headers = {"token": token}
+        headers = {'token': token}
         try:
             response = requests.get(url, headers=headers)
             response.raise_for_status()
@@ -96,7 +96,7 @@ class InferClient(ClientBase):
                 res.append([job_id, job['base_model'], job['status']])
             return res
         except Exception as e:
-            lazyllm.LOG.error(f"Failed to get log. Because: {e}")
+            lazyllm.LOG.error(f'Failed to get log. Because: {e}')
             return None
 
     def get_infra_handle(self, token, job_id):
@@ -112,10 +112,10 @@ class InferClient(ClientBase):
         - An instance of `lazyllm.TrainableModule` used to infer.
 
         Raises:
-        - `requests.exceptions.HTTPError`: If the HTTP request to fetch job details fails.
-        - `RuntimeError`: If the job's status is not "Running".
+        - requests.exceptions.HTTPError: If the HTTP request to fetch job details fails.
+        - RuntimeError: If the job's status is not 'Running'.
         '''
-        response = requests.get(urljoin(self.url, f'jobs/{job_id}'), headers={"token": token})
+        response = requests.get(urljoin(self.url, f'jobs/{job_id}'), headers={'token': token})
         response.raise_for_status()
         response = response.json()
         base_model, url, deploy_method = response['base_model'], response['url'], response['deploy_method']
