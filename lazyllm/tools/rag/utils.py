@@ -69,7 +69,7 @@ class KBGroup(KBDataBase):
     group_id = Column(sqlalchemy.Integer, primary_key=True, autoincrement=True)
     group_name = Column(sqlalchemy.String, nullable=False, unique=True)
 
-
+GroupDocPartRow = Row
 class KBGroupDocuments(KBDataBase):
     __tablename__ = "kb_group_documents"
 
@@ -102,8 +102,6 @@ class DocListManager(ABC):
         deleting = 'deleting'
         deleted = 'deleted'
 
-    DELETE_SAFE_STATUS_LIST = [Status.waiting, Status.success, Status.failed]
-
     def __init__(self, path, name):
         self._path = path
         self._name = name
@@ -129,11 +127,8 @@ class DocListManager(ABC):
         return self
 
     def delete_files(self, file_ids: List[str]) -> List[DocPartRow]:
-        document_list = self.update_file_status(
-            file_ids, DocListManager.Status.deleting, self.DELETE_SAFE_STATUS_LIST
-        )
-        safe_delete_ids = [doc.doc_id for doc in document_list]
-        self.update_kb_group_file_status(file_ids=safe_delete_ids, status=DocListManager.Status.deleting)
+        document_list = self.update_file_status(file_ids, DocListManager.Status.deleting)
+        self.update_kb_group(cond_file_ids=file_ids, new_status=DocListManager.Status.deleting)
         return document_list
 
     @abstractmethod
@@ -209,8 +204,9 @@ class DocListManager(ABC):
     def get_file_status(self, fileid: str): pass
 
     @abstractmethod
-    def update_kb_group_file_status(self, file_ids: Union[str, List[str]],
-                                    status: str, group: Optional[str] = None): pass
+    def update_kb_group(self, cond_file_ids: Optional[List[str]] = None, cond_group: Optional[str] = None,
+                        cond_status_list: Optional[List[str]] = None, new_status: Optional[str] = None,
+                        new_need_reparse: Optional[bool] = None) -> List[GroupDocPartRow]: pass
 
     @abstractmethod
     def release(self): pass
@@ -509,16 +505,36 @@ class SqliteDocListManager(DocListManager):
             cursor = conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
         return cursor.fetchone()
 
-    def update_kb_group_file_status(self, file_ids: Union[str, List[str]], status: str, group: Optional[str] = None):
-        if isinstance(file_ids, str): file_ids = [file_ids]
-        query, params = 'UPDATE kb_group_documents SET status = ? WHERE ', [status]
-        if group:
-            query += 'group_name = ? AND '
-            params.append(group)
-        query += f'doc_id IN ({",".join("?" * len(file_ids))})'
-        with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
-            conn.execute(query, (params + file_ids))
-            conn.commit()
+    def update_kb_group(self, cond_file_ids: Optional[List[str]] = None, cond_group: Optional[str] = None,
+                        cond_status_list: Optional[List[str]] = None, new_status: Optional[str] = None,
+                        new_need_reparse: Optional[bool] = None) -> List[GroupDocPartRow]:
+        rows = []
+        conds = []
+        if cond_file_ids is not None:
+            conds.append(KBGroupDocuments.doc_id.in_(cond_file_ids))
+        if cond_group is not None:
+            conds.append(KBGroupDocuments.group_name == cond_group)
+        if cond_status_list:
+            conds.append(KBGroupDocuments.status.in_(cond_status_list))
+
+        vals = {}
+        if new_status is not None:
+            vals[KBGroupDocuments.status.name] = new_status
+        if new_need_reparse is not None:
+            vals[KBGroupDocuments.need_reparse.name] = new_need_reparse
+
+        if not vals:
+            return rows
+        with self._db_lock, self._Session() as session:
+            stmt = (
+                update(KBGroupDocuments)
+                .where(sqlalchemy.and_(*conds))
+                .values(vals)
+                .returning(KBGroupDocuments.doc_id, KBGroupDocuments.group_name, KBGroupDocuments.status)
+            )
+            rows = session.execute(stmt).fetchall()
+            session.commit()
+        return rows
 
     def release(self):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:

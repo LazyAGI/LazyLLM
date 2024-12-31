@@ -95,8 +95,9 @@ class DocImpl:
                     node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else gen_docid(paths[idx])
                     node.global_metadata[RAG_DOC_PATH] = paths[idx]
                 self.store.update_nodes(root_nodes)
-                if self._dlm: self._dlm.update_kb_group_file_status(
-                    ids, DocListManager.Status.success, group=self._kb_group_name)
+                if self._dlm:
+                    self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
+                                              new_status=DocListManager.Status.success)
                 LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
 
         if self._dlm:
@@ -227,10 +228,13 @@ class DocImpl:
                 filepaths = [doc.path for doc in docs]
                 ids = [doc.doc_id for doc in docs]
                 metadatas = [doc.metadata for doc in docs]
-                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
+                # update status and need_reparse
+                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
+                                          new_status=DocListManager.Status.working, new_need_reparse=False)
                 self._delete_files(filepaths)
                 self._add_files(input_files=filepaths, ids=ids, metadatas=metadatas)
-                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
+                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
+                                          new_status=DocListManager.Status.success)
 
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
             if files:
@@ -245,10 +249,13 @@ class DocImpl:
             ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
                                                      upload_status=DocListManager.Status.success)
             if files:
-                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
+                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
+                                          new_status=DocListManager.Status.working)
                 self._add_files(input_files=files, ids=ids, metadatas=metadatas)
-                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
-                time.sleep(3)
+                # change working to success while leaving other status unchanged
+                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
+                                          cond_status_list=[DocListManager.Status.working],
+                                          new_status=DocListManager.Status.success)
                 continue
             time.sleep(10)
 
