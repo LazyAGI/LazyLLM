@@ -474,6 +474,16 @@ def make_shared_llm(llm: str, local: bool = False, prompt: Optional[str] = None,
     return r
 
 
+@NodeConstructor.register('OnlineLLM')
+def make_online_llm(source: str, base_model: str, prompt: str, api_key: str, secret_key: Optional[str] = None,
+                    stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None):
+    if source.lower() == 'lazyllm':
+        make_shared_llm(base_model, False, prompt, token, stream)
+    else:
+        m = lazyllm.OnlineChatModule(base_model, source, base_url, stream, api_key=api_key, secret_key=secret_key)
+        m.prompt(prompt)
+
+
 class STT(lazyllm.Module):
     def __init__(self, base_model: Union[str, lazyllm.TrainableModule]):
         super().__init__()

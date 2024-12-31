@@ -59,20 +59,6 @@ all_nodes['LocalLLM'] = dict(
         deploy_method=NodeArgs(str, 'vllm', getattr_f=partial(getattr, lazyllm.deploy)))
 )
 
-all_nodes['OnlineLLM'] = dict(
-    module=lazyllm.OnlineChatModule,
-    init_arguments=dict(
-        source=NodeArgs(str),
-        base_model=NodeArgs(str),
-        base_url=NodeArgs(str),
-        api_key=NodeArgs(str, None),
-        secret_key=NodeArgs(str, None),
-        stream=NodeArgs(bool, False),
-        return_trace=NodeArgs(bool, False)),
-    builder_argument=dict(
-        prompt=NodeArgs(str)),
-)
-
 all_nodes['LocalEmbedding'] = dict(
     module=lazyllm.TrainableModule,
     init_arguments=dict(base_model=NodeArgs(str)),
