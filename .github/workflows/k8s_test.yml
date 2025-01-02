@@ -55,10 +55,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-  k8s_tests:
-    runs-on: tps_k8s
-    needs: [Clone]
-    steps:
       - name: Create custom directory
         run: |
           set -ex
@@ -77,6 +73,10 @@ jobs:
           set -ex
           mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
+  k8s_tests:
+    runs-on: tps_k8s
+    needs: [Clone]
+    steps:
       - name: k8s_test
         shell: bash
         run: |
