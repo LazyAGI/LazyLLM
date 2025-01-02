@@ -19,16 +19,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  k8s_tests:
+  Clone:
     runs-on: tps_k8s
     if: |
       !contains(github.event.head_commit.message, '[skip ci]')
       && !contains(github.event.pull_request.title, '[skip ci]')
-
-    container:
-      image: registry.cn-sh-01.sensecore.cn/ai-expert-service/lazyllm_ci:latest
-      options: --mount type=bind,source=/mnt/nfs_share,target=/mnt/nfs_share --mount type=bind,source=/mnt/lustre/share_data,target=/mnt/lustre/share_data
-
     steps:
       - name: Check for required label
         if: github.event_name == 'pull_request'
@@ -60,6 +55,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+  k8s_tests:
+    runs-on: tps_k8s
+    needs: [Clone]
+    steps:
       - name: Create custom directory
         run: |
           set -ex
@@ -82,8 +81,7 @@ jobs:
         shell: bash
         run: |
           cd ${{ env.CI_PATH }}
-          source activate lazyllm
-          pip install -r tests/requirements.txt
+          pip install -r tests/requirements.txt --user
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DEFAULT_LAUNCHER="k8s"
           export LAZYLLM_DATA_PATH="/mnt/lustre/share_data/lazyllm/data"
