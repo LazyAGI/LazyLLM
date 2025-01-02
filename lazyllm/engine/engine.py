@@ -479,10 +479,10 @@ def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optio
                     api_key: Optional[str] = None, secret_key: Optional[str] = None,
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None):
     if source.lower() == 'lazyllm':
-        make_shared_llm(base_model, False, prompt, token, stream)
+        return make_shared_llm(base_model, False, prompt, token, stream)
     else:
-        m = lazyllm.OnlineChatModule(base_model, source, base_url, stream, api_key=api_key, secret_key=secret_key)
-        m.prompt(prompt)
+        return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
+                                        api_key=api_key, secret_key=secret_key).prompt(prompt)
 
 
 class STT(lazyllm.Module):
