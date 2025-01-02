@@ -460,7 +460,7 @@ def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
 
 
 @NodeConstructor.register('SharedLLM')
-def make_shared_llm(llm: str, local: bool = False, prompt: Optional[str] = None, token: str = None,
+def make_shared_llm(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
                     stream: Optional[bool] = None, file_resource_id: Optional[str] = None):
     if local:
         llm = Engine().build_node(llm).func
@@ -475,7 +475,8 @@ def make_shared_llm(llm: str, local: bool = False, prompt: Optional[str] = None,
 
 
 @NodeConstructor.register('OnlineLLM')
-def make_online_llm(source: str, base_model: str, prompt: str, api_key: str, secret_key: Optional[str] = None,
+def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optional[str] = None,
+                    api_key: Optional[str] = None, secret_key: Optional[str] = None,
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None):
     if source.lower() == 'lazyllm':
         make_shared_llm(base_model, False, prompt, token, stream)
