@@ -2,11 +2,10 @@ import os
 import sys
 import json
 import random
-from datetime import datetime
-
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
+from .utils import get_log_path, make_log_dir
 
 
 class Vllm(LazyLLMDeployBase):
@@ -26,13 +25,7 @@ class Vllm(LazyLLMDeployBase):
     }
     auto_map = {'tp': 'tensor-parallel-size'}
 
-    def __init__(self,
-                 trust_remote_code=True,
-                 launcher=launchers.remote(ngpus=1),
-                 stream=False,
-                 log_path=None,
-                 **kw,
-                 ):
+    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), stream=False, log_path=None, **kw):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'dtype': 'auto',
@@ -49,9 +42,7 @@ class Vllm(LazyLLMDeployBase):
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
-        self.temp_folder = log_path or os.path.join(lazyllm.config['temp_dir'], 'deploy_log', 'vllm')
-        if not os.path.exists(self.temp_folder):
-            os.makedirs(self.temp_folder)
+        self.temp_folder = make_log_dir(log_path, 'vllm') if log_path else None
 
     def cmd(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
@@ -70,10 +61,7 @@ class Vllm(LazyLLMDeployBase):
             cmd += self.kw.parse_kwargs()
             if self.trust_remote_code:
                 cmd += ' --trust-remote-code '
-            formatted_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            random_value = random.randint(1000, 9999)
-            self.log_file_path = f'{self.temp_folder}/infer_{formatted_date}_{random_value}.log'
-            cmd += f' 2>&1 | tee {self.log_file_path}'
+            if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 
         return LazyLLMCMD(cmd=impl, return_value=self.geturl, checkf=verify_fastapi_func)

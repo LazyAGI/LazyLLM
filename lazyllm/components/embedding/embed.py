@@ -80,9 +80,10 @@ class EmbeddingDeploy():
     keys_name_handle = None
     default_headers = {'Content-Type': 'application/json'}
 
-    def __init__(self, launcher=None, model_type='embed'):
+    def __init__(self, launcher=None, model_type='embed', log_path=None):
         self.launcher = launcher
         self._model_type = model_type
+        self._log_path = log_path
 
     def __call__(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
@@ -94,9 +95,9 @@ class EmbeddingDeploy():
             finetuned_model = base_model
         if self._model_type == 'embed':
             return lazyllm.deploy.RelayServer(func=LazyHuggingFaceEmbedding(
-                finetuned_model), launcher=self.launcher)()
+                finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding')()
         if self._model_type == 'reranker':
             return lazyllm.deploy.RelayServer(func=LazyHuggingFaceRerank(
-                finetuned_model), launcher=self.launcher)()
+                finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding')()
         else:
             raise RuntimeError(f'Not support model type: {self._model_type}.')

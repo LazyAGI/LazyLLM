@@ -5,6 +5,7 @@ import random
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
+from .utils import make_log_dir, get_log_path
 
 
 class Lightllm(LazyLLMDeployBase):
@@ -30,12 +31,7 @@ class Lightllm(LazyLLMDeployBase):
     }
     auto_map = {'tp': 'tp'}
 
-    def __init__(self,
-                 trust_remote_code=True,
-                 launcher=launchers.remote(ngpus=1),
-                 stream=False,
-                 **kw,
-                 ):
+    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), stream=False, log_path=None, **kw):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'tp': 1,
@@ -52,6 +48,7 @@ class Lightllm(LazyLLMDeployBase):
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] else True
         self.random_nccl_port = False if 'nccl_port' in kw and kw['nccl_port'] else True
+        self.temp_folder = make_log_dir(log_path, 'lightllm') if log_path else None
 
     def cmd(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
@@ -71,6 +68,7 @@ class Lightllm(LazyLLMDeployBase):
             cmd += self.kw.parse_kwargs()
             if self.trust_remote_code:
                 cmd += ' --trust_remote_code '
+            if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 
         return LazyLLMCMD(cmd=impl, return_value=self.geturl, checkf=verify_fastapi_func)

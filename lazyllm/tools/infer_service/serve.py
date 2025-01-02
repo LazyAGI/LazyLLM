@@ -16,20 +16,7 @@ from ..services import ServerBase
 class JobDescription(BaseModel):
     deploy_model: str = Field(default='qwen1.5-0.5b-chat')
     num_gpus: int = Field(default=1)
-    deploy_parameters: dict = Field(
-        default={
-            'dtype': 'auto',
-            'kv-cache-dtype': 'auto',
-            'tokenizer-mode': 'auto',
-            'device': 'auto',
-            'block-size': 16,
-            'tensor-parallel-size': 1,
-            'seed': 0,
-            'port': 'auto',
-            'host': '0.0.0.0',
-            'max-num-seqs': 256,
-        }
-    )
+
 
 class InferServer(ServerBase):
 
@@ -126,13 +113,7 @@ class InferServer(ServerBase):
         # - No-Env-Set: (work/path + infer_log) + token + job_id;
         # - Env-Set:    (infer_log_root)     + token + job_id;
         save_root = os.path.join(lazyllm.config['infer_log_root'], token, job_id)
-
-        # Add launcher into hyperparameters:
-        hypram = job.deploy_parameters
-        hypram['launcher'] = lazyllm.launchers.remote(sync=False, ngpus=job.num_gpus)
-        hypram['log_path'] = save_root
-
-        # Set params for TrainableModule:
+        hypram = dict(launcher=lazyllm.launchers.remote(sync=False, ngpus=job.num_gpus), log_path=save_root)
         m = lazyllm.TrainableModule(job.deploy_model).deploy_method((lazyllm.deploy.auto, hypram))
 
         # Launch Deploy:

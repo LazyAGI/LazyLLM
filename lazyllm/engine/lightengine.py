@@ -304,6 +304,9 @@ class LightEngine(Engine):
         """
         return self.online_train_client.validate_api_key(token, source, secret_key)
 
+    def deploy_model(self, token, model_name, num_gpus=1):
+        return self.infer_client.deploy(model_name, token, num_gpus)
+
     def get_infra_handle(self, token, mid):
         return self.infer_client.get_infra_handle(token, mid)
 
