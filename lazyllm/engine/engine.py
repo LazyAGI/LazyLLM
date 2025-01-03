@@ -344,6 +344,8 @@ def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False
 @NodeConstructor.register('Reranker')
 def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
                   output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
+    if type == 'ModuleReranker' and (node := Engine().build_node(arguments['model'])):
+        arguments['model'] = node.func
     return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
 
 class JoinFormatter(lazyllm.components.FormatterBase):

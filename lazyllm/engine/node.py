@@ -69,6 +69,7 @@ all_nodes['OnlineEmbedding'] = dict(
     module=lazyllm.OnlineEmbeddingModule,
     init_arguments=dict(
         source=NodeArgs(str),
+        type=NodeArgs(str, 'embedding'),
         embed_model_name=NodeArgs(str),
         embed_url=NodeArgs(str),
         api_key=NodeArgs(str, None),
