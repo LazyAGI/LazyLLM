@@ -1,13 +1,12 @@
 import os
 
 import lazyllm
-from lazyllm import LOG
 from lazyllm.thirdparty import torch
 from lazyllm.thirdparty import transformers as tf
 from lazyllm.components.formatter import encode_query_with_filepaths
 from ..utils.downloader import ModelManager
 import importlib.util
-from .utils import sounds_to_files
+from .utils import sounds_to_files, TTSBase
 
 class Bark(object):
 
@@ -56,7 +55,7 @@ class Bark(object):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
         return Bark.rebuild, (self.base_path, init, self.save_path)
 
-class BarkDeploy(object):
+class BarkDeploy(TTSBase):
     keys_name_handle = {
         'inputs': 'inputs',
     }
@@ -66,16 +65,4 @@ class BarkDeploy(object):
     }
     default_headers = {'Content-Type': 'application/json'}
 
-    def __init__(self, launcher=None):
-        self.launcher = launcher
-
-    def __call__(self, finetuned_model=None, base_model=None):
-        if not finetuned_model:
-            finetuned_model = base_model
-        elif not os.path.exists(finetuned_model) or \
-            not any(filename.endswith('.bin', '.safetensors')
-                    for _, _, filename in os.walk(finetuned_model) if filename):
-            LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
-                        f"base_model({base_model}) will be used")
-            finetuned_model = base_model
-        return lazyllm.deploy.RelayServer(func=Bark(finetuned_model), launcher=self.launcher)()
+    func = Bark
