@@ -478,7 +478,7 @@ def make_shared_llm(llm: str, local: bool = True, prompt: Optional[str] = None, 
 def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optional[str] = None,
                     api_key: Optional[str] = None, secret_key: Optional[str] = None,
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None):
-    if source.lower() == 'lazyllm':
+    if source and source.lower() == 'lazyllm':
         return make_shared_llm(base_model, False, prompt, token, stream)
     else:
         return lazyllm.OnlineChatModule(base_model, source, base_url, stream,

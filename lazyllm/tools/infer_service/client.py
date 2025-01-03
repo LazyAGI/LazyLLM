@@ -1,3 +1,4 @@
+import time
 from urllib.parse import urljoin
 import requests
 import lazyllm
@@ -124,3 +125,28 @@ class InferClient(ClientBase):
         if not (deployer := getattr(lazyllm.deploy, deploy_method, None)):
             deployer = type(lazyllm.deploy.auto(base_model))
         return lazyllm.TrainableModule(base_model).deploy_method(deployer, url=url)
+
+    def wait_ready(self, token, job_id, timeout=1800):
+        '''
+        This method to wait for a specific job based on the provided job ID.
+
+        Parameters:
+        - token(str): A string representing the authentication token required to access the job details.
+        - job_id(str): The unique identifier for the job whose details need to be retrieved.
+
+        Returns:
+        - infer service status.
+        '''
+        def get_status():
+            response = requests.get(urljoin(self.url, f'jobs/{job_id}'), headers={'token': token})
+            response.raise_for_status()
+            response = response.json()
+            return self.uniform_status(response['status'])
+
+        n = 0
+        while (status := get_status()) != 'Running':
+            if status in ('Invalid', 'Cancelled', 'Failed'):
+                raise RuntimeError(f'Deploy service failed. status is {status}')
+            if n > timeout: raise TimeoutError('Inference service has not started after 1800 seconds.')
+            time.sleep(10)
+            n += 10
