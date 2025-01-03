@@ -90,7 +90,7 @@ class DocManager(lazyllm.ModuleBase):
                     if not docs:
                         msg = f"Failed: path {file_path} already exists in Database."
                 else:
-                    self._manager.update_need_reparsing(doc_id, True)
+                    self._manager.update_kb_group(cond_file_ids=[doc_id], new_need_reparse=True)
                     msg = f"Success: path {file_path} will be reparsed."
                 ids.append(doc_id)
                 results.append(msg)
@@ -207,8 +207,8 @@ class DocManager(lazyllm.ModuleBase):
     @app.post("/delete_files_from_group")
     def delete_files_from_group(self, request: FileGroupRequest):
         try:
-            self._manager.update_kb_group_file_status(
-                file_ids=request.file_ids, status=DocListManager.Status.deleting, group=request.group_name)
+            self._manager.update_kb_group(cond_file_ids=request.file_ids, cond_group=request.group_name,
+                                          new_status=DocListManager.Status.deleting)
             return BaseResponse()
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
