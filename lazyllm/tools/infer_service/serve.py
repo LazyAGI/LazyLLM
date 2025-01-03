@@ -40,6 +40,7 @@ class InferServer(ServerBase):
         # Ready to Infer
         if Status[status] == Status.Running and m._url:
             update['status'] = 'Ready'
+            update['url'] = m._url
 
         # Some tasks cannot obtain the storage path when they are just started
         if not log_path:

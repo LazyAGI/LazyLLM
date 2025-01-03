@@ -120,9 +120,6 @@ class InferClient(ClientBase):
         response.raise_for_status()
         response = response.json()
         base_model, url, deploy_method = response['base_model'], response['url'], response['deploy_method']
-        lazyllm.LOG.warning(base_model)
-        lazyllm.LOG.warning(url)
-        lazyllm.LOG.warning(deploy_method)
         if self.uniform_status(response['status']) != 'Ready':
             raise RuntimeError(f'Job {job_id} is not running now')
         if not (deployer := getattr(lazyllm.deploy, deploy_method, None)):
