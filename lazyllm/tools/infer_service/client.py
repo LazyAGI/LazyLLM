@@ -120,7 +120,10 @@ class InferClient(ClientBase):
         response.raise_for_status()
         response = response.json()
         base_model, url, deploy_method = response['base_model'], response['url'], response['deploy_method']
-        if self.uniform_status(response['status']) != 'Running':
+        lazyllm.LOG.warning(base_model)
+        lazyllm.LOG.warning(url)
+        lazyllm.LOG.warning(deploy_method)
+        if self.uniform_status(response['status']) != 'Ready':
             raise RuntimeError(f'Job {job_id} is not running now')
         if not (deployer := getattr(lazyllm.deploy, deploy_method, None)):
             deployer = type(lazyllm.deploy.auto(base_model))
@@ -144,7 +147,7 @@ class InferClient(ClientBase):
             return self.uniform_status(response['status'])
 
         n = 0
-        while (status := get_status()) != 'Running':
+        while (status := get_status()) != 'Ready':
             if status in ('Invalid', 'Cancelled', 'Failed'):
                 raise RuntimeError(f'Deploy service failed. status is {status}')
             if n > timeout: raise TimeoutError('Inference service has not started after 1800 seconds.')

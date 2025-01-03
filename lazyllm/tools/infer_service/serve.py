@@ -117,7 +117,7 @@ class InferServer(ServerBase):
         m = lazyllm.TrainableModule(job.deploy_model).deploy_method((lazyllm.deploy.auto, hypram))
 
         # Launch Deploy:
-        thread = threading.Thread(target=m.update_server)
+        thread = threading.Thread(target=m.start)
         thread.start()
 
         # Sleep 5s for launch cmd.

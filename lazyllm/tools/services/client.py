@@ -7,6 +7,8 @@ class ClientBase(object):
     def uniform_status(self, status):
         if status == 'Invalid':
             res = 'Invalid'
+        elif status == 'Ready':
+            res = 'Ready'
         elif Status[status] == Status.Done:
             res = 'Done'
         elif Status[status] == Status.Cancelled:

@@ -40,5 +40,5 @@ class TTSBase(object):
             LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                         f"base_model({base_model}) will be used")
             finetuned_model = base_model
-        return lazyllm.deploy.RelayServer(func=TTSBase.func(finetuned_model), launcher=self.launcher,
+        return lazyllm.deploy.RelayServer(func=self.__class__.func(finetuned_model), launcher=self.launcher,
                                           log_path=self._log_path, cls='tts')()
