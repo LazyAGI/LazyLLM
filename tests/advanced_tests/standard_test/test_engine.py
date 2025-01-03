@@ -192,3 +192,26 @@ class TestEngine(object):
 
         res = engine.local_model_get_training_cost(token, job_id)
         assert res > 15
+
+    def test_engine_infer_server(self):
+        token = '123'
+        engine = LightEngine()
+        engine.launch_localllm_infer_service()
+        jobid, status = engine.deploy_model(token, 'internlm2-chat-7b')
+        engine.infer_client.wait_ready(token, jobid)
+        r = engine.get_infra_handle(token, jobid)
+        assert isinstance(r, lazyllm.TrainableModule) and r._impl._get_deploy_tasks.flag
+        assert '你好' in r('请重复下面一句话：你好')
+
+        nodes = [dict(id='0', kind='SharedLLM', name='m1', args=dict(
+            llm=jobid, local=False, token=token, stream=True, prompt=dict(
+                system='请根据输入帮我计算，不要反问和发挥', user='输入: {query} \n, 答案:')))]
+        gid = engine.start(nodes)
+        assert '2' in engine.run(gid, '1 + 1 = ?')
+
+        engine.stop(gid)
+        nodes = [dict(id='1', kind='OnlineLLM', name='m1', args=dict(
+            source='lazyllm', base_model=jobid, token=token, stream=True, prompt=dict(
+                system='请根据输入帮我计算，不要反问和发挥', user='输入: {query} \n, 答案:')))]
+        gid = engine.start(nodes)
+        assert '2' in engine.run(gid, '1 + 1 = ?')

@@ -7,10 +7,11 @@ from .node import all_nodes, Node
 from .node_meta_hook import NodeMetaHook
 import inspect
 import functools
+from abc import ABC, abstractclassmethod
 
 
 # Each session will have a separate engine
-class Engine(object):
+class Engine(ABC):
     __default_engine__ = None
     REPORT_URL = ""
 
@@ -74,6 +75,15 @@ class Engine(object):
                 yield id
                 if recursive: yield from self.subnodes(id, True)
         return list(_impl(nodeid, recursive))
+
+    @abstractclassmethod
+    def launch_localllm_train_service(self): pass
+
+    @abstractclassmethod
+    def launch_localllm_infer_service(self): pass
+
+    @abstractclassmethod
+    def get_infra_handle(self, token, mid) -> lazyllm.TrainableModule: pass
 
 
 class NodeConstructor(object):
@@ -334,6 +344,8 @@ def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False
 @NodeConstructor.register('Reranker')
 def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
                   output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
+    if type == 'ModuleReranker' and (node := Engine().build_node(arguments['model'])):
+        arguments['model'] = node.func
     return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
 
 class JoinFormatter(lazyllm.components.FormatterBase):
@@ -450,13 +462,29 @@ def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
 
 
 @NodeConstructor.register('SharedLLM')
-def make_shared_llm(llm: str, prompt: Optional[str] = None, stream: Optional[bool] = None,
-                    file_resource_id: Optional[str] = None):
-    llm = Engine().build_node(llm).func
-    if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
-    r = VQA(llm._vqa.share(prompt=prompt), file_resource_id) if file_resource_id else llm.share(prompt=prompt)
+def make_shared_llm(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
+                    stream: Optional[bool] = None, file_resource_id: Optional[str] = None):
+    if local:
+        llm = Engine().build_node(llm).func
+        if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
+        r = VQA(llm._vqa.share(prompt=prompt), file_resource_id) if file_resource_id else llm.share(prompt=prompt)
+    else:
+        assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
+        r = Engine().get_infra_handle(token, llm)
+        if prompt: r.prompt(prompt)
     if stream is not None: r.stream = stream
     return r
+
+
+@NodeConstructor.register('OnlineLLM')
+def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optional[str] = None,
+                    api_key: Optional[str] = None, secret_key: Optional[str] = None,
+                    stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None):
+    if source and source.lower() == 'lazyllm':
+        return make_shared_llm(base_model, False, prompt, token, stream)
+    else:
+        return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
+                                        api_key=api_key, secret_key=secret_key).prompt(prompt)
 
 
 class STT(lazyllm.Module):
