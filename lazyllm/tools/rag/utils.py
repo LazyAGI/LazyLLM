@@ -204,7 +204,7 @@ class DocListManager(ABC):
     def get_file_status(self, fileid: str): pass
 
     @abstractmethod
-    def update_kb_group(self, cond_file_ids: Optional[List[str]] = None, cond_group: Optional[str] = None,
+    def update_kb_group(self, cond_file_ids: List[str], cond_group: Optional[str] = None,
                         cond_status_list: Optional[List[str]] = None, new_status: Optional[str] = None,
                         new_need_reparse: Optional[bool] = None) -> List[GroupDocPartRow]: pass
 
@@ -505,13 +505,14 @@ class SqliteDocListManager(DocListManager):
             cursor = conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
         return cursor.fetchone()
 
-    def update_kb_group(self, cond_file_ids: Optional[List[str]] = None, cond_group: Optional[str] = None,
+    def update_kb_group(self, cond_file_ids: List[str], cond_group: Optional[str] = None,
                         cond_status_list: Optional[List[str]] = None, new_status: Optional[str] = None,
                         new_need_reparse: Optional[bool] = None) -> List[GroupDocPartRow]:
         rows = []
         conds = []
-        if cond_file_ids is not None:
-            conds.append(KBGroupDocuments.doc_id.in_(cond_file_ids))
+        if not cond_file_ids:
+            return rows
+        conds.append(KBGroupDocuments.doc_id.in_(cond_file_ids))
         if cond_group is not None:
             conds.append(KBGroupDocuments.group_name == cond_group)
         if cond_status_list:
