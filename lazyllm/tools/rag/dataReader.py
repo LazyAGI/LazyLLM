@@ -83,7 +83,7 @@ class SimpleDirectoryReader(ModuleBase):
                  encoding: str = "utf-8", filename_as_id: bool = False, required_exts: Optional[List[str]] = None,
                  file_extractor: Optional[Dict[str, Callable]] = None, fs: Optional[AbstractFileSystem] = None,
                  metadata_genf: Optional[Callable[[str], Dict]] = None, num_files_limit: Optional[int] = None,
-                 return_trace: bool = False) -> None:
+                 return_trace: bool = False, metadatas: Optional[Dict] = None) -> None:
         super().__init__(return_trace=return_trace)
 
         if (not input_dir and not input_files) or (input_dir and input_files):
@@ -98,6 +98,7 @@ class SimpleDirectoryReader(ModuleBase):
         self._required_exts = required_exts
         self._num_files_limit = num_files_limit
         self._Path = Path if is_default_fs(self._fs) else PurePosixPath
+        self._metadatas = metadatas
 
         if input_files:
             self._input_files = []
@@ -191,12 +192,11 @@ class SimpleDirectoryReader(ModuleBase):
     @staticmethod
     def load_file(input_file: Path, metadata_genf: Callable[[str], Dict], file_extractor: Dict[str, Callable],
                   filename_as_id: bool = False, encoding: str = "utf-8", pathm: PurePath = Path,
-                  fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
-        metadata: Optional[dict] = None
+                  fs: Optional[AbstractFileSystem] = None, metadata: Optional[Dict] = None) -> List[DocNode]:
+        metadata: dict = metadata or {}
         documents: List[DocNode] = []
 
-        if metadata_genf is not None: metadata = metadata_genf(str(input_file))
-
+        if metadata_genf is not None: metadata.update(metadata_genf(str(input_file)))
         file_reader_patterns = list(file_extractor.keys())
 
         for pattern in file_reader_patterns:
@@ -220,7 +220,7 @@ class SimpleDirectoryReader(ModuleBase):
             with fs.open(input_file, encoding=encoding) as f:
                 data = f.read().decode(encoding)
 
-            doc = DocNode(text=data, metadata=metadata or {})
+            doc = DocNode(text=data, global_metadata=metadata or {})
             doc.docpath = str(input_file)
             if filename_as_id: doc._uid = str(input_file)
             documents.append(doc)
@@ -245,7 +245,7 @@ class SimpleDirectoryReader(ModuleBase):
                 results = p.starmap(SimpleDirectoryReader.load_file,
                                     zip(process_file, repeat(self._metadata_genf), repeat(file_readers),
                                         repeat(self._filename_as_id), repeat(self._encoding), repeat(self._Path),
-                                        repeat(self._fs)))
+                                        repeat(self._fs), self._metadatas or repeat(None)))
                 documents = reduce(lambda x, y: x + y, results)
         else:
             if show_progress:
