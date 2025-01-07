@@ -31,6 +31,8 @@ class Document(ModuleBase):
                 defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)
                 if os.path.exists(defatult_path):
                     dataset_path = defatult_path
+            else:
+                dataset_path = os.path.join(os.getcwd(), dataset_path)
             self._launcher: Launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
             self._dataset_path = dataset_path
             self._embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}

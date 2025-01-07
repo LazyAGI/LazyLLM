@@ -89,11 +89,11 @@ class DocImpl:
         if not self.store.is_group_active(LAZY_ROOT_NAME):
             ids, paths, metadatas = self._list_files()
             if paths:
-                root_nodes = self._reader.load_data(paths)
-                for idx, node in enumerate(root_nodes):
-                    node.global_metadata.update(metadatas[idx].copy() if metadatas else {})
-                    node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else gen_docid(paths[idx])
-                    node.global_metadata[RAG_DOC_PATH] = paths[idx]
+                if not metadatas: metadatas = [{}] * len(paths)
+                for idx, meta in enumerate(metadatas):
+                    meta[RAG_DOC_ID] = ids[idx] if ids else gen_docid(paths[idx])
+                    meta[RAG_DOC_PATH] = paths[idx]
+                root_nodes = self._reader.load_data(paths, metadatas)
                 self.store.update_nodes(root_nodes)
                 if self._dlm:
                     self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,

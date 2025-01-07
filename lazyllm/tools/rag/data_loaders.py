@@ -11,7 +11,7 @@ class DirectoryReader:
         self._local_readers = local_readers
         self._global_readers = global_readers
 
-    def load_data(self, input_files: Optional[List[str]] = None) -> List[DocNode]:
+    def load_data(self, input_files: Optional[List[str]] = None, metadates: Optional[Dict] = None) -> List[DocNode]:
         input_files = input_files or self._input_files
         file_readers = self._local_readers.copy()
         for key, func in self._global_readers.items():
