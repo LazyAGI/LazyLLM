@@ -89,7 +89,7 @@ class DocImpl:
         if not self.store.is_group_active(LAZY_ROOT_NAME):
             ids, paths, metadatas = self._list_files()
             if paths:
-                if not metadatas: metadatas = [{}] * len(ids)
+                if not metadatas: metadatas = [{}] * len(paths)
                 for idx, meta in enumerate(metadatas):
                     meta[RAG_DOC_ID] = ids[idx] if ids else gen_docid(paths[idx])
                     meta[RAG_DOC_PATH] = paths[idx]
