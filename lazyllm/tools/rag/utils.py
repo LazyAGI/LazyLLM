@@ -69,6 +69,7 @@ class KBGroup(KBDataBase):
     group_id = Column(sqlalchemy.Integer, primary_key=True, autoincrement=True)
     group_name = Column(sqlalchemy.String, nullable=False, unique=True)
 
+DocMetaChangedRow = Row
 
 class KBGroupDocuments(KBDataBase):
     __tablename__ = "kb_group_documents"
@@ -79,6 +80,7 @@ class KBGroupDocuments(KBDataBase):
     status = Column(sqlalchemy.Text, nullable=True)
     log = Column(sqlalchemy.Text, nullable=True)
     need_reparse = Column(sqlalchemy.Boolean, default=False, nullable=False)
+    new_meta = Column(sqlalchemy.Text, nullable=True)
     # unique constraint
     __table_args__ = (sqlalchemy.UniqueConstraint('doc_id', 'group_name', name='uq_doc_to_group'),)
 
@@ -152,6 +154,15 @@ class DocListManager(ABC):
     def list_files(self, limit: Optional[int] = None, details: bool = False,
                    status: Union[str, List[str]] = Status.all,
                    exclude_status: Optional[Union[str, List[str]]] = None): pass
+
+    @abstractmethod
+    def get_doc(self, doc_id: str) -> KBDocument: pass
+
+    @abstractmethod
+    def set_new_doc_meta(self, doc_id: str, meta_dict: dict): pass
+
+    @abstractmethod
+    def fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]: pass
 
     @abstractmethod
     def list_all_kb_group(self): pass
@@ -315,6 +326,46 @@ class SqliteDocListManager(DocListManager):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             cursor = conn.execute(query, params)
             return cursor.fetchall() if details else [row[0] for row in cursor]
+
+    def get_doc(self, doc_id: str) -> KBDocument:
+        with self._db_lock, self._Session() as session:
+            docs = session.query(KBDocument).filter_by(doc_id=doc_id).all()
+            if len(docs) == 1:
+                return docs[0]
+        return None
+
+    def set_new_doc_meta(self, doc_id: str, new_meta_dict: dict):
+        with self._db_lock, self._Session() as session:
+            docs = session.query(KBDocument).filter_by(doc_id=doc_id).all()
+            if len(docs) != 1:
+                return
+            doc = docs[0]
+            old_meta_dict = doc.meta
+            if not old_meta_dict:
+                old_meta_dict = {}
+            if old_meta_dict == new_meta_dict:
+                return
+            new_meta = json.dumps(new_meta_dict, ensure_ascii=False)
+            doc.meta = new_meta
+            session.commit()
+            sql_cond = sqlalchemy.and_(KBGroupDocuments.doc_id == doc_id,
+                                       KBGroupDocuments.status != DocListManager.Status.waiting)
+            session.execute(update(KBGroupDocuments).where(sql_cond).values(new_meta=new_meta))
+            session.commit()
+
+    def fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]:
+        rows = []
+        conds = [KBGroupDocuments.group_name == group, KBGroupDocuments.new_meta.isnot(None)]
+        with self._db_lock, self._Session() as session:
+            rows = (
+                session.query(KBDocument.path, KBGroupDocuments.new_meta)
+                .join(KBGroupDocuments, KBDocument.doc_id == KBGroupDocuments.doc_id)
+                .filter(*conds).all()
+            )
+            stmt = update(KBGroupDocuments).where(sqlalchemy.and_(*conds)).values(new_meta=None)
+            session.execute(stmt)
+            session.commit()
+        return rows
 
     def list_all_kb_group(self):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
