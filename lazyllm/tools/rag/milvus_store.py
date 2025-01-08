@@ -13,6 +13,8 @@ from .global_metadata import (GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH, RAG_
 from .data_type import DataType
 from lazyllm.common import override, obj2str, str2obj
 
+MILVUS_UPSERT_BATCH_SIZE = 500
+
 class MilvusStore(StoreBase):
     # we define these variables as members so that pymilvus is not imported until MilvusStore is instantiated.
     def _def_constants(self) -> None:
@@ -157,13 +159,18 @@ class MilvusStore(StoreBase):
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
+        import time
+        start = time.time()
         parallel_do_embedding(self._embed, [], nodes, self._group_embed_keys)
         group_embed_dict = defaultdict(list)
         for node in nodes:
             data = self._serialize_node_partial(node)
             group_embed_dict[node._group].append(data)
         for group_name, data in group_embed_dict.items():
-            self._client.upsert(collection_name=group_name, data=data)
+            for i in range(0, MILVUS_UPSERT_BATCH_SIZE, len(data)):
+                self._client.upsert(collection_name=group_name, data=data[i:i+MILVUS_UPSERT_BATCH_SIZE])
+        end = time.time()
+        print(end-start)
         self._map_store.update_nodes(nodes)
 
     @override
