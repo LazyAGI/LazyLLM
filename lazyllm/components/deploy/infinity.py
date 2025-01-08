@@ -5,6 +5,7 @@ import random
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
+from .utils import get_log_path, make_log_dir
 
 lazyllm.config.add("default_embedding_engine", str, "", "DEFAULT_EMBEDDING_ENGINE")
 
@@ -17,11 +18,7 @@ class Infinity(LazyLLMDeployBase):
     }
     default_headers = {'Content-Type': 'application/json'}
 
-    def __init__(self,
-                 launcher=launchers.remote(ngpus=1),
-                 model_type='embed',
-                 **kw,
-                 ):
+    def __init__(self, launcher=launchers.remote(ngpus=1), model_type='embed', log_path=None, **kw):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'host': '0.0.0.0',
@@ -33,6 +30,7 @@ class Infinity(LazyLLMDeployBase):
         self.random_port = False if 'port' in kw and kw['port'] else True
         if self._model_type == "reranker":
             self._update_reranker_message()
+        self.temp_folder = make_log_dir(log_path, 'lmdeploy') if log_path else None
 
     def _update_reranker_message(self):
         self.keys_name_handle = {
@@ -62,6 +60,7 @@ class Infinity(LazyLLMDeployBase):
                 self.kw['port'] = random.randint(30000, 40000)
             cmd = f'infinity_emb v2 --model-id {finetuned_model} '
             cmd += self.kw.parse_kwargs()
+            if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 
         return LazyLLMCMD(cmd=impl, return_value=self.geturl, checkf=verify_fastapi_func)

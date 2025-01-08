@@ -9,6 +9,7 @@ from lazyllm import once_wrapper
 from .engine import Engine, Node, ServerGraph
 from lazyllm.tools.train_service.serve import TrainServer
 from lazyllm.tools.train_service.client import LocalTrainClient, OnlineTrainClient
+from lazyllm.tools.infer_service import InferClient, InferServer
 
 
 @contextmanager
@@ -43,6 +44,13 @@ class LightEngine(Engine):
         parsed_url = urlparse(self._local_serve._url)
         base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
         self.local_train_client = LocalTrainClient(base_url)
+
+    @once_wrapper
+    def launch_localllm_infer_service(self):
+        self._infer_server = lazyllm.ServerModule(InferServer(), launcher=lazyllm.launcher.EmptyLauncher(sync=False))
+        self._infer_server.start()()
+        parsed_url = urlparse(self._infer_server._url)
+        self.infer_client = InferClient(f"{parsed_url.scheme}://{parsed_url.netloc}")
 
     # Local
     def local_model_train(self, train_config, token):
@@ -295,6 +303,12 @@ class LightEngine(Engine):
         - bool: True if the API key is valid, False otherwise.
         """
         return self.online_train_client.validate_api_key(token, source, secret_key)
+
+    def deploy_model(self, token, model_name, num_gpus=1):
+        return self.infer_client.deploy(model_name, token, num_gpus)
+
+    def get_infra_handle(self, token, mid):
+        return self.infer_client.get_infra_handle(token, mid)
 
     def build_node(self, node):
         if not isinstance(node, Node):

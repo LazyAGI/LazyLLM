@@ -126,7 +126,8 @@ class TestEngine(unittest.TestCase):
                   "\n现在，请对比以下给定的国学篇章和给出的问题。如果已知国学篇章中有该问题相关的原文，请提取相关原文出来。\n"
                   "已知国学篇章：{context_str}\n")
         resources = [
-            dict(id='00', kind='OnlineEmbedding', name='e1', args=dict(source='glm')),
+            dict(id='00', kind='OnlineEmbedding', name='e0', args=dict(source='glm')),
+            dict(id='01', kind='OnlineEmbedding', name='e1', args=dict(type='rerank')),
             dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', embed='00', node_group=[
                 dict(name='sentence', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))]
         nodes = [dict(id='1', kind='Retriever', name='ret1',
@@ -136,7 +137,7 @@ class TestEngine(unittest.TestCase):
                  dict(id='3', kind='JoinFormatter', name='c', args=dict(type='sum')),
                  dict(id='4', kind='Reranker', name='rek1',
                       args=dict(type='ModuleReranker', output_format='content', join=True,
-                                arguments=dict(model="bge-reranker-large", topk=1))),
+                                arguments=dict(model="01", topk=1))),
                  dict(id='5', kind='Code', name='c1',
                       args='def test(nodes, query): return dict(context_str=nodes, query=query)'),
                  dict(id='6', kind='OnlineLLM', name='m1',

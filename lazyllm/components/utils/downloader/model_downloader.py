@@ -281,8 +281,8 @@ class HuggingfaceDownloader(HubDownloader):
         try:
             api.whoami(token)
             return True
-        except Exception as e:
-            lazyllm.LOG.warning('Verify failed: ', e)
+        except Exception:
+            if token: lazyllm.LOG.warning(f'Huggingface token {token} verified failed')
             return False
 
     @_envs_manager
@@ -334,8 +334,8 @@ class ModelscopeDownloader(HubDownloader):
         try:
             api.login(token)
             return True
-        except Exception as e:
-            lazyllm.LOG.warning('Verify failed: ', e)
+        except Exception:
+            if token: lazyllm.LOG.warning(f'Modelscope token {token} verified failed')
             return False
 
     def verify_model_id(self, model_id):
