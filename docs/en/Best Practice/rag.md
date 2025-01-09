@@ -42,7 +42,7 @@ docs = Document()
 
 # (1)
 docs.create_node_group(name='block',
-                       transform=lambda d: '\n'.split(d))
+                       transform=lambda d: d.split('\n'))
 
 # (2)
 docs.create_node_group(name='doc-summary',
@@ -50,7 +50,7 @@ docs.create_node_group(name='doc-summary',
 
 # (3)
 docs.create_node_group(name='sentence',
-                       transform=lambda b: '。'.split(b),
+                       transform=lambda b: b.split('。'),
                        parent='block')
 
 # (4)
