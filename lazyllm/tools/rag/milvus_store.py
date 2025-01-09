@@ -166,7 +166,7 @@ class MilvusStore(StoreBase):
             group_embed_dict[node._group].append(data)
         for group_name, data in group_embed_dict.items():
             for i in range(0, MILVUS_UPSERT_BATCH_SIZE, len(data)):
-                self._client.upsert(collection_name=group_name, data=data[i:i+MILVUS_UPSERT_BATCH_SIZE])
+                self._client.upsert(collection_name=group_name, data=data[i:i + MILVUS_UPSERT_BATCH_SIZE])
         self._map_store.update_nodes(nodes)
 
     @override
