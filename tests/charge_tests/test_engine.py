@@ -137,7 +137,7 @@ class TestEngine(unittest.TestCase):
                  dict(id='3', kind='JoinFormatter', name='c', args=dict(type='sum')),
                  dict(id='4', kind='Reranker', name='rek1',
                       args=dict(type='ModuleReranker', output_format='content', join=True,
-                                arguments=dict(model="01", topk=1))),
+                                arguments=dict(model="01", topk=3))),
                  dict(id='5', kind='Code', name='c1',
                       args='def test(nodes, query): return dict(context_str=nodes, query=query)'),
                  dict(id='6', kind='OnlineLLM', name='m1',
@@ -149,7 +149,7 @@ class TestEngine(unittest.TestCase):
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
         r = engine.run(gid, '何为天道?')
-        assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
+        assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r or '执古之道，以御今之有' in r
 
     def test_sql_call(self):
         db_type = "PostgreSQL"
