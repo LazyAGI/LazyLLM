@@ -752,11 +752,11 @@ Args:
     group (str): 要添加的分组名称。
 """)
 
-add_chinese_doc('rag.DocListManager._delete_files', """\
-从数据库中删除指定的文件。
+add_chinese_doc('rag.DocListManager.delete_files', """\
+将与文件关联的知识库条目设为删除中，并由各知识库进行异步删除解析结果及关联记录。
 
 Args:
-    file_ids (list of str): 要删除的文件ID列表。
+    file_ids (list of str): 要删除的文件ID列表
 """)
 
 add_chinese_doc('rag.DocListManager.delete_files_from_kb_group', """\
@@ -785,13 +785,18 @@ Args:
     status (str): 新的文件状态。
 """)
 
-add_chinese_doc('rag.DocListManager.update_kb_group_file_status', """\
-更新指定知识库分组中文件的状态。
+add_chinese_doc('rag.DocListManager.update_kb_group', """\
+更新指定知识库分组中的内容。
 
 Args:
-    file_ids (str or list of str): 文件ID列表。
-    status (str): 新的文件状态。
-    group (str, optional): 知识库分组名称。默认为None。
+    cond_file_ids (list of str, optional): 过滤使用的文件ID列表，默认为None。
+    cond_group (str, optional): 过滤使用的知识库分组名称，默认为None。
+    cond_status_list (list of str, optional): 过滤使用的状态列表，默认为None。
+    new_status (str, optional): 新状态, 默认为None。
+    new_need_reparse (bool, optinoal): 新的是否需重解析标志。
+
+**Returns:**
+- list: 得到更新的列表list of (doc_id, group_name)
 """)
 
 add_chinese_doc('rag.DocListManager.release', """\
@@ -881,8 +886,8 @@ Args:
     group (str): Name of the group to add the files to.
 """)
 
-add_english_doc('rag.DocListManager._delete_files', """\
-Deletes specified files from the database.
+add_english_doc('rag.DocListManager.delete_files', """\
+Set the knowledge base entries associated with the document to "deleting," and have each knowledge base asynchronously delete parsed results and associated records.
 
 Args:
     file_ids (list of str): List of file IDs to delete.
@@ -906,21 +911,18 @@ Args:
 - str: The current status of the file.
 """)
 
-add_english_doc('rag.DocListManager.update_file_status', """\
-Updates the status of specified files.
+add_english_doc('rag.DocListManager.update_kb_group', """\
+Updates the record of kb_group_document.
 
 Args:
-    file_ids (list of str): List of file IDs to update.
-    status (str): The new file status.
-""")
+    cond_file_ids (list of str, optional): a list of file IDs to filter by, default None.
+    cond_group (str, optional): a kb_group name to filter by, default None.
+    cond_status_list (list of str, optional): a list of statuses to filter by, default None.
+    new_status (str, optional): the new status to update to, default None
+    new_need_reparse (bool, optinoal): the new need_reparse flag to update to, default None
 
-add_english_doc('rag.DocListManager.update_kb_group_file_status', """\
-Updates the status of files in a specified knowledge base group.
-
-Args:
-    file_ids (str or list of str): List of file IDs.
-    status (str): The new file status.
-    group (str, optional): Name of the knowledge base group. Defaults to None.
+**Returns:**
+- list: updated records, list of (doc_id, group_name)
 """)
 
 add_english_doc('rag.DocListManager.release', """\

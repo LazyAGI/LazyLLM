@@ -35,7 +35,7 @@ class TestRagReader(object):
         docs = []
         for doc in reader():
             docs.append(doc)
-        assert len(docs) == 2
+        assert len(docs) == 3
 
     def test_reader_dir(self):
         input_dir = self.datasets

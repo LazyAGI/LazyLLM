@@ -8,6 +8,7 @@ from lazyllm import launchers, LazyLLMCMD
 from ..base import LazyLLMDeployBase, verify_fastapi_func
 import cloudpickle
 from contextlib import contextmanager
+from ..utils import get_log_path, make_log_dir
 
 
 def dump_func(f, old_value=None):
@@ -28,7 +29,7 @@ class RelayServer(LazyLLMDeployBase):
     message_format = None
 
     def __init__(self, port=None, *, func=None, pre_func=None, post_func=None,
-                 pythonpath=None, launcher=launchers.remote(sync=False)):
+                 pythonpath=None, log_path=None, cls=None, launcher=launchers.remote(sync=False)):
         # func must dump in __call__ to wait for dependancies.
         self.func = func
         self.pre = dump_func(pre_func)
@@ -36,6 +37,7 @@ class RelayServer(LazyLLMDeployBase):
         self.port, self.real_port = port, None
         self.pythonpath = pythonpath
         super().__init__(launcher=launcher)
+        self.temp_folder = make_log_dir(log_path, cls or 'relay') if log_path else None
 
     def cmd(self, func=None):
         FastapiApp.update()
@@ -52,6 +54,7 @@ class RelayServer(LazyLLMDeployBase):
                 cmd += f'--after_function="{self.post}" '
             if self.pythonpath:
                 cmd += f'--pythonpath="{self.pythonpath}" '
+            if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 
         return LazyLLMCMD(cmd=impl, return_value=self.geturl, checkf=verify_fastapi_func,
