@@ -48,6 +48,21 @@ class Document(ModuleBase):
             if server: self._kbs = ServerModule(self._kbs)
             self._global_metadata_desc = doc_fields
 
+        @property
+        def url(self):
+            if hasattr(self, '_manager'): return self._manager._url
+            return None
+
+        @property
+        @deprecated('Document.manager.url')
+        def _url(self):
+            return self.url
+
+        @property
+        def web_url(self):
+            if hasattr(self, '_docweb'): return self._docweb.url
+            return None
+
         def _get_embeds(self, embed):
             embeds = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}
             for embed in embeds.values():
@@ -159,5 +174,5 @@ class Document(ModuleBase):
         return self._forward('retrieve', *args, **kw)
 
     def __repr__(self):
-        return lazyllm.make_repr("Module", "Document", manager=hasattr(self._impl, '_manager'),
+        return lazyllm.make_repr("Module", "Document", manager=hasattr(self._manager, '_manager'),
                                  server=isinstance(self._manager._kbs, ServerModule))
