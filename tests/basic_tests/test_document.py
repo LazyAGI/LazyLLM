@@ -162,12 +162,15 @@ class TestDocument(unittest.TestCase):
         import time
         import requests
         doc = Document('rag_master', manager='ui')
-        doc.create_kb_group(name="test_group")
+        doc.create_kb_group(name='test_group')
+        doc2 = Document('rag_master', manager=doc.manager, name='test_group2')
         doc.start()
         time.sleep(4)
         url = doc._manager._docweb.url
         response = requests.get(url)
         assert response.status_code == 200
+        assert doc2._curr_group == 'test_group2'
+        assert doc2.manager == doc.manager
         doc.stop()
 
 class TmpDir:
