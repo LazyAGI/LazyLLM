@@ -49,11 +49,11 @@ class Document(ModuleBase):
             self._global_metadata_desc = doc_fields
 
         def _get_embeds(self, embed):
-            embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}
-            for embed in self._embed.values():
+            embeds = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}
+            for embed in embeds.values():
                 if isinstance(embed, ModuleBase):
                     self._submodules.append(embed)
-            return embed
+            return embeds
 
         def add_kb_group(self, name, doc_fields: Optional[Dict[str, DocField]] = None,
                          store_conf: Optional[Dict] = None,
@@ -115,7 +115,7 @@ class Document(ModuleBase):
     def _impl(self): return self._manager.get_doc_by_kb_group(self._curr_group)
 
     @property
-    def manager(self): return getattr(self._manager, '_manager', None)
+    def manager(self): return self._manager
 
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
