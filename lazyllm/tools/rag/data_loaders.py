@@ -24,6 +24,6 @@ class DirectoryReader:
             nodes.append(doc)
         if not nodes:
             LOG.warning(
-                f"No nodes load from path {self.input_files}, please check your data path."
+                f"No nodes load from path {input_files}, please check your data path."
             )
         return nodes

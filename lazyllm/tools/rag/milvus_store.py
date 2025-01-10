@@ -1,4 +1,5 @@
 import copy
+from collections import defaultdict
 from typing import Dict, List, Optional, Union, Callable, Set
 from lazyllm.thirdparty import pymilvus
 from .doc_node import DocNode
@@ -11,6 +12,8 @@ from .global_metadata import (GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH, RAG_
                               RAG_DOC_LAST_MODIFIED_DATE, RAG_DOC_LAST_ACCESSED_DATE)
 from .data_type import DataType
 from lazyllm.common import override, obj2str, str2obj
+
+MILVUS_UPSERT_BATCH_SIZE = 500
 
 class MilvusStore(StoreBase):
     # we define these variables as members so that pymilvus is not imported until MilvusStore is instantiated.
@@ -156,13 +159,14 @@ class MilvusStore(StoreBase):
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
+        parallel_do_embedding(self._embed, [], nodes, self._group_embed_keys)
+        group_embed_dict = defaultdict(list)
         for node in nodes:
-            embed_keys = self._group_embed_keys.get(node._group)
-            if embed_keys:
-                parallel_do_embedding(self._embed, embed_keys, [node])
             data = self._serialize_node_partial(node)
-            self._client.upsert(collection_name=node._group, data=[data])
-
+            group_embed_dict[node._group].append(data)
+        for group_name, data in group_embed_dict.items():
+            for i in range(0, MILVUS_UPSERT_BATCH_SIZE, len(data)):
+                self._client.upsert(collection_name=group_name, data=data[i:i + MILVUS_UPSERT_BATCH_SIZE])
         self._map_store.update_nodes(nodes)
 
     @override
