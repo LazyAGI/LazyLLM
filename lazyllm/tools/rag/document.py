@@ -36,11 +36,8 @@ class Document(ModuleBase):
                 dataset_path = os.path.join(os.getcwd(), dataset_path)
             self._launcher: Launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
             self._dataset_path = dataset_path
-            self._embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}
+            self._embed = self._get_embeds(embed)
             self.name = name
-            for embed in self._embed.values():
-                if isinstance(embed, ModuleBase):
-                    self._submodules.append(embed)
             self._dlm = DocListManager(dataset_path, name).init_tables()
             self._kbs = CallableDict({DocListManager.DEFAULT_GROUP_NAME:
                                       DocImpl(embed=self._embed, dlm=self._dlm,
@@ -51,10 +48,19 @@ class Document(ModuleBase):
             if server: self._kbs = ServerModule(self._kbs)
             self._global_metadata_desc = doc_fields
 
+        def _get_embeds(self, embed):
+            embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}
+            for embed in self._embed.values():
+                if isinstance(embed, ModuleBase):
+                    self._submodules.append(embed)
+            return embed
+
         def add_kb_group(self, name, doc_fields: Optional[Dict[str, DocField]] = None,
-                         store_conf: Optional[Dict] = None):
+                         store_conf: Optional[Dict] = None,
+                         embed: Optional[Union[Callable, Dict[str, Callable]]] = None):
+            embed = self._get_embeds(embed) if embed else self._embed
             if isinstance(self._kbs, ServerModule):
-                self._kbs._impl._m[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
+                self._kbs._impl._m[name] = DocImpl(dlm=self._dlm, embed=embed, kb_group_name=name,
                                                    global_metadata_desc=doc_fields, store_conf=store_conf)
             else:
                 self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
@@ -80,13 +86,12 @@ class Document(ModuleBase):
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
         if isinstance(manager, Document._Manager):
-            assert not embed, 'Embedding infomation is already set by manager'
             assert not server, 'Server infomation is already set to by manager'
             assert not launcher, 'Launcher infomation is already set to by manager'
             if dataset_path != manager._dataset_path and dataset_path != manager._origin_path:
                 raise RuntimeError(f'Document path mismatch, expected `{manager._dataset_path}`'
                                    f'while received `{dataset_path}`')
-            manager.add_kb_group(name=name, doc_fields=doc_fields, store_conf=store_conf)
+            manager.add_kb_group(name=name, doc_fields=doc_fields, store_conf=store_conf, embed=embed)
             self._manager = manager
             self._curr_group = name
         else:
