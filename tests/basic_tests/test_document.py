@@ -165,7 +165,7 @@ class TestDocument(unittest.TestCase):
         doc.create_kb_group(name="test_group")
         doc.start()
         time.sleep(4)
-        url = doc._impls._docweb.url
+        url = doc._manager._docweb.url
         response = requests.get(url)
         assert response.status_code == 200
         doc.stop()
