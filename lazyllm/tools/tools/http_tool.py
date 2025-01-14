@@ -36,8 +36,8 @@ class HttpTool(HttpRequest):
     def forward(self, *args, **kwargs):
         if self._has_http:
             res = super().forward(*args, **kwargs)
-            if res['status_code'] != 200:
-                raise RuntimeError('HttpRequest error')
+            if int(res['status_code']) >= 400:
+                raise RuntimeError(f'HttpRequest error, status code is {res["status_code"]}.')
             args, kwargs = (res,), {}
         res = self._compiled_func(*args, **kwargs)
         return self._get_result(res) if self._outputs else res
