@@ -418,9 +418,11 @@ def make_http_tool(method: Optional[str] = None,
                    proxies: Optional[Dict[str, str]] = None,
                    code_str: Optional[str] = None,
                    vars_for_code: Optional[Dict[str, Any]] = None,
-                   doc: Optional[str] = None):
+                   doc: Optional[str] = None,
+                   outputs: Optional[List[str]] = None,
+                   extract_from_output: Optional[bool] = None):
     instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies,
-                                      code_str, vars_for_code)
+                                      code_str, vars_for_code, outputs, extract_from_output)
     if doc:
         instance.__doc__ = doc
     return instance

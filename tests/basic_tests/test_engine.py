@@ -567,10 +567,9 @@ class TestEngine(unittest.TestCase):
         engine = LightEngine()
         gid = engine.start(nodes, edges, gid='graph-1')
         res = engine.run(gid)
-        content = json.loads(res['content'])
 
-        assert content['headers']['h1'] == 'baz'
-        assert content['url'].endswith(f'{url[5:]}?p1=foo&p2=bar')
+        assert res['headers']['h1'] == 'baz'
+        assert res['url'].endswith(f'{url[5:]}?p1=foo&p2=bar')
 
     def test_engine_httptool_body(self):
         body = {'b1': '{{b1}}', 'b2': '{{b2}}'}
@@ -590,10 +589,9 @@ class TestEngine(unittest.TestCase):
         engine = LightEngine()
         gid = engine.start(nodes, edges, gid='graph-1')
         res = engine.run(gid)
-        content = json.loads(res['content'])
 
-        assert content['b1'] == 'body1'
-        assert content['b2'] == 'body2'
+        assert res['b1'] == 'body1'
+        assert res['b2'] == 'body2'
 
     def test_engine_status(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
