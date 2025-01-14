@@ -567,10 +567,48 @@ class TestEngine(unittest.TestCase):
         engine = LightEngine()
         gid = engine.start(nodes, edges, gid='graph-1')
         res = engine.run(gid)
-        content = json.loads(res['content'])
 
-        assert content['headers']['h1'] == 'baz'
-        assert content['url'].endswith(f'{url[5:]}?p1=foo&p2=bar')
+        assert res['headers']['h1'] == 'baz'
+        assert res['url'].endswith(f'{url[5:]}?p1=foo&p2=bar')
+
+    def test_engine_httptool_with_output(self):
+        params = {'p1': '{{p1}}', 'p2': '{{p2}}'}
+        headers = {'h1': '{{h1}}'}
+        url = 'https://postman-echo.com/get'
+
+        nodes = [
+            dict(id='0', kind='Code', name='code1', args=dict(code='def p1(): return "foo"')),
+            dict(id='1', kind='Code', name='code2', args=dict(code='def p2(): return "bar"')),
+            dict(id='2', kind='Code', name='code3', args=dict(code='def h1(): return "baz"')),
+            dict(id='3', kind='HttpTool', name='http', args=dict(
+                method='GET', url=url, params=params, headers=headers,
+                outputs=['headers', 'url'], _lazyllm_arg_names=['p1', 'p2', 'h1']))
+        ]
+        edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
+                 dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
+
+        engine = LightEngine()
+        gid = engine.start(nodes, edges, gid='graph-1')
+        res = engine.run(gid)
+
+        assert isinstance(res, lazyllm.package) and len(res) == 2
+        assert res[0]['h1'] == 'baz'
+        assert res[1].endswith(f'{url[5:]}?p1=foo&p2=bar')
+
+        engine.reset()
+
+        nodes[3]['args']['outputs'] = ['output']
+        gid = engine.start(nodes, edges)
+        res = engine.run(gid)
+        assert res['headers']['h1'] == 'baz'
+
+        engine.reset()
+
+        nodes[3]['args']['outputs'] = ['headers']
+        nodes[3]['args']['extract_from_result'] = True
+        gid2 = engine.start(nodes, edges)
+        res = engine.run(gid2)
+        assert res['h1'] == 'baz'
 
     def test_engine_httptool_body(self):
         body = {'b1': '{{b1}}', 'b2': '{{b2}}'}
@@ -590,10 +628,9 @@ class TestEngine(unittest.TestCase):
         engine = LightEngine()
         gid = engine.start(nodes, edges, gid='graph-1')
         res = engine.run(gid)
-        content = json.loads(res['content'])
 
-        assert content['b1'] == 'body1'
-        assert content['b2'] == 'body2'
+        assert res['b1'] == 'body1'
+        assert res['b2'] == 'body2'
 
     def test_engine_status(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
