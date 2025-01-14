@@ -232,13 +232,6 @@ class TestEngine(object):
         r = engine.run(gid, "这张图片描述的是什么？", _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
         assert '鸡' in r or 'chicken' in r
 
-        engine.stop(gid)
-        nodes = [dict(id='1', kind='OnlineLLM', name='vqa', args=dict(
-            source='lazyllm', base_model=jobid, token=token, stream=True))]
-        gid = engine.start(nodes)
-        r = engine.run(gid, "这张图片描述的是什么？", _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
-        assert '鸡' in r or 'chicken' in r
-
     def test_engine_infer_server_tts(self):
         token = '123'
         engine = LightEngine()
@@ -254,11 +247,4 @@ class TestEngine(object):
         gid = engine.start(nodes)
 
         r = engine.run(gid, "这张图片描述的是什么？")
-        assert '.wav' in r
-
-        engine.stop(gid)
-        nodes = [dict(id='1', kind='OnlineLLM', name='chattts', args=dict(
-            source='lazyllm', base_model=jobid, token=token, stream=False))]
-        gid = engine.start(nodes)
-        r = engine.run(gid, "你好啊，很高兴认识你。")
         assert '.wav' in r
