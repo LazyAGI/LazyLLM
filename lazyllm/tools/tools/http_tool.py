@@ -15,18 +15,20 @@ class HttpTool(HttpRequest):
                  code_str: Optional[str] = None,
                  vars_for_code: Optional[Dict[str, Any]] = None,
                  outputs: Optional[List[str]] = None,
-                 extract_from_output: Optional[bool] = None):
+                 extract_from_result: Optional[bool] = None):
         super().__init__(method, url, '', headers, params, body, timeout, proxies)
         self._has_http = True if url else False
         self._compiled_func = compile_func(code_str, vars_for_code) if code_str else (lambda x: json.loads(x['content']))
-        self._outputs, self._extract_from_output = outputs, extract_from_output
-        if extract_from_output:
+        self._outputs, self._extract_from_result = outputs, extract_from_result
+        if extract_from_result:
             assert outputs, 'Output information is necessary to extract output parameters'
+            assert len(outputs) == 1, 'When the number of outputs is greater than 1, no manual setting is required'
 
     def _get_result(self, res):
-        if self._extract_from_output or (isinstance(res, dict) and len(self._outputs) > 1):
+        if self._extract_from_result or (isinstance(res, dict) and len(self._outputs) > 1):
             assert isinstance(res, dict), 'The result of the tool should be a dict type'
-            return package(res.get(key) for key in self._outputs)
+            r = package(res.get(key) for key in self._outputs)
+            return r[0] if len(r) == 1 else r
         if len(self._outputs) > 1:
             assert isinstance(res, (tuple, list)), 'The result of the tool should be tuple or list'
             assert len(res) == len(self._outputs), 'The number of outputs is inconsistent with expectations'
