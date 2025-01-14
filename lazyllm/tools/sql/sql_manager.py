@@ -2,10 +2,14 @@ import json
 from typing import Union
 import sqlalchemy
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
-from sqlalchemy.orm import declarative_base, DeclarativeMeta
+from sqlalchemy.orm import DeclarativeBase, DeclarativeMeta, sessionmaker
 import pydantic
+from contextlib import contextmanager
 from .db_manager import DBManager, DBStatus, DBResult
 
+
+class TableBase(DeclarativeBase):
+    pass
 
 class SqlManagerBase(DBManager):
 
@@ -33,6 +37,7 @@ class SqlManagerBase(DBManager):
         self._conn_url = conn_url
 
         self._engine = sqlalchemy.create_engine(self._conn_url)
+        self._Session = sessionmaker(bind=self._engine)
         self._desc = ""
         extra_fields = {}
         if options_str:
@@ -50,6 +55,18 @@ class SqlManagerBase(DBManager):
         if self._set_default_desc:
             return self.set_desc()
         return db_result
+
+    @contextmanager
+    def get_session(self):
+        session = self._Session()
+        try:
+            yield session
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
 
     def get_all_tables(self) -> DBResult:
         inspector = sqlalchemy.inspect(self._engine)
@@ -199,7 +216,7 @@ class SqlManagerBase(DBManager):
 
     def _create_by_api(self, table: DeclarativeMeta) -> DBResult:
         try:
-            table.__table__.create(bind=self._engine)
+            table.metadata.create_all(bind=self._engine)
             return DBResult()
         except Exception as e:
             if "already exists" in str(e):
@@ -360,7 +377,6 @@ class SqlManager(SqlManagerBase):
         return self.set_desc()
 
     def _create_table_cls(self, table_info: TableInfo) -> DeclarativeMeta:
-        Base = declarative_base()
         attrs = {"__tablename__": table_info.name}
         for column_info in table_info.columns:
             column_type = column_info.data_type.lower()
@@ -369,7 +385,7 @@ class SqlManager(SqlManagerBase):
             is_primary = column_info.is_primary_key
             real_type = self.PYTYPE_TO_SQL_MAP[column_type]
             attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable, primary_key=is_primary)
-        TableClass = type(table_info.name.capitalize(), (Base,), attrs)
+        TableClass = type(table_info.name.capitalize(), (TableBase,), attrs)
         return TableClass
 
     def set_desc(self) -> DBResult:
