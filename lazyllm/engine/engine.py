@@ -7,6 +7,7 @@ from .node import all_nodes, Node
 from .node_meta_hook import NodeMetaHook
 import inspect
 import functools
+import copy
 from abc import ABC, abstractclassmethod
 
 
@@ -104,7 +105,7 @@ class NodeConstructor(object):
     def build(self, node: Node):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
-        node_args = node.args.copy()
+        node_args = copy.copy(node.args)
         node.arg_names = node_args.pop('_lazyllm_arg_names', None) if isinstance(node_args, dict) else None
         node.enable_data_reflow = (node_args.pop('_lazyllm_enable_report', False)
                                    if isinstance(node_args, dict) else False)

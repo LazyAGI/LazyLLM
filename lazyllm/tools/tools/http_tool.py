@@ -18,7 +18,8 @@ class HttpTool(HttpRequest):
                  extract_from_result: Optional[bool] = None):
         super().__init__(method, url, '', headers, params, body, timeout, proxies)
         self._has_http = True if url else False
-        self._compiled_func = compile_func(code_str, vars_for_code) if code_str else (lambda x: json.loads(x['content']))
+        self._compiled_func = (compile_func(code_str, vars_for_code) if code_str else
+                               (lambda x: json.loads(x['content'])) if self._has_http else None)
         self._outputs, self._extract_from_result = outputs, extract_from_result
         if extract_from_result:
             assert outputs, 'Output information is necessary to extract output parameters'
@@ -36,6 +37,7 @@ class HttpTool(HttpRequest):
         return res
 
     def forward(self, *args, **kwargs):
+        if not self._compiled_func: return None
         if self._has_http:
             res = super().forward(*args, **kwargs)
             if int(res['status_code']) >= 400:
