@@ -215,3 +215,36 @@ class TestEngine(object):
                 system='请根据输入帮我计算，不要反问和发挥', user='输入: {query} \n, 答案:')))]
         gid = engine.start(nodes)
         assert '2' in engine.run(gid, '1 + 1 = ?')
+
+    def test_engine_infer_server_vqa(self):
+        token = '123'
+        engine = LightEngine()
+        engine.launch_localllm_infer_service()
+        jobid, _ = engine.deploy_model(token, 'Mini-InternVL-Chat-2B-V1-5')
+        engine.infer_client.wait_ready(token, jobid)
+        r = engine.get_infra_handle(token, jobid)
+        assert isinstance(r, lazyllm.TrainableModule) and r._impl._get_deploy_tasks.flag
+        assert '你好' in r('请重复下面一句话：你好')
+
+        nodes = [dict(id='0', kind='SharedLLM', name='vqa', args=dict(llm=jobid, local=False, token=token, stream=True))]
+        gid = engine.start(nodes)
+
+        r = engine.run(gid, "这张图片描述的是什么？", _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
+        assert '鸡' in r or 'chicken' in r
+
+    def test_engine_infer_server_tts(self):
+        token = '123'
+        engine = LightEngine()
+        engine.launch_localllm_infer_service()
+        jobid, _ = engine.deploy_model(token, 'ChatTTS')
+        engine.infer_client.wait_ready(token, jobid)
+        r = engine.get_infra_handle(token, jobid)
+        assert isinstance(r, lazyllm.TrainableModule) and r._impl._get_deploy_tasks.flag
+        assert '.wav' in r('你好啊，很高兴认识你。')
+
+        nodes = [dict(id='0', kind='SharedLLM', name='chattts', args=dict(
+            llm=jobid, local=False, token=token, stream=False))]
+        gid = engine.start(nodes)
+
+        r = engine.run(gid, "这张图片描述的是什么？")
+        assert '.wav' in r
