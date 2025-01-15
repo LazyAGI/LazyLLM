@@ -11,7 +11,7 @@ from lazyllm.common import override
 from lazyllm.common.queue import sqlite3_check_threadsafety
 import sqlalchemy
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from sqlalchemy import Column, select, insert, update, Row
+from sqlalchemy import Column, select, insert, update, Row, bindparam
 from sqlalchemy.exc import NoResultFound
 
 import pydantic
@@ -152,10 +152,10 @@ class DocListManager(ABC):
                    exclude_status: Optional[Union[str, List[str]]] = None): pass
 
     @abstractmethod
-    def get_doc(self, doc_id: str) -> KBDocument: pass
+    def get_docs(self, doc_ids: List[str]) -> List[KBDocument]: pass
 
     @abstractmethod
-    def set_new_doc_meta(self, doc_id: str, meta_dict: dict): pass
+    def set_docs_new_meta(self, doc_meta: Dict[str, dict]): pass
 
     @abstractmethod
     def fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]: pass
@@ -324,30 +324,25 @@ class SqliteDocListManager(DocListManager):
             cursor = conn.execute(query, params)
             return cursor.fetchall() if details else [row[0] for row in cursor]
 
-    def get_doc(self, doc_id: str) -> KBDocument:
+    def get_docs(self, doc_ids: List[str]) -> List[KBDocument]:
         with self._db_lock, self._Session() as session:
-            docs = session.query(KBDocument).filter_by(doc_id=doc_id).all()
-            if len(docs) == 1:
-                return docs[0]
-        return None
+            docs = session.query(KBDocument).filter(KBDocument.doc_id.in_(doc_ids)).all()
+            return docs
+        return []
 
-    def set_new_doc_meta(self, doc_id: str, new_meta_dict: dict):
+    def set_docs_new_meta(self, doc_meta: Dict[str, dict]):
+        data_to_update = [{"_doc_id": k, "_meta": json.dumps(v)} for k,v in doc_meta.items()]
         with self._db_lock, self._Session() as session:
-            docs = session.query(KBDocument).filter_by(doc_id=doc_id).all()
-            if len(docs) != 1:
-                return
-            doc = docs[0]
-            old_meta_dict = doc.meta
-            if not old_meta_dict:
-                old_meta_dict = {}
-            if old_meta_dict == new_meta_dict:
-                return
-            new_meta = json.dumps(new_meta_dict, ensure_ascii=False)
-            doc.meta = new_meta
+            # Use sqlalchemy core bulk update
+            stmt = KBDocument.__table__.update().where(
+                KBDocument.doc_id == bindparam("_doc_id")).values(meta=bindparam("_meta"))
+            session.execute(stmt, data_to_update)
             session.commit()
-            sql_cond = sqlalchemy.and_(KBGroupDocuments.doc_id == doc_id,
-                                       KBGroupDocuments.status != DocListManager.Status.waiting)
-            session.execute(update(KBGroupDocuments).where(sql_cond).values(new_meta=new_meta))
+
+            stmt = KBGroupDocuments.__table__.update().where(
+                KBGroupDocuments.doc_id == bindparam("_doc_id"),
+                KBGroupDocuments.status != DocListManager.Status.waiting).values(new_meta=bindparam("_meta"))
+            session.execute(stmt, data_to_update)
             session.commit()
 
     def fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]:

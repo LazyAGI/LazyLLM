@@ -232,26 +232,26 @@ class TestDocumentServer(unittest.TestCase):
         cur_meta_dict = nodes[0].global_metadata
 
         url = f'{self.doc_server_addr}/add_metadata'
-        response = httpx.post(url, json=dict(doc_id=test2_docid, kv_pair={"title": "title2"}))
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "title2"}))
         assert response.status_code == 200 and response.json().get('code') == 200
         time.sleep(20)
         nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
         assert cur_meta_dict["title"] == "title2"
 
         url = f'{self.doc_server_addr}/delete_metadata_keys'
-        response = httpx.post(url, json=dict(doc_id=test2_docid, keys=["signature"]))
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], keys=["signature"]))
         assert response.status_code == 200 and response.json().get('code') == 200
         time.sleep(20)
         assert "signature" not in cur_meta_dict
 
         url = f'{self.doc_server_addr}/update_or_create_metadata_keys'
-        response = httpx.post(url, json=dict(doc_id=test2_docid, kv_pair={"signature": "signature2"}))
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"signature": "signature2"}))
         assert response.status_code == 200 and response.json().get('code') == 200
         time.sleep(20)
         assert cur_meta_dict["signature"] == "signature2"
 
         url = f'{self.doc_server_addr}/reset_metadata'
-        response = httpx.post(url, json=dict(doc_id=test2_docid,
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid],
                                              new_meta={"author": "author2", "signature":"signature_new"}))
         assert response.status_code == 200 and response.json().get('code') == 200
         time.sleep(20)
