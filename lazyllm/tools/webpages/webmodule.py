@@ -36,6 +36,7 @@ class WebModule(ModuleBase):
                  history=[], text_mode=None, trace_mode=None, audio=False, stream=False,
                  files_target=None, static_paths=None) -> None:
         super().__init__()
+        # Set the static directory of gradio so that gradio can access local resources in the directory
         self._static_paths = static_paths
         self.m = lazyllm.ActionModule(m) if isinstance(m, lazyllm.FlowBase) else m
         self.pool = lazyllm.ThreadPoolExecutor(max_workers=50)
@@ -346,9 +347,8 @@ class WebModule(ModuleBase):
                 if result:
                     chat_history.append([None, result])
             else:
+                assert isinstance(result, str), f'Result should only be str, but got {type(result)}'
                 if not contains_markdown_image(result):
-                    assert isinstance(result, (str, dict)), f'Result should only be str, but got {type(result)}'
-                    if isinstance(result, dict): result = result.get('message', '')
                     count = (len(match.group(1)) if (match := re.search(r'(\n+)$', result)) else 0) + len(result) + 1
                     if result and not (result in chat_history[-1][1][-count:]):
                         chat_history[-1][1] += "\n\n" + result
@@ -358,7 +358,7 @@ class WebModule(ModuleBase):
                         suffix = os.path.splitext(url)[-1].lower()
                         if suffix in PIL.Image.registered_extensions().keys() and os.path.exists(url):
                             result = result.replace(url, "file=" + url)
-                    chat_history[-1][1] = result
+                    chat_history[-1][1] += result
         except requests.RequestException as e:
             chat_history = None
             log = str(e)
