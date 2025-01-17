@@ -7,6 +7,7 @@ from .node import all_nodes, Node
 from .node_meta_hook import NodeMetaHook
 import inspect
 import functools
+import copy
 from abc import ABC, abstractclassmethod
 
 
@@ -16,8 +17,9 @@ class Engine(ABC):
     REPORT_URL = ""
 
     def __init__(self):
-        self._nodes = {'__start__': Node(id='__start__', kind='__start__', name='__start__'),
-                       '__end__': Node(id='__end__', kind='__end__', name='__end__')}
+        self._nodes: Dict[str, Node] = {
+            '__start__': Node(id='__start__', kind='__start__', name='__start__'),
+            '__end__': Node(id='__end__', kind='__end__', name='__end__')}
 
     def __new__(cls):
         if cls is not Engine:
@@ -103,13 +105,14 @@ class NodeConstructor(object):
     def build(self, node: Node):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
-        node.arg_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
-        node.enable_data_reflow = (node.args.pop('_lazyllm_enable_report', False)
-                                   if isinstance(node.args, dict) else False)
+        node_args = copy.copy(node.args)
+        node.arg_names = node_args.pop('_lazyllm_arg_names', None) if isinstance(node_args, dict) else None
+        node.enable_data_reflow = (node_args.pop('_lazyllm_enable_report', False)
+                                   if isinstance(node_args, dict) else False)
         if node.kind in NodeConstructor.builder_methods:
             createf, node.subitem_name = NodeConstructor.builder_methods[node.kind]
-            node.func = createf(**node.args) if isinstance(node.args, dict) and set(node.args.keys()).issubset(
-                set(inspect.getfullargspec(createf).args)) else createf(node.args)
+            node.func = createf(**node_args) if isinstance(node_args, dict) and set(node_args.keys()).issubset(
+                set(inspect.getfullargspec(createf).args)) else createf(node_args)
             self._process_hook(node, node.func)
             return node
 
@@ -122,7 +125,7 @@ class NodeConstructor(object):
                 return Engine().build_node(value).func
             return node_args.getattr_f(value) if node_args.getattr_f else value
 
-        for key, value in node.args.items():
+        for key, value in node_args.items():
             if key in node_msgs['init_arguments']:
                 init_args[key] = get_args('init_arguments', key, value)
             elif key in node_msgs['builder_argument']:
@@ -418,9 +421,11 @@ def make_http_tool(method: Optional[str] = None,
                    proxies: Optional[Dict[str, str]] = None,
                    code_str: Optional[str] = None,
                    vars_for_code: Optional[Dict[str, Any]] = None,
-                   doc: Optional[str] = None):
+                   doc: Optional[str] = None,
+                   outputs: Optional[List[str]] = None,
+                   extract_from_result: Optional[bool] = None):
     instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies,
-                                      code_str, vars_for_code)
+                                      code_str, vars_for_code, outputs, extract_from_result)
     if doc:
         instance.__doc__ = doc
     return instance
