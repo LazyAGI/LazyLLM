@@ -238,7 +238,7 @@ class TestDocumentServer(unittest.TestCase):
         nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
         assert cur_meta_dict["title"] == "title2"
 
-        url = f'{self.doc_server_addr}/delete_metadata_keys'
+        url = f'{self.doc_server_addr}/delete_metadata_item'
         response = httpx.post(url, json=dict(doc_ids=[test2_docid], keys=["signature"]))
         assert response.status_code == 200 and response.json().get('code') == 200
         time.sleep(20)

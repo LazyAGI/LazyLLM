@@ -331,7 +331,7 @@ class SqliteDocListManager(DocListManager):
         return []
 
     def set_docs_new_meta(self, doc_meta: Dict[str, dict]):
-        data_to_update = [{"_doc_id": k, "_meta": json.dumps(v)} for k,v in doc_meta.items()]
+        data_to_update = [{"_doc_id": k, "_meta": json.dumps(v)} for k, v in doc_meta.items()]
         with self._db_lock, self._Session() as session:
             # Use sqlalchemy core bulk update
             stmt = KBDocument.__table__.update().where(
