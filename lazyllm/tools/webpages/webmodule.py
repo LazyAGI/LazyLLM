@@ -9,6 +9,8 @@ import traceback
 from lazyllm.thirdparty import gradio as gr, PIL
 import time
 import re
+from pathlib import Path
+from typing import List, Union
 
 import lazyllm
 from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule
@@ -34,10 +36,17 @@ class WebModule(ModuleBase):
 
     def __init__(self, m, *, components=dict(), title='对话演示终端', port=None,
                  history=[], text_mode=None, trace_mode=None, audio=False, stream=False,
-                 files_target=None, static_paths=None) -> None:
+                 files_target=None, static_paths: Union[str, Path, List[str | Path]] = None) -> None:
         super().__init__()
         # Set the static directory of gradio so that gradio can access local resources in the directory
-        self._static_paths = static_paths
+        if isinstance(static_paths, (str, Path)):
+            self._static_paths = [static_paths]
+        elif isinstance(static_paths, list) and all(isinstance(p, (str, Path)) for p in static_paths):
+            self._static_paths = static_paths
+        elif static_paths is None:
+            self._static_paths = []
+        else:
+            raise ValueError(f"static_paths only supported str, path or list types. Not supported {static_paths}")
         self.m = lazyllm.ActionModule(m) if isinstance(m, lazyllm.FlowBase) else m
         self.pool = lazyllm.ThreadPoolExecutor(max_workers=50)
         self.title = title
@@ -84,8 +93,7 @@ class WebModule(ModuleBase):
         return cach_path
 
     def init_web(self, component_descs):
-        if self._static_paths:
-            gr.set_static_paths(self._static_paths)
+        gr.set_static_paths(self._static_paths)
         with gr.Blocks(css=css, title=self.title, analytics_enabled=False) as demo:
             sess_data = gr.State(value={
                 'sess_titles': [''],
