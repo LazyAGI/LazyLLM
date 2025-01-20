@@ -32,6 +32,7 @@ def embed_wrapper(func):
 
     return wrapper
 
+STORE_INDEX = "store"
 
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
@@ -53,6 +54,9 @@ class DocImpl:
         self._global_metadata_desc = global_metadata_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
         self._activated_embeddings = {}
+        self.index_dependencies = {}
+        self.index_pending_registrations = []
+        self._register_dependency("embed", self.embed)
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
@@ -85,6 +89,7 @@ class DocImpl:
                                             embed_datatypes=embed_datatypes)
         else:
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
+        self._register_dependency(STORE_INDEX, self.store)
 
         if not self.store.is_group_active(LAZY_ROOT_NAME):
             ids, paths, metadatas = self._list_files()
@@ -104,6 +109,23 @@ class DocImpl:
             self._daemon = threading.Thread(target=self.worker)
             self._daemon.daemon = True
             self._daemon.start()
+
+    def _register_dependency(self, name, value):
+        self.index_dependencies[name] = value
+        if STORE_INDEX in self.index_dependencies.keys():
+            self._resolve_index_pending_registrations()
+
+    def _resolve_index_pending_registrations(self):
+        resolved = []
+        for index_type, factory, required_deps in self.index_pending_registrations:
+            missing_deps = [dep for dep in required_deps if dep not in self.index_dependencies]
+            if not missing_deps:
+                resolved_deps = {dep: self.index_dependencies[dep] for dep in required_deps}
+                index = factory(**resolved_deps)
+                self.store.register_index(index_type, index)
+                resolved.append((index_type, factory, required_deps))
+        for item in resolved:
+            self.index_pending_registrations.remove(item)
 
     def _create_store(self, store_conf: Optional[Dict], embed_dims: Optional[Dict[str, int]] = None,
                       embed_datatypes: Optional[Dict[str, DataType]] = None) -> StoreBase:
@@ -216,6 +238,15 @@ class DocImpl:
             else: raise TypeError(f"The registered object {klass} is not a callable object.")
             return klass
         return decorator
+
+    def register_index(self, index_type: str, index_factory: Callable, required_dependencies: List[str]) -> None:
+        missing_deps = [dep for dep in required_dependencies if dep not in self.index_dependencies]
+        if missing_deps or STORE_INDEX not in self.index_dependencies.keys():
+            self.index_pending_registrations.append((index_type, index_factory, required_dependencies))
+        else:
+            resolved_deps = {dep: self.index_dependencies[dep] for dep in required_dependencies}
+            index = index_factory(**resolved_deps)
+            self.store.register_index(index_type, index)
 
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         assert callable(func), 'func for reader should be callable'

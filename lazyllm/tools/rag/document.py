@@ -153,6 +153,9 @@ class Document(ModuleBase):
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
         return cls.add_reader(pattern, func)
 
+    def register_index(self, index_type: str, index_factory: Callable, required_dependencies: List[str]) -> None:
+        self._impl.register_index(index_type, index_factory, required_dependencies)
+
     def _forward(self, func_name: str, *args, **kw):
         return self._manager(self._curr_group, func_name, *args, **kw)
 
