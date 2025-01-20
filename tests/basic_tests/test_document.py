@@ -212,6 +212,7 @@ class TestDocumentServer(unittest.TestCase):
 
         # make sure that ids are written into the store
         nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
+        print(f"Get {len(nodes)} nodes: {nodes}")
         for node in nodes:
             if node.global_metadata[RAG_DOC_PATH].endswith('test1.txt'):
                 test1_docid = node.global_metadata[RAG_DOC_ID]
@@ -220,6 +221,7 @@ class TestDocumentServer(unittest.TestCase):
         assert test1_docid and test2_docid
         assert set([test1_docid, test2_docid]) == set(ids)
 
+        print("BEGIN DEDELTE test1")
         url = f'{self.doc_server_addr}/delete_files'
         response = httpx.post(url, json=dict(file_ids=[test1_docid]))
         assert response.status_code == 200 and response.json().get('code') == 200
@@ -235,14 +237,23 @@ class TestDocumentServer(unittest.TestCase):
         response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "title2"}))
         assert response.status_code == 200 and response.json().get('code') == 200
         time.sleep(20)
-        nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
         assert cur_meta_dict["title"] == "title2"
+
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "TITLE2"}))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert cur_meta_dict["title"] == ["title2", "TITLE2"]
 
         url = f'{self.doc_server_addr}/delete_metadata_item'
         response = httpx.post(url, json=dict(doc_ids=[test2_docid], keys=["signature"]))
         assert response.status_code == 200 and response.json().get('code') == 200
         time.sleep(20)
         assert "signature" not in cur_meta_dict
+
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "TITLE2"}))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert cur_meta_dict["title"] == ["title2"]
 
         url = f'{self.doc_server_addr}/update_or_create_metadata_keys'
         response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"signature": "signature2"}))

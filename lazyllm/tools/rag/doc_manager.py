@@ -1,7 +1,7 @@
 import os
 import json
-from typing import List, Optional, Dict, Union
-from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Union, Any
+from pydantic import BaseModel, Field, model_validator
 
 from starlette.responses import RedirectResponse
 from fastapi import UploadFile, Body
@@ -234,7 +234,7 @@ class DocManager(lazyllm.ModuleBase):
                     elif isinstance(meta_dict[k], list):
                         meta_dict[k].extend(v) if isinstance(v, list) else meta_dict[k].append(v)
                     else:
-                        meta_dict[k] = [meta_dict[k]] + v if isinstance(v, list) else [meta_dict[k], v]
+                        meta_dict[k] = ([meta_dict[k]] + v) if isinstance(v, list) else [meta_dict[k], v]
                 doc_meta[doc.doc_id] = meta_dict
             self._manager.set_docs_new_meta(doc_meta)
             return BaseResponse(data=None)
@@ -243,8 +243,8 @@ class DocManager(lazyllm.ModuleBase):
 
     class DeleteMetadataRequest(BaseModel):
         doc_ids: List[str]
-        # value type should be None/list/str
-        kv_pair: Optional[Dict[str, Union[None, bool, int, float, str, list]]] = Field(None)
+        keys: Optional[List[str]] = Field(None)
+        kv_pair: Optional[Dict[str, Union[bool, int, float, str, list]]] = Field(None)
 
     def _inplace_del_meta(self, meta_dict, kv_pair: Dict[str, Union[None, bool, int, float, str, list]]):
         # alert: meta_dict is not a deepcopy
@@ -267,7 +267,14 @@ class DocManager(lazyllm.ModuleBase):
     def delete_metadata_item(self, del_metadata_request: DeleteMetadataRequest):
         doc_ids = del_metadata_request.doc_ids
         kv_pair = del_metadata_request.kv_pair
+        keys = del_metadata_request.keys
         try:
+            if keys is not None:
+                # convert keys to kv_pair
+                if kv_pair:
+                    kv_pair.update({k: None for k in keys})
+                else:
+                    kv_pair = {k: None for k in keys}
             if not kv_pair:
                 # clear metadata
                 self._manager.set_docs_new_meta({doc_id: {} for doc_id in doc_ids})
@@ -278,7 +285,7 @@ class DocManager(lazyllm.ModuleBase):
                 doc_meta = {}
                 for doc in docs:
                     meta_dict = json.loads(doc.meta) if doc.meta else {}
-                    is_success, msg = self._inplace_del_meta(meta_dict, kv_pair)
+                    self._inplace_del_meta(meta_dict, kv_pair)
                     doc_meta[doc.doc_id] = meta_dict
                 self._manager.set_docs_new_meta(doc_meta)
             return BaseResponse(data=None)
