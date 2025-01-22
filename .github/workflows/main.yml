@@ -30,21 +30,25 @@ jobs:
         run: |
           echo "Checking for 'lint_pass' label..."
           TIMEOUT=360
-          INTERVAL=10
+          FIRST_WAIT=40
+          INTERVAL=20
           ELAPSED_TIME=0
+          WAIT_TIME=$FIRST_WAIT
           while [ $ELAPSED_TIME -lt $TIMEOUT ]; do
             echo $ELAPSED_TIME
             PR_LABELS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.number }}/labels" | \
               jq -r '.[].name')
-    
+
             if echo "$PR_LABELS" | grep -q 'lint_pass'; then
               echo "'lint_pass' label found, proceeding with CI process."
               break
             fi
-    
-            echo "Label not found, waiting $INTERVAL seconds..."
-            sleep $INTERVAL
-            ELAPSED_TIME=$((ELAPSED_TIME + INTERVAL))
+
+            echo "Label not found, waiting $WAIT_TIME seconds..."
+            sleep $WAIT_TIME
+            ELAPSED_TIME=$((ELAPSED_TIME + WAIT_TIME))
+            
+            WAIT_TIME=$INTERVAL
           done
 
           if [ $ELAPSED_TIME -ge $TIMEOUT ]; then
