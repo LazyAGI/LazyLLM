@@ -1,1 +1,1 @@
-milvus-lite==2.4.10
+milvus-lite
