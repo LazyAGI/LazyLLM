@@ -3,7 +3,6 @@ docx2txt
 olefile
 pytest-rerunfailures
 pytest-order
-pymilvus==2.4.10
 openpyxl
 nbconvert
 python-pptx

@@ -44,7 +44,7 @@ psutil = "^6.0.0"
 pypdf = "^5.0.0"
 pytest = "^8.3.3"
 numpy = "==1.26.4"
-pymilvus = "^2.4.8"
+pymilvus = ">=2.4.11, <2.5.0"
 async-timeout = "^5.0.1"
 httpx = "<0.28.0"
 redis = { version = ">=5.0.4", optional = true }
