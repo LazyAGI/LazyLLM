@@ -12,6 +12,7 @@ from lazyllm import config
 from unittest.mock import MagicMock
 import unittest
 import httpx
+import requests
 import os
 import shutil
 import io
@@ -214,6 +215,7 @@ class TestDocumentServer(unittest.TestCase):
 
         # make sure that ids are written into the store
         nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
+        print(f"Get {len(nodes)} nodes: {nodes}")
         for node in nodes:
             if node.global_metadata[RAG_DOC_PATH].endswith('test1.txt'):
                 test1_docid = node.global_metadata[RAG_DOC_ID]
@@ -222,6 +224,7 @@ class TestDocumentServer(unittest.TestCase):
         assert test1_docid and test2_docid
         assert set([test1_docid, test2_docid]) == set(ids)
 
+        print("BEGIN DEDELTE test1")
         url = f'{self.doc_server_addr}/delete_files'
         response = httpx.post(url, json=dict(file_ids=[test1_docid]))
         assert response.status_code == 200 and response.json().get('code') == 200
@@ -231,6 +234,45 @@ class TestDocumentServer(unittest.TestCase):
         nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
         assert len(nodes) == 1
         assert nodes[0].global_metadata[RAG_DOC_ID] == test2_docid
+        cur_meta_dict = nodes[0].global_metadata
+
+        url = f'{self.doc_server_addr}/add_metadata'
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "title2"}))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert cur_meta_dict["title"] == "title2"
+
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "TITLE2"}))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert cur_meta_dict["title"] == ["title2", "TITLE2"]
+
+        url = f'{self.doc_server_addr}/delete_metadata_item'
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], keys=["signature"]))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert "signature" not in cur_meta_dict
+
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "TITLE2"}))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert cur_meta_dict["title"] == ["title2"]
+
+        url = f'{self.doc_server_addr}/update_or_create_metadata_keys'
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"signature": "signature2"}))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert cur_meta_dict["signature"] == "signature2"
+
+        url = f'{self.doc_server_addr}/reset_metadata'
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid],
+                                             new_meta={"author": "author2", "signature":"signature_new"}))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert cur_meta_dict["signature"] == "signature_new" and cur_meta_dict["author"] == "author2"
+
+        url = f'{self.doc_server_addr}/query_metadata'
+        response = httpx.post(url, json=dict(doc_id=test2_docid))
 
         # make sure that only one file is left
         response = httpx.get(f'{self.doc_server_addr}/list_files')

@@ -223,6 +223,13 @@ class DocImpl:
 
     def worker(self):
         while True:
+            # Apply meta changes
+            rows = self._dlm.fetch_docs_changed_meta(self._kb_group_name)
+            if rows:
+                for row in rows:
+                    new_meta_dict = json.loads(row[1]) if row[1] else {}
+                    self.store.update_doc_meta(row[0], new_meta_dict)
+
             docs = self._dlm.get_docs_need_reparse(group=self._kb_group_name)
             if docs:
                 filepaths = [doc.path for doc in docs]
