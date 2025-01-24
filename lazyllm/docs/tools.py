@@ -1439,6 +1439,31 @@ add_chinese_doc(
     """\
 SqlManager是与数据库进行交互的专用工具。它提供了连接数据库，设置、创建、检查数据表，插入数据，执行查询的方法。
 
+tables_info_dict字典格式关键字示例如下。
+字典中有3个关键字为可选项：表及列的comment默认为空, is_primary_key默认为False但至少应有一列为True, nullable默认为True
+{"tables":
+    [
+        {
+            "name": f"employee",
+            "comment": "employee information",
+            "columns": [
+                {
+                    "name": "employee_id",
+                    "data_type": "Integer",
+                    "comment": "empoloyee work number",
+                    "nullable": False,
+                    "is_primary_key": True,
+                },
+                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
+                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
+            ],
+        },
+        {
+            ....
+        }
+    ]
+}
+
 Arguments:
     db_type (str): 目前仅支持"PostgreSQL"，后续会增加"MySQL", "MS SQL"
     user (str): username
@@ -1456,6 +1481,32 @@ add_english_doc(
     """\
 SqlManager is a specialized tool for interacting with databases.
 It provides methods for creating tables, executing queries, and performing updates on databases.
+
+The dictionary format of tables_info_dict is as follows.
+There are three optional keywords in the dictionary: "comment" for the table and columns defaults to empty, "is_primary_key" defaults to False,
+but at least one column should be True, and "nullable" defaults to True.
+{"tables":
+    [
+        {
+            "name": f"employee",
+            "comment": "employee information",
+            "columns": [
+                {
+                    "name": "employee_id",
+                    "data_type": "Integer",
+                    "comment": "empoloyee work number",
+                    "nullable": False,
+                    "is_primary_key": True,
+                },
+                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
+                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
+            ],
+        },
+        {
+            ....
+        }
+    ]
+}
 
 Arguments:
     db_type (str): Currently only "PostgreSQL" is supported, with "MySQL" and "MS SQL" to be added later.
@@ -1490,75 +1541,9 @@ add_example(
 )
 
 add_chinese_doc(
-    "SqlManager.reset_table_info_dict",
+    "SqlBase",
     """\
-根据描述表结构的字典设置SqlManager所使用的数据表。注意：若表在数据库中不存在将会自动创建，若存在则会校验所有字段的一致性。
-字典格式关键字示例如下。
-
-字典中有3个关键字为可选项：表及列的comment默认为空, is_primary_key默认为False但至少应有一列为True, nullable默认为True
-{"tables":
-    [
-        {
-            "name": f"employee",
-            "comment": "employee information",
-            "columns": [
-                {
-                    "name": "employee_id",
-                    "data_type": "Integer",
-                    "comment": "empoloyee work number",
-                    "nullable": False,
-                    "is_primary_key": True,
-                },
-                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
-                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
-            ],
-        },
-        {
-            ....
-        }
-    ]
-}
-""",
-)
-
-add_english_doc(
-    "SqlManager.reset_table_info_dict",
-    """\
-Set the data tables used by SqlManager according to the dictionary describing the table structure.
-Note that if the table does not exist in the database, it will be automatically created, and if it exists, all field consistencies will be checked.
-The dictionary format keyword example is as follows.
-
-There are three optional keywords in the dictionary: "comment" for the table and columns defaults to empty, "is_primary_key" defaults to False,
-but at least one column should be True, and "nullable" defaults to True.
-{"tables":
-    [
-        {
-            "name": f"employee",
-            "comment": "employee information",
-            "columns": [
-                {
-                    "name": "employee_id",
-                    "data_type": "Integer",
-                    "comment": "empoloyee work number",
-                    "nullable": False,
-                    "is_primary_key": True,
-                },
-                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
-                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
-            ],
-        },
-        {
-            ....
-        }
-    ]
-}
-""",
-)
-
-add_chinese_doc(
-    "SqlManagerBase",
-    """\
-SqlManagerBase是与数据库进行交互的专用工具。它提供了连接数据库，设置、创建、检查数据表，插入数据，执行查询的方法。
+SqlBase是与数据库进行交互的专用工具。它提供了连接数据库，设置、创建、检查数据表，插入数据，执行查询的方法。
 
 Arguments:
     db_type (str): 目前仅支持"PostgreSQL"，后续会增加"MySQL", "MS SQL"
@@ -1573,9 +1558,9 @@ Arguments:
 )
 
 add_english_doc(
-    "SqlManagerBase",
+    "SqlBase",
     """\
-SqlManagerBase is a specialized tool for interacting with databases.
+SqlBase is a specialized tool for interacting with databases.
 It provides methods for creating tables, executing queries, and performing updates on databases.
 
 Arguments:
@@ -1591,9 +1576,9 @@ Arguments:
 )
 
 add_chinese_doc(
-    "SqlManagerBase.check_connection",
+    "SqlBase.check_connection",
     """\
-检查当前SqlManagerBase的连接状态。
+检查当前SqlBase的连接状态。
 
 **Returns:**\n
 - bool: 连接成功(True), 连接失败(False)
@@ -1602,7 +1587,7 @@ add_chinese_doc(
 )
 
 add_english_doc(
-    "SqlManagerBase.check_connection",
+    "SqlBase.check_connection",
     """\
 Check the current connection status of the SqlManagerBase.
 
@@ -1613,30 +1598,16 @@ Check the current connection status of the SqlManagerBase.
 )
 
 add_chinese_doc(
-    "SqlManagerBase.execute_to_json",
+    "SqlBase.execute_to_json",
     """\
 执行SQL查询并返回JSON格式的结果。
 """,
 )
 
 add_english_doc(
-    "SqlManagerBase.execute_to_json",
+    "SqlBase.execute_to_json",
     """\
 Executes a SQL query and returns the result in JSON format.
-""",
-)
-
-add_chinese_doc(
-    "SqlManagerBase.execute",
-    """\
-在SQLite数据库上执行SQL插入或更新脚本。
-""",
-)
-
-add_english_doc(
-    "SqlManagerBase.execute",
-    """\
-Execute insert or update script.
 """,
 )
 

@@ -85,23 +85,23 @@ class MongoDBEgsData:
     ]
 
 
-class TestSqlManager(unittest.TestCase):
+class TestMongoDBManager(unittest.TestCase):
     @classmethod
     def clean_obsolete_tables(cls, mongodb_manager: MongoDBManager):
         today = datetime.datetime.now()
         pattern = r"^(?:america)_(\d{8})_(\w+)"
         OBSOLETE_DAYS = 2
-        db_result = mongodb_manager.get_all_collections()
-        assert db_result.status == DBStatus.SUCCESS, db_result.detail
-        existing_collections = db_result.result
-        for collection_name in existing_collections:
-            match = re.match(pattern, collection_name)
-            if not match:
-                continue
-            table_create_date = datetime.datetime.strptime(match.group(1), "%Y%m%d")
-            delta = (today - table_create_date).days
-            if delta >= OBSOLETE_DAYS:
-                mongodb_manager.drop_collection(collection_name)
+        with mongodb_manager.get_client() as client:
+            db = client[mongodb_manager.db_name]
+            existing_collections = db.list_collection_names()
+            for collection_name in existing_collections:
+                match = re.match(pattern, collection_name)
+                if not match:
+                    continue
+                table_create_date = datetime.datetime.strptime(match.group(1), "%Y%m%d")
+                delta = (today - table_create_date).days
+                if delta >= OBSOLETE_DAYS:
+                    db.drop_collection(collection_name)
 
     @classmethod
     def setUpClass(cls):
@@ -118,8 +118,10 @@ class TestSqlManager(unittest.TestCase):
 
         cls.mongodb_manager = MongoDBManager(username, password, host, port, database, MongoDBEgsData.COLLECTION_NAME)
         cls.clean_obsolete_tables(cls.mongodb_manager)
-        cls.mongodb_manager.delete({})
-        cls.mongodb_manager.insert(MongoDBEgsData.COLLECTION_DATA)
+        with cls.mongodb_manager.get_client() as client:
+            collection = client[cls.mongodb_manager.db_name][cls.mongodb_manager.collection_name]
+            collection.delete_many({})
+            collection.insert_many(MongoDBEgsData.COLLECTION_DATA)
         cls.mongodb_manager.set_desc(
             {
                 "summary": "美国各个城市的人口情况",
@@ -135,7 +137,9 @@ class TestSqlManager(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         # restore to clean database
-        cls.mongodb_manager.drop_collection(MongoDBEgsData.COLLECTION_NAME)
+        with cls.mongodb_manager.get_client() as client:
+            collection = client[cls.mongodb_manager.db_name][cls.mongodb_manager.collection_name]
+            collection.drop()
 
     def test_manager_status(self):
         db_result = self.mongodb_manager.check_connection()
@@ -143,26 +147,32 @@ class TestSqlManager(unittest.TestCase):
 
     def test_manager_table_delete_insert_query(self):
         # delete all documents
-        self.mongodb_manager.delete({})
-        db_result = self.mongodb_manager.select({})
-        assert db_result.status == DBStatus.SUCCESS, db_result.detail
-        assert len(db_result.result) == 0
+        with self.mongodb_manager.get_client() as client:
+            collection = client[self.mongodb_manager.db_name][self.mongodb_manager.collection_name]
+            collection.delete_many({})
+            results = list(collection.find({}))
+            assert len(results) == 0
 
-        # insert one document
-        self.mongodb_manager.insert(MongoDBEgsData.COLLECTION_DATA[0])
-        # insert many documents
-        self.mongodb_manager.insert(MongoDBEgsData.COLLECTION_DATA[1:])
+            # insert one document
+            collection.insert_one(MongoDBEgsData.COLLECTION_DATA[0])
+            # insert many documents
+            collection.insert_many(MongoDBEgsData.COLLECTION_DATA[1:])
 
-        db_result = self.mongodb_manager.select({})
-        assert db_result.status == DBStatus.SUCCESS, db_result.detail
-        assert len(db_result.result) == len(MongoDBEgsData.COLLECTION_DATA)
+            results = list(collection.find({}))
+            assert len(results) == len(MongoDBEgsData.COLLECTION_DATA)
 
     def test_select(self):
-        db_result = self.mongodb_manager.select({"state": "TX"})
-        assert db_result.status == DBStatus.SUCCESS, db_result.detail
-        db_result = self.mongodb_manager.select({"state": "TX"}, projection={"city": True})
-        assert db_result.status == DBStatus.SUCCESS, db_result.detail
-        assert len(db_result.result) == sum([ele["state"] == "TX" for ele in MongoDBEgsData.COLLECTION_DATA])
+        with self.mongodb_manager.get_client() as client:
+            collection = client[self.mongodb_manager.db_name][self.mongodb_manager.collection_name]
+            results = list(collection.find({"state": "TX"}, projection={"city": True}))
+            match_count = sum([ele["state"] == "TX" for ele in MongoDBEgsData.COLLECTION_DATA])
+            assert len(results) == match_count
+    
+    def test_aggregate(self):
+        with self.mongodb_manager.get_client() as client:
+            collection = client[self.mongodb_manager.db_name][self.mongodb_manager.collection_name]
+            results = list(collection.aggregate([{'$group': {'_id': '$state', 'totalPop': {'$sum': '$pop'}}}, {'$match': {'totalPop': {'$gt': 3000000}}}]))
+            print(f"results: {results}")
 
     @unittest.skip("Just run local model in non-charge test")
     def test_llm_query_online(self):
@@ -172,6 +182,7 @@ class TestSqlManager(unittest.TestCase):
         self.assertIn("NY", str_results)
         print(f"str_results:\n{str_results}")
 
+    # @unittest.skip("temporary skip test")
     def test_llm_query_local(self):
         local_llm = lazyllm.TrainableModule("qwen2-72b-instruct-awq").deploy_method(lazyllm.deploy.vllm).start()
         sql_call = SqlCall(local_llm, self.mongodb_manager, use_llm_for_sql_result=True, return_trace=True)
