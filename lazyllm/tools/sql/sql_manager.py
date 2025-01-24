@@ -1,20 +1,21 @@
 import json
-from typing import Union, List, Type
-import sqlalchemy
-from sqlalchemy.exc import SQLAlchemyError, OperationalError
-from sqlalchemy.orm import DeclarativeBase, DeclarativeMeta, sessionmaker
-from sqlalchemy.ext.automap import automap_base
-import pydantic
-from contextlib import contextmanager
-from .db_manager import DBManager, DBStatus, DBResult
-from urllib.parse import quote_plus
 import re
+from contextlib import contextmanager
+from typing import List, Type, Union
+from urllib.parse import quote_plus
+import pydantic
+import sqlalchemy
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
+from sqlalchemy.ext.automap import automap_base
+from sqlalchemy.orm import DeclarativeBase, DeclarativeMeta, sessionmaker
+
+from .db_manager import DBManager, DBResult, DBStatus
 
 
 class TableBase(DeclarativeBase):
     pass
 
-class SqlBase(DBManager):
+class SqlBaseManager(DBManager):
     DB_DRIVER_MAP = {"mysql": "pymysql"}
 
     def __init__(self, db_type: str, user: str, password: str, host: str, port: int, db_name: str, options_str=""):
@@ -128,7 +129,7 @@ class SqlBase(DBManager):
         with self.get_session() as session:
             session.execute(sqlalchemy.text(statement))
 
-    def execute_to_json(self, statement: str) -> str:
+    def execute_query(self, statement: str) -> str:
         statement = re.sub(r"/\*.*?\*/", "", statement, flags=re.DOTALL).strip()
         if not statement.upper().startswith("SELECT"):
             return "Only select statement supported"
@@ -184,11 +185,14 @@ class SqlBase(DBManager):
         Table.drop(self.engine, checkfirst=True)
         return DBResult()
 
-    def insert_values(self, table_name: str, vals: List[dict]):
+    def insert_values(self, table_name: str, vals: List[dict]) -> DBResult:
         # Refresh metadata in case of tables created by other api
         TableCls = self.get_table_orm_class(table_name)
+        if TableCls is None:
+            return DBResult(status=DBStatus.FAIL, detail=f"{table_name} not found in database")
         with self.get_session() as session:
             session.bulk_insert_mappings(TableCls, vals)
+        return DBResult()
 
 
 class ColumnInfo(pydantic.BaseModel):
@@ -209,7 +213,7 @@ class TableInfo(pydantic.BaseModel):
 class TablesInfo(pydantic.BaseModel):
     tables: list[TableInfo]
 
-class SqlManager(SqlBase):
+class SqlManager(SqlBaseManager):
     PYTYPE_TO_SQL_MAP = {
         "integer": sqlalchemy.Integer,
         "string": sqlalchemy.Text,
@@ -240,7 +244,7 @@ class SqlManager(SqlBase):
         super().__init__(db_type, user, password, host, port, db_name, options_str)
         try:
             self._tables_info = TablesInfo.model_validate(tables_info_dict)
-            self._visible_tables = [table_info.name for table_info in self._tables_info.tables]
+            self._llm_visible_tables = [table_info.name for table_info in self._tables_info.tables]
             # create table if not exist
             self.create_tables_by_info(self._tables_info)
             self.set_desc(self._tables_info)

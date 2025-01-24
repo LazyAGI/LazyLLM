@@ -88,7 +88,7 @@ class SqlCall(ModuleBase):
         self._llm_answer = llm.share(prompt=self._answer_prompter).used_by(self._module_id)
         self.example = sql_examples
         with pipeline() as sql_execute_ppl:
-            sql_execute_ppl.exec = self._sql_tool.execute_to_json
+            sql_execute_ppl.exec = self._sql_tool.execute_query
             if use_llm_for_sql_result:
                 sql_execute_ppl.concate = (lambda q, r: [q, r]) | bind(sql_execute_ppl.input, _0)
                 sql_execute_ppl.llm_answer = self._llm_answer

@@ -374,8 +374,6 @@ class UrlModule(ModuleBase, UrlTemplate):
         headers = {'Content-Type': 'application/json'}
         text_input_for_token_usage = __input
 
-        usage = {"prompt_tokens": self._estimate_token_usage(__input), "completion_tokens": 0}
-
         if isinstance(self, ServerModule):
             assert llm_chat_history is None and tools is None
             headers['Global-Parameters'] = encode_request(globals._pickle_data)

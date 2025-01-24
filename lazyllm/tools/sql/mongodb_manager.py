@@ -1,9 +1,12 @@
 import json
-import pydantic
-from lazyllm.thirdparty import pymongo
-from urllib.parse import quote_plus
 from contextlib import contextmanager
-from .db_manager import DBManager, DBStatus, DBResult
+from urllib.parse import quote_plus
+import pydantic
+
+from lazyllm.thirdparty import pymongo
+
+from .db_manager import DBManager, DBResult, DBStatus
+
 
 class CollectionDesc(pydantic.BaseModel):
     summary: str = ""
@@ -84,14 +87,13 @@ class MongoDBManager(DBManager):
 
     def check_connection(self) -> DBResult:
         try:
-            # check connection status
             with pymongo.MongoClient(self._conn_url, serverSelectionTimeoutMS=self.MAX_TIMEOUT_MS) as client:
                 _ = client.server_info()
             return DBResult()
         except Exception as e:
             return DBResult(status=DBStatus.FAIL, detail=str(e))
 
-    def execute_to_json(self, statement) -> str:
+    def execute_query(self, statement) -> str:
         str_result = ""
         try:
             pipeline_list = json.loads(statement)

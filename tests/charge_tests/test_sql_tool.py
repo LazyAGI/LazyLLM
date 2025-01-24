@@ -90,14 +90,14 @@ class TestSqlManager(unittest.TestCase):
         for sql_manager in self.sql_managers:
             for table_name in SqlEgsData.TEST_TABLES:
                 sql_manager.execute_commit(f"DELETE FROM {table_name}")
-            str_results = sql_manager.execute_to_json(SqlEgsData.TEST_QUERY_SCRIPTS)
+            str_results = sql_manager.execute_query(SqlEgsData.TEST_QUERY_SCRIPTS)
             self.assertNotIn("销售一部", str_results)
 
         # 2. Insert, restore rows
         for sql_manager in self.sql_managers:
             for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
                 sql_manager.execute_commit(insert_script)
-            str_results = sql_manager.execute_to_json(SqlEgsData.TEST_QUERY_SCRIPTS)
+            str_results = sql_manager.execute_query(SqlEgsData.TEST_QUERY_SCRIPTS)
             self.assertIn("销售一部", f"Query: {SqlEgsData.TEST_QUERY_SCRIPTS}; result: {str_results}")
 
     def test_llm_query_online(self):

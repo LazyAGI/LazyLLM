@@ -158,11 +158,9 @@ class TestEngine(unittest.TestCase):
         # 1.  Init: insert data to database
         tmp_sql_manager = SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)
         for table_name in SqlEgsData.TEST_TABLES:
-            db_result = tmp_sql_manager.delete(table_name)
-            assert db_result.status == DBStatus.SUCCESS
+            tmp_sql_manager.execute_commit(f"DELETE FROM {table_name}")
         for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
-            db_result = tmp_sql_manager.execute(insert_script)
-            assert db_result.status == DBStatus.SUCCESS
+            tmp_sql_manager.execute_commit(insert_script)
 
         # 2. Engine: build and chat
         resources = [
@@ -201,7 +199,7 @@ class TestEngine(unittest.TestCase):
 
         # 3. Release: delete data and table from database
         for table_name in SqlEgsData.TEST_TABLES:
-            db_result = tmp_sql_manager.drop(table_name)
+            db_result = tmp_sql_manager.drop_table(table_name)
             assert db_result.status == DBStatus.SUCCESS
 
     def test_register_tools(self):

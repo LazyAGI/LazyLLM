@@ -2,6 +2,7 @@ from enum import Enum, unique
 from typing import List, Union
 from pydantic import BaseModel
 from abc import ABC, abstractmethod
+from lazyllm.module import ModuleBase
 
 
 @unique
@@ -15,19 +16,26 @@ class DBResult(BaseModel):
     detail: str = "Success"
     result: Union[List, None] = None
 
-class DBManager(ABC):
+class CommonMeta(type(ABC), type(ModuleBase)):
+    pass
+
+class DBManager(ABC, ModuleBase, metaclass=CommonMeta):
     DB_TYPE_SUPPORTED = set(["postgresql", "mysql", "mssql", "sqlite", "mongodb"])
 
     def __init__(self, db_type: str):
         db_type = db_type.lower()
+        ModuleBase.__init__(self)
         if db_type not in self.DB_TYPE_SUPPORTED:
             raise ValueError(f"{db_type} not supported")
         self._db_type = db_type
         self._desc = None
 
     @abstractmethod
-    def execute_to_json(self, statement) -> str:
+    def execute_query(self, statement) -> str:
         pass
+
+    def forward(self, statement: str) -> str:
+        return self.execute_query(statement)
 
     @property
     def db_type(self) -> str:
