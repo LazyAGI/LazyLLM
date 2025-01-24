@@ -78,7 +78,7 @@ per_device_train_batch_size: 1
 per_device_eval_batch_size: 1
 per_gpu_train_batch_size: null
 per_gpu_eval_batch_size: null
-gradient_accumulation_steps: 8
+gradient_accumulation_steps: 1
 eval_accumulation_steps: null
 eval_delay: 0
 learning_rate: 1.0e-04

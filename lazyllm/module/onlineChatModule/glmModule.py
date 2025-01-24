@@ -1,8 +1,9 @@
 import json
 import os
+import uuid
 import requests
 from typing import Tuple, List
-
+from urllib.parse import urljoin
 import lazyllm
 from .onlineChatModuleBase import OnlineChatModuleBase
 from .fileHandler import FileHandlerBase
@@ -11,7 +12,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ["chatglm3-6b", "chatglm_12b", "chatglm_32b", "chatglm_66b", "chatglm_130b"]
 
     def __init__(self,
-                 base_url: str = "https://open.bigmodel.cn/api/paas/v4",
+                 base_url: str = "https://open.bigmodel.cn/api/paas/v4/",
                  model: str = "glm-4",
                  api_key: str = None,
                  stream: str = True,
@@ -76,8 +77,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
             "Authorization": "Bearer " + self._api_key
         }
 
-        url = os.path.join(self._base_url, "files")
-
+        url = urljoin(self._base_url, "files")
         self.get_finetune_data(train_file)
 
         file_object = {
@@ -102,11 +102,11 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
         cur_data["hyperparameters"]["learning_rate_multiplier"] = normal_config["learning_rate"]
         cur_data["hyperparameters"]["batch_size"] = normal_config["batch_size"]
         cur_data["hyperparameters"]["n_epochs"] = normal_config["num_epochs"]
-        cur_data["suffix"] = normal_config["finetune_model_name"]
+        cur_data["suffix"] = str(uuid.uuid4())[:7]
         return cur_data
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
-        url = os.path.join(self._base_url, "fine_tuning/jobs")
+        url = urljoin(self._base_url, "fine_tuning/jobs")
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}",

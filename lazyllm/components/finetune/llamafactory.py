@@ -1,6 +1,8 @@
 import os
+import re
 import yaml
 import json
+import uuid
 import tempfile
 import random
 from datetime import datetime
@@ -47,7 +49,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.export_config_path = export_config_path
         self.config_folder_path = os.path.dirname(os.path.abspath(__file__))
 
-        default_config_path = os.path.join(self.config_folder_path, 'llamafactory/sft.yaml')
+        default_config_path = os.path.join(self.config_folder_path, 'llamafactory', 'sft.yaml')
         self.template_dict = ArgsDict(self.load_yaml(default_config_path))
 
         if self.config_path:
@@ -64,7 +66,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.template_dict['template'] = self.get_template_name(base_model)
         self.template_dict.check_and_update(kw)
 
-        default_export_config_path = os.path.join(self.config_folder_path, 'llamafactory/lora_export.yaml')
+        default_export_config_path = os.path.join(self.config_folder_path, 'llamafactory', 'lora_export.yaml')
         self.export_dict = ArgsDict(self.load_yaml(default_export_config_path))
 
         if self.export_config_path:
@@ -75,7 +77,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.export_dict['export_dir'] = merge_path
         self.export_dict['template'] = self.template_dict['template']
 
-        self.temp_folder = os.path.join(lazyllm.config['temp_dir'], 'llamafactory_config')
+        self.temp_folder = os.path.join(lazyllm.config['temp_dir'], 'llamafactory_config', str(uuid.uuid4())[:10])
         if not os.path.exists(self.temp_folder):
             os.makedirs(self.temp_folder)
         self.log_file_path = None
@@ -87,7 +89,12 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             # llamfactory need a gpu, 1st import raise error, so import 2nd.
             from llamafactory.extras.constants import DEFAULT_TEMPLATE
         teplate_dict = CaseInsensitiveDict(DEFAULT_TEMPLATE)
-        key = os.path.basename(base_model).split('-')[0]
+        base_name = os.path.basename(base_model).lower()
+        pattern = r'^llama-(\d+)-\d+'
+        if re.match(pattern, base_name):
+            key = 'llama-' + re.match(pattern, base_name).group(1)
+        else:
+            key = re.split('[_-]', base_name)[0]
         if key in teplate_dict:
             return teplate_dict[key]
         else:

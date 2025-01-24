@@ -9,6 +9,7 @@ from lazyllm import once_wrapper
 from .engine import Engine, Node, ServerGraph
 from lazyllm.tools.train_service.serve import TrainServer
 from lazyllm.tools.train_service.client import LocalTrainClient, OnlineTrainClient
+from lazyllm.tools.infer_service import InferClient, InferServer
 
 
 @contextmanager
@@ -44,6 +45,13 @@ class LightEngine(Engine):
         base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
         self.local_train_client = LocalTrainClient(base_url)
 
+    @once_wrapper
+    def launch_localllm_infer_service(self):
+        self._infer_server = lazyllm.ServerModule(InferServer(), launcher=lazyllm.launcher.EmptyLauncher(sync=False))
+        self._infer_server.start()()
+        parsed_url = urlparse(self._infer_server._url)
+        self.infer_client = InferClient(f"{parsed_url.scheme}://{parsed_url.netloc}")
+
     # Local
     def local_model_train(self, train_config, token):
         """
@@ -66,6 +74,7 @@ class LightEngine(Engine):
         - training_type: The type of training (e.g., 'sft').
         - finetuning_type: The type of finetuning (e.g., 'lora').
         - val_size: The ratio of validation data set to training data set.
+        - num_gpus: The number of gpus, default: 1.
         - num_epochs: The number of training epochs.
         - learning_rate: The learning rate for training.
         - lr_scheduler_type: The type of learning rate scheduler.
@@ -180,7 +189,7 @@ class LightEngine(Engine):
         Args:
         - train_config (dict): Configuration parameters for the training task.
         - token (str): API-Key provided by the supplier, used for authentication.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - tuple: A tuple containing the Job-ID and its status if the training starts successfully.
@@ -211,7 +220,7 @@ class LightEngine(Engine):
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
         - job_id (str): The unique identifier of the training job to be cancelled.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - bool or str: Returns True if the training task was successfully cancelled. If the cancellation fails,
@@ -226,7 +235,7 @@ class LightEngine(Engine):
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
         - job_id (str): The unique identifier of the training job to query.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - str: A string representing the current status of the training task. This could be one of:
@@ -241,7 +250,7 @@ class LightEngine(Engine):
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
         - job_id (str): The unique identifier of the training job for which to retrieve the log.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
         - target_path (str, optional): The path where the log file should be saved. If not provided,
             the log will be saved to a temporary directory.
 
@@ -257,7 +266,7 @@ class LightEngine(Engine):
 
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - list of lists: Each sublist contains [job_id, model_name, status] for each trained model.
@@ -272,13 +281,34 @@ class LightEngine(Engine):
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
         - job_id (str): The unique identifier of the traning job for which to retrieve the token consumption.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - int or str: The number of tokens consumed by the traning task if the query is successful.
             If an error occurs, a string containing the error message is returned.
         """
         return self.online_train_client.get_training_cost(token, job_id, source)
+
+    def online_model_validate_api_key(self, token, source, secret_key=None):
+        """
+        Validates the API key for a given supplier.
+
+        Args:
+        - token (str): API-Key provided by the user, used for authentication.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
+        - secret_key (str): The secret key provided by the user for authentication,
+            required only when the source is 'sensenova'. Default is None.
+
+        Returns:
+        - bool: True if the API key is valid, False otherwise.
+        """
+        return self.online_train_client.validate_api_key(token, source, secret_key)
+
+    def deploy_model(self, token, model_name, num_gpus=1):
+        return self.infer_client.deploy(model_name, token, num_gpus)
+
+    def get_infra_handle(self, token, mid):
+        return self.infer_client.get_infra_handle(token, mid)
 
     def build_node(self, node):
         if not isinstance(node, Node):

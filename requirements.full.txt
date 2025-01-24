@@ -31,8 +31,9 @@ psutil
 pypdf
 pytest
 numpy==1.26.4
-pymilvus
+pymilvus>=2.4.11, <2.5.0
 async-timeout
+httpx<0.28.0
 redis>=5.0.4
 huggingface-hub>=0.23.1
 pandas>=2.2.2

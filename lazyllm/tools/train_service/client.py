@@ -4,32 +4,17 @@ import requests
 from urllib.parse import urljoin
 
 import lazyllm
-from lazyllm.launcher import Status
 from lazyllm.module.utils import update_config, TrainConfig, uniform_sft_dataset
+from ..services import ClientBase
 
 
-class LocalTrainClient:
+class LocalTrainClient(ClientBase):
 
     def __init__(self, url):
-        self.url = url
-
-    def uniform_status(self, status):
-        if status == 'Invalid':
-            res = 'Invalid'
-        elif Status[status] == Status.Done:
-            res = 'Done'
-        elif Status[status] == Status.Cancelled:
-            res = 'Cancelled'
-        elif Status[status] == Status.Failed:
-            res = 'Failed'
-        elif Status[status] == Status.Running:
-            res = 'Running'
-        else:  # TBSubmitted, InQueue, Pending
-            res = 'Pending'
-        return res
+        super().__init__(urljoin(url, 'v1/fine_tuning/'))
 
     def train(self, train_config, token):
-        """
+        '''
         Start a new training job on the LazyLLM training service.
 
         This method sends a request to the LazyLLM API to launch a training job with the specified configuration.
@@ -49,6 +34,7 @@ class LocalTrainClient:
         - finetune_model_name: The name of the model to be fine-tuned.
         - base_model: The base model to use for traning.
         - data_path: The path to the training data.
+        - num_gpus: The number of gpus, default: 1.
         - training_type: The type of training (e.g., 'sft').
         - finetuning_type: The type of finetuning (e.g., 'lora').
         - val_size: The ratio of validation data set to training data set.
@@ -59,17 +45,18 @@ class LocalTrainClient:
         - cutoff_len: The maximum sequence length for training.
         - lora_r: The LoRA rank.
         - lora_alpha: The LoRA alpha parameter.
-        """
-        url = urljoin(self.url, 'v1/fine_tuning/jobs')
+        '''
+        url = urljoin(self.url, 'jobs')
         headers = {
-            "Content-Type": "application/json",
-            "token": token,
+            'Content-Type': 'application/json',
+            'token': token,
         }
         train_config = update_config(train_config, TrainConfig)
         data = {
             'finetune_model_name': train_config['finetune_model_name'],
             'base_model': train_config['base_model'],
             'data_path': train_config['data_path'],
+            'num_gpus': train_config['num_gpus'],
             'hyperparameters': {
                 'stage': train_config['training_type'].strip().lower(),
                 'finetuning_type': train_config['finetuning_type'].strip().lower(),
@@ -77,7 +64,7 @@ class LocalTrainClient:
                 'num_train_epochs': train_config['num_epochs'],
                 'learning_rate': train_config['learning_rate'],
                 'lr_scheduler_type': train_config['lr_scheduler_type'],
-                'per_device_train_batch_size': train_config['batch_size'],
+                'per_device_train_batch_size': train_config['batch_size'] // train_config['num_gpus'],
                 'cutoff_len': train_config['cutoff_len'],
                 'lora_r': train_config['lora_r'],
                 'lora_alpha': train_config['lora_alpha'],
@@ -94,7 +81,7 @@ class LocalTrainClient:
             return (None, str(e))
 
     def cancel_training(self, token, job_id):
-        """
+        '''
         Cancel a training job on the LazyLLM training service.
 
         This method sends a request to the LazyLLM API to cancel a specific training job.
@@ -108,10 +95,10 @@ class LocalTrainClient:
 
         Raises:
         - Exception: If an error occurs during the request, it will be logged and an error message will be returned.
-        """
-        url = urljoin(self.url, f'v1/fine_tuning/jobs/{job_id}/cancel')
+        '''
+        url = urljoin(self.url, f'jobs/{job_id}/cancel')
         headers = {
-            "token": token,
+            'token': token,
         }
         try:
             response = requests.post(url, headers=headers)
@@ -120,14 +107,14 @@ class LocalTrainClient:
             if status == 'Cancelled':
                 return True
             else:
-                return f"Failed to cancel task. Final status is {status}"
+                return f'Failed to cancel task. Final status is {status}'
         except Exception as e:
             status = str(e)
             lazyllm.LOG.error(str(e))
-            return f"Failed to cancel task. Because: {str(e)}"
+            return f'Failed to cancel task. Because: {str(e)}'
 
     def get_training_cost(self, token, job_id):
-        """
+        '''
         Retrieve the GPU usage time for a training job on the LazyLLM training service.
 
         This method sends a request to the LazyLLM API to fetch the GPU usage time (in seconds)
@@ -144,20 +131,20 @@ class LocalTrainClient:
         Raises:
         - Exception: If an error occurs during the request, it will be logged and an error message will be returned.
 
-        """
-        url = urljoin(self.url, f'v1/fine_tuning/jobs/{job_id}')
-        headers = {"token": token}
+        '''
+        url = urljoin(self.url, f'jobs/{job_id}')
+        headers = {'token': token}
         try:
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             return response.json()['cost']
         except Exception as e:
-            error = f"Failed to get cost. Because: {str(e)}"
+            error = f'Failed to get cost. Because: {str(e)}'
             lazyllm.LOG.error(error)
             return error
 
     def get_training_status(self, token, job_id):
-        """
+        '''
         Retrieve the current status of a training job on the LazyLLM training service.
 
         This method sends a request to the LazyLLM API to fetch the current status of a specific training job.
@@ -172,9 +159,9 @@ class LocalTrainClient:
 
         Raises:
         - Exception: If an error occurs during the request, it will be logged.
-        """
-        url = urljoin(self.url, f'v1/fine_tuning/jobs/{job_id}')
-        headers = {"token": token}
+        '''
+        url = urljoin(self.url, f'jobs/{job_id}')
+        headers = {'token': token}
         try:
             response = requests.get(url, headers=headers)
             response.raise_for_status()
@@ -185,7 +172,7 @@ class LocalTrainClient:
         return status
 
     def get_training_log(self, token, job_id):
-        """
+        '''
         Retrieve the log for the current training job on the LazyLLM training service.
 
         This method sends a request to the LazyLLM API to fetch the log associated with a specific training job.
@@ -200,19 +187,19 @@ class LocalTrainClient:
 
         Raises:
         - Exception: If an error occurs during the request, it will be logged.
-        """
-        url = urljoin(self.url, f'v1/fine_tuning/jobs/{job_id}/events')
-        headers = {"token": token}
+        '''
+        url = urljoin(self.url, f'jobs/{job_id}/events')
+        headers = {'token': token}
         try:
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             return response.json()['log']
         except Exception as e:
-            lazyllm.LOG.error(f"Failed to get log. Because: {str(e)}")
+            lazyllm.LOG.error(f'Failed to get log. Because: {str(e)}')
             return None
 
     def get_all_trained_models(self, token):
-        """
+        '''
         List all models with their job-id, model-id and statuse for the LazyLLM training service.
 
         Parameters:
@@ -224,9 +211,9 @@ class LocalTrainClient:
 
         Raises:
         - Exception: If an error occurs during the request, it will be logged.
-        """
-        url = urljoin(self.url, 'v1/fine_tuning/jobs')
-        headers = {"token": token}
+        '''
+        url = urljoin(self.url, 'jobs')
+        headers = {'token': token}
         try:
             response = requests.get(url, headers=headers)
             response.raise_for_status()
@@ -236,7 +223,7 @@ class LocalTrainClient:
                 res.append([job_id, job['fine_tuned_model'], job['status']])
             return res
         except Exception as e:
-            lazyllm.LOG.error(f"Failed to get log. Because: {e}")
+            lazyllm.LOG.error(f'Failed to get log. Because: {e}')
             return None
 
 class OnlineTrainClient:
@@ -245,13 +232,13 @@ class OnlineTrainClient:
         pass
 
     def train(self, train_config, token, source):
-        """
+        '''
         Initiates an online training task with the specified parameters and configurations.
 
         Args:
         - train_config (dict): Configuration parameters for the training task.
         - token (str): API-Key provided by the supplier, used for authentication.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - tuple: A tuple containing the Job-ID and its status if the training starts successfully.
@@ -259,7 +246,7 @@ class OnlineTrainClient:
 
         Raises:
         - Exception: For any other errors that occur during the process, which will be logged and returned.
-        """
+        '''
         try:
             train_config = update_config(train_config, TrainConfig)
             assert train_config['training_type'].lower() == 'sft', 'Only supported sft!'
@@ -277,12 +264,12 @@ class OnlineTrainClient:
             return (None, str(e))
 
     def get_all_trained_models(self, token, source):
-        """
+        '''
         Lists all model jobs with their corresponding job-id, model-id, and statuse for online training services.
 
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - list of lists: Each sublist contains [job_id, model_name, status] for each trained model.
@@ -290,7 +277,7 @@ class OnlineTrainClient:
 
         Raises:
         - Exception: If an error occurs during the request, it will be logged.
-        """
+        '''
         try:
             m = lazyllm.OnlineChatModule(source=source, api_key=token)
             return m._get_finetuned_model_names()
@@ -299,13 +286,13 @@ class OnlineTrainClient:
             return None
 
     def get_training_status(self, token, job_id, source):
-        """
+        '''
         Retrieves the current status of a training task by its Job-ID.
 
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
         - job_id (str): The unique identifier of the training job to query.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - str: A string representing the current status of the training task. This could be one of:
@@ -314,7 +301,7 @@ class OnlineTrainClient:
         Raises:
         - Exception: For any other errors that occur during the status query process,
             which will be logged and returned as 'Invalid'.
-        """
+        '''
         try:
             m = lazyllm.OnlineChatModule(source=source, api_key=token)
             status = m._query_job_status(job_id)
@@ -324,13 +311,13 @@ class OnlineTrainClient:
         return status
 
     def cancel_training(self, token, job_id, source):
-        """
+        '''
         Cancels an ongoing online training task by its Job-ID.
 
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
         - job_id (str): The unique identifier of the training job to be cancelled.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - bool or str: Returns True if the training task was successfully cancelled. If the cancellation fails,
@@ -339,26 +326,26 @@ class OnlineTrainClient:
         Raises:
         - Exception: For any other errors that occur during the cancellation process,
             which will be logged and returned as a string.
-        """
+        '''
         try:
             m = lazyllm.OnlineChatModule(source=source, api_key=token)
             res = m._cancel_finetuning_job(job_id)
             if res == 'Cancelled':
                 return True
             else:
-                return f"Failed to cancel task. Final info is {res}"
+                return f'Failed to cancel task. Final info is {res}'
         except Exception as e:
             lazyllm.LOG.error(str(e))
-            return f"Failed to cancel task. Because: {str(e)}"
+            return f'Failed to cancel task. Because: {str(e)}'
 
     def get_training_log(self, token, job_id, source, target_path=None):
-        """
+        '''
         Retrieves the training log for a specific training task by its Job-ID and saves it to a file.
 
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
         - job_id (str): The unique identifier of the training job for which to retrieve the log.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
         - target_path (str, optional): The path where the log file should be saved. If not provided,
             the log will be saved to a temporary directory.
 
@@ -368,7 +355,7 @@ class OnlineTrainClient:
 
         Raises:
         - Exception: For any other errors that occur during the log retrieval and saving process, which will be logged.
-        """
+        '''
         try:
             m = lazyllm.OnlineChatModule(source=source, api_key=token)
             file_name, log = m._get_log(job_id)
@@ -377,17 +364,17 @@ class OnlineTrainClient:
                 json.dump(log, log_file, indent=4, ensure_ascii=False)
             return save_path
         except Exception as e:
-            lazyllm.LOG.error(f"Failed to get log. Because: {e}")
+            lazyllm.LOG.error(f'Failed to get log. Because: {e}')
             return None
 
     def get_training_cost(self, token, job_id, source):
-        """
+        '''
         Retrieves the number of tokens consumed by an online traning task.
 
         Args:
         - token (str): API-Key provided by the supplier, used for authentication.
         - job_id (str): The unique identifier of the traning job for which to retrieve the token consumption.
-        - source (str): Specifies the supplier. Supported suppliers are 'glm' and 'qwen'.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
 
         Returns:
         - int or str: The number of tokens consumed by the traning task if the query is successful.
@@ -395,12 +382,28 @@ class OnlineTrainClient:
 
         Raises:
         - Exception: For any other errors that occur during the token consumption query process, which will be logged.
-        """
+        '''
         try:
             m = lazyllm.OnlineChatModule(source=source, api_key=token)
             res = m._query_finetuning_cost(job_id)
             return res
         except Exception as e:
-            error = f"Failed to get cost. Because: {str(e)}"
+            error = f'Failed to get cost. Because: {str(e)}'
             lazyllm.LOG.error(error)
             return error
+
+    def validate_api_key(self, token, source, secret_key=None):
+        '''
+        Validates the API key for a given supplier.
+
+        Args:
+        - token (str): API-Key provided by the user, used for authentication.
+        - source (str): Specifies the supplier. Supported suppliers are 'openai', 'glm' and 'qwen'.
+        - secret_key (str): The secret key provided by the user for authentication,
+            required only when the source is 'sensenova'. Default is None.
+
+        Returns:
+        - bool: True if the API key is valid, False otherwise.
+        '''
+        m = lazyllm.OnlineChatModule(source=source, api_key=token, secret_key=secret_key)
+        return m._validate_api_key()

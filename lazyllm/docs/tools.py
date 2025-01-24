@@ -26,6 +26,8 @@ Args:
     embed (Optional[Union[Callable, Dict[str, Callable]]]): The object used to generate document embeddings. If you need to generate multiple embeddings for the text, you need to specify multiple embedding models in a dictionary format. The key identifies the name corresponding to the embedding, and the value is the corresponding embedding model.
     manager (bool, optional): A flag indicating whether to create a user interface for the document module. Defaults to False.
     launcher (optional): An object or function responsible for launching the server module. If not provided, the default asynchronous launcher from `lazyllm.launchers` is used (`sync=False`).
+    store_conf (optional): Configure which storage backend and index backend to use.
+    doc_fields (optional): Configure the fields that need to be stored and retrieved along with their corresponding types (currently only used by the Milvus backend).
 ''')
 
 add_chinese_doc('Document', '''\
@@ -36,8 +38,10 @@ add_chinese_doc('Document', '''\
 Args:
     dataset_path (str): 数据集目录的路径。此目录应包含要由文档模块管理的文档。
     embed (Optional[Union[Callable, Dict[str, Callable]]]): 用于生成文档 embedding 的对象。如果需要对文本生成多个 embedding，此处需要通过字典的方式指定多个 embedding 模型，key 标识 embedding 对应的名字, value 为对应的 embedding 模型。
-    manager (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 False
+    manager (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 False。
     launcher (optional): 负责启动服务器模块的对象或函数。如果未提供，则使用 `lazyllm.launchers` 中的默认异步启动器 (`sync=False`)。
+    store_conf (optional): 配置使用哪种存储后端和索引后端。
+    doc_fields (optional): 配置需要存储和检索的字段继对应的类型（目前只有 Milvus 后端会用到）。
 ''')
 
 add_example('Document', '''\
@@ -47,6 +51,27 @@ add_example('Document', '''\
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)  # or documents = Document(dataset_path='your_doc_path', embed={"key": m}, manager=False)
 >>> m1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
 >>> document1 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, manager=False)
+
+>>> store_conf = {
+>>>     'type': 'chroma',
+>>>     'indices': {
+>>>         'smart_embedding_index': {
+>>>             'backend': 'milvus',
+>>>             'kwargs': {
+>>>                 'uri': '/tmp/tmp.db',
+>>>                 'index_kwargs': {
+>>>                     'index_type': 'HNSW',
+>>>                     'metric_type': 'COSINE'
+>>>                  }
+>>>             },
+>>>         },
+>>>     },
+>>> }
+>>> doc_fields = {
+>>>     'author': DocField(data_type=DataType.VARCHAR, max_size=128, default_value=' '),
+>>>     'public_year': DocField(data_type=DataType.INT32),
+>>> }
+>>> document2 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, store_conf=store_conf, doc_fields=doc_fields)
 ''')
 
 add_english_doc('Document.create_node_group', '''
@@ -152,7 +177,7 @@ add_example('Document.register_global_reader', '''
 ...     with open(file, 'r') as f:
 ...         data = f.read()
 ...     return [DocNode(text=data, metadata=extra_info or {})]
-... 
+...
 >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
 >>> files = ["your_yml_files"]
@@ -191,7 +216,7 @@ add_example('Document.add_reader', '''
 ...             data = yaml.safe_load(f)
 ...         print("Call the class YmlReader.")
 ...         return [DocNode(text=data, metadata=extra_info or {})]
-... 
+...
 >>> def processYml(file, extra_info=None):
 ...     with open(file, 'r') as f:
 ...         data = f.read()
@@ -201,16 +226,16 @@ add_example('Document.add_reader', '''
 >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc1.add_reader("**/*.yml", YmlReader)
->>> print(doc1._local_file_reader)
-# {'**/*.yml': <class '__main__.YmlReader'>}
->>> print(doc2._local_file_reader)
-# {}
+>>> print(doc1._impl._local_file_reader)
+{'**/*.yml': <class '__main__.YmlReader'>}
+>>> print(doc2._impl._local_file_reader)
+{}
 >>> files = ["your_yml_files"]
 >>> Document.register_global_reader("**/*.yml", processYml)
 >>> doc1._impl._reader.load_data(input_files=files)
-# Call the class YmlReader.
+Call the class YmlReader.
 >>> doc2._impl._reader.load_data(input_files=files)
-# Call the function processYml.
+Call the function processYml.
 ''')
 
 add_english_doc('rag.readers.ReaderBase', '''
@@ -248,7 +273,7 @@ add_example('rag.readers.ReaderBase', '''
 ...             data = yaml.safe_load(f)
 ...         print("Call the class YmlReader.")
 ...         return [DocNode(text=data, metadata=extra_info or {})]
-... 
+...
 >>> files = ["your_yml_files"]
 >>> doc = Document(dataset_path="your_files_path", create_ui=False)
 >>> reader = doc._impl._reader.load_data(input_files=files)
@@ -290,12 +315,12 @@ add_example('Reranker', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Document, Reranker, Retriever
 >>> m = lazyllm.OnlineEmbeddingModule()
->>> documents = Document(dataset_path='rag_master', embed=m, manager=False)
+>>> documents = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
 >>> retriever = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
->>> reranker = Reranker(name='ModuleReranker', model='bg-reranker-large', topk=1)
+>>> reranker = Reranker(name='ModuleReranker', model='bge-reranker-large', topk=1)
 >>> ppl = lazyllm.ActionModule(retriever, reranker)
 >>> ppl.start()
->>> print(ppl("query"))
+>>> print(ppl("user query"))
 ''')
 
 # ---------------------------------------------------------------------------- #
@@ -329,7 +354,7 @@ Args:
     doc: 文档模块实例。该文档模块可以是单个实例，也可以是一个实例的列表。如果是单个实例，表示对单个Document进行检索，如果是实例的列表，则表示对多个Document进行检索。
     group_name: 在哪个 node group 上进行检索。
     similarity: 用于设置文档检索的相似度函数。默认为 'dummy'。候选集包括 ["bm25", "bm25_chinese", "cosine"]。
-    similarity_cut_off: 当相似度低于指定值时丢弃该文档。在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则需要使用字典的方式指定，key 表示指定的是哪个 embedding，value 表示相应的阈值。如果所有的 embedding 使用同一个阈值，则只指定一个数值即可。 
+    similarity_cut_off: 当相似度低于指定值时丢弃该文档。在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则需要使用字典的方式指定，key 表示指定的是哪个 embedding，value 表示相应的阈值。如果所有的 embedding 使用同一个阈值，则只指定一个数值即可。
     index: 用于文档检索的索引类型。目前仅支持 'default'。
     topk: 表示取相似度最高的多少篇文档。
     embed_keys: 表示通过哪些 embedding 做检索，不指定表示用全部 embedding 进行检索。
@@ -346,19 +371,28 @@ add_example('Retriever', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Retriever, Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule()
->>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+>>> documents = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
 >>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
 >>> rm.start()
->>> print(rm("query"))
+>>> print(rm("user query"))
 >>> m1 = lazyllm.TrainableModule('bge-large-zh-v1.5').start()
->>> document1 = Document(dataset_path='your_doc_path', embed={'online':m , 'local': m1}, manager=False)
+>>> document1 = Document(dataset_path='/path/to/user/data', embed={'online':m , 'local': m1}, manager=False)
 >>> document1.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 >>> retriever = Retriever(document1, group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
->>> print(retriever("query"))
->>> document2 = Document(dataset_path='your_doc_path', embed={'online':m , 'local': m1}, manager=False)
+>>> print(retriever("user query"))
+>>> document2 = Document(dataset_path='/path/to/user/data', embed={'online':m , 'local': m1}, manager=False)
 >>> document2.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
 >>> retriever2 = Retriever([document1, document2], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
->>> print(retriever2("query"))
+>>> print(retriever2("user query"))
+>>>
+>>> filters = {
+>>>     "author": ["A", "B", "C"],
+>>>     "public_year": [2002, 2003, 2004],
+>>> }
+>>> document3 = Document(dataset_path='/path/to/user/data', embed={'online':m , 'local': m1}, manager=False)
+>>> document3.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+>>> retriever3 = Retriever([document1, document3], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
+>>> print(retriever3(query="user query", filters=filters))
 ''')
 
 # ---------------------------------------------------------------------------- #
@@ -430,15 +464,16 @@ Args:
 
 add_example('LLMParser.transform', '''
 >>> import lazyllm
->>> from lazyllm.tools import LLMParser, TrainableModule
->>> llm = TrainableModule("internlm2-chat-7b")
->>> m = lazyllm.TrainableModule("bge-large-zh-v1.5")
+>>> from lazyllm.tools import LLMParser
+>>> llm = lazyllm.TrainableModule("internlm2-chat-7b").start()
+>>> m = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
 >>> summary_parser = LLMParser(llm, language="en", task_type="summary")
 >>> keywords_parser = LLMParser(llm, language="en", task_type="keywords")
->>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
->>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
->>> summary_result = summary_parser.transform(rm[0])
->>> keywords_result = keywords_parser.transform(rm[0])
+>>> documents = lazyllm.Document(dataset_path="/path/to/your/data", embed=m, manager=False)
+>>> rm = lazyllm.Retriever(documents, group_name='CoarseChunk', similarity='bm25', topk=6)
+>>> doc_nodes = rm("test")
+>>> summary_result = summary_parser.transform(doc_nodes[0])
+>>> keywords_result = keywords_parser.transform(doc_nodes[0])
 ''')
 
 # ---------------------------------------------------------------------------- #
@@ -717,11 +752,11 @@ Args:
     group (str): 要添加的分组名称。
 """)
 
-add_chinese_doc('rag.DocListManager._delete_files', """\
-从数据库中删除指定的文件。
+add_chinese_doc('rag.DocListManager.delete_files', """\
+将与文件关联的知识库条目设为删除中，并由各知识库进行异步删除解析结果及关联记录。
 
 Args:
-    file_ids (list of str): 要删除的文件ID列表。
+    file_ids (list of str): 要删除的文件ID列表
 """)
 
 add_chinese_doc('rag.DocListManager.delete_files_from_kb_group', """\
@@ -750,13 +785,18 @@ Args:
     status (str): 新的文件状态。
 """)
 
-add_chinese_doc('rag.DocListManager.update_kb_group_file_status', """\
-更新指定知识库分组中文件的状态。
+add_chinese_doc('rag.DocListManager.update_kb_group', """\
+更新指定知识库分组中的内容。
 
 Args:
-    file_ids (str or list of str): 文件ID列表。
-    status (str): 新的文件状态。
-    group (str, optional): 知识库分组名称。默认为None。
+    cond_file_ids (list of str, optional): 过滤使用的文件ID列表，默认为None。
+    cond_group (str, optional): 过滤使用的知识库分组名称，默认为None。
+    cond_status_list (list of str, optional): 过滤使用的状态列表，默认为None。
+    new_status (str, optional): 新状态, 默认为None。
+    new_need_reparse (bool, optinoal): 新的是否需重解析标志。
+
+**Returns:**
+- list: 得到更新的列表list of (doc_id, group_name)
 """)
 
 add_chinese_doc('rag.DocListManager.release', """\
@@ -846,8 +886,8 @@ Args:
     group (str): Name of the group to add the files to.
 """)
 
-add_english_doc('rag.DocListManager._delete_files', """\
-Deletes specified files from the database.
+add_english_doc('rag.DocListManager.delete_files', """\
+Set the knowledge base entries associated with the document to "deleting," and have each knowledge base asynchronously delete parsed results and associated records.
 
 Args:
     file_ids (list of str): List of file IDs to delete.
@@ -871,21 +911,18 @@ Args:
 - str: The current status of the file.
 """)
 
-add_english_doc('rag.DocListManager.update_file_status', """\
-Updates the status of specified files.
+add_english_doc('rag.DocListManager.update_kb_group', """\
+Updates the record of kb_group_document.
 
 Args:
-    file_ids (list of str): List of file IDs to update.
-    status (str): The new file status.
-""")
+    cond_file_ids (list of str, optional): a list of file IDs to filter by, default None.
+    cond_group (str, optional): a kb_group name to filter by, default None.
+    cond_status_list (list of str, optional): a list of statuses to filter by, default None.
+    new_status (str, optional): the new status to update to, default None
+    new_need_reparse (bool, optinoal): the new need_reparse flag to update to, default None
 
-add_english_doc('rag.DocListManager.update_kb_group_file_status', """\
-Updates the status of files in a specified knowledge base group.
-
-Args:
-    file_ids (str or list of str): List of file IDs.
-    status (str): The new file status.
-    group (str, optional): Name of the knowledge base group. Defaults to None.
+**Returns:**
+- list: updated records, list of (doc_id, group_name)
 """)
 
 add_english_doc('rag.DocListManager.release', """\

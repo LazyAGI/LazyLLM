@@ -2,12 +2,11 @@ import threading
 import contextvars
 import copy
 from typing import Any, Tuple, Optional, List, Dict
-import pickle
 from pydantic import BaseModel as struct
 from .common import package, kwargs
 from .deprecated import deprecated
 import asyncio
-import base64
+from .utils import obj2str, str2obj
 
 
 class ReadWriteLock(object):
@@ -226,9 +225,9 @@ class LazyLlmResponse(struct):
 
 
 def encode_request(input):
-    return base64.b64encode(pickle.dumps(input)).decode('utf-8')
+    return obj2str(input)
 
 
 def decode_request(input, default=None):
     if input is None: return default
-    return pickle.loads(base64.b64decode(input.encode('utf-8')))
+    return str2obj(input)

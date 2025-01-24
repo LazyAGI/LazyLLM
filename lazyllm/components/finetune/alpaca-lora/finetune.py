@@ -60,7 +60,7 @@ def train( # noqa C901
     # model/data params
     base_model: str = "",  # the only required argument
     data_path: str = "",
-    output_dir: str = "./output_dir",
+    output_dir: str = os.path.abspath("./output_dir"),
     # training hyperparams
     batch_size: int = 128,
     micro_batch_size: int = 4,

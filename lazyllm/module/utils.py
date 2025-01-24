@@ -14,6 +14,7 @@ class TrainConfig:
     training_type: str = 'SFT'
     finetuning_type: str = 'LoRA'
     data_path: str = 'path/to/dataset'
+    num_gpus: int = 1
     val_size: float = 0.1
     num_epochs: int = 1
     learning_rate: float = 1e-4
@@ -166,8 +167,8 @@ def openai2alpaca(data) -> list:
         if system:
             alpaca_item["system"] = system
         alpaca_item["instruction"] = instruction
-        if inp or system:  # 'or system' fix llama-factory-bug: system must have input
-            alpaca_item["input"] = inp
+        # fixed llama-factory-bug: must have input
+        alpaca_item["input"] = inp
         alpaca_item["output"] = output
         if history:
             alpaca_item["history"] = history

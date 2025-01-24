@@ -115,9 +115,9 @@ add_example('FlowBase.for_each', """\
 ... 
 >>> flow = lazyllm.pipeline(test1, lazyllm.pipeline(test2, test3))
 >>> flow.for_each(lambda x: callable(x), lambda x: print(x))
-<function test1 at 0x7f389c3d3ac0>
-<function test2 at 0x7f389c3d3b50>
-<function test3 at 0x7f389c3d3be0>
+<Function type=test1>
+<Function type=test2>
+<Function type=test3>
 """)
 
 add_chinese_doc('Parallel', """\

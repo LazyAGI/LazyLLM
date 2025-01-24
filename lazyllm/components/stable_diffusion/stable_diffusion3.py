@@ -15,7 +15,7 @@ from ..utils.file_operate import delete_old_files
 class StableDiffusion3(object):
     def __init__(self, base_sd, source=None, embed_batch_size=30, trust_remote_code=True, save_path=None, init=False):
         source = lazyllm.config['model_source'] if not source else source
-        self.base_sd = ModelManager(source).download(base_sd)
+        self.base_sd = ModelManager(source).download(base_sd) or ''
         self.embed_batch_size = embed_batch_size
         self.trust_remote_code = trust_remote_code
         self.sd = None
@@ -26,6 +26,11 @@ class StableDiffusion3(object):
 
     def load_sd(self):
         import torch
+        import importlib.util
+        if importlib.util.find_spec("torch_npu") is not None:
+            import torch_npu  # noqa F401
+            from torch_npu.contrib import transfer_to_npu  # noqa F401
+
         from diffusers import StableDiffusion3Pipeline
         self.sd = StableDiffusion3Pipeline.from_pretrained(self.base_sd, torch_dtype=torch.float16).to("cuda")
 
@@ -96,8 +101,9 @@ class StableDiffusionDeploy(object):
     keys_name_handle = None
     default_headers = {'Content-Type': 'application/json'}
 
-    def __init__(self, launcher=None):
+    def __init__(self, launcher=None, log_path=None):
         self.launcher = launcher
+        self._log_path = log_path
 
     def __call__(self, finetuned_model=None, base_model=None):
         if not finetuned_model:
@@ -108,4 +114,5 @@ class StableDiffusionDeploy(object):
             LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                         f"base_model({base_model}) will be used")
             finetuned_model = base_model
-        return lazyllm.deploy.RelayServer(func=StableDiffusion3(finetuned_model), launcher=self.launcher)()
+        return lazyllm.deploy.RelayServer(func=StableDiffusion3(finetuned_model), launcher=self.launcher,
+                                          log_path=self._log_path, cls='stable_diffusion')()

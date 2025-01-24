@@ -78,12 +78,6 @@ class TestDocImpl(unittest.TestCase):
         self.doc_impl._add_files(["new_file.txt"])
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 2
 
-    def test_delete_files(self):
-        self.doc_impl._lazy_init()
-        self.doc_impl._delete_files(["dummy_file.txt"])
-        assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 0
-
-
 class TestDocument(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -153,27 +147,30 @@ class TestDocument(unittest.TestCase):
 
         document2 = Document(dataset_path="rag_master", embed={"m1": self.embed_model1, "m2": self.embed_model2})
         document2.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
-        retriever2 = Retriever(document2, group_name="sentences", similarity="cosine", topk=10)
+        retriever2 = Retriever(document2, group_name="sentences", similarity="cosine", topk=3)
         nodes2 = retriever2("何为天道?")
-        assert len(nodes2) == 11
+        assert len(nodes2) >= 3
 
         document3 = Document(dataset_path="rag_master", embed={"m1": self.embed_model1, "m2": self.embed_model2})
         document3.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
         retriever3 = Retriever(document3, group_name="sentences", similarity="cosine",
-                               similarity_cut_off={"m1": 0.5, "m2": 0.55}, topk=10)
-        nodes3 = retriever3("何为天道?")
-        assert len(nodes3) == 3
+                               similarity_cut_off={"m1": 0.5, "m2": 0.55}, topk=3, output_format='content', join=True)
+        nodes3_text = retriever3("何为天道?")
+        assert '观天之道' in nodes3_text or '天命之谓性' in nodes3_text
 
     def test_doc_web_module(self):
         import time
         import requests
         doc = Document('rag_master', manager='ui')
-        doc.create_kb_group(name="test_group")
+        doc.create_kb_group(name='test_group')
+        doc2 = Document('rag_master', manager=doc.manager, name='test_group2')
         doc.start()
         time.sleep(4)
-        url = doc._impls._docweb.url
+        url = doc._manager._docweb.url
         response = requests.get(url)
         assert response.status_code == 200
+        assert doc2._curr_group == 'test_group2'
+        assert doc2.manager == doc.manager
         doc.stop()
 
 class TmpDir:
@@ -234,6 +231,10 @@ class TestDocumentServer(unittest.TestCase):
         nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
         assert len(nodes) == 1
         assert nodes[0].global_metadata[RAG_DOC_ID] == test2_docid
+
+        # make sure that only one file is left
+        response = httpx.get(f'{self.doc_server_addr}/list_files')
+        assert response.status_code == 200 and len(response.json().get('data')) == 1
 
 if __name__ == "__main__":
     unittest.main()

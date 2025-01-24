@@ -122,7 +122,7 @@ def merge2alpaca(dataset_paths: List[str], target_path: str = None) -> str:
 def _build_target_dir(target_path: str = None) -> str:
     if target_path:
         save_dir = target_path
-        if os.path.exists(save_dir):
+        if not os.path.exists(save_dir):
             raise RuntimeError(f"The target_path at {save_dir} does not exist.")
     else:
         save_dir = os.path.join(lazyllm.config['temp_dir'], 'dataset')

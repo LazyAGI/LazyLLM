@@ -3,6 +3,7 @@ from lazyllm import pipeline, parallel, diverter, warp, switch, ifs, loop, graph
 from lazyllm import barrier, bind
 import time
 import pytest
+import random
 
 def add_one(x): return x + 1
 def xy2z(x, y, z=0): return x + y + 2 * z
@@ -210,6 +211,15 @@ class TestFlowBind(object):
             with pytest.raises(RuntimeError,
                                match='pipeline.input/output can only be bind in direct member of pipeline!'):
                 p(3)
+
+    def test_bind_pipeline_in_warp(self):
+        with pipeline() as ppl:
+            with warp() as ppl.wp:
+                with lazyllm.save_pipeline_result():
+                    with pipeline() as ppl.wp.ppl:
+                        ppl.wp.ppl.bug = lambda x: time.sleep(random.randint(0, 30) / 1000)
+                        ppl.wp.ppl.for_output = lazyllm.ifs(lambda x, y: y is None, lambda x, y: x, lambda x, y: -1
+                                                            ) | bind(ppl.wp.ppl.input["idx"], lazyllm._0)
 
     def test_bind_pipeline_nested_kwargs(self):
         with pipeline() as p:
