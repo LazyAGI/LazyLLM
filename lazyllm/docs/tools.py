@@ -1860,3 +1860,40 @@ add_tools_example('Calculator.forward', '''
 from lazyllm.tools.tools import Calculator
 calc = Calculator()
 ''')
+
+add_tools_chinese_doc('TencentSearch', '''
+这是一个搜索增强工具。
+''')
+
+add_tools_english_doc('TencentSearch', '''
+This is a search enhancement tool.
+''')
+
+add_tools_example('TencentSearch', '''
+from lazyllm.tools.tools import TencentSearch
+secret_id = '<your_secret_id>'
+secret_key = '<your_secret_key>'
+searcher = TencentSearch(secret_id, secret_key)
+''')
+
+add_tools_chinese_doc('TencentSearch.forward', '''
+搜索用户输入的查询。
+
+Args:
+    query (str): 用户待查询的内容。
+''')
+
+add_tools_english_doc('TencentSearch.forward', '''
+Searches for the query entered by the user.
+
+Args:
+    query (str): The content that the user wants to query.
+''')
+
+add_tools_example('TencentSearch.forward', '''
+from lazyllm.tools.tools import TencentSearch
+secret_id = '<your_secret_id>'
+secret_key = '<your_secret_key>'
+searcher = TencentSearch(secret_id, secret_key)
+res = searcher('calculus')
+''')

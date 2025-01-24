@@ -2,6 +2,7 @@ from .http_tool import HttpTool
 from .google_search import GoogleSearch
 from .weather import Weather
 from .calculator import Calculator
+from .tencent_search import TencentSearch
 
 
 __all__ = [
@@ -9,4 +10,5 @@ __all__ = [
     'GoogleSearch',
     'Weather',
     'Calculator',
+    'TencentSearch',
 ]
