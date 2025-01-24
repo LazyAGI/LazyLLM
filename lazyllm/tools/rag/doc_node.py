@@ -36,6 +36,7 @@ class DocNode:
         self._children: Dict[str, List["DocNode"]] = defaultdict(list)
         self._lock = threading.Lock()
         self._embedding_state = set()
+        self.relevance_score = None
 
         if global_metadata and parent:
             raise ValueError('only ROOT node can set global metadata.')
