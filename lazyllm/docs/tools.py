@@ -1541,9 +1541,9 @@ add_example(
 )
 
 add_chinese_doc(
-    "SqlBaseManager",
+    "SqlAlchemyManager",
     """\
-SqlBaseManager是与数据库进行交互的专用工具。它提供了连接数据库，设置、创建、检查数据表，插入数据，执行查询的方法。
+SqlAlchemyManager是与数据库进行交互的专用工具。它提供了连接数据库，设置、创建、检查数据表，插入数据，执行查询的方法。
 
 Arguments:
     db_type (str): 目前仅支持"PostgreSQL"，后续会增加"MySQL", "MS SQL"
@@ -1558,9 +1558,9 @@ Arguments:
 )
 
 add_english_doc(
-    "SqlBaseManager",
+    "SqlAlchemyManager",
     """\
-SqlBaseManager is a specialized tool for interacting with databases.
+SqlAlchemyManager is a specialized tool for interacting with databases.
 It provides methods for creating tables, executing queries, and performing updates on databases.
 
 Arguments:
@@ -1576,9 +1576,9 @@ Arguments:
 )
 
 add_chinese_doc(
-    "SqlBaseManager.check_connection",
+    "SqlAlchemyManager.check_connection",
     """\
-检查当前SqlBaseManager的连接状态。
+检查当前SqlAlchemyManager的连接状态。
 
 **Returns:**\n
 - bool: 连接成功(True), 连接失败(False)
@@ -1587,7 +1587,7 @@ add_chinese_doc(
 )
 
 add_english_doc(
-    "SqlBaseManager.check_connection",
+    "SqlAlchemyManager.check_connection",
     """\
 Check the current connection status of the SqlManagerBase.
 
@@ -1598,14 +1598,14 @@ Check the current connection status of the SqlManagerBase.
 )
 
 add_chinese_doc(
-    "SqlBaseManager.execute_query",
+    "SqlAlchemyManager.execute_query",
     """\
 执行SQL查询并返回JSON格式的结果。
 """,
 )
 
 add_english_doc(
-    "SqlBaseManager.execute_query",
+    "SqlAlchemyManager.execute_query",
     """\
 Executes a SQL query and returns the result in JSON format.
 """,

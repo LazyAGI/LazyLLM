@@ -20,13 +20,9 @@ class CommonMeta(type(ABC), type(ModuleBase)):
     pass
 
 class DBManager(ABC, ModuleBase, metaclass=CommonMeta):
-    DB_TYPE_SUPPORTED = set(["postgresql", "mysql", "mssql", "sqlite", "mongodb"])
 
     def __init__(self, db_type: str):
-        db_type = db_type.lower()
         ModuleBase.__init__(self)
-        if db_type not in self.DB_TYPE_SUPPORTED:
-            raise ValueError(f"{db_type} not supported")
         self._db_type = db_type
         self._desc = None
 

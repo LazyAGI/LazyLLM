@@ -15,10 +15,14 @@ from .db_manager import DBManager, DBResult, DBStatus
 class TableBase(DeclarativeBase):
     pass
 
-class SqlBaseManager(DBManager):
+class SqlAlchemyManager(DBManager):
+    DB_TYPE_SUPPORTED = set(["postgresql", "mysql", "mssql", "sqlite"])
     DB_DRIVER_MAP = {"mysql": "pymysql"}
 
     def __init__(self, db_type: str, user: str, password: str, host: str, port: int, db_name: str, options_str=""):
+        db_type = db_type.lower()
+        if db_type not in self.DB_TYPE_SUPPORTED:
+            raise ValueError(f"{db_type} not supported")
         super().__init__(db_type)
         self.user = user
         self.password = password
@@ -213,7 +217,7 @@ class TableInfo(pydantic.BaseModel):
 class TablesInfo(pydantic.BaseModel):
     tables: list[TableInfo]
 
-class SqlManager(SqlBaseManager):
+class SqlManager(SqlAlchemyManager):
     PYTYPE_TO_SQL_MAP = {
         "integer": sqlalchemy.Integer,
         "string": sqlalchemy.Text,
