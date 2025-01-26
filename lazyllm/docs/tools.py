@@ -1439,6 +1439,31 @@ add_chinese_doc(
     """\
 SqlManager是与数据库进行交互的专用工具。它提供了连接数据库，设置、创建、检查数据表，插入数据，执行查询的方法。
 
+tables_info_dict字典格式关键字示例如下。
+字典中有3个关键字为可选项：表及列的comment默认为空, is_primary_key默认为False但至少应有一列为True, nullable默认为True
+{"tables":
+    [
+        {
+            "name": f"employee",
+            "comment": "employee information",
+            "columns": [
+                {
+                    "name": "employee_id",
+                    "data_type": "Integer",
+                    "comment": "empoloyee work number",
+                    "nullable": False,
+                    "is_primary_key": True,
+                },
+                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
+                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
+            ],
+        },
+        {
+            ....
+        }
+    ]
+}
+
 Arguments:
     db_type (str): 目前仅支持"PostgreSQL"，后续会增加"MySQL", "MS SQL"
     user (str): username
@@ -1456,6 +1481,32 @@ add_english_doc(
     """\
 SqlManager is a specialized tool for interacting with databases.
 It provides methods for creating tables, executing queries, and performing updates on databases.
+
+The dictionary format of tables_info_dict is as follows.
+There are three optional keywords in the dictionary: "comment" for the table and columns defaults to empty, "is_primary_key" defaults to False,
+but at least one column should be True, and "nullable" defaults to True.
+{"tables":
+    [
+        {
+            "name": f"employee",
+            "comment": "employee information",
+            "columns": [
+                {
+                    "name": "employee_id",
+                    "data_type": "Integer",
+                    "comment": "empoloyee work number",
+                    "nullable": False,
+                    "is_primary_key": True,
+                },
+                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
+                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
+            ],
+        },
+        {
+            ....
+        }
+    ]
+}
 
 Arguments:
     db_type (str): Currently only "PostgreSQL" is supported, with "MySQL" and "MS SQL" to be added later.
@@ -1490,75 +1541,44 @@ add_example(
 )
 
 add_chinese_doc(
-    "SqlManager.reset_tables",
+    "SqlAlchemyManager",
     """\
-根据描述表结构的字典设置SqlManager所使用的数据表。注意：若表在数据库中不存在将会自动创建，若存在则会校验所有字段的一致性。
-字典格式关键字示例如下。
+SqlAlchemyManager是与数据库进行交互的专用工具。它提供了连接数据库，设置、创建、检查数据表，插入数据，执行查询的方法。
 
-字典中有3个关键字为可选项：表及列的comment默认为空, is_primary_key默认为False但至少应有一列为True, nullable默认为True
-{"tables":
-    [
-        {
-            "name": f"employee",
-            "comment": "employee information",
-            "columns": [
-                {
-                    "name": "employee_id",
-                    "data_type": "Integer",
-                    "comment": "empoloyee work number",
-                    "nullable": False,
-                    "is_primary_key": True,
-                },
-                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
-                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
-            ],
-        },
-        {
-            ....
-        }
-    ]
-}
+Arguments:
+    db_type (str): 目前仅支持"PostgreSQL"，后续会增加"MySQL", "MS SQL"
+    user (str): username
+    password (str): password
+    host (str): 主机名或IP
+    port (int): 端口号
+    db_name (str): 数据仓库名
+    tables_info_dict (dict): 数据表的描述
+    options_str (str): k1=v1&k2=v2形式表示的选项设置
 """,
 )
 
 add_english_doc(
-    "SqlManager.reset_tables",
+    "SqlAlchemyManager",
     """\
-Set the data tables used by SqlManager according to the dictionary describing the table structure.
-Note that if the table does not exist in the database, it will be automatically created, and if it exists, all field consistencies will be checked.
-The dictionary format keyword example is as follows.
+SqlAlchemyManager is a specialized tool for interacting with databases.
+It provides methods for creating tables, executing queries, and performing updates on databases.
 
-There are three optional keywords in the dictionary: "comment" for the table and columns defaults to empty, "is_primary_key" defaults to False,
-but at least one column should be True, and "nullable" defaults to True.
-{"tables":
-    [
-        {
-            "name": f"employee",
-            "comment": "employee information",
-            "columns": [
-                {
-                    "name": "employee_id",
-                    "data_type": "Integer",
-                    "comment": "empoloyee work number",
-                    "nullable": False,
-                    "is_primary_key": True,
-                },
-                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
-                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
-            ],
-        },
-        {
-            ....
-        }
-    ]
-}
+Arguments:
+    db_type (str): Currently only "PostgreSQL" is supported, with "MySQL" and "MS SQL" to be added later.
+    user (str): Username for connection
+    password (str): Password for connection
+    host (str): Hostname or IP
+    port (int): Port number
+    db_name (str): Name of the database
+    tables_info_dict (dict): Description of the data tables
+    options_str (str): Options represented in the format k1=v1&k2=v2
 """,
 )
 
 add_chinese_doc(
-    "SqlManager.check_connection",
+    "SqlAlchemyManager.check_connection",
     """\
-检查当前SqlManager的连接状态。
+检查当前SqlAlchemyManager的连接状态。
 
 **Returns:**\n
 - bool: 连接成功(True), 连接失败(False)
@@ -1567,9 +1587,9 @@ add_chinese_doc(
 )
 
 add_english_doc(
-    "SqlManager.check_connection",
+    "SqlAlchemyManager.check_connection",
     """\
-Check the current connection status of the SqlManager.
+Check the current connection status of the SqlManagerBase.
 
 **Returns:**\n
 - bool: True if the connection is successful, False if it fails.
@@ -1578,61 +1598,16 @@ Check the current connection status of the SqlManager.
 )
 
 add_chinese_doc(
-    "SqlManager.reset_tables",
-    """\
-根据提供的表结构设置数据库链接。
-若数据库中已存在表项则检查一致性，否则创建数据表
-
-Args:
-    tables_info_dict (dict): 数据表的描述
-
-**Returns:**\n
-- bool: 设置成功(True), 设置失败(False)
-- str: 设置成功为"Success" 否则为具体的失败信息.
-""",
-)
-
-add_english_doc(
-    "SqlManager.reset_tables",
-    """\
-Set database connection based on the provided table structure.
-Check consistency if the table items already exist in the database, otherwise create the data table.
-
-Args:
-    tables_info_dict (dict): Description of the data tables
-
-**Returns:**\n
-- bool: True if set successfully, False if set failed
-- str: "Success" if set successfully, otherwise specific failure information.
-
-""",
-)
-
-add_chinese_doc(
-    "SqlManager.get_query_result_in_json",
+    "SqlAlchemyManager.execute_query",
     """\
 执行SQL查询并返回JSON格式的结果。
 """,
 )
 
 add_english_doc(
-    "SqlManager.get_query_result_in_json",
+    "SqlAlchemyManager.execute_query",
     """\
 Executes a SQL query and returns the result in JSON format.
-""",
-)
-
-add_chinese_doc(
-    "SqlManager.execute_sql_update",
-    """\
-在SQLite数据库上执行SQL插入或更新脚本。
-""",
-)
-
-add_english_doc(
-    "SqlManager.execute_sql_update",
-    """\
-Execute insert or update script.
 """,
 )
 
