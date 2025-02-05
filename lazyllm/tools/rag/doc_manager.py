@@ -1,6 +1,6 @@
 import os
 import json
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Union
 from pydantic import BaseModel, Field
 
 from starlette.responses import RedirectResponse
@@ -210,6 +210,147 @@ class DocManager(lazyllm.ModuleBase):
             self._manager.update_kb_group(cond_file_ids=request.file_ids, cond_group=request.group_name,
                                           new_status=DocListManager.Status.deleting)
             return BaseResponse()
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
+
+    class AddMetadataRequest(BaseModel):
+        doc_ids: List[str]
+        kv_pair: Dict[str, Union[bool, int, float, str, list]]
+
+    @app.post("/add_metadata")
+    def add_metadata(self, add_metadata_request: AddMetadataRequest):
+        doc_ids = add_metadata_request.doc_ids
+        kv_pair = add_metadata_request.kv_pair
+        try:
+            docs = self._manager.get_docs(doc_ids)
+            if not docs:
+                return BaseResponse(code=400, msg="Failed, no doc found")
+            doc_meta = {}
+            for doc in docs:
+                meta_dict = json.loads(doc.meta) if doc.meta else {}
+                for k, v in kv_pair.items():
+                    if k not in meta_dict or not meta_dict[k]:
+                        meta_dict[k] = v
+                    elif isinstance(meta_dict[k], list):
+                        meta_dict[k].extend(v) if isinstance(v, list) else meta_dict[k].append(v)
+                    else:
+                        meta_dict[k] = ([meta_dict[k]] + v) if isinstance(v, list) else [meta_dict[k], v]
+                doc_meta[doc.doc_id] = meta_dict
+            self._manager.set_docs_new_meta(doc_meta)
+            return BaseResponse(data=None)
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
+
+    class DeleteMetadataRequest(BaseModel):
+        doc_ids: List[str]
+        keys: Optional[List[str]] = Field(None)
+        kv_pair: Optional[Dict[str, Union[bool, int, float, str, list]]] = Field(None)
+
+    def _inplace_del_meta(self, meta_dict, kv_pair: Dict[str, Union[None, bool, int, float, str, list]]):
+        # alert: meta_dict is not a deepcopy
+        for k, v in kv_pair.items():
+            if k not in meta_dict:
+                continue
+            if v is None:
+                meta_dict.pop(k, None)
+            elif isinstance(meta_dict[k], list):
+                if isinstance(v, (bool, int, float, str)):
+                    v = [v]
+                # delete v exists in meta_dict[k]
+                meta_dict[k] = list(set(meta_dict[k]) - set(v))
+            else:
+                # old meta[k] not a list, use v as condition to delete the key
+                if meta_dict[k] == v:
+                    meta_dict.pop(k, None)
+
+    @app.post("/delete_metadata_item")
+    def delete_metadata_item(self, del_metadata_request: DeleteMetadataRequest):
+        doc_ids = del_metadata_request.doc_ids
+        kv_pair = del_metadata_request.kv_pair
+        keys = del_metadata_request.keys
+        try:
+            if keys is not None:
+                # convert keys to kv_pair
+                if kv_pair:
+                    kv_pair.update({k: None for k in keys})
+                else:
+                    kv_pair = {k: None for k in keys}
+            if not kv_pair:
+                # clear metadata
+                self._manager.set_docs_new_meta({doc_id: {} for doc_id in doc_ids})
+            else:
+                docs = self._manager.get_docs(doc_ids)
+                if not docs:
+                    return BaseResponse(code=400, msg="Failed, no doc found")
+                doc_meta = {}
+                for doc in docs:
+                    meta_dict = json.loads(doc.meta) if doc.meta else {}
+                    self._inplace_del_meta(meta_dict, kv_pair)
+                    doc_meta[doc.doc_id] = meta_dict
+                self._manager.set_docs_new_meta(doc_meta)
+            return BaseResponse(data=None)
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
+
+    class UpdateMetadataRequest(BaseModel):
+        doc_ids: List[str]
+        kv_pair: Dict[str, Union[bool, int, float, str, list]]
+
+    @app.post("/update_or_create_metadata_keys")
+    def update_or_create_metadata_keys(self, update_metadata_request: UpdateMetadataRequest):
+        doc_ids = update_metadata_request.doc_ids
+        kv_pair = update_metadata_request.kv_pair
+        try:
+            docs = self._manager.get_docs(doc_ids)
+            if not docs:
+                return BaseResponse(code=400, msg="Failed, no doc found")
+            for doc in docs:
+                doc_meta = {}
+                meta_dict = json.loads(doc.meta) if doc.meta else {}
+                for k, v in kv_pair.items():
+                    meta_dict[k] = v
+                doc_meta[doc.doc_id] = meta_dict
+            self._manager.set_docs_new_meta(doc_meta)
+            return BaseResponse(data=None)
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
+
+    class ResetMetadataRequest(BaseModel):
+        doc_ids: List[str]
+        new_meta: Dict[str, Union[bool, int, float, str, list]]
+
+    @app.post("/reset_metadata")
+    def reset_metadata(self, reset_metadata_request: ResetMetadataRequest):
+        doc_ids = reset_metadata_request.doc_ids
+        new_meta = reset_metadata_request.new_meta
+        try:
+            docs = self._manager.get_docs(doc_ids)
+            if not docs:
+                return BaseResponse(code=400, msg="Failed, no doc found")
+            self._manager.set_docs_new_meta({doc.doc_id: new_meta for doc in docs})
+            return BaseResponse(data=None)
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
+
+    class QueryMetadataRequest(BaseModel):
+        doc_id: str
+        key: Optional[str] = None
+
+    @app.post("/query_metadata")
+    def query_metadata(self, query_metadata_request: QueryMetadataRequest):
+        doc_id = query_metadata_request.doc_id
+        key = query_metadata_request.key
+        try:
+            docs = self._manager.get_docs(doc_id)
+            if not docs:
+                return BaseResponse(data=None)
+            doc = docs[0]
+            meta_dict = json.loads(doc.meta) if doc.meta else {}
+            if not key:
+                return BaseResponse(data=meta_dict)
+            if key not in meta_dict:
+                return BaseResponse(code=400, msg=f"Failed, key {key} does not exist")
+            return BaseResponse(data=meta_dict[key])
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 

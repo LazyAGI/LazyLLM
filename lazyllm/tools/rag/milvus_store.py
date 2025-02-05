@@ -171,6 +171,10 @@ class MilvusStore(StoreBase):
         self._map_store.update_nodes(nodes)
 
     @override
+    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
+        self._map_store.update_doc_meta(filepath, metadata)
+
+    @override
     def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
         if uids:
             self._client.delete(collection_name=group_name,

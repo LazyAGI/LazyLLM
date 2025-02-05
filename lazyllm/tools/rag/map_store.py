@@ -5,6 +5,7 @@ from .doc_node import DocNode
 from .utils import _FileNodeIndex
 from .default_index import DefaultIndex
 from lazyllm.common import override
+from .global_metadata import RAG_SYSTEM_META_KEYS
 
 def _update_indices(name2index: Dict[str, IndexBase], nodes: List[DocNode]) -> None:
     for index in name2index.values():
@@ -32,6 +33,20 @@ class MapStore(StoreBase):
         for node in nodes:
             self._group2docs[node._group][node._uid] = node
         _update_indices(self._name2index, nodes)
+
+    @override
+    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
+        doc_nodes: List[DocNode] = self._name2index['file_node_map'].query([filepath])
+        if not doc_nodes:
+            return
+        root_node = doc_nodes[0].root_node
+        keys_to_delete = []
+        for k in root_node.global_metadata:
+            if not (k in RAG_SYSTEM_META_KEYS or k in metadata):
+                keys_to_delete.append(k)
+        for k in keys_to_delete:
+            root_node.global_metadata.pop(k)
+        root_node.global_metadata.update(metadata)
 
     @override
     def remove_nodes(self, group_name: str, uids: List[str] = None) -> None:
