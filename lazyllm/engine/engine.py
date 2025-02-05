@@ -296,6 +296,11 @@ def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     return sw
 
 
+@NodeConstructor.register('Diverter', subitems=['nodes:list'])
+def make_diverter(nodes: List[dict]):
+    return lazyllm.diverter([_build_pipeline(node) for node in nodes])
+
+
 @NodeConstructor.register('Warp', subitems=['nodes', 'resources'])
 def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] = []):
     return lazyllm.warp(make_graph(nodes, edges, resources, enable_server=False))
@@ -313,6 +318,16 @@ def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict] = [],
 def make_ifs(cond: str, true: List[dict], false: List[dict], judge_on_full_input: bool = True):
     assert judge_on_full_input, 'judge_on_full_input only support True now'
     return lazyllm.ifs(make_code(cond), tpath=_build_pipeline(true), fpath=_build_pipeline(false))
+
+
+@NodeConstructor.register('LocalLLM')
+def make_local_llm(base_model: str, target_path: str, prompt: str, stream: bool = False,
+                   return_trace: bool = False, deploy_method: str = 'vllm', url: Optional[str] = None):
+    deploy_method = getattr(lazyllm.deploy, deploy_method)
+    m = lazyllm.TrainableModule(base_model, target_path, stream=stream, return_trace=return_trace)
+    m.prompt(prompt)
+    m.deploy_method(deploy_method, url=url)
+    return m
 
 
 @NodeConstructor.register('Intention', subitems=['nodes:dict'])
