@@ -44,6 +44,10 @@ class ChromadbStore(StoreBase):
         return self._map_store.remove_nodes(group_name, uids)
 
     @override
+    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
+        self._map_store.update_doc_meta(filepath, metadata)
+
+    @override
     def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
         return self._map_store.get_nodes(group_name, uids)
 
