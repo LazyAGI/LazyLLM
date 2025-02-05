@@ -1,7 +1,7 @@
 import os
 import json
-from typing import List, Optional, Dict, Union, Any
-from pydantic import BaseModel, Field, model_validator
+from typing import List, Optional, Dict, Union
+from pydantic import BaseModel, Field
 
 from starlette.responses import RedirectResponse
 from fastapi import UploadFile, Body
