@@ -322,10 +322,13 @@ def make_ifs(cond: str, true: List[dict], false: List[dict], judge_on_full_input
 
 @NodeConstructor.register('LocalLLM')
 def make_local_llm(base_model: str, target_path: str = '', prompt: str = '', stream: bool = False,
-                   return_trace: bool = False, deploy_method: str = 'vllm', url: Optional[str] = None):
+                   return_trace: bool = False, deploy_method: str = 'vllm', url: Optional[str] = None,
+                   history: Optional[List[List[str]]] = None):
+    if history and not (isinstance(history, list) and all(len(h) == 2 and isinstance(h, list) for h in history)):
+        raise TypeError('history must be List[List[str, str]]')
     deploy_method = getattr(lazyllm.deploy, deploy_method)
     m = lazyllm.TrainableModule(base_model, target_path, stream=stream, return_trace=return_trace)
-    m.prompt(prompt)
+    m.prompt(prompt, history=history)
     m.deploy_method(deploy_method, url=url)
     return m
 
@@ -460,8 +463,8 @@ class VQA(lazyllm.Module):
     def status(self, task_name: Optional[str] = None):
         return self._vqa.status(task_name)
 
-    def share(self, prompt: str):
-        shared_vqa = self._vqa.share(prompt=prompt)
+    def share(self, prompt: str, history: Optional[List[List[str]]] = None):
+        shared_vqa = self._vqa.share(prompt=prompt, history=history)
         return VQA(shared_vqa, self._file_resource_id)
 
     def forward(self, *args, **kw):
@@ -483,15 +486,17 @@ def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
 
 @NodeConstructor.register('SharedLLM')
 def make_shared_llm(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
-                    stream: Optional[bool] = None, file_resource_id: Optional[str] = None):
+                    stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
+                    history: Optional[List[List[str]]] = None):
     if local:
         llm = Engine().build_node(llm).func
         if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
-        r = VQA(llm._vqa.share(prompt=prompt), file_resource_id) if file_resource_id else llm.share(prompt=prompt)
+        r = (VQA(llm._vqa.share(prompt=prompt, history=history), file_resource_id)
+             if file_resource_id else llm.share(prompt=prompt, history=history))
     else:
         assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
         r = Engine().get_infra_handle(token, llm)
-        if prompt: r.prompt(prompt)
+        if prompt: r.prompt(prompt, history=history)
     if stream is not None: r.stream = stream
     return r
 
@@ -499,12 +504,13 @@ def make_shared_llm(llm: str, local: bool = True, prompt: Optional[str] = None, 
 @NodeConstructor.register('OnlineLLM')
 def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optional[str] = None,
                     api_key: Optional[str] = None, secret_key: Optional[str] = None,
-                    stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None):
+                    stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
+                    history: Optional[List[List[str]]] = None):
     if source and source.lower() == 'lazyllm':
-        return make_shared_llm(base_model, False, prompt, token, stream)
+        return make_shared_llm(base_model, False, prompt, token, stream, history=history)
     else:
         return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
-                                        api_key=api_key, secret_key=secret_key).prompt(prompt)
+                                        api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
 
 
 class STT(lazyllm.Module):

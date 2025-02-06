@@ -3,8 +3,8 @@ from .builtinPrompt import LazyLLMPrompterBase
 
 class AlpacaPrompter(LazyLLMPrompterBase):
     def __init__(self, instruction: Union[None, str, Dict[str, str]] = None, extro_keys: Union[None, List[str]] = None,
-                 show: bool = False, tools: Optional[List] = None, history: Optional[List[List[str]]] = None):
-        super(__class__, self).__init__(show, tools=tools, history=history)
+                 show: bool = False, tools: Optional[List] = None):
+        super(__class__, self).__init__(show, tools=tools)
         if isinstance(instruction, dict):
             splice_struction = instruction.get("system", "") + \
                 AlpacaPrompter.ISA + instruction.get("user", "") + AlpacaPrompter.ISE

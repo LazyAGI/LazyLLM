@@ -130,6 +130,22 @@ class TestChatPrompter(object):
             {'role': 'assistant', 'content': 'c+d'},
             {'role': 'user', 'content': '输入为e+f'}]}
 
+    def test_empty_prompt_with_history(self):
+        p = lazyllm.ChatPrompter('', history=[['输入为a+b', 'a+b']])
+        r11 = p.generate_prompt('c+d')
+        r12 = p.generate_prompt('c+d', return_dict=True)
+
+        p = lazyllm.ChatPrompter(None, history=[['输入为a+b', 'a+b']])
+        r21 = p.generate_prompt('c+d')
+        r22 = p.generate_prompt('c+d', return_dict=True)
+
+        assert r11 == r21 == 'You are an AI-Agent developed by LazyLLM.\n\n输入为a+ba+b\n\nc+d\n\n'
+        assert r12 == r22 == {'messages': [
+            {'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.'},
+            {'role': 'user', 'content': '输入为a+b'},
+            {'role': 'assistant', 'content': 'a+b'},
+            {'role': 'user', 'content': 'c+d'}]}
+
     def test_configs(self):
         p = lazyllm.ChatPrompter(dict(system='请完成加法运算', user='输入为{instruction}'))
         p._set_model_configs(sos='<s>', eos='</s>')
