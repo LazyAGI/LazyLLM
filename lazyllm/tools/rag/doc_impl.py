@@ -33,8 +33,6 @@ def embed_wrapper(func):
 
     return wrapper
 
-STORE_INDEX = "store"
-
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
     _global_node_groups: Dict[str, Dict] = {}
