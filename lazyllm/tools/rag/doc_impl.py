@@ -33,6 +33,7 @@ def embed_wrapper(func):
 
     return wrapper
 
+STORE_INDEX = "store"
 
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
@@ -111,7 +112,7 @@ class DocImpl:
     def _resolve_index_pending_registrations(self):
         resolved = []
         for index_type, index_cls, construct_parameters in self.index_pending_registrations:
-            cons_params = {key: val if key != "store" else self.store for key, val in construct_parameters.items()}
+            cons_params = {key: val if key != STORE_INDEX else self.store for key, val in construct_parameters.items()}
             self.store.register_index(index_type, index_cls(**cons_params))
             resolved.append((index_type, index_cls, construct_parameters))
         for item in resolved:
@@ -232,7 +233,7 @@ class DocImpl:
     def register_index(self, index_type: str, index_cls: IndexBase, construction_parameters: Dict):
         if 'embed' in construction_parameters.keys(): construction_parameters['embed'] = self.embed
         if bool(self._lazy_init.flag):
-            if "store" in construction_parameters.keys(): construction_parameters['store'] = self.store
+            if STORE_INDEX in construction_parameters.keys(): construction_parameters[STORE_INDEX] = self.store
             self.store.register_index(index_type, index_cls(**construction_parameters))
         else:
             self.index_pending_registrations.append((index_type, index_cls, construction_parameters))
