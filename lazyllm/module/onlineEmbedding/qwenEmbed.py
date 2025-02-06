@@ -58,4 +58,4 @@ class QwenReranking(OnlineEmbeddingModuleBase):
 
     def _parse_response(self, response: Dict[str, Any]) -> List[float]:
         results = response['output']['results']
-        return [result["index"] for result in results]
+        return [(result["index"], result["relevance_score"]) for result in results]

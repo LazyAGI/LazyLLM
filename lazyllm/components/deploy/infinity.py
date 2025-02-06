@@ -92,4 +92,4 @@ class Infinity(LazyLLMDeployBase):
                 res_list = res_list[0]
             return json.dumps(res_list)
         elif object_type == 'rerank':
-            return [x['index'] for x in res_object['results']]
+            return [(x['index'], x['relevance_score']) for x in res_object['results']]

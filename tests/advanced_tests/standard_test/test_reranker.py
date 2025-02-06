@@ -52,6 +52,7 @@ class TestReranker(unittest.TestCase):
                 self.assertEqual(
                     results[0].get_text(), self.doc3.get_text()
                 )  # highest score
+                assert results[0].relevance_score > results[1].relevance_score
         if original_value:
             os.environ[env_key] = original_value
             lazyllm.config.refresh(env_key)

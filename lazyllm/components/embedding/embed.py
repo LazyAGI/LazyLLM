@@ -62,10 +62,10 @@ class LazyHuggingFaceRerank(object):
         query, documents, top_n = inps['query'], inps['documents'], inps['top_n']
         query_pairs = [(query, doc) for doc in documents]
         scores = self.reranker.predict(query_pairs)
-        sorted_indices = np.argsort(scores)[::-1]
+        sorted_indices = [(index, scores[index]) for index in np.argsort(scores)[::-1]]
         if top_n > 0:
             sorted_indices = sorted_indices[:top_n]
-        return sorted_indices.tolist()
+        return sorted_indices
 
     @classmethod
     def rebuild(cls, base_rerank, init):
