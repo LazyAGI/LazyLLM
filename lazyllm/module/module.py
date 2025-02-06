@@ -625,7 +625,7 @@ class _TrainableModuleImpl(ModuleBase):
         if len(set(args.keys()).intersection(set(disable))) > 0:
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
                              '{arg_cls}_args, please pass them from Module.__init__()')
-        if 'url' not in args:
+        if not args.get('url'):
             args['launcher'] = args['launcher'].clone() if args.get('launcher') else launchers.remote(sync=False)
             self._launchers['default'][arg_cls] = args['launcher']
         return args
@@ -730,7 +730,7 @@ class _TrainableModuleImpl(ModuleBase):
         self._deploy_args = self._get_train_or_deploy_args('deploy', disable=['target_path'])
         if self._deploy and self._deploy is not lazyllm.deploy.AutoDeploy:
             self._set_template(self._deploy)
-            if url := self._deploy_args.get('url', None):
+            if url := self._deploy_args.get('url'):
                 assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
                 for f in self._father:
                     f._set_url(url)
