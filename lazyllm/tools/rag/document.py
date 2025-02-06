@@ -8,6 +8,7 @@ from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from .doc_manager import DocManager
 from .doc_impl import DocImpl
 from .doc_node import DocNode
+from .index_base import IndexBase
 from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .utils import DocListManager
 from .global_metadata import GlobalMetadataDesc as DocField
@@ -153,8 +154,8 @@ class Document(ModuleBase):
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
         return cls.add_reader(pattern, func)
 
-    def register_index(self, index_type: str, index_factory: Callable, required_dependencies: List[str]) -> None:
-        self._impl.register_index(index_type, index_factory, required_dependencies)
+    def register_index(self, index_type: str, index_cls: IndexBase, construction_parameters: Dict) -> None:
+        self._impl.register_index(index_type, index_cls, construction_parameters)
 
     def _forward(self, func_name: str, *args, **kw):
         return self._manager(self._curr_group, func_name, *args, **kw)
