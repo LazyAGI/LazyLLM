@@ -735,6 +735,8 @@ class _TrainableModuleImpl(ModuleBase):
                 for f in self._father:
                     f._set_url(url)
                 self._get_deploy_tasks.flag.set()
+            else:
+                self._deploy_args.pop('url', None)
 
     def __del__(self):
         if hasattr(self, '_launchers'):
