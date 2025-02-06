@@ -112,29 +112,25 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 1) == 2
         assert engine.run(gid, 2) == 4
 
-    def test_engine_switch(self):
+    def test_engine_switch_and_diverter(self):
         plus1 = dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
         double = dict(id='2', kind='Code', name='m2', args=dict(code='def test(x: int):\n    return 2 * x\n'))
         square = dict(id='3', kind='Code', name='m3',
                       args=dict(code='def test(x: int):\n    return x * x\n', _lazyllm_enable_report=True))
-        switch = dict(
-            id="4",
-            kind="Switch",
-            name="s1",
-            args=dict(
-                judge_on_full_input=True,
-                nodes={1: [double], 2: [plus1, double], 3: [square]},
-                _lazyllm_enable_report=True,
-            ),
-        )
-        nodes = [switch]
+        switch = dict(id="4", kind="Switch", name="s1", args=dict(
+            judge_on_full_input=True, nodes={1: [double], 2: [plus1, double], 3: [square]}, _lazyllm_enable_report=True))
         edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         engine = LightEngine()
         engine.set_report_url(self.report_url)
-        gid = engine.start(nodes, edges)
+        gid = engine.start([switch], edges)
         assert engine.run(gid, 1) == 2
         assert engine.run(gid, 2) == 6
         assert engine.run(gid, 3) == 9
+
+        diverter = dict(id="5", kind="Diverter", name="d1", args=dict(nodes=[[double], [plus1, double], square]))
+        edges2 = [dict(iid='__start__', oid='5'), dict(iid='5', oid='__end__')]
+        gid = engine.start([diverter], edges2)
+        assert engine.run(gid, [1, 2, 3]) == (2, 6, 9)
 
         engine.reset()
 

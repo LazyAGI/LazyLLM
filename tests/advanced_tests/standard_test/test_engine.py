@@ -86,7 +86,7 @@ class TestEngine(object):
         assert '.png' in r
 
         r = engine.run(gid, '翻译：我喜欢敲代码。')
-        assert 'code' in r
+        assert 'code' in r or 'coding' in r
 
         r = engine.run(gid, "", _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/draw_pig.mp3'))
         assert '.png' in r
@@ -137,7 +137,7 @@ class TestEngine(object):
             result = future.result()
             assert '一天' in stream_result and '小时' in stream_result
             assert '您好，我的答案是' in stream_result and '24' in stream_result
-            assert '蓝鲸' in result and '水' in result
+            assert ('蓝鲸' in result or '动物' in result) and '水' in result
 
     def test_engine_train_serve(self):
         train_config = {

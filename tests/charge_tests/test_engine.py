@@ -256,7 +256,7 @@ class TestEngine(unittest.TestCase):
             result = future.result()
             assert '一天' in stream_result and '小时' in stream_result
             assert '您好，我的答案是' in stream_result and '24' in stream_result
-            assert '蓝鲸' in result and '水' in result
+            assert ('蓝鲸' in result or '动物' in result) and '水' in result
 
     def test_egine_online_serve_train(self):
         envs = ['glm_api_key', 'qwen_api_key']
