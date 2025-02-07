@@ -127,6 +127,12 @@ model_name_mapping = {
         },
         "type": "embed"
     },
+    "colqwen2-v0.1": {
+        "source": {
+            "huggingface": "michaelfeil/colqwen2-v0.1",
+        },
+        "type": "embed"
+    },
     "bge-reranker-large": {
         "source": {
             "huggingface": "BAAI/bge-reranker-large",
