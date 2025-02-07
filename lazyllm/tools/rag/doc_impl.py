@@ -33,7 +33,11 @@ def embed_wrapper(func):
 
     return wrapper
 
-STORE_INDEX = "store"
+class StorePlaceholder:
+    pass
+
+class EmbedPlaceholder:
+    pass
 
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
@@ -110,13 +114,11 @@ class DocImpl:
             self._daemon.start()
 
     def _resolve_index_pending_registrations(self):
-        resolved = []
-        for index_type, index_cls, construct_parameters in self.index_pending_registrations:
-            cons_params = {key: val if key != STORE_INDEX else self.store for key, val in construct_parameters.items()}
-            self.store.register_index(index_type, index_cls(**cons_params))
-            resolved.append((index_type, index_cls, construct_parameters))
-        for item in resolved:
-            self.index_pending_registrations.remove(item)
+        for index_type, index_cls, index_args, index_kwargs in self.index_pending_registrations:
+            args = [self._resolve_index_placeholder(arg) for arg in index_args]
+            kwargs = {k: self._resolve_index_placeholder(v) for k, v in index_kwargs.items()}
+            self.store.register_index(index_type, index_cls(*args, **kwargs))
+        self.index_pending_registrations.clear()
 
     def _create_store(self, store_conf: Optional[Dict], embed_dims: Optional[Dict[str, int]] = None,
                       embed_datatypes: Optional[Dict[str, DataType]] = None) -> StoreBase:
@@ -230,13 +232,18 @@ class DocImpl:
             return klass
         return decorator
 
-    def register_index(self, index_type: str, index_cls: IndexBase, construction_parameters: Dict):
-        if 'embed' in construction_parameters.keys(): construction_parameters['embed'] = self.embed
+    def _resolve_index_placeholder(self, value):
+        if isinstance(value, StorePlaceholder): return self.store
+        elif isinstance(value, EmbedPlaceholder): return self.embed
+        return value
+
+    def register_index(self, index_type: str, index_cls: IndexBase, *args, **kwargs) -> None:
         if bool(self._lazy_init.flag):
-            if STORE_INDEX in construction_parameters.keys(): construction_parameters[STORE_INDEX] = self.store
-            self.store.register_index(index_type, index_cls(**construction_parameters))
+            args = [self._resolve_index_placeholder(arg) for arg in args]
+            kwargs = {k: self._resolve_index_placeholder(v) for k, v in kwargs.items()}
+            self.store.register_index(index_type, index_cls(*args, **kwargs))
         else:
-            self.index_pending_registrations.append((index_type, index_cls, construction_parameters))
+            self.index_pending_registrations.append((index_type, index_cls, args, kwargs))
 
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         assert callable(func), 'func for reader should be callable'
