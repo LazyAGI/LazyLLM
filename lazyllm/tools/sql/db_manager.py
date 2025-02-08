@@ -45,15 +45,8 @@ class DBManager(ABC, ModuleBase, metaclass=CommonMeta):
     def _is_dict_all_str(d):
         if not isinstance(d, dict):
             return False
-        for key, value in d.items():
-            if not isinstance(key, str):
-                return False
-            if isinstance(value, dict):
-                if not DBManager._is_dict_all_str(value):
-                    return False
-            elif not isinstance(value, str):
-                return False
-        return True
+        return all(isinstance(key, str) and (isinstance(value, str) or DBManager._is_dict_all_str(value))
+                   for key, value in d.items())
 
     @staticmethod
     def _serialize_uncommon_type(obj):

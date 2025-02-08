@@ -24,25 +24,25 @@ class SqlAlchemyManager(DBManager):
         if db_type not in self.DB_TYPE_SUPPORTED:
             raise ValueError(f"{db_type} not supported")
         super().__init__(db_type)
-        self.user = user
-        self.password = password
-        self.host = host
-        self.port = port
-        self.db_name = db_name
-        self.options_str = options_str
-        self.tables_desc_dict = {}
+        self._user = user
+        self._password = password
+        self._host = host
+        self._port = port
+        self._db_name = db_name
+        self._options_str = options_str
+        self._tables_desc_dict = {}
         self._engine = None
-        self._llm_visible_tables = None
+        self._visible_tables = None
         self._metadata = sqlalchemy.MetaData()
 
     def _gen_conn_url(self) -> str:
         if self._db_type == "sqlite":
-            conn_url = f"sqlite:///{self.db_name}{('?' + self.options_str) if self.options_str else ''}"
+            conn_url = f"sqlite:///{self._db_name}{('?' + self._options_str) if self._options_str else ''}"
         else:
             driver = self.DB_DRIVER_MAP.get(self._db_type, "")
-            password = quote_plus(self.password)
-            conn_url = (f"{self._db_type}{('+' + driver) if driver else ''}://{self.user}:{password}@{self.host}"
-                        f":{self.port}/{self.db_name}{('?' + self.options_str) if self.options_str else ''}")
+            password = quote_plus(self._password)
+            conn_url = (f"{self._db_type}{('+' + driver) if driver else ''}://{self._user}:{password}@{self._host}"
+                        f":{self._port}/{self._db_name}{('?' + self._options_str) if self._options_str else ''}")
         return conn_url
 
     @property
@@ -81,12 +81,12 @@ class SqlAlchemyManager(DBManager):
         self._desc = ""
         if not isinstance(tables_desc_dict, dict):
             raise ValueError(f"desc type {type(tables_desc_dict)} not supported")
-        self.tables_desc_dict = tables_desc_dict
-        if len(self.llm_visible_tables) == 0:
+        self._tables_desc_dict = tables_desc_dict
+        if len(self.visible_tables) == 0:
             return
         # Generate desc according to table schema and comment
         self._desc = "The tables description is as follows\n```\n"
-        for table_name in self.llm_visible_tables:
+        for table_name in self.visible_tables:
             self._desc += f"Table {table_name}\n(\n"
             table_columns = self.get_table_orm_class(table_name).columns
             for i, column in enumerate(table_columns):
@@ -100,19 +100,19 @@ class SqlAlchemyManager(DBManager):
         self._desc += "```\n"
 
     @property
-    def llm_visible_tables(self):
-        if self._llm_visible_tables is None:
-            self._llm_visible_tables = self.get_all_tables()
-        return self._llm_visible_tables
+    def visible_tables(self):
+        if self._visible_tables is None:
+            self._visible_tables = self.get_all_tables()
+        return self._visible_tables
 
-    @llm_visible_tables.setter
-    def llm_visible_tables(self, visible_tables: list):
+    @visible_tables.setter
+    def visible_tables(self, visible_tables: list):
         all_tables = set(self.get_all_tables())
         for ele in visible_tables:
             if ele not in all_tables:
                 raise ValueError(f"Table {ele} not found in database")
-        self._llm_visible_tables = visible_tables
-        self.set_desc(self.tables_desc_dict)
+        self._visible_tables = visible_tables
+        self.set_desc(self._tables_desc_dict)
 
     def _refresh_metadata(self, only=None):
         # refresh metadata in case of deleting/creating table in other session
@@ -164,7 +164,7 @@ class SqlAlchemyManager(DBManager):
         table.metadata.create_all(bind=self.engine, checkfirst=True)
         return DBResult()
 
-    def create_table(self, table: Union[str, Type[DeclarativeBase], Type[DeclarativeMeta]]) -> DBResult:
+    def create_table(self, table: Union[str, Type[DeclarativeBase], DeclarativeMeta]) -> DBResult:
         status = DBStatus.SUCCESS
         detail = "Success"
         if isinstance(table, str):
@@ -177,7 +177,7 @@ class SqlAlchemyManager(DBManager):
             detail += f"Failed: Unsupported Type: {table}"
         return DBResult(status=status, detail=detail)
 
-    def drop_table(self, table: Union[str, Type[DeclarativeBase], Type[DeclarativeMeta]]) -> DBResult:
+    def drop_table(self, table: Union[str, Type[DeclarativeBase], DeclarativeMeta]) -> DBResult:
         metadata = self._metadata
         if isinstance(table, str):
             tablename = table
@@ -248,7 +248,7 @@ class SqlManager(SqlAlchemyManager):
         super().__init__(db_type, user, password, host, port, db_name, options_str)
         try:
             self._tables_info = TablesInfo.model_validate(tables_info_dict)
-            self._llm_visible_tables = [table_info.name for table_info in self._tables_info.tables]
+            self._visible_tables = [table_info.name for table_info in self._tables_info.tables]
             # create table if not exist
             self.create_tables_by_info(self._tables_info)
             self.set_desc(self._tables_info)
@@ -291,12 +291,12 @@ class SqlManager(SqlAlchemyManager):
         self._desc += "```\n"
 
     @property
-    def llm_visible_tables(self):
-        return self._llm_visible_tables
+    def visible_tables(self):
+        return self._visible_tables
 
-    @llm_visible_tables.setter
-    def llm_visible_tables(self, visible_tables: list):
-        raise AttributeError("Cannot set attribute 'llm_visible_tables' in SqlManager")
+    @visible_tables.setter
+    def visible_tables(self, visible_tables: list):
+        raise AttributeError("Cannot set attribute 'visible_tables' in SqlManager")
 
     def _create_table_cls(self, table_info: TableInfo) -> Type[DeclarativeBase]:
         attrs = {"__tablename__": table_info.name, "__table_args__": {"extend_existing": True},

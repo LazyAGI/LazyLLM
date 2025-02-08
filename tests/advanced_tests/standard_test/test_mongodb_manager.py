@@ -171,7 +171,8 @@ class TestMongoDBManager(unittest.TestCase):
     def test_aggregate(self):
         with self.mongodb_manager.get_client() as client:
             collection = client[self.mongodb_manager.db_name][self.mongodb_manager.collection_name]
-            results = list(collection.aggregate([{'$group': {'_id': '$state', 'totalPop': {'$sum': '$pop'}}}, {'$match': {'totalPop': {'$gt': 3000000}}}]))
+            results = list(collection.aggregate([{'$group': {'_id': '$state', 'totalPop': {'$sum': '$pop'}}},
+                                                 {'$match': {'totalPop': {'$gt': 3000000}}}]))
             print(f"results: {results}")
 
     @unittest.skip("Just run local model in non-charge test")

@@ -20,34 +20,33 @@ class MongoDBManager(DBManager):
     def __init__(self, user: str, password: str, host: str, port: int, db_name: str, collection_name: str,
                  options_str="", collection_desc_dict: dict = None):
         super().__init__(db_type="mongodb")
-        self.user = user
-        self.password = password
-        self.host = host
-        self.port = port
-        self.db_name = db_name
-        self.collection_name = collection_name
-        self.options_str = options_str
+        self._user = user
+        self._password = password
+        self._host = host
+        self._port = port
+        self._db_name = db_name
+        self._collection_name = collection_name
+        self._options_str = options_str
         self._collection = None
-        self.collection_desc_dict = None
+        self._collection_desc_dict = None
         self._conn_url = self._gen_conn_url()
+    
+    @property
+    def db_name(self):
+        return self._db_name
+    
+    @property
+    def collection_name(self):
+        return self._collection_name
 
     def _gen_conn_url(self) -> str:
-        password = quote_plus(self.password)
-        conn_url = (f"{self._db_type}://{self.user}:{password}@{self.host}:{self.port}/"
-                    f"{('?' + self.options_str) if self.options_str else ''}")
+        password = quote_plus(self._password)
+        conn_url = (f"{self._db_type}://{self._user}:{password}@{self._host}:{self._port}/"
+                    f"{('?' + self._options_str) if self._options_str else ''}")
         return conn_url
 
     @contextmanager
     def get_client(self):
-        """
-        Get the client object with the context manager.
-        Use client to manage database.
-
-        Usage:
-
-        >>> with mongodb_manager.get_client() as client:
-        >>>     all_dbs = client.list_database_names()
-        """
         client = pymongo.MongoClient(self._conn_url, serverSelectionTimeoutMS=self.MAX_TIMEOUT_MS)
         try:
             yield client
@@ -57,14 +56,14 @@ class MongoDBManager(DBManager):
     @property
     def desc(self):
         if self._desc is None:
-            self.set_desc(schema_desc_dict=self.collection_desc_dict)
+            self.set_desc(schema_desc_dict=self._collection_desc_dict)
         return self._desc
 
     def set_desc(self, schema_desc_dict: dict):
-        self.collection_desc_dict = schema_desc_dict
+        self._collection_desc_dict = schema_desc_dict
         if schema_desc_dict is None:
             with self.get_client() as client:
-                egs_one = client[self.db_name][self.collection_name].find_one()
+                egs_one = client[self._db_name][self._collection_name].find_one()
                 if egs_one is not None:
                     self._desc = "Collection Example:\n"
                     self._desc += json.dumps(egs_one, ensure_ascii=False, indent=4)
@@ -98,7 +97,7 @@ class MongoDBManager(DBManager):
         try:
             pipeline_list = json.loads(statement)
             with self.get_client() as client:
-                collection = client[self.db_name][self.collection_name]
+                collection = client[self._db_name][self._collection_name]
                 result = list(collection.aggregate(pipeline_list))
                 str_result = json.dumps(result, ensure_ascii=False, default=self._serialize_uncommon_type)
         except Exception as e:
