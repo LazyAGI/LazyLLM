@@ -389,6 +389,7 @@ class Parallel(LazyLLMFlowsBase):
             def impl(func, barrier, global_data, *args, **kw):
                 lazyllm.globals._init_sid()
                 lazyllm.globals._update(global_data)
+                lazyllm.globals['bind_args'] = lazyllm.globals['bind_args'].copy()
                 _barr.impl = barrier
                 return func(*args, **kw)
 
