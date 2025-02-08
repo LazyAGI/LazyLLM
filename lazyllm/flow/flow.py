@@ -391,7 +391,9 @@ class Parallel(LazyLLMFlowsBase):
                 lazyllm.globals._update(global_data)
                 lazyllm.globals['bind_args'] = lazyllm.globals['bind_args'].copy()
                 _barr.impl = barrier
-                return func(*args, **kw)
+                r = func(*args, **kw)
+                lazyllm.globals.clear()
+                return r
 
             loop, barrier = asyncio.new_event_loop(), threading.Barrier(len(items))
             return package(loop.run_until_complete(asyncio.gather(*[loop.run_in_executor(None, partial(
