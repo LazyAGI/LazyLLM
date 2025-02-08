@@ -30,11 +30,11 @@ class MongoDBManager(DBManager):
         self._collection = None
         self._collection_desc_dict = None
         self._conn_url = self._gen_conn_url()
-    
+
     @property
     def db_name(self):
         return self._db_name
-    
+
     @property
     def collection_name(self):
         return self._collection_name
