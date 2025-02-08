@@ -2,10 +2,13 @@ import time
 import unittest
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.map_store import MapStore
-from lazyllm.tools.rag.doc_node import DocNode
+from lazyllm.tools.rag import DocNode, IndexBase, StoreBase, Document
 from lazyllm.tools.rag.default_index import DefaultIndex
 from lazyllm.tools.rag.similarity import register_similarity, registered_similarities
-from lazyllm.tools.rag.utils import parallel_do_embedding
+from lazyllm.tools.rag.utils import parallel_do_embedding, generic_process_filters
+from typing import List, Optional, Dict
+from lazyllm.common import override
+from lazyllm import SentenceSplitter, Retriever
 
 class TestDefaultIndex(unittest.TestCase):
     def setUp(self):
@@ -99,6 +102,60 @@ class TestDefaultIndex(unittest.TestCase):
         print(f"results: {results}")
         self.assertEqual(len(results), 1)
         self.assertIn(self.doc_node_2, results)
+
+class KeywordIndex(IndexBase):
+    def __init__(self, cstore: StoreBase):
+        self.store = cstore
+
+    @override
+    def update(self, nodes: List[DocNode]) -> None:
+        pass
+
+    @override
+    def remove(self, group_name: str, uids: List[str]) -> None:
+        pass
+
+    @override
+    def query(self, query: str, group_name: Optional[str] = None,
+              filters: Optional[Dict[str, List]] = None, topk: int = 5, **kwargs) -> List[DocNode]:
+        nodes = self.store.get_nodes(group_name)
+        if filters:
+            nodes = generic_process_filters(nodes, filters)
+
+        results = self._synthesize_answer(nodes, query)
+        top_rets = [key for key, val in sorted(results.items(), key=lambda item: item[1], reverse=True)[:topk]]
+        return top_rets
+
+    def _synthesize_answer(self, nodes: List[DocNode], query: str) -> List[DocNode]:
+        relevant_nodes = {}
+        for node in nodes:
+            if num := self._is_relevant(node, query):
+                relevant_nodes[node] = num
+        return relevant_nodes
+
+    def _is_relevant(self, node: DocNode, query: str) -> int:
+        return node.text.lower().count(query.lower())
+
+class TestIndex(unittest.TestCase):
+    def test_index_registration(self):
+        doc1 = Document(dataset_path="rag_master", manager=False)
+        doc1.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+        ret1 = Retriever(doc1, "CoarseChunk", "bm25_chinese", 0.003, topk=3)
+        query = "道"
+        nodes = ret1(query)
+        nums1 = []
+        for node in nodes:
+            nums1.append(node.text.lower().count(query.lower()))
+        assert len(nums1) == 0
+        doc2 = Document(dataset_path="rag_master", manager=False)
+        doc2.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+        doc2.register_index("keyword_index", KeywordIndex, doc2.get_store())
+        ret2 = Retriever(doc2, "CoarseChunk", "bm25_chinese", 0.003, index="keyword_index", topk=3)
+        nodes = ret2(query)
+        nums2 = []
+        for node in nodes:
+            nums2.append(node.text.lower().count(query.lower()))
+        assert nums2 == [12, 8, 7]
 
 if __name__ == "__main__":
     unittest.main()
