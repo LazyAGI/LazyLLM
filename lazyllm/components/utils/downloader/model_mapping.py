@@ -127,6 +127,19 @@ model_name_mapping = {
         },
         "type": "embed"
     },
+    "jina-clip-v1": {
+        "source": {
+            "huggingface": "jinaai/jina-clip-v1",
+            "modelscope": "jinaai/jina-clip-v1"
+        },
+        "type": "embed"
+    },
+    "siglip": {
+        "source": {
+            "huggingface": "google/siglip-so400m-patch14-384",
+        },
+        "type": "embed"
+    },
     "colqwen2-v0.1": {
         "source": {
             "huggingface": "michaelfeil/colqwen2-v0.1",

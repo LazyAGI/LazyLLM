@@ -12,7 +12,8 @@ import base64
 import lazyllm
 from lazyllm import globals, FileSystemQueue
 from lazyllm.components.prompter import PrompterBase, ChatPrompter
-from lazyllm.components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
+from lazyllm.components.formatter import (FormatterBase, EmptyFormatter,
+                                          encode_query_with_filepaths, decode_query_with_filepaths)
 from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from lazyllm.components.utils.file_operate import delete_old_files, image_to_base64
 from ..module import ModuleBase, Pipeline
@@ -253,9 +254,11 @@ class OnlineChatModuleBase(ModuleBase):
         else:
             raise TypeError(f"The elements in list {src} are of inconsistent types.")
 
-    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, stream_output: bool = False, **kw):  # noqa C901
+    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):  # noqa C901
         """LLM inference interface"""
         stream_output = stream_output or self._stream
+        if lazyllm_files:
+            __input = encode_query_with_filepaths(__input, lazyllm_files)
         params = {"input": __input, "history": llm_chat_history}
         if tools:
             params["tools"] = tools
