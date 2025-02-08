@@ -374,16 +374,6 @@ class Parallel(LazyLLMFlowsBase):
     def sequential(cls, *args, **kw):
         return cls(*args, _concurrent=False, **kw)
 
-    @staticmethod
-    def _async_wrapper(loop, func, barrier, *args, **kwargs):
-        def impl(func, barrier, global_data, *args, **kw):
-            lazyllm.globals._init_sid()
-            lazyllm.globals._update(global_data)
-            _barr.impl = barrier
-            return func(*args, **kw)
-
-        return loop.run_in_executor(None, partial(impl, func, barrier, lazyllm.globals._data, *args, **kwargs))
-
     def _run(self, __input, items=None, **kw):
         if items is None:
             items = self._items
@@ -396,9 +386,15 @@ class Parallel(LazyLLMFlowsBase):
             inputs = __input
 
         if self._concurrent:
+            def impl(func, barrier, global_data, *args, **kw):
+                lazyllm.globals._init_sid()
+                lazyllm.globals._update(global_data)
+                _barr.impl = barrier
+                return func(*args, **kw)
+
             loop, barrier = asyncio.new_event_loop(), threading.Barrier(len(items))
-            return package(loop.run_until_complete(asyncio.gather(*[Parallel._async_wrapper(
-                loop, self.invoke, barrier, it, inp, **kw) for it, inp in zip(items, inputs)])))
+            return package(loop.run_until_complete(asyncio.gather(*[loop.run_in_executor(None, partial(
+                impl, self.invoke, barrier, lazyllm.globals._data, it, inp, **kw)) for it, inp in zip(items, inputs)])))
         else:
             return package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
 
