@@ -122,19 +122,18 @@ class KeywordIndex(IndexBase):
         if filters:
             nodes = generic_process_filters(nodes, filters)
 
-        results = self._synthesize_answer(nodes, query)
-        top_rets = [key for key, val in sorted(results.items(), key=lambda item: item[1], reverse=True)[:topk]]
-        return top_rets
+        ranked_nodes = self._synthesize_answer(nodes, query)
+        return ranked_nodes[:topk]
 
     def _synthesize_answer(self, nodes: List[DocNode], query: str) -> List[DocNode]:
-        relevant_nodes = {}
-        for node in nodes:
-            if num := self._is_relevant(node, query):
-                relevant_nodes[node] = num
-        return relevant_nodes
+        relevant_nodes = [(node, self._is_relevant(node, query)) for node in nodes]
+        sorted_nodes = [node for node, count in sorted(relevant_nodes, key=lambda item: item[1], reverse=True)
+                        if count > 0]
+        return sorted_nodes
 
     def _is_relevant(self, node: DocNode, query: str) -> int:
-        return node.text.lower().count(query.lower())
+        return node.text.encode("utf-8", "ignore").decode("utf-8").casefold().count(
+            query.encode("utf-8", "ignore").decode("utf-8").casefold())
 
 class TestIndex(unittest.TestCase):
     def test_index_registration(self):
