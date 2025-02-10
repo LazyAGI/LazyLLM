@@ -7,7 +7,6 @@ import re
 from typing import Tuple, List, Dict, Union, Any, Optional
 from urllib.parse import urljoin
 import time
-import base64
 
 import lazyllm
 from lazyllm import globals, FileSystemQueue
