@@ -1439,40 +1439,14 @@ add_chinese_doc(
     """\
 SqlManager是与数据库进行交互的专用工具。它提供了连接数据库，设置、创建、检查数据表，插入数据，执行查询的方法。
 
-tables_info_dict字典格式关键字示例如下。
-字典中有3个关键字为可选项：表及列的comment默认为空, is_primary_key默认为False但至少应有一列为True, nullable默认为True
-{"tables":
-    [
-        {
-            "name": f"employee",
-            "comment": "employee information",
-            "columns": [
-                {
-                    "name": "employee_id",
-                    "data_type": "Integer",
-                    "comment": "empoloyee work number",
-                    "nullable": False,
-                    "is_primary_key": True,
-                },
-                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
-                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
-            ],
-        },
-        {
-            ....
-        }
-    ]
-}
-
 Arguments:
-    db_type (str): 目前仅支持"PostgreSQL"，后续会增加"MySQL", "MS SQL"
-    user (str): username
-    password (str): password
+    db_type (str): "PostgreSQL"，"SQLite", "MySQL", "MSSQL"。注意当类型为"SQLite"时，db_name为文件路径或者":memory:"
+    user (str): 用户名
+    password (str): 密码
     host (str): 主机名或IP
     port (int): 端口号
     db_name (str): 数据仓库名
-    tables_info_dict (dict): 数据表的描述
-    options_str (str): k1=v1&k2=v2形式表示的选项设置
+    **options_str (str): k1=v1&k2=v2形式表示的选项设置
 """,
 )
 
@@ -1482,86 +1456,6 @@ add_english_doc(
 SqlManager is a specialized tool for interacting with databases.
 It provides methods for creating tables, executing queries, and performing updates on databases.
 
-The dictionary format of tables_info_dict is as follows.
-There are three optional keywords in the dictionary: "comment" for the table and columns defaults to empty, "is_primary_key" defaults to False,
-but at least one column should be True, and "nullable" defaults to True.
-{"tables":
-    [
-        {
-            "name": f"employee",
-            "comment": "employee information",
-            "columns": [
-                {
-                    "name": "employee_id",
-                    "data_type": "Integer",
-                    "comment": "empoloyee work number",
-                    "nullable": False,
-                    "is_primary_key": True,
-                },
-                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
-                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
-            ],
-        },
-        {
-            ....
-        }
-    ]
-}
-
-Arguments:
-    db_type (str): Currently only "PostgreSQL" is supported, with "MySQL" and "MS SQL" to be added later.
-    user (str): Username for connection
-    password (str): Password for connection
-    host (str): Hostname or IP
-    port (int): Port number
-    db_name (str): Name of the database
-    tables_info_dict (dict): Description of the data tables
-    options_str (str): Options represented in the format k1=v1&k2=v2
-""",
-)
-
-add_example(
-    "SqlManager",
-    """\
-    >>> from lazyllm.tools import SqlManager
-    >>> import uuid
-    >>> # !!!NOTE!!!: COPY class SqlEgsData definition from tests/charge_tests/utils.py then Paste here.
-    >>> db_filepath = "personal.db"
-    >>> with open(db_filepath, "w") as _:
-        pass
-    >>> sql_manager = SQLiteManger(filepath, SqlEgsData.TEST_TABLES_INFO)
-    >>> # Altert: If using online database, ask administrator about those value: db_type, username, password, host, port, database
-    >>> # sql_manager = SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)
-    >>>
-    >>> for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
-    ...     sql_manager.execute_sql_update(insert_script)
-    >>> str_results = sql_manager.get_query_result_in_json(SqlEgsData.TEST_QUERY_SCRIPTS)
-    >>> print(str_results)
-""",
-)
-
-add_chinese_doc(
-    "SqlAlchemyManager",
-    """\
-SqlAlchemyManager是与数据库进行交互的专用工具。它提供了连接数据库，设置、创建、检查数据表，插入数据，执行查询的方法。
-
-Arguments:
-    db_type (str): "PostgreSQL"，"SQLite", "MySQL", "MSSQL"。注意当类型为"SQLite"时，db_name为文件路径或者":memory:"
-    user (str): 用户名
-    password (str): 密码
-    host (str): 主机名或IP
-    port (int): 端口号
-    db_name (str): 数据仓库名
-    options_str (str): k1=v1&k2=v2形式表示的选项设置
-""",
-)
-
-add_english_doc(
-    "SqlAlchemyManager",
-    """\
-SqlAlchemyManager is a specialized tool for interacting with databases.
-It provides methods for creating tables, executing queries, and performing updates on databases.
-
 Arguments:
     db_type (str): "PostgreSQL"，"SQLite", "MySQL", "MSSQL". Note that when the type is "SQLite", db_name is a file path or ":memory:"
     user (str): Username for connection
@@ -1569,12 +1463,12 @@ Arguments:
     host (str): Hostname or IP
     port (int): Port number
     db_name (str): Name of the database
-    options_str (str): Options represented in the format k1=v1&k2=v2
+    **options_str (str): Options represented in the format k1=v1&k2=v2
 """,
 )
 
 add_chinese_doc(
-    "SqlAlchemyManager.get_session",
+    "SqlManager.get_session",
     """\
 这是一个上下文管理器，它创建并返回一个数据库连接Session，并在完成时自动提交或回滚更改并在使用完成后自动关闭会话。
 
@@ -1584,7 +1478,7 @@ add_chinese_doc(
 )
 
 add_english_doc(
-    "SqlAlchemyManager.get_session",
+    "SqlManager.get_session",
     """\
 This is a context manager that creates and returns a database session, yields it for use, and then automatically commits or rolls back changes and closes the session when done.
 
@@ -1594,9 +1488,9 @@ This is a context manager that creates and returns a database session, yields it
 )
 
 add_chinese_doc(
-    "SqlAlchemyManager.check_connection",
+    "SqlManager.check_connection",
     """\
-检查当前SqlAlchemyManager的连接状态。
+检查当前SqlManager的连接状态。
 
 **Returns:**\n
 - DBResult: DBResult.status 连接成功(True), 连接失败(False)。DBResult.detail 包含失败信息
@@ -1604,7 +1498,7 @@ add_chinese_doc(
 )
 
 add_english_doc(
-    "SqlAlchemyManager.check_connection",
+    "SqlManager.check_connection",
     """\
 Check the current connection status of the SqlManagerBase.
 
@@ -1614,9 +1508,9 @@ Check the current connection status of the SqlManagerBase.
 )
 
 add_chinese_doc(
-    "SqlAlchemyManager.set_desc",
+    "SqlManager.set_desc",
     """\
-对于SqlAlchemyManager搭配LLM使用自然语言查询的表项设置其描述，尤其当其表名、列名及取值不具有自解释能力时。
+对于SqlManager搭配LLM使用自然语言查询的表项设置其描述，尤其当其表名、列名及取值不具有自解释能力时。
 例如：
 数据表Document的status列取值包括: "waiting", "working", "success", "failed"，tables_desc_dict参数应为 {"Document": "status列取值包括: waiting, working, success, failed"}
 
@@ -1626,9 +1520,9 @@ Args:
 )
 
 add_english_doc(
-    "SqlAlchemyManager.set_desc",
+    "SqlManager.set_desc",
     """\
-When using SqlAlchemyManager with LLM to query table entries in natural language, set descriptions for better results, especially when table names, column names, and values are not self-explanatory.
+When using SqlManager with LLM to query table entries in natural language, set descriptions for better results, especially when table names, column names, and values are not self-explanatory.
 
 Args:
     tables_desc_dict (dict): descriptive comment for tables
@@ -1636,63 +1530,63 @@ Args:
 )
 
 add_chinese_doc(
-    "SqlAlchemyManager.get_all_tables",
+    "SqlManager.get_all_tables",
     """\
 返回当前数据库中的所有表名。
 """,
 )
 
 add_english_doc(
-    "SqlAlchemyManager.get_all_tables",
+    "SqlManager.get_all_tables",
     """\
 Return all table names in the current database.
 """,
 )
 
 add_chinese_doc(
-    "SqlAlchemyManager.get_table_orm_class",
+    "SqlManager.get_table_orm_class",
     """\
 返回数据表名对应的sqlalchemy orm类。结合get_session，进行orm操作
 """,
 )
 
 add_english_doc(
-    "SqlAlchemyManager.get_table_orm_class",
+    "SqlManager.get_table_orm_class",
     """\
 Return the sqlalchemy orm class corresponding to the given table name. Combine with get_session to perform orm operations.
 """,
 )
 
 add_chinese_doc(
-    "SqlAlchemyManager.execute_commit",
+    "SqlManager.execute_commit",
     """\
 执行无返回的sql脚本并提交更改。
 """,
 )
 
 add_english_doc(
-    "SqlAlchemyManager.execute_commit",
+    "SqlManager.execute_commit",
     """\
 Execute the SQL script without return and submit changes.
 """,
 )
 
 add_chinese_doc(
-    "SqlAlchemyManager.execute_query",
+    "SqlManager.execute_query",
     """\
 执行sql查询脚本并以JSON字符串返回结果。
 """,
 )
 
 add_english_doc(
-    "SqlAlchemyManager.execute_query",
+    "SqlManager.execute_query",
     """\
 Execute the SQL query script and return the result as a JSON string.
 """,
 )
 
 add_chinese_doc(
-    "SqlAlchemyManager.create_table",
+    "SqlManager.create_table",
     """\
 创建数据表
 
@@ -1702,7 +1596,7 @@ Args:
 )
 
 add_english_doc(
-    "SqlAlchemyManager.create_table",
+    "SqlManager.create_table",
     """\
 Create a table
 
@@ -1712,7 +1606,7 @@ Args:
 )
 
 add_chinese_doc(
-    "SqlAlchemyManager.drop_table",
+    "SqlManager.drop_table",
     """\
 删除数据表
 
@@ -1722,7 +1616,7 @@ Args:
 )
 
 add_english_doc(
-    "SqlAlchemyManager.drop_table",
+    "SqlManager.drop_table",
     """\
 Delete a table
 
@@ -1732,7 +1626,7 @@ Args:
 )
 
 add_chinese_doc(
-    "SqlAlchemyManager.insert_values",
+    "SqlManager.insert_values",
     """\
 批量数据插入
     
@@ -1743,7 +1637,7 @@ Args:
 )
 
 add_english_doc(
-    "SqlAlchemyManager.insert_values",
+    "SqlManager.insert_values",
     """\
 Bulk insert data
     
@@ -1765,8 +1659,8 @@ Arguments:
     port (int): 端口号
     db_name (str): 数据仓库名
     collection_name (str): 集合名
-    options_str (str): k1=v1&k2=v2形式表示的选项设置
-    collection_desc_dict (dict): 集合内文档关键字描述，默认为空。不同于关系型数据库行和列的概念，MongoDB集合中的文档可以有完全不同的关键字，因此当配合LLM进行自然语言查询时需要提供必须的关键字的描述以获得更好的结果。
+    **options_str (str): k1=v1&k2=v2形式表示的选项设置
+    **collection_desc_dict (dict): 集合内文档关键字描述，默认为空。不同于关系型数据库行和列的概念，MongoDB集合中的文档可以有完全不同的关键字，因此当配合LLM进行自然语言查询时需要提供必须的关键字的描述以获得更好的结果。
 """,
 )
 
@@ -1783,8 +1677,8 @@ Arguments:
     port (int): Port number
     db_name (str): Name of the database
     collection_name (str): Name of the collection
-    options_str (str): Options represented in the format k1=v1&k2=v2
-    collection_desc_dict (dict): Document keyword description in the collection, which is None by default. Different from the concept of rows and columns in relational databases, documents in MongoDB collections can have completely different keywords. Therefore, when using LLM to perform natural language queries, it is necessary to provide descriptions of necessary keywords to obtain better results.
+    **options_str (str): Options represented in the format k1=v1&k2=v2
+    **collection_desc_dict (dict): Document keyword description in the collection, which is None by default. Different from the concept of rows and columns in relational databases, documents in MongoDB collections can have completely different keywords. Therefore, when using LLM to perform natural language queries, it is necessary to provide descriptions of necessary keywords to obtain better results.
 """,
 )
 

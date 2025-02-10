@@ -15,11 +15,45 @@ from .db_manager import DBManager, DBResult, DBStatus
 class TableBase(DeclarativeBase):
     pass
 
-class SqlAlchemyManager(DBManager):
+
+class ColumnInfo(pydantic.BaseModel):
+    name: str
+    data_type: str
+    comment: str = ""
+    # At least one column should be True
+    is_primary_key: bool = False
+    nullable: bool = True
+
+
+class TableInfo(pydantic.BaseModel):
+    name: str
+    comment: str = ""
+    columns: list[ColumnInfo]
+
+
+class TablesInfo(pydantic.BaseModel):
+    tables: list[TableInfo]
+
+class SqlManager(DBManager):
     DB_TYPE_SUPPORTED = set(["postgresql", "mysql", "mssql", "sqlite"])
     DB_DRIVER_MAP = {"mysql": "pymysql"}
+    PYTYPE_TO_SQL_MAP = {
+        "integer": sqlalchemy.Integer,
+        "string": sqlalchemy.Text,
+        "text": sqlalchemy.Text,
+        "boolean": sqlalchemy.Boolean,
+        "float": sqlalchemy.Float,
+        "datetime": sqlalchemy.DateTime,
+        "bytes": sqlalchemy.LargeBinary,
+        "bool": sqlalchemy.Boolean,
+        "date": sqlalchemy.Date,
+        "time": sqlalchemy.Time,
+        "list": sqlalchemy.ARRAY,
+        "dict": sqlalchemy.JSON,
+        "uuid": sqlalchemy.Uuid,
+    }
 
-    def __init__(self, db_type: str, user: str, password: str, host: str, port: int, db_name: str, options_str=""):
+    def __init__(self, db_type: str, user: str, password: str, host: str, port: int, db_name: str, **kwargs):
         db_type = db_type.lower()
         if db_type not in self.DB_TYPE_SUPPORTED:
             raise ValueError(f"{db_type} not supported")
@@ -29,11 +63,53 @@ class SqlAlchemyManager(DBManager):
         self._host = host
         self._port = port
         self._db_name = db_name
-        self._options_str = options_str
         self._tables_desc_dict = {}
         self._engine = None
         self._visible_tables = None
         self._metadata = sqlalchemy.MetaData()
+        self._options_str = kwargs.get("options_str")
+        tables_info_dict = kwargs.get("tables_info_dict")
+        if tables_info_dict:
+            self._init_tables_by_info(tables_info_dict)
+
+    def _init_tables_by_info(self, tables_info_dict):
+        try:
+            tables_info = TablesInfo.model_validate(tables_info_dict)
+            self._visible_tables = [table_info.name for table_info in tables_info.tables]
+            # create table if not exist
+            self._create_tables_by_info(tables_info)
+            desc_dict = self._gen_desc_by_info(tables_info)
+            self.set_desc(desc_dict)
+        except pydantic.ValidationError as e:
+            raise ValueError(f"Validate tables_info_dict failed: {str(e)}")
+
+    def _create_tables_by_info(self, tables_info: TablesInfo):
+        for table_info in tables_info.tables:
+            attrs = {"__tablename__": table_info.name, "__table_args__": {"extend_existing": True},
+                     "metadata": self._metadata}
+            for column_info in table_info.columns:
+                column_type = column_info.data_type.lower()
+                is_nullable = column_info.nullable
+                column_name = column_info.name
+                is_primary = column_info.is_primary_key
+                # Use text for unsupported column type
+                real_type = self.PYTYPE_TO_SQL_MAP.get(column_type, sqlalchemy.Text)
+                attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable, primary_key=is_primary)
+            # When create dynamic class with same name, old version will be replaced
+            TableClass = type(table_info.name.capitalize(), (TableBase,), attrs)
+            self.create_table(TableClass)
+
+    def _gen_desc_by_info(self, tables_info: TablesInfo) -> dict:
+        desc_dict = {}
+        for table_info in tables_info.tables:
+            table_comment = ""
+            if table_info.comment:
+                table_comment += f"COMMENT ON TABLE '{table_info.name}': {table_info.comment}\n"
+            for column_info in table_info.columns:
+                table_comment += f"COMMENT ON COLUMN '{table_info.name}.{column_info.name}': {column_info.comment}\n"
+            if table_comment:
+                desc_dict[table_info.name] = table_comment
+        return desc_dict
 
     def _gen_conn_url(self) -> str:
         if self._db_type == "sqlite":
@@ -88,9 +164,13 @@ class SqlAlchemyManager(DBManager):
         self._desc = "The tables description is as follows\n```\n"
         for table_name in self.visible_tables:
             self._desc += f"Table {table_name}\n(\n"
-            table_columns = self.get_table_orm_class(table_name).columns
+            TableCls = self.get_table_orm_class(table_name)
+            if TableCls is None:
+                # The table could be dropped in other session
+                continue
+            table_columns = TableCls.__table__.columns
             for i, column in enumerate(table_columns):
-                self._desc += f" {column['name']} {column['type']}"
+                self._desc += f" {column.name} {column.type}"
                 if i != len(table_columns) - 1:
                     self._desc += ","
                 self._desc += "\n"
@@ -197,118 +277,3 @@ class SqlAlchemyManager(DBManager):
         with self.get_session() as session:
             session.bulk_insert_mappings(TableCls, vals)
         return DBResult()
-
-
-class ColumnInfo(pydantic.BaseModel):
-    name: str
-    data_type: str
-    comment: str = ""
-    # At least one column should be True
-    is_primary_key: bool = False
-    nullable: bool = True
-
-
-class TableInfo(pydantic.BaseModel):
-    name: str
-    comment: str = ""
-    columns: list[ColumnInfo]
-
-
-class TablesInfo(pydantic.BaseModel):
-    tables: list[TableInfo]
-
-class SqlManager(SqlAlchemyManager):
-    PYTYPE_TO_SQL_MAP = {
-        "integer": sqlalchemy.Integer,
-        "string": sqlalchemy.Text,
-        "text": sqlalchemy.Text,
-        "boolean": sqlalchemy.Boolean,
-        "float": sqlalchemy.Float,
-        "datetime": sqlalchemy.DateTime,
-        "bytes": sqlalchemy.LargeBinary,
-        "bool": sqlalchemy.Boolean,
-        "date": sqlalchemy.Date,
-        "time": sqlalchemy.Time,
-        "list": sqlalchemy.ARRAY,
-        "dict": sqlalchemy.JSON,
-        "uuid": sqlalchemy.Uuid,
-    }
-
-    def __init__(
-        self,
-        db_type: str,
-        user: str,
-        password: str,
-        host: str,
-        port: int,
-        db_name: str,
-        tables_info_dict: dict,
-        options_str: str = "",
-    ) -> None:
-        super().__init__(db_type, user, password, host, port, db_name, options_str)
-        try:
-            self._tables_info = TablesInfo.model_validate(tables_info_dict)
-            self._visible_tables = [table_info.name for table_info in self._tables_info.tables]
-            # create table if not exist
-            self.create_tables_by_info(self._tables_info)
-            self.set_desc(self._tables_info)
-        except pydantic.ValidationError as e:
-            raise ValueError(f"Validate tables_info_dict failed: {str(e)}")
-
-    def create_tables_by_info(self, tables_info: TablesInfo):
-        for table_info in tables_info.tables:
-            TableClass = self._create_table_cls(table_info)
-            self.create_table(TableClass)
-
-    @property
-    def desc(self) -> str:
-        return self._desc
-
-    @property
-    def tables_info(self) -> TablesInfo:
-        return self._tables_info
-
-    def set_desc(self, tables_info: TablesInfo):
-        self._desc = "The tables description is as follows\n```\n"
-        for table_info in tables_info.tables:
-            self._desc += f'Table "{table_info.name}"'
-            if table_info.comment:
-                self._desc += f' comment "{table_info.comment}"'
-            self._desc += "\n(\n"
-            TableCls = self.get_table_orm_class(table_info.name)
-            real_columns = TableCls.__table__.columns
-            column_type_dict = {}
-            for real_column in real_columns:
-                column_type_dict[real_column.name] = real_column.type
-            for i, column_info in enumerate(table_info.columns):
-                self._desc += f"{column_info.name} {column_type_dict[column_info.name]}"
-                if column_info.comment:
-                    self._desc += f' comment "{column_info.comment}"'
-                if i != len(table_info.columns) - 1:
-                    self._desc += ","
-                self._desc += "\n"
-            self._desc += ");\n"
-        self._desc += "```\n"
-
-    @property
-    def visible_tables(self):
-        return self._visible_tables
-
-    @visible_tables.setter
-    def visible_tables(self, visible_tables: list):
-        raise AttributeError("Cannot set attribute 'visible_tables' in SqlManager")
-
-    def _create_table_cls(self, table_info: TableInfo) -> Type[DeclarativeBase]:
-        attrs = {"__tablename__": table_info.name, "__table_args__": {"extend_existing": True},
-                 "metadata": self._metadata}
-        for column_info in table_info.columns:
-            column_type = column_info.data_type.lower()
-            is_nullable = column_info.nullable
-            column_name = column_info.name
-            is_primary = column_info.is_primary_key
-            # Use text for unsupported column type
-            real_type = self.PYTYPE_TO_SQL_MAP.get(column_type, sqlalchemy.Text)
-            attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable, primary_key=is_primary)
-        # When create dynamic class with same name, old version will be replaced
-        TableClass = type(table_info.name.capitalize(), (TableBase,), attrs)
-        return TableClass

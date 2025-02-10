@@ -29,9 +29,8 @@ class TestSqlManager(unittest.TestCase):
         # MySQL has been tested with online database.
         for db_type in ["PostgreSQL"]:
             username, password, host, port, database = get_db_init_keywords(db_type)
-            cls.sql_managers.append(
-                SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)
-            )
+            cls.sql_managers.append(SqlManager(db_type, username, password, host, port, database,
+                                               tables_info_dict=SqlEgsData.TEST_TABLES_INFO))
         for sql_manager in cls.sql_managers:
             cls.clean_obsolete_tables(sql_manager)
 
@@ -68,22 +67,6 @@ class TestSqlManager(unittest.TestCase):
             with sql_manager.get_session() as session:
                 item = session.query(TableCls).filter(TableCls.employee_id == 1111).first()
                 assert item.name == "四一"
-                
-
-    def test_manager_create_tables(self):
-        for sql_manager in self.sql_managers:
-            # 1. drop tables
-            for table_name in SqlEgsData.TEST_TABLES:
-                db_result = sql_manager.drop_table(table_name)
-                assert db_result.status == DBStatus.SUCCESS, db_result.detail
-            existing_tables = set(sql_manager.get_all_tables())
-            for table_name in SqlEgsData.TEST_TABLES:
-                assert table_name not in existing_tables
-            # 2. create table
-            sql_manager.create_tables_by_info(sql_manager.tables_info)
-            # 3. restore rows
-            for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
-                sql_manager.execute_commit(insert_script)
 
     def test_manager_table_delete_insert_query(self):
         # 1. Delete, as rows already exists during setUp

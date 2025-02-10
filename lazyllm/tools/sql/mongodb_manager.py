@@ -17,8 +17,7 @@ class CollectionDesc(pydantic.BaseModel):
 class MongoDBManager(DBManager):
     MAX_TIMEOUT_MS = 5000
 
-    def __init__(self, user: str, password: str, host: str, port: int, db_name: str, collection_name: str,
-                 options_str="", collection_desc_dict: dict = None):
+    def __init__(self, user: str, password: str, host: str, port: int, db_name: str, collection_name: str, **kwargs):
         super().__init__(db_type="mongodb")
         self._user = user
         self._password = password
@@ -26,10 +25,10 @@ class MongoDBManager(DBManager):
         self._port = port
         self._db_name = db_name
         self._collection_name = collection_name
-        self._options_str = options_str
         self._collection = None
-        self._collection_desc_dict = None
+        self._options_str = kwargs.get("options_str")
         self._conn_url = self._gen_conn_url()
+        self._collection_desc_dict = kwargs.get("collection_desc_dict")
 
     @property
     def db_name(self):
