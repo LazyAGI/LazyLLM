@@ -102,7 +102,7 @@ jobs:
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
-          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/basic_tests/
+          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/basic_tests/
 
   AdvancedStandardTests:
     runs-on: tps_sco_nv
@@ -121,7 +121,7 @@ jobs:
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
-          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/advanced_tests/standard_test/
+          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/standard_test/
 
   AdvancedFullTests:
     runs-on: tps_sco_nv
@@ -138,7 +138,7 @@ jobs:
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
-          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/advanced_tests/full_test/
+          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/full_test/
 
   ChargeTests:
     runs-on: tps_sco_nv
@@ -154,4 +154,16 @@ jobs:
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
-          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/charge_tests
+          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
+
+  Coverage_linux:
+    runs-on: ubuntu-latest
+    needs: [ BasicTests, AdvancedStandardTests, AdvancedFullTests, ChargeTests ]
+    steps:
+      - name: Add Coverage Report Link to Summary
+        run: |
+          echo "## 代码覆盖率报告" >> $GITHUB_STEP_SUMMARY
+          echo "分支： ${GITHUB_REF}" >> $GITHUB_STEP_SUMMARY
+          echo "提交 SHA： ${GITHUB_SHA}" >> $GITHUB_STEP_SUMMARY
+          echo "您可以通过以下链接查看详细报告：" >> $GITHUB_STEP_SUMMARY
+          echo "[http://103.237.29.231:8088/${GITHUB_RUN_NUMBER}/htmlcov](http://103.237.29.231:8088/${GITHUB_RUN_NUMBER}/htmlcov)" >> $GITHUB_STEP_SUMMARY
