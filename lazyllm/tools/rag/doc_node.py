@@ -254,5 +254,6 @@ class ImageDocNode(DocNode):
         else:
             return self.get_text()
 
-    def get_image_path(self):
+    @property
+    def image_path(self):
         return self._image_path

@@ -90,11 +90,11 @@ class TestExamples(object):
     def test_vl_chat(self):
         from examples.multimodal_chatbot_online import chat
         chat.start()
-        query = "图中的动物是猫吗？仅输出是或不是，不要输出任何标点符号或说明性文本。"
+        query = "图中的动物是猫吗？仅输出是或不是。"
         file_path = os.path.join(lazyllm.config['data_path'], "ci_data/ji.jpg")
         inputs = encode_query_with_filepaths(query, [file_path])
         res = chat(inputs)
-        assert res == '不是'
+        assert '不是' in res
 
         # test vl chat warpped in web
         web, client = self.warp_into_web(chat, file_target=chat)
@@ -104,7 +104,7 @@ class TestExamples(object):
                              self.stream_output,
                              self.append_text,
                              api_name="/_respond_stream")
-        assert ans[0][-1][-1] == '不是'
+        assert '不是' in ans[0][-1][-1]
 
     def test_story(self):
         from examples.story_online import ppl

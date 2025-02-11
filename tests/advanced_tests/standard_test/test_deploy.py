@@ -93,7 +93,7 @@ class TestDeploy(object):
         assert len(json.loads(res)) == 2
 
     def test_cross_modal_embedding(self):
-        m = lazyllm.TrainableModule('siglip').deploy_method(deploy.AutoDeploy)
+        m = lazyllm.TrainableModule('siglip')
         m.update_server()
         res = m('你好')
         assert len(json.loads(res)) == 1152
