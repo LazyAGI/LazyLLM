@@ -62,23 +62,25 @@ class OnlineChatModuleBase(ModuleBase):
     def stream(self, v: Union[bool, Dict[str, str]]):
         self._stream = v
 
-    def prompt(self, prompt=None):
+    def prompt(self, prompt=None, history: List[List[str]] = None):
         if prompt is None:
-            self._prompt = ChatPrompter()
+            self._prompt = ChatPrompter(history=history)
         elif isinstance(prompt, PrompterBase):
+            assert not history, 'history is not supported in user defined prompter'
             self._prompt = prompt
         elif isinstance(prompt, (str, dict)):
-            self._prompt = ChatPrompter(prompt)
+            self._prompt = ChatPrompter(prompt, history=history)
         else:
             raise TypeError(f"{prompt} type is not supported.")
         self._prompt._set_model_configs(system=self._get_system_prompt())
         return self
 
-    def share(self, prompt: PrompterBase = None, format: FormatterBase = None, stream: Optional[bool] = None):
+    def share(self, prompt: PrompterBase = None, format: FormatterBase = None, stream: Optional[bool] = None,
+              history: List[List[str]] = None):
         new = copy.copy(self)
         new._hooks = set()
         new._set_mid()
-        if prompt is not None: new.prompt(prompt)
+        if prompt is not None: new.prompt(prompt, history=history)
         if format is not None: new.formatter(format)
         if stream is not None: new.stream = stream
         return new

@@ -1,7 +1,7 @@
 import lazyllm
 import builtins
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root, config
-from lazyllm import Thread, ReadOnlyWrapper, LOG, globals
+from lazyllm import ReadOnlyWrapper, LOG, globals
 from ..common.bind import _MetaBind
 from functools import partial
 from contextlib import contextmanager
@@ -17,6 +17,7 @@ import concurrent.futures
 from collections import deque
 import uuid
 from ..hook import LazyLLMHook
+import asyncio
 
 
 class _FuncWrap(object):
@@ -314,7 +315,6 @@ def save_pipeline_result(flag: bool = True):
 
 _barr = threading.local()
 def barrier(args): _barr.impl.wait(); return args
-def _hook(v): _barr.impl = v
 
 
 def _split_input(input: Union[Tuple, List], flag: Optional[Union[int, List]] = None):
@@ -386,15 +386,20 @@ class Parallel(LazyLLMFlowsBase):
             inputs = __input
 
         if self._concurrent:
-            nthreads = len(items)
-            impl = threading.Barrier(nthreads)
-            ts = [Thread(target=self.invoke, args=(it, inp), kwargs=kw, prehook=bind(_hook, impl))
-                  for it, inp in zip(items, inputs)]
-            [t.start() for t in ts]
-            r = package(t.get_result() for t in ts)
+            def impl(func, barrier, global_data, *args, **kw):
+                lazyllm.globals._init_sid()
+                lazyllm.globals._update(global_data)
+                lazyllm.globals['bind_args'] = lazyllm.globals['bind_args'].copy()
+                _barr.impl = barrier
+                r = func(*args, **kw)
+                lazyllm.globals.clear()
+                return r
+
+            loop, barrier = asyncio.new_event_loop(), threading.Barrier(len(items))
+            return package(loop.run_until_complete(asyncio.gather(*[loop.run_in_executor(None, partial(
+                impl, self.invoke, barrier, lazyllm.globals._data, it, inp, **kw)) for it, inp in zip(items, inputs)])))
         else:
-            r = package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
-        return r
+            return package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
 
     def _post_process(self, output):
         if self._post_process_type == Parallel.PostProcessType.DICT:

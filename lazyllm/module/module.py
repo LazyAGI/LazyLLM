@@ -453,13 +453,15 @@ class UrlModule(ModuleBase, UrlTemplate):
                 self._record_usage(usage)
             return self._formatter(temp_output)
 
-    def prompt(self, prompt=None):
+    def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
         if prompt is None:
+            assert not history, 'history is not supported in EmptyPrompter'
             self._prompt = EmptyPrompter()
         elif isinstance(prompt, PrompterBase):
+            assert not history, 'history is not supported in user defined prompter'
             self._prompt = prompt
         elif isinstance(prompt, (str, dict)):
-            self._prompt = ChatPrompter(prompt)
+            self._prompt = ChatPrompter(prompt, history=history)
         return self
 
     def _extract_and_format(self, output: str) -> str:
@@ -829,10 +831,10 @@ class TrainableModule(UrlModule):
         return launcher.status
 
     # modify default value to ''
-    def prompt(self, prompt=''):
+    def prompt(self, prompt: str = '', history: Optional[List[List[str]]] = None):
         if self.base_model != '' and prompt == '' and ModelManager.get_model_type(self.base_model) != 'llm':
             prompt = None
-        prompt = super(__class__, self).prompt(prompt)._prompt
+        prompt = super(__class__, self).prompt(prompt, history)._prompt
         self._tools = getattr(prompt, "_tools", None)
         keys = ModelManager.get_model_prompt_keys(self.base_model)
         if keys:
@@ -973,11 +975,11 @@ class TrainableModule(UrlModule):
             return functools.partial(getattr(self._impl, key), _return_value=self)
         raise AttributeError(f'{__class__} object has no attribute {key}')
 
-    def share(self, prompt=None, format=None, stream=None):
+    def share(self, prompt=None, format=None, stream=None, history=None):
         new = copy.copy(self)
         new._hooks = set()
         new._set_mid()
-        if prompt is not None: new.prompt(prompt)
+        if prompt is not None: new.prompt(prompt, history=history)
         if format is not None: new.formatter(format)
         if stream is not None: new.stream = stream
         new._impl._add_father(new)
