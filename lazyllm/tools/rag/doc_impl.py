@@ -2,6 +2,7 @@ import json
 import ast
 from collections import defaultdict
 from functools import wraps
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
 from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
@@ -88,6 +89,14 @@ class DocImpl:
 
         if not self.store.is_group_active(LAZY_ROOT_NAME):
             ids, paths, metadatas = self._list_files()
+            path_existing = [Path(path).exists() for path in paths]
+            ids_need_delete = [ids[idx] for idx, exist in enumerate(path_existing) if not exist]
+            ids = [ids[idx] for idx, exist in enumerate(path_existing) if exist]
+            paths = [path for path, exist in zip(paths, path_existing) if exist]
+            if metadatas:
+                metadatas = [meta for meta, exist in zip(metadatas, path_existing) if exist]
+            if ids_need_delete and self._dlm:
+                self._dlm.delete_files(file_ids=ids_need_delete)
             if paths:
                 if not metadatas: metadatas = [{}] * len(paths)
                 for idx, meta in enumerate(metadatas):
