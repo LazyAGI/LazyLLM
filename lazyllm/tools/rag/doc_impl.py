@@ -7,7 +7,7 @@ from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
 from .index_base import IndexBase
-from .store_base import StoreBase, LAZY_ROOT_NAME
+from .store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from .map_store import MapStore
 from .chroma_store import ChromadbStore
 from .milvus_store import MilvusStore
