@@ -156,7 +156,8 @@ class TestEngine(unittest.TestCase):
         username, password, host, port, database = get_db_init_keywords(db_type)
 
         # 1.  Init: insert data to database
-        tmp_sql_manager = SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)
+        tmp_sql_manager = SqlManager(db_type, username, password, host, port, database,
+                                     tables_info_dict=SqlEgsData.TEST_TABLES_INFO)
         for table_name in SqlEgsData.TEST_TABLES:
             tmp_sql_manager.execute_commit(f"DELETE FROM {table_name}")
         for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:

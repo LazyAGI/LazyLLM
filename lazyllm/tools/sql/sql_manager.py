@@ -1,7 +1,7 @@
 import json
 import re
 from contextlib import contextmanager
-from typing import List, Type, Union
+from typing import List, Type, Union, Dict
 from urllib.parse import quote_plus
 import pydantic
 import sqlalchemy
@@ -53,7 +53,8 @@ class SqlManager(DBManager):
         "uuid": sqlalchemy.Uuid,
     }
 
-    def __init__(self, db_type: str, user: str, password: str, host: str, port: int, db_name: str, **kwargs):
+    def __init__(self, db_type: str, user: str, password: str, host: str, port: int, db_name: str, *,
+                 options_str: str = None, tables_info_dict: Dict = None):
         db_type = db_type.lower()
         if db_type not in self.DB_TYPE_SUPPORTED:
             raise ValueError(f"{db_type} not supported")
@@ -67,8 +68,7 @@ class SqlManager(DBManager):
         self._engine = None
         self._visible_tables = None
         self._metadata = sqlalchemy.MetaData()
-        self._options_str = kwargs.get("options_str")
-        tables_info_dict = kwargs.get("tables_info_dict")
+        self._options_str = options_str
         if tables_info_dict:
             self._init_tables_by_info(tables_info_dict)
 
