@@ -440,7 +440,7 @@ class OnlineChatModuleBase(ModuleBase):
 
     def _format_vl_chat_image_url(self, image_url: str, mime: str) -> List[Dict[str, str]]:
         return [{"type": "image_url", "image_url": {"url": image_url}}]
-   
+
     # for online vlm
     def _format_input_with_files(self, query_files: str) -> List[Dict[str, str]]:
         if isinstance(query_files, str):
