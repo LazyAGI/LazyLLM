@@ -167,7 +167,7 @@ class TestMongoDBManager(unittest.TestCase):
             results = list(collection.find({"state": "TX"}, projection={"city": True}))
             match_count = sum([ele["state"] == "TX" for ele in MongoDBEgsData.COLLECTION_DATA])
             assert len(results) == match_count
-    
+
     def test_aggregate(self):
         with self.mongodb_manager.get_client() as client:
             collection = client[self.mongodb_manager.db_name][self.mongodb_manager.collection_name]

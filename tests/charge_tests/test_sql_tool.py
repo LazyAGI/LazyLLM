@@ -57,7 +57,7 @@ class TestSqlManager(unittest.TestCase):
         for sql_manager in self.sql_managers:
             db_result = sql_manager.check_connection()
             assert db_result.status == DBStatus.SUCCESS, db_result.detail
-    
+
     def test_manager_orm_operation(self):
         for sql_manager in self.sql_managers:
             table_name = SqlEgsData.TEST_TABLES[0]
