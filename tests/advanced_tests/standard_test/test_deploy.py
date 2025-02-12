@@ -106,11 +106,11 @@ class TestDeploy(object):
         image_path = os.path.join(lazyllm.config['data_path'], "ci_data/ji.jpg")
         image_base64, mime = image_to_base64(image_path)
         image_base64 = f'data:{mime};base64,{image_base64}'
-        res = m(image_url, modality = 'image')
+        res = m(image_url, modality='image')
         assert len(json.loads(res)) == 1152
         res = m([image_url], modality='image')
         assert len(json.loads(res)) == 1
-        res = m([image_url, image_base64], modality = 'image')
+        res = m([image_url, image_base64], modality='image')
         assert len(json.loads(res)) == 2
 
     def test_sd3(self):

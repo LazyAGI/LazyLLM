@@ -246,7 +246,7 @@ class ImageDocNode(DocNode):
             self.embedding = {**self.embedding, **generate_embed}
 
     def get_content(self, metadata_mode=MetadataMode.LLM) -> str:
-        if metadata_mode==MetadataMode.LLM:
+        if metadata_mode == MetadataMode.LLM:
             return Image.open(self._image_path)
         elif metadata_mode == MetadataMode.EMBED:
             image_base64, mime = image_to_base64(self._image_path)

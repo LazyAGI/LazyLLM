@@ -42,7 +42,7 @@ def delete_old_files(directory):
                     LOG.info(f"Deleted: {dir_path}")
             except Exception as e:
                 LOG.error(f"Error deleting directory {dir_path}: {e}")
-        
+
 def image_to_base64(directory):
     try:
         with open(directory, 'rb') as f:

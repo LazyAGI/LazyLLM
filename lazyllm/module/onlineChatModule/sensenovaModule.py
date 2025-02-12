@@ -242,7 +242,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
 
             status = r.json()["job"]['status']
             return status
-        
+
     def _format_vl_chat_image_url(self, image_url, mime):
         if image_url.startswith("http"):
             return [{"type": "image_url", "image_url": image_url}]

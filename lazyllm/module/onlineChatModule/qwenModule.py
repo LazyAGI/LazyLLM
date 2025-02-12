@@ -295,8 +295,8 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
 
             status = r.json()["output"]['status']
             return status
-    
+
     def _format_vl_chat_image_url(self, image_url, mime):
         assert mime is not None, "Qwen Module requires mime info."
-        image_url = f"data:{mime};base64,{image_url}"    
+        image_url = f"data:{mime};base64,{image_url}"
         return [{"type": "image_url", "image_url": {"url": image_url}}]

@@ -273,7 +273,7 @@ class OnlineChatModuleBase(ModuleBase):
 
         if len(self._model_optional_params) > 0:
             data.update(self._model_optional_params)
-            
+
         if isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
             for idx, message in enumerate(data["messages"]):
                 content = message["content"]
@@ -434,13 +434,13 @@ class OnlineChatModuleBase(ModuleBase):
                     raise ValueError(f"Deployment task {deployment_id} failed")
             lazyllm.LOG.info(f"deployment {deployment_id} finished")
         return Pipeline(_start_for_deployment)
-    
+
     def _format_vl_chat_query(self, query: str):
         return [{"type": "text", "text": query}]
-    
+
     def _format_vl_chat_image_url(self, image_url: str, mime: str) -> List[Dict[str, str]]:
         return [{"type": "image_url", "image_url": {"url": image_url}}]
-        
+   
     # for online vlm
     def _format_input_with_files(self, query_files: str) -> List[Dict[str, str]]:
         if isinstance(query_files, str):
