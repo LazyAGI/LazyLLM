@@ -24,7 +24,7 @@ def register_similarity(
                 if batch:
                     for key, val in query.items():
                         nodes_embed = [node.embedding[key] for node in nodes]
-                        similarity[key] = f(val, nodes_embed, **kwargs)
+                        similarity[key] = [(node, sim) for node, sim in zip(nodes, f(val, nodes_embed, **kwargs))]
                 else:
                     for key, val in query.items():
                         similarity[key] = [(node, f(val, node.embedding[key], **kwargs)) for node in nodes]

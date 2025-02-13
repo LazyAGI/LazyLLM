@@ -405,6 +405,9 @@ class UrlModule(ModuleBase, UrlTemplate):
         token = getattr(self, "_tool_start_token", '')
         cache = ""
 
+        if kw.get("modality"):
+            data["modality"] = kw["modality"]
+
         # context bug with httpx, so we use requests
         with requests.post(url, json=data, stream=True, headers=headers) as r:
             if r.status_code == 200:

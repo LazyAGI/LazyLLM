@@ -86,6 +86,8 @@ class Infinity(LazyLLMDeployBase):
             raise e
         assert 'object' in res_object
         object_type = res_object['object']
+        if object_type == 'list':  # for infinity >= 0.0.64
+            object_type = res_object['data'][0]['object']
         if object_type == 'embedding':
             res_list = [item['embedding'] for item in res_object['data']]
             if len(res_list) == 1 and type(inputs['input']) is str:

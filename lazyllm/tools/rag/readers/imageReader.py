@@ -7,7 +7,7 @@ from fsspec import AbstractFileSystem
 from lazyllm.thirdparty import PIL
 
 from .readerBase import LazyLLMReaderBase, infer_torch_device
-from ..doc_node import DocNode
+from ..doc_node import ImageDocNode
 
 def img_2_b64(image: 'PIL.Image', format: str = "JPEG") -> str:
     buff = BytesIO()
@@ -54,7 +54,7 @@ class ImageReader(LazyLLMReaderBase):
         self._pytesseract_model_kwargs = pytesseract_model_kwargs or {}
 
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+                   fs: Optional[AbstractFileSystem] = None) -> List[ImageDocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:
@@ -99,4 +99,4 @@ class ImageReader(LazyLLMReaderBase):
                 model = cast(pytesseract, self._parser_config['model'])
                 text_str = model.image_to_string(image, **self._pytesseract_model_kwargs)
 
-        return [DocNode(text=text_str, global_metadata=extra_info)]
+        return [ImageDocNode(text=text_str, image_path=str(file), global_metadata=extra_info)]

@@ -7,6 +7,7 @@ from gradio_client import Client
 
 import lazyllm
 from lazyllm.launcher import cleanup
+from lazyllm.components.formatter import encode_query_with_filepaths
 
 
 class TestExamples(object):
@@ -45,12 +46,12 @@ class TestExamples(object):
             web.stop()
         cleanup()
 
-    def warp_into_web(self, module):
+    def warp_into_web(self, module, file_target=None):
         client = None
         for _ in range(5):
             try:
                 port = random.randint(10000, 30000)
-                web = lazyllm.WebModule(module, port=port)
+                web = lazyllm.WebModule(module, port=port, files_target=file_target)
                 web._work()
                 time.sleep(2)
             except AssertionError as e:
@@ -85,6 +86,25 @@ class TestExamples(object):
                              self.append_text,
                              api_name="/_respond_stream")
         assert ans[0][-1][-1] == 'Hello world.'
+
+    def test_vl_chat(self):
+        from examples.multimodal_chatbot_online import chat
+        chat.start()
+        query = "图中的动物是猫吗？仅输出是或不是。"
+        file_path = os.path.join(lazyllm.config['data_path'], "ci_data/ji.jpg")
+        inputs = encode_query_with_filepaths(query, [file_path])
+        res = chat(inputs)
+        assert '不是' in res
+
+        # test vl chat warpped in web
+        web, client = self.warp_into_web(chat, file_target=chat)
+        chat_history = [[f"lazyllm_img::{file_path}", None], [query, None]]
+        ans = client.predict(self.use_context,
+                             chat_history,
+                             self.stream_output,
+                             self.append_text,
+                             api_name="/_respond_stream")
+        assert '不是' in ans[0][-1][-1]
 
     def test_story(self):
         from examples.story_online import ppl
