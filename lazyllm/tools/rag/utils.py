@@ -1,29 +1,31 @@
+import concurrent
+import hashlib
+import json
 import os
 import shutil
-import hashlib
-import concurrent
-from typing import List, Callable, Generator, Dict, Any, Optional, Union, Tuple, Set
+import sqlite3
 from abc import ABC, abstractmethod
-from .index_base import IndexBase
-from .doc_node import DocNode
-from .global_metadata import RAG_DOC_PATH, RAG_DOC_ID
-from lazyllm.common import override
-from lazyllm.common.queue import sqlite3_check_threadsafety
-import sqlalchemy
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from sqlalchemy import Column, select, insert, update, Row
-from sqlalchemy.exc import NoResultFound
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import (Any, Callable, Dict, Generator, List, Optional, Set, Tuple,
+                    Union)
 
 import pydantic
-import sqlite3
-from pydantic import BaseModel
+import sqlalchemy
 from fastapi import UploadFile
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import json
 from filelock import FileLock
+from pydantic import BaseModel
+from sqlalchemy import Column, Row, insert, select, update
+from sqlalchemy.exc import NoResultFound
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 import lazyllm
 from lazyllm import config
+from lazyllm.common import override
+from lazyllm.common.queue import sqlite3_check_threadsafety
+
+from .doc_node import DocNode
+from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
+from .index_base import IndexBase
 
 # min(32, (os.cpu_count() or 1) + 4) is the default number of workers for ThreadPoolExecutor
 config.add(
@@ -118,14 +120,16 @@ class DocListManager(ABC):
         if not self.table_inited():
             self._init_tables()
             self.add_kb_group(DocListManager.DEFAULT_GROUP_NAME)
+        return self
 
+    def monitor_directory(self) -> Set[str]:
         files_list = []
         for root, _, files in os.walk(self._path):
             files = [os.path.join(root, file_path) for file_path in files]
             files_list.extend(files)
-        self.add_files(files_list, status=DocListManager.Status.success)
-        return self
+        return set(files_list)
 
+    # Actually it shoule be "set_docs_status_deleting"
     def delete_files(self, file_ids: List[str]) -> List[DocPartRow]:
         document_list = self.update_file_status(file_ids, DocListManager.Status.deleting)
         self.update_kb_group(cond_file_ids=file_ids, new_status=DocListManager.Status.deleting)
@@ -169,17 +173,17 @@ class DocListManager(ABC):
         status: Optional[str] = Status.waiting,
         batch_size: int = 64,
     ) -> List[DocPartRow]:
-        documents = self._add_files(files, metadatas, status, batch_size)
+        documents = self._add_doc_records(files, metadatas, status, batch_size)
         if documents:
             self.add_files_to_kb_group([doc.doc_id for doc in documents], group=DocListManager.DEFAULT_GROUP_NAME)
         return documents
 
     @abstractmethod
-    def _add_files(self, files: List[str], metadatas: Optional[List] = None,
+    def _add_doc_records(self, files: List[str], metadatas: Optional[List] = None,
                    status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[DocPartRow]: pass
 
     @abstractmethod
-    def delete_obsolete_files(self): pass
+    def delete_unreferenced_doc(self): pass
 
     @abstractmethod
     def get_docs_need_reparse(self, group: Optional[str] = None) -> List[KBDocument]: pass
@@ -225,6 +229,7 @@ class SqliteDocListManager(DocListManager):
             f"sqlite:///{self._db_path}?check_same_thread={self._check_same_thread}"
         )
         self._Session = sessionmaker(bind=self._engine)
+        self.init_tables()
 
     def _init_tables(self):
         KBDataBase.metadata.create_all(bind=self._engine)
@@ -367,7 +372,7 @@ class SqliteDocListManager(DocListManager):
         if not details: return [row[:2] for row in rows]
         return rows
 
-    def delete_obsolete_files(self):
+    def delete_unreferenced_doc(self):
         with self._db_lock, self._Session() as session:
             docs_to_delete = (
                 session.query(KBDocument)
@@ -376,11 +381,11 @@ class SqliteDocListManager(DocListManager):
             )
             for doc in docs_to_delete:
                 session.delete(doc)
-                log = KBOperationLogs(log=f"Delete obsolete file: {doc.doc_id}")
+                log = KBOperationLogs(log=f"Delete obsolete file, doc_id:{doc.doc_id}, path:{doc.path}.")
                 session.add(log)
             session.commit()
 
-    def _add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None,
+    def _add_doc_records(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None,
                    status: Optional[str] = DocListManager.Status.waiting, batch_size: int = 64):
         documents = []
 

@@ -54,6 +54,7 @@ class DocImpl:
         self._global_metadata_desc = global_metadata_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
         self._activated_embeddings = {}
+        self._previous_files = set()
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
@@ -87,16 +88,22 @@ class DocImpl:
         else:
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
 
+        ids, paths, metadatas = self._list_files()
+        self._previous_files = set(paths)
         if not self.store.is_group_active(LAZY_ROOT_NAME):
-            ids, paths, metadatas = self._list_files()
             path_existing = [Path(path).exists() for path in paths]
             ids_need_delete = [ids[idx] for idx, exist in enumerate(path_existing) if not exist]
-            ids = [ids[idx] for idx, exist in enumerate(path_existing) if exist]
-            paths = [path for path, exist in zip(paths, path_existing) if exist]
+            paths_need_delete = [paths[idx] for idx, exist in enumerate(path_existing) if not exist]
             if metadatas:
                 metadatas = [meta for meta, exist in zip(metadatas, path_existing) if exist]
-            if ids_need_delete and self._dlm:
-                self._dlm.delete_files(file_ids=ids_need_delete)
+            if ids_need_delete:
+                if self._dlm:
+                    self._dlm.delete_files(file_ids=ids_need_delete)
+                self._delete_doc_from_store(paths_need_delete)
+            self._previous_files = set(paths)
+
+            ids = [ids[idx] for idx, exist in enumerate(path_existing) if exist]
+            paths = [path for path, exist in zip(paths, path_existing) if exist]
             if paths:
                 if not metadatas: metadatas = [{}] * len(paths)
                 for idx, meta in enumerate(metadatas):
@@ -232,6 +239,7 @@ class DocImpl:
 
     def worker(self):
         while True:
+            # Step 1: do doc-parsing, highest priority
             docs = self._dlm.get_docs_need_reparse(group=self._kb_group_name)
             if docs:
                 filepaths = [doc.path for doc in docs]
@@ -240,32 +248,46 @@ class DocImpl:
                 # update status and need_reparse
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working, new_need_reparse=False)
-                self._delete_files(filepaths)
-                self._add_files(input_files=filepaths, ids=ids, metadatas=metadatas)
+                self._delete_doc_from_store(filepaths)
+                self._add_doc_to_store(input_files=filepaths, ids=ids, metadatas=metadatas)
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.success)
 
+            # Step 2: monior file changse that will be processed in below steps
+            if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
+                # After doc is deleted from related kb_group, delete doc from db
+                self._dlm.delete_unreferenced_doc()
+                
+                # Monitor directory for adding and deleting files
+                current_files = self._dlm.monitor_directory()
+                added_files = list(current_files - self._previous_files)
+                deleted_files = list(self._previous_files - current_files)
+                self._previous_files = current_files
+                if added_files:
+                    # Actually this function is "add_docs_with_waiting_analysis"
+                    self._dlm.add_files(added_files, status=DocListManager.Status.success)
+                if deleted_files:
+                    deleted_doc_ids = [gen_docid(f) for f in deleted_files]
+                    # Actually this function is "set_docs_status_deleting"
+                    self._dlm.delete_files(deleted_doc_ids)
+
+            # Step 3: do doc-deleting
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
             if files:
-                self._delete_files(files)
+                self._delete_doc_from_store(files)
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
-                continue
-
-            if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
-                self._dlm.init_tables()
-                self._dlm.delete_obsolete_files()
-
+            
+            # Step 4: do doc-adding
             ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
                                                      upload_status=DocListManager.Status.success)
             if files:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working)
-                self._add_files(input_files=files, ids=ids, metadatas=metadatas)
+                self._add_doc_to_store(input_files=files, ids=ids, metadatas=metadatas)
                 # change working to success while leaving other status unchanged
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           cond_status_list=[DocListManager.Status.working],
                                           new_status=DocListManager.Status.success)
-                continue
             time.sleep(10)
 
     def _list_files(
@@ -281,7 +303,7 @@ class DocImpl:
             metadatas.append(json.loads(row[3]) if row[3] else {})
         return ids, paths, metadatas
 
-    def _add_files(self, input_files: List[str], ids: Optional[List[str]] = None,
+    def _add_doc_to_store(self, input_files: List[str], ids: Optional[List[str]] = None,
                    metadatas: Optional[List[Dict[str, Any]]] = None):
         if not input_files:
             return
@@ -302,7 +324,7 @@ class DocImpl:
             self.store.update_nodes(nodes)
             LOG.debug(f"Merge {group} with {nodes}")
 
-    def _delete_files(self, input_files: List[str]) -> None:
+    def _delete_doc_from_store(self, input_files: List[str]) -> None:
         docs = self.store.get_index(type='file_node_map').query(input_files)
         LOG.info(f"delete_files: removing documents {input_files} and nodes {docs}")
         if len(docs) == 0:

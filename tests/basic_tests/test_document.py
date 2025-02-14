@@ -75,7 +75,7 @@ class TestDocImpl(unittest.TestCase):
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
         new_doc._global_metadata = {RAG_DOC_PATH: "new_file.txt"}
         self.mock_directory_reader.load_data.return_value = [new_doc]
-        self.doc_impl._add_files(["new_file.txt"])
+        self.doc_impl._add_doc_to_store(["new_file.txt"])
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 2
 
 class TestDocument(unittest.TestCase):
