@@ -18,19 +18,29 @@ import io
 import re
 import json
 import time
+import tempfile
 
+os.environ["LAZYLLM_SENSENOVA_API_KEY"] = "2DDCE1E2C1E649A38517D7035C78888B"
+os.environ["LAZYLLM_SENSENOVA_SECRET_KEY"] = "C80566E983F44981A32EAF1E7731A9AB"
 
 class TestDocImpl(unittest.TestCase):
 
     def setUp(self):
         self.mock_embed = MagicMock()
         self.mock_directory_reader = MagicMock()
+        # use temporary file as only existing files can be added to DocImpl
+        self.tmp_file_a = tempfile.NamedTemporaryFile()
+        self.tmp_file_b = tempfile.NamedTemporaryFile()
         mock_node = DocNode(group=LAZY_ROOT_NAME, text="dummy text")
-        mock_node._global_metadata = {RAG_DOC_PATH: "dummy_file.txt"}
+        mock_node._global_metadata = {RAG_DOC_PATH: self.tmp_file_a.name}
         self.mock_directory_reader.load_data.return_value = [mock_node]
 
-        self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=["dummy_file.txt"])
+        self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
         self.doc_impl._reader = self.mock_directory_reader
+
+    def tearDown(self):
+        self.tmp_file_a.close()
+        self.tmp_file_b.close()
 
     def test_create_node_group_default(self):
         self.doc_impl._create_builtin_node_group('MyChunk', transform=lambda x: ','.split(x))
@@ -73,9 +83,9 @@ class TestDocImpl(unittest.TestCase):
         self.doc_impl._lazy_init()
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
-        new_doc._global_metadata = {RAG_DOC_PATH: "new_file.txt"}
+        new_doc._global_metadata = {RAG_DOC_PATH: self.tmp_file_b.name}
         self.mock_directory_reader.load_data.return_value = [new_doc]
-        self.doc_impl._add_doc_to_store(["new_file.txt"])
+        self.doc_impl._add_doc_to_store([self.tmp_file_b.name])
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 2
 
 class TestDocument(unittest.TestCase):

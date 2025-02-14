@@ -119,7 +119,8 @@ class DocListManager(ABC):
     def init_tables(self) -> 'DocListManager':
         if not self.table_inited():
             self._init_tables()
-            self.add_kb_group(DocListManager.DEFAULT_GROUP_NAME)
+        # in case of using after relase
+        self.add_kb_group(DocListManager.DEFAULT_GROUP_NAME)
         return self
 
     def monitor_directory(self) -> Set[str]:
@@ -180,7 +181,7 @@ class DocListManager(ABC):
 
     @abstractmethod
     def _add_doc_records(self, files: List[str], metadatas: Optional[List] = None,
-                   status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[DocPartRow]: pass
+                         status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[DocPartRow]: pass
 
     @abstractmethod
     def delete_unreferenced_doc(self): pass
@@ -386,7 +387,7 @@ class SqliteDocListManager(DocListManager):
             session.commit()
 
     def _add_doc_records(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None,
-                   status: Optional[str] = DocListManager.Status.waiting, batch_size: int = 64):
+                         status: Optional[str] = DocListManager.Status.waiting, batch_size: int = 64):
         documents = []
 
         for i in range(0, len(files), batch_size):
