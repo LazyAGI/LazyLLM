@@ -20,12 +20,19 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
                  return_trace: bool = False,
                  **kwargs):
         jwt_api_key = None
-        if api_key and secret_key:
-            jwt_api_key = SenseNovaModule.encode_jwt_token(api_key, secret_key)
+        self._is_only_api_key = False
+        if (api_key and secret_key) or (lazyllm.config['sensenova_api_key'] and lazyllm.config['sensenova_secret_key']):
+            jwt_api_key = SenseNovaModule.encode_jwt_token(api_key, secret_key) if secret_key else \
+                SenseNovaModule.encode_jwt_token(lazyllm.config['sensenova_api_key'],
+                                                 lazyllm.config['sensenova_secret_key'])
+        elif ((api_key and (secret_key is None or secret_key == ""))
+                or (lazyllm.config['sensenova_api_key'] and lazyllm.config['sensenova_secret_key'] == "")):
+            base_url = "https://api.sensenova.cn/compatible-mode/v1/"
+            jwt_api_key = api_key if api_key else lazyllm.config['sensenova_api_key']
+            self._is_only_api_key = True
         OnlineChatModuleBase.__init__(self,
                                       model_series="SENSENOVA",
-                                      api_key=jwt_api_key or SenseNovaModule.encode_jwt_token(
-                                          lazyllm.config['sensenova_api_key'], lazyllm.config['sensenova_secret_key']),
+                                      api_key=jwt_api_key,
                                       base_url=base_url,
                                       model_name=model,
                                       stream=stream,
@@ -57,26 +64,32 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
         return token
 
     def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat-completions')
+        if not self._is_only_api_key:
+            self._url = urljoin(self._base_url, 'chat-completions')
+        else:
+            self._url = urljoin(self._base_url, 'chat/completions')
 
     def _convert_msg_format(self, msg: Dict[str, Any]):
-        try:
-            resp = msg['data']
-            resp['plugins'] = {} if resp['plugins'] is None else resp['plugins']
-            data = resp['choices'][0]
-            content = data.get('delta', '') if 'delta' in data else data.get('message', '')
-            message = {"role": data.pop("role"), "content": content}
-            data["delta" if "delta" in data else "message"] = message
+        if not self._is_only_api_key:
+            try:
+                resp = msg['data']
+                resp['plugins'] = {} if resp['plugins'] is None else resp['plugins']
+                data = resp['choices'][0]
+                content = data.get('delta', '') if 'delta' in data else data.get('message', '')
+                message = {"role": data.pop("role"), "content": content}
+                data["delta" if "delta" in data else "message"] = message
 
-            if "tool_calls" in data:
-                tool_calls = data.pop('tool_calls')
-                for idx in range(len(tool_calls)):
-                    tool_calls[idx]['index'] = idx
-                data["delta" if "delta" in data else "message"]["tool_calls"] = tool_calls
-            resp['model'] = self._model_name
-            return resp
-        except Exception:
-            return ""
+                if "tool_calls" in data:
+                    tool_calls = data.pop('tool_calls')
+                    for idx in range(len(tool_calls)):
+                        tool_calls[idx]['index'] = idx
+                    data["delta" if "delta" in data else "message"]["tool_calls"] = tool_calls
+                resp['model'] = self._model_name
+                return resp
+            except Exception:
+                return ""
+        else:
+            return msg
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:
