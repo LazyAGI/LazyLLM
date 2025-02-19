@@ -20,12 +20,22 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
                  return_trace: bool = False,
                  **kwargs):
         jwt_api_key = None
-        if api_key and secret_key:
-            jwt_api_key = SenseNovaModule.encode_jwt_token(api_key, secret_key)
+        self._is_only_api_key = False
+        if (api_key and secret_key) or (lazyllm.config['sensenova_api_key'] and lazyllm.config['sensenova_secret_key']):
+            jwt_api_key = SenseNovaModule.encode_jwt_token(api_key, secret_key) if secret_key else \
+                SenseNovaModule.encode_jwt_token(lazyllm.config['sensenova_api_key'],
+                                                 lazyllm.config['sensenova_secret_key'])
+        elif ((api_key and (secret_key is None or secret_key == ""))
+                or (lazyllm.config['sensenova_api_key'] and lazyllm.config['sensenova_secret_key'] == "")):
+            base_url = "https://api.sensenova.cn/compatible-mode/v1/"
+            jwt_api_key = api_key if api_key else lazyllm.config['sensenova_api_key']
+            self._is_only_api_key = True
+        else:
+            raise ValueError("Either configure both api_key and secret_key, or only configure api_key. "
+                             "Other configurations are not supported.")
         OnlineChatModuleBase.__init__(self,
                                       model_series="SENSENOVA",
-                                      api_key=jwt_api_key or SenseNovaModule.encode_jwt_token(
-                                          lazyllm.config['sensenova_api_key'], lazyllm.config['sensenova_secret_key']),
+                                      api_key=jwt_api_key,
                                       base_url=base_url,
                                       model_name=model,
                                       stream=stream,
@@ -57,9 +67,11 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
         return token
 
     def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat-completions')
+        self._url = urljoin(self._base_url, 'chat/completions' if self._is_only_api_key else 'chat-completions')
 
     def _convert_msg_format(self, msg: Dict[str, Any]):
+        if self._is_only_api_key:
+            return msg
         try:
             resp = msg['data']
             resp['plugins'] = {} if resp['plugins'] is None else resp['plugins']

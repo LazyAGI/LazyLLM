@@ -6,6 +6,7 @@ from .kimiModule import KimiModule
 from .sensenovaModule import SenseNovaModule
 from .qwenModule import QwenModule
 from .doubaoModule import DoubaoModule
+from .deepseekModule import DeepSeekModule
 from .onlineChatModuleBase import OnlineChatModuleBase
 
 class _ChatModuleMeta(type):
@@ -22,7 +23,8 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
               'glm': GLMModule,
               'kimi': KimiModule,
               'qwen': QwenModule,
-              'doubao': DoubaoModule}
+              'doubao': DoubaoModule,
+              'deepseek': DeepSeekModule}
 
     @staticmethod
     def _encapsulate_parameters(base_url: str,
