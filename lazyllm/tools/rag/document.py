@@ -6,8 +6,9 @@ from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 
 from .doc_manager import DocManager
-from .doc_impl import DocImpl
+from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder
 from .doc_node import DocNode
+from .index_base import IndexBase
 from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .utils import DocListManager
 from .global_metadata import GlobalMetadataDesc as DocField
@@ -152,6 +153,15 @@ class Document(ModuleBase):
     @classmethod
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
         return cls.add_reader(pattern, func)
+
+    def get_store(self):
+        return StorePlaceholder()
+
+    def get_embed(self):
+        return EmbedPlaceholder()
+
+    def register_index(self, index_type: str, index_cls: IndexBase, *args, **kwargs) -> None:
+        self._impl.register_index(index_type, index_cls, *args, **kwargs)
 
     def _forward(self, func_name: str, *args, **kw):
         return self._manager(self._curr_group, func_name, *args, **kw)

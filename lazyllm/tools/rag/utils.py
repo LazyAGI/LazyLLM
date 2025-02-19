@@ -4,6 +4,8 @@ import json
 import os
 import shutil
 import sqlite3
+import threading
+import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,11 +17,9 @@ import sqlalchemy
 from fastapi import UploadFile
 from filelock import FileLock
 from pydantic import BaseModel
-from sqlalchemy import Column, Row, insert, select, update
+from sqlalchemy import Column, Row, bindparam, insert, select, update
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-import threading
-import time
 
 import lazyllm
 from lazyllm import config
@@ -74,7 +74,9 @@ class KBGroup(KBDataBase):
     group_id = Column(sqlalchemy.Integer, primary_key=True, autoincrement=True)
     group_name = Column(sqlalchemy.String, nullable=False, unique=True)
 
+DocMetaChangedRow = Row
 GroupDocPartRow = Row
+
 class KBGroupDocuments(KBDataBase):
     __tablename__ = "kb_group_documents"
 
@@ -84,6 +86,7 @@ class KBGroupDocuments(KBDataBase):
     status = Column(sqlalchemy.Text, nullable=True)
     log = Column(sqlalchemy.Text, nullable=True)
     need_reparse = Column(sqlalchemy.Boolean, default=False, nullable=False)
+    new_meta = Column(sqlalchemy.Text, nullable=True)
     # unique constraint
     __table_args__ = (sqlalchemy.UniqueConstraint('doc_id', 'group_name', name='uq_doc_to_group'),)
 
@@ -123,7 +126,7 @@ class DocListManager(ABC):
         if cls is not DocListManager:
             return super().__new__(cls)
         return super().__new__(__class__.__pool__[config['default_dlmanager']])
-    
+
     @property
     def enable_path_monitoring(self):
         return self._enable_path_monitoring
@@ -169,6 +172,15 @@ class DocListManager(ABC):
     def list_files(self, limit: Optional[int] = None, details: bool = False,
                    status: Union[str, List[str]] = Status.all,
                    exclude_status: Optional[Union[str, List[str]]] = None): pass
+
+    @abstractmethod
+    def get_docs(self, doc_ids: List[str]) -> List[KBDocument]: pass
+
+    @abstractmethod
+    def set_docs_new_meta(self, doc_meta: Dict[str, dict]): pass
+
+    @abstractmethod
+    def fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]: pass
 
     @abstractmethod
     def list_all_kb_group(self): pass
@@ -254,20 +266,17 @@ class SqliteDocListManager(DocListManager):
         if self._enable_path_monitoring:
             self._monitor_thread.start()
 
-    def __reduce__(self):
-        return (__class__, (self._path, self._name, False,))
-    
     @DocListManager.enable_path_monitoring.setter
     def enable_path_monitoring(self, val: bool):
-        self._enable_path_monitoring = (val == True)
-        if val == True:
+        self._enable_path_monitoring = (val is True)
+        if val is True:
             self._monitor_continue = True
             self._monitor_thread.start()
         else:
             self._monitor_continue = False
             if self._monitor_thread.is_alive():
                 self._monitor_thread.join()
-    
+
     def __del__(self):
         self.enable_path_monitoring = False
 
@@ -278,7 +287,7 @@ class SqliteDocListManager(DocListManager):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='documents'")
             return cursor.fetchone() is not None
-    
+
     def monitor_directory_worker(self):
         failed_files_count = defaultdict(int)
         with self._db_lock, self._Session() as session:
@@ -296,11 +305,11 @@ class SqliteDocListManager(DocListManager):
             to_be_deleted_doc_ids = set([gen_docid(ele) for ele in to_be_deleted_files])
             failed_doc_ids = set()
             filter_status_list = [DocListManager.Status.success,
-                                DocListManager.Status.failed, DocListManager.Status.waiting]
+                                  DocListManager.Status.failed, DocListManager.Status.waiting]
             with self._db_lock, self._Session() as session:
                 docs_not_expected = session.query(KBDocument).filter(KBDocument.doc_id.in_(to_be_added_doc_ids)).all()
                 docs_expected = session.query(KBDocument).filter(KBDocument.doc_id.in_(to_be_deleted_doc_ids),
-                                                                KBDocument.status.in_(filter_status_list)).all()
+                                                                 KBDocument.status.in_(filter_status_list)).all()
             # 2. Skip new files that are already in the database
             failed_files.update([doc.path for doc in docs_not_expected])
             failed_doc_ids.update([doc.doc_id for doc in docs_not_expected])
@@ -404,6 +413,41 @@ class SqliteDocListManager(DocListManager):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             cursor = conn.execute(query, params)
             return cursor.fetchall() if details else [row[0] for row in cursor]
+
+    def get_docs(self, doc_ids: List[str]) -> List[KBDocument]:
+        with self._db_lock, self._Session() as session:
+            docs = session.query(KBDocument).filter(KBDocument.doc_id.in_(doc_ids)).all()
+            return docs
+        return []
+
+    def set_docs_new_meta(self, doc_meta: Dict[str, dict]):
+        data_to_update = [{"_doc_id": k, "_meta": json.dumps(v)} for k, v in doc_meta.items()]
+        with self._db_lock, self._Session() as session:
+            # Use sqlalchemy core bulk update
+            stmt = KBDocument.__table__.update().where(
+                KBDocument.doc_id == bindparam("_doc_id")).values(meta=bindparam("_meta"))
+            session.execute(stmt, data_to_update)
+            session.commit()
+
+            stmt = KBGroupDocuments.__table__.update().where(
+                KBGroupDocuments.doc_id == bindparam("_doc_id"),
+                KBGroupDocuments.status != DocListManager.Status.waiting).values(new_meta=bindparam("_meta"))
+            session.execute(stmt, data_to_update)
+            session.commit()
+
+    def fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]:
+        rows = []
+        conds = [KBGroupDocuments.group_name == group, KBGroupDocuments.new_meta.isnot(None)]
+        with self._db_lock, self._Session() as session:
+            rows = (
+                session.query(KBDocument.path, KBGroupDocuments.new_meta)
+                .join(KBGroupDocuments, KBDocument.doc_id == KBGroupDocuments.doc_id)
+                .filter(*conds).all()
+            )
+            stmt = update(KBGroupDocuments).where(sqlalchemy.and_(*conds)).values(new_meta=None)
+            session.execute(stmt)
+            session.commit()
+        return rows
 
     def list_all_kb_group(self):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:

@@ -128,8 +128,9 @@ class TestDeploy(object):
         lazyllm.config.add("openai_api_key", str, "123", "OPENAI_API_KEY")
 
         # set source
-        chat = lazyllm.AutoModel('sensenova')
-        assert isinstance(chat, lazyllm.OnlineChatModule)
+        with pytest.raises(ValueError, match="Either configure both api_key and secret_key, "
+                           "or only configure api_key. Other configurations are not supported."):
+            chat = lazyllm.AutoModel('sensenova')
         chat = lazyllm.AutoModel(source='openai')
         assert isinstance(chat, lazyllm.OnlineChatModule)
 

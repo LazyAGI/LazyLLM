@@ -46,19 +46,6 @@ class NodeArgs(object):
 
 all_nodes = dict()
 
-all_nodes['LocalLLM'] = dict(
-    module=lazyllm.TrainableModule,
-    init_arguments=dict(
-        base_model=NodeArgs(str),
-        target_path=NodeArgs(str),
-        stream=NodeArgs(bool, False),
-        return_trace=NodeArgs(bool, False)),
-    builder_argument=dict(
-        trainset=NodeArgs(str),
-        prompt=NodeArgs(str),
-        deploy_method=NodeArgs(str, 'vllm', getattr_f=partial(getattr, lazyllm.deploy)))
-)
-
 all_nodes['LocalEmbedding'] = dict(
     module=lazyllm.TrainableModule,
     init_arguments=dict(base_model=NodeArgs(str)),
@@ -144,7 +131,7 @@ all_nodes["SqlManager"] = dict(
         port=NodeArgs(str, None),
         db_name=NodeArgs(str, None),
         options_str=NodeArgs(str, ""),
-        tables_info_dict=NodeArgs(list, None),
+        tables_info_dict=NodeArgs(dict, None),
     ),
 )
 

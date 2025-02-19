@@ -16,6 +16,10 @@ class StoreBase(ABC):
         pass
 
     @abstractmethod
+    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
+        pass
+
+    @abstractmethod
     def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
         pass
 

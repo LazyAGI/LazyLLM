@@ -213,13 +213,27 @@ class TestFlowBind(object):
                 p(3)
 
     def test_bind_pipeline_in_warp(self):
-        with pipeline() as ppl:
-            with warp() as ppl.wp:
-                with lazyllm.save_pipeline_result():
+        num = 5
+
+        with lazyllm.save_pipeline_result():
+            with pipeline() as ppl:
+                with warp().sum as ppl.wp:
                     with pipeline() as ppl.wp.ppl:
                         ppl.wp.ppl.bug = lambda x: time.sleep(random.randint(0, 30) / 1000)
-                        ppl.wp.ppl.for_output = lazyllm.ifs(lambda x, y: y is None, lambda x, y: x, lambda x, y: -1
+                        ppl.wp.ppl.for_output = lazyllm.ifs(lambda x, y: y is None,
+                                                            lambda x, y: [{'idx': i} for i in range(num)],
+                                                            lambda x, y: -1
                                                             ) | bind(ppl.wp.ppl.input["idx"], lazyllm._0)
+                        with warp() as ppl.wp.ppl.wp2:
+                            with pipeline() as ppl.wp.ppl.wp2.ppl:
+                                ppl.wp.ppl.wp2.ppl.bug = lambda x: time.sleep(random.randint(0, 30) / 1000)
+                                ppl.wp.ppl.wp2.ppl.for_output = lazyllm.ifs(lambda x, y, z: z is None,
+                                                                            lambda x, y, z: x * num + y,
+                                                                            lambda x, y, z: -1
+                                    ) | bind(ppl.wp.ppl.input["idx"], ppl.wp.ppl.wp2.ppl.input["idx"], lazyllm._0)
+
+        test_data = [{'idx': i} for i in range(num)]
+        assert ppl(test_data) == tuple(range(num * num))
 
     def test_bind_pipeline_nested_kwargs(self):
         with pipeline() as p:

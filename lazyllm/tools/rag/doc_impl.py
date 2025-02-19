@@ -7,6 +7,7 @@ from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
 from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
+from .index_base import IndexBase
 from .store_base import StoreBase, LAZY_ROOT_NAME
 from .map_store import MapStore
 from .chroma_store import ChromadbStore
@@ -33,6 +34,11 @@ def embed_wrapper(func):
 
     return wrapper
 
+class StorePlaceholder:
+    pass
+
+class EmbedPlaceholder:
+    pass
 
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
@@ -54,6 +60,7 @@ class DocImpl:
         self._global_metadata_desc = global_metadata_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
         self._activated_embeddings = {}
+        self.index_pending_registrations = []
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
@@ -86,6 +93,7 @@ class DocImpl:
                                             embed_datatypes=embed_datatypes)
         else:
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
+        self._resolve_index_pending_registrations()
 
         ids, paths, metadatas = self._list_files()
         if not self.store.is_group_active(LAZY_ROOT_NAME):
@@ -119,7 +127,7 @@ class DocImpl:
             ids_need_delete = [gen_docid(path) for path in paths_need_delete]
         if ids_need_delete:
             if self._dlm is None:
-                # if not using dlm, delete store directly; 
+                # if not using dlm, delete store directly;
                 self._delete_doc_from_store(paths_need_delete)
             else:
                 LOG.warning(f"Found {len(paths_need_delete)} docs that are not in store: {paths_need_delete}")
@@ -127,6 +135,13 @@ class DocImpl:
                 assert (self._dlm.enable_path_monitoring is True
                         ), 'DocListManager must turn on path monitoring or only use DocManager to delete files'
         return rt_ids, rt_paths, rt_metadatas
+
+    def _resolve_index_pending_registrations(self):
+        for index_type, index_cls, index_args, index_kwargs in self.index_pending_registrations:
+            args = [self._resolve_index_placeholder(arg) for arg in index_args]
+            kwargs = {k: self._resolve_index_placeholder(v) for k, v in index_kwargs.items()}
+            self.store.register_index(index_type, index_cls(*args, **kwargs))
+        self.index_pending_registrations.clear()
 
     def _create_store(self, store_conf: Optional[Dict], embed_dims: Optional[Dict[str, int]] = None,
                       embed_datatypes: Optional[Dict[str, DataType]] = None) -> StoreBase:
@@ -240,12 +255,32 @@ class DocImpl:
             return klass
         return decorator
 
+    def _resolve_index_placeholder(self, value):
+        if isinstance(value, StorePlaceholder): return self.store
+        elif isinstance(value, EmbedPlaceholder): return self.embed
+        return value
+
+    def register_index(self, index_type: str, index_cls: IndexBase, *args, **kwargs) -> None:
+        if bool(self._lazy_init.flag):
+            args = [self._resolve_index_placeholder(arg) for arg in args]
+            kwargs = {k: self._resolve_index_placeholder(v) for k, v in kwargs.items()}
+            self.store.register_index(index_type, index_cls(*args, **kwargs))
+        else:
+            self.index_pending_registrations.append((index_type, index_cls, args, kwargs))
+
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
 
     def worker(self):
         while True:
+            # Apply meta changes
+            rows = self._dlm.fetch_docs_changed_meta(self._kb_group_name)
+            if rows:
+                for row in rows:
+                    new_meta_dict = json.loads(row[1]) if row[1] else {}
+                    self.store.update_doc_meta(row[0], new_meta_dict)
+
             # Step 1: do doc-parsing, highest priority
             docs = self._dlm.get_docs_need_reparse(group=self._kb_group_name)
             if docs:

@@ -6,6 +6,7 @@ from .global_metadata import RAG_DOC_PATH
 import uuid
 import threading
 import time
+import copy
 
 class MetadataMode(str, Enum):
     ALL = auto()
@@ -36,6 +37,7 @@ class DocNode:
         self._children: Dict[str, List["DocNode"]] = defaultdict(list)
         self._lock = threading.Lock()
         self._embedding_state = set()
+        self.relevance_score = None
 
         if global_metadata and parent:
             raise ValueError('only ROOT node can set global metadata.')
@@ -203,6 +205,11 @@ class DocNode:
 
     def to_dict(self) -> Dict:
         return dict(content=self._content, embedding=self.embedding, metadata=self.metadata)
+
+    def with_score(self, score):
+        node = copy.copy(self)
+        node.relevance_score = score
+        return node
 
 
 class QADocNode(DocNode):

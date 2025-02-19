@@ -2,7 +2,7 @@ from typing import Any, Dict
 
 import lazyllm
 from .openaiEmbed import OpenAIEmbedding
-from .glmEmbed import GLMEmbedding
+from .glmEmbed import GLMEmbedding, GLMReranking
 from .sensenovaEmbed import SenseNovaEmbedding
 from .qwenEmbed import QwenEmbedding, QwenReranking
 from .onlineEmbeddingModuleBase import OnlineEmbeddingModuleBase
@@ -20,7 +20,8 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                     'sensenova': SenseNovaEmbedding,
                     'glm': GLMEmbedding,
                     'qwen': QwenEmbedding}
-    RERANK_MODELS = {'qwen': QwenReranking}
+    RERANK_MODELS = {'qwen': QwenReranking,
+                     'glm': GLMReranking}
 
     @staticmethod
     def _encapsulate_parameters(embed_url: str,
@@ -59,6 +60,8 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                 source = OnlineEmbeddingModule._check_available_source(OnlineEmbeddingModule.EMBED_MODELS)
             return OnlineEmbeddingModule.EMBED_MODELS[source](**params)
         elif kwargs.get("type") == "rerank":
+            if "type" in params:
+                params.pop("type")
             if source is None:
                 source = OnlineEmbeddingModule._check_available_source(OnlineEmbeddingModule.RERANK_MODELS)
             return OnlineEmbeddingModule.RERANK_MODELS[source](**params)

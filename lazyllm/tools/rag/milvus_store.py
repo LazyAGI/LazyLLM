@@ -14,6 +14,7 @@ from .data_type import DataType
 from lazyllm.common import override, obj2str, str2obj
 
 MILVUS_UPSERT_BATCH_SIZE = 500
+MILVUS_PAGINATION_OFFSET = 1000
 
 class MilvusStore(StoreBase):
     # we define these variables as members so that pymilvus is not imported until MilvusStore is instantiated.
@@ -170,6 +171,10 @@ class MilvusStore(StoreBase):
         self._map_store.update_nodes(nodes)
 
     @override
+    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
+        self._map_store.update_doc_meta(filepath, metadata)
+
+    @override
     def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
         if uids:
             self._client.delete(collection_name=group_name,
@@ -246,8 +251,25 @@ class MilvusStore(StoreBase):
     def _load_all_nodes_to(self, store: StoreBase) -> None:
         uid2node = {}
         for group_name in self._client.list_collections():
-            results = self._client.query(collection_name=group_name,
-                                         filter=f'{self._primary_key} != ""')
+            collection_desc = self._client.describe_collection(collection_name=group_name)
+            field_names = [field.get("name") for field in collection_desc.get('fields', [])]
+
+            iterator = self._client.query_iterator(
+                collection_name=group_name,
+                batch_size=MILVUS_PAGINATION_OFFSET,
+                filter=f'{self._primary_key} != ""',
+                output_fields=field_names
+            )
+
+            results = []
+            while True:
+                result = iterator.next()
+
+                if not result:
+                    iterator.close()
+                    break
+                results += result
+
             for result in results:
                 node = self._deserialize_node_partial(result)
                 node._group = group_name

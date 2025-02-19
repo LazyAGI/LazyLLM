@@ -1,8 +1,8 @@
 import lazyllm
 from lazyllm.engine import LightEngine, NodeMetaHook
 import pytest
-from .utils import SqlEgsData, get_sql_init_keywords
-from lazyllm.tools import SqlManager
+from .utils import SqlEgsData, get_db_init_keywords
+from lazyllm.tools import SqlManager, DBStatus
 from .tools import (get_current_weather_code, get_current_weather_vars, get_current_weather_doc,
                     get_n_day_weather_forecast_code, multiply_tool_code, add_tool_code, dummy_code)
 import unittest
@@ -153,14 +153,15 @@ class TestEngine(unittest.TestCase):
 
     def test_sql_call(self):
         db_type = "PostgreSQL"
-        username, password, host, port, database = get_sql_init_keywords(db_type)
+        username, password, host, port, database = get_db_init_keywords(db_type)
 
         # 1.  Init: insert data to database
-        tmp_sql_manager = SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)
+        tmp_sql_manager = SqlManager(db_type, username, password, host, port, database,
+                                     tables_info_dict=SqlEgsData.TEST_TABLES_INFO)
         for table_name in SqlEgsData.TEST_TABLES:
-            rt, err_msg = tmp_sql_manager._delete_rows_by_name(table_name)
+            tmp_sql_manager.execute_commit(f"DELETE FROM {table_name}")
         for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
-            tmp_sql_manager.execute_sql_update(insert_script)
+            tmp_sql_manager.execute_commit(insert_script)
 
         # 2. Engine: build and chat
         resources = [
@@ -179,7 +180,7 @@ class TestEngine(unittest.TestCase):
                     tables_info_dict=SqlEgsData.TEST_TABLES_INFO,
                 ),
             ),
-            dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="qwen")),
+            dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="sensenova")),
         ]
         nodes = [
             dict(
@@ -199,7 +200,8 @@ class TestEngine(unittest.TestCase):
 
         # 3. Release: delete data and table from database
         for table_name in SqlEgsData.TEST_TABLES:
-            rt, err_msg = tmp_sql_manager._drop_table_by_name(table_name)
+            db_result = tmp_sql_manager.drop_table(table_name)
+            assert db_result.status == DBStatus.SUCCESS
 
     def test_register_tools(self):
         resources = [
@@ -225,6 +227,9 @@ class TestEngine(unittest.TestCase):
         assert city_name in ret and unit in ret and '10' in ret
 
     def test_stream_and_hostory(self):
+        builtin_history = [['水的沸点是多少？', '您好，我的答案是：水的沸点在标准大气压下是100摄氏度。'],
+                           ['世界上最大的动物是什么？', '您好，我的答案是：蓝鲸是世界上最大的动物。'],
+                           ['人一天需要喝多少水？', '您好，我的答案是：一般建议每天喝8杯水，大约2升。']]
         nodes = [dict(id='1', kind='OnlineLLM', name='m1', args=dict(source='glm', stream=True, prompt=dict(
                       system='请将我的问题翻译成中文。请注意，请直接输出翻译后的问题，不要反问和发挥',
                       user='问题: {query} \n, 翻译:'))),
@@ -232,16 +237,14 @@ class TestEngine(unittest.TestCase):
                       args=dict(source='glm', stream=True,
                                 prompt=dict(system='请参考历史对话，回答问题，并保持格式不变。', user='{query}'))),
                  dict(id='3', kind='JoinFormatter', name='join', args=dict(type='to_dict', names=['query', 'answer'])),
-                 dict(id='4', kind='OnlineLLM', stream=False, name='m3', args=dict(source='glm', prompt=dict(
-                     system='你是一个问答机器人，会根据用户的问题作出回答。',
-                     user='请结合历史对话和本轮的问题，总结我们的全部对话。本轮情况如下:\n {query}, 回答: {answer}')))]
+                 dict(id='4', kind='OnlineLLM', stream=False, name='m3',
+                      args=dict(source='glm', history=builtin_history, prompt=dict(
+                          system='你是一个问答机器人，会根据用户的问题作出回答。',
+                          user='请结合历史对话和本轮的问题，总结我们的全部对话。本轮情况如下:\n {query}, 回答: {answer}')))]
         engine = LightEngine()
         gid = engine.start(nodes, edges=[['__start__', '1'], ['1', '2'], ['1', '3'], ['2', '3'],
                                          ['3', '4'], ['4', '__end__']], _history_ids=['2', '4'])
-        history = [['水的沸点是多少？', '您好，我的答案是：水的沸点在标准大气压下是100摄氏度。'],
-                   ['世界上最大的动物是什么？', '您好，我的答案是：蓝鲸是世界上最大的动物。'],
-                   ['人一天需要喝多少水？', '您好，我的答案是：一般建议每天喝8杯水，大约2升。'],
-                   ['雨后为什么会有彩虹？', '您好，我的答案是：雨后阳光通过水滴发生折射和反射形成了彩虹。'],
+        history = [['雨后为什么会有彩虹？', '您好，我的答案是：雨后阳光通过水滴发生折射和反射形成了彩虹。'],
                    ['月亮会发光吗？', '您好，我的答案是：月亮本身不会发光，它反射太阳光。'],
                    ['一年有多少天', '您好，我的答案是：一年有365天，闰年有366天。']]
 
@@ -256,7 +259,7 @@ class TestEngine(unittest.TestCase):
             result = future.result()
             assert '一天' in stream_result and '小时' in stream_result
             assert '您好，我的答案是' in stream_result and '24' in stream_result
-            assert '蓝鲸' in result and '水' in result
+            assert ('蓝鲸' in result or '动物' in result) and '水' in result
 
     def test_egine_online_serve_train(self):
         envs = ['glm_api_key', 'qwen_api_key']

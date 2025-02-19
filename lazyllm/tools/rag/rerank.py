@@ -108,7 +108,9 @@ class ModuleReranker(Reranker):
         else:
             inps = {'query': query, 'documents': docs, 'top_n': top_n}
             sorted_indices = self._reranker(inps)
-        results = [nodes[i] for i in sorted_indices]
+        results = []
+        for index, relevance_score in sorted_indices:
+            results.append(nodes[index].with_score(relevance_score))
         LOG.debug(f"Rerank use `{self._name}` and get nodes: {results}")
         return self._post_process(results)
 
