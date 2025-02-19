@@ -20,8 +20,6 @@ import json
 import time
 import tempfile
 
-os.environ["LAZYLLM_SENSENOVA_API_KEY"] = "2DDCE1E2C1E649A38517D7035C78888B"
-os.environ["LAZYLLM_SENSENOVA_SECRET_KEY"] = "C80566E983F44981A32EAF1E7731A9AB"
 
 class TestDocImpl(unittest.TestCase):
 
