@@ -92,6 +92,7 @@ class TestDeploy(object):
         res = m(['你好', '世界'])
         assert len(json.loads(res)) == 2
 
+    @pytest.mark.skip(reason="Current infinity_emb version doesn't support.")
     def test_cross_modal_embedding(self):
         m = lazyllm.TrainableModule('siglip')
         m.update_server()
