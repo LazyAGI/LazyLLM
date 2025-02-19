@@ -95,8 +95,8 @@ class DocImpl:
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
         self._resolve_index_pending_registrations()
 
-        ids, paths, metadatas = self._list_files()
         if not self.store.is_group_active(LAZY_ROOT_NAME):
+            ids, paths, metadatas = self._list_files()
             ids, paths, metadatas = self._delete_nonexistent_docs_on_startup(ids, paths, metadatas)
             if paths:
                 if not metadatas: metadatas = [{}] * len(paths)
