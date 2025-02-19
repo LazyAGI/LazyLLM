@@ -31,7 +31,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             jwt_api_key = api_key if api_key else lazyllm.config['sensenova_api_key']
             self._is_only_api_key = True
         else:
-            raise ValueError("Either configure both api_key and secret_key, or only configure api_key."
+            raise ValueError("Either configure both api_key and secret_key, or only configure api_key. "
                              "Other configurations are not supported.")
         OnlineChatModuleBase.__init__(self,
                                       model_series="SENSENOVA",
