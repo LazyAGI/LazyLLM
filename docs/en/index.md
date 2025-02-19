@@ -122,7 +122,7 @@ First, statement 1 imports the `lazyllm` module, and in statement 2, an instance
 
 | Platform | API Key Acquisition URL              | Environment Variables to Set                            |
 |:---------|:-------------------------------------|:--------------------------------------------------------|
-| [Nova](https://platform.sensenova.cn/)     | [API Keys(ak and sk)](https://console.sensecore.cn/help/docs/model-as-a-service/nova/),<br>[API Keys(only api key)](https://console.sensecore.cn/aistudio/management/api-key)       | LAZYLLM_SENSENOVA_API_KEY, LAZYLLM_SENSENOVA_SECRET_KEY |
+| [Nova](https://platform.sensenova.cn/)     | [API Keys(ak and sk)](https://console.sensecore.cn/help/docs/model-as-a-service/nova/),<br>[API Keys(only api key)](https://console.sensecore.cn/aistudio/management/api-key)       | LAZYLLM_SENSENOVA_API_KEY,<br>LAZYLLM_SENSENOVA_SECRET_KEY |
 | [OpenAI](https://openai.com/index/openai-api/)   | [API Keys](https://platform.openai.com/api-keys) | LAZYLLM_OPENAI_API_KEY                                  |
 | [Zhipu](https://open.bigmodel.cn/)    | [API Keys](https://open.bigmodel.cn/usercenter/apikeys)            | LAZYLLM_GLM_API_KEY                                     |
 | [Kimi](https://platform.moonshot.cn/)     | [API Keys](https://platform.moonshot.cn/console/api-keys)        | LAZYLLM_KIMI_API_KEY                                    |

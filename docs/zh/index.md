@@ -122,7 +122,7 @@ python3 chat.py
 
 | 平台     | 获取 api key                         | 需要设置的环境变量                                           |
 | :------- | :----------------------------------- | :----------------------------------------------------------- |
-| [日日新](https://platform.sensenova.cn/)   | [获取访问密钥(ak and sk)](https://console.sensecore.cn/help/docs/model-as-a-service/nova/),<br>[获取访问密钥(only api key)](https://console.sensecore.cn/aistudio/management/api-key)       | `LAZYLLM_SENSENOVA_API_KEY`,  `LAZYLLM_SENSENOVA_SECRET_KEY` |
+| [日日新](https://platform.sensenova.cn/)   | [获取访问密钥(ak and sk)](https://console.sensecore.cn/help/docs/model-as-a-service/nova/),<br>[获取访问密钥(only api key)](https://console.sensecore.cn/aistudio/management/api-key)       | `LAZYLLM_SENSENOVA_API_KEY`,<br>`LAZYLLM_SENSENOVA_SECRET_KEY` |
 | [OpenAI](https://openai.com/index/openai-api/)   | [获取访问密钥](https://platform.openai.com/api-keys) | `LAZYLLM_OPENAI_API_KEY`                                     |
 | [智谱](https://open.bigmodel.cn/)     | [获取访问密钥](https://open.bigmodel.cn/usercenter/apikeys)            | `LAZYLLM_GLM_API_KEY`                                        |
 | [Kimi](https://platform.moonshot.cn/)     | [获取访问密钥](https://platform.moonshot.cn/console/api-keys)        | `LAZYLLM_KIMI_API_KEY`                                       |
