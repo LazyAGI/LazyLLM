@@ -5,6 +5,7 @@ import os
 import shutil
 import sqlite3
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import (Any, Callable, Dict, Generator, List, Optional, Set, Tuple,
                     Union)
@@ -17,6 +18,8 @@ from pydantic import BaseModel
 from sqlalchemy import Column, Row, insert, select, update
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+import threading
+import time
 
 import lazyllm
 from lazyllm import config
@@ -102,19 +105,33 @@ class DocListManager(ABC):
         success = 'success'
         failed = 'failed'
         deleting = 'deleting'
+        # deleted is no longer used
         deleted = 'deleted'
 
-    def __init__(self, path, name):
+    def __init__(self, path, name, enable_path_monitoring=True):
         self._path = path
         self._name = name
+        self._enable_path_monitoring = enable_path_monitoring
         self._id = hashlib.sha256(f'{name}@+@{path}'.encode()).hexdigest()
         if not os.path.isabs(path):
             raise ValueError(f"path [{path}] is not an absolute path")
+
+    def __reduce__(self):
+        return (__class__, (self._path, self._name, False,))
 
     def __new__(cls, *args, **kw):
         if cls is not DocListManager:
             return super().__new__(cls)
         return super().__new__(__class__.__pool__[config['default_dlmanager']])
+    
+    @property
+    def enable_path_monitoring(self):
+        return self._enable_path_monitoring
+
+    @enable_path_monitoring.setter
+    @abstractmethod
+    def enable_path_monitoring(self, val: bool):
+        pass
 
     def init_tables(self) -> 'DocListManager':
         if not self.table_inited():
@@ -218,8 +235,8 @@ class DocListManager(ABC):
 
 
 class SqliteDocListManager(DocListManager):
-    def __init__(self, path, name):
-        super().__init__(path, name)
+    def __init__(self, path, name, enable_path_monitoring=True):
+        super().__init__(path, name, enable_path_monitoring)
         root_dir = os.path.expanduser(os.path.join(config['home'], '.dbs'))
         os.makedirs(root_dir, exist_ok=True)
         self._db_path = os.path.join(root_dir, f'.lazyllm_dlmanager.{self._id}.db')
@@ -231,6 +248,28 @@ class SqliteDocListManager(DocListManager):
         )
         self._Session = sessionmaker(bind=self._engine)
         self.init_tables()
+        self._monitor_thread = threading.Thread(target=self.monitor_directory_worker)
+        self._monitor_thread.daemon = True
+        self._monitor_continue = True
+        if self._enable_path_monitoring:
+            self._monitor_thread.start()
+
+    def __reduce__(self):
+        return (__class__, (self._path, self._name, False,))
+    
+    @DocListManager.enable_path_monitoring.setter
+    def enable_path_monitoring(self, val: bool):
+        self._enable_path_monitoring = (val == True)
+        if val == True:
+            self._monitor_continue = True
+            self._monitor_thread.start()
+        else:
+            self._monitor_continue = False
+            if self._monitor_thread.is_alive():
+                self._monitor_thread.join()
+    
+    def __del__(self):
+        self.enable_path_monitoring = False
 
     def _init_tables(self):
         KBDataBase.metadata.create_all(bind=self._engine)
@@ -239,6 +278,54 @@ class SqliteDocListManager(DocListManager):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='documents'")
             return cursor.fetchone() is not None
+    
+    def monitor_directory_worker(self):
+        failed_files_count = defaultdict(int)
+        with self._db_lock, self._Session() as session:
+            docs_all = session.query(KBDocument).all()
+        previous_files = set([doc.path for doc in docs_all])
+        skip_files = set()
+        while self._monitor_continue:
+            # 1. Scan files in the directory, find added and deleted files
+            current_files = set(super().monitor_directory())
+            to_be_added_files = current_files - previous_files - skip_files
+            to_be_deleted_files = previous_files - current_files - skip_files
+            failed_files = set()
+
+            to_be_added_doc_ids = set([gen_docid(ele) for ele in to_be_added_files])
+            to_be_deleted_doc_ids = set([gen_docid(ele) for ele in to_be_deleted_files])
+            failed_doc_ids = set()
+            filter_status_list = [DocListManager.Status.success,
+                                DocListManager.Status.failed, DocListManager.Status.waiting]
+            with self._db_lock, self._Session() as session:
+                docs_not_expected = session.query(KBDocument).filter(KBDocument.doc_id.in_(to_be_added_doc_ids)).all()
+                docs_expected = session.query(KBDocument).filter(KBDocument.doc_id.in_(to_be_deleted_doc_ids),
+                                                                KBDocument.status.in_(filter_status_list)).all()
+            # 2. Skip new files that are already in the database
+            failed_files.update([doc.path for doc in docs_not_expected])
+            failed_doc_ids.update([doc.doc_id for doc in docs_not_expected])
+            to_be_added_files -= failed_files
+            # Actually it is add to doc with success status, then add to kb_group with waiting status
+            self.add_files(list(to_be_added_files), status=DocListManager.Status.success)
+
+            # 3. Skip deleted files that are: 1. not in the database, 2. status not success/failed/waiting
+            safe_to_delete_files = set([doc.path for doc in docs_expected])
+            safe_to_delete_doc_ids = set([doc.doc_id for doc in docs_expected])
+            failed_doc_ids.update(to_be_deleted_doc_ids - safe_to_delete_doc_ids)
+            failed_files.update(to_be_deleted_files - safe_to_delete_files)
+            to_be_deleted_files = safe_to_delete_files
+            to_be_deleted_doc_ids = safe_to_delete_doc_ids
+            self.delete_files(list(to_be_deleted_doc_ids))
+
+            # 4. update skip_files
+            for ele in failed_files:
+                failed_files_count[ele] += 1
+                if failed_files_count[ele] >= 3:
+                    skip_files.add(ele)
+            # update previous files, while failed files will be re-processed in the next loop
+            previous_files = (current_files | to_be_added_files) - to_be_deleted_files
+            time.sleep(10)
+        lazyllm.LOG.warning("END MONITORING")
 
     @staticmethod
     def get_status_cond_and_params(status: Union[str, List[str]],

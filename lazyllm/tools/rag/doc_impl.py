@@ -54,7 +54,6 @@ class DocImpl:
         self._global_metadata_desc = global_metadata_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
         self._activated_embeddings = {}
-        self._previous_files = set()
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
@@ -102,7 +101,6 @@ class DocImpl:
                     self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                               new_status=DocListManager.Status.success)
                 LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
-        self._previous_files = set(paths)
         if self._dlm:
             self._daemon = threading.Thread(target=self.worker)
             self._daemon.daemon = True
@@ -120,10 +118,14 @@ class DocImpl:
         else:
             ids_need_delete = [gen_docid(path) for path in paths_need_delete]
         if ids_need_delete:
-            if self._dlm:
-                self._dlm.delete_files(file_ids=ids_need_delete)
-            self._delete_doc_from_store(paths_need_delete)
-        self._previous_files = set(paths)
+            if self._dlm is None:
+                # if not using dlm, delete store directly; 
+                self._delete_doc_from_store(paths_need_delete)
+            else:
+                LOG.warning(f"Found {len(paths_need_delete)} docs that are not in store: {paths_need_delete}")
+                # else dlm must turn on path monitoring to detect deleted files
+                assert (self._dlm.enable_path_monitoring is True
+                        ), 'DocListManager must turn on path monitoring or only use DocManager to delete files'
         return rt_ids, rt_paths, rt_metadatas
 
     def _create_store(self, store_conf: Optional[Dict], embed_dims: Optional[Dict[str, int]] = None,
@@ -258,23 +260,9 @@ class DocImpl:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.success)
 
-            # Step 2: monior file changse that will be processed in below steps
+            # Step 2: After doc is deleted from related kb_group, delete doc from db
             if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
-                # After doc is deleted from related kb_group, delete doc from db
                 self._dlm.delete_unreferenced_doc()
-
-                # Monitor directory for adding and deleting files
-                current_files = self._dlm.monitor_directory()
-                added_files = list(current_files - self._previous_files)
-                deleted_files = list(self._previous_files - current_files)
-                self._previous_files = current_files
-                if added_files:
-                    # Actually this function is "add_docs_with_waiting_analysis"
-                    self._dlm.add_files(added_files, status=DocListManager.Status.success)
-                if deleted_files:
-                    deleted_doc_ids = [gen_docid(f) for f in deleted_files]
-                    # Actually this function is "set_docs_status_deleting"
-                    self._dlm.delete_files(deleted_doc_ids)
 
             # Step 3: do doc-deleting
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)

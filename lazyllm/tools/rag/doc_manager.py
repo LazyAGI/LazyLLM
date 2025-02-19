@@ -16,8 +16,15 @@ import uuid
 class DocManager(lazyllm.ModuleBase):
     def __init__(self, dlm: DocListManager) -> None:
         super().__init__()
+        # disable path monitoring in case of competition adding/deleting files
         self._manager = dlm
-
+        self._manager.enable_path_monitoring = False
+    
+    def __reduce__(self):
+        # For unknown reason, when deserializing _manager monitoring is always enabled
+        self._manager.enable_path_monitoring = False
+        return (__class__, (self._manager,))
+    
     @app.get("/", response_model=BaseResponse, summary="docs")
     def document(self):
         return RedirectResponse(url="/docs")

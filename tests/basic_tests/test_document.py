@@ -195,13 +195,14 @@ class TmpDir:
 class TestDocumentServer(unittest.TestCase):
     def setUp(self):
         self.dir = TmpDir()
-        self.dlm = DocListManager(path=self.dir.rag_dir, name=None)
-        self.dlm.init_tables()
+        self.dlm = DocListManager(path=self.dir.rag_dir, name=None, enable_path_monitoring=False)
 
         self.doc_impl = DocImpl(embed=MagicMock(), dlm=self.dlm)
         self.doc_impl._lazy_init()
 
-        self.server = lazyllm.ServerModule(DocManager(self.dlm))
+        doc_manager = DocManager(self.dlm)
+        self.server = lazyllm.ServerModule(doc_manager)
+
         self.server.start()
 
         url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
@@ -245,6 +246,10 @@ class TestDocumentServer(unittest.TestCase):
         # make sure that only one file is left
         response = httpx.get(f'{self.doc_server_addr}/list_files')
         assert response.status_code == 200 and len(response.json().get('data')) == 1
+    
+    def tearDown(self):
+        # Must clean up the server as all uploaded files will be deleted as they are in tmp dir
+        self.dlm.release()
 
 if __name__ == "__main__":
     unittest.main()

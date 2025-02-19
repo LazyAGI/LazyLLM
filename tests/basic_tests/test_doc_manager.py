@@ -9,6 +9,7 @@ import unittest
 import requests
 import io
 import json
+import time
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +56,8 @@ class TestDocListManager(unittest.TestCase):
 
     def test_list_kb_group_files(self):
         self.manager.init_tables()
+        # wait for files to be added
+        time.sleep(15)
         files_list = self.manager.list_kb_group_files(DocListManager.DEFAULT_GROUP_NAME, details=True)
         assert len(files_list) == 2
         files_list = self.manager.list_kb_group_files('group1', details=True)
