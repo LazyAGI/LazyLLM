@@ -30,6 +30,9 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             base_url = "https://api.sensenova.cn/compatible-mode/v1/"
             jwt_api_key = api_key if api_key else lazyllm.config['sensenova_api_key']
             self._is_only_api_key = True
+        else:
+            raise ValueError("Either configure both api_key and secret_key, or only configure api_key."
+                             "Other configurations are not supported.")
         OnlineChatModuleBase.__init__(self,
                                       model_series="SENSENOVA",
                                       api_key=jwt_api_key,
@@ -64,32 +67,28 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
         return token
 
     def _set_chat_url(self):
-        if not self._is_only_api_key:
-            self._url = urljoin(self._base_url, 'chat-completions')
-        else:
-            self._url = urljoin(self._base_url, 'chat/completions')
+        self._url = urljoin(self._base_url, 'chat/completions' if self._is_only_api_key else 'chat-completions')
 
     def _convert_msg_format(self, msg: Dict[str, Any]):
-        if not self._is_only_api_key:
-            try:
-                resp = msg['data']
-                resp['plugins'] = {} if resp['plugins'] is None else resp['plugins']
-                data = resp['choices'][0]
-                content = data.get('delta', '') if 'delta' in data else data.get('message', '')
-                message = {"role": data.pop("role"), "content": content}
-                data["delta" if "delta" in data else "message"] = message
-
-                if "tool_calls" in data:
-                    tool_calls = data.pop('tool_calls')
-                    for idx in range(len(tool_calls)):
-                        tool_calls[idx]['index'] = idx
-                    data["delta" if "delta" in data else "message"]["tool_calls"] = tool_calls
-                resp['model'] = self._model_name
-                return resp
-            except Exception:
-                return ""
-        else:
+        if self._is_only_api_key:
             return msg
+        try:
+            resp = msg['data']
+            resp['plugins'] = {} if resp['plugins'] is None else resp['plugins']
+            data = resp['choices'][0]
+            content = data.get('delta', '') if 'delta' in data else data.get('message', '')
+            message = {"role": data.pop("role"), "content": content}
+            data["delta" if "delta" in data else "message"] = message
+
+            if "tool_calls" in data:
+                tool_calls = data.pop('tool_calls')
+                for idx in range(len(tool_calls)):
+                    tool_calls[idx]['index'] = idx
+                data["delta" if "delta" in data else "message"]["tool_calls"] = tool_calls
+            resp['model'] = self._model_name
+            return resp
+        except Exception:
+            return ""
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:
