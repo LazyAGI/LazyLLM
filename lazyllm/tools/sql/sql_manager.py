@@ -216,7 +216,7 @@ class SqlManager(DBManager):
     def execute_query(self, statement: str) -> str:
         statement = re.sub(r"/\*.*?\*/", "", statement, flags=re.DOTALL).strip()
         if not statement.upper().startswith("SELECT"):
-            return "Only select statement supported"
+            return f"Only select statement supported. Original statement: {statement}"
         try:
             result = []
             with self.get_session() as session:

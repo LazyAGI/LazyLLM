@@ -176,7 +176,7 @@ class TestDocListServer(object):
         test_file_2.write("This is a test file 2.")
         cls.test_file_1, cls.test_file_2 = str(test_file_1), str(test_file_2)
 
-        cls.manager = DocListManager(str(test_dir), "TestManager")
+        cls.manager = DocListManager(str(test_dir), "TestManager", False)
         cls.manager.init_tables()
         cls.manager.add_kb_group('group1')
         cls.manager.add_kb_group('extra_group')
@@ -187,6 +187,8 @@ class TestDocListServer(object):
         test_file_extra = test_dir.join("test_extra.txt")
         test_file_extra.write("This is a test file extra.")
         cls.test_file_extra = str(test_file_extra)
+        cls.manager.add_files([cls.test_file_1, cls.test_file_2], status=DocListManager.Status.success)
+        time.sleep(15)
 
     def get_url(self, url, **kw):
         url = (self.server._url.rsplit("/", 1)[0] + '/' + url).rstrip('/')
