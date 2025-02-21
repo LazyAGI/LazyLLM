@@ -18,6 +18,7 @@ import io
 import re
 import json
 import time
+import tempfile
 
 
 class TestDocImpl(unittest.TestCase):
@@ -25,12 +26,19 @@ class TestDocImpl(unittest.TestCase):
     def setUp(self):
         self.mock_embed = MagicMock()
         self.mock_directory_reader = MagicMock()
+        # use temporary file as only existing files can be added to DocImpl
+        self.tmp_file_a = tempfile.NamedTemporaryFile()
+        self.tmp_file_b = tempfile.NamedTemporaryFile()
         mock_node = DocNode(group=LAZY_ROOT_NAME, text="dummy text")
-        mock_node._global_metadata = {RAG_DOC_PATH: "dummy_file.txt"}
+        mock_node._global_metadata = {RAG_DOC_PATH: self.tmp_file_a.name}
         self.mock_directory_reader.load_data.return_value = [mock_node]
 
-        self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=["dummy_file.txt"])
+        self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
         self.doc_impl._reader = self.mock_directory_reader
+
+    def tearDown(self):
+        self.tmp_file_a.close()
+        self.tmp_file_b.close()
 
     def test_create_node_group_default(self):
         self.doc_impl._create_builtin_node_group('MyChunk', transform=lambda x: ','.split(x))
@@ -73,9 +81,9 @@ class TestDocImpl(unittest.TestCase):
         self.doc_impl._lazy_init()
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
-        new_doc._global_metadata = {RAG_DOC_PATH: "new_file.txt"}
+        new_doc._global_metadata = {RAG_DOC_PATH: self.tmp_file_b.name}
         self.mock_directory_reader.load_data.return_value = [new_doc]
-        self.doc_impl._add_files(["new_file.txt"])
+        self.doc_impl._add_doc_to_store([self.tmp_file_b.name])
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 2
 
 class TestDocument(unittest.TestCase):
@@ -185,13 +193,14 @@ class TmpDir:
 class TestDocumentServer(unittest.TestCase):
     def setUp(self):
         self.dir = TmpDir()
-        self.dlm = DocListManager(path=self.dir.rag_dir, name=None)
-        self.dlm.init_tables()
+        self.dlm = DocListManager(path=self.dir.rag_dir, name=None, enable_path_monitoring=False)
 
         self.doc_impl = DocImpl(embed=MagicMock(), dlm=self.dlm)
         self.doc_impl._lazy_init()
 
-        self.server = lazyllm.ServerModule(DocManager(self.dlm))
+        doc_manager = DocManager(self.dlm)
+        self.server = lazyllm.ServerModule(doc_manager)
+
         self.server.start()
 
         url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
@@ -274,6 +283,10 @@ class TestDocumentServer(unittest.TestCase):
         # make sure that only one file is left
         response = httpx.get(f'{self.doc_server_addr}/list_files')
         assert response.status_code == 200 and len(response.json().get('data')) == 1
+
+    def tearDown(self):
+        # Must clean up the server as all uploaded files will be deleted as they are in tmp dir
+        self.dlm.release()
 
 if __name__ == "__main__":
     unittest.main()
