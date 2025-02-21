@@ -19,9 +19,9 @@ class Vllm(LazyLLMDeployBase):
         'stream': False,
         'stop': ['<|im_end|>', '<|im_start|>', '</s>', '<|assistant|>', '<|user|>', '<|system|>', '<eos>'],
         'skip_special_tokens': False,
-        'temperature': 0.01,
+        'temperature': 0.6,
         'top_p': 0.8,
-        'max_tokens': 1024
+        'max_tokens': 4096
     }
     auto_map = {'tp': 'tensor-parallel-size'}
 

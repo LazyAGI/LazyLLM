@@ -127,6 +127,25 @@ model_name_mapping = {
         },
         "type": "embed"
     },
+    "jina-clip-v1": {
+        "source": {
+            "huggingface": "jinaai/jina-clip-v1",
+            "modelscope": "jinaai/jina-clip-v1"
+        },
+        "type": "cross_modal_embed" # image - text
+    },
+    "siglip": {
+        "source": {
+            "huggingface": "google/siglip-so400m-patch14-384",
+        },
+        "type": "cross_modal_embed" # image - text
+    },
+    "colqwen2-v0.1": {
+        "source": {
+            "huggingface": "michaelfeil/colqwen2-v0.1",
+        },
+        "type": "cross_modal_embed" # image - text
+    },
     "bge-reranker-large": {
         "source": {
             "huggingface": "BAAI/bge-reranker-large",

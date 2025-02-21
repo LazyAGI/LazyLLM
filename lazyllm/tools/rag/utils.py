@@ -337,7 +337,6 @@ class SqliteDocListManager(DocListManager):
                     skip_files.add(ele)
             # update previous files, while failed files will be re-processed in the next loop
             previous_files = (current_files | to_be_added_files) - to_be_deleted_files
-
             if is_first_run:
                 self._init_monitor_event.set()
             is_first_run = False
@@ -922,6 +921,9 @@ def is_sparse(embedding: Union[Dict[int, float], List[Tuple[int, float]], List[f
 
     if isinstance(embedding[0], tuple):
         return True
+
+    if isinstance(embedding[0], list):
+        return False
 
     if isinstance(embedding[0], float) or isinstance(embedding[0], int):
         return False
