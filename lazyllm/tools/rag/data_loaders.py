@@ -1,6 +1,6 @@
 from typing import List, Optional, Dict
-from .doc_node import DocNode
-from .store_base import LAZY_ROOT_NAME
+from .doc_node import DocNode, ImageDocNode
+from .store_base import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from lazyllm import LOG
 from .dataReader import SimpleDirectoryReader
 
@@ -20,7 +20,7 @@ class DirectoryReader:
         reader = SimpleDirectoryReader(input_files=input_files, file_extractor=file_readers)
         nodes: List[DocNode] = []
         for doc in reader():
-            doc._group = LAZY_ROOT_NAME
+            doc._group = LAZY_IMAGE_GROUP if isinstance(doc, ImageDocNode) else LAZY_ROOT_NAME
             nodes.append(doc)
         if not nodes:
             LOG.warning(

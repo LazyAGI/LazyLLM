@@ -758,6 +758,11 @@ add_example('OnlineChatModule', '''\
 output: Hello
 output: ! How can I assist you today?
 ret: Hello! How can I assist you today?
+>>> from lazyllm.components.formatter import encode_query_with_filepaths
+>>> vlm = lazyllm.OnlineChatModule(source="sensenova", model="SenseChat-Vision")
+>>> query = "what is it?"
+>>> inputs = encode_query_with_filepaths(query, ["/path/to/your/image"])
+>>> print(vlm(inputs))
 ''')
 
 add_chinese_doc('OnlineEmbeddingModule', '''\

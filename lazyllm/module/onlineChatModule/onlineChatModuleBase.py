@@ -11,8 +11,10 @@ import time
 import lazyllm
 from lazyllm import globals, FileSystemQueue
 from lazyllm.components.prompter import PrompterBase, ChatPrompter
-from lazyllm.components.formatter import FormatterBase, EmptyFormatter
-from lazyllm.components.utils.file_operate import delete_old_files
+from lazyllm.components.formatter import (FormatterBase, EmptyFormatter,
+                                          encode_query_with_filepaths, decode_query_with_filepaths)
+from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
+from lazyllm.components.utils.file_operate import delete_old_files, image_to_base64
 from ..module import ModuleBase, Pipeline
 
 
@@ -253,9 +255,11 @@ class OnlineChatModuleBase(ModuleBase):
         else:
             raise TypeError(f"The elements in list {src} are of inconsistent types.")
 
-    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, stream_output: bool = False, **kw):  # noqa C901
+    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):  # noqa C901
         """LLM inference interface"""
         stream_output = stream_output or self._stream
+        if lazyllm_files:
+            __input = encode_query_with_filepaths(__input, lazyllm_files)
         params = {"input": __input, "history": llm_chat_history}
         if tools:
             params["tools"] = tools
@@ -269,6 +273,14 @@ class OnlineChatModuleBase(ModuleBase):
 
         if len(self._model_optional_params) > 0:
             data.update(self._model_optional_params)
+
+        if isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
+            for idx, message in enumerate(data["messages"]):
+                content = message["content"]
+                if content.startswith(LAZYLLM_QUERY_PREFIX):
+                    content = decode_query_with_filepaths(content)
+                query_files = self._format_input_with_files(content)
+                data["messages"][idx]["content"] = query_files
 
         with requests.post(self._url, json=data, headers=self._headers, stream=stream_output) as r:
             if r.status_code != 200:  # request error
@@ -422,6 +434,27 @@ class OnlineChatModuleBase(ModuleBase):
                     raise ValueError(f"Deployment task {deployment_id} failed")
             lazyllm.LOG.info(f"deployment {deployment_id} finished")
         return Pipeline(_start_for_deployment)
+
+    def _format_vl_chat_query(self, query: str):
+        return [{"type": "text", "text": query}]
+
+    def _format_vl_chat_image_url(self, image_url: str, mime: str) -> List[Dict[str, str]]:
+        return [{"type": "image_url", "image_url": {"url": image_url}}]
+
+    # for online vlm
+    def _format_input_with_files(self, query_files: str) -> List[Dict[str, str]]:
+        if isinstance(query_files, str):
+            return self._format_vl_chat_query(query_files)
+        assert isinstance(query_files, dict), "query_files must be a dict."
+        output = [{"type": "text", "text": query_files["query"]}]
+        files = query_files.get("files", [])
+        assert isinstance(files, list), "files must be a list."
+        for file in files:
+            mime = None
+            if not file.startswith("http"):
+                file, mime = image_to_base64(file)
+            output.extend(self._format_vl_chat_image_url(file, mime))
+        return output
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'OnlineChat', name=self._module_name, url=self._base_url,

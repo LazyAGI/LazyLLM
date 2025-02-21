@@ -345,6 +345,8 @@ The `group_name` has three built-in splitting strategies, all of which use `Sent
 - CoarseChunk: Chunk size is 1024, with an overlap length of 100
 - MediumChunk: Chunk size is 256, with an overlap length of 25
 - FineChunk: Chunk size is 128, with an overlap length of 12
+
+Also, `Image` is available for `group_name` since LazyLLM supports image embedding and retrieval.
 ''')
 
 add_chinese_doc('Retriever', '''
@@ -365,6 +367,8 @@ Args:
 - CoarseChunk: 块大小为 1024，重合长度为 100
 - MediumChunk: 块大小为 256，重合长度为 25
 - FineChunk: 块大小为 128，重合长度为 12
+
+此外，LazyLLM提供了内置的`Image`节点组存储了所有图像节点，支持图像嵌入和检索。
 ''')
 
 add_example('Retriever', '''
@@ -393,6 +397,10 @@ add_example('Retriever', '''
 >>> document3.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
 >>> retriever3 = Retriever([document1, document3], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
 >>> print(retriever3(query="user query", filters=filters))
+>>> document4 = Document(dataset_path='/path/to/user/data', embed=lazyllm.TrainableModule('siglip'))
+>>> retriever4 = Retriever(documents4, group_name='Image', similarity='cosine')
+>>> nodes = retriever4("user query")
+>>> print([node.get_content() for node in nodes])
 ''')
 
 # ---------------------------------------------------------------------------- #

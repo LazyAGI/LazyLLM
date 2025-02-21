@@ -915,6 +915,9 @@ def is_sparse(embedding: Union[Dict[int, float], List[Tuple[int, float]], List[f
     if isinstance(embedding[0], tuple):
         return True
 
+    if isinstance(embedding[0], list):
+        return False
+
     if isinstance(embedding[0], float) or isinstance(embedding[0], int):
         return False
 

@@ -8,7 +8,7 @@ from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
 from .index_base import IndexBase
-from .store_base import StoreBase, LAZY_ROOT_NAME
+from .store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from .map_store import MapStore
 from .chroma_store import ChromadbStore
 from .milvus_store import MilvusStore
@@ -55,7 +55,7 @@ class DocImpl:
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
         self._dlm, self._doc_files = dlm, doc_files
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
-        self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
+        self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}, LAZY_IMAGE_GROUP: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self._global_metadata_desc = global_metadata_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
