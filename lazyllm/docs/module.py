@@ -721,7 +721,7 @@ add_chinese_doc('OnlineChatModule', '''\
 用来管理创建目前市面上公开的大模型平台访问模块，目前支持openai、sensenova、glm、kimi、qwen、doubao、deekseek(由于该平台暂时不让充值了，暂时不支持访问)。平台的api key获取方法参见 [开始入门](/#platform)
 
 Args:
-    model (str): 指定要访问的模型 (注意豆包这里需要使用Model ID或者Endpoint ID，请参见 [获取推理接入点](https://www.volcengine.com/docs/82379/1099522)。这里需要注意首先需要在豆包平台开通相应的服务才能使用对应的模型。)，默认为 ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` 
+    model (str): 指定要访问的模型 (注意使用豆包时需用 Model ID 或 Endpoint ID，获取方式详见 [获取推理接入点](https://www.volcengine.com/docs/82379/1099522)。使用模型前，要先在豆包平台开通对应服务。)，默认为 ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` 
     source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``deepseek(暂时不支持访问)``
     base_url (str): 指定要访问的平台的基础链接，默认是官方链接
     system_prompt (str): 指定请求的system prompt，默认是官方给的system prompt
@@ -733,7 +733,7 @@ add_english_doc('OnlineChatModule', '''\
 Used to manage and create access modules for large model platforms currently available on the market. Currently, it supports openai, sensenova, glm, kimi, qwen, doubao and deepseek (since the platform does not allow recharges for the time being, access is not supported for the time being). For how to obtain the platform's API key, please visit [Getting Started](/#platform)
 
 Args:
-    model (str): Specify the model to access (Note that Doubao needs to use Model ID or Endpoint ID here, please refer to [Getting the Inference Access Point](https://www.volcengine.com/docs/82379/1099522). It should be noted here that you must first activate the corresponding service on the Doubao platform before you can use the corresponding model.), default is ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` .
+    model (str): Specify the model to access (Note that you need to use Model ID or Endpoint ID when using Doubao. For details on how to obtain it, see [Getting the Inference Access Point](https://www.volcengine.com/docs/82379/1099522). Before using the model, you must first activate the corresponding service on the Doubao platform.), default is ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` .
     source (str): Specify the type of module to create. Options include  ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``deepseek (not yet supported)`` .
     base_url (str): Specify the base link of the platform to be accessed. The default is the official link.
     system_prompt (str): Specify the requested system prompt. The default is the official system prompt.
@@ -766,7 +766,7 @@ add_chinese_doc('OnlineEmbeddingModule', '''\
 Args:
     source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``qwen`` / ``doubao``
     embed_url (str): 指定要访问的平台的基础链接，默认是官方链接
-    embed_mode_name (str): 指定要访问的模型 (注意豆包这里需要使用Model ID或者Endpoint ID，请参见 [获取推理接入点](https://www.volcengine.com/docs/82379/1099522)。这里需要注意首先需要在豆包平台开通相应的服务才能使用对应的模型。)，默认为 ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` / ``doubao-embedding-text-240715(doubao)`` 
+    embed_mode_name (str): 指定要访问的模型 (注意使用豆包时需用 Model ID 或 Endpoint ID，获取方式详见 [获取推理接入点](https://www.volcengine.com/docs/82379/1099522)。使用模型前，要先在豆包平台开通对应服务。)，默认为 ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` / ``doubao-embedding-text-240715(doubao)`` 
 ''')
 
 add_english_doc('OnlineEmbeddingModule', '''\
@@ -775,7 +775,7 @@ Used to manage and create online Embedding service modules currently on the mark
 Args:
     source (str): Specify the type of module to create. Options are  ``openai`` /  ``sensenova`` /  ``glm`` /  ``qwen`` / ``doubao``.
     embed_url (str): Specify the base link of the platform to be accessed. The default is the official link.
-    embed_mode_name (str): Specify the model to access (Note that Doubao needs to use Model ID or Endpoint ID here, please refer to [Getting the Inference Access Point](https://www.volcengine.com/docs/82379/1099522). It should be noted here that you must first activate the corresponding service on the Doubao platform before you can use the corresponding model.), default is ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` / ``doubao-embedding-text-240715(doubao)``
+    embed_mode_name (str): Specify the model to access (Note that you need to use Model ID or Endpoint ID when using Doubao. For details on how to obtain it, see [Getting the Inference Access Point](https://www.volcengine.com/docs/82379/1099522). Before using the model, you must first activate the corresponding service on the Doubao platform.), default is ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` / ``doubao-embedding-text-240715(doubao)``
 ''')
 
 add_example('OnlineEmbeddingModule', '''\
