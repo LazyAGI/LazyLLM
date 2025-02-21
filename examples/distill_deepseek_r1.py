@@ -112,7 +112,7 @@ def main(techer_name, student_name, demo=False, sft_data_path=None):
             'num_train_epochs': 2.0,
             'launcher': launchers.sco(nnode=1, nproc=8, ngpus=8)
         }))\
-        .prompt(dict(system='You are a helpful assistant.'))\
+        .prompt(dict(system='You are a helpful assistant.', drop_builtin_system=True))\
         .deploy_method(deploy.Vllm)
     student_model._prompt._soa = '<|im_start|>assistant\n\n<think>'
     student_model.evalset(infer_data)

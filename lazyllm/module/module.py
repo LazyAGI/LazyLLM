@@ -831,7 +831,7 @@ class TrainableModule(UrlModule):
     def prompt(self, prompt: str = '', history: Optional[List[List[str]]] = None):
         if self.base_model != '' and prompt == '' and ModelManager.get_model_type(self.base_model) != 'llm':
             prompt = None
-        clear_system = isinstance(prompt, dict) and prompt['system']
+        clear_system = isinstance(prompt, dict) and prompt.get('drop_builtin_system')
         prompt = super(__class__, self).prompt(prompt, history)._prompt
         self._tools = getattr(prompt, "_tools", None)
         keys = ModelManager.get_model_prompt_keys(self.base_model).copy()
