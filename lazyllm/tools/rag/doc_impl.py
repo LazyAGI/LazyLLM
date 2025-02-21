@@ -110,9 +110,11 @@ class DocImpl:
                                               new_status=DocListManager.Status.success)
                 LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
         if self._dlm:
+            self._init_monitor_event = threading.Event()
             self._daemon = threading.Thread(target=self.worker)
             self._daemon.daemon = True
             self._daemon.start()
+            self._init_monitor_event.wait()
 
     def _delete_nonexistent_docs_on_startup(self, ids, paths, metadatas):
         path_existing = [Path(path).exists() for path in paths]
@@ -273,6 +275,7 @@ class DocImpl:
         self._local_file_reader[pattern] = func
 
     def worker(self):
+        is_first_run = True
         while True:
             # Apply meta changes
             rows = self._dlm.fetch_docs_changed_meta(self._kb_group_name)
@@ -316,6 +319,9 @@ class DocImpl:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           cond_status_list=[DocListManager.Status.working],
                                           new_status=DocListManager.Status.success)
+            if is_first_run:
+                self._init_monitor_event.set()
+            is_first_run = False
             time.sleep(10)
 
     def _list_files(
@@ -390,7 +396,6 @@ class DocImpl:
         parent_nodes = self._get_nodes(node_group["parent"], store)
         nodes = transform.batch_forward(parent_nodes, group_name)
         store.update_nodes(nodes)
-        LOG.debug(f"building {group_name} nodes: {nodes}")
 
     def _get_nodes(self, group_name: str, store: Optional[StoreBase] = None) -> List[DocNode]:
         store = store or self.store
@@ -401,7 +406,6 @@ class DocImpl:
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,
                  filters: Optional[Dict[str, Union[str, int, List, Set]]] = None) -> List[DocNode]:
         self._lazy_init()
-
         self._dynamic_create_nodes(group_name, self.store)
 
         if index is None or index == 'default':

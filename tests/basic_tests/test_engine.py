@@ -681,8 +681,8 @@ class TestEngineRAG(object):
                  dict(iid='6', oid='__end__')]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
-        r = engine.run(gid, '何为天道?')
-        assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
+        r = engine.run(gid, '何为修身?')
+        assert '所谓修身在正其心者' in r
 
         # test add doc_group
         resources[0] = dict(id='0', kind='Document', name='d1', args=dict(
@@ -697,5 +697,5 @@ class TestEngineRAG(object):
                  dict(iid='6', oid='__end__')]
         engine = LightEngine()
         engine.update(gid, nodes, edges, resources)
-        r = engine.run(gid, '何为天道?')
-        assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
+        r = engine.run(gid, '何为修身?')
+        assert '所谓修身在正其心者' in r

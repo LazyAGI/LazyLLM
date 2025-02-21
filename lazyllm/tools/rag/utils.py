@@ -252,6 +252,7 @@ class SqliteDocListManager(DocListManager):
         root_dir = os.path.expanduser(os.path.join(config['home'], '.dbs'))
         os.makedirs(root_dir, exist_ok=True)
         self._db_path = os.path.join(root_dir, f'.lazyllm_dlmanager.{self._id}.db')
+        print("")
         self._db_lock = FileLock(self._db_path + '.lock')
         # ensure that this connection is not used in another thread when sqlite3 is not threadsafe
         self._check_same_thread = not sqlite3_check_threadsafety()
@@ -263,8 +264,10 @@ class SqliteDocListManager(DocListManager):
         self._monitor_thread = threading.Thread(target=self.monitor_directory_worker)
         self._monitor_thread.daemon = True
         self._monitor_continue = True
+        self._init_monitor_event = threading.Event()
         if self._enable_path_monitoring:
             self._monitor_thread.start()
+            self._init_monitor_event.wait()
 
     @DocListManager.enable_path_monitoring.setter
     def enable_path_monitoring(self, val: bool):
@@ -294,6 +297,7 @@ class SqliteDocListManager(DocListManager):
             docs_all = session.query(KBDocument).all()
         previous_files = set([doc.path for doc in docs_all])
         skip_files = set()
+        is_first_run = True
         while self._monitor_continue:
             # 1. Scan files in the directory, find added and deleted files
             current_files = set(super().monitor_directory())
@@ -333,6 +337,9 @@ class SqliteDocListManager(DocListManager):
                     skip_files.add(ele)
             # update previous files, while failed files will be re-processed in the next loop
             previous_files = (current_files | to_be_added_files) - to_be_deleted_files
+            if is_first_run:
+                self._init_monitor_event.set()
+            is_first_run = False
             time.sleep(10)
         lazyllm.LOG.warning("END MONITORING")
 
