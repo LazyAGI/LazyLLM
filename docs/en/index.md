@@ -127,6 +127,7 @@ First, statement 1 imports the `lazyllm` module, and in statement 2, an instance
 | [Zhipu](https://open.bigmodel.cn/)    | [API Keys](https://open.bigmodel.cn/usercenter/apikeys)            | LAZYLLM_GLM_API_KEY                                     |
 | [Kimi](https://platform.moonshot.cn/)     | [API Keys](https://platform.moonshot.cn/console/api-keys)        | LAZYLLM_KIMI_API_KEY                                    |
 | [Qwen](https://help.aliyun.com/zh/dashscope/developer-reference/use-qwen-by-api)     | [API Keys](https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key)     | LAZYLLM_QWEN_API_KEY                                    |
+| [Doubao](https://www.volcengine.com/product/doubao)  | [API Keys](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey)  |  LAZYLLM_DOUBAO_API_KEY               |
 
 You can use the corresponding platform by setting different environment variables.
 
