@@ -20,6 +20,7 @@ class TestExamples(object):
             'LAZYLLM_OPENAI_API_KEY',
             'LAZYLLM_KIMI_API_KEY',
             'LAZYLLM_SENSENOVA_API_KEY',
+            'LAZYLLM_DOUBAO_API_KEY',
         ]
         self.webs = []
         self.clients = []
