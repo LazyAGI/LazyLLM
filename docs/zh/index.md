@@ -127,6 +127,7 @@ python3 chat.py
 | [智谱](https://open.bigmodel.cn/)     | [获取访问密钥](https://open.bigmodel.cn/usercenter/apikeys)            | `LAZYLLM_GLM_API_KEY`                                        |
 | [Kimi](https://platform.moonshot.cn/)     | [获取访问密钥](https://platform.moonshot.cn/console/api-keys)        | `LAZYLLM_KIMI_API_KEY`                                       |
 | [通义千问](https://help.aliyun.com/zh/dashscope/developer-reference/use-qwen-by-api) | [获取访问密钥](https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key)     | `LAZYLLM_QWEN_API_KEY`                                       |
+| [豆包](https://www.volcengine.com/product/doubao)  | [获取访问密钥](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey) | `LAZYLLM_DOUBAO_API_KEY`               |
 
 可以通过设置不同的环境变量来使用对应的平台。
 

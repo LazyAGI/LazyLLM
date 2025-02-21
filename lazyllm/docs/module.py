@@ -718,11 +718,11 @@ dummy finetune!, and init-args is {a: f2}
 ''')
 
 add_chinese_doc('OnlineChatModule', '''\
-用来管理创建目前市面上公开的大模型平台访问模块，目前支持openai、sensenova、glm、kimi、qwen、doubao(由于该平台暂时不对个人用户开发，暂时不支持访问)。平台的api key获取方法参见 [开始入门](/#platform)
+用来管理创建目前市面上公开的大模型平台访问模块，目前支持openai、sensenova、glm、kimi、qwen、doubao、deekseek(由于该平台暂时不让充值了，暂时不支持访问)。平台的api key获取方法参见 [开始入门](/#platform)
 
 Args:
-    model (str): 指定要访问的模型，默认为 ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` 
-    source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao(暂未支持访问)`` 
+    model (str): 指定要访问的模型 (注意豆包这里需要使用Model ID或者Endpoint ID，请参见 [获取推理接入点](https://www.volcengine.com/docs/82379/1099522))，默认为 ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` 
+    source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``deepseek(暂时不支持访问)``
     base_url (str): 指定要访问的平台的基础链接，默认是官方链接
     system_prompt (str): 指定请求的system prompt，默认是官方给的system prompt
     stream (bool): 是否流式请求和输出，默认为流式
@@ -730,11 +730,11 @@ Args:
 ''')
 
 add_english_doc('OnlineChatModule', '''\
-Used to manage and create access modules for large model platforms currently available on the market. Currently, it supports openai, sensenova, glm, kimi, qwen and doubao (since the platform is not currently being developed for individual users, access is not currently supported). For how to obtain the platform's API key, please visit [Getting Started](/#platform)
+Used to manage and create access modules for large model platforms currently available on the market. Currently, it supports openai, sensenova, glm, kimi, qwen, doubao and deepseek (since the platform does not allow recharges for the time being, access is not supported for the time being). For how to obtain the platform's API key, please visit [Getting Started](/#platform)
 
 Args:
-    model (str): Specify the model to access, default is ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` .
-    source (str): Specify the type of module to create. Options include  ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao (not yet supported)`` .
+    model (str): Specify the model to access (Note that Doubao needs to use Model ID or Endpoint ID here, please refer to [Getting the Inference Access Point](https://www.volcengine.com/docs/82379/1099522)), default is ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` .
+    source (str): Specify the type of module to create. Options include  ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``deepseek (not yet supported)`` .
     base_url (str): Specify the base link of the platform to be accessed. The default is the official link.
     system_prompt (str): Specify the requested system prompt. The default is the official system prompt.
     stream (bool): Whether to request and output in streaming mode, default is streaming.
