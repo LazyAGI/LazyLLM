@@ -6,6 +6,7 @@ from .index_base import IndexBase
 # ---------------------------------------------------------------------------- #
 
 LAZY_ROOT_NAME = "lazyllm_root"
+LAZY_IMAGE_GROUP = "Image"
 EMBED_DEFAULT_KEY = '__default__'
 
 # ---------------------------------------------------------------------------- #

@@ -74,7 +74,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             return msg
         try:
             resp = msg['data']
-            resp['plugins'] = {} if resp['plugins'] is None else resp['plugins']
+            resp['plugins'] = {} if resp.get('plugins') is None else resp['plugins']
             data = resp['choices'][0]
             content = data.get('delta', '') if 'delta' in data else data.get('message', '')
             message = {"role": data.pop("role"), "content": content}
@@ -254,3 +254,9 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
 
             status = r.json()["job"]['status']
             return status
+
+    def _format_vl_chat_image_url(self, image_url, mime):
+        if image_url.startswith("http"):
+            return [{"type": "image_url", "image_url": image_url}]
+        else:
+            return [{"type": "image_base64", "image_base64": image_url}]

@@ -10,6 +10,7 @@ import lazyllm
 from lazyllm import deploy, globals
 from lazyllm.launcher import cleanup
 from lazyllm.components.formatter import encode_query_with_filepaths, decode_query_with_filepaths
+from lazyllm.components.utils.file_operate import image_to_base64
 
 @pytest.fixture()
 def set_enviroment(request):
@@ -89,6 +90,28 @@ class TestDeploy(object):
         res = m(['你好'])
         assert len(json.loads(res)) == 1
         res = m(['你好', '世界'])
+        assert len(json.loads(res)) == 2
+
+    @pytest.mark.skip(reason="Current infinity_emb version doesn't support.")
+    def test_cross_modal_embedding(self):
+        m = lazyllm.TrainableModule('siglip')
+        m.update_server()
+        res = m('你好')
+        assert len(json.loads(res)) == 1152
+        res = m(['你好'])
+        assert len(json.loads(res)) == 1
+        res = m(['你好', '世界'])
+        assert len(json.loads(res)) == 2
+
+        image_url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+        image_path = os.path.join(lazyllm.config['data_path'], "ci_data/ji.jpg")
+        image_base64, mime = image_to_base64(image_path)
+        image_base64 = f'data:{mime};base64,{image_base64}'
+        res = m(image_url, modality='image')
+        assert len(json.loads(res)) == 1152
+        res = m([image_url], modality='image')
+        assert len(json.loads(res)) == 1
+        res = m([image_url, image_base64], modality='image')
         assert len(json.loads(res)) == 2
 
     def test_sd3(self):

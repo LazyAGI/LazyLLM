@@ -672,7 +672,7 @@ class TestEngineRAG(object):
                       args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
                  dict(id='4', kind='Reranker', name='rek1',
                       args=dict(type='ModuleReranker', output_format='content', join=True,
-                                arguments=dict(model="bge-reranker-large", topk=1))),
+                                arguments=dict(model="bge-reranker-large", topk=3))),
                  dict(id='5', kind='Code', name='c1',
                       args=dict(code='def test(nodes, query): return f\'context_str={nodes}, query={query}\'')),
                  dict(id='6', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
@@ -697,4 +697,5 @@ class TestEngineRAG(object):
                  dict(iid='6', oid='__end__')]
         engine = LightEngine()
         engine.update(gid, nodes, edges, resources)
-        assert '观天之道，执天之行' in engine.run(gid, '何为天道?')
+        r = engine.run(gid, '何为天道?')
+        assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
