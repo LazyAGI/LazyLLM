@@ -178,7 +178,7 @@ class ModuleBase(metaclass=_MetaBind):
         def set_result(x): self.eval_result = x
 
         def parallel_infer():
-            with ThreadPoolExecutor(max_workers=100) as executor:
+            with ThreadPoolExecutor(max_workers=200) as executor:
                 results = list(executor.map(lambda item: self(**item)
                                             if isinstance(item, dict) else self(item), self._evalset))
             return results
@@ -831,10 +831,12 @@ class TrainableModule(UrlModule):
     def prompt(self, prompt: str = '', history: Optional[List[List[str]]] = None):
         if self.base_model != '' and prompt == '' and ModelManager.get_model_type(self.base_model) != 'llm':
             prompt = None
+        clear_system = isinstance(prompt, dict) and prompt.get('drop_builtin_system')
         prompt = super(__class__, self).prompt(prompt, history)._prompt
         self._tools = getattr(prompt, "_tools", None)
-        keys = ModelManager.get_model_prompt_keys(self.base_model)
+        keys = ModelManager.get_model_prompt_keys(self.base_model).copy()
         if keys:
+            if clear_system: keys['system'] = ''
             prompt._set_model_configs(**keys)
             for key in ["tool_start_token", "tool_args_token", "tool_end_token"]:
                 if key in keys: setattr(self, f"_{key}", keys[key])
