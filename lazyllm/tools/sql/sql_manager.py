@@ -215,11 +215,18 @@ class SqlManager(DBManager):
 
     def execute_query(self, statement: str) -> str:
         statement = re.sub(r"/\*.*?\*/", "", statement, flags=re.DOTALL).strip()
-        if not statement.upper().startswith("SELECT"):
-            return f"Only select statement supported. Original statement: {statement}"
+        create_table_pattern = r".*\s*create\s+table\s+.*"
+        drop_table_pattern = r".*\s*drop\s+table\s+.*"
+        statement_lower = statement.lower()
+        if re.match(create_table_pattern, statement_lower):
+            return f"Create table not supported. Original statement: {statement}"
+        elif re.match(drop_table_pattern, statement_lower):
+            return f"Drop table not supported. Original statement: {statement}"
         try:
             result = []
-            with self.get_session() as session:
+            _Session = sessionmaker(bind=self.engine)
+            # Use original session without post commit
+            with _Session() as session:
                 cursor_result = session.execute(sqlalchemy.text(statement))
                 columns = list(cursor_result.keys())
                 result = [dict(zip(columns, row)) for row in cursor_result]

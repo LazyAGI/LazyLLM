@@ -88,6 +88,9 @@ class TestSqlManager(unittest.TestCase):
             str_results = sql_call("去年一整年销售额最多的员工是谁，销售额是多少？")
             self.assertIn("张三", str_results)
 
+            str_results = sql_call("删除员工信息表")
+            self.assertIn("DROP TABLE", str_results.upper())
+
 
 if __name__ == "__main__":
     unittest.main()
