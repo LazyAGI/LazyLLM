@@ -5,7 +5,7 @@ from .onlineChatModuleBase import OnlineChatModuleBase
 class KimiModule(OnlineChatModuleBase):
 
     def __init__(self,
-                 base_url: str = "https://api.moonshot.cn",
+                 base_url: str = "https://api.moonshot.cn/",
                  model: str = "moonshot-v1-8k",
                  api_key: str = None,
                  stream: bool = True,

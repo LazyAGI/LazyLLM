@@ -5,6 +5,7 @@ from .openaiEmbed import OpenAIEmbedding
 from .glmEmbed import GLMEmbedding, GLMReranking
 from .sensenovaEmbed import SenseNovaEmbedding
 from .qwenEmbed import QwenEmbedding, QwenReranking
+from .doubaoEmbed import DoubaoEmbedding
 from .onlineEmbeddingModuleBase import OnlineEmbeddingModuleBase
 
 class __EmbedModuleMeta(type):
@@ -19,7 +20,8 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
     EMBED_MODELS = {'openai': OpenAIEmbedding,
                     'sensenova': SenseNovaEmbedding,
                     'glm': GLMEmbedding,
-                    'qwen': QwenEmbedding}
+                    'qwen': QwenEmbedding,
+                    'doubao': DoubaoEmbedding}
     RERANK_MODELS = {'qwen': QwenReranking,
                      'glm': GLMReranking}
 

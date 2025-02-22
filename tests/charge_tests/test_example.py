@@ -20,6 +20,7 @@ class TestExamples(object):
             'LAZYLLM_OPENAI_API_KEY',
             'LAZYLLM_KIMI_API_KEY',
             'LAZYLLM_SENSENOVA_API_KEY',
+            'LAZYLLM_DOUBAO_API_KEY',
         ]
         self.webs = []
         self.clients = []
@@ -73,9 +74,6 @@ class TestExamples(object):
     def test_chat(self):
         from examples.chatbot_online import chat
         chat.start()
-        query = "不要发挥和扩展，请严格原样输出下面句子：Hello world."
-        res = chat(query)
-        assert res == 'Hello world.'
 
         # test chat warpped in web
         web, client = self.warp_into_web(chat)
@@ -144,3 +142,28 @@ class TestExamples(object):
         res = ans[0][-1][-1]
         assert type(res) is str
         assert len(res) >= 16
+
+@pytest.fixture()
+def requestOnlineChatModule(request):
+    params = request.param if hasattr(request, "param") else {}
+    source = params.get("source", None)
+    query = params.get("query", "")
+    print(f"\nStarting test 【{source}】 Module.")
+    chat = lazyllm.OnlineChatModule(source=source)
+    res = chat(query)
+    yield res
+    print(f"\n【{source}】Module test done.")
+
+query = "不要发挥和扩展，请严格原样输出下面句子：Hello world."
+
+class TestOnlineChatModule(object):
+    @pytest.mark.parametrize("requestOnlineChatModule",
+                             [{"source": "sensenova", "query": query},
+                              {"source": "glm", "query": query},
+                              {"source": "kimi", "query": query},
+                              {"source": "qwen", "query": query},
+                              {"source": "doubao", "query": query}],
+                             indirect=True)
+    def test_online_chat(self, requestOnlineChatModule):
+        res = requestOnlineChatModule
+        assert res == 'Hello world.'
