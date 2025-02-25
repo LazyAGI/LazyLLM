@@ -39,7 +39,7 @@ class Document(ModuleBase):
             self._dataset_path = dataset_path
             self._embed = self._get_embeds(embed)
             self.name = name
-            self._dlm = DocListManager(dataset_path, name).init_tables()
+            self._dlm = DocListManager(dataset_path, name, enable_path_monitoring=False if manager else True)
             self._kbs = CallableDict({DocListManager.DEFAULT_GROUP_NAME:
                                       DocImpl(embed=self._embed, dlm=self._dlm,
                                               global_metadata_desc=doc_fields,
