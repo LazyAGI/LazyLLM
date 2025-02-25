@@ -17,8 +17,12 @@ LazyLLM is a low-code development tool for building multi-agent LLMs(large langu
 The AI application development process based on LazyLLM follows the **prototype building -> data feedback -> iterative optimization** workflow. This means you can quickly build a prototype application using LazyLLM, then analyze bad cases using task-specific data, and subsequently iterate on algorithms and fine-tune models at critical stages of the application to gradually enhance the overall performance.<br>
 
 **Tutorials**： https://docs.lazyllm.ai/ <br>
-Scan the QR code below with WeChat to join the group chat<br>
-<img src="https://github.com/user-attachments/assets/8ad8fd14-b218-48b3-80a4-7334b2a32c5a" width=250/> <br>
+Scan the QR code below with WeChat to join the group chat(left) or learn more with a video(right)<br>
+<p align="center">
+<img src="https://github.com/user-attachments/assets/8ad8fd14-b218-48b3-80a4-7334b2a32c5a" width=250/>
+<img src="https://github.com/user-attachments/assets/9ce08228-8f59-4267-9e3d-9664988c510a" width=250/>
+</p>
+
 
 ## Features
 
