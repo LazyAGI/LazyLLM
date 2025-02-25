@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import argparse
 
 import lazyllm
 from lazyllm import finetune, deploy, launchers, warp
@@ -24,10 +25,10 @@ def build_data_path(file_name):
     save_path = os.path.join(data_root, file_name)
     return save_path
 
-def get_dataset():
+def get_dataset(dataset_name):
     train_path = build_data_path('train_set.json')
     eval_path = build_data_path('eval_set.json')
-    ds = MsDataset.load('modelscope/gsm8k', subset_name='main')
+    ds = MsDataset.load(dataset_name, subset_name='main')
     ds = ds.rename_column('question', 'instruction').rename_column('answer', 'output')
     with open(train_path, 'w') as file:
         json.dump(ds['train'].to_list(), file, ensure_ascii=False, indent=4)
@@ -37,12 +38,12 @@ def get_dataset():
 
 def distill_dataset(data_path, model=None, demo=False):
     inputs = load_data(data_path)[:1] if demo else load_data(data_path)
+    with warp(_concurrent=1) as wp:
+        wp.func = model
     res_list = []
     try_n = 0
     while inputs:
         print(">>>" * 12, f"{try_n+1} times left: ", len(inputs))
-        with warp(_concurrent=1) as wp:
-            wp.func = model
         querys = [item['instruction'] for item in inputs]
         results = wp(querys)
         valid_data, inputs = filter(inputs, results)
@@ -88,12 +89,12 @@ def caculate_score(eval_set, infer_set):
                 score += 1
     return f'{score}/{len(eval_set)}, {round(score/len(eval_set),4)*100}%'
 
-def main(techer_name, student_name, demo=False, sft_data_path=None):
+def main(techer_name, student_name, dataset_name, demo=False, sft_data_path=None):
     # Launcher Teacher
     teacher_model = lazyllm.OnlineChatModule(techer_name)
 
     # Load and Distill Dataset
-    train_set_path, eval_set_path = get_dataset()
+    train_set_path, eval_set_path = get_dataset(dataset_name)
     eval_set = load_data(eval_set_path)
     if not sft_data_path:
         sft_data_path = distill_dataset(train_set_path, teacher_model, demo)
@@ -123,10 +124,21 @@ def main(techer_name, student_name, demo=False, sft_data_path=None):
     print("All Done. Score is: ", score)
 
 if __name__ == '__main__':
-    teacher_model_name = 'DeepSeek-R1'
-    student_model_name = 'internlm2-chat-7b'
-    # Demo
-    main(teacher_model_name, student_model_name, demo=True)
-    # Valid
-    # sft_data_path = 'path/to/gsm8k_deepseeko1_7148.json'
-    # main(teacher_model_name, student_model_name, sft_data_path=sft_data_path)
+    parser = argparse.ArgumentParser(description="Distill the model training script with given parameters.")
+    parser.add_argument('--teacher_model_name', type=str, default='DeepSeek-R1', help='Name of the teacher model')
+    parser.add_argument('--student_model_name', type=str, default='internlm2-chat-7b', help='Name of the student model')
+    parser.add_argument('--dataset_name', type=str, default='modelscope/gsm8k', help='Name of the dataset')
+    parser.add_argument('--demo', type=bool, default=True, help='Demo mode flag')
+    parser.add_argument('--sft_data_path', type=str, default=None, help='Path to the SFT data')
+
+    args = parser.parse_args()
+
+    # Extracting arguments
+    teacher_model_name = args.teacher_model_name
+    student_model_name = args.student_model_name
+    dataset_name = args.dataset_name
+    demo = args.demo
+    sft_data_path = args.sft_data_path
+
+    # Calling the main function
+    main(teacher_model_name, student_model_name, dataset_name, demo, sft_data_path)
