@@ -16,8 +16,11 @@ LazyLLM是一款低代码构建**多Agent**大模型应用的开发工具，协�
 基于LazyLLM的AI应用构建流程是**原型搭建 -> 数据回流 -> 迭代优化**，即您可以先基于LazyLLM快速跑通应用的原型，再结合场景任务数据进行bad-case分析，然后对应用中的关键环节进行算法迭代和模型微调，进而逐步提升整个应用的效果。<br>
 **用户文档**： https://docs.lazyllm.ai/ <br>
 
-微信扫描下方二维码加入交流群<br>
-<img src="https://github.com/user-attachments/assets/8ad8fd14-b218-48b3-80a4-7334b2a32c5a" width=250/> <br>
+微信扫描下方二维码加入交流群(左)或通过观看视频了解更多(右)<br>
+<p align="center">
+<img src="https://github.com/user-attachments/assets/8ad8fd14-b218-48b3-80a4-7334b2a32c5a" width=250/>
+<img src="https://github.com/user-attachments/assets/9ce08228-8f59-4267-9e3d-9664988c510a" width=250/>
+</p>
 
 ## 二、特性
 
