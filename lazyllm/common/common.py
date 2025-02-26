@@ -252,6 +252,8 @@ def make_repr(category, type, *, name=None, subs=[], attrs=dict(), **kw):
         assert len(attrs) == 0, 'Cannot provide attrs and kwargs at the same time'
         attrs = kw
 
+    if not config['repr_show_child']: subs = []
+
     if isinstance(type, builtins.type): type = type.__name__
     name = f' name={name}' if name else ''
     attrs = ' ' + ' '.join([f'{k}={v}' for k, v in attrs.items()]) if attrs else ''

@@ -90,8 +90,12 @@ class TestCommon(object):
 
         r1 = lazyllm.make_repr('a', 1)
         r2 = lazyllm.make_repr('b', 2)
-        rr = lazyllm.make_repr('c', 3, subs=[r1, r2])
-        assert rr == '<c type=3>\n |- <a type=1>\n └- <b type=2>\n'
+        assert lazyllm.make_repr('c', 3, subs=[r1, r2]) == '<c type=3>'
+
+        with lazyllm.config.temp('repr_show_child', True):
+            assert lazyllm.make_repr('c', 3, subs=[r1, r2]) == '<c type=3>\n |- <a type=1>\n └- <b type=2>\n'
+
+        assert lazyllm.make_repr('c', 3, subs=[r1, r2]) == '<c type=3>'
 
     def test_compile_func(self):
         str1 = "def identity(v): return v"

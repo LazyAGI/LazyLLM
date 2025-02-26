@@ -106,8 +106,9 @@ class WebModule(ModuleBase):
             with gr.Row():
                 with gr.Column(scale=3):
                     with gr.Row():
-                        gr.Textbox(elem_id='module', interactive=False, show_label=True,
-                                   label="模型结构", value=repr(self.m))
+                        with lazyllm.config.temp('repr_show_child', True):
+                            gr.Textbox(elem_id='module', interactive=False, show_label=True,
+                                       label="模型结构", value=repr(self.m))
                     with gr.Row():
                         chat_use_context = gr.Checkbox(interactive=True, value=False, label="使用上下文")
                     with gr.Row():
