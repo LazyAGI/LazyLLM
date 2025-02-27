@@ -438,6 +438,9 @@ class Warp(Parallel):
         super().__init__(*args, _scatter=_scatter, _concurrent=_concurrent, auto_capture=auto_capture, **kw)
         if len(self._items) > 1: self._items = [Pipeline(*self._items)]
 
+    def __post_init__(self):
+        if len(self._items) > 1: self._items = [Pipeline(*self._items)]
+
     def _run(self, __input, **kw):
         assert 1 == len(self._items), 'Only one function is enabled in warp'
         inputs = _split_input(__input)
