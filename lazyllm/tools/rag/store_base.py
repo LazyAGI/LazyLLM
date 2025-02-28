@@ -7,6 +7,8 @@ from .index_base import IndexBase
 
 LAZY_ROOT_NAME = "lazyllm_root"
 LAZY_IMAGE_GROUP = "Image"
+LAZY_GRAPH_NODE = 'graph_entity'
+LAZY_GRAPH_EDGE = 'graph_relationship'
 EMBED_DEFAULT_KEY = '__default__'
 
 # ---------------------------------------------------------------------------- #

@@ -4,11 +4,11 @@ import pytest
 import tempfile
 import unittest
 from unittest.mock import MagicMock
-from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
+from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME, LAZY_GRAPH_NODE, LAZY_GRAPH_EDGE
 from lazyllm.tools.rag.map_store import MapStore
 from lazyllm.tools.rag.chroma_store import ChromadbStore
 from lazyllm.tools.rag.milvus_store import MilvusStore
-from lazyllm.tools.rag.doc_node import DocNode
+from lazyllm.tools.rag.doc_node import DocNode, GraphEntityNode, GraphRelationNode
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import GlobalMetadataDesc
 
@@ -183,6 +183,91 @@ class TestMapStore(unittest.TestCase):
         self.store.update_nodes([self.node1, self.node2])
         self.assertEqual(self.store.is_group_active("group1"), True)
         self.assertEqual(self.store.is_group_active("group2"), False)
+
+# Test class for NanodbGraphStore
+class TestNanodbGraphStore(unittest.TestCase):
+    def setUp(self):
+        self.node_groups = [LAZY_GRAPH_NODE, LAZY_GRAPH_EDGE]
+        self.store_dir = tempfile.mkdtemp()
+        self.mock_embed = {
+            'default': MagicMock(return_value=[1.0, 2.0, 3.0]),
+        }
+        self.embed_dims = {"default": 3}
+
+        embed_keys = set(['default'])
+        group_embed_keys = {
+            LAZY_GRAPH_NODE: embed_keys,
+            LAZY_GRAPH_EDGE: embed_keys,
+        }
+        self.store = NanodbGraphStore(group_embed_keys=group_embed_keys, embed=self.mock_embed,
+                                   embed_dims=self.embed_dims, dir=self.store_dir)
+
+    def tearDown(self):
+        clear_directory(self.store_dir)
+
+    def test_update_nodes(self):
+        node1 = GraphEntityNode(uid="1", entity_name="TEST1", group=LAZY_GRAPH_NODE, embedding=[1.0, 2.0, 3.0])
+        node2 = GraphEntityNode(uid="2", entity_name="TEST2", group=LAZY_GRAPH_NODE, embedding=[1.0, 2.0, 3.0])
+        self.store.update_nodes(group_name=LAZY_GRAPH_NODE, nodes=[node1, node2])
+        nodes = self.store.get_nodes(LAZY_GRAPH_NODE)
+        self.assertEqual(nodes, [node1])
+        
+        edge = GraphRelationNode(uid="3", source="TEST1", target="TEST2", group=LAZY_GRAPH_EDGE, embedding=[2.0, 3.0, 4.0])
+        self.store.update_nodes(group_name=LAZY_GRAPH_EDGE, nodes=[edge])
+        edges = self.store.get_nodes(LAZY_GRAPH_EDGE)
+        self.assertEqual(edges, [edge])
+
+    def test_remove_group_nodes(self):
+        node1 = GraphEntityNode(uid="1", entity_name="TEST1", group=LAZY_GRAPH_NODE, embedding=[1.0, 2.0, 3.0])
+        node2 = GraphEntityNode(uid="2", entity_name="TEST2", group=LAZY_GRAPH_NODE, embedding=[1.0, 2.0, 3.0])
+        self.store.update_nodes(group_name=LAZY_GRAPH_NODE, nodes=[node1, node2])
+        self.store.remove_nodes(LAZY_GRAPH_NODE, "1")
+        nodes = self.store.get_nodes(LAZY_GRAPH_NODE)
+        self.assertEqual(nodes, [node2])
+        
+        edge = GraphRelationNode(uid="3", source="TEST1", target="TEST2", group=LAZY_GRAPH_EDGE, embedding=[2.0, 3.0, 4.0])
+        self.store.update_nodes(group_name=LAZY_GRAPH_EDGE, nodes=[edge])
+        self.store.remove_nodes(LAZY_GRAPH_EDGE, "3")
+        edges = self.store.get_nodes(LAZY_GRAPH_EDGE)
+        self.assertEqual(edges, [])
+
+    def test_load_store(self):
+        # Set up initial data to be loaded
+        node1 = GraphEntityNode(uid="1", entity_name="TEST1", group=LAZY_GRAPH_NODE, embedding=[1.0, 2.0, 3.0])
+        node2 = GraphEntityNode(uid="2", entity_name="TEST2", group=LAZY_GRAPH_NODE, embedding=[1.0, 2.0, 3.0])
+        edge = GraphRelationNode(uid="3", source="TEST1", target="TEST2", group=LAZY_GRAPH_EDGE, embedding=[2.0, 3.0, 4.0])
+        
+        self.store.update_nodes(group_name=LAZY_GRAPH_NODE, nodes=[node1, node2])
+        self.store.update_nodes(group_name=LAZY_GRAPH_EDGE, nodes=[edge])
+
+        # Reset store and load from "persistent" storage
+        self.store._map_store._group2docs = {group: {} for group in self.node_groups}
+        self.store._load_store()
+
+        nodes = self.store.get_nodes(LAZY_GRAPH_NODE)
+        edges = self.store.get_nodes(LAZY_GRAPH_EDGE)
+        self.assertEqual(len(nodes), 2)
+        self.assertEqual(len(edges), 1)
+        self.assertEqual(nodes[0]._uid, "1")
+        self.assertEqual(nodes[1]._uid, "2")
+        self.assertEqual(edges[0]._uid, "3")
+
+    def test_all_groups(self):
+        self.assertEqual(set(self.store.all_groups()), set(self.node_groups))
+
+    def test_query(self):
+        node1 = GraphEntityNode(uid="1", entity_name="APPLE", group=LAZY_GRAPH_NODE, embedding=[1.0, 2.0, 3.0])
+        node2 = GraphEntityNode(uid="2", entity_name="APPLE", group=LAZY_GRAPH_NODE, embedding=[1.0, 2.0, 3.0])
+        edge = GraphRelationNode(uid="3", source="APPLE", target="APPLE", group=LAZY_GRAPH_EDGE, embedding=[2.0, 3.0, 4.0])
+        
+        self.store.update_nodes(group_name=LAZY_GRAPH_NODE, nodes=[node1, node2])
+        self.store.update_nodes(group_name=LAZY_GRAPH_EDGE, nodes=[edge])
+
+        res = self.store.query(query='APPLE', group_name='LAZY_GRAPH_NODE', embed_keys=['default'], topk=1)
+        self.assertEqual(set([node1]), set(res))
+        
+        res = self.store.query(query='APPLE', group_name='LAZY_GRAPH_EDGE', embed_keys=['default'], topk=1)
+        self.assertEqual(set([edge]), set(res))
 
 @pytest.mark.skip_on_win
 class TestMilvusStoreWithNormalEmbedding(unittest.TestCase):
