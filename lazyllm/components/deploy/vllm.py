@@ -6,6 +6,7 @@ import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
 from .utils import get_log_path, make_log_dir
+from .ray import reallocate_launcher, Distributed
 
 
 class Vllm(LazyLLMDeployBase):
@@ -26,6 +27,7 @@ class Vllm(LazyLLMDeployBase):
     auto_map = {'tp': 'tensor-parallel-size'}
 
     def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), stream=False, log_path=None, **kw):
+        self.launcher_list, launcher = reallocate_launcher(launcher)
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'dtype': 'auto',
@@ -38,6 +40,8 @@ class Vllm(LazyLLMDeployBase):
             'port': 'auto',
             'host': '0.0.0.0',
             'max-num-seqs': 256,
+            'pipeline-parallel-size': 1,
+            'max_num_batched_tokens': 64000,
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
@@ -53,11 +57,20 @@ class Vllm(LazyLLMDeployBase):
                             f"base_model({base_model}) will be used")
             finetuned_model = base_model
 
+        master_ip = ''
+        for launcher in self.launcher_list:
+            m = Distributed(launcher=launcher, master_ip=master_ip)
+            m()
+            master_ip = m.master_ip
+
         def impl():
             if self.random_port:
                 self.kw['port'] = random.randint(30000, 40000)
 
-            cmd = f'{sys.executable} -m vllm.entrypoints.api_server --model {finetuned_model} '
+            cmd = ''
+            if self.launcher_list:
+                cmd += f"ray start --address='{master_ip}' && "
+            cmd += f'{sys.executable} -m vllm.entrypoints.api_server --model {finetuned_model} '
             cmd += self.kw.parse_kwargs()
             if self.trust_remote_code:
                 cmd += ' --trust-remote-code '
