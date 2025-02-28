@@ -19,7 +19,7 @@ LazyLLM是一款低代码构建**多Agent**大模型应用的开发工具，协�
 微信扫描下方二维码加入交流群(左)或通过观看视频了解更多(右)<br>
 <p align="center">
 <img src="https://github.com/user-attachments/assets/8ad8fd14-b218-48b3-80a4-7334b2a32c5a" width=250/>
-<img src="https://github.com/user-attachments/assets/9ce08228-8f59-4267-9e3d-9664988c510a" width=250/>
+<img src="https://github.com/user-attachments/assets/7a042a97-1339-459e-a451-4bcd6cf64c12" width=250/>
 </p>
 
 ## 二、特性
