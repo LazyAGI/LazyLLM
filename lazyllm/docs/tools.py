@@ -398,7 +398,7 @@ add_example('Retriever', '''
 >>> retriever3 = Retriever([document1, document3], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
 >>> print(retriever3(query="user query", filters=filters))
 >>> document4 = Document(dataset_path='/path/to/user/data', embed=lazyllm.TrainableModule('siglip'))
->>> retriever4 = Retriever(documents4, group_name='Image', similarity='cosine')
+>>> retriever4 = Retriever(document4, group_name='Image', similarity='cosine')
 >>> nodes = retriever4("user query")
 >>> print([node.get_content() for node in nodes])
 ''')
