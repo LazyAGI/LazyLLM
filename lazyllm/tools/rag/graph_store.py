@@ -3,201 +3,178 @@ import time
 import json
 import base64
 import numpy as np
-from typing import Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, Union
 from lazyllm.thirdparty import nano_vectordb as nanodb
 from lazyllm import LOG
-from lazyllm.common import override
-from .store_base import StoreBase, LAZY_GRAPH_NODE, LAZY_GRAPH_EDGE
-from .doc_node import DocNode, GraphEntityNode, GraphRelationNode
-from .index_base import IndexBase
-from .utils import _FileNodeIndex
-from .default_index import DefaultIndex
-from .map_store import MapStore
+from .store_base import LAZY_GRAPH_NODE, LAZY_GRAPH_EDGE
+from .doc_node import GraphEntityNode, GraphRelationNode
 
 # ---------------------------------------------------------------------------- #
 
-def buffer_string_to_array(base64_str: str, dtype=float) -> np.ndarray:
-    return np.frombuffer(base64.b64decode(base64_str), dtype=dtype)
-
-
-def load_storage(file_name):
-    if not os.path.exists(file_name):
-        return None
-    with open(file_name, encoding="utf-8") as f:
-        data = json.load(f)
-    data["matrix"] = buffer_string_to_array(data["matrix"]).reshape(
-        -1, data["embedding_dim"]
-    )
-    return data
-
-class NanodbGraphStore(StoreBase):
-    def __init__(self, group_embed_keys: Dict[str, str], embed: Dict[str, Callable],
-                 embed_dims: Dict[str, int], dir: str, cosine_threshold: float = 0.3, **kwargs) -> None:
-        self._entity_db = nanodb.NanoVectorDB(
-            embedding_dim=embed_dims.get(group_embed_keys.get(LAZY_GRAPH_NODE)),
-            storage_file=os.path.join(dir, 'vdb_entities.json'))
-        self._relation_db = nanodb.NanoVectorDB(
-            embedding_dim=embed_dims.get(group_embed_keys.get(LAZY_GRAPH_EDGE)),
-            storage_file=os.path.join(dir, 'vdb_relationships.json'))
+class NanoDBGraphStore:
+    json_template = dict(embedding_dim = 1024, data=[], matrix="")
+    def __init__(self, embed: Callable, embed_dims: Union[int, Dict[str, int]],
+                 dir: str, **kwargs) -> None:
+        self.json_template["embedding_dim"] = embed_dims
+        self._check_dir(dir)
+        entity_db = nanodb.NanoVectorDB(embedding_dim=embed_dims,
+                                        storage_file=os.path.join(dir, 'vdb_entities.json'))
+        relation_db = nanodb.NanoVectorDB(embedding_dim=embed_dims,
+                                          storage_file=os.path.join(dir, 'vdb_relationships.json'))
+        self._db_client = {LAZY_GRAPH_NODE: entity_db, LAZY_GRAPH_EDGE: relation_db}
         LOG.success(f"Initialzed nanodb in path: {dir}")
-        
-        node_groups = list(group_embed_keys.keys())
-        self._map_store = MapStore(node_groups=node_groups, embed=embed)
+
+        self._uid_to_nodes = {LAZY_GRAPH_NODE: {}, LAZY_GRAPH_EDGE: {}}
+        self._embed_func = embed
         self._load_store()
-        self._embed = embed
-        self._cosine_threshold = cosine_threshold
-        
-        self._name2index = {
-            'default': DefaultIndex(embed, self._map_store),
-            'file_node_map': _FileNodeIndex(),
-        }
 
-    @override
-    def update_nodes(self, group_name: str, nodes: List[DocNode]) -> None:
-        self._map_store.update_nodes(nodes)
-        self._save_nodes(group_name, nodes)
+    def update_entity_nodes(self, nodes: List[GraphEntityNode]) -> None:
+        if nodes:
+            up, ins = self._update_nodes(LAZY_GRAPH_NODE, nodes)
+            LOG.info(f"Updated {len(up)} entity and inserted {len(ins)} entity into nano db ")
 
-    @override
-    def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
+    def update_relation_nodes(self, nodes: List[GraphRelationNode]) -> None:
+        if nodes:
+            up, ins = self._update_nodes(LAZY_GRAPH_EDGE, nodes)
+            LOG.info(f"Updated {len(up)} edge and inserted {len(ins)} edge into nano db ")
+
+    def remove_entity_nodes(self, uids: Optional[List[str]] = None) -> None:
+        self._remove_nodes(LAZY_GRAPH_NODE, uids)
+        LOG.info(f"Deleted {len(uids)} entity from nano db.")
+
+    def remove_relation_nodes(self, uids: Optional[List[str]] = None) -> None:
+        self._remove_nodes(LAZY_GRAPH_EDGE, uids)
+        LOG.info(f"Deleted {len(uids)} edge from nano db.")
+
+    def get_entity_nodes(self, uids: List[str] = None) -> List[GraphEntityNode]:
         if uids:
-            self._delete_group_nodes(group_name, uids)
+            return [self._uid_to_nodes[LAZY_GRAPH_NODE].get(uid) for uid in uids]
+        return list(self._uid_to_nodes[LAZY_GRAPH_NODE].values())
 
-        return self._map_store.remove_nodes(group_name, uids)
+    def get_relation_nodes(self, uids: List[str] = None) -> List[GraphRelationNode]:
+        if uids:
+            return [self._uid_to_nodes[LAZY_GRAPH_EDGE].get(uid) for uid in uids]
+        return list(self._uid_to_nodes[LAZY_GRAPH_EDGE].values())
 
-    @override
-    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
-        self._map_store.update_doc_meta(filepath, metadata)
+    def query_on_entity(self, query: str, topk: int = 10,
+                     similarity_cut_off: float = 0.3) -> List[GraphEntityNode]:
+        uidset = self._cosine_query(query, topk, LAZY_GRAPH_NODE, similarity_cut_off)
+        return self.get_entity_nodes(list(uidset))
 
-    @override
-    def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
-        return self._map_store.get_nodes(group_name, uids)
+    def query_on_relationship(self, query: str, topk: int = 10,
+                     similarity_cut_off: float = 0.3) -> List[GraphRelationNode]:
+        uidset = self._cosine_query(query, topk, LAZY_GRAPH_EDGE, similarity_cut_off)
+        return self.get_relation_nodes(list(uidset))
 
-    @override
-    def is_group_active(self, name: str) -> bool:
-        return self._map_store.is_group_active(name)
-
-    @override
-    def all_groups(self) -> List[str]:
-        return self._map_store.all_groups()
-
-    @override
-    def register_index(self, type: str, index: IndexBase) -> None:
-        self._name2index[type] = index
-
-    @override
-    def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
-        if type is None:
-            type = 'default'
-        return self._name2index.get(type)
-   
-    @override
-    def query(self, query: str, group_name: str, topk: int = 10,
-              embed_keys: Optional[List[str]] = None) -> List[DocNode]:
+    def _cosine_query(self, query: str, topk: int, store_key: str,
+                      cosine_threshold: float = 0.3) -> List[str]:
         uidset = set()
-        db_client = self._get_db_client(group_name)
-        for key in embed_keys:
-            embed_func = self._embed.get(key)
-            query_embedding = json.loads(embed_func(query))
-            results =  db_client.query(query = query_embedding,
-                                        top_k = topk,
-                                        better_than_threshold = self._cosine_threshold)
+        db_client = self._db_client.get(store_key)
+        query_embedding = self._embed_func(query)
+        results =  db_client.query(query = query_embedding,
+                                    top_k = topk,
+                                    better_than_threshold = cosine_threshold)
 
-            results = [dp["__id__"] for dp in results]
-            uidset.update(results)
+        results = [dp["__id__"] for dp in results]
+        uidset.update(results)
 
-        return self._map_store.get_nodes(group_name, list(uidset))
+        return uidset
+
+    def _update_nodes(self, store_key: str, nodes: List[Union[GraphEntityNode, GraphRelationNode]])-> Dict[str, int]:
+        db_client = self._db_client.get(store_key)
+        if db_client is None:
+            return 0, 0
+        data = self._format_nodes_to_json(nodes)
+        results = db_client.upsert(data)
+        db_client.save()
+        self._update_uid_mapping(store_key, nodes)
+        return results['update'], results['insert']
+
+    def _remove_nodes(self, store_key: str, uids: Optional[List[str]] = None) -> None:
+        if uids:
+            db_client = self._db_client.get(store_key)
+            db_client.delete(uids)
+            db_client.save()
+            self._remove_uid_mapping(store_key, uids)
 
     def _load_store(self) -> None:
         # step 1 : load entity vdb
-        self._load_storage(self._entity_db.storage_file, LAZY_GRAPH_NODE)
-        
+        entity_storage = self._load_storage(LAZY_GRAPH_NODE)
+        nodes = self._build_entity_nodes_from_json(entity_storage)
+        self._update_uid_mapping(LAZY_GRAPH_NODE, nodes)
+
         # step 2 : load relationship vdb
-        self._load_storage(self._relation_db.storage_file, LAZY_GRAPH_EDGE)
+        edge_storage = self._load_storage(LAZY_GRAPH_EDGE)
+        nodes = self._build_relation_nodes_from_json(edge_storage)
+        self._update_uid_mapping(LAZY_GRAPH_EDGE, nodes)
 
         LOG.success("Successfully Built nodes from nanodb.")
 
-    def _save_nodes(self, group_name: str, nodes: List[DocNode]) -> None:
-        if not nodes:
-            return
-        data, db_client = [], None
-        current_time = time.time()
-        if group_name == LAZY_GRAPH_NODE:
-            db_client = self._entity_db
-            for node in nodes:
-                data.append({
-                    "__id__": node._uid,
-                    "__created_at__": current_time,
-                    "entity_name": node.entity_name,
-                    "__vector__": list(node._embedding.values())[0]})
-        elif group_name == LAZY_GRAPH_EDGE:
-            db_client = self._relation_db
-            for node in nodes:
-                data.append({
-                    "__id__": node._uid,
-                    "__created_at__": current_time,
-                    "src_id": node.source,
-                    "tgt_id": node.target,
-                    "__vector__": list(node._embedding.values())[0]})
-        else:
-            raise NotImplementedError("Nanodb Graph Store only supports entity group and relation group")
-        
-        if data:
-            results = db_client.upsert(data)
-            db_client.save()
-            LOG.info(f"Updated {len(results['update'])} node and inserted {len(results['insert'])} node into nano db ")
-
-            
-    def _delete_group_nodes(self, group_name: str, uids: List[str]) -> None:
-        db_client = self._get_db_client(group_name)
-        db_client.delete(uids)
-        db_client.save()
-        LOG.info(f"Deleted {uids} node from nano db.")
-
-    def _load_storage(self, file_name: str, node_group: str) -> None:
-        if not os.path.exists(file_name):
-            LOG.info("No persistent data found, skip the entity loading phrase.")
-            return
-
+    def _load_storage(self, store_key: str) -> Dict[str, Any]:
+        file_name = self._db_client.get(store_key).storage_file
         with open(file_name, encoding="utf-8") as f:
             storage = json.load(f)
+
+        if len(storage)==0:
+            LOG.info("No persistent data found, skip the entity loading phrase.")
+            return
 
         matrix = np.frombuffer(base64.b64decode(storage["matrix"]), dtype=np.float32)
         storage["matrix"] = matrix.reshape(-1, storage["embedding_dim"])
 
-        # Restore all nodes
-        uid2node = {}
-        nodes = self._build_nodes_from_json(storage, node_group)
+        return storage
+
+    def _format_nodes_to_json(self, nodes: List[Union[GraphEntityNode, GraphRelationNode]]) -> Dict[str, List]:
+        data = []
+        current_time = time.time()
         for node in nodes:
-            uid2node[node._uid] = node
+            node_json = node.to_dict()
+            node_json['__created_time__'] = current_time
+            node_json['__vector__'] = np.array(node_json['__vector__'])
+            data.append(node_json)
+        return data
 
-        self._map_store.update_nodes(list(uid2node.values()))
+    def _build_entity_nodes_from_json(self, storage: Dict[str, List]) -> List[GraphEntityNode]:
+        if storage:
+            nodes = []
+            for i, data in enumerate(storage['data']):
+                node = GraphEntityNode(
+                    uid=data['__id__'],
+                    entity_name=data['entity_name'],
+                    embedding=storage['matrix'][i]
+                )
+                nodes.append(node)
+            return nodes
 
-    def _build_nodes_from_json(self, results: Dict[str, List], node_group: str) -> List[DocNode]:
-        nodes: List[DocNode] = []
-        if node_group == LAZY_GRAPH_NODE:
-            nodes = [GraphEntityNode(
-                uid=data['__id__'],
-                group=node_group,
-                entity_name=data['entity_name'],
-                embedding={node_group: results['matrix'][i]},
-                metadata={'group': node_group}
-            ) for i, data in enumerate(results['data'])]
-        elif node_group == LAZY_GRAPH_EDGE:
-            nodes = [GraphRelationNode(
-                uid=data['__id__'],
-                group=node_group,
-                source=data['src_id'],
-                target=data['tgt_id'],
-                embedding={node_group: results['matrix'][i]},
-                metadata={'group': node_group}
-            ) for i, data in enumerate(results['data'])]
+    def _build_relation_nodes_from_json(self, storage: Dict[str, List]) -> List[GraphRelationNode]:
+        if storage:
+            nodes = []
+            for i, data in enumerate(storage['data']):
+                node = GraphRelationNode(
+                    uid=data['__id__'],
+                    source=data['src_id'],
+                    target=data['tgt_id'],
+                    embedding=storage['matrix'][i]
+                )
+                nodes.append(node)
+            return nodes
 
-        return nodes
+    def _update_uid_mapping(self, store_key: str, nodes: List[Union[GraphEntityNode, GraphRelationNode]] = None) -> None:
+        if nodes:
+            self._uid_to_nodes[store_key].update({node._uid: node for node in nodes})
 
-    def _get_db_client(self, group_name: str):
-        if group_name == LAZY_GRAPH_NODE:
-            return self._entity_db
-        elif group_name == LAZY_GRAPH_EDGE:
-            return self._relation_db
+    def _remove_uid_mapping(self, store_key: str, uids: List[str] = None) -> None:
+        if uids:
+            for uid in uids:
+                self._uid_to_nodes[store_key].pop(uid)
+
+    def _check_dir(self, dir: str):
+        if os.path.isdir(dir):
+            if not os.path.exists(os.path.join(dir, 'vdb_entities.json')):
+                with open(os.path.join(dir, 'vdb_entities.json'), 'w') as f:
+                    json.dump(self.json_template, f)
+            if not os.path.exists(os.path.join(dir, 'vdb_relationships.json')):
+                with open(os.path.join(dir, 'vdb_relationships.json'), 'w') as f:
+                    json.dump(self.json_template, f)
         else:
-            raise NotImplementedError('NanoGraphStore only support query on entity or relation')
+            raise OSError(f"The dir passed into NanoDBGraphStore must be directory.")
