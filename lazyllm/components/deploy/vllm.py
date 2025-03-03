@@ -3,9 +3,10 @@ import sys
 import json
 import random
 import importlib
+from packaging.version import parse
 
 import lazyllm
-from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
+from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG, pipeline
 from .base import LazyLLMDeployBase, verify_fastapi_func
 from .utils import get_log_path, make_log_dir
 from .ray import reallocate_launcher, Distributed
@@ -50,8 +51,11 @@ class Vllm(LazyLLMDeployBase):
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
         self.temp_folder = make_log_dir(log_path, 'vllm') if log_path else None
+        if self.launcher_list:
+            ray_launcher = [Distributed(launcher=launcher) for launcher in self.launcher_list]
+            self._prepare_deploy = pipeline(*ray_launcher)
 
-    def cmd(self, finetuned_model=None, base_model=None):
+    def cmd(self, finetuned_model=None, base_model=None, master_ip=None):
         if not os.path.exists(finetuned_model) or \
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(finetuned_model)):
@@ -59,12 +63,6 @@ class Vllm(LazyLLMDeployBase):
                 LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                             f"base_model({base_model}) will be used")
             finetuned_model = base_model
-
-        master_ip = ''
-        for launcher in self.launcher_list:
-            m = Distributed(launcher=launcher, master_ip=master_ip)
-            m()
-            master_ip = m.master_ip
 
         def impl():
             if self.random_port:
@@ -97,8 +95,8 @@ class Vllm(LazyLLMDeployBase):
     @staticmethod
     def stream_parse_parameters():
         if Vllm.vllm_version is None:
-            Vllm.vllm_version = importlib.import_module('vllm').__version__
-        if Vllm.vllm_version <= "0.5.0":
+            Vllm.vllm_version = parse(importlib.import_module('vllm').__version__)
+        if Vllm.vllm_version <= parse("0.5.0"):
             return {"decode_unicode": False, "delimiter": b"\0"}
         else:
             return {"decode_unicode": False}
