@@ -257,3 +257,42 @@ class ImageDocNode(DocNode):
     @property
     def image_path(self):
         return self._image_path
+
+
+class GraphChunkNode(DocNode):
+    def __init__(self, uid: Optional[str] = None, group: Optional[str] = None, 
+                 embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
+                 metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
+        super().__init__(uid, group, embedding, parent, metadata, None, text=text)
+
+class GraphEntityNode:
+    def __init__(self, entity_name: str, uid: Optional[str] = None, embedding: Optional[List[float]] = None):
+        self._uid = uid
+        self._entity_name = entity_name
+        self._embedding = embedding
+
+    @property
+    def entity_name(self):
+        return self._entity_name
+
+    def to_dict(self) -> Dict:
+        return dict(__id__=self._uid, entity_name=self._entity_name, __vector__=self._embedding)
+
+class GraphRelationNode:
+    def __init__(self, source: DocNode, target: DocNode, uid: Optional[str] = None,
+                 embedding: Optional[List[float]] = None):
+        self._uid = uid
+        self._source = source
+        self._target = target
+        self._embedding = embedding
+
+    @property
+    def source(self):
+        return self._source
+
+    @property
+    def target(self):
+        return self._target
+
+    def to_dict(self) -> Dict:
+        return dict(__id__=self._uid, src_id=self._source, tgt_id=self._target, __vector__=self._embedding)
