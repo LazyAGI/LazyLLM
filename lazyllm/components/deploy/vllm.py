@@ -2,6 +2,8 @@ import os
 import sys
 import json
 import random
+import importlib
+
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
@@ -25,6 +27,7 @@ class Vllm(LazyLLMDeployBase):
         'max_tokens': 4096
     }
     auto_map = {'tp': 'tensor-parallel-size'}
+    vllm_version = None
 
     def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), stream=False, log_path=None, **kw):
         self.launcher_list, launcher = reallocate_launcher(launcher)
@@ -93,7 +96,12 @@ class Vllm(LazyLLMDeployBase):
 
     @staticmethod
     def stream_parse_parameters():
-        return {"decode_unicode": False, "delimiter": b"\0"}
+        if Vllm.vllm_version is None:
+            Vllm.vllm_version = importlib.import_module('vllm').__version__
+        if Vllm.vllm_version <= "0.5.0":
+            return {"decode_unicode": False, "delimiter": b"\0"}
+        else:
+            return {"decode_unicode": False}
 
     @staticmethod
     def stream_url_suffix():
