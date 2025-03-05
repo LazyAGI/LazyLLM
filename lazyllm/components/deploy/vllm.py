@@ -6,10 +6,10 @@ import importlib
 from packaging.version import parse
 
 import lazyllm
-from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG, pipeline
+from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
 from .utils import get_log_path, make_log_dir
-from .ray import reallocate_launcher, Distributed
+from .ray import reallocate_launcher, Distributed, sleep_moment
 
 
 class Vllm(LazyLLMDeployBase):
@@ -53,7 +53,13 @@ class Vllm(LazyLLMDeployBase):
         self.temp_folder = make_log_dir(log_path, 'vllm') if log_path else None
         if self.launcher_list:
             ray_launcher = [Distributed(launcher=launcher) for launcher in self.launcher_list]
-            self._prepare_deploy = pipeline(*ray_launcher)
+            with lazyllm.pipeline() as ppl:
+                ppl.f1 = ray_launcher[0]
+                parall_launcher = [lazyllm.pipeline(sleep_moment, launcher) for launcher in ray_launcher[1:]]
+                if parall_launcher:
+                    ppl.pp = lazyllm.parallel(*parall_launcher)
+                ppl.fout = lazyllm.bind(lambda x: lazyllm.package(x[0], x[1], x[2]), ppl.f1)
+            self._prepare_deploy = ppl
 
     def cmd(self, finetuned_model=None, base_model=None, master_ip=None):
         if not os.path.exists(finetuned_model) or \
