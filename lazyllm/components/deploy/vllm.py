@@ -53,13 +53,9 @@ class Vllm(LazyLLMDeployBase):
         self.temp_folder = make_log_dir(log_path, 'vllm') if log_path else None
         if self.launcher_list:
             ray_launcher = [Distributed(launcher=launcher) for launcher in self.launcher_list]
-            with lazyllm.pipeline() as ppl:
-                ppl.f1 = ray_launcher[0]
-                parall_launcher = [lazyllm.pipeline(sleep_moment, launcher) for launcher in ray_launcher[1:]]
-                if parall_launcher:
-                    ppl.pp = lazyllm.parallel(*parall_launcher)
-                ppl.fout = lazyllm.bind(lambda x: lazyllm.package(x[0], x[1], x[2]), ppl.f1)
-            self._prepare_deploy = ppl
+            parall_launcher = [lazyllm.pipeline(sleep_moment, launcher) for launcher in ray_launcher[1:]]
+            self._prepare_deploy = lazyllm.pipeline(
+                ray_launcher[0], post_action=(lazyllm.parallel(*parall_launcher) if len(parall_launcher) else None))
 
     def cmd(self, finetuned_model=None, base_model=None, master_ip=None):
         if not os.path.exists(finetuned_model) or \
