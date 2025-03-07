@@ -44,7 +44,7 @@ def do_check_method(cls, func: Callable):
     real_vars = [arg_spec.varargs, arg_spec.varkw]
     if real_parms[0] in ['self', 'cls']:
         real_parms = real_parms[1:]
-    real_parms = set(real_parms)
+    real_parms = set(real_parms + real_vars)
     if func.__name__ == '__init__':
         doc = cls.__doc__
     else:
@@ -57,7 +57,7 @@ def do_check_method(cls, func: Callable):
             args_pattern = r"^\s*(\w+)\s*(?:\(|:)"
             doc_parms = re.findall(args_pattern, match.group(1), re.MULTILINE)
         for doc_param in doc_parms:
-            if doc_param in real_vars:
+            if doc_param in real_parms:
                 continue
             assert doc_param in real_parms, f"{doc_param} no found in real params: {real_parms}"
     else:

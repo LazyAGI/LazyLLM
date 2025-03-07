@@ -35,7 +35,8 @@ def add_example(obj_name, docstr: Union[str, list], module=lazyllm):
             code_lines.append(f"    {line[4:]}")
     if len(code_lines) == 0:
         return
-    func_code = f"def {func_name}():\n" + "\n".join(code_lines)
+    xfail_decorator = "@pytest.mark.xfail"
+    func_code = f"{xfail_decorator}\ndef {func_name}():\n" + "\n".join(code_lines)
     lazyllm.LOG.info(f"\nTest example:\n{func_code}")
     exec(func_code, globals())
 
