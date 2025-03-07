@@ -40,6 +40,7 @@ class DocNode:
         self._lock = threading.Lock()
         self._embedding_state = set()
         self.relevance_score = None
+        self.similarity_score = None
 
         if global_metadata and parent:
             raise ValueError('only ROOT node can set global metadata.')
@@ -211,6 +212,11 @@ class DocNode:
     def with_score(self, score):
         node = copy.copy(self)
         node.relevance_score = score
+        return node
+
+    def with_sim_score(self, score):
+        node = copy.copy(self)
+        node.similarity_score = score
         return node
 
 
