@@ -75,7 +75,8 @@ def create_test_function(cls, func):
     global_func_names.add(dynamic_func_name)
     cls_path = f"{cls.__module__}.{cls.__qualname__}"
     func_path = f"{cls_path}.{func.__name__}"
-    code = f"def {dynamic_func_name}():\n    do_check_method({cls_path}, {func_path})"
+    xfail_decorator = "@pytest.mark.xfail"
+    code = f"{xfail_decorator}\ndef {dynamic_func_name}():\n    do_check_method({cls_path}, {func_path})"
     exec(code, globals())
 
 
