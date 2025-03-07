@@ -1,11 +1,14 @@
 from typing import Optional, Dict, Any, Union, Callable, List
 from enum import Enum, auto
 from collections import defaultdict
+from PIL import Image
 from lazyllm import config, reset_on_pickle
+from lazyllm.components.utils.file_operate import image_to_base64
 from .global_metadata import RAG_DOC_PATH
 import uuid
 import threading
 import time
+import copy
 
 class MetadataMode(str, Enum):
     ALL = auto()
@@ -36,6 +39,7 @@ class DocNode:
         self._children: Dict[str, List["DocNode"]] = defaultdict(list)
         self._lock = threading.Lock()
         self._embedding_state = set()
+        self.relevance_score = None
 
         if global_metadata and parent:
             raise ValueError('only ROOT node can set global metadata.')
@@ -82,6 +86,10 @@ class DocNode:
         while root and root.parent:
             root = root.parent
         return root or self
+
+    @property
+    def is_root_node(self) -> bool:
+        return (not self.parent)
 
     @property
     def global_metadata(self) -> Dict[str, Any]:
@@ -200,6 +208,11 @@ class DocNode:
     def to_dict(self) -> Dict:
         return dict(content=self._content, embedding=self.embedding, metadata=self.metadata)
 
+    def with_score(self, score):
+        node = copy.copy(self)
+        node.relevance_score = score
+        return node
+
 
 class QADocNode(DocNode):
     def __init__(self, query: str, answer: str, uid: Optional[str] = None, group: Optional[str] = None,
@@ -212,3 +225,35 @@ class QADocNode(DocNode):
         if metadata_mode == MetadataMode.LLM:
             return f'query:\n{self.text}\nanswer\n{self._answer}'
         return super().get_text(metadata_mode)
+
+
+class ImageDocNode(DocNode):
+    def __init__(self, image_path: str, uid: Optional[str] = None, group: Optional[str] = None,
+                 embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
+                 metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None,
+                 *, text: Optional[str] = None):
+        super().__init__(uid, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
+        self._image_path = image_path.strip()
+        self._modality = "image"
+
+    def do_embedding(self, embed: Dict[str, Callable]) -> None:
+        for k, e in embed.items():
+            emb = e(self.get_content(MetadataMode.EMBED), modality=self._modality)
+            generate_embed = {k: emb[0]}
+
+        with self._lock:
+            self.embedding = self.embedding or {}
+            self.embedding = {**self.embedding, **generate_embed}
+
+    def get_content(self, metadata_mode=MetadataMode.LLM) -> str:
+        if metadata_mode == MetadataMode.LLM:
+            return Image.open(self._image_path)
+        elif metadata_mode == MetadataMode.EMBED:
+            image_base64, mime = image_to_base64(self._image_path)
+            return [f"data:{mime};base64,{image_base64}"]
+        else:
+            return self.get_text()
+
+    @property
+    def image_path(self):
+        return self._image_path

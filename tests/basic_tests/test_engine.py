@@ -112,29 +112,25 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 1) == 2
         assert engine.run(gid, 2) == 4
 
-    def test_engine_switch(self):
+    def test_engine_switch_and_diverter(self):
         plus1 = dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
         double = dict(id='2', kind='Code', name='m2', args=dict(code='def test(x: int):\n    return 2 * x\n'))
         square = dict(id='3', kind='Code', name='m3',
                       args=dict(code='def test(x: int):\n    return x * x\n', _lazyllm_enable_report=True))
-        switch = dict(
-            id="4",
-            kind="Switch",
-            name="s1",
-            args=dict(
-                judge_on_full_input=True,
-                nodes={1: [double], 2: [plus1, double], 3: [square]},
-                _lazyllm_enable_report=True,
-            ),
-        )
-        nodes = [switch]
+        switch = dict(id="4", kind="Switch", name="s1", args=dict(
+            judge_on_full_input=True, nodes={1: [double], 2: [plus1, double], 3: [square]}, _lazyllm_enable_report=True))
         edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         engine = LightEngine()
         engine.set_report_url(self.report_url)
-        gid = engine.start(nodes, edges)
+        gid = engine.start([switch], edges)
         assert engine.run(gid, 1) == 2
         assert engine.run(gid, 2) == 6
         assert engine.run(gid, 3) == 9
+
+        diverter = dict(id="5", kind="Diverter", name="d1", args=dict(nodes=[[double], [plus1, double], square]))
+        edges2 = [dict(iid='__start__', oid='5'), dict(iid='5', oid='__end__')]
+        gid = engine.start([diverter], edges2)
+        assert engine.run(gid, [1, 2, 3]) == (2, 6, 9)
 
         engine.reset()
 
@@ -567,10 +563,70 @@ class TestEngine(unittest.TestCase):
         engine = LightEngine()
         gid = engine.start(nodes, edges, gid='graph-1')
         res = engine.run(gid)
-        content = json.loads(res['content'])
 
-        assert content['headers']['h1'] == 'baz'
-        assert content['url'].endswith(f'{url[5:]}?p1=foo&p2=bar')
+        assert res['headers']['h1'] == 'baz'
+        assert res['url'].endswith(f'{url[5:]}?p1=foo&p2=bar')
+
+    def test_engine_httptool_with_output(self):
+        params = {'p1': '{{p1}}', 'p2': '{{p2}}'}
+        headers = {'h1': '{{h1}}'}
+        url = 'https://postman-echo.com/get'
+
+        nodes = [
+            dict(id='0', kind='Code', name='code1', args=dict(code='def p1(): return "foo"')),
+            dict(id='1', kind='Code', name='code2', args=dict(code='def p2(): return "bar"')),
+            dict(id='2', kind='Code', name='code3', args=dict(code='def h1(): return "baz"')),
+            dict(id='3', kind='HttpTool', name='http', args=dict(
+                method='GET', url=url, params=params, headers=headers,
+                outputs=['headers', 'url'], _lazyllm_arg_names=['p1', 'p2', 'h1']))
+        ]
+        edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
+                 dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
+
+        engine = LightEngine()
+        gid = engine.start(nodes, edges, gid='graph-1')
+        res = engine.run(gid)
+
+        assert isinstance(res, lazyllm.package) and len(res) == 2
+        assert res[0]['h1'] == 'baz'
+        assert res[1].endswith(f'{url[5:]}?p1=foo&p2=bar')
+
+        engine.reset()
+
+        nodes[3]['args']['outputs'] = ['output']
+        gid = engine.start(nodes, edges)
+        res = engine.run(gid)
+        assert res['headers']['h1'] == 'baz'
+
+        engine.reset()
+
+        nodes[3]['args']['outputs'] = ['headers']
+        nodes[3]['args']['extract_from_result'] = True
+        gid2 = engine.start(nodes, edges)
+        res = engine.run(gid2)
+        assert res['h1'] == 'baz'
+
+    def test_engine_httptool_body(self):
+        body = {'b1': '{{b1}}', 'b2': '{{b2}}'}
+        headers = {'Content-Type': '{{h1}}'}
+        url = 'https://jsonplaceholder.typicode.com/posts'
+
+        nodes = [
+            dict(id='0', kind='Constant', name='header', args="application/json"),
+            dict(id='1', kind='Constant', name='body1', args="body1"),
+            dict(id='2', kind='Constant', name='body2', args="body2"),
+            dict(id='3', kind='HttpTool', name='http', args=dict(
+                method='POST', url=url, body=body, headers=headers, _lazyllm_arg_names=['h1', 'b1', 'b2']))
+        ]
+        edges = [dict(iid='__start__', oid='0'), dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'),
+                 dict(iid='0', oid='3'), dict(iid='1', oid='3'), dict(iid='2', oid='3'), dict(iid='3', oid='__end__')]
+
+        engine = LightEngine()
+        gid = engine.start(nodes, edges, gid='graph-1')
+        res = engine.run(gid)
+
+        assert res['b1'] == 'body1'
+        assert res['b2'] == 'body2'
 
     def test_engine_status(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
@@ -616,7 +672,7 @@ class TestEngineRAG(object):
                       args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
                  dict(id='4', kind='Reranker', name='rek1',
                       args=dict(type='ModuleReranker', output_format='content', join=True,
-                                arguments=dict(model="bge-reranker-large", topk=1))),
+                                arguments=dict(model="bge-reranker-large", topk=3))),
                  dict(id='5', kind='Code', name='c1',
                       args=dict(code='def test(nodes, query): return f\'context_str={nodes}, query={query}\'')),
                  dict(id='6', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
@@ -625,8 +681,8 @@ class TestEngineRAG(object):
                  dict(iid='6', oid='__end__')]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
-        r = engine.run(gid, '何为天道?')
-        assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r
+        r = engine.run(gid, '何为修身?')
+        assert '所谓修身在正其心者' in r
 
         # test add doc_group
         resources[0] = dict(id='0', kind='Document', name='d1', args=dict(
@@ -641,4 +697,5 @@ class TestEngineRAG(object):
                  dict(iid='6', oid='__end__')]
         engine = LightEngine()
         engine.update(gid, nodes, edges, resources)
-        assert '观天之道，执天之行' in engine.run(gid, '何为天道?')
+        r = engine.run(gid, '何为修身?')
+        assert '所谓修身在正其心者' in r

@@ -292,12 +292,16 @@ def modify_repr(repr, key, value):
 class once_flag(object):
     def __init__(self, reset_on_pickle=False):
         self._flag = False
+        self._exc = None
         self._reset_on_pickle = reset_on_pickle
         self._lock = threading.RLock()
 
     def set(self, flag=True):
         with self._lock:
             self._flag = flag
+
+    def set_exception(self, exc):
+        self._exc = exc
 
     def reset(self):
         self.set(False)
@@ -314,11 +318,17 @@ class once_flag(object):
     def __reduce__(self):
         return once_flag.rebuild, (self._flag, self._reset_on_pickle)
 
-def call_once(flag, func, *args, **kw):
+def call_once(flag: once_flag, func: Callable, *args, **kw):
     with flag._lock:
         if not flag:
-            flag.set()
-            return func(*args, **kw)
+            try:
+                return func(*args, **kw)
+            except Exception as e:
+                flag.set_exception(e)
+            finally:
+                flag.set()
+        if flag._exc:
+            raise flag._exc
     return None
 
 def once_wrapper(reset_on_pickle):

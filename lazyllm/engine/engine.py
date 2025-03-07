@@ -7,16 +7,19 @@ from .node import all_nodes, Node
 from .node_meta_hook import NodeMetaHook
 import inspect
 import functools
+import copy
+from abc import ABC, abstractclassmethod
 
 
 # Each session will have a separate engine
-class Engine(object):
+class Engine(ABC):
     __default_engine__ = None
     REPORT_URL = ""
 
     def __init__(self):
-        self._nodes = {'__start__': Node(id='__start__', kind='__start__', name='__start__'),
-                       '__end__': Node(id='__end__', kind='__end__', name='__end__')}
+        self._nodes: Dict[str, Node] = {
+            '__start__': Node(id='__start__', kind='__start__', name='__start__'),
+            '__end__': Node(id='__end__', kind='__end__', name='__end__')}
 
     def __new__(cls):
         if cls is not Engine:
@@ -75,6 +78,15 @@ class Engine(object):
                 if recursive: yield from self.subnodes(id, True)
         return list(_impl(nodeid, recursive))
 
+    @abstractclassmethod
+    def launch_localllm_train_service(self): pass
+
+    @abstractclassmethod
+    def launch_localllm_infer_service(self): pass
+
+    @abstractclassmethod
+    def get_infra_handle(self, token, mid) -> lazyllm.TrainableModule: pass
+
 
 class NodeConstructor(object):
     builder_methods = dict()
@@ -93,13 +105,14 @@ class NodeConstructor(object):
     def build(self, node: Node):
         if node.kind.startswith('__') and node.kind.endswith('__'):
             return None
-        node.arg_names = node.args.pop('_lazyllm_arg_names', None) if isinstance(node.args, dict) else None
-        node.enable_data_reflow = (node.args.pop('_lazyllm_enable_report', False)
-                                   if isinstance(node.args, dict) else False)
+        node_args = copy.copy(node.args)
+        node.arg_names = node_args.pop('_lazyllm_arg_names', None) if isinstance(node_args, dict) else None
+        node.enable_data_reflow = (node_args.pop('_lazyllm_enable_report', False)
+                                   if isinstance(node_args, dict) else False)
         if node.kind in NodeConstructor.builder_methods:
             createf, node.subitem_name = NodeConstructor.builder_methods[node.kind]
-            node.func = createf(**node.args) if isinstance(node.args, dict) and set(node.args.keys()).issubset(
-                set(inspect.getfullargspec(createf).args)) else createf(node.args)
+            node.func = createf(**node_args) if isinstance(node_args, dict) and set(node_args.keys()).issubset(
+                set(inspect.getfullargspec(createf).args)) else createf(node_args)
             self._process_hook(node, node.func)
             return node
 
@@ -112,7 +125,7 @@ class NodeConstructor(object):
                 return Engine().build_node(value).func
             return node_args.getattr_f(value) if node_args.getattr_f else value
 
-        for key, value in node.args.items():
+        for key, value in node_args.items():
             if key in node_msgs['init_arguments']:
                 init_args[key] = get_args('init_arguments', key, value)
             elif key in node_msgs['builder_argument']:
@@ -283,6 +296,11 @@ def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     return sw
 
 
+@NodeConstructor.register('Diverter', subitems=['nodes:list'])
+def make_diverter(nodes: List[dict]):
+    return lazyllm.diverter([_build_pipeline(node) for node in nodes])
+
+
 @NodeConstructor.register('Warp', subitems=['nodes', 'resources'])
 def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] = []):
     return lazyllm.warp(make_graph(nodes, edges, resources, enable_server=False))
@@ -300,6 +318,19 @@ def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict] = [],
 def make_ifs(cond: str, true: List[dict], false: List[dict], judge_on_full_input: bool = True):
     assert judge_on_full_input, 'judge_on_full_input only support True now'
     return lazyllm.ifs(make_code(cond), tpath=_build_pipeline(true), fpath=_build_pipeline(false))
+
+
+@NodeConstructor.register('LocalLLM')
+def make_local_llm(base_model: str, target_path: str = '', prompt: str = '', stream: bool = False,
+                   return_trace: bool = False, deploy_method: str = 'vllm', url: Optional[str] = None,
+                   history: Optional[List[List[str]]] = None):
+    if history and not (isinstance(history, list) and all(len(h) == 2 and isinstance(h, list) for h in history)):
+        raise TypeError('history must be List[List[str, str]]')
+    deploy_method = getattr(lazyllm.deploy, deploy_method)
+    m = lazyllm.TrainableModule(base_model, target_path, stream=stream, return_trace=return_trace)
+    m.prompt(prompt, history=history)
+    m.deploy_method(deploy_method, url=url)
+    return m
 
 
 @NodeConstructor.register('Intention', subitems=['nodes:dict'])
@@ -322,14 +353,20 @@ def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False
     document = lazyllm.tools.rag.Document(
         dataset_path, Engine().build_node(embed).func if embed else None, server=server, manager=create_ui)
     for group in node_group:
-        if group['transform'] == 'LLMParser': group['llm'] = Engine().build_node(group['llm']).func
-        elif group['transform'] == 'FuncNode': group['function'] = make_code(group['function'])
+        if group['transform'] == 'LLMParser':
+            group['transform'] = 'llm'
+            group['llm'] = Engine().build_node(group['llm']).func
+        elif group['transform'] == 'FuncNode':
+            group['transform'] = 'function'
+            group['function'] = make_code(group['function'])
         document.create_node_group(**group)
     return document
 
 @NodeConstructor.register('Reranker')
 def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
                   output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
+    if type == 'ModuleReranker' and (node := Engine().build_node(arguments['model'])):
+        arguments['model'] = node.func
     return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
 
 class JoinFormatter(lazyllm.components.FormatterBase):
@@ -402,9 +439,11 @@ def make_http_tool(method: Optional[str] = None,
                    proxies: Optional[Dict[str, str]] = None,
                    code_str: Optional[str] = None,
                    vars_for_code: Optional[Dict[str, Any]] = None,
-                   doc: Optional[str] = None):
+                   doc: Optional[str] = None,
+                   outputs: Optional[List[str]] = None,
+                   extract_from_result: Optional[bool] = None):
     instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies,
-                                      code_str, vars_for_code)
+                                      code_str, vars_for_code, outputs, extract_from_result)
     if doc:
         instance.__doc__ = doc
     return instance
@@ -424,8 +463,8 @@ class VQA(lazyllm.Module):
     def status(self, task_name: Optional[str] = None):
         return self._vqa.status(task_name)
 
-    def share(self, prompt: str):
-        shared_vqa = self._vqa.share(prompt=prompt)
+    def share(self, prompt: str, history: Optional[List[List[str]]] = None):
+        shared_vqa = self._vqa.share(prompt=prompt, history=history)
         return VQA(shared_vqa, self._file_resource_id)
 
     def forward(self, *args, **kw):
@@ -446,13 +485,32 @@ def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
 
 
 @NodeConstructor.register('SharedLLM')
-def make_shared_llm(llm: str, prompt: Optional[str] = None, stream: Optional[bool] = None,
-                    file_resource_id: Optional[str] = None):
-    llm = Engine().build_node(llm).func
-    if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
-    r = VQA(llm._vqa.share(prompt=prompt), file_resource_id) if file_resource_id else llm.share(prompt=prompt)
+def make_shared_llm(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
+                    stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
+                    history: Optional[List[List[str]]] = None):
+    if local:
+        llm = Engine().build_node(llm).func
+        if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
+        r = (VQA(llm._vqa.share(prompt=prompt, history=history), file_resource_id)
+             if file_resource_id else llm.share(prompt=prompt, history=history))
+    else:
+        assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
+        r = Engine().get_infra_handle(token, llm)
+        if prompt: r.prompt(prompt, history=history)
     if stream is not None: r.stream = stream
     return r
+
+
+@NodeConstructor.register('OnlineLLM')
+def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optional[str] = None,
+                    api_key: Optional[str] = None, secret_key: Optional[str] = None,
+                    stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
+                    history: Optional[List[List[str]]] = None):
+    if source and source.lower() == 'lazyllm':
+        return make_shared_llm(base_model, False, prompt, token, stream, history=history)
+    else:
+        return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
+                                        api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
 
 
 class STT(lazyllm.Module):

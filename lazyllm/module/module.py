@@ -178,7 +178,7 @@ class ModuleBase(metaclass=_MetaBind):
         def set_result(x): self.eval_result = x
 
         def parallel_infer():
-            with ThreadPoolExecutor(max_workers=100) as executor:
+            with ThreadPoolExecutor(max_workers=200) as executor:
                 results = list(executor.map(lambda item: self(**item)
                                             if isinstance(item, dict) else self(item), self._evalset))
             return results
@@ -405,6 +405,9 @@ class UrlModule(ModuleBase, UrlTemplate):
         token = getattr(self, "_tool_start_token", '')
         cache = ""
 
+        if kw.get("modality"):
+            data["modality"] = kw["modality"]
+
         # context bug with httpx, so we use requests
         with requests.post(url, json=data, stream=True, headers=headers) as r:
             if r.status_code == 200:
@@ -450,13 +453,15 @@ class UrlModule(ModuleBase, UrlTemplate):
                 self._record_usage(usage)
             return self._formatter(temp_output)
 
-    def prompt(self, prompt=None):
+    def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
         if prompt is None:
+            assert not history, 'history is not supported in EmptyPrompter'
             self._prompt = EmptyPrompter()
         elif isinstance(prompt, PrompterBase):
+            assert not history, 'history is not supported in user defined prompter'
             self._prompt = prompt
         elif isinstance(prompt, (str, dict)):
-            self._prompt = ChatPrompter(prompt)
+            self._prompt = ChatPrompter(prompt, history=history)
         return self
 
     def _extract_and_format(self, output: str) -> str:
@@ -603,7 +608,9 @@ class _TrainableModuleImpl(ModuleBase):
         super().__init__()
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
-        self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model)
+        self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model) or ''
+        if not self._base_model:
+            LOG.warning(f"Cannot get a valid model from {base_model} by ModelManager.")
         self._target_path = os.path.join(lazyllm.config['train_target_root'], target_path)
         self._stream = stream
         self._father = []
@@ -623,7 +630,7 @@ class _TrainableModuleImpl(ModuleBase):
         if len(set(args.keys()).intersection(set(disable))) > 0:
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
                              '{arg_cls}_args, please pass them from Module.__init__()')
-        if 'url' not in args:
+        if not args.get('url'):
             args['launcher'] = args['launcher'].clone() if args.get('launcher') else launchers.remote(sync=False)
             self._launchers['default'][arg_cls] = args['launcher']
         return args
@@ -728,11 +735,13 @@ class _TrainableModuleImpl(ModuleBase):
         self._deploy_args = self._get_train_or_deploy_args('deploy', disable=['target_path'])
         if self._deploy and self._deploy is not lazyllm.deploy.AutoDeploy:
             self._set_template(self._deploy)
-            if url := self._deploy_args.get('url', None):
+            if url := self._deploy_args.get('url'):
                 assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
                 for f in self._father:
                     f._set_url(url)
                 self._get_deploy_tasks.flag.set()
+            else:
+                self._deploy_args.pop('url', None)
 
     def __del__(self):
         if hasattr(self, '_launchers'):
@@ -822,13 +831,15 @@ class TrainableModule(UrlModule):
         return launcher.status
 
     # modify default value to ''
-    def prompt(self, prompt=''):
+    def prompt(self, prompt: str = '', history: Optional[List[List[str]]] = None):
         if self.base_model != '' and prompt == '' and ModelManager.get_model_type(self.base_model) != 'llm':
             prompt = None
-        prompt = super(__class__, self).prompt(prompt)._prompt
+        clear_system = isinstance(prompt, dict) and prompt.get('drop_builtin_system')
+        prompt = super(__class__, self).prompt(prompt, history)._prompt
         self._tools = getattr(prompt, "_tools", None)
-        keys = ModelManager.get_model_prompt_keys(self.base_model)
+        keys = ModelManager.get_model_prompt_keys(self.base_model).copy()
         if keys:
+            if clear_system: keys['system'] = ''
             prompt._set_model_configs(**keys)
             for key in ["tool_start_token", "tool_args_token", "tool_end_token"]:
                 if key in keys: setattr(self, f"_{key}", keys[key])
@@ -966,11 +977,11 @@ class TrainableModule(UrlModule):
             return functools.partial(getattr(self._impl, key), _return_value=self)
         raise AttributeError(f'{__class__} object has no attribute {key}')
 
-    def share(self, prompt=None, format=None, stream=None):
+    def share(self, prompt=None, format=None, stream=None, history=None):
         new = copy.copy(self)
         new._hooks = set()
         new._set_mid()
-        if prompt is not None: new.prompt(prompt)
+        if prompt is not None: new.prompt(prompt, history=history)
         if format is not None: new.formatter(format)
         if stream is not None: new.stream = stream
         new._impl._add_father(new)

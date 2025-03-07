@@ -10,12 +10,13 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     ISA = "<!lazyllm-spliter!>"
     ISE = "</!lazyllm-spliter!>"
 
-    def __init__(self, show=False, tools=None):
+    def __init__(self, show=False, tools=None, history=None):
         self._set_model_configs(system='You are an AI-Agent developed by LazyLLM.', sos='',
                                 soh='', soa='', eos='', eoh='', eoa='')
         self._show = show
         self._tools = tools
         self._pre_hook = None
+        self._history = history or []
 
     def _init_prompt(self, template: str, instruction_template: str, split: Union[None, str] = None):
         self._template = template
@@ -64,10 +65,10 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         return tools if return_dict else '### Function-call Tools. \n\n' + json.dumps(tools) + '\n\n' if tools else ''
 
     def _get_histories(self, history, *, return_dict):  # noqa: C901
-        if history is None or len(history) == 0: return ''
+        if not self._history and not history: return ''
         if return_dict:
             content = []
-            for item in history:
+            for item in self._history + (history or []):
                 if isinstance(item, list):
                     assert len(item) <= 2, "history item length cannot be greater than 2"
                     if len(item) > 0: content.append({"role": "user", "content": item[0]})
@@ -79,10 +80,11 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                     raise ValueError("history must be a list of list or dict")
             return content
         else:
+            ret = ''.join([f'{self._soh}{h}{self._eoh}{self._soa}{a}{self._eoa}' for h, a in self._history])
+            if not history: return ret
             if isinstance(history[0], list):
-                return ''.join([f'{self._soh}{h}{self._eoh}{self._soa}{a}{self._eoa}' for h, a in history])
+                return ret + ''.join([f'{self._soh}{h}{self._eoh}{self._soa}{a}{self._eoa}' for h, a in history])
             elif isinstance(history[0], dict):
-                ret = ""
                 for item in history:
                     if item['role'] == "user":
                         ret += f'{self._soh}{item["content"]}{self._eoh}'

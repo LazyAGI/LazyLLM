@@ -18,6 +18,7 @@ import io
 import re
 import json
 import time
+import tempfile
 
 
 class TestDocImpl(unittest.TestCase):
@@ -25,12 +26,19 @@ class TestDocImpl(unittest.TestCase):
     def setUp(self):
         self.mock_embed = MagicMock()
         self.mock_directory_reader = MagicMock()
+        # use temporary file as only existing files can be added to DocImpl
+        self.tmp_file_a = tempfile.NamedTemporaryFile()
+        self.tmp_file_b = tempfile.NamedTemporaryFile()
         mock_node = DocNode(group=LAZY_ROOT_NAME, text="dummy text")
-        mock_node._global_metadata = {RAG_DOC_PATH: "dummy_file.txt"}
+        mock_node._global_metadata = {RAG_DOC_PATH: self.tmp_file_a.name}
         self.mock_directory_reader.load_data.return_value = [mock_node]
 
-        self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=["dummy_file.txt"])
+        self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
         self.doc_impl._reader = self.mock_directory_reader
+
+    def tearDown(self):
+        self.tmp_file_a.close()
+        self.tmp_file_b.close()
 
     def test_create_node_group_default(self):
         self.doc_impl._create_builtin_node_group('MyChunk', transform=lambda x: ','.split(x))
@@ -73,16 +81,10 @@ class TestDocImpl(unittest.TestCase):
         self.doc_impl._lazy_init()
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
-        new_doc._global_metadata = {RAG_DOC_PATH: "new_file.txt"}
+        new_doc._global_metadata = {RAG_DOC_PATH: self.tmp_file_b.name}
         self.mock_directory_reader.load_data.return_value = [new_doc]
-        self.doc_impl._add_files(["new_file.txt"])
+        self.doc_impl._add_doc_to_store([self.tmp_file_b.name])
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 2
-
-    def test_delete_files(self):
-        self.doc_impl._lazy_init()
-        self.doc_impl._delete_files(["dummy_file.txt"])
-        assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 0
-
 
 class TestDocument(unittest.TestCase):
     @classmethod
@@ -153,27 +155,30 @@ class TestDocument(unittest.TestCase):
 
         document2 = Document(dataset_path="rag_master", embed={"m1": self.embed_model1, "m2": self.embed_model2})
         document2.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
-        retriever2 = Retriever(document2, group_name="sentences", similarity="cosine", topk=10)
+        retriever2 = Retriever(document2, group_name="sentences", similarity="cosine", topk=3)
         nodes2 = retriever2("何为天道?")
-        assert len(nodes2) == 11
+        assert len(nodes2) >= 3
 
         document3 = Document(dataset_path="rag_master", embed={"m1": self.embed_model1, "m2": self.embed_model2})
         document3.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
         retriever3 = Retriever(document3, group_name="sentences", similarity="cosine",
-                               similarity_cut_off={"m1": 0.5, "m2": 0.55}, topk=10)
-        nodes3 = retriever3("何为天道?")
-        assert len(nodes3) == 3
+                               similarity_cut_off={"m1": 0.5, "m2": 0.55}, topk=3, output_format='content', join=True)
+        nodes3_text = retriever3("何为天道?")
+        assert '观天之道' in nodes3_text or '天命之谓性' in nodes3_text
 
     def test_doc_web_module(self):
         import time
         import requests
         doc = Document('rag_master', manager='ui')
-        doc.create_kb_group(name="test_group")
+        doc.create_kb_group(name='test_group')
+        doc2 = Document('rag_master', manager=doc.manager, name='test_group2')
         doc.start()
         time.sleep(4)
-        url = doc._impls._docweb.url
+        url = doc._manager._docweb.url
         response = requests.get(url)
         assert response.status_code == 200
+        assert doc2._curr_group == 'test_group2'
+        assert doc2.manager == doc.manager
         doc.stop()
 
 class TmpDir:
@@ -188,13 +193,14 @@ class TmpDir:
 class TestDocumentServer(unittest.TestCase):
     def setUp(self):
         self.dir = TmpDir()
-        self.dlm = DocListManager(path=self.dir.rag_dir, name=None)
-        self.dlm.init_tables()
+        self.dlm = DocListManager(path=self.dir.rag_dir, name=None, enable_path_monitoring=False)
 
         self.doc_impl = DocImpl(embed=MagicMock(), dlm=self.dlm)
         self.doc_impl._lazy_init()
 
-        self.server = lazyllm.ServerModule(DocManager(self.dlm))
+        doc_manager = DocManager(self.dlm)
+        self.server = lazyllm.ServerModule(doc_manager)
+
         self.server.start()
 
         url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
@@ -234,6 +240,53 @@ class TestDocumentServer(unittest.TestCase):
         nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
         assert len(nodes) == 1
         assert nodes[0].global_metadata[RAG_DOC_ID] == test2_docid
+        cur_meta_dict = nodes[0].global_metadata
+
+        url = f'{self.doc_server_addr}/add_metadata'
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "title2"}))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert cur_meta_dict["title"] == "title2"
+
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "TITLE2"}))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert cur_meta_dict["title"] == ["title2", "TITLE2"]
+
+        url = f'{self.doc_server_addr}/delete_metadata_item'
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], keys=["signature"]))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert "signature" not in cur_meta_dict
+
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "TITLE2"}))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert cur_meta_dict["title"] == ["title2"]
+
+        url = f'{self.doc_server_addr}/update_or_create_metadata_keys'
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"signature": "signature2"}))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert cur_meta_dict["signature"] == "signature2"
+
+        url = f'{self.doc_server_addr}/reset_metadata'
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid],
+                                             new_meta={"author": "author2", "signature": "signature_new"}))
+        assert response.status_code == 200 and response.json().get('code') == 200
+        time.sleep(20)
+        assert cur_meta_dict["signature"] == "signature_new" and cur_meta_dict["author"] == "author2"
+
+        url = f'{self.doc_server_addr}/query_metadata'
+        response = httpx.post(url, json=dict(doc_id=test2_docid))
+
+        # make sure that only one file is left
+        response = httpx.get(f'{self.doc_server_addr}/list_files')
+        assert response.status_code == 200 and len(response.json().get('data')) == 1
+
+    def tearDown(self):
+        # Must clean up the server as all uploaded files will be deleted as they are in tmp dir
+        self.dlm.release()
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,12 +2,13 @@ import os
 
 from typing import Callable, Optional, Dict, Union, List
 import lazyllm
-from lazyllm import ModuleBase, ServerModule, DynamicDescriptor
+from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 
 from .doc_manager import DocManager
-from .doc_impl import DocImpl
+from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder
 from .doc_node import DocNode
+from .index_base import IndexBase
 from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .utils import DocListManager
 from .global_metadata import GlobalMetadataDesc as DocField
@@ -21,24 +22,24 @@ class CallableDict(dict):
         return self[cls](*args, **kw)
 
 class Document(ModuleBase):
-    class _Impl(ModuleBase):
+    class _Manager(ModuleBase):
         def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: Union[bool, str] = False, server: bool = False, name: Optional[str] = None,
                      launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
                      doc_fields: Optional[Dict[str, DocField]] = None):
             super().__init__()
+            self._origin_path = dataset_path
             if not os.path.exists(dataset_path):
                 defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)
                 if os.path.exists(defatult_path):
                     dataset_path = defatult_path
+            else:
+                dataset_path = os.path.join(os.getcwd(), dataset_path)
             self._launcher: Launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
             self._dataset_path = dataset_path
-            self._embed = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}
+            self._embed = self._get_embeds(embed)
             self.name = name
-            for embed in self._embed.values():
-                if isinstance(embed, ModuleBase):
-                    self._submodules.append(embed)
-            self._dlm = DocListManager(dataset_path, name).init_tables()
+            self._dlm = DocListManager(dataset_path, name, enable_path_monitoring=False if manager else True)
             self._kbs = CallableDict({DocListManager.DEFAULT_GROUP_NAME:
                                       DocImpl(embed=self._embed, dlm=self._dlm,
                                               global_metadata_desc=doc_fields,
@@ -48,10 +49,34 @@ class Document(ModuleBase):
             if server: self._kbs = ServerModule(self._kbs)
             self._global_metadata_desc = doc_fields
 
+        @property
+        def url(self):
+            if hasattr(self, '_manager'): return self._manager._url
+            return None
+
+        @property
+        @deprecated('Document.manager.url')
+        def _url(self):
+            return self.url
+
+        @property
+        def web_url(self):
+            if hasattr(self, '_docweb'): return self._docweb.url
+            return None
+
+        def _get_embeds(self, embed):
+            embeds = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}
+            for embed in embeds.values():
+                if isinstance(embed, ModuleBase):
+                    self._submodules.append(embed)
+            return embeds
+
         def add_kb_group(self, name, doc_fields: Optional[Dict[str, DocField]] = None,
-                         store_conf: Optional[Dict] = None):
+                         store_conf: Optional[Dict] = None,
+                         embed: Optional[Union[Callable, Dict[str, Callable]]] = None):
+            embed = self._get_embeds(embed) if embed else self._embed
             if isinstance(self._kbs, ServerModule):
-                self._kbs._impl._m[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
+                self._kbs._impl._m[name] = DocImpl(dlm=self._dlm, embed=embed, kb_group_name=name,
                                                    global_metadata_desc=doc_fields, store_conf=store_conf)
             else:
                 self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
@@ -76,22 +101,37 @@ class Document(ModuleBase):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
-        self._impls = Document._Impl(dataset_path, embed, create_ui or manager, server, name,
-                                     launcher, store_conf, doc_fields)
-        self._curr_group = DocListManager.DEFAULT_GROUP_NAME
+        if isinstance(manager, Document._Manager):
+            assert not server, 'Server infomation is already set to by manager'
+            assert not launcher, 'Launcher infomation is already set to by manager'
+            if dataset_path != manager._dataset_path and dataset_path != manager._origin_path:
+                raise RuntimeError(f'Document path mismatch, expected `{manager._dataset_path}`'
+                                   f'while received `{dataset_path}`')
+            manager.add_kb_group(name=name, doc_fields=doc_fields, store_conf=store_conf, embed=embed)
+            self._manager = manager
+            self._curr_group = name
+        else:
+            self._manager = Document._Manager(dataset_path, embed, create_ui or manager, server, name,
+                                              launcher, store_conf, doc_fields)
+            self._curr_group = DocListManager.DEFAULT_GROUP_NAME
 
+    @deprecated('Document(dataset_path, manager=doc.manager, name=xx, doc_fields=xx, store_conf=xx)')
     def create_kb_group(self, name: str, doc_fields: Optional[Dict[str, DocField]] = None,
                         store_conf: Optional[Dict] = None) -> "Document":
-        self._impls.add_kb_group(name=name, doc_fields=doc_fields, store_conf=store_conf)
+        self._manager.add_kb_group(name=name, doc_fields=doc_fields, store_conf=store_conf)
         doc = copy.copy(self)
         doc._curr_group = name
         return doc
 
     @property
-    def _impl(self): return self._impls.get_doc_by_kb_group(self._curr_group)
+    @deprecated('Document._manager')
+    def _impls(self): return self._manager
 
     @property
-    def manager(self): return getattr(self._impls, '_manager', None)
+    def _impl(self): return self._manager.get_doc_by_kb_group(self._curr_group)
+
+    @property
+    def manager(self): return self._manager
 
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
@@ -114,8 +154,17 @@ class Document(ModuleBase):
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
         return cls.add_reader(pattern, func)
 
+    def get_store(self):
+        return StorePlaceholder()
+
+    def get_embed(self):
+        return EmbedPlaceholder()
+
+    def register_index(self, index_type: str, index_cls: IndexBase, *args, **kwargs) -> None:
+        self._impl.register_index(index_type, index_cls, *args, **kwargs)
+
     def _forward(self, func_name: str, *args, **kw):
-        return self._impls(self._curr_group, func_name, *args, **kw)
+        return self._manager(self._curr_group, func_name, *args, **kw)
 
     def find_parent(self, target) -> Callable:
         # TODO: Currently, when a DocNode is returned from the server, it will carry all parent nodes and child nodes.
@@ -135,5 +184,5 @@ class Document(ModuleBase):
         return self._forward('retrieve', *args, **kw)
 
     def __repr__(self):
-        return lazyllm.make_repr("Module", "Document", manager=hasattr(self._impl, '_manager'),
-                                 server=isinstance(self._impls._kbs, ServerModule))
+        return lazyllm.make_repr("Module", "Document", manager=hasattr(self._manager, '_manager'),
+                                 server=isinstance(self._manager._kbs, ServerModule))

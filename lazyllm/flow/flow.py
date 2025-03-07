@@ -1,7 +1,7 @@
 import lazyllm
 import builtins
 from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root, config
-from lazyllm import Thread, ReadOnlyWrapper, LOG, globals
+from lazyllm import ReadOnlyWrapper, LOG, globals
 from ..common.bind import _MetaBind
 from functools import partial
 from contextlib import contextmanager
@@ -17,6 +17,7 @@ import concurrent.futures
 from collections import deque
 import uuid
 from ..hook import LazyLLMHook
+import asyncio
 
 
 class _FuncWrap(object):
@@ -314,11 +315,12 @@ def save_pipeline_result(flag: bool = True):
 
 _barr = threading.local()
 def barrier(args): _barr.impl.wait(); return args
-def _hook(v): _barr.impl = v
 
 
 def _split_input(input: Union[Tuple, List], flag: Optional[Union[int, List]] = None):
     if flag is None or isinstance(flag, int):
+        if isinstance(flag, int) and flag > 1 and isinstance(input, package) and len(input) == 1:
+            input = input[0]
         assert isinstance(input, (tuple, list)), (
             f'Only tuple and list input can be split automatically, your input is {input} <{type(input)}>')
         if isinstance(flag, int):
@@ -345,11 +347,12 @@ class Parallel(LazyLLMFlowsBase):
         SUM = 4
         JOIN = 5
 
-    def __init__(self, *args, _scatter=False, _concurrent=True, auto_capture=False, **kw):
+    def __init__(self, *args, _scatter: bool = False, _concurrent: Union[bool, int] = True,
+                 auto_capture: bool = False, **kw):
         super().__init__(*args, **kw, auto_capture=auto_capture)
         self._post_process_type = Parallel.PostProcessType.NONE
         self._post_process_args = None
-        self._concurrent = _concurrent
+        self._concurrent = _concurrent if not isinstance(_concurrent, bool) else 5 if _concurrent else 0
         self._scatter = _scatter
 
     @staticmethod
@@ -384,15 +387,22 @@ class Parallel(LazyLLMFlowsBase):
             inputs = __input
 
         if self._concurrent:
-            nthreads = len(items)
-            impl = threading.Barrier(nthreads)
-            ts = [Thread(target=self.invoke, args=(it, inp), kwargs=kw, prehook=bind(_hook, impl))
-                  for it, inp in zip(items, inputs)]
-            [t.start() for t in ts]
-            r = package(t.get_result() for t in ts)
+            def impl(func, barrier, global_data, *args, **kw):
+                lazyllm.globals._init_sid()
+                lazyllm.globals._update(global_data)
+                lazyllm.globals['bind_args'] = lazyllm.globals['bind_args'].copy()
+                _barr.impl = barrier
+                r = func(*args, **kw)
+                lazyllm.globals.clear()
+                return r
+
+            loop, barrier = asyncio.new_event_loop(), threading.Barrier(len(items))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self._concurrent) as executor:
+                return package(loop.run_until_complete(asyncio.gather(*[loop.run_in_executor(executor, partial(
+                    impl, self.invoke, barrier, lazyllm.globals._data, it, inp, **kw))
+                    for it, inp in zip(items, inputs)])))
         else:
-            r = package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
-        return r
+            return package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
 
     def _post_process(self, output):
         if self._post_process_type == Parallel.PostProcessType.DICT:
@@ -413,7 +423,7 @@ class Parallel(LazyLLMFlowsBase):
 #  (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #                  \> in3 -> module31 -> ... -> module3N -> out3 /
 class Diverter(Parallel):
-    def __init__(self, *args, _concurrent=True, auto_capture=False, **kw):
+    def __init__(self, *args, _concurrent: Union[bool, int] = True, auto_capture: bool = False, **kw):
         super().__init__(*args, _scatter=True, _concurrent=_concurrent, auto_capture=auto_capture, **kw)
 
 
@@ -423,7 +433,8 @@ class Diverter(Parallel):
 # Attention: Cannot be used in async tasks, ie: training and deploy
 # TODO: add check for async tasks
 class Warp(Parallel):
-    def __init__(self, *args, _scatter=False, _concurrent=True, auto_capture=False, **kw):
+    def __init__(self, *args, _scatter: bool = False, _concurrent: Union[bool, int] = True,
+                 auto_capture: bool = False, **kw):
         super().__init__(*args, _scatter=_scatter, _concurrent=_concurrent, auto_capture=auto_capture, **kw)
         if len(self._items) > 1: self._items = [Pipeline(*self._items)]
 

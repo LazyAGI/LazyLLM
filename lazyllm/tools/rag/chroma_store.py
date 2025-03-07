@@ -5,7 +5,7 @@ from lazyllm.common import override, obj2str, str2obj
 from .store_base import StoreBase, LAZY_ROOT_NAME
 from .doc_node import DocNode
 from .index_base import IndexBase
-from .utils import _FileNodeIndex
+from .utils import _FileNodeIndex, sparse2normal
 from .default_index import DefaultIndex
 from .map_store import MapStore
 
@@ -42,6 +42,10 @@ class ChromadbStore(StoreBase):
         else:
             self._db_client.delete_collection(name=group_name)
         return self._map_store.remove_nodes(group_name, uids)
+
+    @override
+    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
+        self._map_store.update_doc_meta(filepath, metadata)
 
     @override
     def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
@@ -151,10 +155,7 @@ class ChromadbStore(StoreBase):
                         dim = embed_dims.get(key)
                         if not dim:
                             raise ValueError(f'dim of embed [{key}] is not determined.')
-                        new_embedding = [0] * dim
-                        for idx, val in embedding.items():
-                            new_embedding[int(idx)] = val
-                        new_embedding_dict[key] = new_embedding
+                        new_embedding_dict[key] = sparse2normal(embedding, dim)
                     else:
                         new_embedding_dict[key] = embedding
                 node.embedding = new_embedding_dict
@@ -170,7 +171,7 @@ class ChromadbStore(StoreBase):
             "metadata": obj2str(node._metadata),
         }
 
-        if not node.parent:
+        if node.is_root_node:
             metadata["global_metadata"] = obj2str(node.global_metadata)
 
         return metadata

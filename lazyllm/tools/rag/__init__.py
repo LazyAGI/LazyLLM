@@ -9,6 +9,9 @@ from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader,
 from .dataReader import SimpleDirectoryReader
 from .doc_manager import DocManager, DocListManager
 from .global_metadata import GlobalMetadataDesc as DocField
+from .data_type import DataType
+from .index_base import IndexBase
+from .store_base import StoreBase
 
 
 __all__ = [
@@ -39,4 +42,7 @@ __all__ = [
     'DocManager',
     'DocListManager',
     'DocField',
+    'DataType',
+    'IndexBase',
+    'StoreBase',
 ]

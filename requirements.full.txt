@@ -31,7 +31,7 @@ psutil
 pypdf
 pytest
 numpy==1.26.4
-pymilvus
+pymilvus>=2.4.11, <2.5.0
 async-timeout
 httpx<0.28.0
 redis>=5.0.4
@@ -68,3 +68,5 @@ infinity-emb
 ctranslate2
 optimum>=1.16.2
 typer
+pymongo
+pymysql

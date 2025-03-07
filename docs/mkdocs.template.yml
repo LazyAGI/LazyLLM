@@ -84,11 +84,8 @@ extra:
   social:
   - icon: fontawesome/brands/github
     link: https://github.com/LazyAGI/LazyLLM
-extra_css:
-  - 'assets/css/assistant_style.css'
 extra_javascript:
   - 'assets/js/assistant.js'
-  - 'assets/js/jigsaw.js'
 plugins:
 - search:
 - section-index:

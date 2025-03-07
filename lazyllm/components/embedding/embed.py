@@ -9,7 +9,7 @@ class LazyHuggingFaceEmbedding(object):
     def __init__(self, base_embed, source=None, init=False):
         from ..utils.downloader import ModelManager
         source = lazyllm.config['model_source'] if not source else source
-        self.base_embed = ModelManager(source).download(base_embed)
+        self.base_embed = ModelManager(source).download(base_embed) or ''
         self.embed = None
         self.tokenizer = None
         self.device = "cpu"
@@ -48,7 +48,7 @@ class LazyHuggingFaceRerank(object):
     def __init__(self, base_rerank, source=None, init=False):
         from ..utils.downloader import ModelManager
         source = lazyllm.config['model_source'] if not source else source
-        self.base_rerank = ModelManager(source).download(base_rerank)
+        self.base_rerank = ModelManager(source).download(base_rerank) or ''
         self.reranker = None
         self.init_flag = lazyllm.once_flag()
         if init:
@@ -62,10 +62,10 @@ class LazyHuggingFaceRerank(object):
         query, documents, top_n = inps['query'], inps['documents'], inps['top_n']
         query_pairs = [(query, doc) for doc in documents]
         scores = self.reranker.predict(query_pairs)
-        sorted_indices = np.argsort(scores)[::-1]
+        sorted_indices = [(index, scores[index]) for index in np.argsort(scores)[::-1]]
         if top_n > 0:
             sorted_indices = sorted_indices[:top_n]
-        return sorted_indices.tolist()
+        return sorted_indices
 
     @classmethod
     def rebuild(cls, base_rerank, init):
@@ -80,9 +80,10 @@ class EmbeddingDeploy():
     keys_name_handle = None
     default_headers = {'Content-Type': 'application/json'}
 
-    def __init__(self, launcher=None, model_type='embed'):
+    def __init__(self, launcher=None, model_type='embed', log_path=None):
         self.launcher = launcher
         self._model_type = model_type
+        self._log_path = log_path
 
     def __call__(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
@@ -94,9 +95,9 @@ class EmbeddingDeploy():
             finetuned_model = base_model
         if self._model_type == 'embed':
             return lazyllm.deploy.RelayServer(func=LazyHuggingFaceEmbedding(
-                finetuned_model), launcher=self.launcher)()
+                finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding')()
         if self._model_type == 'reranker':
             return lazyllm.deploy.RelayServer(func=LazyHuggingFaceRerank(
-                finetuned_model), launcher=self.launcher)()
+                finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding')()
         else:
             raise RuntimeError(f'Not support model type: {self._model_type}.')

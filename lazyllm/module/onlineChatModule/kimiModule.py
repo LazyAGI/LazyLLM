@@ -5,7 +5,7 @@ from .onlineChatModuleBase import OnlineChatModuleBase
 class KimiModule(OnlineChatModuleBase):
 
     def __init__(self,
-                 base_url: str = "https://api.moonshot.cn",
+                 base_url: str = "https://api.moonshot.cn/",
                  model: str = "moonshot-v1-8k",
                  api_key: str = None,
                  stream: bool = True,
@@ -30,3 +30,12 @@ class KimiModule(OnlineChatModuleBase):
 
     def _set_chat_url(self):
         self._url = urljoin(self._base_url, 'v1/chat/completions')
+
+    def _format_vl_chat_image_url(self, image_url, mime):
+        assert not image_url.startswith("http"), "Kimi vision model only supports base64 format"
+        assert mime is not None, "Kimi Module requires mime info."
+        image_url = f"data:{mime};base64,{image_url}"
+        return [{"type": "image_url", "image_url": {"url": image_url}}]
+
+    def _format_vl_chat_query(self, query: str):
+        return query

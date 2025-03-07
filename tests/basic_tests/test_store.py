@@ -9,6 +9,7 @@ from lazyllm.tools.rag.map_store import MapStore
 from lazyllm.tools.rag.chroma_store import ChromadbStore
 from lazyllm.tools.rag.milvus_store import MilvusStore
 from lazyllm.tools.rag.doc_node import DocNode
+from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import GlobalMetadataDesc
 
 
@@ -184,14 +185,17 @@ class TestMapStore(unittest.TestCase):
         self.assertEqual(self.store.is_group_active("group2"), False)
 
 @pytest.mark.skip_on_win
-class TestMilvusStore(unittest.TestCase):
+class TestMilvusStoreWithNormalEmbedding(unittest.TestCase):
     def setUp(self):
         self.mock_embed = {
             'vec1': MagicMock(return_value=[1.0, 2.0, 3.0]),
             'vec2': MagicMock(return_value=[400.0, 500.0, 600.0, 700.0, 800.0]),
         }
         self.global_metadata_desc = {
-            'comment': GlobalMetadataDesc(data_type=GlobalMetadataDesc.DTYPE_VARCHAR, max_size=65535, default_value=' '),
+            'comment': GlobalMetadataDesc(data_type=DataType.VARCHAR, max_size=65535, default_value=' '),
+            'signature': GlobalMetadataDesc(data_type=DataType.VARCHAR, max_size=256, default_value=' '),
+            'tags': GlobalMetadataDesc(data_type=DataType.ARRAY, element_type=DataType.INT32, max_size=128,
+                                       default_value=[]),
         }
 
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
@@ -207,9 +211,22 @@ class TestMilvusStore(unittest.TestCase):
             "vec1": 3,
             "vec2": 5,
         }
+        self.embed_datatypes = {
+            'vec1': DataType.FLOAT_VECTOR,
+            'vec2': DataType.FLOAT_VECTOR,
+        }
+
+        self.kwargs = {
+            'uri': self.store_file,
+            'index_kwargs': {
+                'index_type': 'HNSW',
+                'metric_type': 'COSINE',
+            }
+        }
+
         self.store = MilvusStore(group_embed_keys=self.group_embed_keys, embed=self.mock_embed,
-                                 embed_dims=self.embed_dims, global_metadata_desc=self.global_metadata_desc,
-                                 uri=self.store_file)
+                                 embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
+                                 global_metadata_desc=self.global_metadata_desc, **self.kwargs)
 
         self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
                              embedding={"vec1": [8.0, 9.0, 10.0], "vec2": [11.0, 12.0, 13.0, 14.0, 15.0]},
@@ -278,10 +295,11 @@ class TestMilvusStore(unittest.TestCase):
 
     def test_reload(self):
         self.store.update_nodes([self.node1, self.node2, self.node3])
+        # reload from storage
         del self.store
         self.store = MilvusStore(group_embed_keys=self.group_embed_keys, embed=self.mock_embed,
                                  embed_dims=self.embed_dims, global_metadata_desc=self.global_metadata_desc,
-                                 uri=self.store_file)
+                                 embed_datatypes=self.embed_datatypes, **self.kwargs)
 
         nodes = self.store.get_nodes('group1')
         orig_nodes = [self.node1, self.node2, self.node3]
@@ -291,6 +309,10 @@ class TestMilvusStore(unittest.TestCase):
             for orig_node in orig_nodes:
                 if node._uid == orig_node._uid:
                     self.assertEqual(node.text, orig_node.text)
+                    # builtin fields are not in orig node, so we can not use
+                    # node.global_metadata == orig_node.global_metadata
+                    for k, v in orig_node.global_metadata.items():
+                        self.assertEqual(node.global_metadata[k], v)
                     break
 
     # XXX `array_contains_any` is not supported in local(aka lite) mode. skip this ut
@@ -300,3 +322,70 @@ class TestMilvusStore(unittest.TestCase):
                                filters={'tags': [2]})
         self.assertEqual(len(ret), 2)
         self.assertEqual(set([ret[0]._uid, ret[1]._uid]), set([self.node1._uid, self.node2._uid]))
+
+
+@pytest.mark.skip_on_win
+class TestMilvusStoreWithSparseEmbedding(unittest.TestCase):
+    def setUp(self):
+        self.mock_embed = {
+            'vec1': MagicMock(return_value={0: 1.0, 1: 2.0, 2: 3.0}),
+            'vec2': MagicMock(return_value={0: 400.0, 1: 500.0, 2: 600.0, 3: 700.0, 4: 800.0}),
+        }
+        self.global_metadata_desc = {
+            'comment': GlobalMetadataDesc(data_type=DataType.VARCHAR, max_size=65535, default_value=' '),
+        }
+
+        self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
+        _, self.store_file = tempfile.mkstemp(suffix=".db")
+
+        embed_keys = set(['vec1', 'vec2'])
+        self.group_embed_keys = {
+            LAZY_ROOT_NAME: embed_keys,
+            'group1': embed_keys,
+            'group2': embed_keys,
+        }
+        self.embed_datatypes = {
+            'vec1': DataType.SPARSE_FLOAT_VECTOR,
+            'vec2': DataType.SPARSE_FLOAT_VECTOR,
+        }
+
+        self.kwargs = {
+            'uri': self.store_file,
+            'index_kwargs': [
+                {
+                    'embed_key': 'vec1',
+                    'index_type': 'SPARSE_INVERTED_INDEX',
+                    'metric_type': 'IP',
+                },
+                {
+                    'embed_key': 'vec2',
+                    'index_type': 'SPARSE_WAND',
+                    'metric_type': 'IP',
+                }
+            ]
+        }
+
+        self.store = MilvusStore(group_embed_keys=self.group_embed_keys, embed=self.mock_embed,
+                                 embed_dims=None, embed_datatypes=self.embed_datatypes,
+                                 global_metadata_desc=self.global_metadata_desc, **self.kwargs)
+
+        self.node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
+                             embedding={"vec1": {0: 1.0, 1: 2.0, 2: 3.0},
+                                        "vec2": {0: 400.0, 1: 500.0, 2: 600.0, 3: 700.0, 4: 800.0}})
+        self.node2 = DocNode(uid="2", text="text2", group="group1", parent=None,
+                             embedding={"vec1": {0: 8.0, 1: 9.0, 2: 10.0},
+                                        "vec2": {0: 11.0, 1: 12.0, 2: 13.0, 3: 14.0, 4: 15.0}})
+
+    def tearDown(self):
+        os.remove(self.store_file)
+
+    def test_sparse_embedding(self):
+        self.store.update_nodes([self.node1, self.node2])
+
+        ret = self.store.query(query='test', group_name='group1', embed_keys=['vec1'], topk=1)
+        self.assertEqual(len(ret), 1)
+        self.assertEqual(ret[0]._uid, self.node2._uid)
+
+        ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=1)
+        self.assertEqual(len(ret), 1)
+        self.assertEqual(ret[0]._uid, self.node1._uid)

@@ -324,3 +324,234 @@ my_reranker = Reranker(name="MyReranker")
 Certainly, the results returned might be a little wired :)
 
 Here, we've simply introduced how to use the `LazyLLM` extension registration mechanism. You can refer to the documentation for [Retriever](../Best%20Practice/rag.md#Retriever) and [Reranker](../Best%20Practice/rag.md#Reranker) for more information. When you encounter scenarios where the built-in functionalities do not meet your needs, you can implement your own applications by writing custom similarity calculation and sorting strategies.
+
+## Version-5: Customizing Storage Backend
+
+After defining the transformation rules for the Node Group, `LazyLLM` will save the content of the Node Group obtained during the retrieval process, so as to avoid repeating the transformation operation when it is used subsequently. To facilitate users’ access to different types of data, `LazyLLM` supports custom storage backends.
+
+If not specified, `LazyLLM` uses a dict-based key/value as the default storage backend. Users can specify other storage backends through the `Document` parameter `store_conf`. For example, if you want to use Milvus as the storage backend, you can configure it like this:
+
+```python
+milvus_store_conf = {
+    'type': 'milvus',
+    'kwargs': {
+        'uri': store_file,
+        'index_kwargs': {
+            'index_type': 'HNSW',
+            'metric_type': 'COSINE',
+        }
+    },
+}
+```
+
+The `type` parameter is the backend type, and `kwargs` are the parameters that need to be passed to the backend. The meanings of each field are as follows:
+
+* `type`: The backend type to be used. Currently supported:
+    - `map`: In-memory key/value storage;
+    - `chroma`: Use Chroma to store data;
+        - `dir` (required): The directory where data is stored.
+    - `milvus`: Use Milvus to store data.
+        - `uri` (required): The Milvus storage address, which can be a file path or a URL in the format of `ip:port`;
+        - `index_kwargs` (optional): Milvus index configuration, which can be a dict or a list. If it is a dict, it means all embedding indexes use the same configuration; if it is a list, the elements in the list are dict, indicating the configuration used by the embedding specified by `embed_key`. Currently, only `floating point embedding` and `sparse embedding` are supported for embedding types, with the following supported parameters respectively:
+            - `floating point embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
+            - `sparse embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
+
+If using Milvus, we also need to pass the `doc_fields` parameter to `Document`, which is used to specify the fields and types of information that need to be stored. For example, the following configuration:
+
+```python
+doc_fields = {
+    'comment': DocField(data_type=DataType.VARCHAR, max_size=65535, default_value=' '),
+    'signature': DocField(data_type=DataType.VARCHAR, max_size=32, default_value=' '),
+}
+```
+
+Two fields are configured: `comment` and `signature`. The `comment` is a string with a maximum length of 65535 and a default value of empty; the `signature` is a string type with a maximum length of 32 and a default value of empty.
+
+Here is a complete example using Milvus as the storage backend:
+
+<details>
+
+<summary>Here is the complete code (click to expand):</summary>
+
+```python
+# -*- coding: utf-8 -*-
+
+import os
+import lazyllm
+from lazyllm import bind, config
+from lazyllm.tools.rag import DocField, DataType
+import shutil
+
+class TmpDir:
+    def __init__(self):
+        self.root_dir = os.path.expanduser(os.path.join(config['home'], 'rag_for_example_ut'))
+        self.rag_dir = os.path.join(self.root_dir, 'rag_master')
+        os.makedirs(self.rag_dir, exist_ok=True)
+        self.store_file = os.path.join(self.root_dir, "milvus.db")
+
+    def __del__(self):
+        shutil.rmtree(self.root_dir)
+
+tmp_dir = TmpDir()
+
+milvus_store_conf = {
+    'type': 'milvus',
+    'kwargs': {
+        'uri': tmp_dir.store_file,
+        'index_kwargs': {
+            'index_type': 'HNSW',
+            'metric_type': 'COSINE',
+        }
+    },
+}
+
+doc_fields = {
+    'comment': DocField(data_type=DataType.VARCHAR, max_size=65535, default_value=' '),
+    'signature': DocField(data_type=DataType.VARCHAR, max_size=32, default_value=' '),
+}
+
+prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task.'\
+    ' In this task, you need to provide your answer based on the given context and question.'
+
+documents = lazyllm.Document(dataset_path=tmp_dir.rag_dir,
+                             embed=lazyllm.TrainableModule("bge-large-zh-v1.5"),
+                             manager=False,
+                             store_conf=milvus_store_conf,
+                             doc_fields=doc_fields)
+
+documents.create_node_group(name="block", transform=lambda s: s.split("\n") if s else '')
+
+with lazyllm.pipeline() as ppl:
+    ppl.retriever = lazyllm.Retriever(doc=documents, group_name="block", topk=3)
+
+    ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
+                                    model="bge-reranker-large",
+                                    topk=1,
+                                    output_format='content',
+                                    join=True) | bind(query=ppl.input)
+
+    ppl.formatter = (
+        lambda nodes, query: dict(context_str=nodes, query=query)
+    ) | bind(query=ppl.input)
+
+    ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
+        lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+
+if __name__ == '__main__':
+    filters = {
+        'signature': ['sig_value'],
+    }
+    rag = lazyllm.ActionModule(ppl)
+    rag.start()
+    res = rag('What is the way of heaven?', filters=filters)
+    print(f'answer: {res}')
+```
+
+</details>
+
+## Version-6: Customizing Index Backend
+
+To accelerate data retrieval and meet various retrieval needs, `LazyLLM` also supports specifying index backends for different storage backends. This can be done through the indices field in the `store_conf` parameter of `Document`. The index types configured in `indices` can be used in `Retriever` (by specifying the `index` parameter).
+
+For instance, if you want to use a key/value store based on dict and use Milvus as the retrieval backend for this storage, you can configure it as follows:
+
+```python
+milvus_store_conf = {
+    'type': 'map',
+    'indices': {
+        'smart_embedding_index': {
+            'backend': 'milvus',
+            'kwargs': {
+                'uri': store_file,
+                'index_kwargs': {
+                    'index_type': 'HNSW',
+                    'metric_type': 'COSINE',
+                }
+            },
+        },
+    },
+}
+```
+
+The parameter `type` has been introduced in Version-5 and will not be repeated here. `indices` is a dict where the key is the index type, and the value is a dict whose content varies depending on the different index types.
+
+Currently, indices only supports `smart_embedding_index`, with the following parameters:
+
+* `backend`: Specifies the type of index backend used for embedding retrieval. Only milvus is supported at the moment;
+* `kwargs`: The parameters that need to be passed to the index backend. In this case, the parameters passed to the milvus backend are the same as those introduced for the milvus storage backend in the section of Version-5.
+
+Here is a complete example using milvus as the index backend:
+
+<details>
+
+<summary>Here is the complete code (click to expand):</summary>
+
+```python
+# -*- coding: utf-8 -*-
+
+import os
+import lazyllm
+from lazyllm import bind
+import tempfile
+
+def run(query):
+    _, store_file = tempfile.mkstemp(suffix=".db")
+
+    milvus_store_conf = {
+        'type': 'map',
+        'indices': {
+            'smart_embedding_index': {
+                'backend': 'milvus',
+                'kwargs': {
+                    'uri': store_file,
+                    'index_kwargs': {
+                        'index_type': 'HNSW',
+                        'metric_type': 'COSINE',
+                    }
+                },
+            },
+        },
+    }
+
+    documents = lazyllm.Document(dataset_path="rag_master",
+                                 embed=lazyllm.TrainableModule("bge-large-zh-v1.5"),
+                                 manager=False,
+                                 store_conf=milvus_store_conf)
+
+    documents.create_node_group(name="sentences",
+                                transform=lambda s: '。'.split(s))
+
+    prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task.'\
+        ' In this task, you need to provide your answer based on the given context and question.'
+
+    with lazyllm.pipeline() as ppl:
+        ppl.retriever = lazyllm.Retriever(doc=documents, group_name="sentences", topk=3,
+                                          index='smart_embedding_index')
+
+        ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
+                                        model="bge-reranker-large",
+                                        topk=1,
+                                        output_format='content',
+                                        join=True) | bind(query=ppl.input)
+
+        ppl.formatter = (
+            lambda nodes, query: dict(context_str=nodes, query=query)
+        ) | bind(query=ppl.input)
+
+        ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
+            lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+
+        rag = lazyllm.ActionModule(ppl)
+        rag.start()
+        res = rag(query)
+
+    os.remove(store_file)
+
+    return res
+
+if __name__ == '__main__':
+    res = run('What is the way of heaven?')
+    print(f'answer: {res}')
+```
+
+</details>

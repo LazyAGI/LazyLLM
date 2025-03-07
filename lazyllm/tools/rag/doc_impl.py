@@ -2,19 +2,22 @@ import json
 import ast
 from collections import defaultdict
 from functools import wraps
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
 from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs)
-from .store_base import StoreBase, LAZY_ROOT_NAME
+from .index_base import IndexBase
+from .store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from .map_store import MapStore
 from .chroma_store import ChromadbStore
 from .milvus_store import MilvusStore
 from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import DocListManager, gen_docid
+from .utils import DocListManager, gen_docid, is_sparse
 from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH
+from .data_type import DataType
 import threading
 import time
 
@@ -31,6 +34,11 @@ def embed_wrapper(func):
 
     return wrapper
 
+class StorePlaceholder:
+    pass
+
+class EmbedPlaceholder:
+    pass
 
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
@@ -47,12 +55,12 @@ class DocImpl:
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
         self._dlm, self._doc_files = dlm, doc_files
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
-        self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}}
+        self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}, LAZY_IMAGE_GROUP: {}}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
-        self._embed_dims = None
         self._global_metadata_desc = global_metadata_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
         self._activated_embeddings = {}
+        self.index_pending_registrations = []
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
@@ -65,7 +73,15 @@ class DocImpl:
         for group in node_groups.keys():
             self._activated_embeddings.setdefault(group, set())
 
-        self._embed_dims = {k: len(e('a')) for k, e in self.embed.items()}
+        embed_dims = {}
+        embed_datatypes = {}
+        for k, e in self.embed.items():
+            embedding = e('a')
+            if is_sparse(embedding):
+                embed_datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
+            else:
+                embed_dims[k] = len(embedding)
+                embed_datatypes[k] = DataType.FLOAT_VECTOR
 
         if self.store is None:
             self.store = {
@@ -73,29 +89,64 @@ class DocImpl:
             }
 
         if isinstance(self.store, Dict):
-            self.store = self._create_store(self.store)
+            self.store = self._create_store(store_conf=self.store, embed_dims=embed_dims,
+                                            embed_datatypes=embed_datatypes)
         else:
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
+        self._resolve_index_pending_registrations()
 
         if not self.store.is_group_active(LAZY_ROOT_NAME):
             ids, paths, metadatas = self._list_files()
+            ids, paths, metadatas = self._delete_nonexistent_docs_on_startup(ids, paths, metadatas)
             if paths:
-                root_nodes = self._reader.load_data(paths)
-                for idx, node in enumerate(root_nodes):
-                    node.global_metadata.update(metadatas[idx].copy() if metadatas else {})
-                    node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else gen_docid(paths[idx])
-                    node.global_metadata[RAG_DOC_PATH] = paths[idx]
+                if not metadatas: metadatas = [{}] * len(paths)
+                for idx, meta in enumerate(metadatas):
+                    meta[RAG_DOC_ID] = ids[idx] if ids else gen_docid(paths[idx])
+                    meta[RAG_DOC_PATH] = paths[idx]
+                root_nodes = self._reader.load_data(paths, metadatas)
                 self.store.update_nodes(root_nodes)
-                if self._dlm: self._dlm.update_kb_group_file_status(
-                    ids, DocListManager.Status.success, group=self._kb_group_name)
+                if self._dlm:
+                    self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
+                                              new_status=DocListManager.Status.success)
                 LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
-
         if self._dlm:
+            self._init_monitor_event = threading.Event()
             self._daemon = threading.Thread(target=self.worker)
             self._daemon.daemon = True
             self._daemon.start()
+            self._init_monitor_event.wait()
 
-    def _create_store(self, store_conf: Optional[Dict]) -> StoreBase:
+    def _delete_nonexistent_docs_on_startup(self, ids, paths, metadatas):
+        path_existing = [Path(path).exists() for path in paths]
+        paths_need_delete = [paths[idx] for idx, exist in enumerate(path_existing) if not exist]
+        rt_metadatas = [meta for meta, exist in zip(metadatas, path_existing) if exist] if metadatas else None
+        rt_ids = [ids[idx] for idx, exist in enumerate(path_existing) if exist] if ids else None
+        rt_paths = [path for path, exist in zip(paths, path_existing) if exist]
+
+        if ids:
+            ids_need_delete = [ids[idx] for idx, exist in enumerate(path_existing) if not exist]
+        else:
+            ids_need_delete = [gen_docid(path) for path in paths_need_delete]
+        if ids_need_delete:
+            if self._dlm is None:
+                # if not using dlm, delete store directly;
+                self._delete_doc_from_store(paths_need_delete)
+            else:
+                LOG.warning(f"Found {len(paths_need_delete)} docs that are not in store: {paths_need_delete}")
+                # else dlm must turn on path monitoring to detect deleted files
+                assert (self._dlm.enable_path_monitoring is True
+                        ), 'DocListManager must turn on path monitoring or only use DocManager to delete files'
+        return rt_ids, rt_paths, rt_metadatas
+
+    def _resolve_index_pending_registrations(self):
+        for index_type, index_cls, index_args, index_kwargs in self.index_pending_registrations:
+            args = [self._resolve_index_placeholder(arg) for arg in index_args]
+            kwargs = {k: self._resolve_index_placeholder(v) for k, v in index_kwargs.items()}
+            self.store.register_index(index_type, index_cls(*args, **kwargs))
+        self.index_pending_registrations.clear()
+
+    def _create_store(self, store_conf: Optional[Dict], embed_dims: Optional[Dict[str, int]] = None,
+                      embed_datatypes: Optional[Dict[str, DataType]] = None) -> StoreBase:
         store_type = store_conf.get('type')
         if not store_type:
             raise ValueError('store type is not specified.')
@@ -108,11 +159,11 @@ class DocImpl:
             store = MapStore(node_groups=list(self._activated_embeddings.keys()), embed=self.embed, **kwargs)
         elif store_type == "chroma":
             store = ChromadbStore(group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                  embed_dims=self._embed_dims, **kwargs)
+                                  embed_dims=embed_dims, **kwargs)
         elif store_type == "milvus":
             store = MilvusStore(group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                embed_dims=self._embed_dims, global_metadata_desc=self._global_metadata_desc,
-                                **kwargs)
+                                embed_dims=embed_dims, embed_datatypes=embed_datatypes,
+                                global_metadata_desc=self._global_metadata_desc, **kwargs)
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {store_type}"
@@ -131,7 +182,8 @@ class DocImpl:
                 index = SmartEmbeddingIndex(backend_type=backend_type,
                                             group_embed_keys=self._activated_embeddings,
                                             embed=self.embed,
-                                            embed_dims=self._embed_dims,
+                                            embed_dims=embed_dims,
+                                            embed_datatypes=embed_datatypes,
                                             global_metadata_desc=self._global_metadata_desc,
                                             **kwargs)
             else:
@@ -205,27 +257,71 @@ class DocImpl:
             return klass
         return decorator
 
+    def _resolve_index_placeholder(self, value):
+        if isinstance(value, StorePlaceholder): return self.store
+        elif isinstance(value, EmbedPlaceholder): return self.embed
+        return value
+
+    def register_index(self, index_type: str, index_cls: IndexBase, *args, **kwargs) -> None:
+        if bool(self._lazy_init.flag):
+            args = [self._resolve_index_placeholder(arg) for arg in args]
+            kwargs = {k: self._resolve_index_placeholder(v) for k, v in kwargs.items()}
+            self.store.register_index(index_type, index_cls(*args, **kwargs))
+        else:
+            self.index_pending_registrations.append((index_type, index_cls, args, kwargs))
+
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
 
     def worker(self):
+        is_first_run = True
         while True:
+            # Apply meta changes
+            rows = self._dlm.fetch_docs_changed_meta(self._kb_group_name)
+            if rows:
+                for row in rows:
+                    new_meta_dict = json.loads(row[1]) if row[1] else {}
+                    self.store.update_doc_meta(row[0], new_meta_dict)
+
+            # Step 1: do doc-parsing, highest priority
+            docs = self._dlm.get_docs_need_reparse(group=self._kb_group_name)
+            if docs:
+                filepaths = [doc.path for doc in docs]
+                ids = [doc.doc_id for doc in docs]
+                metadatas = [doc.metadata for doc in docs]
+                # update status and need_reparse
+                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
+                                          new_status=DocListManager.Status.working, new_need_reparse=False)
+                self._delete_doc_from_store(filepaths)
+                self._add_doc_to_store(input_files=filepaths, ids=ids, metadatas=metadatas)
+                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
+                                          new_status=DocListManager.Status.success)
+
+            # Step 2: After doc is deleted from related kb_group, delete doc from db
+            if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
+                self._dlm.delete_unreferenced_doc()
+
+            # Step 3: do doc-deleting
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
             if files:
-                self._delete_files(files)
+                self._delete_doc_from_store(files)
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
-                continue
 
-            if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
-                self._dlm.init_tables()
+            # Step 4: do doc-adding
             ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
                                                      upload_status=DocListManager.Status.success)
             if files:
-                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.working, group=self._kb_group_name)
-                self._add_files(input_files=files, ids=ids, metadatas=metadatas)
-                self._dlm.update_kb_group_file_status(ids, DocListManager.Status.success, group=self._kb_group_name)
-                continue
+                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
+                                          new_status=DocListManager.Status.working)
+                self._add_doc_to_store(input_files=files, ids=ids, metadatas=metadatas)
+                # change working to success while leaving other status unchanged
+                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
+                                          cond_status_list=[DocListManager.Status.working],
+                                          new_status=DocListManager.Status.success)
+            if is_first_run:
+                self._init_monitor_event.set()
+            is_first_run = False
             time.sleep(10)
 
     def _list_files(
@@ -241,8 +337,8 @@ class DocImpl:
             metadatas.append(json.loads(row[3]) if row[3] else {})
         return ids, paths, metadatas
 
-    def _add_files(self, input_files: List[str], ids: Optional[List[str]] = None,
-                   metadatas: Optional[List[Dict[str, Any]]] = None):
+    def _add_doc_to_store(self, input_files: List[str], ids: Optional[List[str]] = None,
+                          metadatas: Optional[List[Dict[str, Any]]] = None):
         if not input_files:
             return
         root_nodes = self._reader.load_data(input_files)
@@ -262,7 +358,7 @@ class DocImpl:
             self.store.update_nodes(nodes)
             LOG.debug(f"Merge {group} with {nodes}")
 
-    def _delete_files(self, input_files: List[str]) -> None:
+    def _delete_doc_from_store(self, input_files: List[str]) -> None:
         docs = self.store.get_index(type='file_node_map').query(input_files)
         LOG.info(f"delete_files: removing documents {input_files} and nodes {docs}")
         if len(docs) == 0:
@@ -300,7 +396,6 @@ class DocImpl:
         parent_nodes = self._get_nodes(node_group["parent"], store)
         nodes = transform.batch_forward(parent_nodes, group_name)
         store.update_nodes(nodes)
-        LOG.debug(f"building {group_name} nodes: {nodes}")
 
     def _get_nodes(self, group_name: str, store: Optional[StoreBase] = None) -> List[DocNode]:
         store = store or self.store
@@ -311,7 +406,6 @@ class DocImpl:
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,
                  filters: Optional[Dict[str, Union[str, int, List, Set]]] = None) -> List[DocNode]:
         self._lazy_init()
-
         self._dynamic_create_nodes(group_name, self.store)
 
         if index is None or index == 'default':
@@ -323,9 +417,12 @@ class DocImpl:
         if not index_instance:
             raise NotImplementedError(f"index type '{index}' is not supported currently.")
 
-        return index_instance.query(query=query, group_name=group_name, similarity_name=similarity,
-                                    similarity_cut_off=similarity_cut_off, topk=topk,
-                                    embed_keys=embed_keys, filters=filters, **similarity_kws)
+        try:
+            return index_instance.query(query=query, group_name=group_name, similarity_name=similarity,
+                                        similarity_cut_off=similarity_cut_off, topk=topk,
+                                        embed_keys=embed_keys, filters=filters, **similarity_kws)
+        except Exception as e:
+            raise RuntimeError(f'index type `{index}` of store `{type(self.store)}` query failed: {e}')
 
     @staticmethod
     def find_parent(nodes: List[DocNode], group: str) -> List[DocNode]:

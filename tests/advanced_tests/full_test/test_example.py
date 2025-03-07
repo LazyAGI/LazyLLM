@@ -159,7 +159,7 @@ class TestRagFilter(object):
         self.rag = lazyllm.ActionModule(ppl)
         self.rag.start()
         url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
-        self.doc_server_addr = re.findall(url_pattern, documents.manager._url)[0]
+        self.doc_server_addr = re.findall(url_pattern, documents.manager.url)[0]
 
     def test_upload_and_filter(self):
         files = [('files', ('test1.txt', io.BytesIO(b"John's house is in Beijing"), 'text/palin')),

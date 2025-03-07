@@ -26,6 +26,8 @@ Args:
     embed (Optional[Union[Callable, Dict[str, Callable]]]): The object used to generate document embeddings. If you need to generate multiple embeddings for the text, you need to specify multiple embedding models in a dictionary format. The key identifies the name corresponding to the embedding, and the value is the corresponding embedding model.
     manager (bool, optional): A flag indicating whether to create a user interface for the document module. Defaults to False.
     launcher (optional): An object or function responsible for launching the server module. If not provided, the default asynchronous launcher from `lazyllm.launchers` is used (`sync=False`).
+    store_conf (optional): Configure which storage backend and index backend to use.
+    doc_fields (optional): Configure the fields that need to be stored and retrieved along with their corresponding types (currently only used by the Milvus backend).
 ''')
 
 add_chinese_doc('Document', '''\
@@ -36,8 +38,10 @@ add_chinese_doc('Document', '''\
 Args:
     dataset_path (str): 数据集目录的路径。此目录应包含要由文档模块管理的文档。
     embed (Optional[Union[Callable, Dict[str, Callable]]]): 用于生成文档 embedding 的对象。如果需要对文本生成多个 embedding，此处需要通过字典的方式指定多个 embedding 模型，key 标识 embedding 对应的名字, value 为对应的 embedding 模型。
-    manager (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 False
+    manager (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 False。
     launcher (optional): 负责启动服务器模块的对象或函数。如果未提供，则使用 `lazyllm.launchers` 中的默认异步启动器 (`sync=False`)。
+    store_conf (optional): 配置使用哪种存储后端和索引后端。
+    doc_fields (optional): 配置需要存储和检索的字段继对应的类型（目前只有 Milvus 后端会用到）。
 ''')
 
 add_example('Document', '''\
@@ -47,6 +51,27 @@ add_example('Document', '''\
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)  # or documents = Document(dataset_path='your_doc_path', embed={"key": m}, manager=False)
 >>> m1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
 >>> document1 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, manager=False)
+
+>>> store_conf = {
+>>>     'type': 'chroma',
+>>>     'indices': {
+>>>         'smart_embedding_index': {
+>>>             'backend': 'milvus',
+>>>             'kwargs': {
+>>>                 'uri': '/tmp/tmp.db',
+>>>                 'index_kwargs': {
+>>>                     'index_type': 'HNSW',
+>>>                     'metric_type': 'COSINE'
+>>>                  }
+>>>             },
+>>>         },
+>>>     },
+>>> }
+>>> doc_fields = {
+>>>     'author': DocField(data_type=DataType.VARCHAR, max_size=128, default_value=' '),
+>>>     'public_year': DocField(data_type=DataType.INT32),
+>>> }
+>>> document2 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, store_conf=store_conf, doc_fields=doc_fields)
 ''')
 
 add_english_doc('Document.create_node_group', '''
@@ -152,7 +177,7 @@ add_example('Document.register_global_reader', '''
 ...     with open(file, 'r') as f:
 ...         data = f.read()
 ...     return [DocNode(text=data, metadata=extra_info or {})]
-... 
+...
 >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
 >>> files = ["your_yml_files"]
@@ -191,7 +216,7 @@ add_example('Document.add_reader', '''
 ...             data = yaml.safe_load(f)
 ...         print("Call the class YmlReader.")
 ...         return [DocNode(text=data, metadata=extra_info or {})]
-... 
+...
 >>> def processYml(file, extra_info=None):
 ...     with open(file, 'r') as f:
 ...         data = f.read()
@@ -248,7 +273,7 @@ add_example('rag.readers.ReaderBase', '''
 ...             data = yaml.safe_load(f)
 ...         print("Call the class YmlReader.")
 ...         return [DocNode(text=data, metadata=extra_info or {})]
-... 
+...
 >>> files = ["your_yml_files"]
 >>> doc = Document(dataset_path="your_files_path", create_ui=False)
 >>> reader = doc._impl._reader.load_data(input_files=files)
@@ -320,6 +345,8 @@ The `group_name` has three built-in splitting strategies, all of which use `Sent
 - CoarseChunk: Chunk size is 1024, with an overlap length of 100
 - MediumChunk: Chunk size is 256, with an overlap length of 25
 - FineChunk: Chunk size is 128, with an overlap length of 12
+
+Also, `Image` is available for `group_name` since LazyLLM supports image embedding and retrieval.
 ''')
 
 add_chinese_doc('Retriever', '''
@@ -329,7 +356,7 @@ Args:
     doc: 文档模块实例。该文档模块可以是单个实例，也可以是一个实例的列表。如果是单个实例，表示对单个Document进行检索，如果是实例的列表，则表示对多个Document进行检索。
     group_name: 在哪个 node group 上进行检索。
     similarity: 用于设置文档检索的相似度函数。默认为 'dummy'。候选集包括 ["bm25", "bm25_chinese", "cosine"]。
-    similarity_cut_off: 当相似度低于指定值时丢弃该文档。在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则需要使用字典的方式指定，key 表示指定的是哪个 embedding，value 表示相应的阈值。如果所有的 embedding 使用同一个阈值，则只指定一个数值即可。 
+    similarity_cut_off: 当相似度低于指定值时丢弃该文档。在多 embedding 场景下，如果需要对不同的 embedding 指定不同的值，则需要使用字典的方式指定，key 表示指定的是哪个 embedding，value 表示相应的阈值。如果所有的 embedding 使用同一个阈值，则只指定一个数值即可。
     index: 用于文档检索的索引类型。目前仅支持 'default'。
     topk: 表示取相似度最高的多少篇文档。
     embed_keys: 表示通过哪些 embedding 做检索，不指定表示用全部 embedding 进行检索。
@@ -340,6 +367,8 @@ Args:
 - CoarseChunk: 块大小为 1024，重合长度为 100
 - MediumChunk: 块大小为 256，重合长度为 25
 - FineChunk: 块大小为 128，重合长度为 12
+
+此外，LazyLLM提供了内置的`Image`节点组存储了所有图像节点，支持图像嵌入和检索。
 ''')
 
 add_example('Retriever', '''
@@ -359,6 +388,19 @@ add_example('Retriever', '''
 >>> document2.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
 >>> retriever2 = Retriever([document1, document2], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
 >>> print(retriever2("user query"))
+>>>
+>>> filters = {
+>>>     "author": ["A", "B", "C"],
+>>>     "public_year": [2002, 2003, 2004],
+>>> }
+>>> document3 = Document(dataset_path='/path/to/user/data', embed={'online':m , 'local': m1}, manager=False)
+>>> document3.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+>>> retriever3 = Retriever([document1, document3], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
+>>> print(retriever3(query="user query", filters=filters))
+>>> document4 = Document(dataset_path='/path/to/user/data', embed=lazyllm.TrainableModule('siglip'))
+>>> retriever4 = Retriever(documents4, group_name='Image', similarity='cosine')
+>>> nodes = retriever4("user query")
+>>> print([node.get_content() for node in nodes])
 ''')
 
 # ---------------------------------------------------------------------------- #
@@ -718,11 +760,11 @@ Args:
     group (str): 要添加的分组名称。
 """)
 
-add_chinese_doc('rag.DocListManager._delete_files', """\
-从数据库中删除指定的文件。
+add_chinese_doc('rag.DocListManager.delete_files', """\
+将与文件关联的知识库条目设为删除中，并由各知识库进行异步删除解析结果及关联记录。
 
 Args:
-    file_ids (list of str): 要删除的文件ID列表。
+    file_ids (list of str): 要删除的文件ID列表
 """)
 
 add_chinese_doc('rag.DocListManager.delete_files_from_kb_group', """\
@@ -751,13 +793,18 @@ Args:
     status (str): 新的文件状态。
 """)
 
-add_chinese_doc('rag.DocListManager.update_kb_group_file_status', """\
-更新指定知识库分组中文件的状态。
+add_chinese_doc('rag.DocListManager.update_kb_group', """\
+更新指定知识库分组中的内容。
 
 Args:
-    file_ids (str or list of str): 文件ID列表。
-    status (str): 新的文件状态。
-    group (str, optional): 知识库分组名称。默认为None。
+    cond_file_ids (list of str, optional): 过滤使用的文件ID列表，默认为None。
+    cond_group (str, optional): 过滤使用的知识库分组名称，默认为None。
+    cond_status_list (list of str, optional): 过滤使用的状态列表，默认为None。
+    new_status (str, optional): 新状态, 默认为None。
+    new_need_reparse (bool, optinoal): 新的是否需重解析标志。
+
+**Returns:**
+- list: 得到更新的列表list of (doc_id, group_name)
 """)
 
 add_chinese_doc('rag.DocListManager.release', """\
@@ -847,8 +894,8 @@ Args:
     group (str): Name of the group to add the files to.
 """)
 
-add_english_doc('rag.DocListManager._delete_files', """\
-Deletes specified files from the database.
+add_english_doc('rag.DocListManager.delete_files', """\
+Set the knowledge base entries associated with the document to "deleting," and have each knowledge base asynchronously delete parsed results and associated records.
 
 Args:
     file_ids (list of str): List of file IDs to delete.
@@ -872,21 +919,18 @@ Args:
 - str: The current status of the file.
 """)
 
-add_english_doc('rag.DocListManager.update_file_status', """\
-Updates the status of specified files.
+add_english_doc('rag.DocListManager.update_kb_group', """\
+Updates the record of kb_group_document.
 
 Args:
-    file_ids (list of str): List of file IDs to update.
-    status (str): The new file status.
-""")
+    cond_file_ids (list of str, optional): a list of file IDs to filter by, default None.
+    cond_group (str, optional): a kb_group name to filter by, default None.
+    cond_status_list (list of str, optional): a list of statuses to filter by, default None.
+    new_status (str, optional): the new status to update to, default None
+    new_need_reparse (bool, optinoal): the new need_reparse flag to update to, default None
 
-add_english_doc('rag.DocListManager.update_kb_group_file_status', """\
-Updates the status of files in a specified knowledge base group.
-
-Args:
-    file_ids (str or list of str): List of file IDs.
-    status (str): The new file status.
-    group (str, optional): Name of the knowledge base group. Defaults to None.
+**Returns:**
+- list: updated records, list of (doc_id, group_name)
 """)
 
 add_english_doc('rag.DocListManager.release', """\
@@ -1404,14 +1448,13 @@ add_chinese_doc(
 SqlManager是与数据库进行交互的专用工具。它提供了连接数据库，设置、创建、检查数据表，插入数据，执行查询的方法。
 
 Arguments:
-    db_type (str): 目前仅支持"PostgreSQL"，后续会增加"MySQL", "MS SQL"
-    user (str): username
-    password (str): password
+    db_type (str): "PostgreSQL"，"SQLite", "MySQL", "MSSQL"。注意当类型为"SQLite"时，db_name为文件路径或者":memory:"
+    user (str): 用户名
+    password (str): 密码
     host (str): 主机名或IP
     port (int): 端口号
     db_name (str): 数据仓库名
-    tables_info_dict (dict): 数据表的描述
-    options_str (str): k1=v1&k2=v2形式表示的选项设置
+    **options_str (str): k1=v1&k2=v2形式表示的选项设置
 """,
 )
 
@@ -1422,100 +1465,33 @@ SqlManager is a specialized tool for interacting with databases.
 It provides methods for creating tables, executing queries, and performing updates on databases.
 
 Arguments:
-    db_type (str): Currently only "PostgreSQL" is supported, with "MySQL" and "MS SQL" to be added later.
+    db_type (str): "PostgreSQL"，"SQLite", "MySQL", "MSSQL". Note that when the type is "SQLite", db_name is a file path or ":memory:"
     user (str): Username for connection
     password (str): Password for connection
     host (str): Hostname or IP
     port (int): Port number
     db_name (str): Name of the database
-    tables_info_dict (dict): Description of the data tables
-    options_str (str): Options represented in the format k1=v1&k2=v2
-""",
-)
-
-add_example(
-    "SqlManager",
-    """\
-    >>> from lazyllm.tools import SqlManager
-    >>> import uuid
-    >>> # !!!NOTE!!!: COPY class SqlEgsData definition from tests/charge_tests/utils.py then Paste here.
-    >>> db_filepath = "personal.db"
-    >>> with open(db_filepath, "w") as _:
-        pass
-    >>> sql_manager = SQLiteManger(filepath, SqlEgsData.TEST_TABLES_INFO)
-    >>> # Altert: If using online database, ask administrator about those value: db_type, username, password, host, port, database
-    >>> # sql_manager = SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)
-    >>>
-    >>> for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
-    ...     sql_manager.execute_sql_update(insert_script)
-    >>> str_results = sql_manager.get_query_result_in_json(SqlEgsData.TEST_QUERY_SCRIPTS)
-    >>> print(str_results)
+    **options_str (str): Options represented in the format k1=v1&k2=v2
 """,
 )
 
 add_chinese_doc(
-    "SqlManager.reset_tables",
+    "SqlManager.get_session",
     """\
-根据描述表结构的字典设置SqlManager所使用的数据表。注意：若表在数据库中不存在将会自动创建，若存在则会校验所有字段的一致性。
-字典格式关键字示例如下。
+这是一个上下文管理器，它创建并返回一个数据库连接Session，并在完成时自动提交或回滚更改并在使用完成后自动关闭会话。
 
-字典中有3个关键字为可选项：表及列的comment默认为空, is_primary_key默认为False但至少应有一列为True, nullable默认为True
-{"tables":
-    [
-        {
-            "name": f"employee",
-            "comment": "employee information",
-            "columns": [
-                {
-                    "name": "employee_id",
-                    "data_type": "Integer",
-                    "comment": "empoloyee work number",
-                    "nullable": False,
-                    "is_primary_key": True,
-                },
-                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
-                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
-            ],
-        },
-        {
-            ....
-        }
-    ]
-}
+**Returns:**\n
+- sqlalchemy.orm.Session: sqlalchemy 数据库会话
 """,
 )
 
 add_english_doc(
-    "SqlManager.reset_tables",
+    "SqlManager.get_session",
     """\
-Set the data tables used by SqlManager according to the dictionary describing the table structure.
-Note that if the table does not exist in the database, it will be automatically created, and if it exists, all field consistencies will be checked.
-The dictionary format keyword example is as follows.
+This is a context manager that creates and returns a database session, yields it for use, and then automatically commits or rolls back changes and closes the session when done.
 
-There are three optional keywords in the dictionary: "comment" for the table and columns defaults to empty, "is_primary_key" defaults to False,
-but at least one column should be True, and "nullable" defaults to True.
-{"tables":
-    [
-        {
-            "name": f"employee",
-            "comment": "employee information",
-            "columns": [
-                {
-                    "name": "employee_id",
-                    "data_type": "Integer",
-                    "comment": "empoloyee work number",
-                    "nullable": False,
-                    "is_primary_key": True,
-                },
-                {"name": "name", "data_type": "String", "comment": "employee's name", "nullable": False},
-                {"name": "department", "data_type": "String", "comment": "employee's department", "nullable": False},
-            ],
-        },
-        {
-            ....
-        }
-    ]
-}
+**Returns:**\n
+- sqlalchemy.orm.Session: sqlalchemy database session
 """,
 )
 
@@ -1525,78 +1501,258 @@ add_chinese_doc(
 检查当前SqlManager的连接状态。
 
 **Returns:**\n
-- bool: 连接成功(True), 连接失败(False)
-- str: 连接成功为"Success" 否则为具体的失败信息.
+- DBResult: DBResult.status 连接成功(True), 连接失败(False)。DBResult.detail 包含失败信息
 """,
 )
 
 add_english_doc(
     "SqlManager.check_connection",
     """\
-Check the current connection status of the SqlManager.
+Check the current connection status of the SqlManagerBase.
 
 **Returns:**\n
-- bool: True if the connection is successful, False if it fails.
-- str: "Success" if the connection is successful; otherwise, it provides specific failure information.
+- DBResult: DBResult.status True if the connection is successful, False if it fails. DBResult.detail contains failure information.
 """,
 )
 
 add_chinese_doc(
-    "SqlManager.reset_tables",
+    "SqlManager.set_desc",
     """\
-根据提供的表结构设置数据库链接。
-若数据库中已存在表项则检查一致性，否则创建数据表
+对于SqlManager搭配LLM使用自然语言查询的表项设置其描述，尤其当其表名、列名及取值不具有自解释能力时。
+例如：
+数据表Document的status列取值包括: "waiting", "working", "success", "failed"，tables_desc_dict参数应为 {"Document": "status列取值包括: waiting, working, success, failed"}
 
 Args:
-    tables_info_dict (dict): 数据表的描述
-
-**Returns:**\n
-- bool: 设置成功(True), 设置失败(False)
-- str: 设置成功为"Success" 否则为具体的失败信息.
+    tables_desc_dict (dict): 表项的补充说明
 """,
 )
 
 add_english_doc(
-    "SqlManager.reset_tables",
+    "SqlManager.set_desc",
     """\
-Set database connection based on the provided table structure.
-Check consistency if the table items already exist in the database, otherwise create the data table.
+When using SqlManager with LLM to query table entries in natural language, set descriptions for better results, especially when table names, column names, and values are not self-explanatory.
 
 Args:
-    tables_info_dict (dict): Description of the data tables
+    tables_desc_dict (dict): descriptive comment for tables
+""",
+)
+
+add_chinese_doc(
+    "SqlManager.get_all_tables",
+    """\
+返回当前数据库中的所有表名。
+""",
+)
+
+add_english_doc(
+    "SqlManager.get_all_tables",
+    """\
+Return all table names in the current database.
+""",
+)
+
+add_chinese_doc(
+    "SqlManager.get_table_orm_class",
+    """\
+返回数据表名对应的sqlalchemy orm类。结合get_session，进行orm操作
+""",
+)
+
+add_english_doc(
+    "SqlManager.get_table_orm_class",
+    """\
+Return the sqlalchemy orm class corresponding to the given table name. Combine with get_session to perform orm operations.
+""",
+)
+
+add_chinese_doc(
+    "SqlManager.execute_commit",
+    """\
+执行无返回的sql脚本并提交更改。
+""",
+)
+
+add_english_doc(
+    "SqlManager.execute_commit",
+    """\
+Execute the SQL script without return and submit changes.
+""",
+)
+
+add_chinese_doc(
+    "SqlManager.execute_query",
+    """\
+执行sql查询脚本并以JSON字符串返回结果。
+""",
+)
+
+add_english_doc(
+    "SqlManager.execute_query",
+    """\
+Execute the SQL query script and return the result as a JSON string.
+""",
+)
+
+add_chinese_doc(
+    "SqlManager.create_table",
+    """\
+创建数据表
+
+Args:
+    table (str/Type[DeclarativeBase]/DeclarativeMeta): 数据表schema。支持三种参数类型：类型为str的sql语句，继承自DeclarativeBase或继承自declarative_base()的ORM类
+""",
+)
+
+add_english_doc(
+    "SqlManager.create_table",
+    """\
+Create a table
+
+Args:
+    table (str/Type[DeclarativeBase]/DeclarativeMeta): table schema。Supports three types of parameters: SQL statements with type str, ORM classes that inherit from DeclarativeBase or declarative_base().
+""",
+)
+
+add_chinese_doc(
+    "SqlManager.drop_table",
+    """\
+删除数据表
+
+Args:
+    table (str/Type[DeclarativeBase]/DeclarativeMeta): 数据表schema。支持三种参数类型：类型为str的数据表名，继承自DeclarativeBase或继承自declarative_base()的ORM类
+""",
+)
+
+add_english_doc(
+    "SqlManager.drop_table",
+    """\
+Delete a table
+
+Args:
+    table (str/Type[DeclarativeBase]/DeclarativeMeta): table schema。Supports three types of parameters: Table name with type str, ORM classes that inherit from DeclarativeBase or declarative_base().
+""",
+)
+
+add_chinese_doc(
+    "SqlManager.insert_values",
+    """\
+批量数据插入
+    
+Args:
+    table_name (str): 数据表名
+    vals (List[dict]): 待插入数据，格式为[{"col_name1": v01, "col_name2": v02, ...}, {"col_name1": v11, "col_name2": v12, ...}, ...]
+""",
+)
+
+add_english_doc(
+    "SqlManager.insert_values",
+    """\
+Bulk insert data
+    
+Args:
+    table_name (str): Table name
+    vals (List[dict]): data to be inserted, format as [{"col_name1": v01, "col_name2": v02, ...}, {"col_name1": v11, "col_name2": v12, ...}, ...]
+""",
+)
+
+add_chinese_doc(
+    "MongoDBManager",
+    """\
+MongoDBManager是与MongoB数据库进行交互的专用工具。它提供了检查连接，获取数据库连接对象，执行查询的方法。
+
+Arguments:
+    user (str): 用户名
+    password (str): 密码
+    host (str): 主机名或IP
+    port (int): 端口号
+    db_name (str): 数据仓库名
+    collection_name (str): 集合名
+    **options_str (str): k1=v1&k2=v2形式表示的选项设置
+    **collection_desc_dict (dict): 集合内文档关键字描述，默认为空。不同于关系型数据库行和列的概念，MongoDB集合中的文档可以有完全不同的关键字，因此当配合LLM进行自然语言查询时需要提供必须的关键字的描述以获得更好的结果。
+""",
+)
+
+add_english_doc(
+    "MongoDBManager",
+    """\
+MongoDBManager is a specialized tool for interacting with MongoB databases.
+It provides methods to check the connection, obtain the database connection object, and execute query.
+
+Arguments:
+    user (str): Username for connection
+    password (str): Password for connection
+    host (str): Hostname or IP
+    port (int): Port number
+    db_name (str): Name of the database
+    collection_name (str): Name of the collection
+    **options_str (str): Options represented in the format k1=v1&k2=v2
+    **collection_desc_dict (dict): Document keyword description in the collection, which is None by default. Different from the concept of rows and columns in relational databases, documents in MongoDB collections can have completely different keywords. Therefore, when using LLM to perform natural language queries, it is necessary to provide descriptions of necessary keywords to obtain better results.
+""",
+)
+
+add_chinese_doc(
+    "MongoDBManager.get_client",
+    """\
+这是一个上下文管理器，它创建并返回一个数据库会话连接对象，并在使用完成后自动关闭会话。
+使用方式例如：
+with mongodb_manager.get_client() as client:
+    all_dbs = client.list_database_names()
 
 **Returns:**\n
-- bool: True if set successfully, False if set failed
-- str: "Success" if set successfully, otherwise specific failure information.
-
-""",
-)
-
-add_chinese_doc(
-    "SqlManager.get_query_result_in_json",
-    """\
-执行SQL查询并返回JSON格式的结果。
+- pymongo.MongoClient: 连接 MongoDB 数据库的对象
 """,
 )
 
 add_english_doc(
-    "SqlManager.get_query_result_in_json",
+    "MongoDBManager.get_client",
     """\
-Executes a SQL query and returns the result in JSON format.
+This is a context manager that creates a database session, yields it for use, and closes the session when done.
+Usage example:
+with mongodb_manager.get_client() as client:
+    all_dbs = client.list_database_names()
+
+**Returns:**\n
+- pymongo.MongoClient: MongoDB client used to connect to MongoDB database
 """,
 )
 
 add_chinese_doc(
-    "SqlManager.execute_sql_update",
+    "MongoDBManager.check_connection",
     """\
-在SQLite数据库上执行SQL插入或更新脚本。
+检查当前MongoDBManager的连接状态。
+
+**Returns:**\n
+- DBResult: DBResult.status 连接成功(True), 连接失败(False)。DBResult.detail 包含失败信息
 """,
 )
 
 add_english_doc(
-    "SqlManager.execute_sql_update",
+    "MongoDBManager.check_connection",
     """\
-Execute insert or update script.
+Check the current connection status of the MongoDBManager.
+
+**Returns:**\n
+- DBResult: DBResult.status True if the connection is successful, False if it fails. DBResult.detail contains failure information.
+""",
+)
+
+add_chinese_doc(
+    "MongoDBManager.set_desc",
+    """\
+对于MongoDBManager搭配LLM使用自然语言查询的文档集设置其必须的关键字描述。注意，查询需要用到的关系字都必须提供，因为MonoDB无法像SQL数据库一样获得表结构信息
+
+Args:
+    schema_desc_dict (dict): 文档集的关键字描述
+""",
+)
+
+add_english_doc(
+    "MongoDBManager.set_desc",
+    """\
+When using MongoDBManager with LLM to query documents in natural language, set descriptions for the necessary keywords. Note that all relevant keywords needed for queries must be provided because MongoDB cannot obtain like structural information like a SQL database.
+
+Args:
+    tables_desc_dict (dict): descriptive comment for documents
 """,
 )
 
@@ -1823,4 +1979,41 @@ Args:
 add_tools_example('Calculator.forward', '''
 from lazyllm.tools.tools import Calculator
 calc = Calculator()
+''')
+
+add_tools_chinese_doc('TencentSearch', '''
+这是一个搜索增强工具。
+''')
+
+add_tools_english_doc('TencentSearch', '''
+This is a search enhancement tool.
+''')
+
+add_tools_example('TencentSearch', '''
+from lazyllm.tools.tools import TencentSearch
+secret_id = '<your_secret_id>'
+secret_key = '<your_secret_key>'
+searcher = TencentSearch(secret_id, secret_key)
+''')
+
+add_tools_chinese_doc('TencentSearch.forward', '''
+搜索用户输入的查询。
+
+Args:
+    query (str): 用户待查询的内容。
+''')
+
+add_tools_english_doc('TencentSearch.forward', '''
+Searches for the query entered by the user.
+
+Args:
+    query (str): The content that the user wants to query.
+''')
+
+add_tools_example('TencentSearch.forward', '''
+from lazyllm.tools.tools import TencentSearch
+secret_id = '<your_secret_id>'
+secret_key = '<your_secret_key>'
+searcher = TencentSearch(secret_id, secret_key)
+res = searcher('calculus')
 ''')

@@ -1,18 +1,18 @@
 import os
 
 import lazyllm
-from lazyllm import LOG
 from lazyllm.thirdparty import torch
 from lazyllm.thirdparty import transformers as tf
 from lazyllm.components.formatter import encode_query_with_filepaths
 from ..utils.downloader import ModelManager
-from .utils import sounds_to_files
+import importlib.util
+from .utils import sounds_to_files, TTSBase
 
 class Bark(object):
 
     def __init__(self, base_path, source=None, trust_remote_code=True, save_path=None, init=False):
         source = lazyllm.config['model_source'] if not source else source
-        self.base_path = ModelManager(source).download(base_path)
+        self.base_path = ModelManager(source).download(base_path) or ''
         self.trust_remote_code = trust_remote_code
         self.processor, self.bark = None, None
         self.init_flag = lazyllm.once_flag()
@@ -22,12 +22,15 @@ class Bark(object):
             lazyllm.call_once(self.init_flag, self.load_bark)
 
     def load_bark(self):
+        kw = dict(attn_implementation="flash_attention_2")
+        if importlib.util.find_spec("torch_npu") is not None:
+            import torch_npu  # noqa F401
+            from torch_npu.contrib import transfer_to_npu  # noqa F401
+            kw = dict()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.processor = tf.AutoProcessor.from_pretrained(self.base_path)
         self.processor.speaker_embeddings['repo_or_path'] = self.base_path
-        self.bark = tf.BarkModel.from_pretrained(self.base_path,
-                                                 torch_dtype=torch.float16,
-                                                 attn_implementation="flash_attention_2").to(self.device)
+        self.bark = tf.BarkModel.from_pretrained(self.base_path, torch_dtype=torch.float16, **kw).to(self.device)
 
     def __call__(self, string):
         lazyllm.call_once(self.init_flag, self.load_bark)
@@ -52,7 +55,7 @@ class Bark(object):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
         return Bark.rebuild, (self.base_path, init, self.save_path)
 
-class BarkDeploy(object):
+class BarkDeploy(TTSBase):
     keys_name_handle = {
         'inputs': 'inputs',
     }
@@ -62,16 +65,4 @@ class BarkDeploy(object):
     }
     default_headers = {'Content-Type': 'application/json'}
 
-    def __init__(self, launcher=None):
-        self.launcher = launcher
-
-    def __call__(self, finetuned_model=None, base_model=None):
-        if not finetuned_model:
-            finetuned_model = base_model
-        elif not os.path.exists(finetuned_model) or \
-            not any(filename.endswith('.bin', '.safetensors')
-                    for _, _, filename in os.walk(finetuned_model) if filename):
-            LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
-                        f"base_model({base_model}) will be used")
-            finetuned_model = base_model
-        return lazyllm.deploy.RelayServer(func=Bark(finetuned_model), launcher=self.launcher)()
+    func = Bark

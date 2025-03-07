@@ -401,7 +401,7 @@ A: LazyLLM can assist you in building the most powerful large-scale model applic
 
 You should not have any unnecessary output. Lets begin:
 """),
-    cn=dict(summary="""
+    zh=dict(summary="""
 ## 角色：文本摘要
 你是一个文本摘要引擎，负责分析用户输入的文本，并根据请求任务提供简洁的摘要。
 

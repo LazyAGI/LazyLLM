@@ -1,14 +1,14 @@
 import unittest
-from lazyllm.tools import SQLiteManger, SqlCall, SqlManager
+from lazyllm.tools import SqlCall, SqlManager, DBStatus
 import lazyllm
-from .utils import SqlEgsData, get_sql_init_keywords
+from .utils import SqlEgsData, get_db_init_keywords
 import datetime
 import re
 
 
 class TestSqlManager(unittest.TestCase):
     @classmethod
-    def clean_obsolete_tables(cls, sql_manager):
+    def clean_obsolete_tables(cls, sql_manager: SqlManager):
         today = datetime.datetime.now()
         pattern = r"^(?:employee|sales)_(\d{8})_(\w+)"
         OBSOLETE_DAYS = 2
@@ -20,23 +20,24 @@ class TestSqlManager(unittest.TestCase):
             table_create_date = datetime.datetime.strptime(match.group(1), "%Y%m%d")
             delta = (today - table_create_date).days
             if delta >= OBSOLETE_DAYS:
-                sql_manager._drop_table_by_name(table_name)
+                sql_manager.drop_table(table_name)
 
     @classmethod
     def setUpClass(cls):
-        cls.sql_managers: list[SqlManager] = [SQLiteManger(":memory:", SqlEgsData.TEST_TABLES_INFO)]
+        cls.sql_managers: list[SqlManager] = [SqlManager("SQLite", None, None, None, None, db_name=":memory:",
+                                                         tables_info_dict=SqlEgsData.TEST_TABLES_INFO)]
+        # MySQL has been tested with online database.
         for db_type in ["PostgreSQL"]:
-            username, password, host, port, database = get_sql_init_keywords(db_type)
-            cls.sql_managers.append(
-                SqlManager(db_type, username, password, host, port, database, SqlEgsData.TEST_TABLES_INFO)
-            )
+            username, password, host, port, database = get_db_init_keywords(db_type)
+            cls.sql_managers.append(SqlManager(db_type, username, password, host, port, database,
+                                               tables_info_dict=SqlEgsData.TEST_TABLES_INFO))
         for sql_manager in cls.sql_managers:
             cls.clean_obsolete_tables(sql_manager)
+
             for table_name in SqlEgsData.TEST_TABLES:
-                rt, err_msg = sql_manager._delete_rows_by_name(table_name)
-                assert rt, err_msg
+                sql_manager.execute_commit(f"DELETE FROM {table_name}")
             for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
-                sql_manager.execute_sql_update(insert_script)
+                sql_manager.execute_commit(insert_script)
 
         # Recommend to use sensenova, gpt-4o, qwen online model
         sql_llm = lazyllm.OnlineChatModule(source="qwen")
@@ -49,60 +50,46 @@ class TestSqlManager(unittest.TestCase):
         # restore to clean database
         for sql_manager in cls.sql_managers:
             for table_name in SqlEgsData.TEST_TABLES:
-                rt, err_msg = sql_manager._drop_table_by_name(table_name)
-                assert rt, f"sql_manager table {table_name} error: {err_msg}"
+                db_result = sql_manager.drop_table(table_name)
+                assert db_result.status == DBStatus.SUCCESS, db_result.detail
 
     def test_manager_status(self):
         for sql_manager in self.sql_managers:
-            rt, err_msg = sql_manager.check_connection()
-            assert rt, err_msg
-            assert sql_manager.err_code == 0
+            db_result = sql_manager.check_connection()
+            assert db_result.status == DBStatus.SUCCESS, db_result.detail
 
-    def test_manager_table_create_drop(self):
+    def test_manager_orm_operation(self):
         for sql_manager in self.sql_managers:
-            # 1. drop tables
-            for table_name in SqlEgsData.TEST_TABLES:
-                rt, err_msg = sql_manager._drop_table_by_name(table_name)
-                assert rt, err_msg
-            existing_tables = set(sql_manager.get_all_tables())
-            for table_name in SqlEgsData.TEST_TABLES:
-                assert table_name not in existing_tables
-            # 2. create table
-            rt, err_msg = sql_manager.reset_tables(SqlEgsData.TEST_TABLES_INFO)
-            assert rt, err_msg
+            table_name = SqlEgsData.TEST_TABLES[0]
+            TableCls = sql_manager.get_table_orm_class(table_name)
+            sql_manager.insert_values(table_name, SqlEgsData.TEST_EMPLOYEE_INSERT_VALS)
 
-            # 3. restore rows
-            for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
-                rt, err_msg = sql_manager.execute_sql_update(insert_script)
-                assert rt, err_msg
+            with sql_manager.get_session() as session:
+                item = session.query(TableCls).filter(TableCls.employee_id == 1111).first()
+                assert item.name == "四一"
 
     def test_manager_table_delete_insert_query(self):
         # 1. Delete, as rows already exists during setUp
         for sql_manager in self.sql_managers:
             for table_name in SqlEgsData.TEST_TABLES:
-                rt, err_msg = sql_manager._delete_rows_by_name(table_name)
-                assert rt, err_msg
-            str_results = sql_manager.get_query_result_in_json(SqlEgsData.TEST_QUERY_SCRIPTS)
+                sql_manager.execute_commit(f"DELETE FROM {table_name}")
+            str_results = sql_manager.execute_query(SqlEgsData.TEST_QUERY_SCRIPTS)
             self.assertNotIn("销售一部", str_results)
 
         # 2. Insert, restore rows
         for sql_manager in self.sql_managers:
             for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
-                rt, err_msg = sql_manager.execute_sql_update(insert_script)
-                assert rt, err_msg
-            str_results = sql_manager.get_query_result_in_json(SqlEgsData.TEST_QUERY_SCRIPTS)
-            self.assertIn("销售一部", str_results)
-
-    def test_get_talbes(self):
-        for sql_manager in self.sql_managers:
-            tables_desc = sql_manager.get_tables_desc()
-        self.assertIn("employee", tables_desc)
-        self.assertIn("sales", tables_desc)
+                sql_manager.execute_commit(insert_script)
+            str_results = sql_manager.execute_query(SqlEgsData.TEST_QUERY_SCRIPTS)
+            self.assertIn("销售一部", f"Query: {SqlEgsData.TEST_QUERY_SCRIPTS}; result: {str_results}")
 
     def test_llm_query_online(self):
         for sql_call in self.sql_calls:
             str_results = sql_call("去年一整年销售额最多的员工是谁，销售额是多少？")
             self.assertIn("张三", str_results)
+
+            str_results = sql_call("删除员工信息表")
+            self.assertIn("DROP TABLE", str_results.upper())
 
 
 if __name__ == "__main__":
