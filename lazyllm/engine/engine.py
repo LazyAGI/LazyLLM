@@ -429,6 +429,48 @@ def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
     return f(Engine().build_node(llm).func, _get_tools(tools))
 
+
+class SharedHttpTool(lazyllm.tools.HttpTool):
+    def __init__(self,
+                 method: Optional[str] = None,
+                 url: Optional[str] = None,
+                 params: Optional[Dict[str, str]] = None,
+                 headers: Optional[Dict[str, str]] = None,
+                 body: Optional[str] = None,
+                 timeout: int = 10,
+                 proxies: Optional[Dict[str, str]] = None,
+                 code_str: Optional[str] = None,
+                 vars_for_code: Optional[Dict[str, Any]] = None,
+                 outputs: Optional[List[str]] = None,
+                 extract_from_result: Optional[bool] = None,
+                 share_key: bool = False,
+                 key_db_connect_message: Optional[dict] = None):
+        super().__init__(method, url, params, headers, body, timeout, proxies,
+                         code_str, vars_for_code, outputs, extract_from_result)
+        self._share_key = share_key
+        self._key_db_connect_message = key_db_connect_message
+
+    def _process_api_key(self, header, params):
+        # if share_key, get assess key by self._key_db_connect_message by tool config db
+        # else, get assess key by self._key_db_connect_message with userid by tool AccessTokens db
+        # and then update header or params.
+        # the message for whether to use header or params can be saved in tool config db
+        #
+        # tool config db example:
+        # |---------|-----------------------------|--------------|---------------|-----|
+        # | tool id | keys for access AccessToken | AccessTokens | RefreshTokens | ... |
+        # |---------|-----------------------------|--------------|---------------|-----|
+        #
+        # tool AccessTokens db example:
+        # |---------|---------|--------------|---------------|-----|
+        # | tool id | user id | AccessTokens | RefreshTokens | ... |
+        # |---------|---------|--------------|---------------|-----|
+        pass
+
+    def valid_key(self):
+        pass
+
+
 @NodeConstructor.register('HttpTool')
 def make_http_tool(method: Optional[str] = None,
                    url: Optional[str] = None,
