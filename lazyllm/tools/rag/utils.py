@@ -530,7 +530,7 @@ class SqliteDocListManager(DocListManager):
 
         for i in range(0, len(files), batch_size):
             batch_files = files[i:i + batch_size]
-            batch_metadatas = metadatas[i:i + batch_size] if metadatas else None
+            batch_metadatas = metadatas[i:i + batch_size] if metadatas else [None] * batch_size
             vals = []
 
             for i, file_path in enumerate(batch_files):
