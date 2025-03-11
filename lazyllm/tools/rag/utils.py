@@ -536,7 +536,7 @@ class SqliteDocListManager(DocListManager):
             for i, file_path in enumerate(batch_files):
                 doc_id = gen_docid(file_path)
 
-                metadata = batch_metadatas[i].copy() if batch_metadatas else {}
+                metadata = batch_metadatas[i].copy() if batch_metadatas[i] else {}
                 metadata.setdefault(RAG_DOC_ID, doc_id)
                 metadata.setdefault(RAG_DOC_PATH, file_path)
 
