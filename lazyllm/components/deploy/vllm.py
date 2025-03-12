@@ -2,10 +2,14 @@ import os
 import sys
 import json
 import random
+import importlib
+from packaging.version import parse
+
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
 from .utils import get_log_path, make_log_dir
+from .ray import reallocate_launcher, Distributed, sleep_moment
 
 
 class Vllm(LazyLLMDeployBase):
@@ -24,8 +28,10 @@ class Vllm(LazyLLMDeployBase):
         'max_tokens': 4096
     }
     auto_map = {'tp': 'tensor-parallel-size'}
+    vllm_version = None
 
     def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), stream=False, log_path=None, **kw):
+        self.launcher_list, launcher = reallocate_launcher(launcher)
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'dtype': 'auto',
@@ -38,13 +44,20 @@ class Vllm(LazyLLMDeployBase):
             'port': 'auto',
             'host': '0.0.0.0',
             'max-num-seqs': 256,
+            'pipeline-parallel-size': 1,
+            'max_num_batched_tokens': 64000,
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
         self.temp_folder = make_log_dir(log_path, 'vllm') if log_path else None
+        if self.launcher_list:
+            ray_launcher = [Distributed(launcher=launcher) for launcher in self.launcher_list]
+            parall_launcher = [lazyllm.pipeline(sleep_moment, launcher) for launcher in ray_launcher[1:]]
+            self._prepare_deploy = lazyllm.pipeline(
+                ray_launcher[0], post_action=(lazyllm.parallel(*parall_launcher) if len(parall_launcher) else None))
 
-    def cmd(self, finetuned_model=None, base_model=None):
+    def cmd(self, finetuned_model=None, base_model=None, master_ip=None):
         if not os.path.exists(finetuned_model) or \
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(finetuned_model)):
@@ -57,7 +70,10 @@ class Vllm(LazyLLMDeployBase):
             if self.random_port:
                 self.kw['port'] = random.randint(30000, 40000)
 
-            cmd = f'{sys.executable} -m vllm.entrypoints.api_server --model {finetuned_model} '
+            cmd = ''
+            if self.launcher_list:
+                cmd += f"ray start --address='{master_ip}' && "
+            cmd += f'{sys.executable} -m vllm.entrypoints.api_server --model {finetuned_model} '
             cmd += self.kw.parse_kwargs()
             if self.trust_remote_code:
                 cmd += ' --trust-remote-code '
@@ -80,7 +96,12 @@ class Vllm(LazyLLMDeployBase):
 
     @staticmethod
     def stream_parse_parameters():
-        return {"decode_unicode": False, "delimiter": b"\0"}
+        if Vllm.vllm_version is None:
+            Vllm.vllm_version = parse(importlib.import_module('vllm').__version__)
+        if Vllm.vllm_version <= parse("0.5.0"):
+            return {"decode_unicode": False, "delimiter": b"\0"}
+        else:
+            return {"decode_unicode": False}
 
     @staticmethod
     def stream_url_suffix():

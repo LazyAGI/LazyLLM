@@ -4,6 +4,7 @@ from .lightllm import Lightllm
 from .vllm import Vllm
 from .lmdeploy import LMDeploy
 from .infinity import Infinity
+from .ray import Distributed
 
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     'Vllm',
     'LMDeploy',
     'Infinity',
+    'Distributed',
 ]
