@@ -61,9 +61,9 @@ timm
 diffusers
 sortedcontainers
 flash-attn
+lazyllm-llamafactory==0.9.1rc0
 rotary-embedding-torch
 lightllm
-lazyllm-llamafactory==0.9.1rc0
 infinity-emb==0.0.70
 ctranslate2
 optimum>=1.16.2
