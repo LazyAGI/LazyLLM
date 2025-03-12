@@ -75,7 +75,7 @@ def install_packages(packages):
 def install_full():
     packages = load_packages()
     install_multiple_packages(packages['full'])
-    install_packages(["flash-attn<=2.6.2", "transformers==4.46.1"])
+    install_packages(["flash-attn==2.7.0.post2", "transformers==4.46.1"])
 
 def install_standard():
     packages = load_packages()

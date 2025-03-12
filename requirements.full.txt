@@ -60,7 +60,7 @@ lazyllm-lmdeploy==0.7.1rc0
 timm
 diffusers
 sortedcontainers
-flash-attn<=2.6.2
+flash-attn
 rotary-embedding-torch
 lightllm
 lazyllm-llamafactory==0.9.1rc0
