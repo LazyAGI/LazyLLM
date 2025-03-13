@@ -15,7 +15,7 @@ from lazyllm.common.bind import _MetaBind
 lazyllm.config.add('eval_result_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'eval_res'),
                    'EVAL_RESULT_DIR')
 
-class Meta(abc.ABCMeta, _MetaBind):
+class EvalMeta(abc.ABCMeta, _MetaBind):
     def __new__(cls, name, bases, namespace):
         if 'process_one_data' in namespace:
             method = namespace['process_one_data']
@@ -31,7 +31,7 @@ class Meta(abc.ABCMeta, _MetaBind):
         return super().__new__(cls, name, bases, namespace)
 
 
-class BaseEvaluator(ModuleBase, metaclass=Meta):
+class BaseEvaluator(ModuleBase, metaclass=EvalMeta):
     def __init__(self, concurrency=1, retry=3, log_base_name=None):
         super().__init__()
         self.concurrency = concurrency

@@ -162,7 +162,7 @@ class Faithfulness(BaseEvaluator):
         score_str_json = self.llm_infer(query2, self.eval_llm)
         res['scores'] = score_str_json
 
-        # Caculate Score:
+        # Calculate Score:
         one_total_score = 0
         for item in score_str_json:
             score = int(item.get('score', 0))
