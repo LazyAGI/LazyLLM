@@ -26,11 +26,11 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             self._split = split
 
     @staticmethod
-    def _get_extro_key_template(extro_keys, prefix='Here are some extra messages you can referred to:\n\n'):
-        if extro_keys:
-            if isinstance(extro_keys, str): extro_keys = [extro_keys]
-            assert isinstance(extro_keys, (tuple, list)), 'Only str, tuple[str], list[str] are supported'
-            return prefix + ''.join([f"### {k}:\n{{{k}}}\n\n" for k in extro_keys])
+    def _get_extro_key_template(extra_keys, prefix='Here are some extra messages you can referred to:\n\n'):
+        if extra_keys:
+            if isinstance(extra_keys, str): extra_keys = [extra_keys]
+            assert isinstance(extra_keys, (tuple, list)), 'Only str, tuple[str], list[str] are supported'
+            return prefix + ''.join([f"### {k}:\n{{{k}}}\n\n" for k in extra_keys])
         return ''
 
     def _handle_tool_call_instruction(self):

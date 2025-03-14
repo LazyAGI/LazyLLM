@@ -43,7 +43,7 @@ llm = lazyllm.OnlineChatModule()
 # Part4
 
 prompt = 'You will act as an AI question-answering assistant and complete a dialogue task. In this task, you need to provide your answers based on the given context and questions.'
-llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
 # Part5
 
@@ -78,7 +78,7 @@ Let's briefly explain the code in each part.
 5. Part4 since we need the large model to answer questions based on the documents we provide, we need to tell the large model what are the reference materials and what is our question when we ask. Here, we use the built-in `ChatPrompter` to tell the large model the document content returned by `Retriever` as reference materials. The meanings of the two parameters used in `ChatPrompter` are as follows:
 
     * instruction: the guidance content provided to the large model;
-    * extro_keys: from which field in the passed-in dict to get the reference materials.
+    * extra_keys: from which field in the passed-in dict to get the reference materials.
 
 6. Part5 prints prompt information, waiting for the user to input the content they want to query.
 
@@ -189,7 +189,7 @@ llm = lazyllm.OnlineChatModule()
 # Part4
 
 prompt = 'You will act as an AI question-answering assistant and complete a dialogue task. In this task, you need to provide your answers based on the given context and questions.'
-llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
 # Part5
 
@@ -262,7 +262,7 @@ with lazyllm.pipeline() as ppl:
     ) | bind(query=ppl.input)
 
     ppl.llm = lazyllm.OnlineChatModule().prompt(
-        lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+        lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
 # Part2
 
@@ -435,7 +435,7 @@ with lazyllm.pipeline() as ppl:
     ) | bind(query=ppl.input)
 
     ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
-        lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+        lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
 if __name__ == '__main__':
     filters = {
@@ -539,7 +539,7 @@ def run(query):
         ) | bind(query=ppl.input)
 
         ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
-            lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+            lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
         rag = lazyllm.ActionModule(ppl)
         rag.start()

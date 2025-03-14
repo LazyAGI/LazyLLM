@@ -1413,7 +1413,7 @@ Arguments:
     intent_list (list): A list of strings containing all possible intents. This list can include intents in either Chinese or English.
     prompt (str): User-attached prompt words.
     constrain (str): User-attached constrain words.
-    examples (list[list]): extro examples，format is `[[query, intent], [query, intent], ...]`.
+    examples (list[list]): extra examples，format is `[[query, intent], [query, intent], ...]`.
     return_trace (bool, optional): If set to True, the results will be recorded in the trace. Defaults to False.
 """,
 )

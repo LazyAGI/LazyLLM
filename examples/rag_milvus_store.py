@@ -62,7 +62,7 @@ with lazyllm.pipeline() as ppl:
     ) | bind(query=ppl.input)
 
     ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
-        lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+        lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
 if __name__ == '__main__':
     try:

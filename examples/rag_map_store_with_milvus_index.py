@@ -50,7 +50,7 @@ def run(query):
         ) | bind(query=ppl.input)
 
         ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
-            lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+            lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
         rag = lazyllm.ActionModule(ppl)
         rag.start()
