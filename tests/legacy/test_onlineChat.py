@@ -76,7 +76,7 @@ tools = [
 ]
 
 prompter = lazyllm.ChatPrompter(instruction="Answer the following questions as best as you can. You have access to the following tools:\n", 
-                                extro_keys=["tools"], 
+                                extra_keys=["tools"], 
                                 show=True)
 
 class TestOnlineChatModule(unittest.TestCase):
