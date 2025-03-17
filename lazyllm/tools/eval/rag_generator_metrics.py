@@ -31,13 +31,13 @@ class ResponseRelevancy(BaseEvaluator):
         raw_cosine = product / norm if norm != 0 else 0.0
         return max(0.0, min(raw_cosine, 1.0))
 
-    def process_one_data(self, data):
+    def _process_one_data_impl(self, data):
         one_total_score = 0
         res = copy.deepcopy(data)
         res['infer_questions'] = []
         for _ in range(self.num_infer_questions):
             # Generate Questions:
-            guess_question = self.llm_infer(data['answer'], self.llm)
+            guess_question = self.execute_with_retries(data['answer'], self.llm)
 
             # Calculate Similarity:
             try:
@@ -52,10 +52,10 @@ class ResponseRelevancy(BaseEvaluator):
                 score = 0
             res['infer_questions'].append({
                 'question': guess_question,
-                'score': score
+                'score': round(score, 4)
             })
             one_total_score += score
-        res['final_score'] = one_total_score / self.num_infer_questions
+        res['final_score'] = round(one_total_score / self.num_infer_questions, 4)
         return res
 
 
@@ -150,22 +150,32 @@ class Faithfulness(BaseEvaluator):
         self.gene_llm = base_llm.share(prompt=generate_prompt)
         self.eval_llm = base_llm.share(prompt=eval_prompt).formatter(JsonFormatter())
 
-    def process_one_data(self, data):
+    def _validate_eval_result(self, result):
+        return (
+            isinstance(result, list)
+            and len(result) > 0
+            and all(isinstance(i, dict) and 'score' in i for i in result)
+        )
+
+    def _process_one_data_impl(self, data):
         res = copy.deepcopy(data)
         # Generate Statements:
         query1 = f'Q: {data["question"]}\nA: {data["answer"]}'
-        statements = self.llm_infer(query1, self.gene_llm)
+        statements = self.execute_with_retries(query1, self.gene_llm)
         res['statements'] = statements
 
         # Eval Statements in Context:
         query2 = f'Context: {data["context"]}\nStatements: {statements}'
-        score_str_json = self.llm_infer(query2, self.eval_llm)
-        res['scores'] = score_str_json
+        eval_result = self.execute_with_retries(query2, self.eval_llm, self._validate_eval_result)
+        if not self._validate_eval_result(eval_result):
+            lazyllm.LOG.error("Invalid evaluation result format")
+            res.update({'scores': [], 'final_score': 0.0})
+            return res
 
-        # Calculate Score:
-        one_total_score = 0
-        for item in score_str_json:
-            score = int(item.get('score', 0))
-            one_total_score += score if score in (0, 1) else 0
-        res['final_score'] = one_total_score / len(score_str_json)
+        total_score = sum(
+            int(entry.get('score', 0)) if entry.get('score') in (0, 1) else 0
+            for entry in eval_result
+        )
+        res['scores'] = eval_result
+        res['final_score'] = round(total_score / len(eval_result), 4) if eval_result else 0.0
         return res
