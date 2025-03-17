@@ -1,4 +1,4 @@
-import pytest
+import pytest # noqa E401
 import re
 import inspect
 import lazyllm
@@ -82,7 +82,6 @@ def create_test_function(cls, func):
 
 def gen_check_cls_and_funtions():
     all_classes = get_sub_classes(lazyllm)
-    target_list = []
     for cls in all_classes:
         all_methods = inspect.getmembers(cls, predicate=inspect.isfunction)
         custom_methods = [func for name, func in all_methods if not name.startswith('_') or name == '__init__']

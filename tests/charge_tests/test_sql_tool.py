@@ -6,6 +6,8 @@ import datetime
 import re
 
 
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestSqlManager(unittest.TestCase):
     @classmethod
     def clean_obsolete_tables(cls, sql_manager: SqlManager):
