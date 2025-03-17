@@ -9,8 +9,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import (Any, Callable, Dict, Generator, List, Optional, Set, Tuple,
-                    Union)
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, Union, get_type_hints
 
 import pydantic
 import sqlalchemy
@@ -40,8 +39,9 @@ config.add(
 
 config.add("default_dlmanager", str, "sqlite", "DEFAULT_DOCLIST_MANAGER")
 
-def gen_docid(file_path: str) -> str:
-    return hashlib.sha256(file_path.encode()).hexdigest()
+
+def gen_docid(content: str, prefix: str = "") -> str:
+    return prefix + hashlib.sha256(content.encode()).hexdigest()
 
 
 class KBDataBase(DeclarativeBase):
@@ -929,3 +929,14 @@ def is_sparse(embedding: Union[Dict[int, float], List[Tuple[int, float]], List[f
         return False
 
     raise TypeError(f'unsupported embedding type `{type(embedding[0])}`')
+
+
+def validate_typed_dict(given_dict: dict, typed_dict_schema: type[dict]) -> Tuple[bool, str]:
+    type_hints = get_type_hints(typed_dict_schema)
+
+    for key, value_type in type_hints.items():
+        if key not in given_dict:
+            return False, f"key {key} is missing"
+        elif not isinstance(given_dict[key], value_type):
+            return False, f"key {key} should be of type {value_type.__name__}"
+    return True, "Success"
