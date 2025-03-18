@@ -101,7 +101,7 @@ def rewrite_lines(doc_lines: list[str]) -> list[str]:
         if not doc_line.startswith(CODE_STARTS):
             new_doc_lines.append(doc_line)
             continue
-        str_remain = doc_line[len(CODE_STARTS)   :]
+        str_remain = doc_line[len(CODE_STARTS):]
         if not str_remain.strip().startswith("assert"):
             new_doc_lines.append(doc_line)
             continue
