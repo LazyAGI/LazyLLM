@@ -8,24 +8,24 @@ from .eval_base import BaseEvaluator
 
 
 class ResponseRelevancy(BaseEvaluator):
-    default_generate_prompt_en = (
+    _default_generate_prompt_en = (
         'Please generate the most likely question based on '
         'the input, keeping it concise and to the point.')
-    default_generate_prompt_zh = ('请根据输入生成最可能的一个问题，保持简洁明了。')
+    _default_generate_prompt_zh = ('请根据输入生成最可能的一个问题，保持简洁明了。')
 
     def __init__(self, llm, embedding, prompt=None, prompt_lang='en',
                  num_infer_questions=3, retry=3, concurrency=1):
         super().__init__(concurrency, retry)
         if prompt_lang.strip().lower() == 'zh':
-            default_prompt = self.default_generate_prompt_zh
+            default_prompt = self._default_generate_prompt_zh
         else:
-            default_prompt = self.default_generate_prompt_en
-        self.llm = llm.prompt(prompt or default_prompt)
-        self.embedding = embedding
-        self.num_infer_questions = num_infer_questions
-        self.necessary_keys = ['question', 'answer']
+            default_prompt = self._default_generate_prompt_en
+        self._llm = llm.prompt(prompt or default_prompt)
+        self._embedding = embedding
+        self._num_infer_questions = num_infer_questions
+        self._necessary_keys = ['question', 'answer']
 
-    def cosine(self, x, y):
+    def _cosine(self, x, y):
         product = np.dot(x, y)
         norm = np.linalg.norm(x) * np.linalg.norm(y)
         raw_cosine = product / norm if norm != 0 else 0.0
@@ -35,18 +35,18 @@ class ResponseRelevancy(BaseEvaluator):
         one_total_score = 0
         res = copy.deepcopy(data)
         res['infer_questions'] = []
-        for _ in range(self.num_infer_questions):
+        for _ in range(self._num_infer_questions):
             # Generate Questions:
-            guess_question = self._execute_with_retries(data['answer'], self.llm)
+            guess_question = self._execute_with_retries(data['answer'], self._llm)
 
             # Calculate Similarity:
             try:
-                if isinstance(self.embedding, lazyllm.module.OnlineEmbeddingModuleBase):
-                    vector1 = self.embedding(guess_question)
-                    vector2 = self.embedding(data['question'])
+                if isinstance(self._embedding, lazyllm.module.OnlineEmbeddingModuleBase):
+                    vector1 = self._embedding(guess_question)
+                    vector2 = self._embedding(data['question'])
                 else:
-                    vector1, vector2 = json.loads(self.embedding([guess_question, data['question']]))
-                score = self.cosine(vector1, vector2)
+                    vector1, vector2 = json.loads(self._embedding([guess_question, data['question']]))
+                score = self._cosine(vector1, vector2)
             except Exception as e:
                 lazyllm.LOG.error(f'Eval-Infer Error: {e}')
                 score = 0
@@ -55,12 +55,12 @@ class ResponseRelevancy(BaseEvaluator):
                 'score': round(score, 4)
             })
             one_total_score += score
-        res['final_score'] = round(one_total_score / self.num_infer_questions, 4)
+        res['final_score'] = round(one_total_score / self._num_infer_questions, 4)
         return res
 
 
 class Faithfulness(BaseEvaluator):
-    default_generate_prompt_en = (
+    _default_generate_prompt_en = (
         '[Task Description]\n'
         'Split the answer into independent factual statements using "|||" as '
         'the exclusive separator, following these rules:\n'
@@ -78,7 +78,7 @@ class Faithfulness(BaseEvaluator):
         'Photosynthesis requires sunlight.|||Chlorophyll absorbs light energy.'
         '|||Chlorophyll converts water and CO2 into glucose.\n'
     )
-    default_eval_prompt_en = (
+    _default_eval_prompt_en = (
         '[Task Description]\n'
         'Evaluate each "|||"-separated statement against provided context using binary scoring:\n'
         'Fully supported by context: 1\n'
@@ -99,7 +99,7 @@ class Faithfulness(BaseEvaluator):
         '{"statement": "Chlorophyll absorbs light energy.", "score": 1},'
         '{"statement": "Chlorophyll converts water and CO2 into glucose.","score": 0}]\n'
     )
-    default_generate_prompt_zh = (
+    _default_generate_prompt_zh = (
         '[任务描述]\n'
         '使用"|||"作为唯一分隔符，将答案分割成独立的事实陈述，遵循以下规则：\n'
         '1. 每个陈述必须是完整的句子，并以适当的标点结束\n'
@@ -114,7 +114,7 @@ class Faithfulness(BaseEvaluator):
         '[示例输出]\n'
         '光合作用需要阳光。|||叶绿素吸收光能。|||叶绿素将水和CO2转化为葡萄糖。\n'
     )
-    default_eval_prompt_zh = (
+    _default_eval_prompt_zh = (
         '[任务描述]\n'
         '使用二进制评分对每个"|||"分隔的陈述与提供的内容进行评估：\n'
         '完全由内容支持：1\n'
@@ -136,19 +136,19 @@ class Faithfulness(BaseEvaluator):
 
     def __init__(self, llm, generate_prompt=None, eval_prompt=None, prompt_lang='en', retry=3, concurrency=1):
         super().__init__(concurrency, retry)
-        self.base_llm = llm
+        self._base_llm = llm
         if prompt_lang == 'zh':
-            default_generate_prompt = generate_prompt or self.default_generate_prompt_zh
-            default_eval_prompt = eval_prompt or self.default_eval_prompt_zh
+            default_generate_prompt = generate_prompt or self._default_generate_prompt_zh
+            default_eval_prompt = eval_prompt or self._default_eval_prompt_zh
         else:
-            default_generate_prompt = generate_prompt or self.default_generate_prompt_en
-            default_eval_prompt = eval_prompt or self.default_eval_prompt_en
-        self.build_llms(self.base_llm, default_generate_prompt, default_eval_prompt)
-        self.necessary_keys = ['question', 'answer', 'context']
+            default_generate_prompt = generate_prompt or self._default_generate_prompt_en
+            default_eval_prompt = eval_prompt or self._default_eval_prompt_en
+        self._build_llms(self._base_llm, default_generate_prompt, default_eval_prompt)
+        self._necessary_keys = ['question', 'answer', 'context']
 
-    def build_llms(self, base_llm, generate_prompt, eval_prompt):
-        self.gene_llm = base_llm.share(prompt=generate_prompt)
-        self.eval_llm = base_llm.share(prompt=eval_prompt).formatter(JsonFormatter())
+    def _build_llms(self, base_llm, generate_prompt, eval_prompt):
+        self._gene_llm = base_llm.share(prompt=generate_prompt)
+        self._eval_llm = base_llm.share(prompt=eval_prompt).formatter(JsonFormatter())
 
     def _validate_eval_result(self, result):
         return (
@@ -157,16 +157,22 @@ class Faithfulness(BaseEvaluator):
             and all(isinstance(i, dict) and 'score' in i for i in result)
         )
 
+    def _post_processor(self, eval_result):
+        if isinstance(eval_result, dict):
+            eval_result = [eval_result]
+        return eval_result
+
     def _process_one_data_impl(self, data):
         res = copy.deepcopy(data)
         # Generate Statements:
         query1 = f'Q: {data["question"]}\nA: {data["answer"]}'
-        statements = self._execute_with_retries(query1, self.gene_llm)
+        statements = self._execute_with_retries(query1, self._gene_llm)
         res['statements'] = statements
 
         # Eval Statements in Context:
         query2 = f'Context: {data["context"]}\nStatements: {statements}'
-        eval_result = self._execute_with_retries(query2, self.eval_llm, self._validate_eval_result)
+        eval_result = self._execute_with_retries(
+            query2, self._eval_llm, self._validate_eval_result, self._post_processor)
         if not self._validate_eval_result(eval_result):
             lazyllm.LOG.error("Invalid evaluation result format")
             res.update({'scores': [], 'final_score': 0.0})

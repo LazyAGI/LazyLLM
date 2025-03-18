@@ -16,22 +16,24 @@ lazyllm.config.add('eval_result_dir', str, os.path.join(os.path.expanduser('~'),
 class BaseEvaluator(ModuleBase):
     def __init__(self, concurrency=1, retry=3, log_base_name=None):
         super().__init__()
-        self.concurrency = concurrency
-        self.retry = retry
-        self.lock = threading.Lock()
-        self.warp = warp(self.process_one_data, _concurrent=self.concurrency)
-        self.necessary_keys = []
+        self._concurrency = concurrency
+        self._retry = retry
+        self._lock = threading.Lock()
+        self._warp = warp(self.process_one_data, _concurrent=self._concurrency)
+        self._necessary_keys = []
 
-    def _execute_with_retries(self, input_data, func, result_validator=None):
-        for attempt in range(1, self.retry + 1):
+    def _execute_with_retries(self, input_data, func, result_validator=None, post_processor=None):
+        for attempt in range(1, self._retry + 1):
             try:
                 result = func(input_data)
+                if post_processor is not None:
+                    result = post_processor(result)
                 if result_validator is None or result_validator(result):
                     return result
-                lazyllm.LOG.warning(f"Validation failed on attempt {attempt}/{self.retry}")
+                lazyllm.LOG.warning(f"Validation failed on attempt {attempt}/{self._retry}")
             except Exception as e:
-                lazyllm.LOG.error(f"Attempt {attempt}/{self.retry} failed: {str(e)}")
-        lazyllm.LOG.error(f"All {self.retry} attempts exhausted")
+                lazyllm.LOG.error(f"Attempt {attempt}/{self._retry} failed: {str(e)}")
+        lazyllm.LOG.error(f"All {self._retry} attempts exhausted")
         return ''
 
     def forward(self, data):
@@ -51,7 +53,7 @@ class BaseEvaluator(ModuleBase):
     def process_one_data(self, data, progress_bar=None):
         res = self._process_one_data_impl(data)
         if progress_bar is not None:
-            with self.lock:
+            with self._lock:
                 progress_bar.update(1)
         return res
 
@@ -65,15 +67,15 @@ class BaseEvaluator(ModuleBase):
         for i, item in enumerate(data):
             if not isinstance(item, dict):
                 raise RuntimeError(f"The item at index {i} should be a dict, but got {type(item)}")
-            missing_keys = [key for key in self.necessary_keys if key not in item]
+            missing_keys = [key for key in self._necessary_keys if key not in item]
             if missing_keys:
                 raise RuntimeError(
                     f"The dict at index {i} should contain "
-                    f"keys: {self.necessary_keys}, but cannot find: {missing_keys}")
+                    f"keys: {self._necessary_keys}, but cannot find: {missing_keys}")
 
     def batch_process(self, data, progress_bar):
         self.validate_inputs_key(data)
-        results = self.warp(data, progress_bar=progress_bar)
+        results = self._warp(data, progress_bar=progress_bar)
         self.save_res(results)
         return results
 
