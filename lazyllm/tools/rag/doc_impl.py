@@ -424,13 +424,43 @@ class DocImpl:
         except Exception as e:
             raise RuntimeError(f'index type `{index}` of store `{type(self.store)}` query failed: {e}')
 
+    def find(self, nodes: List[DocNode], group: str) -> List[DocNode]:
+        if len(nodes) == 0: return nodes
+        self._lazy_init()
+
+        def get_depth(name):
+            cnt = 0
+            while name != LAZY_ROOT_NAME:
+                cnt += 1
+                name = self.node_groups[name]['parent']
+
+        # 1. find lowest common ancestor
+        left, right = nodes[0]._group, group
+        curr_depth, target_depth = get_depth(left), get_depth(right)
+        if curr_depth > target_depth:
+            for i in range(curr_depth - target_depth): left = self.node_groups[left]['parent']
+        elif curr_depth < target_depth:
+            for i in range(target_depth - curr_depth): right = self.node_groups[right]['parent']
+        while (left != right):
+            left = self.node_groups[left]['parent']
+            right = self.node_groups[right]['parent']
+        ancestor = left
+
+        # 2. if ancestor != current group, go to ancestor; then if ancestor != target group, go to target group
+        if len(nodes) > 0 and nodes[0]._group != ancestor:
+            nodes = DocImpl.find_parent(nodes, ancestor)
+        if len(nodes) > 0 and nodes[0]._group != group:
+            nodes = DocImpl.find_children(nodes, group)
+        return nodes
+
     @staticmethod
     def find_parent(nodes: List[DocNode], group: str) -> List[DocNode]:
         def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
             if node.parent:
                 if node.parent._group == group:
                     visited.add(node.parent)
-                recurse_parents(node.parent, visited)
+                else:
+                    recurse_parents(node.parent, visited)
 
         result = set()
         for node in nodes:
