@@ -1,26 +1,20 @@
 import json
 import ast
-from collections import defaultdict
 from functools import wraps
-from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, TypedDict
+from typing import Callable, Dict, List, Optional, Union, Any, TypedDict
 from lazyllm import LOG, once_wrapper, globals
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
 from lazyllm.tools.utils import chat_history_to_str
-from ..index_base import IndexBase
-from ..store_base import StoreBase, EMBED_DEFAULT_KEY
-from ..map_store import MapStore
+from ..store_base import EMBED_DEFAULT_KEY
 from ..doc_node import DocNode
 from ..data_loaders import DirectoryReader
-from ..utils import DocListManager, gen_docid, is_sparse
-from ..data_type import DataType
+from ..utils import DocListManager, is_sparse
 from .graph_network_store import BaseGraphNetworkStore
 from .graph_er_store import BaseGraphERStore
 from .graph_chunk_store import BaseGraphChunkStore
 from .graph_node import GraphChunkNode, GraphEntityNode, GraphRelationNode, EntityDict, RelationDict
 from .prompt import PROMPTS as GraphRAGPrompts
-from lazyllm.tools.rag.data_loaders import DirectoryReader
 from lazyllm.tools.rag.transform import SentenceSplitter
 import re
 import tiktoken
@@ -39,8 +33,9 @@ def embed_wrapper(func):
 
 
 class GraphDocReaderConf(TypedDict):
-    chunk_size: int # Default 1200
-    chunk_overlap: int # Default 100
+    chunk_size: int  # Default 1200
+    chunk_overlap: int  # Default 100
+
 
 class GraphDocStoreConf(TypedDict):
     root_path: str
@@ -83,8 +78,9 @@ class GraphDocImpl:
         self.graph_chunk_store = None
         self._document_module_id = document_module_id
         self._tiktoken_tokenizer = tiktoken.encoding_for_model('gpt-3.5-turbo')
-        self._text_splitter = SentenceSplitter(chunk_size=reader_conf.get("chunk_size", 1200),
-                                               chunk_overlap=reader_conf.get("chunk_overlap", 100))
+        self._text_splitter = SentenceSplitter(
+            chunk_size=reader_conf.get("chunk_size", 1200), chunk_overlap=reader_conf.get("chunk_overlap", 100)
+        )
         self._activated_embeddings = {}
         examples = "\n".join(GraphRAGPrompts["keywords_extraction_examples"][: self.EXAMPLE_NUMBER])
         self._kws_extract_prompter = ChatPrompter(
@@ -128,7 +124,7 @@ class GraphDocImpl:
             embed=self.embed[EMBED_DEFAULT_KEY],
             root_path=self.root_path,
             name_space=self.name_space,
-            config=self.store_conf['er_store_config'],
+            config=dict(self.store_conf['er_store_config'], embedding_dim=embedding_dim),
         )
         self.graph_network_store = BaseGraphNetworkStore.create_instance(
             self.store_conf['network_store_type'],
@@ -143,26 +139,11 @@ class GraphDocImpl:
             config=self.store_conf['chunk_store_config'],
         )
 
-    def _add_doc_to_kg(self, input_files: List[str], ids: Optional[List[str]] = None,
-                          metadatas: Optional[List[Dict[str, Any]]] = None):
-        # metadatas will be ignored
-        if not input_files:
-            return
-        for i, input_file in enumerate(input_files):
-            if not Path(input_file).is_file():
-                continue
-            root_nodes = self._reader.load_data([input_file])
-            if len(root_nodes) != 1:
-                continue
-            text_list = self._text_splitter.transform(root_nodes[0])
-            if not ids or not ids[i]:
-                doc_id = gen_docid(input_file)
-            else:
-                doc_id = ids[i]
-            for text in text_list:
-                chunk_id = gen_docid(text, prefix="chunk-")
-                pass
-                #TODO: 1. Process chunk 2. Extract entity/relation/graph 3. Update kg graph
+    def _add_doc_to_kg(
+        self, input_files: List[str], ids: Optional[List[str]] = None, metadatas: Optional[List[Dict[str, Any]]] = None
+    ):
+        # TODO: 1. Process chunk 2. Extract entity/relation/graph 3. Update kg graph
+        raise NotImplementedError
 
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         assert callable(func), 'func for reader should be callable'
@@ -220,7 +201,9 @@ class GraphDocImpl:
         related_entities = [ele for ele in related_entities if ele]
         return related_entities
 
-    def _find_related_relations(self, query: str, topk: int = 30, similarity_cut_off: float = 0.3) -> List[GraphRelationNode]:
+    def _find_related_relations(
+        self, query: str, topk: int = 30, similarity_cut_off: float = 0.3
+    ) -> List[GraphRelationNode]:
         relation_keys: List[RelationDict] = self.graph_er_store.query_on_relationship(query, topk, similarity_cut_off)
         related_relations = [self.graph_network_store.get_edge(key["src_id"], key["tgt_id"]) for key in relation_keys]
         related_relations = [ele for ele in related_relations if ele]
@@ -228,7 +211,6 @@ class GraphDocImpl:
 
     def _find_most_related_chunkids_from_entities(self, entities: List[GraphEntityNode]) -> List[GraphChunkNode]:
         ed_ent = 0
-        acc_chunks = []
         acc_token_num = 0
         selected_chunkids = set()
         while ed_ent < len(entities):
@@ -249,7 +231,6 @@ class GraphDocImpl:
         if ed_ent == len(entities):
             return list(selected_chunkids)
         # Else truncate entities[ed].chunk_ids before adding to selected chunkids
-        for_debug_chunkids = self.graph_network_store.sort_entitity_chunkids(entities[8])
         sorted_chunkids = self.graph_network_store.sort_entitity_chunkids(entities[ed_ent])
         ed_sub_chunk = 0
         while ed_sub_chunk < len(sorted_chunkids):
@@ -312,8 +293,7 @@ class GraphDocImpl:
         return self._generate_doc_nodes(related_eneities, related_relations, related_chunks)
 
     def _retrieve_global(self, hl_keywords: str):
-        str_keyword = ", ".join(hl_keywords)
-        pass
+        raise NotImplementedError
 
     def retrieve(self, query: str, topk: int = 30, similarity_cut_off: float = 0.3, **kwargs) -> List[DocNode]:
         self._lazy_init()
@@ -324,7 +304,7 @@ class GraphDocImpl:
         if ll_keywords:
             return self._retrieve_local(str_ll_keywords, topk=topk, similarity_cut_off=similarity_cut_off)
         else:
-            raise NotImplementedError("high level retrieval not implemented yet")
+            raise NotImplementedError(f"high level retrieval not implemented yet, str_hl_keywords: {str_hl_keywords}")
             # return self._retrieve_global(str_hl_keywords, topk=topk, similarity_cut_off=similarity_cut_off)
 
     def __call__(self, func_name: str, *args, **kwargs):

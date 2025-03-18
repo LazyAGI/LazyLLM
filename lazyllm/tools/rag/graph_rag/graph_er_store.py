@@ -1,14 +1,11 @@
 import os
-import time
 import json
-import base64
 import numpy as np
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Callable, Union, TypedDict
+from typing import Any, Dict, List, Callable, TypedDict
 
 # from lazyllm.thirdparty import nano_vectordb as
 from nano_vectordb import NanoVectorDB
-from lazyllm import LOG
 from .graph_node import GraphEntityNode, GraphRelationNode
 from ..utils import validate_typed_dict
 
@@ -62,10 +59,12 @@ class NanoDBGraphERStore(BaseGraphERStore):
         self.json_template["embedding_dim"] = config["embedding_dim"]
         self._check_path()
         self._entity_db_client = NanoVectorDB(
-            embedding_dim=config["embedding_dim"], storage_file=os.path.join(root_path, name_space, self.ENTITY_STORE_PATH)
+            embedding_dim=config["embedding_dim"],
+            storage_file=os.path.join(root_path, name_space, self.ENTITY_STORE_PATH),
         )
         self._relation_db_client = NanoVectorDB(
-            embedding_dim=config["embedding_dim"], storage_file=os.path.join(root_path, name_space, self.RELATION_STORE_PATH)
+            embedding_dim=config["embedding_dim"],
+            storage_file=os.path.join(root_path, name_space, self.RELATION_STORE_PATH),
         )
 
     def _query(self, db_client: NanoVectorDB, query: str, topk: int, similarity_cut_off: float) -> List[dict]:

@@ -1,7 +1,7 @@
 from lazyllm import ModuleBase, pipeline, once_wrapper
 from .doc_node import DocNode
 from .document import Document, DocImpl
-from .graph_document import GraphDocument, GraphDocImpl
+from .graph_document import GraphDocument
 from typing import List, Optional, Union, Dict, Set
 from .similarity import registered_similarities
 

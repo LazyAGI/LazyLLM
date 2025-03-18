@@ -1,15 +1,10 @@
-import html
 import os
-from dataclasses import dataclass
-from typing import Any, List, Union, cast, TypedDict
+from typing import List, Union, TypedDict
 import networkx as nx
-import numpy as np
 from lazyllm import LOG
 from abc import ABC, abstractmethod
 from pathlib import Path
-from pydantic import BaseModel
-from .graph_node import GraphEntityNode, GraphRelationNode, GraphChunkNode
-from ..utils import validate_typed_dict
+from .graph_node import GraphEntityNode, GraphRelationNode
 from collections import defaultdict
 
 
@@ -99,7 +94,9 @@ class BaseGraphNetworkStore(ABC):
         )
 
     @classmethod
-    def convert_edge_to_relationship(cls, source_node_id: str, target_node_id: str, network_edge: NetworkEdge, sep: str = "<SEP>") -> GraphRelationNode:
+    def convert_edge_to_relationship(
+        cls, source_node_id: str, target_node_id: str, network_edge: NetworkEdge, sep: str = "<SEP>"
+    ) -> GraphRelationNode:
         return (
             GraphRelationNode(
                 src_id=source_node_id,
@@ -112,10 +109,11 @@ class BaseGraphNetworkStore(ABC):
             if network_edge
             else None
         )
-    
+
     def sort_relations_by_degree(self, nodes: List[GraphRelationNode]) -> List[GraphRelationNode]:
         def sort_func(node: GraphRelationNode):
             return self.edge_degree(node.src_id, node.tgt_id), node.weight
+
         return sorted(nodes, key=sort_func, reverse=True)
 
     def sort_entities_by_degree(self, nodes: List[GraphEntityNode]) -> List[GraphEntityNode]:
@@ -123,7 +121,7 @@ class BaseGraphNetworkStore(ABC):
 
     def get_sorted_entities_from_relations(self, relations: List[GraphRelationNode]) -> List[GraphEntityNode]:
         pass
-    
+
     def get_sorted_chunkids_from_relations(self, relations: List[GraphRelationNode]) -> List[str]:
         pass
 
@@ -132,7 +130,9 @@ class BaseGraphNetworkStore(ABC):
         visited_relations = set()
         for entity in entities:
             neighbor_entity_names = self.get_neighbor_nodeids(entity.entity_name)
-            relations_for_entity = [self.get_edge(entity.entity_name, ng_entity_name) for ng_entity_name in neighbor_entity_names]
+            relations_for_entity = [
+                self.get_edge(entity.entity_name, ng_entity_name) for ng_entity_name in neighbor_entity_names
+            ]
             relations_for_entity = [ele for ele in relations_for_entity if ele]
             for r in relations_for_entity:
                 if (r.src_id, r.tgt_id) not in visited_relations:
@@ -143,22 +143,25 @@ class BaseGraphNetworkStore(ABC):
         return sorted(relations, key=lambda r: (self.edge_degree(r.src_id, r.tgt_id), r.weight), reverse=True)
 
     def sort_entitity_chunkids(self, entity: GraphEntityNode) -> List[str]:
-        # For chunks belonging to different entities, their sorting order remains consistent with the retrieval order 
+        # For chunks belonging to different entities, their sorting order remains consistent with the retrieval order
         # based on the query in the vector database. So we just need to sort chunks in entity.
         neighbor_entity_names = self.get_neighbor_nodeids(entity.entity_name)
         cids_in_neighbor_count = defaultdict(int)
         for entity_name in neighbor_entity_names:
             for cid in self.get_node(entity_name).source_chunk_ids:
                 cids_in_neighbor_count[cid] += 1
+
         def sort_func(cid: str):
             if cid in cids_in_neighbor_count:
                 return cids_in_neighbor_count[cid]
             return 0
+
         return sorted(entity.source_chunk_ids, key=sort_func, reverse=True)
-        
+
 
 class NetworkXStore(BaseGraphNetworkStore):
     GRAPH_STORE_PATH = "graph_chunk_entity_relation.graphml"
+
     def __init__(self, root_path: str, name_space: str, config: dict = {}):
         super().__init__(root_path, name_space, config)
         self._graphml_xml_file = os.path.join(root_path, name_space, self.GRAPH_STORE_PATH)
@@ -166,7 +169,8 @@ class NetworkXStore(BaseGraphNetworkStore):
             try:
                 self._graph = nx.read_graphml(self._graphml_xml_file)
                 LOG.info(
-                    f"Loaded graph from {self._graphml_xml_file} with {self._graph.number_of_nodes()} nodes, {self._graph.number_of_edges()} edges"
+                    f"Loaded graph from {self._graphml_xml_file} with {self._graph.number_of_nodes()} nodes, "
+                    f"{self._graph.number_of_edges()} edges"
                 )
             except Exception as e:
                 LOG.warning(f"Failed loading graphml file, exception: {str(e)}")
