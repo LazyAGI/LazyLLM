@@ -37,7 +37,7 @@ class ResponseRelevancy(BaseEvaluator):
         res['infer_questions'] = []
         for _ in range(self.num_infer_questions):
             # Generate Questions:
-            guess_question = self.execute_with_retries(data['answer'], self.llm)
+            guess_question = self._execute_with_retries(data['answer'], self.llm)
 
             # Calculate Similarity:
             try:
@@ -161,12 +161,12 @@ class Faithfulness(BaseEvaluator):
         res = copy.deepcopy(data)
         # Generate Statements:
         query1 = f'Q: {data["question"]}\nA: {data["answer"]}'
-        statements = self.execute_with_retries(query1, self.gene_llm)
+        statements = self._execute_with_retries(query1, self.gene_llm)
         res['statements'] = statements
 
         # Eval Statements in Context:
         query2 = f'Context: {data["context"]}\nStatements: {statements}'
-        eval_result = self.execute_with_retries(query2, self.eval_llm, self._validate_eval_result)
+        eval_result = self._execute_with_retries(query2, self.eval_llm, self._validate_eval_result)
         if not self._validate_eval_result(eval_result):
             lazyllm.LOG.error("Invalid evaluation result format")
             res.update({'scores': [], 'final_score': 0.0})

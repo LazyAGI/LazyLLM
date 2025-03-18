@@ -22,7 +22,7 @@ class BaseEvaluator(ModuleBase):
         self.warp = warp(self.process_one_data, _concurrent=self.concurrency)
         self.necessary_keys = []
 
-    def execute_with_retries(self, input_data, func, result_validator=None):
+    def _execute_with_retries(self, input_data, func, result_validator=None):
         for attempt in range(1, self.retry + 1):
             try:
                 result = func(input_data)
