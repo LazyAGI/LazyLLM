@@ -45,7 +45,7 @@ class LazyHuggingFaceEmbedding(object):
         return LazyHuggingFaceEmbedding.rebuild, (self.base_embed, init)
 
 class LazyFlagEmbedding(object):
-    def __init__(self, base_embed, sparse=False, source=None, init=False, **kw):
+    def __init__(self, base_embed, sparse=False, source=None, init=False):
         from ..utils.downloader import ModelManager
         source = lazyllm.config['model_source'] if not source else source
         self.base_embed = ModelManager(source).download(base_embed) or ''
@@ -126,7 +126,7 @@ class EmbeddingDeploy():
         self.launcher = launcher
         self._model_type = model_type
         self._log_path = log_path
-        self._sparse_embed = True if embed_type=='sparse' else False
+        self._sparse_embed = True if embed_type == 'sparse' else False
 
     def __call__(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
@@ -138,7 +138,8 @@ class EmbeddingDeploy():
             finetuned_model = base_model
         if self._sparse_embed or lazyllm.config['default_embedding_engine'] == 'flagEmbedding':
             return lazyllm.deploy.RelayServer(func=LazyFlagEmbedding(
-                finetuned_model, sparse=self._sparse_embed), launcher=self.launcher, log_path=self._log_path, cls='embedding')()
+                finetuned_model, sparse=self._sparse_embed),
+                launcher=self.launcher, log_path=self._log_path, cls='embedding')()
         if self._model_type == 'embed':
             return lazyllm.deploy.RelayServer(func=LazyHuggingFaceEmbedding(
                 finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding')()

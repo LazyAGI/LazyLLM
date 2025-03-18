@@ -91,7 +91,7 @@ class TestDeploy(object):
         assert len(json.loads(res)) == 1
         res = m(['你好', '世界'])
         assert len(json.loads(res)) == 2
-        
+
     def test_sparse_embedding(self):
         m = lazyllm.TrainableModule('bge-m3').deploy_method((deploy.AutoDeploy, {'embed_type': 'sparse'}))
         m.update_server()
