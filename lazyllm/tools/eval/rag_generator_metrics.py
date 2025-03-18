@@ -157,6 +157,11 @@ class Faithfulness(BaseEvaluator):
             and all(isinstance(i, dict) and 'score' in i for i in result)
         )
 
+    def _post_processor(self, eval_result):
+        if isinstance(eval_result, dict):
+            eval_result = [eval_result]
+        return eval_result
+
     def _process_one_data_impl(self, data):
         res = copy.deepcopy(data)
         # Generate Statements:
@@ -166,7 +171,10 @@ class Faithfulness(BaseEvaluator):
 
         # Eval Statements in Context:
         query2 = f'Context: {data["context"]}\nStatements: {statements}'
-        eval_result = self._execute_with_retries(query2, self._eval_llm, self._validate_eval_result)
+        eval_result = self._execute_with_retries(
+            query2, self._eval_llm, self._validate_eval_result, self._post_processor)
+        # if isinstance(eval_result, dict):
+        #     eval_result = [eval_result]
         if not self._validate_eval_result(eval_result):
             lazyllm.LOG.error("Invalid evaluation result format")
             res.update({'scores': [], 'final_score': 0.0})

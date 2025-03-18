@@ -22,12 +22,15 @@ class BaseEvaluator(ModuleBase):
         self._warp = warp(self.process_one_data, _concurrent=self._concurrency)
         self._necessary_keys = []
 
-    def _execute_with_retries(self, input_data, func, result_validator=None):
+    def _execute_with_retries(self, input_data, func, result_validator=None, post_processor=None):
         for attempt in range(1, self._retry + 1):
             try:
                 result = func(input_data)
+                if post_processor is not None:
+                    result = post_processor(result)
                 if result_validator is None or result_validator(result):
                     return result
+                print(f"\nRRRRR: {result}\n")
                 lazyllm.LOG.warning(f"Validation failed on attempt {attempt}/{self._retry}")
             except Exception as e:
                 lazyllm.LOG.error(f"Attempt {attempt}/{self._retry} failed: {str(e)}")
