@@ -173,8 +173,6 @@ class Faithfulness(BaseEvaluator):
         query2 = f'Context: {data["context"]}\nStatements: {statements}'
         eval_result = self._execute_with_retries(
             query2, self._eval_llm, self._validate_eval_result, self._post_processor)
-        # if isinstance(eval_result, dict):
-        #     eval_result = [eval_result]
         if not self._validate_eval_result(eval_result):
             lazyllm.LOG.error("Invalid evaluation result format")
             res.update({'scores': [], 'final_score': 0.0})
