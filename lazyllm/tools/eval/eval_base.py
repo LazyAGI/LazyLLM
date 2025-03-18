@@ -30,7 +30,6 @@ class BaseEvaluator(ModuleBase):
                     result = post_processor(result)
                 if result_validator is None or result_validator(result):
                     return result
-                print(f"\nRRRRR: {result}\n")
                 lazyllm.LOG.warning(f"Validation failed on attempt {attempt}/{self._retry}")
             except Exception as e:
                 lazyllm.LOG.error(f"Attempt {attempt}/{self._retry} failed: {str(e)}")
