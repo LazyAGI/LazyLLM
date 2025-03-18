@@ -119,9 +119,6 @@ class ContextRelevance(BaseEvaluator):
         self._splitter = splitter
         self._necessary_keys = ['context_retrieved', 'context_reference']
 
-    def _calc_levenshtein_distance(self, reference, context):
-        return 1 - distance.Levenshtein.normalized_distance(reference, context)
-
     def _calc_context_relevance(self, data):
         sentences_retrieved, sentences_reference = data["context"], data["reference"]
         scores = [0] * len(sentences_retrieved)
