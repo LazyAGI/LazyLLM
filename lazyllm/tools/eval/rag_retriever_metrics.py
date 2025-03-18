@@ -1,12 +1,12 @@
 import copy
 import re
-from rapidfuzz import distance
 from lazyllm.components.formatter import JsonFormatter
+from lazyllm.thirdparty import rapidfuzz
 from .eval_base import BaseEvaluator
 
 
 class LLMContextRecall(BaseEvaluator):
-    default_eval_prompt_en = (
+    _default_eval_prompt_en = (
         '[Task Description]\n'
         'Given a context, and an answer, analyze each sentence in the answer and '
         'classify if the sentence can be attributed to the given context or not:\n'
@@ -27,7 +27,7 @@ class LLMContextRecall(BaseEvaluator):
         '[{"statement": "Photosynthesis was discovered in 1780s", "reason": "The time when photosynthesis discovered was not mentioned in the given context","score": 0},'
         ' {"statement": "It occurs in chloroplasts and produce ATP using sunlight.", "reason": "The exact sentence is present in the given context", "score": 1}]\n'
     )
-    default_eval_prompt_zh = (
+    _default_eval_prompt_zh = (
         '[任务描述]\n'
         '给定一个上下文和一个答案，分析答案中的每个句子并判断该句子是否可以归因于给定的上下文:\n'
         '完全受上下文支持:1\n'
@@ -48,15 +48,14 @@ class LLMContextRecall(BaseEvaluator):
         ' {"statement": "光合作用发生在叶绿体中，并利用阳光产生 ATP。", "reason": "给定上下文中存在确切的句子", "score": 1}]\n'
     )
 
-    def __init__(self, llm, eval_prompt=None, prompt_lang='en', return_llm_output=False, retry=3, concurrency=1):
+    def __init__(self, llm, eval_prompt=None, prompt_lang='en', retry=3, concurrency=1):
         super().__init__(concurrency, retry)
         if prompt_lang == 'zh':
-            default_eval_prompt = eval_prompt or self.default_eval_prompt_zh
+            default_eval_prompt = eval_prompt or self._default_eval_prompt_zh
         else:
-            default_eval_prompt = eval_prompt or self.default_eval_prompt_en
-        self.llm = llm.prompt(default_eval_prompt).formatter(JsonFormatter()) if llm else None
-        self.necessary_keys = ['question', 'answer', 'context_retrieved']
-        self.return_llm_output = return_llm_output
+            default_eval_prompt = eval_prompt or self._default_eval_prompt_en
+        self._llm = llm.prompt(default_eval_prompt).formatter(JsonFormatter()) if llm else None
+        self._necessary_keys = ['question', 'answer', 'context_retrieved']
 
     def _validate_eval_result(self, result):
         return (
@@ -70,21 +69,21 @@ class LLMContextRecall(BaseEvaluator):
         context = "\n".join(data['context_retrieved'])
 
         query = f'question: {data["question"]}\ncontext: {context}\nstatement: {data["answer"]}'
-        eval_result = self._execute_with_retries(query, self.llm)
+        eval_result = self._execute_with_retries(query, self._llm)
         scores = [result["score"] for result in eval_result]
 
-        res['final_score'] = round(sum(scores) / len(scores), 4) if eval_result else 0.0
+        res['final_score'] = round(sum(scores) / len(scores), 4) if scores else 0.0
         return res
 
 class NonLLMContextRecall(BaseEvaluator):
     def __init__(self, th=0.5, binary=True, retry=3, concurrency=1):
         super().__init__(concurrency, retry)
-        self.binary = binary
-        self.threshold = th
-        self.necessary_keys = ['context_retrieved', 'context_reference']
+        self._binary = binary
+        self._threshold = th
+        self._necessary_keys = ['context_retrieved', 'context_reference']
 
     def _calc_levenshtein_distance(self, reference, context):
-        return 1 - distance.Levenshtein.normalized_distance(reference, context)
+        return 1 - rapidfuzz.distance.Levenshtein.normalized_distance(reference, context)
 
     def _calc_context_recall(self, data):
         contexts, reference = data["context"], data["reference"]
@@ -95,9 +94,9 @@ class NonLLMContextRecall(BaseEvaluator):
         return scores
 
     def _compute_scores(self, scores):
-        binary_scores = [1 if score > self.threshold else 0 for score in scores]
+        binary_scores = [1 if score > self._threshold else 0 for score in scores]
 
-        if self.binary:
+        if self._binary:
             return 1.0 if sum(binary_scores) > 0 else 0.0
         if len(binary_scores) > 0:
             return sum(binary_scores) / len(binary_scores)
@@ -111,20 +110,20 @@ class NonLLMContextRecall(BaseEvaluator):
             eval_result = self._execute_with_retries(input_data, self._calc_context_recall)
             scores.append(self._compute_scores(eval_result))
 
-        res['final_score'] = sum(scores) / len(scores)
+        res['final_score'] = round(sum(scores) / len(scores), 4) if scores else 0.0
         return res
 
 class ContextRelevance(BaseEvaluator):
     def __init__(self, splitter="。", retry=3, concurrency=1):
         super().__init__(concurrency, retry)
-        self.splitter = splitter
-        self.necessary_keys = ['context_retrieved', 'context_reference']
+        self._splitter = splitter
+        self._necessary_keys = ['context_retrieved', 'context_reference']
 
     def _calc_levenshtein_distance(self, reference, context):
         return 1 - distance.Levenshtein.normalized_distance(reference, context)
 
     def _calc_context_relevance(self, data):
-        sentences_retrieved, sentences_reference = data[0], data[1]
+        sentences_retrieved, sentences_reference = data["context"], data["reference"]
         scores = [0] * len(sentences_retrieved)
         for i, sentence in enumerate(sentences_retrieved):
             if sentence in sentences_reference:
@@ -133,7 +132,7 @@ class ContextRelevance(BaseEvaluator):
 
     def _paragraphs_to_sentences(self, paragraphs):
         sentences = []
-        pattern = rf'{re.escape(self.splitter)}+'
+        pattern = rf'{re.escape(self._splitter)}+'
         for paragraph in paragraphs:
             sentences.extend([s.strip() for s in re.split(pattern, paragraph) if s.strip()])
         return sentences
@@ -142,7 +141,10 @@ class ContextRelevance(BaseEvaluator):
         res = copy.deepcopy(data)
         retrieved = self._paragraphs_to_sentences(data["context_retrieved"])
         reference = self._paragraphs_to_sentences(data["context_reference"])
-        eval_result = self._execute_with_retries((retrieved, reference), self._calc_context_relevance)
+
+        input_data = {'context': retrieved, 'reference': reference}
+        eval_result = self._execute_with_retries(input_data, self._calc_context_relevance)
         total_score = sum(eval_result)
+
         res['final_score'] = round(total_score / len(eval_result), 4) if eval_result else 0.0
         return res
