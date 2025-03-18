@@ -76,6 +76,8 @@ class Retriever(ModuleBase, _PostProcess):
 
     @once_wrapper
     def _lazy_init(self):
+        if len(self._docs) == 1 and isinstance(self._docs[0], GraphDocument):
+            return
         docs = [doc for doc in self._docs if self._group_name in doc._impl.node_groups or self._group_name
                 in DocImpl._builtin_node_groups or self._group_name in DocImpl._global_node_groups]
         if not docs: raise RuntimeError(f'Group {self._group_name} not found in document {self._docs}')
