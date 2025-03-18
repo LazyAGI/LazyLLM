@@ -24,8 +24,10 @@ class LLMContextRecall(BaseEvaluator):
         'Context: Photosynthesis occurs in chloroplasts. Light reactions produce ATP using sunlight.\n'
         'Statements: Photosynthesis was discovered in 1780s. It occurs in chloroplasts and produce ATP using sunlight.\n'
         '[Example Output]\n'
-        '[{"statement": "Photosynthesis was discovered in 1780s", "reason": "The time when photosynthesis discovered was not mentioned in the given context","score": 0},'
-        ' {"statement": "It occurs in chloroplasts and produce ATP using sunlight.", "reason": "The exact sentence is present in the given context", "score": 1}]\n'
+        '[{"statement": "Photosynthesis was discovered in 1780s", '
+        '"reason": "The time when photosynthesis discovered was not mentioned in the given context","score": 0},'
+        ' {"statement": "It occurs in chloroplasts and produce ATP using sunlight.", '
+        '"reason": "The exact sentence is present in the given context", "score": 1}]\n'
     )
     _default_eval_prompt_zh = (
         '[任务描述]\n'
@@ -64,12 +66,18 @@ class LLMContextRecall(BaseEvaluator):
             and all(isinstance(i, dict) and 'score' in i for i in result)
         )
 
+    def _post_processor(self, eval_result):
+        if isinstance(eval_result, dict):
+            eval_result = [eval_result]
+        return eval_result
+
     def _process_one_data_impl(self, data):
         res = copy.deepcopy(data)
         context = "\n".join(data['context_retrieved'])
 
         query = f'question: {data["question"]}\ncontext: {context}\nstatement: {data["answer"]}'
-        eval_result = self._execute_with_retries(query, self._llm)
+        eval_result = self._execute_with_retries(
+            query, self._llm, self._validate_eval_result, self._post_processor)
         scores = [result["score"] for result in eval_result]
 
         res['final_score'] = round(sum(scores) / len(scores), 4) if scores else 0.0
