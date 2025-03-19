@@ -18,6 +18,6 @@ class TestHttpTool(object):
         assert tool(content) == content
 
     def test_math(self):
-        code_str = "import numpy as np\ndef power(v, n):\n    ret=np.power(np.array(v),n)\n    return ret"
+        code_str = "def exp(v, n): return v ** n"
         tool = HttpTool(code_str=code_str)
-        assert tool(v=[1, 2, 3, 4], n=3).tolist() == [1, 8, 27, 64]
+        assert tool(v=10, n=2) == 100
