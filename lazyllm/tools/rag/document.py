@@ -6,7 +6,7 @@ from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 
 from .doc_manager import DocManager
-from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder
+from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups
 from .doc_node import DocNode
 from .index_base import IndexBase
 from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
@@ -21,7 +21,7 @@ class CallableDict(dict):
     def __call__(self, cls, *args, **kw):
         return self[cls](*args, **kw)
 
-class Document(ModuleBase):
+class Document(ModuleBase, BuiltinGroups):
     class _Manager(ModuleBase):
         def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: Union[bool, str] = False, server: bool = False, name: Optional[str] = None,

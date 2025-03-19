@@ -9,6 +9,7 @@ from lazyllm.tools.rag.doc_manager import DocManager
 from lazyllm.tools.rag.utils import DocListManager
 from lazyllm.launcher import cleanup
 from lazyllm import config
+from typing import List, Union
 from unittest.mock import MagicMock
 import unittest
 import httpx
@@ -165,6 +166,37 @@ class TestDocument(unittest.TestCase):
                                similarity_cut_off={"m1": 0.5, "m2": 0.55}, topk=3, output_format='content', join=True)
         nodes3_text = retriever3("何为天道?")
         assert '观天之道' in nodes3_text or '天命之谓性' in nodes3_text
+
+    def test_find(self):
+        #       /- MediumChunk
+        #      /                /- chunk1 -- chunk11 -- chunk111
+        # root --- CoarseChunk <           /- chunk21
+        #      \                \- chunk2 <
+        #       \- FineChunk               \- chunk22
+        doc = Document('rag_master')
+        doc.create_node_group('chunk1', parent=Document.CoarseChunk,
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
+        doc.create_node_group('chunk11', parent='chunk1',
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=64, chunk_overlap=8)))
+        doc.create_node_group('chunk111', parent='chunk11',
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=32, chunk_overlap=4)))
+        doc.create_node_group('chunk2', parent=Document.CoarseChunk,
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
+        doc.create_node_group('chunk21', parent='chunk2',
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=64, chunk_overlap=8)))
+        doc.create_node_group('chunk22', parent='chunk2',
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=64, chunk_overlap=8)))
+
+        def _test_impl(group: Union[str, List[str]], target: str):
+            retriever = Retriever(doc, group, similarity='bm25', topk=3, target=target)
+            r: List[DocNode] = retriever('何为天道')
+            assert r[0]._group == str(target)
+
+        for group, target in [('chunk11', None), ('chunk11', 'chunk1'), ('chunk11', 'chunk111'),
+                              ('chunk11', 'chunk22'), ('chunk111', 'chunk21'), ('chunk1', 'chunk21'),
+                              (['chunk11', 'chunk111'], 'chunk21'), (['chunk21', 'chunk111'], 'chunk1')]:
+            _test_impl(group, target)
+            lazyllm.LOG.warning(f'test `{group}` and `{target}` done!')
 
     def test_doc_web_module(self):
         import time

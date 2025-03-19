@@ -45,6 +45,7 @@ class Retriever(ModuleBase, _PostProcess):
             _, mode, _ = registered_similarities[similarity]
         else:
             mode = 'embedding'  # TODO FIXME XXX should be removed after similarity args refactor
+        group_name, target = str(group_name), (str(target) if target else None)
 
         self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
         for doc in self._docs:
@@ -85,7 +86,7 @@ class Retriever(ModuleBase, _PostProcess):
                                 similarity_cut_off=self._similarity_cut_off, index=self._index,
                                 topk=self._topk, similarity_kws=self._similarity_kw, embed_keys=self._embed_keys,
                                 filters=filters)
-            if self._target:
+            if nodes and self._target and self._target != nodes[0]._group:
                 nodes = DocImpl.find_parent(nodes, self._target)
             all_nodes.extend(nodes)
         return self._post_process(nodes)

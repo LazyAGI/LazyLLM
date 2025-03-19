@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
 from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
-                        AdaptiveTransform, make_transform, TransformArgs)
+                        AdaptiveTransform, make_transform, TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
 from .store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from .map_store import MapStore
@@ -18,6 +18,7 @@ from .data_loaders import DirectoryReader
 from .utils import DocListManager, gen_docid, is_sparse
 from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH
 from .data_type import DataType
+from dataclasses import dataclass
 import threading
 import time
 
@@ -39,6 +40,21 @@ class StorePlaceholder:
 
 class EmbedPlaceholder:
     pass
+
+
+class BuiltinGroups(object):
+    @dataclass
+    class Struct:
+        name: str
+        args: TransformArgs
+        parent: str = LAZY_ROOT_NAME
+
+        def __str__(self): return self.name
+
+    CoarseChunk = Struct('CoarseChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=1024, chunk_overlap=100)))
+    MediumChunk = Struct('MediumChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=1024, chunk_overlap=100)))
+    FineChunk = Struct('FineChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=1024, chunk_overlap=100)))
+
 
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
@@ -447,9 +463,9 @@ class DocImpl:
         ancestor = left
 
         # 2. if ancestor != current group, go to ancestor; then if ancestor != target group, go to target group
-        if len(nodes) > 0 and nodes[0]._group != ancestor:
+        if nodes and nodes[0]._group != ancestor:
             nodes = DocImpl.find_parent(nodes, ancestor)
-        if len(nodes) > 0 and nodes[0]._group != group:
+        if nodes and nodes[0]._group != group:
             nodes = DocImpl.find_children(nodes, group)
         return nodes
 
@@ -522,6 +538,7 @@ class DocImpl:
         return getattr(self, func_name)(*args, **kwargs)
 
 
-DocImpl._create_builtin_node_group(name="CoarseChunk", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
-DocImpl._create_builtin_node_group(name="MediumChunk", transform=SentenceSplitter, chunk_size=256, chunk_overlap=25)
-DocImpl._create_builtin_node_group(name="FineChunk", transform=SentenceSplitter, chunk_size=128, chunk_overlap=12)
+for k, v in BuiltinGroups.__dict__.items():
+    if not k.startswith('_') and isinstance(v, BuiltinGroups.Struct):
+        assert k == v.name, 'builtin group name mismatch'
+        DocImpl._create_builtin_node_group(name=k, transform=v.args, parent=v.parent)
