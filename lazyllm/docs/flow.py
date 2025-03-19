@@ -214,20 +214,20 @@ Mark Parallel so that the return value of Parallel is accumulated each time it i
 Mark Parallel so that the return value of Parallel is joined by ``string`` each time it is called.
 """)
 
-add_example('Parallel', '''\
+add_example(
+    'Parallel',
+    '''\
 >>> import lazyllm
 >>> test1 = lambda a: a + 1
 >>> test2 = lambda a: a * 4
 >>> test3 = lambda a: a / 2
 >>> ppl = lazyllm.parallel(test1, test2, test3)
->>> ppl(1)
-(2, 4, 0.5)
+>>> assert ppl(1) == (2, 4, 0.5), "LAZYLLM_CHECK_FAILED"
 >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3)
 >>> ppl(1)
 {2, 4, 0.5}
 >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).asdict
->>> ppl(2)
-{'a': 3, 'b': 8, 'c': 1.0}
+>>> assert  ppl(2) == {'a': 3, 'b': 8, 'c': 1.0}, "LAZYLLM_CHECK_FAILED"
 >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).astuple
 >>> ppl(-1)
 (0, -4, -0.5)
@@ -237,7 +237,8 @@ add_example('Parallel', '''\
 >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).join('\\\\n')
 >>> ppl(1)
 '2\\\\n4\\\\n0.5'
-''')
+''',
+)
 
 add_chinese_doc('Pipeline', """\
 一个形成处理阶段管道的顺序执行模型。
