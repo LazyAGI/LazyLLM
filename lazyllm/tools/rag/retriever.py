@@ -5,10 +5,8 @@ from typing import List, Optional, Union, Dict, Set
 from .similarity import registered_similarities
 
 class _PostProcess(object):
-    def __init__(self, target: Optional[str] = None,
-                 output_format: Optional[str] = None,
+    def __init__(self, output_format: Optional[str] = None,
                  join: Union[bool, str] = False) -> None:
-        self._target = target
         assert output_format in (None, 'content', 'dict'), 'output_format should be None, \'content\', or \'dict\''
         self._output_format = output_format
         if join is True: join = ''
@@ -17,9 +15,6 @@ class _PostProcess(object):
         self._join = join
 
     def _post_process(self, nodes):
-        if self._target:
-            # TODO(wangzhihong): search relationship and add find_child
-            nodes = DocImpl.find_parent(nodes, self._target)
         if self._output_format == 'content':
             nodes = [node.get_content() for node in nodes]
             if isinstance(self._join, str): nodes = self._join.join(nodes)
@@ -50,6 +45,7 @@ class Retriever(ModuleBase, _PostProcess):
             _, mode, _ = registered_similarities[similarity]
         else:
             mode = 'embedding'  # TODO FIXME XXX should be removed after similarity args refactor
+        group_name, target = str(group_name), (str(target) if target else None)
 
         self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
         for doc in self._docs:
@@ -67,7 +63,8 @@ class Retriever(ModuleBase, _PostProcess):
         self._topk = topk
         self._similarity_kw = kwargs  # kw parameters
         self._embed_keys = embed_keys
-        _PostProcess.__init__(self, target, output_format, join)
+        self._target = target
+        _PostProcess.__init__(self, output_format, join)
 
     @once_wrapper
     def _lazy_init(self):
@@ -83,10 +80,13 @@ class Retriever(ModuleBase, _PostProcess):
             self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None
     ) -> Union[List[DocNode], str]:
         self._lazy_init()
-        nodes = []
+        all_nodes: List[DocNode] = []
         for doc in self._docs:
-            nodes.extend(doc.forward(query=query, group_name=self._group_name, similarity=self._similarity,
-                                     similarity_cut_off=self._similarity_cut_off, index=self._index,
-                                     topk=self._topk, similarity_kws=self._similarity_kw, embed_keys=self._embed_keys,
-                                     filters=filters))
-        return self._post_process(nodes)
+            nodes = doc.forward(query=query, group_name=self._group_name, similarity=self._similarity,
+                                similarity_cut_off=self._similarity_cut_off, index=self._index,
+                                topk=self._topk, similarity_kws=self._similarity_kw, embed_keys=self._embed_keys,
+                                filters=filters)
+            if nodes and self._target and self._target != nodes[0]._group:
+                nodes = doc.find(self._target)(nodes)
+            all_nodes.extend(nodes)
+        return self._post_process(all_nodes)

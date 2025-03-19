@@ -42,3 +42,12 @@ def obj2str(obj: Any) -> str:
 
 def str2obj(data: str) -> Any:
     return None if data is None else pickle.loads(base64.b64decode(data.encode('utf-8')))
+
+def move_predef_inside_def(code: str) -> str:
+    match = re.match(r"(.*?)(\bdef\s+\w+\s*\(.*?\):)\s*(.*)", code, re.DOTALL)
+    if match:
+        predef, func_def, rest = match.groups()
+        predef = predef.strip()
+        new_code = f"{func_def}\n    {predef}\n    {rest}" if predef else code
+        return new_code
+    return code

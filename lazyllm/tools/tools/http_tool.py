@@ -1,4 +1,4 @@
-from lazyllm.common import compile_func, package
+from lazyllm.common import compile_func, package, move_predef_inside_def
 from lazyllm.tools.http_request import HttpRequest
 from typing import Optional, Dict, Any, List
 import json
@@ -18,7 +18,7 @@ class HttpTool(HttpRequest):
                  extract_from_result: Optional[bool] = None):
         super().__init__(method, url, '', headers, params, body, timeout, proxies)
         self._has_http = True if url else False
-        self._compiled_func = (compile_func(code_str, vars_for_code) if code_str else
+        self._compiled_func = (compile_func(move_predef_inside_def(code_str)) if code_str else
                                (lambda x: json.loads(x['content'])) if self._has_http else None)
         self._outputs, self._extract_from_result = outputs, extract_from_result
         if extract_from_result:
