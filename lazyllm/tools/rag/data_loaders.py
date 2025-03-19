@@ -26,4 +26,5 @@ class DirectoryReader:
             LOG.warning(
                 f"No nodes load from path {input_files}, please check your data path."
             )
+        LOG.info("DirectoryReader loads data done!")
         return nodes

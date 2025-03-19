@@ -6,7 +6,7 @@ from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 
 from .doc_manager import DocManager
-from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder
+from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups
 from .doc_node import DocNode
 from .index_base import IndexBase
 from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
@@ -21,7 +21,7 @@ class CallableDict(dict):
     def __call__(self, cls, *args, **kw):
         return self[cls](*args, **kw)
 
-class Document(ModuleBase):
+class Document(ModuleBase, BuiltinGroups):
     class _Manager(ModuleBase):
         def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: Union[bool, str] = False, server: bool = False, name: Optional[str] = None,
@@ -171,14 +171,17 @@ class Document(ModuleBase):
         # So the query of parent and child nodes can be performed locally, and there is no need to search the
         # document service through the server for the time being. When this item is optimized, the code will become:
         # return functools.partial(self._forward, 'find_parent', group=target)
-        return functools.partial(Document.find_parent, group=target)
+        return functools.partial(DocImpl.find_parent, group=target)
 
     def find_children(self, target) -> Callable:
         # TODO: Currently, when a DocNode is returned from the server, it will carry all parent nodes and child nodes.
         # So the query of parent and child nodes can be performed locally, and there is no need to search the
         # document service through the server for the time being. When this item is optimized, the code will become:
         # return functools.partial(self._forward, 'find_children', group=target)
-        return functools.partial(Document.find_children, group=target)
+        return functools.partial(DocImpl.find_children, group=target)
+
+    def find(self, target) -> Callable:
+        return functools.partial(self._forward, 'find', group=target)
 
     def forward(self, *args, **kw) -> List[DocNode]:
         return self._forward('retrieve', *args, **kw)
