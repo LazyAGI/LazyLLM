@@ -9,7 +9,6 @@ from lazyllm.tools.rag.doc_manager import DocManager
 from lazyllm.tools.rag.utils import DocListManager
 from lazyllm.launcher import cleanup
 from lazyllm import config
-from typing import List, Union
 from unittest.mock import MagicMock
 import unittest
 import httpx
@@ -177,9 +176,9 @@ class TestDocument(unittest.TestCase):
         doc.create_node_group('chunk1', parent=Document.CoarseChunk,
                               transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
         doc.create_node_group('chunk11', parent='chunk1',
-                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=64, chunk_overlap=8)))
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=16)))
         doc.create_node_group('chunk111', parent='chunk11',
-                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=32, chunk_overlap=4)))
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=64, chunk_overlap=12)))
         doc.create_node_group('chunk2', parent=Document.CoarseChunk,
                               transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
         doc.create_node_group('chunk21', parent='chunk2',
@@ -187,16 +186,15 @@ class TestDocument(unittest.TestCase):
         doc.create_node_group('chunk22', parent='chunk2',
                               transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=64, chunk_overlap=8)))
 
-        def _test_impl(group: Union[str, List[str]], target: str):
+        def _test_impl(group, target):
             retriever = Retriever(doc, group, similarity='bm25', topk=3, target=target)
-            r: List[DocNode] = retriever('何为天道')
-            assert r[0]._group == str(target)
+            r = retriever('何为天道')
+            assert r[0]._group == target or group, f'expect {target or group}, bug get {r[0]._group}'
 
-        for group, target in [('chunk11', None), ('chunk11', 'chunk1'), ('chunk11', 'chunk111'),
+        for group, target in [('chunk11', None), ('chunk11', 'chunk1'), (Document.CoarseChunk, 'chunk111'),
                               ('chunk11', 'chunk22'), ('chunk111', 'chunk21'), ('chunk1', 'chunk21'),
-                              (['chunk11', 'chunk111'], 'chunk21'), (['chunk21', 'chunk111'], 'chunk1')]:
+                              ('chunk111', 'chunk21'), ('chunk21', 'chunk1'), ('chunk22', Document.FineChunk)]:
             _test_impl(group, target)
-            lazyllm.LOG.warning(f'test `{group}` and `{target}` done!')
 
     def test_doc_web_module(self):
         import time

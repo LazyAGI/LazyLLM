@@ -213,6 +213,7 @@ class DocImpl:
     def _create_node_group_impl(cls, group_name, name, transform: Union[str, Callable] = None,
                                 parent: str = LAZY_ROOT_NAME, *, trans_node: bool = None,
                                 num_workers: int = 0, **kwargs):
+        group_name, parent = str(group_name), str(parent)
         groups = getattr(cls, group_name)
 
         def get_trans(t): return TransformArgs.from_dict(t) if isinstance(t, dict) else t
@@ -443,12 +444,14 @@ class DocImpl:
     def find(self, nodes: List[DocNode], group: str) -> List[DocNode]:
         if len(nodes) == 0: return nodes
         self._lazy_init()
+        self._dynamic_create_nodes(group, self.store)
 
         def get_depth(name):
             cnt = 0
             while name != LAZY_ROOT_NAME:
                 cnt += 1
                 name = self.node_groups[name]['parent']
+            return cnt
 
         # 1. find lowest common ancestor
         left, right = nodes[0]._group, group
@@ -512,13 +515,6 @@ class DocImpl:
             if group in node.children:
                 result.update(node.children[group])
             else:
-                LOG.log_once(
-                    f"Fetching children that are not in direct relationship might be slower. "
-                    f"We recommend first fetching through direct children {list(node.children.keys())}, "
-                    f"then using `find_children()` again for deeper levels.",
-                    level="warning",
-                )
-                # Note: the input nodes are the same type
                 if not recurse_children(node, result):
                     LOG.warning(
                         f"Node {node} and its children do not contain any nodes with the group `{group}`. "
