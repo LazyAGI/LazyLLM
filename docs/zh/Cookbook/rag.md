@@ -43,7 +43,7 @@ llm = lazyllm.OnlineChatModule()
 # Part4
 
 prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
-llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
 # Part5
 
@@ -78,7 +78,7 @@ print(f"answer: {res}")
 5. Part4 由于需要大模型基于我们提供的文档回答问题，我们在提问的时候需要告诉大模型哪些是参考资料，哪个是我们的问题。这里使用内置的 `ChatPrompter` 将 `Retriever` 返回的文档内容作为参考资料告诉大模型。这里用到的 `ChatPrompter` 两个参数含义如下：
 
     * `instruction`：提供给大模型的指引内容；
-    * `extro_keys`：从传入的 dict 中的哪个字段获取参考资料。
+    * `extra_keys`：从传入的 dict 中的哪个字段获取参考资料。
 
 6. Part5 打印提示信息，等待用户输入要查询的内容。
 
@@ -189,7 +189,7 @@ llm = lazyllm.OnlineChatModule()
 # Part4
 
 prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
-llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
 # Part5
 
@@ -261,7 +261,7 @@ with lazyllm.pipeline() as ppl:
     ) | bind(query=ppl.input)
 
     ppl.llm = lazyllm.OnlineChatModule().prompt(
-        lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+        lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
 # Part2
 
@@ -433,7 +433,7 @@ with lazyllm.pipeline() as ppl:
     ) | bind(query=ppl.input)
 
     ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
-        lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+        lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
 if __name__ == '__main__':
     filters = {
@@ -537,7 +537,7 @@ def run(query):
         ) | bind(query=ppl.input)
 
         ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
-            lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+            lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
         rag = lazyllm.ActionModule(ppl)
         rag.start()
