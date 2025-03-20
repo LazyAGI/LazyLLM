@@ -1274,7 +1274,7 @@ TTSDeploy is a factory class for creating instances of different Text-to-Speech 
 `__new__(cls, name, **kwarg)`
 The constructor dynamically creates and returns the corresponding deployment instance based on the provided name argument.
 
-Args: 
+Args:
     name: A string specifying the type of deployment instance to be created.
     **kwarg: Keyword arguments to be passed to the constructor of the corresponding deployment instance.
                 
@@ -1291,7 +1291,7 @@ TTSDeploy 是一个用于根据指定的名称创建不同类型文本到语音(
 `__new__(cls, name, **kwarg)`
 构造函数，根据提供的名称参数动态创建并返回相应的部署实例。
 
-Args: 
+Args:
     name：字符串，用于指定要创建的部署实例的类型。
     **kwarg：关键字参数，用于传递给对应部署实例的构造函数。
                 

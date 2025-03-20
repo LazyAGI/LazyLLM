@@ -93,7 +93,7 @@ Get all configurations from the config.
 
 Args:
     None.
-    
+
 ''')
 
 
