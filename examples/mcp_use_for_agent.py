@@ -16,7 +16,7 @@ test_configs = {
 
 
 def main():
-    test_config = test_configs["mcpServers"]["fetch"]
+    test_config = test_configs["mcpServers"]["filesystem"]
     test_client = MCPClient(
         command_or_url=test_config["command"],
         args=test_config["args"],
