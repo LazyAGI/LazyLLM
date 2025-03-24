@@ -621,6 +621,7 @@ class _TrainableModuleImpl(ModuleBase):
         self._specific_target_path = None
         self._train, self._finetune = train, finetune
         self.deploy_method(deploy)
+        self._prepare_deploy = lambda target_path, base_model: lazyllm.package(target_path, base_model)
 
     def _add_father(self, father):
         if father not in self._father: self._father.append(father)
@@ -711,8 +712,10 @@ class _TrainableModuleImpl(ModuleBase):
             else:
                 target_path = ''
             return lazyllm.package(target_path, self._base_model)
+        if hasattr(self._deployer, '_prepare_deploy'):
+            self._prepare_deploy = self._deployer._prepare_deploy
 
-        return Pipeline(before_deploy, self._deployer,
+        return Pipeline(before_deploy, self._prepare_deploy, self._deployer,
                         lambda url: [f._set_url(url) for f in self._father])
 
     def _set_template(self, deployer):

@@ -17,6 +17,24 @@ model_groups = {
             'system': "You are a helpful assistant."
             },
     },
+    "deepseek-r1-distill-qwen": {
+        "prompt_keys": {
+            'sos': '<|im_start|>system\n', 'soh': '<|im_start|>user\n', 'soa': '<|im_start|>assistant\n\n<think>', 'soe': '<|im_start|>environment\n', 'eos': '<|im_end|>\n', 'eoh': '<|im_end|>\n', 'eoa': '<|im_end|>', 'eoe': '<|im_end|>\n', 'separator': '\n', 'stop_words': ['<|im_end|>'], 'tool_start_token': '<|action_start|><|function|>', 'tool_end_token': '<|action_end|>', 'tool_args_token': "<|args|>",
+            'system': "You are a helpful assistant."
+            },
+    },
+    "deepseek-r1-distill-llama": {
+        "prompt_keys": {
+            'sos': '<|start_header_id|>system<|end_header_id|>\n\n', 'soh': '<|start_header_id|>user<|end_header_id|>\n\n', 'soa': '<|start_header_id|>assistant<|end_header_id|>\n\n<think>', 'eos': '<|eot_id|>', 'eoh': '<|eot_id|>', 'eoa': '<|eot_id|>', 'stop_words': ['<|eot_id|>', '<|end_of_text|>', '<|eom_id|>'],
+            'system': "You are a helpful assistant.",
+            },
+    },
+    "deepseek": {
+        "prompt_keys": {
+            'sos': '<｜begin▁of▁sentence｜>', 'soh': '<｜User｜>', 'soa': '<｜Assistant｜>', 'eos': '', 'eoh': '', 'eoa': '<｜end▁of▁sentence｜>', 'stop_words': ['<｜end▁of▁sentence｜>'],
+            'system': "",
+            },
+    },    
     "internlm": {
         "prompt_keys": {
             'sos': '<|System|>:', 'soh': '<|User|>:', 'soa': '<|Bot|>:', 'eos': '\n', 'eoh': '\n', 'eoa': '<eoa>', 'separator': '\n', 'stop_words': ['<eoa>'],
@@ -102,6 +120,10 @@ model_provider = {
     "qwen": {
         "huggingface": "Qwen",
         "modelscope": "qwen"
+    },
+    "deepseek":{
+        "huggingface": "deepseek-ai",
+        "modelscope": "deepseek-ai"
     }
 }
 

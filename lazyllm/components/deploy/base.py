@@ -48,17 +48,21 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
     def __repr__(self):
         return flows.Pipeline.__repr__(self)
 
+def verify_func_factory(error_message='ERROR:',
+                        running_message='Uvicorn running on'):
+    def verify_func(job):
+        while True:
+            line = job.queue.get()
+            if line.startswith(error_message):
+                LOG.error(f"Capture error message: {line} \n\n")
+                return False
+            elif running_message in line:
+                LOG.info(f"Capture startup message: {line}")
+                break
+            if job.status == lazyllm.launchers.status.Failed:
+                LOG.error("Service Startup Failed.")
+                return False
+        return True
+    return verify_func
 
-def verify_fastapi_func(job):
-    while True:
-        line = job.queue.get()
-        if line.startswith('ERROR:'):
-            LOG.error(f"Capture error message: {line} \n\n")
-            return False
-        elif 'Uvicorn running on' in line:
-            LOG.info(f"Capture startup message: {line}")
-            break
-        if job.status == lazyllm.launchers.status.Failed:
-            LOG.error("Service Startup Failed.")
-            return False
-    return True
+verify_fastapi_func = verify_func_factory()

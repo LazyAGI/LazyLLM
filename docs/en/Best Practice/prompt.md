@@ -72,7 +72,7 @@ In the example above, the ``generate_prompt`` function accepts a ``dict`` as inp
 **InstructionTemplate**: Each Prompter has a built-in template used to combine user input with the ``instruction`` to generate the final ``instruction``. The two fields used in the ``InstructionTemplate`` are:
 
 - ``instruction``:Provided by the developer when constructing the ``Prompter``, it may contain several placeholders to be filled with user input. Alternatively, it can specify system-level and user-level instructions. When specifying user-level instructions, a dictionary type must be used with keys ``user`` and ``system``.
-- ``extro_keys`` : Additional information required when the user calls the model, provided by the developer during the construction of the Prompter. These will automatically be converted into placeholders within the ``instruction``.
+- ``extra_keys`` : Additional information required when the user calls the model, provided by the developer during the construction of the Prompter. These will automatically be converted into placeholders within the ``instruction``.
 
 !!! Note
 
@@ -128,7 +128,7 @@ When the user's input is a string, we allow at most one slot in the ``Prompter``
 >>> p = lazyllm.AlpacaPrompter('请完成加法运算, 输入为{instruction}')
 >>> p.generate_prompt('a+b')
 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n请完成加法运算, 输入为a+b\\n\\n\\n### Response:\\n'
->>>  p = lazyllm.AlpacaPrompter('请完成加法运算', extro_keys='input')
+>>>  p = lazyllm.AlpacaPrompter('请完成加法运算', extra_keys='input')
 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n请完成加法运算\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\na+b\\n\\n\\n### Response:\\n'
 ```
 
@@ -189,7 +189,7 @@ let's demonstrate how ``Prompter`` uses tools through a simple tool tools=[dict(
     ```python
     >>> import lazyllm
     >>> tools=[dict(type='function', function=dict(name='example'))]
-    >>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extro_keys='input', tools=tools)
+    >>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extra_keys='input', tools=tools)
     >>> prompter.generate_prompt('帮我查询一下今天的天气')
     'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n### Response:\\n'
     >>>
@@ -203,7 +203,7 @@ let's demonstrate how ``Prompter`` uses tools through a simple tool tools=[dict(
     ```python
     >>> import lazyllm
     >>> tools=[dict(type='function', function=dict(name='example'))]
-    >>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extro_keys='input')
+    >>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extra_keys='input')
     >>> prompter.generate_prompt('帮我查询一下今天的天气', tools=tools)
     'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n\\n### Function-call Tools. \\n\\n[{"type": "function", "function": {"name": "example"}}]\\n\\n### Response:\\n'
     >>>
@@ -220,7 +220,7 @@ The tool will be read after step 4 in [Prompt Generation Process Analysis](#anal
 
         >>> import lazyllm
         >>> tools=[dict(type='function', function=dict(name='example'))]
-         >>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extro_keys='input', tools=tools)
+         >>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extra_keys='input', tools=tools)
         >>> prompter.generate_prompt('帮我查询一下今天的天气', return_dict=True)
         {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n'}, {'role': 'user', 'content': ''}],
         'tools': [{'type': 'function', 'function': {'name': 'example'}}]}
