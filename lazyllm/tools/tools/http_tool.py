@@ -121,7 +121,7 @@ class HttpTool(HttpRequest):
                 endpoint_url=ret['endpoint_url'],
                 token=ret['token'],
                 refresh_token=ret['refresh_token'],
-                expires_at=datetime.strptime(ret['expires_at'], "%Y-%m-%d %H:%M:%S"),
+                expires_at=ret['expires_at'],
                 table_name=table_name)
         elif self.token_type == AuthType.OIDC.value:
             raise TypeError("OIDC authentication is not currently supported.")
@@ -143,7 +143,7 @@ class HttpTool(HttpRequest):
                 # Update only the expiration time
                 new_expires_at = now + timedelta(days=self._default_expired_days)
                 self._sql_manager.execute_commit(f"UPDATE {table_name} SET expires_at = "
-                                                 f"'{new_expires_at.strftime('%Y-%m-%d %H:%M:%S')}' WHERE id = {id}")
+                                                 f"'{new_expires_at}' WHERE id = {id}")
             return token
 
         # 2、Access token expired
@@ -163,8 +163,9 @@ class HttpTool(HttpRequest):
             new_expires_at = data.get("expires_in")
 
             # update db
-            self._sql_manager.execute_commit(f"UPDATE {table_name} SET token = '{new_token}', refresh_token = "
-                                             f"'{new_refresh_token}', expires_at = '{new_expires_at}' where id = {id}")
+            self._sql_manager.execute_commit(
+                f"UPDATE {table_name} SET token = '{new_token}', refresh_token = '{new_refresh_token}', "
+                f"expires_at = '{datetime.fromtimestamp(new_expires_at)}' where id = {id}")
             return new_token
 
     def _get_result(self, res):
