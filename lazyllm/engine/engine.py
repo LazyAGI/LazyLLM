@@ -10,16 +10,41 @@ import functools
 import copy
 from abc import ABC, abstractclassmethod
 
-
 # Each session will have a separate engine
 class Engine(ABC):
     __default_engine__ = None
     REPORT_URL = ""
 
+    class DefaultLockedDict(dict):
+        def __init__(self, default_data, *args, **kwargs):
+            self._default_keys = set(default_data.keys())  # 记录默认 key
+            super().__init__(default_data)
+            self.update(*args, **kwargs)
+
+        def __setitem__(self, key, value):
+            if key in self._default_keys: return
+            super(__class__, self).__setitem__(key, value)
+
+        def update(self, __other=None, **kw):
+            if __other:
+                has_kv = hasattr(__other, 'keys') and callable(__other.keys) and hasattr(__other, 'items')
+                [self.__setitem__(k, v) for k, v in (__other.items() if has_kv else __other)
+                 if k not in self._default_keys]
+            if kw:
+                [self.__setitem__(k, v) for k, v in kw.items() if k not in self._default_keys]
+
+        def __delitem__(self, key):
+            if key in self._default_keys: return
+            super(__class__, self).__delitem__(key)
+
+        def pop(self, key, __default=None):
+            if key in self._default_keys: return __default
+            return super(__class__, self).pop(key, __default)
+
     def __init__(self):
-        self._nodes: Dict[str, Node] = {
+        self._nodes: Engine.DefaultLockedDict[str, Node] = Engine.DefaultLockedDict({
             '__start__': Node(id='__start__', kind='__start__', name='__start__'),
-            '__end__': Node(id='__end__', kind='__end__', name='__end__')}
+            '__end__': Node(id='__end__', kind='__end__', name='__end__')})
 
     def __new__(cls):
         if cls is not Engine:
