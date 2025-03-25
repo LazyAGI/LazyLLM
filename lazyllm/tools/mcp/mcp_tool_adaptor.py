@@ -5,20 +5,12 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Union
 from mcp import ClientSession
 from mcp.types import CallToolResult, EmbeddedResource, ImageContent, TextContent
 
-# 定义非文本内容的联合类型
+# Union type for non-text content
 NonTextContent = Union[ImageContent, EmbeddedResource]
 
 
-def get_type_annotation(prop: dict) -> str:
-    """
-    Returns the corresponding Python type annotation string based on the JSON Schema property.
-
-    Args:
-        prop: A dictionary describing the JSON Schema property.
-
-    Returns:
-        The type annotation string, such as "str", "int", "Literal['a', 'b']" etc.
-    """
+def _get_type_annotation(prop: dict) -> str:
+    # Returns the corresponding Python type annotation string based on the JSON Schema property.
     if "enum" in prop:
         enum_values = prop["enum"]
         values_str = ", ".join(repr(val) for val in enum_values)
@@ -41,19 +33,10 @@ def get_type_annotation(prop: dict) -> str:
         return "Any"
 
 
-def convert_call_tool_result(
+def _convert_call_tool_result(
     call_tool_result: CallToolResult,
 ) -> tuple[Union[str, List[str]], Optional[List[NonTextContent]]]:
-    """
-    Separates and returns the text content and non-text content from a CallToolResult.
-
-    Args:
-        call_tool_result: The result returned after calling the tool.
-
-    Returns:
-        A tuple (tool_content, non_text_contents), where tool_content is either a single string or a list of strings,
-        and non_text_contents is a list of non-text content; if there is no non-text content, returns None.
-    """
+    # Separates and returns the text content and non-text content from a CallToolResult.
     text_contents: List[TextContent] = []
     non_text_contents: List[NonTextContent] = []
     for content in call_tool_result.content:
@@ -70,26 +53,20 @@ def convert_call_tool_result(
 
 
 class McpToolAdaptor:
-    """
-    Converts tools fetched from the MCP client for use by the LazyLLM agent.
-    """
-
     def __init__(
         self,
         client: ClientSession,
         allowed_tools: Optional[List[str]] = None,
     ) -> None:
-        self.client = client
-        self.allowed_tools = allowed_tools or []
+        self._client = client
+        self._allowed_tools = allowed_tools or []
 
     async def fetch_tools(self) -> List[Any]:
-        """
-        Asynchronously retrieves the list of tools returned by the MCP client and filters them based on allowed_tools.
-        """
-        response = await self.client.list_tools()
+        # Asynchronously retrieves the list of tools returned by the MCP client and filters them based on allowed_tools.
+        response = await self._client.list_tools()
         tools = getattr(response, "tools", [])
-        if self.allowed_tools:
-            tools = [tool for tool in tools if tool.name in self.allowed_tools]
+        if self._allowed_tools:
+            tools = [tool for tool in tools if tool.name in self._allowed_tools]
         return tools
 
     def _convert_to_lazyllm_tool(
@@ -98,23 +75,12 @@ class McpToolAdaptor:
         tool_description: str,
         input_schema: dict[str, Any]
     ) -> Callable:
-        """
-        Converts a tool into a function. The generated function dynamically constructs its parameter signature based on the tool's JSON Schema and automatically calls client.call_tool when invoked.
-
-        Args:
-            tool_name: The tool name (also used as the generated function's name, must be a valid identifier).
-            tool_description: The tool description.
-            input_schema: The JSON Schema for the tool's input parameters.
-
-        Returns:
-            A callable function that packages the input parameters into a dictionary, calls client.call_tool, and transforms the result.
-        """
         properties = input_schema.get("properties", {})
         required = input_schema.get("required", [])
 
         param_list = []
         for param, prop in properties.items():
-            type_annotation = get_type_annotation(prop)
+            type_annotation = _get_type_annotation(prop)
             if param in required:
                 param_list.append(f"{param}: {type_annotation}")
             else:
@@ -138,7 +104,7 @@ class McpToolAdaptor:
             if not properties:
                 doc_lines.append("    No parameters.")
             for param, prop in properties.items():
-                type_annotation = get_type_annotation(prop)
+                type_annotation = _get_type_annotation(prop)
                 param_desc = prop.get("description", f"type: {prop.get('type', 'Any')}")
                 req_str = "required" if param in required else "optional"
                 doc_lines.append(f"    {param} ({type_annotation}): {param_desc} ({req_str}).")
@@ -160,9 +126,9 @@ def {tool_name}({param_str}):
             "Any": Any,
             "List": List,
             "Literal": Literal,
-            "client": self.client,
+            "client": self._client,
             "tool_name": tool_name,
-            "convert_call_tool_result": convert_call_tool_result,
+            "convert_call_tool_result": _convert_call_tool_result,
         }
         exec(func_code, local_ns)
         generated_func = local_ns[tool_name]
@@ -184,16 +150,6 @@ def {tool_name}({param_str}):
 
 
 def patch_sync(func_async: Callable) -> Callable:
-    """
-    Wraps an asynchronous function into a synchronous function. If called in an asynchronous context, it raises an exception 
-    advising to use the asynchronous interface.
-
-    Args:
-        func_async: An asynchronous function.
-
-    Returns:
-        A function wrapped for synchronous invocation.
-    """
     def patched_sync(*args: Any, **kwargs: Any) -> Any:
         try:
             loop = asyncio.get_running_loop()
