@@ -445,11 +445,12 @@ def make_http_tool(method: Optional[str] = None,
                    outputs: Optional[List[str]] = None,
                    extract_from_result: Optional[bool] = None,
                    authentication_type: Optional[str] = None,
-                   tool_id: Optional[str] = None,
-                   user_id: Optional[str] = None):
+                   tool_api_id: Optional[str] = None,
+                   user_id: Optional[str] = None,
+                   share_key: bool = False):
     instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies,
                                       code_str, vars_for_code, outputs, extract_from_result, authentication_type,
-                                      tool_id, user_id)
+                                      tool_api_id, user_id, share_key)
     if doc:
         instance.__doc__ = doc
     return instance

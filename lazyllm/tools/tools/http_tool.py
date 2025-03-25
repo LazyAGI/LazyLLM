@@ -41,8 +41,9 @@ class HttpTool(HttpRequest):
                  outputs: Optional[List[str]] = None,
                  extract_from_result: Optional[bool] = None,
                  authentication_type: Optional[str] = None,
-                 tool_id: Optional[str] = None,
-                 user_id: Optional[str] = None):
+                 tool_api_id: Optional[str] = None,
+                 user_id: Optional[str] = None,
+                 share_key: bool = False):
         super().__init__(method, url, '', headers, params, body, timeout, proxies)
         self._has_http = True if url else False
         self._compiled_func = (compile_func(code_str, vars_for_code) if code_str else
@@ -52,8 +53,9 @@ class HttpTool(HttpRequest):
             assert outputs, 'Output information is necessary to extract output parameters'
             assert len(outputs) == 1, 'When the number of outputs is greater than 1, no manual setting is required'
         self.token_type = authentication_type
-        self._tool_id = tool_id
+        self._tool_api_id = tool_api_id
         self._user_id = user_id
+        self._share_key = share_key
         self._key_db_connect_message = lazyllm.globals.get(LIGHTENGINE_DB_KEY)
         if self._key_db_connect_message:
             self._sql_manager = SqlManager(
@@ -90,16 +92,20 @@ class HttpTool(HttpRequest):
     def valid_key(self):
         table_name = self._key_db_connect_message.get('tables_info_dict', {}).get('tables', [])[0]['name']
         SQL_SELECT = (
-            f"SELECT id, tool_id, endpoint_url, client_id, client_secret, user_id, location, param_name, token, "
+            f"SELECT id, tool_api_id, endpoint_url, client_id, client_secret, user_id, location, param_name, token, "
             f"refresh_token, token_type, expires_at FROM {table_name} "
-            f"WHERE tool_id = '{self._tool_id}' AND is_auth_success = 1 AND token_type = '{self.token_type}'"
+            f"WHERE tool_api_id = {self._tool_api_id} AND is_auth_success = True AND token_type = '{self.token_type}'"
         )
-        ret = self._fetch_valid_key(SQL_SELECT + " AND is_share = 1")
-        if not ret:
+        if self._share_key:
+            ret = self._fetch_valid_key(SQL_SELECT + " AND is_share = True")
+            if not ret:
+                raise AuthenticationFailedError(f"Authentication failed for share_key=True and "
+                                                f"tool_api_id='{self._tool_api_id}'")
+        else:
             ret = self._fetch_valid_key(SQL_SELECT + f" AND user_id = '{self._user_id}'")
             if not ret:
                 raise AuthenticationFailedError(f"Authentication failed for user_id='{self._user_id}' and "
-                                                f"tool_id='{self._tool_id}'")
+                                                f"tool_api_id='{self._tool_api_id}'")
 
         if self.token_type == AuthType.SERVICE_API.value:
             self._token = ret['token']
@@ -113,7 +119,7 @@ class HttpTool(HttpRequest):
                 endpoint_url=ret['endpoint_url'],
                 token=ret['token'],
                 refresh_token=ret['refresh_token'],
-                expires_at=ret['expires_at'],
+                expires_at=datetime.strptime(ret['expires_at'], "%Y-%m-%d %H:%M:%S"),
                 table_name=table_name)
         elif self.token_type == AuthType.OIDC.value:
             raise TypeError("OIDC authentication is not currently supported.")
