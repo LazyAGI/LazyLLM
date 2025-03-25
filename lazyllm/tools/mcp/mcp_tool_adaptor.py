@@ -16,21 +16,17 @@ def _get_type_annotation(prop: dict) -> str:
         values_str = ", ".join(repr(val) for val in enum_values)
         return f"Literal[{values_str}]"
     
+    type_mapping = {
+        "string": "str",
+        "integer": "int",
+        "number": "float",
+        "boolean": "bool",
+        "object": "Dict[str, Any]",
+        "array": "List[Any]"
+    }
+    
     t = prop.get("type")
-    if t == "string":
-        return "str"
-    elif t == "integer":
-        return "int"
-    elif t == "number":
-        return "float"
-    elif t == "boolean":
-        return "bool"
-    elif t == "object":
-        return "Dict[str, Any]"
-    elif t == "array":
-        return "List[Any]"
-    else:
-        return "Any"
+    return type_mapping.get(t, "Any")
 
 
 def _convert_call_tool_result(
