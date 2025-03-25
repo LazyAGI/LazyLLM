@@ -55,16 +55,17 @@ class HttpTool(HttpRequest):
         self._tool_id = tool_id
         self._user_id = user_id
         self._key_db_connect_message = lazyllm.globals.get(LIGHTENGINE_DB_KEY)
-        self._sql_manager = SqlManager(
-            db_type=self._key_db_connect_message['db_type'],
-            user=self._key_db_connect_message.get('user', None),
-            password=self._key_db_connect_message.get('password', None),
-            host=self._key_db_connect_message.get('host', None),
-            port=self._key_db_connect_message.get('port', None),
-            db_name=self._key_db_connect_message['db_name'],
-            options_str=self._key_db_connect_message.get('options_str', None),
-            tables_info_dict=self._key_db_connect_message.get('tables_info_dict', None),
-        )
+        if self._key_db_connect_message:
+            self._sql_manager = SqlManager(
+                db_type=self._key_db_connect_message['db_type'],
+                user=self._key_db_connect_message.get('user', None),
+                password=self._key_db_connect_message.get('password', None),
+                host=self._key_db_connect_message.get('host', None),
+                port=self._key_db_connect_message.get('port', None),
+                db_name=self._key_db_connect_message['db_name'],
+                options_str=self._key_db_connect_message.get('options_str', None),
+                tables_info_dict=self._key_db_connect_message.get('tables_info_dict', None),
+            )
         self._default_expired_days = 3
 
     def _process_api_key(self, headers, params):
@@ -101,19 +102,10 @@ class HttpTool(HttpRequest):
                                                 f"tool_id='{self._tool_id}'")
 
         if self.token_type == AuthType.SERVICE_API.value:
-            # self._process_authentication_key(ret['token'], ret['location'], ret['param_name'])
             self._token = ret['token']
             self._location = ret['location']
             self._param_name = ret['param_name']
         elif self.token_type == AuthType.OAUTH.value:
-            # self._process_authentication_key(self._validate_and_refresh_token(
-            #     id=ret['id'],
-            #     client_id=ret['client_id'],
-            #     client_secret=ret['client_secret'],
-            #     endpoint_url=ret['endpoint_url'],
-            #     token=ret['token'],
-            #     refresh_token=ret['refresh_token'],
-            #     expires_at=datetime.strptime(ret['expires_at'], "%Y-%m-%d %H:%M:%S")))
             self._token = self._validate_and_refresh_token(
                 id=ret['id'],
                 client_id=ret['client_id'],
