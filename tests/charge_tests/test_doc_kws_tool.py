@@ -61,7 +61,6 @@ class TestDocKwsManager(unittest.TestCase):
             "issues_suggestions": "问题：经学在过去的社会里，有装点门面之用，并没有修齐治平的功效。鲁迅说过，20世纪开始以来，孔夫子的运气很坏。但他大概做梦也不会想到从21世纪以来，孔夫子却走运了。于丹《论语》心得的火爆，是儒学走运的重要象征。近年来孔子诞辰日的祭奠已成为政府的大事，然而穿西装的主祭官员、披古服的参拜者，和献花圈的武警战士混杂在一起出场，不免有点滑稽。眼下读经可谓方兴未艾，不仅有儿童的读经学堂，还有企业老板的读经高级研讨班。鲁迅的《老调子已经唱完》写道：有些读书人不觉得孔孟古书怎样有害，其实‘正因为并不觉得怎样有害，我们这才总是觉不出这致死的毛病来。因为这是“软刀子”’。目前学术刊物上阐发儒学现代价值的文章比比皆是，最为时髦的是开列出儒学为今天建设和谐社会而设计的种种良方。傅斯年的《论学校读经》说明了中国历史上的伟大朝代创业都不靠经学，而后来提倡经学之后，国力往往衰弱，汉唐宋明都是实例，经学在过去的 社会里，有装点门面之用，并没有修齐治平的功效。这就提示人们：我们应当用什么态度来对待传统儒学?", # noqa E501
         }
 
-    @unittest.skip("Done generation test")
     def test_kws_gen(self):
         kws_desc = self.doc_kws_generator.gen_kws_template(
             "reading report",
@@ -73,7 +72,6 @@ class TestDocKwsManager(unittest.TestCase):
         lazyllm.LOG.info(f"kws_desc: \n{kws_desc}")
         assert kws_desc, "kws_desc is empty"
 
-    @unittest.skip("Done extraction test")
     def test_kws_extract(self):
         res = self.doc_kws_extractor.extract_kws_value(
             str(Path(self.pdf_root, "reading_report_p2.pdf")), self.kws_desc_egs01
@@ -81,7 +79,6 @@ class TestDocKwsManager(unittest.TestCase):
         lazyllm.LOG.info(f"res: \n{res}")
         assert res, "res is empty"
 
-    @unittest.skip("Done generation test")
     def test_extract_with_sqlmanager(self):
         sql_manager = SqlManager(
             "SQLite",
