@@ -18,15 +18,8 @@ from .doc_node import DocNode
 from .readers import (ReaderBase, PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader,
                       EpubReader, MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
                       get_default_fs, is_default_fs)
-from .global_metadata import (
-    RAG_DOC_PATH,
-    RAG_DOC_FILE_NAME,
-    RAG_DOC_FILE_TYPE,
-    RAG_DOC_FILE_SIZE,
-    RAG_DOC_CREATION_DATE,
-    RAG_DOC_LAST_MODIFIED_DATE,
-    RAG_DOC_LAST_ACCESSED_DATE,
-)
+from .global_metadata import (RAG_DOC_PATH, RAG_DOC_FILE_NAME, RAG_DOC_FILE_TYPE, RAG_DOC_FILE_SIZE,
+                              RAG_DOC_CREATION_DATE, RAG_DOC_LAST_MODIFIED_DATE, RAG_DOC_LAST_ACCESSED_DATE)
 
 def _file_timestamp_format(timestamp: float, include_time: bool = False) -> Optional[str]:
     try:
