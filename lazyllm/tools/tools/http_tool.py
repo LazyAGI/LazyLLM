@@ -112,6 +112,10 @@ class HttpTool(HttpRequest):
             self._location = ret['location']
             self._param_name = ret['param_name']
         elif self.token_type == AuthType.OAUTH.value:
+            try:
+                expires_at = datetime.strptime(ret['expires_at'], "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                expires_at = datetime.strptime(ret['expires_at'], "%Y-%m-%d %H:%M:%S.%f")
             self._token = self._validate_and_refresh_token(
                 id=ret['id'],
                 client_id=ret['client_id'],
@@ -119,7 +123,7 @@ class HttpTool(HttpRequest):
                 endpoint_url=ret['endpoint_url'],
                 token=ret['token'],
                 refresh_token=ret['refresh_token'],
-                expires_at=datetime.strptime(ret['expires_at'], "%Y-%m-%d %H:%M:%S"),
+                expires_at=expires_at,
                 table_name=table_name)
         elif self.token_type == AuthType.OIDC.value:
             raise TypeError("OIDC authentication is not currently supported.")
