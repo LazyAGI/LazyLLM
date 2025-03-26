@@ -99,7 +99,7 @@ class DocImpl:
             ids, paths, metadatas = self._list_files()
             ids, paths, metadatas = self._delete_nonexistent_docs_on_startup(ids, paths, metadatas)
             if paths:
-                if not metadatas: metadatas = [{}] * len(paths)
+                if not metadatas: metadatas = [{} for _ in range(len(paths))]
                 for idx, meta in enumerate(metadatas):
                     meta[RAG_DOC_ID] = ids[idx] if ids else gen_docid(paths[idx])
                     meta[RAG_DOC_PATH] = paths[idx]
@@ -289,7 +289,7 @@ class DocImpl:
             if docs:
                 filepaths = [doc.path for doc in docs]
                 ids = [doc.doc_id for doc in docs]
-                metadatas = [doc.metadata for doc in docs]
+                metadatas = [doc.meta for doc in docs]
                 # update status and need_reparse
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working, new_need_reparse=False)
@@ -342,10 +342,15 @@ class DocImpl:
         if not input_files:
             return
         root_nodes = self._reader.load_data(input_files)
-        for idx, node in enumerate(root_nodes):
-            node.global_metadata = metadatas[idx].copy() if metadatas else {}
-            node.global_metadata[RAG_DOC_ID] = ids[idx] if ids else gen_docid(input_files[idx])
-            node.global_metadata[RAG_DOC_PATH] = input_files[idx]
+        map_file_meta = {}
+        if metadatas and len(metadatas) == input_files:
+            for file_path, metadata in zip(input_files, metadatas):
+                map_file_meta[file_path] = metadata
+        for node in root_nodes:
+            file_path = node.global_metadata[RAG_DOC_PATH]
+            if file_path in map_file_meta:
+                node.global_metadata.update(map_file_meta[file_path])
+            node.global_metadata[RAG_DOC_ID] = gen_docid(node.docpath)
         temp_store = self._create_store({"type": "map"})
         temp_store.update_nodes(root_nodes)
         all_groups = self.store.all_groups()
