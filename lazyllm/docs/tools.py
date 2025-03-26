@@ -2017,3 +2017,199 @@ secret_key = '<your_secret_key>'
 searcher = TencentSearch(secret_id, secret_key)
 res = searcher('calculus')
 ''')
+
+
+# ---------------------------------------------------------------------------- #
+
+# mcp/mcp_client.py
+
+add_english_doc('mcp.MCPClient', '''\
+MCP client that can be used to connect to an MCP server. It supports both local servers (through stdio client) and remote servers (through sse client).
+
+If the 'command_or_url' is a url string (started with 'http' or 'https'), a remote server will be connected, otherwise a local server will be started and connected.
+
+Args:
+    command_or_url (str): The command or url string, which will be used to start a local server or connect to a remote server.
+    args (list[str], optional): Arguments list used for starting a local server, if you want to connect to a remote server, this argument is not needed. (default is [])
+    env (dict[str, str], optional): Environment variables dictionary used in tools, for example some api keys. (default is None)
+    headers(dict[str, Any], optional): HTTP headers used in sse client connection. (default is None)
+    timeout (float, optional): Timeout for sse client connection, in seconds. (default is 5)
+''')
+
+add_chinese_doc('mcp.MCPClient', '''\
+MCP客户端，用于连接MCP服务器。同时支持本地服务器（通过stdio client）和sse服务器（通过sse client）。
+
+如果传入的 'command_or_url' 是一个 URL 字符串（以 'http' 或 'https' 开头），则将连接到远程服务器；否则，将启动并连接到本地服务器。
+                
+Args:
+    command_or_url (str): 用于启动本地服务器或连接远程服务器的命令或 URL 字符串。
+    args (list[str], optional): 用于启动本地服务器的参数列表；如果要连接远程服务器，则无需此参数。（默认值为[]）
+    env (dict[str, str], optional): 工具中使用的环境变量，例如一些 API 密钥。（默认值为None）
+    headers(dict[str, Any], optional): 用于sse客户端连接的HTTP头。（默认值为None）
+    timeout (float, optional): sse客户端连接的超时时间，单位为秒。(默认值为5)
+''')
+
+add_example('mcp.MCPClient', '''\
+>>> import asyncio
+>>> from lazyllm.mcp import MCPClient
+>>> mcp_server_configs = {
+...     "filesystem": {
+...         "command": "npx",
+...         "args": [
+...             "-y",
+...             "@modelcontextprotocol/server-filesystem",
+...             "./",
+...         ]
+...     }
+... }
+>>> file_sys_config = mcp_server_configs["filesystem"]
+>>> file_client = MCPClient(
+...     command_or_url=file_sys_config["command"],
+...     args=file_sys_config["args"],
+... )
+>>> tools = asyncio.run(file_client.get_tools())
+''')
+
+
+add_english_doc('mcp.MCPClient.call_tool', '''\
+Calls one of the tools provided in the toolset of the connected MCP server via the MCP client and returns the result.
+
+Args:
+    tool_name (str): The name of the tool.
+    arguments (dict): The parameters for the tool.
+''')
+
+add_chinese_doc('mcp.MCPClient.call_tool', '''\
+通过MCP客户端调用连接的MCP服务器提供的工具集中的某一个工具，并返回结果。
+
+Args:
+    tool_name (str): 工具名称。
+    arguments (dict): 工具传参。
+''')
+
+
+add_english_doc('mcp.MCPClient.list_tools', '''\
+Retrieves the list of tools from the currently connected MCP client.
+''')
+
+add_chinese_doc('mcp.MCPClient.list_tools', '''\
+获取当前连接MCP客户端的工具列表。
+''')
+
+
+add_english_doc('mcp.MCPClient.get_tools', '''\
+Used to convert the tool set from the MCP server into a list of functions available for LazyLLM and return them.
+
+The allowed_tools parameter is used to specify the list of tools to be returned. If None, all tools will be returned.
+
+Args: 
+    allowed_tools (list[str], optional): The list of tools expected to be returned. Defaults to None, meaning that all tools will be returned.
+''')
+
+add_chinese_doc('mcp.MCPClient.get_tools', '''\
+用于将MCP服务器中的工具集转换为LazyLLM可用的函数列表，并返回。
+
+allowed_tools参数用于指定要返回的工具列表，默认为None，表示返回所有工具。
+
+Args:
+    allowed_tools (list[str], optional): 期望返回的工具列表，默认为None，表示返回所有工具。
+''')
+
+
+# ---------------------------------------------------------------------------- #
+
+# mcp/mcp_tool_adaptor.py
+
+add_english_doc('mcp.mcp_tool_adaptor.generate_lazyllm_tool', '''\
+Dynamically build a function for the LazyLLM agent based on a tool provided by the MCP server.
+
+Args:
+    client (mcp.ClientSession): MCP client which connects to the MCP server.
+    mcp_tool (mcp.types.Tool): A tool provided by the MCP server.
+''')
+
+add_chinese_doc('mcp.McpToolAdaptor', '''\
+将 MCP 服务器提供的工具转换为 LazyLLM 代理使用的函数。
+
+Args:
+    client (mcp.ClientSession): 连接到MCP服务器的MCP客户端。
+    mcp_tool (mcp.types.Tool): 由MCP服务器提供的工具。
+''')
+
+
+add_english_doc('mcp.McpToolAdaptor._convert_to_lazyllm_tool', '''\
+Converts a tool into a function. The generated function dynamically constructs its parameter signature based on the tool's JSON Schema and automatically calls client.call_tool when invoked.
+
+Args:
+    tool_name: The tool name (also used as the generated function's name, must be a valid identifier).
+    tool_description: The tool description.
+    input_schema: The JSON Schema for the tool's input parameters.
+
+Returns:
+    A callable function that packages the input parameters into a dictionary, calls client.call_tool, and transforms the result.
+''')
+
+add_chinese_doc('mcp.McpToolAdaptor', '''\
+将工具转换为函数。生成的函数会根据工具的 JSON Schema 动态构造其参数签名，并在调用时自动执行 client.call_tool。
+
+Args:
+    tool_name: 工具名称（同时作为生成函数的名称，必须是合法的标识符）。
+    tool_description: 工具描述。
+    input_schema: 工具输入参数的 JSON Schema。
+
+返回:
+    一个可调用的函数，该函数会将传入的参数打包为字典，调用 client.call_tool，并转换返回的结果。
+''')
+
+
+add_english_doc('mcp.mcp_tool_adaptor.patch_sync', '''\
+Wraps an asynchronous function into a synchronous function. If called in an asynchronous context, it raises an exception 
+advising to use the asynchronous interface.
+
+Args:
+    func_async: An asynchronous function.
+
+Returns:
+    A function wrapped for synchronous invocation.
+''')
+
+add_chinese_doc('mcp..mcp_tool_adaptor.patch_sync', '''\
+将异步函数包装为同步函数。如果在异步环境中调用，则会抛出异常，提示使用异步接口。
+
+Args:
+    func_async：一个异步函数。
+
+返回：
+    一个用于同步调用的包装函数。
+''')
+
+
+add_example('mcp.McpToolAdaptor', '''\
+from lazyllm import TrainableModule
+from lazyllm.tools.agent.reactAgent import ReactAgent
+from lazyllm.tools.mcp import MCPClient, McpToolAdaptor
+
+mcp_server_configs = {
+    "filesystem": {
+        "command": "npx",
+        "args": [
+                "-y",
+                "@modelcontextprotocol/server-filesystem",
+                "./",
+            ]
+    }
+}
+file_sys_config = mcp_server_configs["filesystem"]
+file_client = MCPClient(
+    command_or_url=file_sys_config["command"],
+    args=file_sys_config["args"],
+    env=file_sys_config.get("env")
+)
+mcp_tool_adaptor = McpToolAdaptor(file_client)
+tools = mcp_tool_adaptor.tool_list()
+agent = ReactAgent(
+    llm=TrainableModule('internlm2-chat-7b'),
+    tools=tools,
+)
+print(agent("我的目录下有哪些文件？"))
+''')
