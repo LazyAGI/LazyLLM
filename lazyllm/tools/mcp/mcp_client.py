@@ -2,7 +2,7 @@ from mcp.client.session import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client, StdioServerParameters
 
-from typing import Any, List, Dict
+from typing import Any
 from urllib.parse import urlparse
 from contextlib import asynccontextmanager
 
@@ -12,9 +12,9 @@ class MCPClient(ClientSession):
     def __init__(
         self,
         command_or_url: str,
-        args: List[str] = [],
-        env: Dict[str, str] = None,
-        headers: Dict[str, Any] = None,
+        args: list[str] = [],
+        env: dict[str, str] = None,
+        headers: dict[str, Any] = None,
         timeout: float = 5,
     ):
         self._command_or_url = command_or_url
