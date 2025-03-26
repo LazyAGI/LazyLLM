@@ -90,7 +90,7 @@ class TestDocKwsManager(unittest.TestCase):
         )
         doc_kws_manager: DocKWSManager = DocKWSManager(self.llm, sql_manager)
         kws_values_temp = self.kws_value_egs01.copy()
-        kws_values_temp["lazyllm_doc_path"] = "/home/mnt/zhangyongchao/workspace/data/pdfs/reading_report_p2.pdf"
+        kws_values_temp["lazyllm_doc_path"] = str(Path(self.pdf_root, "reading_report_p2.pdf"))
         doc_kws_manager.set_kws_desc(self.kws_desc_egs01)
         assert doc_kws_manager._table_class is not None
         doc_kws_manager.export_kws_values_to_db([kws_values_temp])
@@ -107,10 +107,14 @@ class TestDocKwsManager(unittest.TestCase):
         doc_kws_manager: DocKWSManager = DocKWSManager(self.llm, sql_manager)
         file_paths = list(Path(self.pdf_root).glob("*.pdf"))
         doc_kws_manager.auto_export_docs_to_sql(file_paths)
-        str_result = sql_manager.execute_query("select * from doc_kws")
-        print("ALERT!!!!!!!!")
-        print(str_result)
+        str_result = sql_manager.execute_query(f"select * from {doc_kws_manager.table_name}")
+        print(f"str_result: {str_result}")
         assert "reading_report_p1" in str_result
+
+        doc_kws_manager.delete_doc_paths_records(file_paths[0:1])
+        str_result = sql_manager.execute_query(f"select * from {doc_kws_manager.table_name}")
+        print(f"str_result: {str_result}")
+        assert "reading_report_p1" not in str_result
 
 
 if __name__ == "__main__":

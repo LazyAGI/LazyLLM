@@ -7,6 +7,7 @@ from sqlalchemy.orm import DeclarativeBase
 import sqlalchemy
 import uuid
 from datetime import datetime
+import re
 
 
 class TableBase(DeclarativeBase):
@@ -24,7 +25,7 @@ class DocKWSManager:
     CREATED_AT_COL_NAME = "lazyllm_created_at"
     DOC_PATH_COL_NAME = "lazyllm_doc_path"
 
-    def __init__(self, llm: ModuleBase, sql_manager: SqlManager, table_name="doc_kws"):
+    def __init__(self, llm: ModuleBase, sql_manager: SqlManager, table_name="lazyllm_doc_kws"):
         self._doc_type_detector = DocTypeDetector(llm)
         self._kws_generator = DocKWSGenerator(llm)
         self._kws_extractor = DocKWSExtractor(llm)
@@ -38,9 +39,38 @@ class DocKWSManager:
     def kws_desc(self):
         return self._kws_desc
 
+    @property
+    def table_name(self):
+        return self._table_name
+
+    @table_name.setter
+    def table_name(self, table_name: str):
+        raise NotImplementedError("Invalid to change table name")
+
+    @property
+    def doc_type(self):
+        return self._doc_type
+
+    @doc_type.setter
+    def doc_type(self, doc_type: str):
+        DOC_TYPE_LEN_LIMIT = 10
+        english_words = re.findall(r"[a-zA-Z']+", doc_type)
+        english_count = len(english_words)
+
+        # chinese Unicode range
+        chinese_chars = re.findall(r"[\u4e00-\u9fff]", doc_type)
+        chinese_count = len(chinese_chars)
+
+        total_ct = english_count + chinese_count
+        if total_ct > DOC_TYPE_LEN_LIMIT:
+            raise ValueError(f"doc_type too long, make it less than {DOC_TYPE_LEN_LIMIT} words")
+        else:
+            self._doc_type = doc_type
+
+    # Alert, set kws_desc will drop old result in db
     @kws_desc.setter
     def kws_desc(self, kws_desc: List[DocKwDesc]):
-        raise NotImplementedError
+        raise NotImplementedError("As it'a dangerous operation, please use set_kws_desc instead")
 
     def clear(self):
         self._sql_manager.drop_table(self._table_name)
@@ -49,6 +79,7 @@ class DocKWSManager:
         self._table_class = None
         self._kws_desc = None
 
+    # Alert, set kws_desc will drop old result in db
     def set_kws_desc(self, kws_desc: List[DocKwDesc]):
         assert isinstance(kws_desc, list)
         for kw_desc in kws_desc:
@@ -56,6 +87,7 @@ class DocKWSManager:
             assert is_success, err_msg
         self._kws_desc = kws_desc
         if self._table_class is not None:
+            self._sql_manager.drop_table(self._table_class)
             del self._table_class
         attrs = {"__tablename__": self._table_name, "__table_args__": {"extend_existing": True}}
         # use uuid as primary key
@@ -127,3 +159,12 @@ class DocKWSManager:
                 raise ValueError("Failed to detect kws_desc")
             self.set_kws_desc(kws_desc)
         self.export_docs_kws_to_db(doc_paths)
+
+    def delete_doc_paths_records(self, doc_paths: list[str]):
+        doc_paths = [str(ele) for ele in doc_paths]
+        with self._sql_manager.get_session() as session:
+            stmt = sqlalchemy.delete(self._table_class).where(
+                getattr(self._table_class, self.DOC_PATH_COL_NAME).in_(doc_paths)
+            )
+            session.execute(stmt)
+            session.commit()
