@@ -288,7 +288,7 @@ class DocImpl:
             if docs:
                 filepaths = [doc.path for doc in docs]
                 ids = [doc.doc_id for doc in docs]
-                metadatas = [json.load(doc.meta) if doc.meta else None for doc in docs]
+                metadatas = [json.loads(doc.meta) if doc.meta else None for doc in docs]
                 # update status and need_reparse
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working, new_need_reparse=False)
