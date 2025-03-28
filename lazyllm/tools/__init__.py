@@ -13,6 +13,7 @@ from .classifier import IntentClassifier
 from .sql import SqlManager, MongoDBManager, DBResult, DBStatus
 from .sql_call import SqlCall
 from .tools.http_tool import HttpTool
+from .mcp.client import MCPClient
 
 __all__ = [
     "Document",
@@ -35,4 +36,5 @@ __all__ = [
     "DBStatus",
     "SqlCall",
     "HttpTool",
+    "MCPClient",
 ]
