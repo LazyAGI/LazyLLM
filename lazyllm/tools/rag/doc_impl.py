@@ -279,17 +279,16 @@ class DocImpl:
         while True:
             # Apply meta changes
             rows = self._dlm.fetch_docs_changed_meta(self._kb_group_name)
-            if rows:
-                for row in rows:
-                    new_meta_dict = json.loads(row[1]) if row[1] else {}
-                    self.store.update_doc_meta(row[0], new_meta_dict)
+            for row in rows:
+                new_meta_dict = json.loads(row[1]) if row[1] else {}
+                self.store.update_doc_meta(row[0], new_meta_dict)
 
             # Step 1: do doc-parsing, highest priority
             docs = self._dlm.get_docs_need_reparse(group=self._kb_group_name)
             if docs:
                 filepaths = [doc.path for doc in docs]
                 ids = [doc.doc_id for doc in docs]
-                metadatas = [doc.meta for doc in docs]
+                metadatas = [json.load(doc.meta) if doc.meta else None for doc in docs]
                 # update status and need_reparse
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working, new_need_reparse=False)
