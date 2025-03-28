@@ -23,7 +23,8 @@ class Reranker(ModuleBase, _PostProcess):
         super().__init__()
         self._name = name
         self._kwargs = kwargs
-        _PostProcess.__init__(self, target, output_format, join)
+        lazyllm.deprecated(bool(target), '`target` parameter of reranker')
+        _PostProcess.__init__(self, output_format, join)
 
     def forward(self, nodes: List[DocNode], query: str = "") -> List[DocNode]:
         results = self.registered_reranker[self._name](nodes, query=query, **self._kwargs)

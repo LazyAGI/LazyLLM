@@ -145,14 +145,14 @@ If the input to the pipeline is complex, you can directly perform a simple parsi
 ```python
 def f1(input): return dict(a=input[0], b=input[1])
 def f2(input): return input['a'] + input['b']
-def f3(input, extro): return f'[{input} + {extro}]'
+def f3(input, extra): return f'[{input} + {extra}]'
 
 with pipeline() as p1:
     p1.f1 = f1
     with pipeline() as p1.p2:
         p2.f2 = f2
-        p2.f3 = f3 | bind(extro=p2.input['b'])
-    p1.f3 = f3 | bind(extro=p1.input[0])
+        p2.f3 = f3 | bind(extra=p2.input['b'])
+    p1.f3 = f3 | bind(extra=p1.input[0])
 
 assert p1([1, 2]) == '[[3 + 2] + 1]'
 ```
@@ -169,9 +169,9 @@ from lazyllm import pipeline, _0
 with pipeline() as p1:
     p1.f1 = f1
     p1.f2 = f2
-    with pipeline().bind(extro=p1.input[0]) as p1.p2:
+    with pipeline().bind(extra=p1.input[0]) as p1.p2:
         p2.f3 = f3
-    p1.p3 = pipeline(f3) | bind(extro=p1.input[1])
+    p1.p3 = pipeline(f3) | bind(extra=p1.input[1])
 
 assert p1([1, 2]) == '[[3 + 1] + 2]'
 ```
