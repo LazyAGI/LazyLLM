@@ -1,4 +1,4 @@
-from .mcp_client import MCPClient
+from .client import MCPClient
 
 __all__ = [
     'MCPClient',

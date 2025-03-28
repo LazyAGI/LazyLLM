@@ -6,8 +6,7 @@ from typing import Any
 from urllib.parse import urlparse
 from contextlib import asynccontextmanager
 
-from .mcp_tool_adaptor import generate_lazyllm_tool
-
+from .tool_adaptor import generate_lazyllm_tool
 class MCPClient(ClientSession):
     def __init__(
         self,
@@ -54,3 +53,4 @@ class MCPClient(ClientSession):
             mcp_tools = [tool for tool in mcp_tools if tool.name in allowed_tools]
         
         return [generate_lazyllm_tool(self, tool) for tool in mcp_tools]
+    
