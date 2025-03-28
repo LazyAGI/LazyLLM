@@ -92,7 +92,16 @@ class TestDeploy(object):
         res = m(['你好', '世界'])
         assert len(json.loads(res)) == 2
 
-    @pytest.mark.skip(reason="Current infinity_emb version doesn't support.")
+    def test_sparse_embedding(self):
+        m = lazyllm.TrainableModule('bge-m3').deploy_method((deploy.AutoDeploy, {'embed_type': 'sparse'}))
+        m.update_server()
+        res = m('你好')
+        assert isinstance(json.loads(res), dict)
+        res = m(['你好'])
+        assert len(json.loads(res)) == 1
+        res = m(['你好', '世界'])
+        assert len(json.loads(res)) == 2
+
     def test_cross_modal_embedding(self):
         m = lazyllm.TrainableModule('siglip')
         m.update_server()

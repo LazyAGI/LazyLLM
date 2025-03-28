@@ -33,7 +33,7 @@ def rag(llm, docpath):
         ppl.reranker = Reranker("ModuleReranker", model="bge-reranker-large", topk=1) | bind(query=ppl.input)
         ppl.formatter = (lambda nodes, query: dict(context_str="".join([node.get_content() for node in nodes]),
                                                    query=query)) | bind(query=ppl.input)
-        ppl.llm = llm.prompt(lazyllm.ChatPrompter(prompt, extro_keys=["context_str"]))
+        ppl.llm = llm.prompt(lazyllm.ChatPrompter(prompt, extra_keys=["context_str"]))
 
     lazyllm.WebModule(ppl, port=range(20000, 25000)).start().wait()
 

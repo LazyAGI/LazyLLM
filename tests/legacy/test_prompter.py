@@ -189,7 +189,7 @@ class Agent:
                 return resp
 
 # prompter = lazyllm.ChatPrompter(instruction="Answer the following questions as best as you can. You have access to the following tools:\n", 
-#                                 extro_keys=["tools"], 
+#                                 extra_keys=["tools"], 
 #                                 show=True)
 prompter = lazyllm.ChatPrompter(instruction="Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.\n", 
                                 show=False)

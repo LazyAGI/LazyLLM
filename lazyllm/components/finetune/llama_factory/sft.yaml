@@ -18,7 +18,7 @@ flash_attn: auto
 shift_attn: false
 mixture_of_depths: null
 use_unsloth: false
-visual_inputs: false
+# visual_inputs: false
 moe_aux_loss_coef: null
 disable_gradient_checkpointing: false
 upcast_layernorm: false
@@ -49,7 +49,7 @@ print_param_status: false
 template: null
 dataset: identity,alpaca_en_demo
 dataset_dir: lazyllm_temp_dir
-split: train
+# split: train
 cutoff_len: 1024
 train_on_prompt: false
 streaming: false

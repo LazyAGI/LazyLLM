@@ -10,16 +10,41 @@ import functools
 import copy
 from abc import ABC, abstractclassmethod
 
-
 # Each session will have a separate engine
 class Engine(ABC):
     __default_engine__ = None
     REPORT_URL = ""
 
+    class DefaultLockedDict(dict):
+        def __init__(self, default_data, *args, **kwargs):
+            self._default_keys = set(default_data.keys())  # 记录默认 key
+            super().__init__(default_data)
+            self.update(*args, **kwargs)
+
+        def __setitem__(self, key, value):
+            if key in self._default_keys: return
+            super(__class__, self).__setitem__(key, value)
+
+        def update(self, __other=None, **kw):
+            if __other:
+                has_kv = hasattr(__other, 'keys') and callable(__other.keys) and hasattr(__other, 'items')
+                [self.__setitem__(k, v) for k, v in (__other.items() if has_kv else __other)
+                 if k not in self._default_keys]
+            if kw:
+                [self.__setitem__(k, v) for k, v in kw.items() if k not in self._default_keys]
+
+        def __delitem__(self, key):
+            if key in self._default_keys: return
+            super(__class__, self).__delitem__(key)
+
+        def pop(self, key, __default=None):
+            if key in self._default_keys: return __default
+            return super(__class__, self).pop(key, __default)
+
     def __init__(self):
-        self._nodes: Dict[str, Node] = {
+        self._nodes: Engine.DefaultLockedDict[str, Node] = Engine.DefaultLockedDict({
             '__start__': Node(id='__start__', kind='__start__', name='__start__'),
-            '__end__': Node(id='__end__', kind='__end__', name='__end__')}
+            '__end__': Node(id='__end__', kind='__end__', name='__end__')})
 
     def __new__(cls):
         if cls is not Engine:
@@ -235,6 +260,8 @@ def make_graph(nodes: List[dict], edges: List[Union[List[str], dict]] = [],
     with graph() as g:
         for node in nodes:
             setattr(g, node.name, node.func)
+        for node in resources:
+            setattr(g, node.name, node.func)
     g.set_node_arg_name([node.arg_names for node in nodes])
 
     if not edges:
@@ -429,48 +456,6 @@ def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
     return f(Engine().build_node(llm).func, _get_tools(tools))
 
-
-class SharedHttpTool(lazyllm.tools.HttpTool):
-    def __init__(self,
-                 method: Optional[str] = None,
-                 url: Optional[str] = None,
-                 params: Optional[Dict[str, str]] = None,
-                 headers: Optional[Dict[str, str]] = None,
-                 body: Optional[str] = None,
-                 timeout: int = 10,
-                 proxies: Optional[Dict[str, str]] = None,
-                 code_str: Optional[str] = None,
-                 vars_for_code: Optional[Dict[str, Any]] = None,
-                 outputs: Optional[List[str]] = None,
-                 extract_from_result: Optional[bool] = None,
-                 share_key: bool = False,
-                 key_db_connect_message: Optional[dict] = None):
-        super().__init__(method, url, params, headers, body, timeout, proxies,
-                         code_str, vars_for_code, outputs, extract_from_result)
-        self._share_key = share_key
-        self._key_db_connect_message = key_db_connect_message
-
-    def _process_api_key(self, header, params):
-        # if share_key, get assess key by self._key_db_connect_message by tool config db
-        # else, get assess key by self._key_db_connect_message with userid by tool AccessTokens db
-        # and then update header or params.
-        # the message for whether to use header or params can be saved in tool config db
-        #
-        # tool config db example:
-        # |---------|-----------------------------|--------------|---------------|-----|
-        # | tool id | keys for access AccessToken | AccessTokens | RefreshTokens | ... |
-        # |---------|-----------------------------|--------------|---------------|-----|
-        #
-        # tool AccessTokens db example:
-        # |---------|---------|--------------|---------------|-----|
-        # | tool id | user id | AccessTokens | RefreshTokens | ... |
-        # |---------|---------|--------------|---------------|-----|
-        pass
-
-    def valid_key(self):
-        pass
-
-
 @NodeConstructor.register('HttpTool')
 def make_http_tool(method: Optional[str] = None,
                    url: Optional[str] = None,
@@ -483,9 +468,14 @@ def make_http_tool(method: Optional[str] = None,
                    vars_for_code: Optional[Dict[str, Any]] = None,
                    doc: Optional[str] = None,
                    outputs: Optional[List[str]] = None,
-                   extract_from_result: Optional[bool] = None):
+                   extract_from_result: Optional[bool] = None,
+                   authentication_type: Optional[str] = None,
+                   tool_api_id: Optional[str] = None,
+                   user_id: Optional[str] = None,
+                   share_key: bool = False):
     instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies,
-                                      code_str, vars_for_code, outputs, extract_from_result)
+                                      code_str, vars_for_code, outputs, extract_from_result, authentication_type,
+                                      tool_api_id, user_id, share_key)
     if doc:
         instance.__doc__ = doc
     return instance

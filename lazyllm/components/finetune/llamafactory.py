@@ -1,5 +1,4 @@
 import os
-import re
 import yaml
 import json
 import uuid
@@ -8,8 +7,10 @@ import random
 from datetime import datetime
 
 import lazyllm
-from lazyllm import launchers, ArgsDict, thirdparty, CaseInsensitiveDict
+from lazyllm import launchers, ArgsDict, thirdparty
 from .base import LazyLLMFinetuneBase
+from .llama_factory.model_mapping import match_longest_prefix, llamafactory_mapping_dict
+
 
 class LlamafactoryFinetune(LazyLLMFinetuneBase):
     auto_map = {
@@ -49,7 +50,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.export_config_path = export_config_path
         self.config_folder_path = os.path.dirname(os.path.abspath(__file__))
 
-        default_config_path = os.path.join(self.config_folder_path, 'llamafactory', 'sft.yaml')
+        default_config_path = os.path.join(self.config_folder_path, 'llama_factory', 'sft.yaml')
         self.template_dict = ArgsDict(self.load_yaml(default_config_path))
 
         if self.config_path:
@@ -66,7 +67,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.template_dict['template'] = self.get_template_name(base_model)
         self.template_dict.check_and_update(kw)
 
-        default_export_config_path = os.path.join(self.config_folder_path, 'llamafactory', 'lora_export.yaml')
+        default_export_config_path = os.path.join(self.config_folder_path, 'llama_factory', 'lora_export.yaml')
         self.export_dict = ArgsDict(self.load_yaml(default_export_config_path))
 
         if self.export_config_path:
@@ -83,23 +84,13 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.log_file_path = None
 
     def get_template_name(self, base_model):
-        try:
-            from llamafactory.extras.constants import DEFAULT_TEMPLATE
-        except Exception:
-            # llamfactory need a gpu, 1st import raise error, so import 2nd.
-            from llamafactory.extras.constants import DEFAULT_TEMPLATE
-        teplate_dict = CaseInsensitiveDict(DEFAULT_TEMPLATE)
         base_name = os.path.basename(base_model).lower()
-        pattern = r'^llama-(\d+)-\d+'
-        if re.match(pattern, base_name):
-            key = 'llama-' + re.match(pattern, base_name).group(1)
+        key_value = match_longest_prefix(base_name)
+        if key_value:
+            return key_value
         else:
-            key = re.split('[_-]', base_name)[0]
-        if key in teplate_dict:
-            return teplate_dict[key]
-        else:
-            raise RuntimeError(f'Cannot find prfix({key}) of base_model({base_model}) '
-                               f'in DEFAULT_TEMPLATE of LLaMA_Factory: {DEFAULT_TEMPLATE}')
+            raise RuntimeError(f'Cannot find prfix of base_model({base_model}) '
+                               f'in DEFAULT_TEMPLATE of LLaMA_Factory: {llamafactory_mapping_dict}')
 
     def load_yaml(self, config_path):
         with open(config_path, 'r') as file:

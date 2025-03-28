@@ -4,8 +4,11 @@ import lazyllm
 from .utils import SqlEgsData, get_db_init_keywords
 import datetime
 import re
+import pytest
 
 
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestSqlManager(unittest.TestCase):
     @classmethod
     def clean_obsolete_tables(cls, sql_manager: SqlManager):

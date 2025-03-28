@@ -4,6 +4,7 @@ import json
 from typing import List, Union
 from contextlib import contextmanager
 
+LIGHTENGINE_DB_KEY = "key_db_connect_message"
 
 class Mode(Enum):
     Display = 0,

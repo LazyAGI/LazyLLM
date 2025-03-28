@@ -7,6 +7,8 @@ add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.common
 add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.common)
 add_example = functools.partial(utils.add_example, module=lazyllm.common)
 
+utils.add_doc.__doc__ = 'Add document for lazyllm functions'
+
 add_chinese_doc('Register', '''\
 LazyLLM提供的Component的注册机制，可以将任意函数注册成LazyLLM的Component。被注册的函数无需显式的import，即可通过注册器提供的分组机制，在任一位置被索引到。
 

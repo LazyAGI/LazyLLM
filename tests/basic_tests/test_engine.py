@@ -660,6 +660,10 @@ class TestEngine(unittest.TestCase):
                                       '10': 'running',
                                       '1': 'running',
                                       '0': lazyllm.launcher.Status.Running}
+        engine.stop('5')  # stop subgraph
+        assert '__start__' in engine._nodes and '__end__' in engine._nodes
+        engine.release_node(gid)
+        assert '__start__' in engine._nodes and '__end__' in engine._nodes
 
 
 class TestEngineRAG(object):

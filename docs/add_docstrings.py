@@ -16,7 +16,6 @@ skip_list = [
     'lazyllm.components.deploy.relay.base',
     'lazyllm.components.finetune.easyllm',
     'lazyllm.tools.rag.component.bm25_retriever',
-    'lazyllm.docs'
 ]
 
 if args.replace or args.clean:

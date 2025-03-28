@@ -119,7 +119,8 @@ class TestEngine(object):
                  dict(id='4', kind='SharedLLM', stream=False, name='m3',
                       args=dict(llm='0', history=builtin_history,
                                 prompt=dict(system='你是一个问答机器人，会根据用户的问题作出回答。',
-                                            user='请结合历史对话和本轮的问题，总结我们的全部对话。本轮情况如下:\n {query}, 回答: {answer}')))]
+                                            user=('请结合历史对话和本轮的问题，总结我们的全部对话，无论是否相关。'
+                                                  '本轮情况如下:\n {query}, 回答: {answer}'))))]
         engine = LightEngine()
         gid = engine.start(nodes, edges=[['__start__', '1'], ['1', '2'], ['1', '3'], ['2', '3'], ['3', '4'],
                                          ['4', '__end__']], resources=resources, _history_ids=['2', '4'])

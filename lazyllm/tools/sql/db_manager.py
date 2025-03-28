@@ -50,5 +50,5 @@ class DBManager(ABC, ModuleBase, metaclass=CommonMeta):
 
     @staticmethod
     def _serialize_uncommon_type(obj):
-        if not isinstance(obj, int, str, float, bool, tuple, list, dict):
+        if not isinstance(obj, (int, str, float, bool, tuple, list, dict)):
             return str(obj)

@@ -1,7 +1,20 @@
 from .logger import LOG
 import functools
+from typing import overload, Callable, Any
 
-def deprecated(func_or_msg=None):
+@overload
+def deprecated(msg: str) -> Callable[[Callable], Callable]:
+    ...
+
+@overload
+def deprecated(func: Callable) -> Callable[[Any], Any]:
+    ...
+
+@overload
+def deprecated(flag: bool, msg: str) -> Callable[[Any], Any]:
+    ...
+
+def deprecated(func_or_msg=None, item_name=''):
     def impl(func):
         msg = f'{func.__name__} is deprecated and will be removed in a future version.'
         if isinstance(func_or_msg, str): msg += f' Use `{func_or_msg}` instead'
@@ -24,5 +37,7 @@ def deprecated(func_or_msg=None):
 
     if isinstance(func_or_msg, str):
         return impl
+    elif isinstance(func_or_msg, bool):
+        if func_or_msg: LOG.warning(f'{item_name} is deprecated')
     else:
         return impl(func_or_msg)
