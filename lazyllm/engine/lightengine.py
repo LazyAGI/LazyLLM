@@ -61,7 +61,6 @@ class LightEngine(Engine):
     def cleanup_db(cls):
         if LIGHTENGINE_DB_KEY in lazyllm.globals:
             lazyllm.globals.pop(LIGHTENGINE_DB_KEY, None)
-            print("come here.")
 
     @once_wrapper
     def launch_localllm_train_service(self):
