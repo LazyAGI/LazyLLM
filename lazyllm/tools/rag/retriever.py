@@ -1,7 +1,6 @@
 from lazyllm import ModuleBase, pipeline, once_wrapper
 from .doc_node import DocNode
-from .document import Document, DocImpl
-from .graph_document import GraphDocument
+from .document import Document, GraphDocument, DocImpl
 from typing import List, Optional, Union, Dict, Set
 from .similarity import registered_similarities
 
@@ -34,7 +33,7 @@ class Retriever(ModuleBase, _PostProcess):
     def __init__(
         self,
         doc: object,
-        group_name: str,
+        group_name: str = "",
         similarity: Optional[str] = None,
         similarity_cut_off: Union[float, Dict[str, float]] = float("-inf"),
         index: str = "default",
@@ -57,9 +56,11 @@ class Retriever(ModuleBase, _PostProcess):
         ERROR_MSG_GRAPHRAG_MIN_TOPK = f'GraphRAG topk must >= {GRAPHRAG_MIN_TOPK}, got {topk}'
         for doc in self._docs:
             assert isinstance(doc, (Document, GraphDocument)), 'Only Document or List[Document] are supported'
+            self._submodules.append(doc)
             if isinstance(doc, GraphDocument):
                 assert topk >= GRAPHRAG_MIN_TOPK, ERROR_MSG_GRAPHRAG_MIN_TOPK
-            self._submodules.append(doc)
+                embed_keys = None
+                continue
             if mode == 'embedding' and not embed_keys:
                 embed_keys = list(doc._impl.embed.keys())
             if embed_keys:

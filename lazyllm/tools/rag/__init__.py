@@ -1,5 +1,4 @@
-from .document import Document
-from .graph_document import GraphDocument
+from .document import Document, GraphDocument
 from .retriever import Retriever
 from .rerank import Reranker, register_reranker
 from .transform import SentenceSplitter, LLMParser, NodeTransform, TransformArgs, AdaptiveTransform

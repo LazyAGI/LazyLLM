@@ -6,7 +6,6 @@ from lazyllm import LOG, once_wrapper, globals
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
 from lazyllm.tools.utils import chat_history_to_str
-from ..store_base import EMBED_DEFAULT_KEY
 from ..doc_node import DocNode
 from ..data_loaders import DirectoryReader
 from ..utils import DocListManager, is_sparse
@@ -66,9 +65,9 @@ class GraphDocImpl:
     ):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
-        self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
+        self.embed = embed_wrapper(embed)
         assert store_conf is not None
-        self.group_name = group_name
+        # self.group_name = group_name
         self.root_path = store_conf["root_path"]
         self.name_space = store_conf["name_space"]
         self.reader_conf = reader_conf
@@ -89,7 +88,7 @@ class GraphDocImpl:
             )
         ).pre_hook(self._kws_extract_prompt_hook)
         self._reader = DirectoryReader(None, self._local_file_reader, GraphDocImpl._registered_file_reader)
-        self.node_groups = {self.group_name}
+        # self.node_groups = {self.group_name}
         self._llm_kws_extractor = llm.share(prompt=self._kws_extract_prompter).used_by(document_module_id)
 
     def _kws_extract_prompt_hook(
@@ -114,14 +113,14 @@ class GraphDocImpl:
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
         # TODO add processing for doc_files
-        embedding = self.embed[EMBED_DEFAULT_KEY]('a')
+        embedding = self.embed('a')
         assert is_sparse(embedding) is False
         embedding_dim = len(embedding)
 
         # graph_er_store and graph_network_store must be initialized
         self.graph_er_store = BaseGraphERStore.create_instance(
             self.store_conf['er_store_type'],
-            embed=self.embed[EMBED_DEFAULT_KEY],
+            embed=self.embed,
             root_path=self.root_path,
             name_space=self.name_space,
             config=dict(self.store_conf['er_store_config'], embedding_dim=embedding_dim),
