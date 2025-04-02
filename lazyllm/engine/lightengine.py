@@ -8,11 +8,10 @@ from typing import List, Dict, Optional, Set, Union
 
 import lazyllm
 from lazyllm import once_wrapper
-from .engine import Engine, Node, ServerGraph
+from .engine import Engine, Node, ServerGraph, LIGHTENGINE_DB_KEY, SharedHttpTool
 from lazyllm.tools.train_service.serve import TrainServer
 from lazyllm.tools.train_service.client import LocalTrainClient, OnlineTrainClient
 from lazyllm.tools.infer_service import InferClient, InferServer
-from ..configs import LIGHTENGINE_DB_KEY
 
 
 @contextmanager
@@ -24,17 +23,12 @@ def set_resources(resource):
         lazyllm.globals.pop('engine_resource', None)
 
 def filter_http_tool(node):
-    print(f"node: {node}")
-    if isinstance(node, lazyllm.tools.HttpTool):
+    if isinstance(node, SharedHttpTool):
         return True
     return False
 
 def valid_tool(node):
-    print(f"node: {node}")
-    if not node.token_type:
-        # The tool is not authenticated
-        pass
-    else:
+    if isinstance(node, SharedHttpTool):
         node.valid_key()
 
 class LightEngine(Engine):
