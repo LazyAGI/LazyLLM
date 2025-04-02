@@ -399,7 +399,7 @@ add_example('Retriever', '''
 >>> retriever3 = Retriever([document1, document3], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
 >>> print(retriever3(query="user query", filters=filters))
 >>> document4 = Document(dataset_path='/path/to/user/data', embed=lazyllm.TrainableModule('siglip'))
->>> retriever4 = Retriever(documents4, group_name='Image', similarity='cosine')
+>>> retriever4 = Retriever(document4, group_name='Image', similarity='cosine')
 >>> nodes = retriever4("user query")
 >>> print([node.get_content() for node in nodes])
 ''')
@@ -1414,7 +1414,7 @@ Arguments:
     intent_list (list): A list of strings containing all possible intents. This list can include intents in either Chinese or English.
     prompt (str): User-attached prompt words.
     constrain (str): User-attached constrain words.
-    examples (list[list]): extro examples，format is `[[query, intent], [query, intent], ...]`.
+    examples (list[list]): extra examples，format is `[[query, intent], [query, intent], ...]`.
     return_trace (bool, optional): If set to True, the results will be recorded in the trace. Defaults to False.
 """,
 )
@@ -1638,7 +1638,7 @@ add_chinese_doc(
     "SqlManager.insert_values",
     """\
 批量数据插入
-    
+
 Args:
     table_name (str): 数据表名
     vals (List[dict]): 待插入数据，格式为[{"col_name1": v01, "col_name2": v02, ...}, {"col_name1": v11, "col_name2": v12, ...}, ...]
@@ -1649,7 +1649,7 @@ add_english_doc(
     "SqlManager.insert_values",
     """\
 Bulk insert data
-    
+
 Args:
     table_name (str): Table name
     vals (List[dict]): data to be inserted, format as [{"col_name1": v01, "col_name2": v02, ...}, {"col_name1": v11, "col_name2": v12, ...}, ...]

@@ -25,7 +25,7 @@ class Lightllm(LazyLLMDeployBase):
             "top_p": 1,
             "top_k": -1,  # -1 is for all
             "ignore_eos": False,
-            'max_new_tokens': 512,
+            'max_new_tokens': 8192,
             "stop_sequences": None,
         }
     }
@@ -43,6 +43,9 @@ class Lightllm(LazyLLMDeployBase):
             'tokenizer_mode': 'auto',
             "running_max_req_size": 256,
             "data_type": 'float16',
+            "max_req_total_len": 64000,
+            "max_req_input_len": 4096,
+            "long_truncation_mode": "head",
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)

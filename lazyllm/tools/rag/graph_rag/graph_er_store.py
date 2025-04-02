@@ -4,8 +4,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Callable, TypedDict
 
-# from lazyllm.thirdparty import nano_vectordb as
-from nano_vectordb import NanoVectorDB
+from lazyllm.thirdparty import nano_vectordb as nanodb
 from .graph_node import GraphEntityNode, GraphRelationNode
 from ..utils import validate_typed_dict
 
@@ -58,16 +57,16 @@ class NanoDBGraphERStore(BaseGraphERStore):
         super().__init__(embed, root_path, name_space, config)
         self.json_template["embedding_dim"] = config["embedding_dim"]
         self._check_path()
-        self._entity_db_client = NanoVectorDB(
+        self._entity_db_client = nanodb.NanoVectorDB(
             embedding_dim=config["embedding_dim"],
             storage_file=os.path.join(root_path, name_space, self.ENTITY_STORE_PATH),
         )
-        self._relation_db_client = NanoVectorDB(
+        self._relation_db_client = nanodb.NanoVectorDB(
             embedding_dim=config["embedding_dim"],
             storage_file=os.path.join(root_path, name_space, self.RELATION_STORE_PATH),
         )
 
-    def _query(self, db_client: NanoVectorDB, query: str, topk: int, similarity_cut_off: float) -> List[dict]:
+    def _query(self, db_client: nanodb.NanoVectorDB, query: str, topk: int, similarity_cut_off: float) -> List[dict]:
         query_embedding = self._embed_func(query)
         query_embedding = np.array(query_embedding)
         results = db_client.query(query=query_embedding, top_k=topk, better_than_threshold=similarity_cut_off)

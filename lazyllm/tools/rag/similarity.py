@@ -2,6 +2,7 @@ from typing import Optional, Callable, Literal, List
 from .component.bm25 import BM25
 from lazyllm.thirdparty import numpy as np
 from .doc_node import DocNode
+import functools
 
 registered_similarities = dict()
 
@@ -12,6 +13,7 @@ def register_similarity(
     batch: bool = False,
 ) -> Callable:
     def decorator(f):
+        @functools.wraps(f)
         def wrapper(query, nodes, **kwargs):
             if mode != "embedding":
                 if batch:

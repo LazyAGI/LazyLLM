@@ -1,6 +1,6 @@
 import os
 from typing import List, Union, TypedDict
-import networkx as nx
+from lazyllm.thirdparty import networkx as nx
 from lazyllm import LOG
 from abc import ABC, abstractmethod
 from pathlib import Path

@@ -47,7 +47,7 @@ class TestAlpacaPrompter(object):
             {'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n### Instruction:\n请完成加法运算, 输入为a+b\n\n'},  # noqa E501
             {'role': 'user', 'content': ''}]}
 
-        p = lazyllm.AlpacaPrompter('请完成加法运算', extro_keys='input')
+        p = lazyllm.AlpacaPrompter('请完成加法运算', extra_keys='input')
         r = p.generate_prompt('a+b')
         assert r == 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n### Instruction:\n请完成加法运算\n\nHere are some extra messages you can referred to:\n\n### input:\na+b\n\n\n\n### Response:\n'  # noqa E501
         r = p.generate_prompt('a+b', return_dict=True)
@@ -72,7 +72,7 @@ class TestChatPrompter(object):
             {'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\n请完成加法运算, 输入为a+b\n\n'},
             {'role': 'user', 'content': ''}]}
 
-        p = lazyllm.ChatPrompter('请完成加法运算', extro_keys='input')
+        p = lazyllm.ChatPrompter('请完成加法运算', extra_keys='input')
         r = p.generate_prompt('a+b')
         assert r == 'You are an AI-Agent developed by LazyLLM.请完成加法运算\nHere are some extra messages you can referred to:\n\n### input:\na+b\n\n\n\n\n\n\n\n\n'  # noqa E501
         r = p.generate_prompt('a+b', return_dict=True)

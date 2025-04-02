@@ -104,6 +104,8 @@ class FlowBase(metaclass=_MetaBind):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
             assert name not in self._item_names, f'Duplicated name: {name}'
             self._add(name, value)
+        elif name in getattr(self, '_item_names', ()):
+            raise RuntimeError(f'The setting of {self.__class__} elements must be done within the `with` statement.')
         else:
             super(__class__, self).__setattr__(name, value)
 
@@ -280,7 +282,7 @@ class Pipeline(LazyLLMFlowsBase):
     def input(self): return bind.Args(self.id())
     @property
     def kwargs(self): return bind.Args(self.id(), 'kwargs')
-    def output(self, module): return bind.Args(self.id(), self.id(module))
+    def output(self, module, unpack=False): return bind.Args(self.id(), self.id(module), unpack=unpack)
 
     def _run(self, __input, **kw):
         output = __input
@@ -436,6 +438,9 @@ class Warp(Parallel):
     def __init__(self, *args, _scatter: bool = False, _concurrent: Union[bool, int] = True,
                  auto_capture: bool = False, **kw):
         super().__init__(*args, _scatter=_scatter, _concurrent=_concurrent, auto_capture=auto_capture, **kw)
+        if len(self._items) > 1: self._items = [Pipeline(*self._items)]
+
+    def __post_init__(self):
         if len(self._items) > 1: self._items = [Pipeline(*self._items)]
 
     def _run(self, __input, **kw):

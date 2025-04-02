@@ -6,7 +6,7 @@ from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 
 from .doc_manager import DocManager
-from .doc_impl import DocImpl
+from .doc_impl import DocImpl, BuiltinGroups
 from .graph_rag import GraphDocImpl
 from .doc_node import DocNode
 from .index_base import IndexBase
@@ -138,7 +138,7 @@ class IDocument(ABC):
         pass
 
 
-class Document(IDocument, ModuleBase, metaclass=ABCModuleMeta):
+class Document(IDocument, ModuleBase, BuiltinGroups, metaclass=ABCModuleMeta):
     class _Manager(BaseDocManager):
         def __init__(
             self,
@@ -298,14 +298,17 @@ class Document(IDocument, ModuleBase, metaclass=ABCModuleMeta):
         # So the query of parent and child nodes can be performed locally, and there is no need to search the
         # document service through the server for the time being. When this item is optimized, the code will become:
         # return functools.partial(self._forward, 'find_parent', group=target)
-        return functools.partial(Document.find_parent, group=target)
+        return functools.partial(DocImpl.find_parent, group=target)
 
     def find_children(self, target) -> Callable:
         # TODO: Currently, when a DocNode is returned from the server, it will carry all parent nodes and child nodes.
         # So the query of parent and child nodes can be performed locally, and there is no need to search the
         # document service through the server for the time being. When this item is optimized, the code will become:
         # return functools.partial(self._forward, 'find_children', group=target)
-        return functools.partial(Document.find_children, group=target)
+        return functools.partial(DocImpl.find_children, group=target)
+
+    def find(self, target) -> Callable:
+        return functools.partial(self._forward, 'find', group=target)
 
     def __repr__(self):
         return lazyllm.make_repr(

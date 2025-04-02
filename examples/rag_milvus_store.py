@@ -5,6 +5,12 @@ import lazyllm
 from lazyllm import bind, config
 from lazyllm.tools.rag import DocField, DataType
 import shutil
+import traceback
+
+def print_stack():
+    stack = traceback.format_stack()
+    for line in stack:
+        print(line.strip())
 
 class TmpDir:
     def __init__(self):
@@ -12,9 +18,6 @@ class TmpDir:
         self.rag_dir = os.path.join(self.root_dir, 'rag_master')
         os.makedirs(self.rag_dir, exist_ok=True)
         self.store_file = os.path.join(self.root_dir, "milvus.db")
-
-    def __del__(self):
-        shutil.rmtree(self.root_dir)
 
 tmp_dir = TmpDir()
 
@@ -59,10 +62,13 @@ with lazyllm.pipeline() as ppl:
     ) | bind(query=ppl.input)
 
     ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
-        lazyllm.ChatPrompter(instruction=prompt, extro_keys=['context_str']))
+        lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
 if __name__ == '__main__':
-    rag = lazyllm.ActionModule(ppl)
-    rag.start()
-    res = rag('何为天道？')
-    print(f'answer: {res}')
+    try:
+        rag = lazyllm.ActionModule(ppl)
+        rag.start()
+        res = rag('何为天道？')
+        print(f'answer: {res}')
+    finally:
+        shutil.rmtree(tmp_dir.root_dir)
