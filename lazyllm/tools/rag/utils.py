@@ -41,6 +41,7 @@ config.add("default_dlmanager", str, "sqlite", "DEFAULT_DOCLIST_MANAGER")
 
 
 def gen_docid(content: str, prefix: str = "") -> str:
+    if prefix: prefix += "@"
     return prefix + hashlib.sha256(content.encode()).hexdigest()
 
 

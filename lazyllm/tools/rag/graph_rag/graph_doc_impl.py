@@ -65,16 +65,16 @@ class GraphDocImpl:
     ):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
-        self.embed = embed_wrapper(embed)
+        self._embed = embed_wrapper(embed)
         assert store_conf is not None
         # self.group_name = group_name
-        self.root_path = store_conf["root_path"]
-        self.name_space = store_conf["name_space"]
-        self.reader_conf = reader_conf
-        self.store_conf = store_conf  # NOTE: will be used in _lazy_init()
-        self.graph_er_store = None
-        self.graph_network_store = None
-        self.graph_chunk_store = None
+        self._root_path = store_conf["root_path"]
+        self._name_space = store_conf["name_space"]
+        self._reader_conf = reader_conf
+        self._store_conf = store_conf  # NOTE: will be used in _lazy_init()
+        self._graph_er_store = None
+        self._graph_network_store = None
+        self._graph_chunk_store = None
         self._document_module_id = document_module_id
         self._tiktoken_tokenizer = tiktoken.encoding_for_model('gpt-3.5-turbo')
         self._text_splitter = SentenceSplitter(
@@ -113,29 +113,29 @@ class GraphDocImpl:
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
         # TODO add processing for doc_files
-        embedding = self.embed('a')
+        embedding = self._embed('a')
         assert is_sparse(embedding) is False
         embedding_dim = len(embedding)
 
         # graph_er_store and graph_network_store must be initialized
-        self.graph_er_store = BaseGraphERStore.create_instance(
-            self.store_conf['er_store_type'],
-            embed=self.embed,
-            root_path=self.root_path,
-            name_space=self.name_space,
-            config=dict(self.store_conf['er_store_config'], embedding_dim=embedding_dim),
+        self._graph_er_store = BaseGraphERStore.create_instance(
+            self._store_conf['er_store_type'],
+            embed=self._embed,
+            root_path=self._root_path,
+            name_space=self._name_space,
+            config=dict(self._store_conf['er_store_config'], embedding_dim=embedding_dim),
         )
-        self.graph_network_store = BaseGraphNetworkStore.create_instance(
-            self.store_conf['network_store_type'],
-            root_path=self.root_path,
-            name_space=self.name_space,
-            config=self.store_conf['network_store_config'],
+        self._graph_network_store = BaseGraphNetworkStore.create_instance(
+            self._store_conf['network_store_type'],
+            root_path=self._root_path,
+            name_space=self._name_space,
+            config=self._store_conf['network_store_config'],
         )
-        self.graph_chunk_store = BaseGraphChunkStore.create_instance(
-            self.store_conf['chunk_store_type'],
-            root_path=self.root_path,
-            name_space=self.name_space,
-            config=self.store_conf['chunk_store_config'],
+        self._graph_chunk_store = BaseGraphChunkStore.create_instance(
+            self._store_conf['chunk_store_type'],
+            root_path=self._root_path,
+            name_space=self._name_space,
+            config=self._store_conf['chunk_store_config'],
         )
 
     def _add_doc_to_kg(
@@ -193,9 +193,9 @@ class GraphDocImpl:
         return list_data
 
     def _find_related_entities(self, query: str, topk: int, similarity_cut_off: float) -> List[GraphEntityNode]:
-        entities_dict: EntityDict = self.graph_er_store.query_on_entity(query, topk, similarity_cut_off)
+        entities_dict: EntityDict = self._graph_er_store.query_on_entity(query, topk, similarity_cut_off)
         related_entities = [
-            self.graph_network_store.get_node(entity_dict["entity_name"]) for entity_dict in entities_dict
+            self._graph_network_store.get_node(entity_dict["entity_name"]) for entity_dict in entities_dict
         ]
         related_entities = [ele for ele in related_entities if ele]
         return related_entities
@@ -203,8 +203,8 @@ class GraphDocImpl:
     def _find_related_relations(
         self, query: str, topk: int = 30, similarity_cut_off: float = 0.3
     ) -> List[GraphRelationNode]:
-        relation_keys: List[RelationDict] = self.graph_er_store.query_on_relationship(query, topk, similarity_cut_off)
-        related_relations = [self.graph_network_store.get_edge(key["src_id"], key["tgt_id"]) for key in relation_keys]
+        relation_keys: List[RelationDict] = self._graph_er_store.query_on_relationship(query, topk, similarity_cut_off)
+        related_relations = [self._graph_network_store.get_edge(key["src_id"], key["tgt_id"]) for key in relation_keys]
         related_relations = [ele for ele in related_relations if ele]
         return related_relations
 
@@ -216,7 +216,7 @@ class GraphDocImpl:
             token_num_cur_entity = 0
             for cid in entities[ed_ent].source_chunk_ids:
                 if cid not in selected_chunkids:
-                    chunk = self.graph_chunk_store.get_chunk(cid)
+                    chunk = self._graph_chunk_store.get_chunk(cid)
                     if not chunk:
                         continue
                     token_num_cur_entity += chunk.tokens
@@ -230,12 +230,12 @@ class GraphDocImpl:
         if ed_ent == len(entities):
             return list(selected_chunkids)
         # Else truncate entities[ed].chunk_ids before adding to selected chunkids
-        sorted_chunkids = self.graph_network_store.sort_entitity_chunkids(entities[ed_ent])
+        sorted_chunkids = self._graph_network_store.sort_entitity_chunkids(entities[ed_ent])
         ed_sub_chunk = 0
         while ed_sub_chunk < len(sorted_chunkids):
             cid = sorted_chunkids[ed_sub_chunk]
             if cid not in selected_chunkids:
-                chunk = self.graph_chunk_store.get_chunk(cid)
+                chunk = self._graph_chunk_store.get_chunk(cid)
                 acc_token_num += chunk.tokens
                 if acc_token_num > self.TRUNKCATE_MAX_TOKEN_NUM:
                     break
@@ -244,7 +244,7 @@ class GraphDocImpl:
         return list(selected_chunkids)
 
     def _find_most_related_relations_from_entities(self, entities: List[str]) -> List[GraphRelationNode]:
-        related_relations = self.graph_network_store.get_sorted_relations_from_entities(entities)
+        related_relations = self._graph_network_store.get_sorted_relations_from_entities(entities)
         truncated_related_relations = self.truncate_list_by_token_size(
             related_relations,
             key=lambda x: x.description,
@@ -287,7 +287,7 @@ class GraphDocImpl:
         LOG.info("RUNNING LOCAL MODE")
         related_eneities: List[GraphEntityNode] = self._find_related_entities(ll_keywords, topk, similarity_cut_off)
         related_chunkids = self._find_most_related_chunkids_from_entities(related_eneities)
-        related_chunks: List[GraphChunkNode] = self.graph_chunk_store.get_chunks(related_chunkids)
+        related_chunks: List[GraphChunkNode] = self._graph_chunk_store.get_chunks(related_chunkids)
         related_relations: List[GraphRelationNode] = self._find_most_related_relations_from_entities(related_eneities)
         return self._generate_doc_nodes(related_eneities, related_relations, related_chunks)
 
