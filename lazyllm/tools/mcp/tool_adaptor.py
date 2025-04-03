@@ -1,0 +1,129 @@
+import inspect
+import asyncio
+
+from mcp import ClientSession
+from mcp.types import CallToolResult, ImageContent, TextContent, Tool
+
+from typing import Any, Callable, Dict, List, Set
+
+from lazyllm import LOG
+
+
+def generate_lazyllm_tool(client: ClientSession, mcp_tool: Tool) -> Callable:
+    # define type mapping for converting JSON Schema type to (doc type, python type)
+    type_mapping = {
+        "string": ("str", str),
+        "integer": ("int", int),
+        "number": ("float", float),
+        "boolean": ("bool", bool),
+        "object": ("Dict[str, Any]", Dict[str, Any]),
+        "array": ("List[Any]", List[Any])
+    }
+
+    tool_name = mcp_tool.name
+    tool_desc = mcp_tool.description
+    input_schema = mcp_tool.inputSchema
+    properties = input_schema.get("properties", {})
+    required = input_schema.get("required", [])
+
+    # Generate docstring
+    doc_lines = []
+    if tool_desc:
+        doc_lines.append(tool_desc)
+    if not tool_desc or "Args:" not in tool_desc:
+        doc_lines.append("")
+        doc_lines.append("Args:")
+        if not properties:
+            doc_lines.append("    No parameters.")
+        
+        for param, prop in properties.items():
+            json_type = prop.get("type", "Any")
+            doc_type = type_mapping.get(json_type, ("Any", Any))[0]
+            param_desc = prop.get("description", f"type: {json_type}")
+            if param in required:
+                doc_lines.append(f"    {param} ({doc_type}): {param_desc}.")
+            else:
+                doc_lines.append(f"    {param} (Optional[{doc_type}]): {param_desc}.")
+    func_desc = "\n".join(doc_lines)
+
+    annotations = {}
+    defaults: Dict[str, Any] = {}
+    func_params = []
+
+    for param, prop in properties.items():
+        json_type = prop.get("type", "Any")
+        py_type = type_mapping.get(json_type, ("Any", Any))[1]
+        annotations[param] = py_type
+
+        if param not in required:
+            defaults[param] = prop.get("default", None)
+        func_params.append(param)
+    
+    # Define the function
+    def dynamic_lazyllm_func(**kwargs):
+        missing_params: Set[str] = set(required) - set(
+            kwargs.keys()
+        )
+        if missing_params:
+            LOG.warning(
+                f"Missing required parameters: {missing_params}"
+            )
+            return f"Missing required parameters: {missing_params}"
+
+        try:
+            result: CallToolResult = asyncio.run(client.call_tool(tool_name, kwargs))
+        except Exception as e:
+            LOG.error(f"Failed to call MCP tool '{tool_name}': {e!s}")
+            return f"Failed to call MCP tool '{tool_name}': {e!s}"
+
+        if not result.content or len(result.content) == 0:
+            return "No data available for this request."
+
+        # Handle different content types
+        try:
+            text_contents: List[TextContent] = []
+            image_contents: List[ImageContent] = []
+            for content in result.content:
+                if isinstance(content, TextContent):
+                    text_contents.append(content.text)
+                elif isinstance(content, ImageContent):
+                    image_contents.append(content.data)
+                else:
+                    LOG.warning(
+                        f"Unsupported content type: {type(content)}"
+                    )
+            res_str = "Tool call result:\n"
+            if text_contents:
+                res_str += "Received text message:\n"
+                res_str += "\n".join(text_contents)
+            if image_contents:
+                res_str += "Received image message:\n"
+                res_str += "\n".join(
+                    [f"Image: {image}" for image in image_contents]
+                )
+            return res_str
+        except (IndexError, AttributeError) as e:
+            LOG.error(
+                f"Error processing content from MCP tool response: {e!s}"
+            )
+            return "Error processing content from MCP tool response"
+
+    # Set function attributes
+    dynamic_lazyllm_func.__name__ = tool_name
+    dynamic_lazyllm_func.__doc__ = func_desc
+    dynamic_lazyllm_func.__annotations__ = annotations
+
+    sig = inspect.Signature(
+        parameters=[
+            inspect.Parameter(
+                name=param,
+                kind=inspect.Parameter.KEYWORD_ONLY,
+                default=defaults.get(param, inspect.Parameter.empty),
+                annotation=annotations[param],
+            )
+            for param in func_params
+        ]
+    )
+    dynamic_lazyllm_func.__signature__ = sig
+
+    return dynamic_lazyllm_func
