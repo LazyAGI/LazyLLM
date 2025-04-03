@@ -531,7 +531,14 @@ class ActionModule(ModuleBase):
                                  name=self._module_name, return_trace=self._return_trace)
 
 
+def flow_start(self):
+    ActionModule(self).start()
+    return self
+
+
 lazyllm.ReprRule.add_rule('Module', 'Action', 'Flow')
+setattr(lazyllm.LazyLLMFlowsBase, 'start', flow_start)
+
 
 def light_reduce(cls):
     def rebuild(mid): return cls()._set_mid(mid)
