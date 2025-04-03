@@ -29,7 +29,13 @@ def check_path(
     return path
 
 class SecurityVisitor(ast.NodeVisitor):
-    """Detects potentially dangerous operations in Python code"""
+    """
+    AST-based security analyzer to detect unsafe operations in Python code.
+
+    IMPORTANT: Method names within this class (e.g., `visit_Call`, `visit_Import`) **should not**
+    be renamed to lowercase. These method names are part of the `NodeVisitor` pattern from the `ast`
+    module and must remain consistant with this naming convention to function correctly.
+    """
 
     # **Dangerous built-in functions**
     DANGEROUS_BUILTINS = {"exec", "eval", "open", "compile", "getattr", "setattr"}
