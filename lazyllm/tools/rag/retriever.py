@@ -1,6 +1,6 @@
 from lazyllm import ModuleBase, pipeline, once_wrapper
 from .doc_node import DocNode
-from .document import Document, DocImpl
+from .document import Document, GraphDocument, DocImpl
 from typing import List, Optional, Union, Dict, Set
 from .similarity import registered_similarities
 
@@ -28,7 +28,7 @@ class Retriever(ModuleBase, _PostProcess):
     def __init__(
         self,
         doc: object,
-        group_name: str,
+        group_name: str = "",
         similarity: Optional[str] = None,
         similarity_cut_off: Union[float, Dict[str, float]] = float("-inf"),
         index: str = "default",
@@ -47,10 +47,16 @@ class Retriever(ModuleBase, _PostProcess):
             mode = 'embedding'  # TODO FIXME XXX should be removed after similarity args refactor
         group_name, target = str(group_name), (str(target) if target else None)
 
-        self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
+        self._docs: List[Document] = [doc] if isinstance(doc, (Document, GraphDocument)) else doc
+        GRAPHRAG_MIN_TOPK = 10
+        ERROR_MSG_GRAPHRAG_MIN_TOPK = f'GraphRAG topk must >= {GRAPHRAG_MIN_TOPK}, got {topk}'
         for doc in self._docs:
-            assert isinstance(doc, Document), 'Only Document or List[Document] are supported'
+            assert isinstance(doc, (Document, GraphDocument)), 'Only Document or List[Document] are supported'
             self._submodules.append(doc)
+            if isinstance(doc, GraphDocument):
+                assert topk >= GRAPHRAG_MIN_TOPK, ERROR_MSG_GRAPHRAG_MIN_TOPK
+                embed_keys = None
+                continue
             if mode == 'embedding' and not embed_keys:
                 embed_keys = list(doc._impl.embed.keys())
             if embed_keys:
@@ -68,6 +74,8 @@ class Retriever(ModuleBase, _PostProcess):
 
     @once_wrapper
     def _lazy_init(self):
+        if len(self._docs) == 1 and isinstance(self._docs[0], GraphDocument):
+            return
         docs = [doc for doc in self._docs if self._group_name in doc._impl.node_groups or self._group_name
                 in DocImpl._builtin_node_groups or self._group_name in DocImpl._global_node_groups]
         if not docs: raise RuntimeError(f'Group {self._group_name} not found in document {self._docs}')

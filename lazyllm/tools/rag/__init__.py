@@ -1,4 +1,4 @@
-from .document import Document
+from .document import Document, GraphDocument
 from .retriever import Retriever
 from .rerank import Reranker, register_reranker
 from .transform import SentenceSplitter, LLMParser, NodeTransform, TransformArgs, AdaptiveTransform
@@ -16,6 +16,7 @@ from .store_base import StoreBase
 
 __all__ = [
     "Document",
+    "GraphDocument",
     "Reranker",
     "Retriever",
     "NodeTransform",
