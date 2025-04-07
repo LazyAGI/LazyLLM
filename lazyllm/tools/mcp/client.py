@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from contextlib import asynccontextmanager
 
 from .tool_adaptor import generate_lazyllm_tool
+from .deploy import SseServerSettings, start_sse_server
 
 
 class MCPClient(ClientSession):
@@ -56,3 +57,6 @@ class MCPClient(ClientSession):
         
         return [generate_lazyllm_tool(self, tool) for tool in mcp_tools]
     
+    async def deploy(self, sse_settings: SseServerSettings):
+        async with self._run_session() as session:
+            await start_sse_server(session, sse_settings)
