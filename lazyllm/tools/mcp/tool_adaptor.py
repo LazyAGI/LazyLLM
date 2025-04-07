@@ -8,25 +8,17 @@ from typing import Any, Callable, Dict, List, Set
 
 from lazyllm import LOG
 
+type_mapping = {
+    "string": ("str", str),
+    "integer": ("int", int),
+    "number": ("float", float),
+    "boolean": ("bool", bool),
+    "object": ("Dict[str, Any]", Dict[str, Any]),
+    "array": ("List[Any]", List[Any])
+}
 
-def generate_lazyllm_tool(client: ClientSession, mcp_tool: Tool) -> Callable:
-    # define type mapping for converting JSON Schema type to (doc type, python type)
-    type_mapping = {
-        "string": ("str", str),
-        "integer": ("int", int),
-        "number": ("float", float),
-        "boolean": ("bool", bool),
-        "object": ("Dict[str, Any]", Dict[str, Any]),
-        "array": ("List[Any]", List[Any])
-    }
 
-    tool_name = mcp_tool.name
-    tool_desc = mcp_tool.description
-    input_schema = mcp_tool.inputSchema
-    properties = input_schema.get("properties", {})
-    required = input_schema.get("required", [])
-
-    # Generate docstring
+def _generate_docstring(tool_desc: str, properties: Dict[str, Any], required: List[str]) -> str:
     doc_lines = []
     if tool_desc:
         doc_lines.append(tool_desc)
@@ -35,7 +27,7 @@ def generate_lazyllm_tool(client: ClientSession, mcp_tool: Tool) -> Callable:
         doc_lines.append("Args:")
         if not properties:
             doc_lines.append("    No parameters.")
-        
+
         for param, prop in properties.items():
             json_type = prop.get("type", "Any")
             doc_type = type_mapping.get(json_type, ("Any", Any))[0]
@@ -44,7 +36,44 @@ def generate_lazyllm_tool(client: ClientSession, mcp_tool: Tool) -> Callable:
                 doc_lines.append(f"    {param} ({doc_type}): {param_desc}.")
             else:
                 doc_lines.append(f"    {param} (Optional[{doc_type}]): {param_desc}.")
-    func_desc = "\n".join(doc_lines)
+    return "\n".join(doc_lines)
+
+
+def _handle_tool_result(result: CallToolResult, tool_name: str) -> str:
+    if not result.content or len(result.content) == 0:
+        return "No data available for this request."
+    try:
+        text_contents: List[TextContent] = []
+        image_contents: List[ImageContent] = []
+        for content in result.content:
+            if isinstance(content, TextContent):
+                text_contents.append(content.text)
+            elif isinstance(content, ImageContent):
+                image_contents.append(content.data)
+            else:
+                LOG.warning(f"Unsupported content type: {type(content)}")
+        res_str = "Tool call result:\n"
+        if text_contents:
+            res_str += "Received text message:\n" + "\n".join(text_contents)
+        if image_contents:
+            res_str += "Received image message:\n" + "\n".join(
+                [f"Image: {image}" for image in image_contents]
+            )
+        return res_str
+    except (IndexError, AttributeError) as e:
+        LOG.error(f"Error processing content from MCP tool '{tool_name}': {e!s}")
+        return f"Error processing content from MCP tool '{tool_name}': {e!s}"
+
+
+def generate_lazyllm_tool(client: ClientSession, mcp_tool: Tool) -> Callable:
+    tool_name = mcp_tool.name
+    tool_desc = mcp_tool.description
+    input_schema = mcp_tool.inputSchema
+    properties = input_schema.get("properties", {})
+    required = input_schema.get("required", [])
+
+    # Generate docstring
+    func_desc = _generate_docstring(tool_desc, properties, required)
 
     annotations = {}
     defaults: Dict[str, Any] = {}
@@ -58,7 +87,7 @@ def generate_lazyllm_tool(client: ClientSession, mcp_tool: Tool) -> Callable:
         if param not in required:
             defaults[param] = prop.get("default", None)
         func_params.append(param)
-    
+
     # Define the function
     def dynamic_lazyllm_func(**kwargs):
         missing_params: Set[str] = set(required) - set(
@@ -76,37 +105,7 @@ def generate_lazyllm_tool(client: ClientSession, mcp_tool: Tool) -> Callable:
             LOG.error(f"Failed to call MCP tool '{tool_name}': {e!s}")
             return f"Failed to call MCP tool '{tool_name}': {e!s}"
 
-        if not result.content or len(result.content) == 0:
-            return "No data available for this request."
-
-        # Handle different content types
-        try:
-            text_contents: List[TextContent] = []
-            image_contents: List[ImageContent] = []
-            for content in result.content:
-                if isinstance(content, TextContent):
-                    text_contents.append(content.text)
-                elif isinstance(content, ImageContent):
-                    image_contents.append(content.data)
-                else:
-                    LOG.warning(
-                        f"Unsupported content type: {type(content)}"
-                    )
-            res_str = "Tool call result:\n"
-            if text_contents:
-                res_str += "Received text message:\n"
-                res_str += "\n".join(text_contents)
-            if image_contents:
-                res_str += "Received image message:\n"
-                res_str += "\n".join(
-                    [f"Image: {image}" for image in image_contents]
-                )
-            return res_str
-        except (IndexError, AttributeError) as e:
-            LOG.error(
-                f"Error processing content from MCP tool response: {e!s}"
-            )
-            return "Error processing content from MCP tool response"
+        return _handle_tool_result(result, tool_name)
 
     # Set function attributes
     dynamic_lazyllm_func.__name__ = tool_name

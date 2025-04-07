@@ -24,7 +24,7 @@ class MCPClient(ClientSession):
         self._env = env
         self._headers = headers
         self._timeout = timeout
-    
+
     @asynccontextmanager
     async def _run_session(self):
         if urlparse(self._command_or_url).scheme in ("http", "https"):
@@ -48,15 +48,15 @@ class MCPClient(ClientSession):
     async def list_tools(self):
         async with self._run_session() as session:
             return await session.list_tools()
-    
+
     async def get_tools(self, allowed_tools: list[str] = None):
         res = await self.list_tools()
         mcp_tools = getattr(res, "tools", [])
         if allowed_tools:
             mcp_tools = [tool for tool in mcp_tools if tool.name in allowed_tools]
-        
+
         return [generate_lazyllm_tool(self, tool) for tool in mcp_tools]
-    
+
     async def deploy(self, sse_settings: SseServerSettings):
         async with self._run_session() as session:
             await start_sse_server(session, sse_settings)

@@ -32,12 +32,12 @@ def _create_starlette_app(
 ) -> Starlette:
     """
     Create a Starlette application to serve the provided MCP server with SSE.
-    
+
     Args:
         mcp_server: The MCP server instance.
         allow_origins: Allowed origins for CORS middleware.
         debug: Flag indicating whether to enable debug mode.
-    
+
     Returns:
         A configured Starlette application.
     """
@@ -76,13 +76,13 @@ def _create_starlette_app(
     )
 
 
-async def _create_proxy_server(remote_app: ClientSession) -> Server[Any]:
+async def _create_proxy_server(remote_app: ClientSession) -> Server[Any]: # noqa C901
     """
     Create a proxy server instance based on a remote client session.
-    
+
     Args:
         remote_app: A client session for a remote MCP application.
-    
+
     Returns:
         An instance of Server with request and notification handlers mapped.
     """
@@ -182,7 +182,7 @@ async def start_sse_server(
 ) -> None:
     """
     Start the SSE server by creating a proxy MCP server and serving it via Starlette.
-    
+
     Args:
         client_session: The client session for the remote MCP app.
         sse_settings: The settings for configuring the SSE server.

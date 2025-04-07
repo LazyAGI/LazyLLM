@@ -14,11 +14,12 @@ def deploy(commands):
             "lazyllm deploy command for deploying a model or a mcp server."
         ),
         epilog=(
-            "Examples:\n",
-            "lazyllm deploy model internlm2-chat-20b",
-            "lazyllm deploy model internlm2-chat-20b --framework vllm",
-            "lazyllm deploy mcp_server uvx mcp-server-fetch",
-            "lazyllm python deploy mcp_server -e GITHUB_PERSONAL_ACCESS_TOKEN your_token --sse-port 8080 npx -- -y @modelcontextprotocol/server-github"
+            "Examples:\n"
+            "lazyllm deploy model internlm2-chat-20b\n"
+            "lazyllm deploy model internlm2-chat-20b --framework vllm\n"
+            "lazyllm deploy mcp_server uvx mcp-server-fetch\n"
+            "lazyllm deploy mcp_server -e GITHUB_PERSONAL_ACCESS_TOKEN your_token "
+            "--sse-port 8080 npx -- -y @modelcontextprotocol/server-github"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -46,8 +47,12 @@ def deploy(commands):
                             help="Port to expose an SSE server on. Default is a random port")
     mcp_parser.add_argument("--sse-host", default="127.0.0.1",
                             help="Host to expose an SSE server on. Default is 127.0.0.1")
-    mcp_parser.add_argument("--allow-origin", nargs="+", default=[],
-                            help="Allowed origins for the SSE server. Can be used multiple times. Default is no CORS allowed.")
+    mcp_parser.add_argument(
+        "--allow-origin",
+        nargs="+",
+        default=[],
+        help="Allowed origins for the SSE server. Can be used multiple times. Default is no CORS allowed."
+    )
 
     args = parser.parse_args(commands)
 
@@ -62,8 +67,12 @@ def deploy(commands):
             t.wait()
         else:
             lazyllm.LOG.success(
-                f'LazyLLM TrainableModule launched successfully:\n  URL: {t._url}\n  Framework: {t._deploy_type.__name__}',
-                flush=True
+                (
+                    f"LazyLLM TrainableModule launched successfully:\n"
+                    f"  URL: {t._url}\n"
+                    f"  Framework: {t._deploy_type.__name__}"
+                ),
+                flush=True,
             )
             try:
                 while True:
