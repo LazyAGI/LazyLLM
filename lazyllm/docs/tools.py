@@ -339,7 +339,9 @@ Args:
     topk: The number of documents to retrieve with the highest similarity.
     embed_keys: Indicates which embeddings are used for retrieval. If not specified, all embeddings are used for retrieval.
     similarity_kw: Additional parameters to pass to the similarity calculation function.
-
+    output_format: Represents the output format, with a default value of None. Optional values include 'content' and 'dict', where 'content' corresponds to a string output format and 'dict' corresponds to a dictionary.
+    join:  Determines whether to concatenate the output of k nodes - when output format is 'content', setting True returns a single concatenated string while False returns a list of strings (each corresponding to a node's text content); when output format is 'dict', joining is unsupported (join defaults to False) and the output will be a dictionary containing 'content', 'embedding' and 'metadata' keys.
+                
 The `group_name` has three built-in splitting strategies, all of which use `SentenceSplitter` for splitting, with the difference being in the chunk size:
 
 - CoarseChunk: Chunk size is 1024, with an overlap length of 100
@@ -361,6 +363,8 @@ Args:
     topk: 表示取相似度最高的多少篇文档。
     embed_keys: 表示通过哪些 embedding 做检索，不指定表示用全部 embedding 进行检索。
     similarity_kw: 传递给 similarity 计算函数的其它参数。
+    output_format: 代表输出格式，默认为None，可选值有 'content' 和 'dict'，其中 content 对应输出格式为字符串，dict 对应字典。
+    join: 是否联合输出的 k 个节点，当输出格式为 content 时，如果设置该值为 True，则输出一个长字符串，如果设置为 False 则输出一个字符串列表，其中每个字符串对应每个节点的文本内容。当输出格式是 dict 时，不能联合输出，此时join默认为False,，将输出一个字典，包括'content、'embedding'、'metadata'三个key。
 
 其中 `group_name` 有三个内置的切分策略，都是使用 `SentenceSplitter` 做切分，区别在于块大小不同：
 
@@ -401,6 +405,18 @@ add_example('Retriever', '''
 >>> retriever4 = Retriever(document4, group_name='Image', similarity='cosine')
 >>> nodes = retriever4("user query")
 >>> print([node.get_content() for node in nodes])
+>>> document5 = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
+>>> rm = Retriever(document5, group_name='CoarseChunk', similarity='bm25_chinese', similarity_cut_off=0.01, topk=3, output_format='content')
+>>> rm.start()
+>>> print(rm("user query"))
+>>> document6 = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
+>>> rm = Retriever(document6, group_name='CoarseChunk', similarity='bm25_chinese', similarity_cut_off=0.01, topk=3, output_format='content', join=True)
+>>> rm.start()
+>>> print(rm("user query"))
+>>> document7 = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
+>>> rm = Retriever(document7, group_name='CoarseChunk', similarity='bm25_chinese', similarity_cut_off=0.01, topk=3, output_format='dict')
+>>> rm.start()
+>>> print(rm("user query"))
 ''')
 
 # ---------------------------------------------------------------------------- #
