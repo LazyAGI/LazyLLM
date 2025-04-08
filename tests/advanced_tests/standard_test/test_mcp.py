@@ -29,6 +29,6 @@ class TestMCP(unittest.TestCase):
         assert len(tools) != 0, f"Expected at least one tool, got {len(tools)}"
 
     @pytest.mark.asyncio
-    async def test_tool_call_sync(self):
+    async def test_tool_call(self):
         res = await self.client.call_tool(tool_name="list_allowed_directories", arguments={})
         assert "Tool call result:" in res

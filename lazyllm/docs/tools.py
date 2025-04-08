@@ -2076,7 +2076,7 @@ add_chinese_doc('MCPClient.list_tools', '''\
 ''')
 
 
-add_english_doc('MCPClient.get_tools', '''\
+add_english_doc('MCPClient.aget_tools', '''\
 Used to convert the tool set from the MCP server into a list of functions available for LazyLLM and return them.
 
 The allowed_tools parameter is used to specify the list of tools to be returned. If None, all tools will be returned.
@@ -2085,7 +2085,7 @@ Args:
     allowed_tools (list[str], optional): The list of tools expected to be returned. Defaults to None, meaning that all tools will be returned.
 ''')
 
-add_chinese_doc('MCPClient.get_tools', '''\
+add_chinese_doc('MCPClient.aget_tools', '''\
 用于将MCP服务器中的工具集转换为LazyLLM可用的函数列表，并返回。
 
 allowed_tools参数用于指定要返回的工具列表，默认为None，表示返回所有工具。
@@ -2096,7 +2096,6 @@ Args:
 
 
 add_example('MCPClient', '''\
->>> import asyncio
 >>> from lazyllm.tools import MCPClient
 >>> mcp_server_configs = {
 ...     "filesystem": {
@@ -2113,11 +2112,10 @@ add_example('MCPClient', '''\
 ...     command_or_url=file_sys_config["command"],
 ...     args=file_sys_config["args"],
 ... )
->>> tools = asyncio.run(file_client.get_tools())
 >>> from lazyllm import OnlineChatModule
 >>> from lazyllm.tools.agent.reactAgent import ReactAgent
 >>> llm=OnlineChatModule(source="deepseek", stream=False)
->>> agent = ReactAgent(llm.share(), tools)
+>>> agent = ReactAgent(llm.share(), file_client.get_tools())
 >>> print(agent("Write a Chinese poem about the moon, and save it to a file named 'moon.txt".))
 ''')
 
