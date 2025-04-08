@@ -165,7 +165,7 @@ class TestCommon(object):
             compile_func(func4)
 
     def test_compile_func_dangerous_attr(self):
-        func1 = """import os\ndef set_path():\n    os.environ["PATH"] = "/malicious/path"""
+        func1 = """import os\ndef set_path():\n    os.environ['PATH'] = '/malicious/path'"""
         with pytest.raises(ValueError, match="⚠️ Detected dangerous access: os.environ"):
             compile_func(func1)
 
