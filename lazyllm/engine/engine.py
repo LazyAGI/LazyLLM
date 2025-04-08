@@ -49,6 +49,7 @@ class Engine(ABC):
         self._nodes: Engine.DefaultLockedDict[str, Node] = Engine.DefaultLockedDict({
             '__start__': Node(id='__start__', kind='__start__', name='__start__'),
             '__end__': Node(id='__end__', kind='__end__', name='__end__')})
+        self._key_db_connect_message = None
 
     def __new__(cls):
         if cls is not Engine:
@@ -85,7 +86,19 @@ class Engine(ABC):
     def stop(self, node_id: Optional[str] = None, task_name: Optional[str] = None): pass
 
     def build_node(self, node) -> Node:
+        if self._key_db_connect_message is not None and node.kind == "HttpTool":
+            node.args["key_db_connect_message"] = self._key_db_connect_message
         return _constructor.build(node)
+
+    def set_db_connect_message(self, key_db_connect_message: Optional[Union[Dict, str]]) -> None:
+        if isinstance(key_db_connect_message, str):
+            key_db_connect_message = json.loads(key_db_connect_message)
+
+        if not isinstance(key_db_connect_message, dict):
+            raise TypeError("The database connection information only supports dict and str, "
+                            f"not {type(key_db_connect_message)}.")
+
+        self._key_db_connect_message = key_db_connect_message
 
     def set_report_url(self, url) -> None:
         Engine.REPORT_URL = url
@@ -449,11 +462,11 @@ def _get_tools(tools):
         callable_list.append(wrapper_func)
     return callable_list
 
-@NodeConstructor.register('ToolsForLLM')
+@NodeConstructor.register('ToolsForLLM', subitems=['nodes', 'resources'])
 def make_tools_for_llm(tools: List[str]):
     return lazyllm.tools.ToolManager(_get_tools(tools))
 
-@NodeConstructor.register('FunctionCall')
+@NodeConstructor.register('FunctionCall', subitems=['nodes', 'resources'])
 def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
@@ -478,8 +491,6 @@ class AuthType(Enum):
     OAUTH = "oauth"
     OIDC = "oidc"
 
-LIGHTENGINE_DB_KEY = "key_db_connect_message"
-
 class SharedHttpTool(lazyllm.tools.HttpTool):
     def __init__(self,
                  method: Optional[str] = None,
@@ -496,14 +507,15 @@ class SharedHttpTool(lazyllm.tools.HttpTool):
                  authentication_type: Optional[str] = None,
                  tool_api_id: Optional[str] = None,
                  user_id: Optional[str] = None,
-                 share_key: bool = False):
+                 share_key: bool = False,
+                 key_db_connect_message: Optional[Dict] = None):
         super().__init__(method, url, params, headers, body, timeout, proxies,
                          code_str, vars_for_code, outputs, extract_from_result)
         self.token_type = authentication_type
         self._tool_api_id = tool_api_id
         self._user_id = user_id
         self._share_key = share_key
-        self._key_db_connect_message = lazyllm.globals.get(LIGHTENGINE_DB_KEY)
+        self._key_db_connect_message = key_db_connect_message
         if self._key_db_connect_message:
             self._sql_manager = SqlManager(
                 db_type=self._key_db_connect_message['db_type'],
@@ -635,10 +647,11 @@ def make_http_tool(method: Optional[str] = None,
                    authentication_type: Optional[str] = None,
                    tool_api_id: Optional[str] = None,
                    user_id: Optional[str] = None,
-                   share_key: bool = False):
+                   share_key: bool = False,
+                   key_db_connect_message: Optional[Dict] = None):
     instance = SharedHttpTool(method, url, params, headers, body, timeout, proxies,
                               code_str, vars_for_code, outputs, extract_from_result, authentication_type,
-                              tool_api_id, user_id, share_key)
+                              tool_api_id, user_id, share_key, key_db_connect_message)
     if doc:
         instance.__doc__ = doc
     return instance

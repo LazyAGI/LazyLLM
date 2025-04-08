@@ -1,6 +1,4 @@
-import atexit
 import copy
-import json
 import uuid
 from urllib.parse import urlparse
 from contextlib import contextmanager
@@ -8,7 +6,7 @@ from typing import List, Dict, Optional, Set, Union
 
 import lazyllm
 from lazyllm import once_wrapper
-from .engine import Engine, Node, ServerGraph, LIGHTENGINE_DB_KEY, SharedHttpTool
+from .engine import Engine, Node, ServerGraph, SharedHttpTool
 from lazyllm.tools.train_service.serve import TrainServer
 from lazyllm.tools.train_service.client import LocalTrainClient, OnlineTrainClient
 from lazyllm.tools.infer_service import InferClient, InferServer
@@ -22,15 +20,6 @@ def set_resources(resource):
     finally:
         lazyllm.globals.pop('engine_resource', None)
 
-def filter_http_tool(node):
-    if isinstance(node, SharedHttpTool):
-        return True
-    return False
-
-def valid_tool(node):
-    if isinstance(node, SharedHttpTool):
-        node.valid_key()
-
 class LightEngine(Engine):
 
     _instance = None
@@ -38,7 +27,6 @@ class LightEngine(Engine):
     def __new__(cls, *args, **kwargs):
         if not LightEngine._instance:
             cls._instance = super().__new__(cls)
-            atexit.register(cls.cleanup_db)
         return cls._instance
 
     @once_wrapper
@@ -46,21 +34,6 @@ class LightEngine(Engine):
         super().__init__()
         self.node_graph: Set[str, List[str]] = dict()
         self.online_train_client = OnlineTrainClient()
-
-    def set_db_connect_message(self, key_db_connect_message: Optional[Union[Dict, str]]) -> None:
-        if isinstance(key_db_connect_message, str):
-            key_db_connect_message = json.loads(key_db_connect_message)
-
-        if not isinstance(key_db_connect_message, dict):
-            raise TypeError("The dataabse connection information only supports dict and str, "
-                            f"not {type(key_db_connect_message)}.")
-
-        lazyllm.globals[LIGHTENGINE_DB_KEY] = key_db_connect_message
-
-    @classmethod
-    def cleanup_db(cls):
-        if LIGHTENGINE_DB_KEY in lazyllm.globals:
-            lazyllm.globals.pop(LIGHTENGINE_DB_KEY, None)
 
     @once_wrapper
     def launch_localllm_train_service(self):
@@ -421,9 +394,9 @@ class LightEngine(Engine):
             args = [lazyllm.formatter.file(formatter='encode')(dict(query=args[0] if args else '', files=files))]
         if _file_resources:
             lazyllm.globals['lazyllm_files'] = _file_resources
+        nodes = [self.build_node(node).func for node in self.subnodes(id, recursive=True)]
+        [node.valid_key() for node in nodes if isinstance(node, SharedHttpTool)]
         f = self.build_node(id).func
-        if isinstance(f, ServerGraph):
-            f._g.action.for_each(filter_http_tool, valid_tool)
         lazyllm.FileSystemQueue().dequeue()
         if history := _lazyllm_history:
             assert isinstance(f, ServerGraph), 'Only graph can support history'
