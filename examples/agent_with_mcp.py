@@ -1,4 +1,5 @@
 import lazyllm
+import platform
 import asyncio
 
 # Before running, set the environment variable:
@@ -17,41 +18,37 @@ import asyncio
 #           You can apply for the API key at https://platform.sensenova.cn/home
 #     * `source` needs to be specified for multiple API keys, but it does not need to be set for a single API key.
 
-# for Windows system
-# use mcp_comfig = { "command": "cmd", "args": ["/c", "npx", "-y", "@modelcontextprotocol/server-filesystem", "./"]}
-mcp_comfig = {
-    "command": "npx",
-    "args": [
-        "-y",
-        "@modelcontextprotocol/server-filesystem",
-        "./"
-    ]
-}
+if platform.system() == "Windows":
+    mcp_config = {
+        "command": "cmd",
+        "args": ["/c", "npx", "-y", "@modelcontextprotocol/server-filesystem", "./"]
+    }
+else:
+    mcp_config = {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "./"]
+    }
 
 mcp_client = lazyllm.tools.MCPClient(
-    command_or_url=mcp_comfig["command"],
-    args=mcp_comfig["args"]
+    command_or_url=mcp_config["command"],
+    args=mcp_config["args"]
 )
-
-llm = lazyllm.OnlineChatModule(source="deepseek")
 
 
 def example_sync():
     agent = lazyllm.tools.agent.ReactAgent(
-        llm=llm,
+        llm=lazyllm.OnlineChatModule(source="deepseek"),
         tools=mcp_client.get_tools()
     )
-    print("agent initialized")
     res = agent("Show me your allowed directory.")
     print(res)
 
 
 async def example_async():
     agent = lazyllm.tools.agent.ReactAgent(
-        llm=llm,
+        llm=lazyllm.OnlineChatModule(source="deepseek"),
         tools=await mcp_client.aget_tools()
     )
-    print("agent initialized")
     res = agent("Show me your allowed directory.")
     print(res)
 
