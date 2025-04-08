@@ -6,6 +6,8 @@ from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 
 from .doc_manager import DocManager
+from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
+from .doc_kws_tool import DocKWSManager, DocKwDesc
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder
 from .doc_node import DocNode
 from .index_base import IndexBase
@@ -114,6 +116,38 @@ class Document(ModuleBase):
             self._manager = Document._Manager(dataset_path, embed, create_ui or manager, server, name,
                                               launcher, store_conf, doc_fields)
             self._curr_group = DocListManager.DEFAULT_GROUP_NAME
+        self._doc_kws_manager = None
+
+    def kws_tool_init(self, llm: callable, sql_manager: SqlManager, kws_desc: List[DocKwDesc] = []):
+        self._doc_kws_manager = DocKWSManager(llm=llm, sql_manager=sql_manager)
+        if not kws_desc:
+            files_list = []
+            for root, _, files in os.walk(self._manager._dataset_path):
+                files = [os.path.join(root, file_path) for file_path in files]
+                files_list.extend(files)
+            if len(files_list) == 0:
+                lazyllm.LOG.warning(f"Failed to find any files in {self._manager._dataset_path}")
+            else:
+                self._doc_kws_manager.analyse_and_init_kws_desc(files_list)
+        else:
+            self._doc_kws_manager.set_kws_desc(kws_desc)
+
+    def kws_tool_reset_schema(self, kws_desc: List[DocKwDesc]):
+        # Alert, set_kws_table_schema will drop old result in db
+        assert self._doc_kws_manager, "Please call prepare_kws_table_schema first"
+        self._doc_kws_manager.set_kws_desc(kws_desc)
+
+    def kws_tool_extract_to_db(self):
+        assert self._doc_kws_manager, "Please call prepare_kws_table_schema first"
+        assert self._doc_kws_manager._kws_desc, "Please call prepare_kws_table_schema or reset_kws_table_schema first"
+        files_list = []
+        for root, _, files in os.walk(self._manager._dataset_path):
+            files = [os.path.join(root, file_path) for file_path in files]
+            files_list.extend(files)
+
+        assert self._doc_kws_manager is not None
+        db_result = self._doc_kws_manager.extract_and_record_kws(files_list)
+        return db_result.status == DBStatus.SUCCESS
 
     @deprecated('Document(dataset_path, manager=doc.manager, name=xx, doc_fields=xx, store_conf=xx)')
     def create_kb_group(self, name: str, doc_fields: Optional[Dict[str, DocField]] = None,
@@ -125,13 +159,16 @@ class Document(ModuleBase):
 
     @property
     @deprecated('Document._manager')
-    def _impls(self): return self._manager
+    def _impls(self):
+        return self._manager
 
     @property
-    def _impl(self): return self._manager.get_doc_by_kb_group(self._curr_group)
+    def _impl(self):
+        return self._manager.get_doc_by_kb_group(self._curr_group)
 
     @property
-    def manager(self): return self._manager
+    def manager(self):
+        return self._manager
 
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,

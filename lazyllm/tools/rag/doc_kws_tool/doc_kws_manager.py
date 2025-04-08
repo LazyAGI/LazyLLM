@@ -2,7 +2,7 @@ from typing import List
 import lazyllm
 from lazyllm import ModuleBase
 from .doc_kws_prcoessor import DocTypeDetector, DocKWSExtractor, DocKWSGenerator, DocKwDesc, validate_kw_desc
-from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
+from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus, DBResult
 from sqlalchemy.orm import DeclarativeBase
 import sqlalchemy
 import uuid
@@ -27,7 +27,7 @@ class DocKWSManager:
 
     def __init__(self, llm: ModuleBase, sql_manager: SqlManager, table_name="lazyllm_doc_kws"):
         self._doc_type_detector = DocTypeDetector(llm)
-        self._kws_generator = DocKWSGenerator(llm)
+        self._kws_generator = DocKWSGenerator(llm, maximum_doc_num=2)
         self._kws_extractor = DocKWSExtractor(llm)
         self._sql_manager = sql_manager
         self._kws_desc: List[DocKwDesc] = None
@@ -51,6 +51,14 @@ class DocKWSManager:
     def doc_type(self):
         return self._doc_type
 
+    @property
+    def sql_manager(self):
+        return self._sql_manager
+
+    @sql_manager.setter
+    def sql_manager(self, sql_manager: SqlManager):
+        self._sql_manager = sql_manager
+
     @doc_type.setter
     def doc_type(self, doc_type: str):
         DOC_TYPE_LEN_LIMIT = 10
@@ -67,14 +75,20 @@ class DocKWSManager:
         else:
             self._doc_type = doc_type
 
-    # Alert, set kws_desc will drop old result in db
     @kws_desc.setter
     def kws_desc(self, kws_desc: List[DocKwDesc]):
         raise NotImplementedError("As it'a dangerous operation, please use set_kws_desc instead")
 
+    def _clear_table_orm(self):
+        if self._table_class is not None:
+            self._sql_manager.drop_table(self._table_class)
+            TableBase.metadata.remove(self._table_class.__table__)
+            TableBase.registry._dispose_cls(self._table_class)
+            del self._table_class
+            self._table_class = None
+
     def clear(self):
-        self._sql_manager.drop_table(self._table_name)
-        del self._table_class
+        self._clear_table_orm()
         self._doc_type = None
         self._table_class = None
         self._kws_desc = None
@@ -82,13 +96,11 @@ class DocKWSManager:
     # Alert, set kws_desc will drop old result in db
     def set_kws_desc(self, kws_desc: List[DocKwDesc]):
         assert isinstance(kws_desc, list)
+        self._clear_table_orm()
         for kw_desc in kws_desc:
             is_success, err_msg = validate_kw_desc(kw_desc, DocKwDesc)
             assert is_success, err_msg
         self._kws_desc = kws_desc
-        if self._table_class is not None:
-            self._sql_manager.drop_table(self._table_class)
-            del self._table_class
         attrs = {"__tablename__": self._table_name, "__table_args__": {"extend_existing": True}}
         # use uuid as primary key
         attrs[self.UUID_COL_NAME] = sqlalchemy.Column(sqlalchemy.String(36), primary_key=True)
@@ -133,7 +145,10 @@ class DocKWSManager:
         if db_result.status != DBStatus.SUCCESS:
             raise ValueError(f"Insert values failed: {db_result.detail}")
 
-    def export_docs_kws_to_db(self, doc_paths: List[str], extra_desc: str = ""):
+    def extract_and_record_kws(self, doc_paths: List[str], extra_desc: str = "") -> DBResult:
+        existent_doc_paths = self.list_existent_doc_paths_in_db(doc_paths)
+        # skip docs already in db
+        doc_paths = set(doc_paths) - set(existent_doc_paths)
         kws_values = [self.extract_kws_value(doc_path, extra_desc) for doc_path in doc_paths]
         new_values = []
         for kws_value in kws_values:
@@ -142,10 +157,9 @@ class DocKWSManager:
                 kws_value[self.CREATED_AT_COL_NAME] = datetime.now()
                 new_values.append(kws_value)
         db_result = self._sql_manager.insert_values(self._table_name, new_values)
-        if db_result.status != DBStatus.SUCCESS:
-            raise ValueError(f"Insert values failed: {db_result.detail}")
+        return db_result
 
-    def auto_export_docs_to_sql(self, doc_paths: List[str]):
+    def analyse_and_init_kws_desc(self, doc_paths: List[str]):
         if len(doc_paths) == 0:
             return
         if self._doc_type is None:
@@ -158,7 +172,10 @@ class DocKWSManager:
             if not kws_desc:
                 raise ValueError("Failed to detect kws_desc")
             self.set_kws_desc(kws_desc)
-        self.export_docs_kws_to_db(doc_paths)
+
+    def auto_export_docs_to_sql(self, doc_paths: List[str]):
+        self.analyse_and_init_kws_desc(doc_paths)
+        self.extract_and_record_kws(doc_paths)
 
     def delete_doc_paths_records(self, doc_paths: list[str]):
         doc_paths = [str(ele) for ele in doc_paths]
@@ -168,3 +185,12 @@ class DocKWSManager:
             )
             session.execute(stmt)
             session.commit()
+
+    def list_existent_doc_paths_in_db(self, doc_paths: list[str]) -> List[str]:
+        doc_paths = [str(ele) for ele in doc_paths]
+        with self._sql_manager.get_session() as session:
+            stmt = sqlalchemy.select(getattr(self._table_class, self.DOC_PATH_COL_NAME)).where(
+                getattr(self._table_class, self.DOC_PATH_COL_NAME).in_(doc_paths)
+            )
+            result = session.execute(stmt).fetchall()
+            return [ele[0] for ele in result]
