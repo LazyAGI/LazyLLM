@@ -354,7 +354,17 @@ class Parallel(LazyLLMFlowsBase):
         super().__init__(*args, **kw, auto_capture=auto_capture)
         self._post_process_type = Parallel.PostProcessType.NONE
         self._post_process_args = None
-        self._concurrent = _concurrent if not isinstance(_concurrent, bool) else 5 if _concurrent else 0
+
+        in_async_env = False
+        try:
+            in_async_env = asyncio.get_event_loop().is_running()
+        except RuntimeError:
+            pass
+        if in_async_env:
+            self._concurrent = 0
+        else:
+            self._concurrent = _concurrent if not isinstance(_concurrent, bool) else 5 if _concurrent else 0
+
         self._scatter = _scatter
 
     @staticmethod
