@@ -1,12 +1,11 @@
 import inspect
 import asyncio
 
-from mcp import ClientSession
-from mcp.types import CallToolResult, ImageContent, TextContent, Tool
-
 from typing import Any, Callable, Dict, List, Set
-
 from lazyllm import LOG
+from lazyllm.thirdparty import mcp
+
+from .utils import run_async_in_new_loop, run_async_in_thread
 
 type_mapping = {
     "string": ("str", str),
@@ -39,16 +38,16 @@ def _generate_docstring(tool_desc: str, properties: Dict[str, Any], required: Li
     return "\n".join(doc_lines)
 
 
-def _handle_tool_result(result: CallToolResult, tool_name: str) -> str:
+def _handle_tool_result(result, tool_name: str) -> str:
     if not result.content or len(result.content) == 0:
         return "No data available for this request."
     try:
-        text_contents: List[TextContent] = []
-        image_contents: List[ImageContent] = []
+        text_contents: List[mcp.types.TextContent] = []
+        image_contents: List[mcp.types.ImageContent] = []
         for content in result.content:
-            if isinstance(content, TextContent):
+            if isinstance(content, mcp.types.TextContent):
                 text_contents.append(content.text)
-            elif isinstance(content, ImageContent):
+            elif isinstance(content, mcp.types.ImageContent):
                 image_contents.append(content.data)
             else:
                 LOG.warning(f"Unsupported content type: {type(content)}")
@@ -65,7 +64,7 @@ def _handle_tool_result(result: CallToolResult, tool_name: str) -> str:
         return f"Error processing content from MCP tool '{tool_name}': {e!s}"
 
 
-def generate_lazyllm_tool(client: ClientSession, mcp_tool: Tool) -> Callable:
+def generate_lazyllm_tool(client, mcp_tool) -> Callable:
     tool_name = mcp_tool.name
     tool_desc = mcp_tool.description
     input_schema = mcp_tool.inputSchema
@@ -90,21 +89,23 @@ def generate_lazyllm_tool(client: ClientSession, mcp_tool: Tool) -> Callable:
 
     # Define the function
     def dynamic_lazyllm_func(**kwargs):
-        missing_params: Set[str] = set(required) - set(
-            kwargs.keys()
-        )
+        missing_params: Set[str] = set(required) - set(kwargs.keys())
         if missing_params:
-            LOG.warning(
-                f"Missing required parameters: {missing_params}"
-            )
+            LOG.warning(f"Missing required parameters: {missing_params}")
             return f"Missing required parameters: {missing_params}"
-
         try:
-            result: CallToolResult = asyncio.run(client.call_tool(tool_name, kwargs))
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                result = run_async_in_thread(client.call_tool, tool_name, kwargs)
+            else:
+                result = run_async_in_new_loop(client.call_tool, tool_name, kwargs)
         except Exception as e:
             LOG.error(f"Failed to call MCP tool '{tool_name}': {e!s}")
             return f"Failed to call MCP tool '{tool_name}': {e!s}"
-
         return _handle_tool_result(result, tool_name)
 
     # Set function attributes

@@ -1,16 +1,14 @@
-from mcp.client.session import ClientSession
-from mcp.client.sse import sse_client
-from mcp.client.stdio import stdio_client, StdioServerParameters
-
 from typing import Any
 from urllib.parse import urlparse
 from contextlib import asynccontextmanager
+from lazyllm.thirdparty import mcp
 
+from .utils import patch_sync
 from .tool_adaptor import generate_lazyllm_tool
 from .deploy import SseServerSettings, start_sse_server
 
 
-class MCPClient(ClientSession):
+class MCPClient(object):
     def __init__(
         self,
         command_or_url: str,
@@ -28,16 +26,20 @@ class MCPClient(ClientSession):
     @asynccontextmanager
     async def _run_session(self):
         if urlparse(self._command_or_url).scheme in ("http", "https"):
-            async with sse_client(url=self._command_or_url, headers=self._headers, timeout=self._timeout) as streams:
-                async with ClientSession(*streams) as session:
+            async with mcp.client.sse.sse_client(
+                url=self._command_or_url,
+                headers=self._headers,
+                timeout=self._timeout
+            ) as streams:
+                async with mcp.ClientSession(*streams) as session:
                     await session.initialize()
                     yield session
         else:
-            server_parameters = StdioServerParameters(
+            server_parameters = mcp.StdioServerParameters(
                 command=self._command_or_url, args=self._args, env=self._env
             )
-            async with stdio_client(server_parameters) as streams:
-                async with ClientSession(*streams) as session:
+            async with mcp.stdio_client(server_parameters) as streams:
+                async with mcp.ClientSession(*streams) as session:
                     await session.initialize()
                     yield session
 
@@ -49,13 +51,16 @@ class MCPClient(ClientSession):
         async with self._run_session() as session:
             return await session.list_tools()
 
-    async def get_tools(self, allowed_tools: list[str] = None):
+    async def aget_tools(self, allowed_tools: list[str] = None):
         res = await self.list_tools()
         mcp_tools = getattr(res, "tools", [])
         if allowed_tools:
             mcp_tools = [tool for tool in mcp_tools if tool.name in allowed_tools]
 
         return [generate_lazyllm_tool(self, tool) for tool in mcp_tools]
+
+    def get_tools(self, allowed_tools: list[str] = None):
+        return patch_sync(self.aget_tools)(allowed_tools=allowed_tools)
 
     async def deploy(self, sse_settings: SseServerSettings):
         async with self._run_session() as session:
