@@ -86,8 +86,6 @@ class Engine(ABC):
     def stop(self, node_id: Optional[str] = None, task_name: Optional[str] = None): pass
 
     def build_node(self, node) -> Node:
-        if self._key_db_connect_message is not None and node.kind == "HttpTool":
-            node.args["key_db_connect_message"] = self._key_db_connect_message
         return _constructor.build(node)
 
     def set_db_connect_message(self, key_db_connect_message: Optional[Union[Dict, str]]) -> None:
@@ -99,6 +97,10 @@ class Engine(ABC):
                             f"not {type(key_db_connect_message)}.")
 
         self._key_db_connect_message = key_db_connect_message
+
+    @property
+    def key_db_connect_message(self):
+        return self._key_db_connect_message
 
     def set_report_url(self, url) -> None:
         Engine.REPORT_URL = url
@@ -276,8 +278,6 @@ def make_graph(nodes: List[dict], edges: List[Union[List[str], dict]] = [],
 
     with graph() as g:
         for node in nodes:
-            setattr(g, node.name, node.func)
-        for node in resources:
             setattr(g, node.name, node.func)
     g.set_node_arg_name([node.arg_names for node in nodes])
 
@@ -462,11 +462,11 @@ def _get_tools(tools):
         callable_list.append(wrapper_func)
     return callable_list
 
-@NodeConstructor.register('ToolsForLLM', subitems=['nodes', 'resources'])
+@NodeConstructor.register('ToolsForLLM', subitems=['tools'])
 def make_tools_for_llm(tools: List[str]):
     return lazyllm.tools.ToolManager(_get_tools(tools))
 
-@NodeConstructor.register('FunctionCall', subitems=['nodes', 'resources'])
+@NodeConstructor.register('FunctionCall', subitems=['tools'])
 def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
@@ -507,15 +507,14 @@ class SharedHttpTool(lazyllm.tools.HttpTool):
                  authentication_type: Optional[str] = None,
                  tool_api_id: Optional[str] = None,
                  user_id: Optional[str] = None,
-                 share_key: bool = False,
-                 key_db_connect_message: Optional[Dict] = None):
+                 share_key: bool = False):
         super().__init__(method, url, params, headers, body, timeout, proxies,
                          code_str, vars_for_code, outputs, extract_from_result)
-        self.token_type = authentication_type
+        self._token_type = authentication_type
         self._tool_api_id = tool_api_id
         self._user_id = user_id
         self._share_key = share_key
-        self._key_db_connect_message = key_db_connect_message
+        self._key_db_connect_message = Engine().key_db_connect_message
         if self._key_db_connect_message:
             self._sql_manager = SqlManager(
                 db_type=self._key_db_connect_message['db_type'],
@@ -530,9 +529,9 @@ class SharedHttpTool(lazyllm.tools.HttpTool):
         self._default_expired_days = 3
 
     def _process_api_key(self, headers, params):
-        if not self.token_type:
+        if not self._token_type:
             return headers, params
-        if self.token_type == AuthType.SERVICE_API.value:
+        if self._token_type == AuthType.SERVICE_API.value:
             if self._location == "header":
                 headers[self._param_name] = self._token if self._token.startswith("Bearer") \
                     else "Bearer " + self._token
@@ -541,21 +540,21 @@ class SharedHttpTool(lazyllm.tools.HttpTool):
             else:
                 raise TypeError("The Service API authentication type only supports ['header', 'query'], "
                                 f"not {self._location}.")
-        elif self.token_type == AuthType.OAUTH.value:
+        elif self._token_type == AuthType.OAUTH.value:
             headers['Authorization'] = f"Bearer {self._token}"
         else:
             raise TypeError("Currently, tool authentication only supports ['service_api', 'oauth'] types, "
-                            f"and does not support {self.token_type} type.")
+                            f"and does not support {self._token_type} type.")
         return headers, params
 
     def valid_key(self):
-        if not self.token_type:
+        if not self._token_type:
             return True
         table_name = self._key_db_connect_message.get('tables_info_dict', {}).get('tables', [])[0]['name']
         SQL_SELECT = (
             f"SELECT id, tool_api_id, endpoint_url, client_id, client_secret, user_id, location, param_name, token, "
             f"refresh_token, token_type, expires_at FROM {table_name} "
-            f"WHERE tool_api_id = {self._tool_api_id} AND is_auth_success = True AND token_type = '{self.token_type}'"
+            f"WHERE tool_api_id = {self._tool_api_id} AND is_auth_success = True AND token_type = '{self._token_type}'"
         )
         if self._share_key:
             ret = self._fetch_valid_key(SQL_SELECT + " AND is_share = True")
@@ -568,11 +567,11 @@ class SharedHttpTool(lazyllm.tools.HttpTool):
                 raise AuthenticationFailedError(f"Authentication failed for user_id='{self._user_id}' and "
                                                 f"tool_api_id='{self._tool_api_id}'")
 
-        if self.token_type == AuthType.SERVICE_API.value:
+        if self._token_type == AuthType.SERVICE_API.value:
             self._token = ret['token']
             self._location = ret['location']
             self._param_name = ret['param_name']
-        elif self.token_type == AuthType.OAUTH.value:
+        elif self._token_type == AuthType.OAUTH.value:
             try:
                 expires_at = datetime.strptime(ret['expires_at'], "%Y-%m-%d %H:%M:%S")
             except ValueError:
@@ -586,11 +585,11 @@ class SharedHttpTool(lazyllm.tools.HttpTool):
                 refresh_token=ret['refresh_token'],
                 expires_at=expires_at,
                 table_name=table_name)
-        elif self.token_type == AuthType.OIDC.value:
+        elif self._token_type == AuthType.OIDC.value:
             raise TypeError("OIDC authentication is not currently supported.")
         else:
             raise TypeError("The authentication type only supports ['no authentication', 'service_api', "
-                            f"'oauth', 'oidc'], and does not support type {self.token_type}.")
+                            f"'oauth', 'oidc'], and does not support type {self._token_type}.")
 
     def _fetch_valid_key(self, query: str):
         ret = self._sql_manager.execute_query(query)
@@ -647,11 +646,10 @@ def make_http_tool(method: Optional[str] = None,
                    authentication_type: Optional[str] = None,
                    tool_api_id: Optional[str] = None,
                    user_id: Optional[str] = None,
-                   share_key: bool = False,
-                   key_db_connect_message: Optional[Dict] = None):
+                   share_key: bool = False):
     instance = SharedHttpTool(method, url, params, headers, body, timeout, proxies,
                               code_str, vars_for_code, outputs, extract_from_result, authentication_type,
-                              tool_api_id, user_id, share_key, key_db_connect_message)
+                              tool_api_id, user_id, share_key)
     if doc:
         instance.__doc__ = doc
     return instance

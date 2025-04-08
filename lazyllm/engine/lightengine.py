@@ -20,6 +20,7 @@ def set_resources(resource):
     finally:
         lazyllm.globals.pop('engine_resource', None)
 
+
 class LightEngine(Engine):
 
     _instance = None
