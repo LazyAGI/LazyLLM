@@ -21,6 +21,7 @@ class HttpRequest(ModuleBase):
 
     def _process_api_key(self, headers, params):
         if self._api_key and self._api_key != '':
+            params = params or {}
             params['api_key'] = self._api_key
         return headers, params
 

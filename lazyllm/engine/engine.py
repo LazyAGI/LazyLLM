@@ -475,8 +475,8 @@ def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
 
 class AuthenticationFailedError(Exception):
     def __init__(self, message="Authentication failed for the given user and tool."):
-        self.message = message
-        super().__init__(self.message)
+        self._message = message
+        super().__init__(self._message)
 
 class TokenExpiredError(Exception):
     """Access token expired"""
@@ -536,6 +536,7 @@ class SharedHttpTool(lazyllm.tools.HttpTool):
                 headers[self._param_name] = self._token if self._token.startswith("Bearer") \
                     else "Bearer " + self._token
             elif self._location == "query":
+                params = params or {}
                 params[self._param_name] = self._token
             else:
                 raise TypeError("The Service API authentication type only supports ['header', 'query'], "
@@ -614,7 +615,7 @@ class SharedHttpTool(lazyllm.tools.HttpTool):
 
         # 3、Request a new access token with the refresh_token
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {client_secret}"}
-        data = {"client_id": '{client_id}', "grant_type": "refresh_token", "refresh_token": '{refresh_token}'}
+        data = {"client_id": client_id, "grant_type": "refresh_token", "refresh_token": refresh_token}
         with requests.post(endpoint_url, json=data, headers=headers) as r:
             if r.status_code != 200:
                 raise TokenRefreshError(f"Request failed, status code: {r.status_code}, message: {r.text}")
