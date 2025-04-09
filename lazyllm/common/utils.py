@@ -5,6 +5,7 @@ import re
 import ast
 import pickle
 import base64
+import argparse
 
 def check_path(
     path: Union[str, PathLike],
@@ -99,3 +100,14 @@ def obj2str(obj: Any) -> str:
 
 def str2obj(data: str) -> Any:
     return None if data is None else pickle.loads(base64.b64decode(data.encode('utf-8')))
+
+def str2bool(v: str) -> bool:
+    """ Boolean type converter """
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1', 'on'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0', 'off'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')

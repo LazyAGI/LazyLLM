@@ -11,8 +11,8 @@ except ImportError:
 def main():
     def exit():
         print('Usage:\n  lazyllm install [full|standard|package_name]\n'
-              '  lazyllm deploy modelname\n  lazyllm run graph.json\n'
-              '  lazyllm run chatbot\n  lazyllm run rag\n')
+              '  lazyllm deploy modelname\n  lazyllm deploy mcp_server <command> [args ...] [options]\n'
+              '  lazyllm run graph.json\n  lazyllm run chatbot\n  lazyllm run rag\n')
         sys.exit(1)
 
     if len(sys.argv) <= 1: exit()
