@@ -3,7 +3,7 @@ loralib
 toml
 fastapi>=0.111.0
 loguru>=0.7.2
-pydantic>=2.5.0
+pydantic<=2.10.6
 requests>=2.32.2
 uvicorn
 cloudpickle>=3.0.0

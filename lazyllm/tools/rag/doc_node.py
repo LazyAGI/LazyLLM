@@ -238,7 +238,7 @@ class ImageDocNode(DocNode):
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
                  metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None,
                  *, text: Optional[str] = None):
-        super().__init__(uid, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
+        super().__init__(uid, None, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
         self._image_path = image_path.strip()
         self._modality = "image"
 
