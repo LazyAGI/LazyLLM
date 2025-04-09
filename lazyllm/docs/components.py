@@ -328,6 +328,133 @@ add_example('finetune.LlamafactoryFinetune', '''\
 <lazyllm.llm.finetune type=LlamafactoryFinetune>
 ''')
 
+# Finetune-FlagembeddingFinetune
+add_chinese_doc('finetune.FlagembeddingFinetune', '''\
+该类是 ``LazyLLMFinetuneBase`` 的子类，基于 [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding) 框架提供的训练能力，用于训练嵌入和重排模型。
+
+Args:
+    base_model (str): 用于训练的基础模型。必须是基础模型的路径。
+    target_path (str): 训练后模型权重保存的路径。
+    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1, sync=True)``。
+    kw: 用于更新默认训练参数的关键字参数。
+
+该类嵌入模型的关键字参数及其默认值如下：
+
+Keyword Args:
+    train_group_size (int): 默认为：``8``。训练组的大小。用于控制每个训练集中的负样本数量。
+    query_max_len (int): 默认为：``512``。经过分词后，段落的最大总输入序列长度。超过此长度的序列将被截断，较短的序列将被填充。
+    passage_max_len (int): 默认为：``512``。经过分词后，段落的最大总输入序列长度。超过此长度的序列将被截断，较短的序列将被填充。
+    pad_to_multiple_of (int): 默认为：``8``。如果设置，将序列填充为提供值的倍数。
+    query_instruction_for_retrieval (str): 默认为：``Represent this sentence for searching relevant passages: ``。查询query的指令。
+    query_instruction_format (str): 默认为：``{}{}``。查询指令格式。
+    learning_rate (float): 默认为：``1e-5``。学习率。
+    num_train_epochs (int): 默认为：``1``。要执行的总训练周期数。
+    per_device_train_batch_size (int): 默认为：``2``。训练批量大小。
+    gradient_accumulation_steps (int): 默认为：``1``。在执行反向/更新传递之前要累积的更新步骤数。
+    dataloader_drop_last (bool): 默认为：``True``。如果数据集大小不能被批量大小整除，则丢弃最后一个不完整的批量，即 DataLoader 只返回完整的批量。
+    warmup_ratio (float): 默认为：``0.1``。线性调度器的预热比率。
+    weight_decay (float): 默认为：``0.01``。AdamW 中的权重衰减。
+    deepspeed (str): 默认为：````。DeepSpeed 配置文件的路径，默认使用 LazyLLM 代码仓库中的预置文件：``ds_stage0.json``。
+    logging_steps (int): 默认为：``1``。更新日志的频率。
+    save_steps (int): 默认为：``1000``。保存频率。
+    temperature (float): 默认为：``0.02``。用于相似度评分的温度。
+    sentence_pooling_method (str): 默认为：``cls``。池化方法。可用选项：'cls', 'mean', 'last_token'。
+    normalize_embeddings (bool): 默认为：``True``。是否归一化嵌入。
+    kd_loss_type (str): 默认为：``kl_div``。知识蒸馏的损失类型。可用选项：'kl_div', 'm3_kd_loss'。
+    overwrite_output_dir (bool): 默认为：``True``。用于允许程序覆盖现有的输出目录。
+    fp16 (bool): 默认为：``True``。是否使用 fp16（混合）精度而不是 32 位。
+    gradient_checkpointing (bool): 默认为：``True``。是否启用梯度检查点。
+    negatives_cross_device (bool): 默认为：``True``。是否在设备间共享负样本。
+
+该类重排模型的关键字参数及其默认值如下：
+
+Keyword Args:
+    train_group_size (int): 默认为：``8``。训练组的大小。用于控制每个训练集中的负样本数量。
+    query_max_len (int): 默认为：``256``。经过分词后，段落的最大总输入序列长度。超过此长度的序列将被截断，较短的序列将被填充。
+    passage_max_len (int): 默认为：``256``。经过分词后，段落的最大总输入序列长度。超过此长度的序列将被截断，较短的序列将被填充。
+    pad_to_multiple_of (int): 默认为：``8``。如果设置，将序列填充为提供值的倍数。
+    learning_rate (float): 默认为：``6e-5``。学习率。
+    num_train_epochs (int): 默认为：``1``。要执行的总训练周期数。
+    per_device_train_batch_size (int): 默认为：``2``。训练批量大小。
+    gradient_accumulation_steps (int): 默认为：``1``。在执行反向/更新传递之前要累积的更新步骤数。
+    dataloader_drop_last (bool): 默认为：``True``。如果数据集大小不能被批量大小整除，则丢弃最后一个不完整的批量，即 DataLoader 只返回完整的批量。
+    warmup_ratio (float): 默认为：``0.1``。线性调度器的预热比率。
+    weight_decay (float): 默认为：``0.01``。AdamW 中的权重衰减。
+    deepspeed (str): 默认为：````。DeepSpeed 配置文件的路径，默认使用 LazyLLM 代码仓库中的预置文件：``ds_stage0.json``。
+    logging_steps (int): 默认为：``1``。更新日志的频率。
+    save_steps (int): 默认为：``1000``。保存频率。
+    overwrite_output_dir (bool): 默认为：``True``。用于允许程序覆盖现有的输出目录。
+    fp16 (bool): 默认为：``True``。是否使用 fp16（混合）精度而不是 32 位。
+    gradient_checkpointing (bool): 默认为：``True``。是否启用梯度检查点。
+
+''')
+
+add_english_doc('finetune.FlagembeddingFinetune', '''\
+This class is a subclass of ``LazyLLMFinetuneBase``, based on the training capabilities provided by the [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding) framework, used for training embedding and reranker models.
+
+Args:
+    base_model (str): The base model used for training. It is required to be the path of the base model.
+    target_path (str): The path where the trained model weights are saved.
+    launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1, sync=True)``.
+    kw: Keyword arguments used to update the default training parameters.
+
+The keyword arguments and their default values for this class of embedding model are as follows:
+
+Keyword Args:
+    train_group_size (int): Default is: ``8``. The size of train group. It is used to control the number of negative samples in each training set.
+    query_max_len (int): Default is: ``512``. The maximum total input sequence length after tokenization for passage. Sequences longer than this will be truncated, sequences shorter will be padded.
+    passage_max_len (int): Default is: ``512``. The maximum total input sequence length after tokenization for passage. Sequences longer than this will be truncated, sequences shorter will be padded.
+    pad_to_multiple_of (int): Default is: ``8``. If set will pad the sequence to be a multiple of the provided value.
+    query_instruction_for_retrieval (str): Default is: ``Represent this sentence for searching relevant passages: ``. Instruction for query.
+    query_instruction_format (str): Default is: ``{}{}``. Format for query instruction.
+    learning_rate (float): Default is: ``1e-5``. Learning rate.
+    num_train_epochs (int): Default is: ``1``. Total number of training epochs to perform.
+    per_device_train_batch_size (int): Default is: ``2``. Train batch size
+    gradient_accumulation_steps (int): Default is: ``1``. Number of updates steps to accumulate before performing a backward/update pass.
+    dataloader_drop_last (bool): Default is: ``True``. When it='True', the last incomplete batch is dropped if the dataset size is not divisible by the batch size, meaning DataLoader only returns complete batches.
+    warmup_ratio (float): Default is: ``0.1``. Warmup ratio for linear scheduler.
+    weight_decay (float): Default is: ``0.01``. Weight decay in AdamW.
+    deepspeed (str): Default is: ````. The path of the DeepSpeed configuration file, default to use the pre-made configuration file in the LazyLLM code repository: ``ds_stage0.json``.
+    logging_steps (int): Default is: ``1``. Logging frequency according to logging strategy.
+    save_steps (int): Default is: ``1000``. Saving frequency.
+    temperature (float): Default is: ``0.02``. Temperature used for similarity score
+    sentence_pooling_method (str): Default is: ``cls``. The pooling method. Available options: 'cls', 'mean', 'last_token'.
+    normalize_embeddings (bool): Default is: ``True``. Whether to normalize the embeddings.
+    kd_loss_type (str): Default is: ``kl_div``. The loss type for knowledge distillation. Available options:'kl_div', 'm3_kd_loss'.
+    overwrite_output_dir (bool): Default is: ``True``. It is used to allow the program to overwrite an existing output directory.
+    fp16 (bool): Default is: ``True``.  Whether to use fp16 (mixed) precision instead of 32-bit.
+    gradient_checkpointing (bool): Default is: ``True``. Whether enable gradient checkpointing.
+    negatives_cross_device (bool): Default is: ``True``. Whether share negatives across devices.
+
+The keyword arguments and their default values for this class of reranker model are as follows:
+
+Keyword Args:
+    train_group_size (int): Default is: ``8``. The size of train group. It is used to control the number of negative samples in each training set.
+    query_max_len (int): Default is: ``256``. The maximum total input sequence length after tokenization for passage. Sequences longer than this will be truncated, sequences shorter will be padded.
+    passage_max_len (int): Default is: ``256``. The maximum total input sequence length after tokenization for passage. Sequences longer than this will be truncated, sequences shorter will be padded.
+    pad_to_multiple_of (int): Default is: ``8``. If set will pad the sequence to be a multiple of the provided value.
+    learning_rate (float): Default is: ``6e-5``. Learning rate.
+    num_train_epochs (int): Default is: ``1``. Total number of training epochs to perform.
+    per_device_train_batch_size (int): Default is: ``2``. Train batch size
+    gradient_accumulation_steps (int): Default is: ``1``. Number of updates steps to accumulate before performing a backward/update pass.
+    dataloader_drop_last (bool): Default is: ``True``. When it='True', the last incomplete batch is dropped if the dataset size is not divisible by the batch size, meaning DataLoader only returns complete batches.
+    warmup_ratio (float): Default is: ``0.1``. Warmup ratio for linear scheduler.
+    weight_decay (float): Default is: ``0.01``. Weight decay in AdamW.
+    deepspeed (str): Default is: ````. The path of the DeepSpeed configuration file, default to use the pre-made configuration file in the LazyLLM code repository: ``ds_stage0.json``.
+    logging_steps (int): Default is: ``1``. Logging frequency according to logging strategy.
+    save_steps (int): Default is: ``1000``. Saving frequency.
+    overwrite_output_dir (bool): Default is: ``True``. It is used to allow the program to overwrite an existing output directory.
+    fp16 (bool): Default is: ``True``.  Whether to use fp16 (mixed) precision instead of 32-bit.
+    gradient_checkpointing (bool): Default is: ``True``. Whether enable gradient checkpointing.
+
+''')
+
+add_example('finetune.FlagembeddingFinetune', '''\
+>>> from lazyllm import finetune
+>>> finetune.FlagembeddingFinetune('bge-m3', 'path/to/target')
+<lazyllm.llm.finetune type=FlagembeddingFinetune>
+''')
+
 # Finetune-Auto
 add_chinese_doc('auto.AutoFinetune', '''\
 此类是 ``LazyLLMFinetuneBase`` 的子类，可根据输入的参数自动选择合适的微调框架和参数，以对大语言模型进行微调。

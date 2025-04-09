@@ -660,6 +660,7 @@ class _TrainableModuleImpl(ModuleBase):
     def _get_train_tasks(self):
         def after_train(real_target_path):
             self._finetuned_model_path = real_target_path
+            self._after_finetune_model_path = real_target_path
             return real_target_path
         return Pipeline(*self._get_train_tasks_impl(), after_train)
 
@@ -671,6 +672,7 @@ class _TrainableModuleImpl(ModuleBase):
 
         def after_train(real_target_path):
             self._finetuned_model_path = real_target_path
+            self._after_finetune_model_path = real_target_path
             return real_target_path
         return Pipeline(*self._get_train_tasks_impl(mode='finetune', **kw), after_train)()
 
@@ -791,6 +793,7 @@ class TrainableModule(UrlModule):
 
     base_model = property(lambda self: self._impl._base_model)
     target_path = property(lambda self: self._impl._target_path)
+    after_finetune_model_path = property(lambda self: self._impl._after_finetune_model_path)
     _url_id = property(lambda self: self._impl._module_id)
 
     @property

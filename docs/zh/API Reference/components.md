@@ -12,6 +12,10 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.finetune.FlagembeddingFinetune
+    options:
+      heading_level: 3
+
 ::: lazyllm.components.auto.AutoFinetune
     options:
       heading_level: 3
