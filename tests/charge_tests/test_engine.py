@@ -151,6 +151,8 @@ class TestEngine(unittest.TestCase):
         r = engine.run(gid, '何为天道?')
         assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r or '执古之道，以御今之有' in r
 
+    @pytest.mark.skip_on_win
+    @pytest.mark.skip_on_mac
     def test_sql_call(self):
         db_type = "PostgreSQL"
         username, password, host, port, database = get_db_init_keywords(db_type)

@@ -249,7 +249,7 @@ class SentenceSplitter(NodeTransform):
         is_chunk_new = True
 
         def close_chunk() -> None:
-            nonlocal chunks, cur_chunk, cur_chunk_len, is_chunk_new
+            nonlocal cur_chunk, cur_chunk_len, is_chunk_new
 
             chunks.append(''.join([text for text, _ in cur_chunk]))
             last_chunk = cur_chunk

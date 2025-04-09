@@ -123,7 +123,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
     @property
     def required_args(self) -> Set[str]:
-        return set(self._params_schema.model_json_schema()["required"])
+        return set(self._params_schema.model_json_schema().get("required", []))
 
     def apply(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError("Implement apply function in subclass")
