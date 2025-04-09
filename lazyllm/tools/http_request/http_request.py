@@ -50,7 +50,7 @@ class HttpRequest(ModuleBase):
         params = {key: _map_input(value) for key, value in self._params.items()} if self._params else None
         headers = {key: _map_input(value) for key, value in self._headers.items()} if self._headers else None
         headers, params = self._process_api_key(headers, params)
-        if headers.get("Content-Type") == "application/json":
+        if isinstance(headers, dict) and headers.get("Content-Type") == "application/json":
             try:
                 body = json.loads(self._body) if isinstance(self._body, str) else self._body
                 body = {k: _map_input(v) for k, v in body.items()}

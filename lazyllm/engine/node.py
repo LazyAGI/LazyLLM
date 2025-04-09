@@ -6,6 +6,18 @@ from functools import partial
 
 from lazyllm.tools.http_request.http_request import HttpRequest
 
+def extract_ids(item):
+    """Recursively extract all 'id' values ​​at any level"""
+    result = []
+    if isinstance(item, dict):
+        if 'id' in item:
+            result.append(item['id'])
+        for v in item.values():
+            result.extend(extract_ids(v))
+    elif isinstance(item, (list, tuple)):
+        for sub in item:
+            result.extend(extract_ids(sub))
+    return result
 
 @dataclass
 class Node():
@@ -29,10 +41,7 @@ class Node():
             source = self.args.get(name, {} if tp == 'dict' else [])
             if tp != 'dict': source = dict(key=source)
             for s in source.values():
-                if isinstance(s, (tuple, list)):
-                    result.extend([n['id'] if isinstance(n, dict) else n for n in s])
-                else:
-                    result.append(s['id'] if isinstance(s, dict) else s)
+                result.extend(extract_ids(s))
         return result
 
 
