@@ -111,7 +111,7 @@ jobs:
          pip install -r tests/requirements.txt
          pip install -r tests/requirements_mac.txt
          export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
-         python -m pytest -v  --reruns=2 tests/basic_tests/
+         python -m pytest -v -m "not skip_on_mac" --reruns=2 tests/basic_tests/
         timeout-minutes: 30
         env :
          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}       
