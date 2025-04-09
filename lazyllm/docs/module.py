@@ -309,13 +309,153 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 # ''')
 
 add_chinese_doc('TrainableModule', '''\
-可训练的模块，所有的模型(包括llm、Embedding等)均通过TrainableModule提供服务
+可训练模块，所有模型（包括LLM、Embedding等）都通过TrainableModule提供服务
+
+<span style="font-size: 20px;">**`TrainableModule(base_model='', target_path='', *, stream=False, return_trace=False)`**</span>
+
 
 Args:
-    base_model (str): 基模型的名称或者路径，如果本地没有模型，且微调或部署的方法为finetune.auto/deploy.auto, 则会自动尝试下载
-    target_path (str): 微调任务的保存路径，如只推理，则可以不填
-    stream (bool): 是否流式输出。如果使用的推理引擎不支持流式，则此参数会被忽略
-    return_trace (bool): 是否将结果记录在trace中
+    base_model (str): 基础模型的名称或路径。如果本地没有该模型，将会自动从模型源下载。
+    target_path (str): 保存微调任务的路径。如果仅进行推理，可以留空。
+    source (str): 模型来源，可选值为huggingface或...。如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
+    stream (bool): 是否输出流式结果。如果使用的推理引擎不支持流式输出，该参数将被忽略。
+    return_trace (bool): 是否在trace中记录结果。
+
+<span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
+
+设置 TrainableModule 的训练集
+
+Args:
+    v (str): 训练/微调数据集的路径
+
+**示例:**\n
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).trainset('/file/to/path').deploy_method(None).mode('finetune')
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+```
+
+<span style="font-size: 20px;">**`TrainableModule.train_method(v, **kw):`**</span>
+
+设置 TrainableModule 的训练方法（暂不支持继续预训练，预计下一版本支持）
+
+Args:
+    v (LazyLLMTrainBase): 训练方法，可选值包括 ``train.auto`` 等
+    kw (**dict): 训练方法所需的参数，对应 v 的参数
+
+<span style="font-size: 20px;">**`TrainableModule.finetune_method(v, **kw):`**</span>
+
+设置 TrainableModule 的微调方法及其参数
+
+Args:
+    v (LazyLLMFinetuneBase): 微调方法，可选值包括 ``finetune.auto`` / ``finetune.alpacalora`` / ``finetune.collie`` 等
+    kw (**dict): 微调方法所需的参数，对应 v 的参数
+
+**示例:**\n            
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}    
+```
+
+<span style="font-size: 20px;">**`TrainableModule.deploy_method(v, **kw):`**</span>
+
+设置 TrainableModule 的部署方法及其参数
+
+Args:
+    v (LazyLLMDeployBase): 部署方法，可选值包括 ``deploy.auto`` / ``deploy.lightllm`` / ``deploy.vllm`` 等
+    kw (**dict): 部署方法所需的参数，对应 v 的参数
+
+**示例:**\n
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy).mode('finetune')
+>>> m.evalset([1, 2, 3])
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+>>> m.eval_result
+["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]                                   
+```
+
+<span style="font-size: 20px;">**`TrainableModule.mode(v):`**</span>
+
+设置 TrainableModule 在 update 时执行训练还是微调
+
+Args:
+    v (str): 设置在 update 时执行训练还是微调，可选值为 'finetune' 和 'train'，默认为 'finetune'
+
+**示例:**\n
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}            
+```
+<span style="font-size: 20px;">**`eval(*, recursive=True)`**</span>
+评估该模块（及其所有子模块）。此功能需在模块通过evalset设置评估集后生效。
+
+Args:
+    recursive (bool) :是否递归评估所有子模块，默认为True。
+
+<span style="font-size: 20px;">**`evalset(evalset, load_f=None, collect_f=<function ModuleBase.<lambda>>)`**</span>
+
+为模块设置评估集。已设置评估集的模块将在执行``update``或``eval``时进行评估，评估结果将存储在eval_result变量中。
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, collect_f=lambda x: ...)→ None `**</span>
+
+
+Args:
+    evalset (list) :评估数据集
+    collect_f (Callable) :评估结果的后处理方法，默认不进行后处理。\n
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, load_f=None, collect_f=lambda x: ...)→ None`**</span>
+
+
+Args:
+    evalset (str) :评估集路径
+    load_f (Callable) :评估集加载方法，包括文件格式解析和列表转换
+    collect_f (Callable) :评估结果后处理方法，默认不进行后处理
+
+**示例:**\n
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.evalset([1, 2, 3])
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+>>> m.eval_result
+["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]                
+```     
+
+<span style="font-size: 20px;">**`restart() `**</span>
+
+重启模块及其所有子模块
+
+**示例:**\n
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.restart()
+>>> m(1)
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+```
+
+<span style="font-size: 20px;">start() </span>
+
+部署模块及其所有子模块
+
+**示例:**\n
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.start()
+>>> m(1)
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"     
+```                
+
 ''')
 
 add_english_doc('TrainableModule', '''\
