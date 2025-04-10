@@ -118,13 +118,17 @@ class Document(ModuleBase):
             self._curr_group = DocListManager.DEFAULT_GROUP_NAME
         self._doc_kws_manager = None
 
+    def _list_all_files_in_dataset(self) -> List[str]:
+        files_list = []
+        for root, _, files in os.walk(self._manager._dataset_path):
+            files = [os.path.join(root, file_path) for file_path in files]
+            files_list.extend(files)
+        return files_list
+
     def kws_tool_init(self, llm: callable, sql_manager: SqlManager, kws_desc: List[DocKwDesc] = []):
         self._doc_kws_manager = DocKWSManager(llm=llm, sql_manager=sql_manager)
         if not kws_desc:
-            files_list = []
-            for root, _, files in os.walk(self._manager._dataset_path):
-                files = [os.path.join(root, file_path) for file_path in files]
-                files_list.extend(files)
+            files_list = self._list_all_files_in_dataset()
             if len(files_list) == 0:
                 lazyllm.LOG.warning(f"Failed to find any files in {self._manager._dataset_path}")
             else:
@@ -140,12 +144,8 @@ class Document(ModuleBase):
     def kws_tool_extract_to_db(self):
         assert self._doc_kws_manager, "Please call prepare_kws_table_schema first"
         assert self._doc_kws_manager._kws_desc, "Please call prepare_kws_table_schema or reset_kws_table_schema first"
-        files_list = []
-        for root, _, files in os.walk(self._manager._dataset_path):
-            files = [os.path.join(root, file_path) for file_path in files]
-            files_list.extend(files)
+        files_list = self._list_all_files_in_dataset()
 
-        assert self._doc_kws_manager is not None
         db_result = self._doc_kws_manager.extract_and_record_kws(files_list)
         return db_result.status == DBStatus.SUCCESS
 

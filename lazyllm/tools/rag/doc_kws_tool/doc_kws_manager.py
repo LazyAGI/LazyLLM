@@ -1,7 +1,7 @@
 from typing import List
 import lazyllm
 from lazyllm import ModuleBase
-from .doc_kws_prcoessor import DocTypeDetector, DocKWSExtractor, DocKWSGenerator, DocKwDesc, validate_kw_desc
+from .doc_kws_processor import DocTypeDetector, DocKWSExtractor, DocKWSGenerator, DocKwDesc, validate_kw_desc
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus, DBResult
 from sqlalchemy.orm import DeclarativeBase
 import sqlalchemy
@@ -105,7 +105,7 @@ class DocKWSManager:
         # use uuid as primary key
         attrs[self.UUID_COL_NAME] = sqlalchemy.Column(sqlalchemy.String(36), primary_key=True)
         attrs[self.CREATED_AT_COL_NAME] = sqlalchemy.Column(
-            sqlalchemy.DateTime, default=sqlalchemy.func.now(), nullable=False
+            sqlalchemy.DateTime, nullable=False
         )
         attrs[self.DOC_PATH_COL_NAME] = sqlalchemy.Column(
             sqlalchemy.Text, nullable=False, primary_key=False, index=True

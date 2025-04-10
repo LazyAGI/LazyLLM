@@ -83,7 +83,7 @@ class DocKWSGenerator:
     ONE_DOC_TOKEN_LIMIT = 30000
 
     def __init__(self, llm, maximum_doc_num=3):
-        self._llm_kws_generator = llm.share()
+        self._llm = llm.share()
         self._reader = DirectoryReader(None, {}, {})
         self._pattern = re.compile(r"```json(.+?)```", re.DOTALL)
         self._maximum_doc_num = maximum_doc_num
@@ -117,7 +117,7 @@ class DocKWSGenerator:
                 # in case of the list is in a dict, unpack it
                 if isinstance(kws_list, dict):
                     values = list(kws_list.values())
-                    if values == 1 and isinstance(values[0], list):
+                    if len(values) == 1 and isinstance(values[0], list):
                         return values[0]
                 if not isinstance(kws_list, list):
                     lazyllm.LOG.warning(f"Excepted original type list but got {type(kws_list)} value: {kws_list}")
@@ -136,7 +136,7 @@ class DocKWSGenerator:
             random.seed(RANDOM_SEED)
             doc_paths = random.sample(doc_paths, self._maximum_doc_num)
         first_round_query = self._gen_first_round_query(doc_type, doc_paths)
-        first_response = self._llm_kws_generator(first_round_query)
+        first_response = self._llm(first_round_query)
         kws_desc = self._extract_kws_desc_from_response(first_response)
         for kw_desc in kws_desc:
             is_success, msg = validate_kw_desc(kw_desc, DocKwDesc)
@@ -150,7 +150,7 @@ class DocKWSExtractor:
     ONE_DOC_TOKEN_LIMIT = 50000
 
     def __init__(self, llm):
-        self._llm_kws_extractor = llm.share()
+        self._llm = llm.share()
         self._reader = DirectoryReader(None, {}, {})
         self._pattern = re.compile(r"```json(.+?)```", re.DOTALL)
         self._tiktoken_tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo")
@@ -190,6 +190,6 @@ class DocKWSExtractor:
 
     def extract_kws_value(self, doc_path: str, kws_desc: List[DocKwDesc], extra_desc: str = "") -> dict:
         extraction_query = self._gen_extraction_query(doc_path, kws_desc, extra_desc)
-        response = self._llm_kws_extractor(extraction_query)
+        response = self._llm(extraction_query)
         kws_value = self._extract_kws_value_from_response(response, kws_desc)
         return kws_value

@@ -342,7 +342,7 @@ class DocImpl:
             return
         root_nodes = self._reader.load_data(input_files)
         map_file_meta = {}
-        if metadatas and len(metadatas) == input_files:
+        if metadatas:
             for file_path, metadata in zip(input_files, metadatas):
                 map_file_meta[file_path] = metadata
         for node in root_nodes:

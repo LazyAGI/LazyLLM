@@ -125,10 +125,8 @@ class TestDocKwsManager(unittest.TestCase):
             None,
             db_name="/home/mnt/zhangyongchao/workspace/gitlab/lazyllm-jinan/LazyLLM/test.db",
         )
-        embed_module = lazyllm.OnlineEmbeddingModule(source="openai", embed_url="http://10.119.20.125:36857")
         documents = lazyllm.Document(
             dataset_path=self.pdf_root,
-            embed=embed_module,
             create_ui=False,
         )
         documents.kws_tool_init(llm=self.llm, sql_manager=sql_manager)
