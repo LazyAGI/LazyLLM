@@ -193,7 +193,7 @@ class GraphDocImpl:
         return list_data
 
     def _find_related_entities(self, query: str, topk: int, similarity_cut_off: float) -> List[GraphEntityNode]:
-        entities_dict: EntityDict = self._graph_er_store.query_on_entity(query, topk, similarity_cut_off)
+        entities_dict: List[EntityDict] = self._graph_er_store.query_on_entity(query, topk, similarity_cut_off)
         related_entities = [
             self._graph_network_store.get_node(entity_dict["entity_name"]) for entity_dict in entities_dict
         ]
@@ -208,7 +208,7 @@ class GraphDocImpl:
         related_relations = [ele for ele in related_relations if ele]
         return related_relations
 
-    def _find_most_related_chunkids_from_entities(self, entities: List[GraphEntityNode]) -> List[GraphChunkNode]:
+    def _find_most_related_chunkids_from_entities(self, entities: List[GraphEntityNode]) -> List[str]:
         ed_ent = 0
         acc_token_num = 0
         selected_chunkids = set()
@@ -243,7 +243,7 @@ class GraphDocImpl:
         selected_chunkids.update(sorted_chunkids[:ed_sub_chunk])
         return list(selected_chunkids)
 
-    def _find_most_related_relations_from_entities(self, entities: List[str]) -> List[GraphRelationNode]:
+    def _find_most_related_relations_from_entities(self, entities: List[GraphEntityNode]) -> List[GraphRelationNode]:
         related_relations = self._graph_network_store.get_sorted_relations_from_entities(entities)
         truncated_related_relations = self.truncate_list_by_token_size(
             related_relations,
@@ -254,10 +254,10 @@ class GraphDocImpl:
     def _find_most_related_entities_from_relationships(
         self, relations: List[GraphRelationNode]
     ) -> List[GraphEntityNode]:
-        pass
+        raise NotImplementedError
 
     def _find_related_chunks_from_relationships(self, relationships: List[GraphRelationNode]) -> List[GraphChunkNode]:
-        pass
+        raise NotImplementedError
 
     def _generate_doc_nodes(
         self,

@@ -65,6 +65,7 @@ class BaseGraphNetworkStore(ABC):
     def get_node(self, node_id: str) -> Union[GraphEntityNode, None]:
         pass
 
+    @abstractmethod
     def get_neighbor_nodeids(self, source_node_id: str) -> List[str]:
         pass
 
@@ -142,7 +143,7 @@ class BaseGraphNetworkStore(ABC):
         # sort first order: edge degree, second order: weight
         return sorted(relations, key=lambda r: (self.edge_degree(r.src_id, r.tgt_id), r.weight), reverse=True)
 
-    def sort_entitity_chunkids(self, entity: GraphEntityNode) -> List[str]:
+    def sort_entity_chunkids(self, entity: GraphEntityNode) -> List[str]:
         # For chunks belonging to different entities, their sorting order remains consistent with the retrieval order
         # based on the query in the vector database. So we just need to sort chunks in entity.
         neighbor_entity_names = self.get_neighbor_nodeids(entity.entity_name)

@@ -51,7 +51,7 @@ class Retriever(ModuleBase, _PostProcess):
         GRAPHRAG_MIN_TOPK = 10
         ERROR_MSG_GRAPHRAG_MIN_TOPK = f'GraphRAG topk must >= {GRAPHRAG_MIN_TOPK}, got {topk}'
         for doc in self._docs:
-            assert isinstance(doc, (Document, GraphDocument)), 'Only Document or List[Document] are supported'
+            assert isinstance(doc, (Document, GraphDocument)), 'Only Document and GraphDocument are supported'
             self._submodules.append(doc)
             if isinstance(doc, GraphDocument):
                 assert topk >= GRAPHRAG_MIN_TOPK, ERROR_MSG_GRAPHRAG_MIN_TOPK

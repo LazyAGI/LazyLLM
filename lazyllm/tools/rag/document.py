@@ -53,9 +53,9 @@ class BaseDocManager(ABC, ModuleBase, metaclass=ABCModuleMeta):
         ModuleBase.__init__(self)
         self._origin_path = dataset_path
         if not os.path.exists(dataset_path):
-            defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)
-            if os.path.exists(defatult_path):
-                dataset_path = defatult_path
+            default_path = os.path.join(lazyllm.config["data_path"], dataset_path)
+            if os.path.exists(default_path):
+                dataset_path = default_path
         else:
             dataset_path = os.path.join(os.getcwd(), dataset_path)
 
@@ -109,22 +109,22 @@ class IDocument(ABC):
 
     @property
     def _impl(self):
-        self._manager.get_doc_by_kb_group(self._curr_group)
+        return self._manager.get_doc_by_kb_group(self._curr_group)
 
     @property
     def manager(self):
         return self._manager
 
     @DynamicDescriptor
-    def add_reader(self, pattern: str, func: Optional[Callable] = None):
+    def add_reader(self, pattern: str, func: Optional[Callable] = None) -> Callable:
         if isinstance(self, type):
             # Call class register method
             return self._impl.register_global_reader(pattern=pattern, func=func)
         else:
-            self._impl.add_reader(pattern, func)
+            return self._impl.add_reader(pattern, func)
 
     @classmethod
-    def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
+    def register_global_reader(cls, pattern: str, func: Optional[Callable] = None) -> Callable:
         return cls.add_reader(pattern, func)
 
     def _forward(self, func_name: str, *args, **kw):

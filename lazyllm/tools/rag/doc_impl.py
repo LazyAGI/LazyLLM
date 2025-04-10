@@ -263,10 +263,10 @@ class DocImpl:
                                         trans_node=trans_node, num_workers=num_workers, **kwargs)
 
     @classmethod
-    def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
+    def register_global_reader(cls, pattern: str, func: Optional[Callable] = None) -> Callable:
         if func is not None:
             cls._registered_file_reader[pattern] = func
-            return None
+            return func
 
         def decorator(klass):
             if callable(klass): cls._registered_file_reader[pattern] = klass
@@ -287,9 +287,10 @@ class DocImpl:
         else:
             self.index_pending_registrations.append((index_type, index_cls, args, kwargs))
 
-    def add_reader(self, pattern: str, func: Optional[Callable] = None):
+    def add_reader(self, pattern: str, func: Optional[Callable] = None) -> Callable:
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
+        return func
 
     def worker(self):
         is_first_run = True
