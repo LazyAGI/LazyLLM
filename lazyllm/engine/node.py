@@ -7,6 +7,17 @@ from functools import partial
 from lazyllm.tools.http_request.http_request import HttpRequest
 
 
+def extract_all_ids(data) -> list[str]:
+    """Recursively extract all 'id' fields in any nested structure"""
+    result = []
+
+    if isinstance(data, (list, tuple)):
+        result.extend([x for item in data for x in extract_all_ids(item)])
+    else:
+        result.append(data['id'] if isinstance(data, dict) else data)
+
+    return result
+
 @dataclass
 class Node():
     id: str
@@ -29,10 +40,7 @@ class Node():
             source = self.args.get(name, {} if tp == 'dict' else [])
             if tp != 'dict': source = dict(key=source)
             for s in source.values():
-                if isinstance(s, (tuple, list)):
-                    result.extend([n['id'] if isinstance(n, dict) else n for n in s])
-                else:
-                    result.append(s['id'] if isinstance(s, dict) else s)
+                result.extend(extract_all_ids(s))
         return result
 
 
