@@ -52,7 +52,7 @@ class TestFinetune(object):
             .mode('finetune').trainset(self.embed_data)\
             .finetune_method(finetune.flagembedding)
         m.update()
-        assert self.has_bin_file(m.after_finetune_model_path)
+        assert self.has_bin_file(m.finetuned_model_path)
         res = m('你好啊')
         vect = json.loads(res)
         assert type(vect) is list
@@ -63,7 +63,7 @@ class TestFinetune(object):
             .mode('finetune').trainset(self.rerank_data)\
             .finetune_method(finetune.flagembedding)
         m.update()
-        assert self.has_bin_file(m.after_finetune_model_path)
+        assert self.has_bin_file(m.finetuned_model_path)
         res = m('hi', documents=['go', 'hi', 'hello', 'how'], top_n=2)
         assert type(res) is list
         assert len(res) == 2
