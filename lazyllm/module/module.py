@@ -719,7 +719,7 @@ class _TrainableModuleImpl(ModuleBase):
             elif self._specific_target_path:
                 target_path = self._specific_target_path
             else:
-                target_path = ''
+                target_path = self._target_path
             return lazyllm.package(target_path, self._base_model)
         if hasattr(self._deployer, '_prepare_deploy'):
             self._prepare_deploy = self._deployer._prepare_deploy
