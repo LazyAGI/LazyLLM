@@ -129,8 +129,10 @@ class TestDocKwsManager(unittest.TestCase):
             dataset_path=self.pdf_root,
             create_ui=False,
         )
-        documents.kws_tool_init(llm=self.llm, sql_manager=sql_manager)
-        refined_desc = [
+        documents.connect_db(sql_manager=sql_manager)
+        schema_by_llm = documents.extract_db_schema(llm=self.llm, print_schema=True)
+        assert schema_by_llm
+        refined_schema = [
             {"key": "reading_time", "desc": "The date or time period when the book was read.", "type": "text"},
             {"key": "document_title", "desc": "The title of the book being reviewed.", "type": "text"},
             {"key": "author_name", "desc": "The name of the author of the book.", "type": "text"},
@@ -146,10 +148,8 @@ class TestDocKwsManager(unittest.TestCase):
             {"key": "insights", "desc": "The reader's insights on the book's content.", "type": "text"},
             {"key": "reflections", "desc": "The reader's reflections on the book's content.", "type": "text"},
         ]
-        documents.kws_tool_reset_schema(refined_desc)
-        print(f"Get desc: {documents._doc_to_db_handler.doc_info_schema}")
-        documents.kws_tool_extract_to_db()
-
+        documents.set_db_schema(refined_schema)
+        documents.get_doc_db_handler().update(llm=self.llm)
 
 if __name__ == "__main__":
     unittest.main()
