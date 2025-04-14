@@ -2,13 +2,14 @@ import os
 
 from typing import Callable, Optional, Dict, Union, List
 import lazyllm
-from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated
+from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 
 from .doc_manager import DocManager
-from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
-from .doc_kws_tool import DocKWSManager, DocKwDesc
+from lazyllm.tools.sql.sql_manager import SqlManager
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder
+from .doc_db_handler import DocDbHandler
+from .doc_to_db import DocInfoSchema
 from .doc_node import DocNode
 from .index_base import IndexBase
 from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
@@ -116,7 +117,7 @@ class Document(ModuleBase):
             self._manager = Document._Manager(dataset_path, embed, create_ui or manager, server, name,
                                               launcher, store_conf, doc_fields)
             self._curr_group = DocListManager.DEFAULT_GROUP_NAME
-        self._doc_kws_manager = None
+        self._doc_to_db_handler = None
 
     def _list_all_files_in_dataset(self) -> List[str]:
         files_list = []
@@ -125,29 +126,23 @@ class Document(ModuleBase):
             files_list.extend(files)
         return files_list
 
-    def kws_tool_init(self, llm: callable, sql_manager: SqlManager, kws_desc: List[DocKwDesc] = []):
-        self._doc_kws_manager = DocKWSManager(llm=llm, sql_manager=sql_manager)
-        if not kws_desc:
-            files_list = self._list_all_files_in_dataset()
-            if len(files_list) == 0:
-                lazyllm.LOG.warning(f"Failed to find any files in {self._manager._dataset_path}")
-            else:
-                self._doc_kws_manager.analyse_and_init_kws_desc(files_list)
-        else:
-            self._doc_kws_manager.set_kws_desc(kws_desc)
+    def connect_db(self, sql_manager: SqlManager):
+        self._doc_to_db_handler = DocDbHandler()
+        self._doc_to_db_handler.post_init(self, sql_manager)
 
-    def kws_tool_reset_schema(self, kws_desc: List[DocKwDesc]):
-        # Alert, set_kws_table_schema will drop old result in db
-        assert self._doc_kws_manager, "Please call prepare_kws_table_schema first"
-        self._doc_kws_manager.set_kws_desc(kws_desc)
+    def extract_db_schema(
+        self, llm: Union[OnlineChatModule, TrainableModule], print_schema: bool = False
+    ) -> DocInfoSchema:
+        assert self._doc_to_db_handler, "Please call connect_db to init handler first"
+        return self._doc_to_db_handler.extract_db_schema(llm, print_schema)
 
-    def kws_tool_extract_to_db(self):
-        assert self._doc_kws_manager, "Please call prepare_kws_table_schema first"
-        assert self._doc_kws_manager._kws_desc, "Please call prepare_kws_table_schema or reset_kws_table_schema first"
-        files_list = self._list_all_files_in_dataset()
+    def get_doc_db_handler(self):
+        return self._doc_to_db_handler
 
-        db_result = self._doc_kws_manager.extract_and_record_kws(files_list)
-        return db_result.status == DBStatus.SUCCESS
+    # This function will clear existing db table "lazyllm_doc_elements"
+    def set_db_schema(self, db_schema: DocInfoSchema) -> bool:
+        assert self._doc_to_db_handler, "Please call connect_db to init handler first"
+        self._doc_to_db_handler.clear_and_reset_db_schema(db_schema)
 
     @deprecated('Document(dataset_path, manager=doc.manager, name=xx, doc_fields=xx, store_conf=xx)')
     def create_kb_group(self, name: str, doc_fields: Optional[Dict[str, DocField]] = None,

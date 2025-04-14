@@ -1,6 +1,6 @@
 import unittest
 import lazyllm
-from lazyllm.tools.rag.doc_kws_tool import DocKWSGenerator, DocKWSExtractor, DocKWSManager
+from lazyllm.tools.rag.doc_to_db import DocInfoSchemaAnalyser, DocInfoExtractor, DocToDbProcessor
 from lazyllm.tools import SqlManager
 from pathlib import Path
 
@@ -11,8 +11,8 @@ class TestDocKwsManager(unittest.TestCase):
     def setUpClass(cls):
         cls.llm = lazyllm.OnlineChatModule(source="qwen")
         cls.pdf_root = "/mnt/lustre/share_data/lazyllm/data/rag_master/default/__data/pdfs"
-        cls.doc_kws_generator = DocKWSGenerator(cls.llm)
-        cls.doc_kws_extractor = DocKWSExtractor(cls.llm)
+        cls.doc_kws_generator = DocInfoSchemaAnalyser(cls.llm)
+        cls.doc_kws_extractor = DocInfoExtractor(cls.llm)
         cls.kws_desc_egs01 = [
             {"key": "reader_name", "desc": "The name of the person who wrote the reading report.", "type": "text"},
             {"key": "reading_date", "desc": "The date or time period when the reading was conducted.", "type": "text"},
@@ -62,7 +62,7 @@ class TestDocKwsManager(unittest.TestCase):
         }
 
     def test_kws_gen(self):
-        kws_desc = self.doc_kws_generator.gen_kws_template(
+        kws_desc = self.doc_kws_generator.analyse_info_schema(
             "reading report",
             [
                 str(Path(self.pdf_root, "reading_report_p1.pdf")),
@@ -73,7 +73,7 @@ class TestDocKwsManager(unittest.TestCase):
         assert kws_desc, "kws_desc is empty"
 
     def test_kws_extract(self):
-        res = self.doc_kws_extractor.extract_kws_value(
+        res = self.doc_kws_extractor.extract_doc_info(
             str(Path(self.pdf_root, "reading_report_p2.pdf")), self.kws_desc_egs01
         )
         lazyllm.LOG.info(f"res: \n{res}")
@@ -88,12 +88,12 @@ class TestDocKwsManager(unittest.TestCase):
             None,
             db_name=":memory:",
         )
-        doc_kws_manager: DocKWSManager = DocKWSManager(self.llm, sql_manager)
+        doc_kws_manager: DocToDbProcessor = DocToDbProcessor(self.llm, sql_manager)
         kws_values_temp = self.kws_value_egs01.copy()
         kws_values_temp["lazyllm_doc_path"] = str(Path(self.pdf_root, "reading_report_p2.pdf"))
-        doc_kws_manager.set_kws_desc(self.kws_desc_egs01)
+        doc_kws_manager.reset_doc_info_schema(self.kws_desc_egs01)
         assert doc_kws_manager._table_class is not None
-        doc_kws_manager.export_kws_values_to_db([kws_values_temp])
+        doc_kws_manager.export_info_to_db([kws_values_temp])
 
     def test_kws_manager_auto_extract(self):
         sql_manager = SqlManager(
@@ -104,9 +104,9 @@ class TestDocKwsManager(unittest.TestCase):
             None,
             db_name=":memory:",
         )
-        doc_kws_manager: DocKWSManager = DocKWSManager(self.llm, sql_manager)
+        doc_kws_manager: DocToDbProcessor = DocToDbProcessor(self.llm, sql_manager)
         file_paths = list(Path(self.pdf_root).glob("*.pdf"))
-        doc_kws_manager.auto_export_docs_to_sql(file_paths)
+        doc_kws_manager.auto_docs_to_sql(file_paths)
         str_result = sql_manager.execute_query(f"select * from {doc_kws_manager.table_name}")
         print(f"str_result: {str_result}")
         assert "reading_report_p1" in str_result
@@ -147,7 +147,7 @@ class TestDocKwsManager(unittest.TestCase):
             {"key": "reflections", "desc": "The reader's reflections on the book's content.", "type": "text"},
         ]
         documents.kws_tool_reset_schema(refined_desc)
-        print(f"Get desc: {documents._doc_kws_manager.kws_desc}")
+        print(f"Get desc: {documents._doc_to_db_handler.doc_info_schema}")
         documents.kws_tool_extract_to_db()
 
 
