@@ -116,7 +116,7 @@ class TestDocKwsManager(unittest.TestCase):
         print(f"str_result: {str_result}")
         assert "reading_report_p1" not in str_result
 
-    def test_document_kws_api(self):
+    def test_doc_to_db(self):
         sql_manager = SqlManager(
             "SQLite",
             None,
