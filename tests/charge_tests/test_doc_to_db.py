@@ -129,7 +129,8 @@ class TestDocKwsManager(unittest.TestCase):
             dataset_path=self.pdf_root,
             create_ui=False,
         )
-        documents.connect_db(sql_manager=sql_manager)
+        # It will run several minutes until update_doc_to_db done
+        documents.set_doc_to_db_connection(sql_manager=sql_manager, llm=self.llm)
         schema_by_llm = documents.extract_db_schema(llm=self.llm, print_schema=True)
         assert schema_by_llm
         refined_schema = [
@@ -148,8 +149,14 @@ class TestDocKwsManager(unittest.TestCase):
             {"key": "insights", "desc": "The reader's insights on the book's content.", "type": "text"},
             {"key": "reflections", "desc": "The reader's reflections on the book's content.", "type": "text"},
         ]
-        documents.set_db_schema(refined_schema)
-        documents.get_doc_db_handler().update(llm=self.llm)
+        documents.set_doc_to_db_connection(
+            sql_manager=sql_manager,
+            llm=self.llm,
+            doc_table_schma=refined_schema,
+            force_refresh=True,
+            export_doc_instantly=False,
+        )
+        documents.update_doc_to_db(llm=self.llm)
 
 if __name__ == "__main__":
     unittest.main()
