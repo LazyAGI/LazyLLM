@@ -625,7 +625,7 @@ class _TrainableModuleImpl(ModuleBase):
         self._delimiter = '-LazySplit-'
         self._deployer = None
         self._file_name = None
-        self._specific_target_path = None
+        self._specific_target_path = target_path or None
         self._train, self._finetune = train, finetune
         self.deploy_method(deploy)
         self._prepare_deploy = lambda target_path, base_model: lazyllm.package(target_path, base_model)
@@ -719,7 +719,7 @@ class _TrainableModuleImpl(ModuleBase):
             elif self._specific_target_path:
                 target_path = self._specific_target_path
             else:
-                target_path = self._target_path
+                target_path = ''
             return lazyllm.package(target_path, self._base_model)
         if hasattr(self._deployer, '_prepare_deploy'):
             self._prepare_deploy = self._deployer._prepare_deploy
