@@ -98,9 +98,9 @@ class TrainServer(ServerBase):
             return
 
     def _get_save_path(self, model):
-        if not hasattr(model._impl, '_finetuned_model_path'):
+        if not hasattr(model._impl, '_temp_finetuned_model_path'):
             return None
-        return model._impl._finetuned_model_path
+        return model._impl._temp_finetuned_model_path
 
     def _get_log_path(self, model):
         log_dir = self._get_save_path(model)

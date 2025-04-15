@@ -625,7 +625,7 @@ class _TrainableModuleImpl(ModuleBase):
         self._delimiter = '-LazySplit-'
         self._deployer = None
         self._file_name = None
-        self._specific_target_path = None
+        self._specific_target_path = target_path or None
         self._train, self._finetune = train, finetune
         self.deploy_method(deploy)
         self._prepare_deploy = lambda target_path, base_model: lazyllm.package(target_path, base_model)
@@ -659,6 +659,7 @@ class _TrainableModuleImpl(ModuleBase):
 
     def _get_train_tasks(self):
         def after_train(real_target_path):
+            self._temp_finetuned_model_path = real_target_path
             self._finetuned_model_path = real_target_path
             return real_target_path
         return Pipeline(*self._get_train_tasks_impl(), after_train)
@@ -670,6 +671,7 @@ class _TrainableModuleImpl(ModuleBase):
         self._set_file_name(name)
 
         def after_train(real_target_path):
+            self._temp_finetuned_model_path = real_target_path
             self._finetuned_model_path = real_target_path
             return real_target_path
         return Pipeline(*self._get_train_tasks_impl(mode='finetune', **kw), after_train)()
@@ -711,9 +713,9 @@ class _TrainableModuleImpl(ModuleBase):
             self._deployer = self._deploy(stream=bool(self._stream), **self._deploy_args)
 
         def before_deploy(*no_use_args):
-            if hasattr(self, '_finetuned_model_path') and self._finetuned_model_path:
-                target_path = self._finetuned_model_path
-                self._finetuned_model_path = None
+            if hasattr(self, '_temp_finetuned_model_path') and self._temp_finetuned_model_path:
+                target_path = self._temp_finetuned_model_path
+                self._temp_finetuned_model_path = None
             elif self._specific_target_path:
                 target_path = self._specific_target_path
             else:
@@ -791,6 +793,7 @@ class TrainableModule(UrlModule):
 
     base_model = property(lambda self: self._impl._base_model)
     target_path = property(lambda self: self._impl._target_path)
+    finetuned_model_path = property(lambda self: self._impl._finetuned_model_path)
     _url_id = property(lambda self: self._impl._module_id)
 
     @property

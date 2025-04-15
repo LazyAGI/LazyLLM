@@ -26,6 +26,7 @@ class Infinity(LazyLLMDeployBase):
             'batch-size': 256,
         })
         self._model_type = model_type
+        kw.pop('stream', '')
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] else True
         if self._model_type == "reranker":

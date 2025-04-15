@@ -1,4 +1,5 @@
 import os
+import json
 import shutil
 import pytest
 
@@ -9,8 +10,12 @@ from lazyllm.launcher import cleanup
 class TestFinetune(object):
 
     def setup_method(self):
-        self.data = 'alpaca/alpaca_data_zh_128.json'
-        self.model_path = 'qwen1.5-0.5b-chat'
+        self.llm_data = 'alpaca/alpaca_data_zh_128.json'
+        self.llm_path = 'qwen1.5-0.5b-chat'
+        self.embed_data = os.path.join(lazyllm.config['data_path'], 'sft_embeding/embedding.json')
+        self.embed_path = 'bge-m3'
+        self.rerank_data = os.path.join(lazyllm.config['data_path'], 'sft_embeding/rerank.jsonl')
+        self.rerank_path = 'bge-reranker-large'
         self.save_path = os.path.join(os.getcwd(), '.temp')
 
     @pytest.fixture(autouse=True)
@@ -32,12 +37,34 @@ class TestFinetune(object):
 
     def test_finetune_llamafactory(self):
         ppl = lazyllm.pipeline(
-            lambda: 'alpaca/alpaca_data_zh_128.json',
+            lambda: self.llm_data,
             finetune.llamafactory(
-                base_model='qwen1.5-0.5b-chat',
+                base_model=self.llm_path,
                 target_path=self.save_path,
             )
         )
         ppl()
         assert self.has_bin_file(os.path.join(self.save_path, 'lazyllm_lora'))
         assert self.has_bin_file(os.path.join(self.save_path, 'lazyllm_merge'))
+
+    def test_finetune_embedding(self):
+        m = lazyllm.TrainableModule(self.embed_path, self.save_path)\
+            .mode('finetune').trainset(self.embed_data)\
+            .finetune_method(finetune.flagembedding)
+        m.update()
+        assert self.has_bin_file(m.finetuned_model_path)
+        res = m('你好啊')
+        vect = json.loads(res)
+        assert type(vect) is list
+        assert len(vect) == 1024
+
+    def test_finetune_reranker(self):
+        m = lazyllm.TrainableModule(self.rerank_path, self.save_path)\
+            .mode('finetune').trainset(self.rerank_data)\
+            .finetune_method(finetune.flagembedding)
+        m.update()
+        assert self.has_bin_file(m.finetuned_model_path)
+        res = m('hi', documents=['go', 'hi', 'hello', 'how'], top_n=2)
+        assert type(res) is list
+        assert len(res) == 2
+        assert type(res[0]) is tuple
