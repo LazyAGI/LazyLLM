@@ -92,8 +92,8 @@ class SenseVoiceDeploy(object):
         if not finetuned_model:
             finetuned_model = base_model
         elif not os.path.exists(finetuned_model) or \
-            not any(filename.endswith('.pt', '.bin', '.safetensors')
-                    for _, _, filename in os.walk(finetuned_model) if filename):
+            not any(file.endswith(('.pt', '.bin', '.safetensors'))
+                    for _, _, filenames in os.walk(finetuned_model) for file in filenames):
             LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                         f"base_model({base_model}) will be used")
             finetuned_model = base_model
