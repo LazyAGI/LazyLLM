@@ -1,3 +1,5 @@
+import importlib.util
+
 from typing import Any
 from urllib.parse import urlparse
 from contextlib import asynccontextmanager
@@ -26,7 +28,17 @@ class MCPClient(object):
     @asynccontextmanager
     async def _run_session(self):
         if urlparse(self._command_or_url).scheme in ("http", "https"):
-            async with mcp.client.sse.sse_client(
+            spec = importlib.util.find_spec("mcp.client.sse")
+            if spec is None:
+                raise ImportError(
+                    "Please install mcp to use mcp module. "
+                    "You can install it with `pip install mcp`"
+                )
+            sse_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(sse_module)
+            sse_client = sse_module.sse_client
+
+            async with sse_client(
                 url=self._command_or_url,
                 headers=self._headers,
                 timeout=self._timeout
