@@ -154,8 +154,8 @@ class MilvusStore(StoreBase):
 
             schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_field=False)
             self._client.create_collection(collection_name=group, schema=schema, index_params=index_params)
-
-        self._map_store = MapStore(node_groups=list(group_embed_keys.keys()), embed=embed)
+        valid_group_names = set(self._client.list_collections()) | set(group_embed_keys.keys())
+        self._map_store = MapStore(list(valid_group_names), embed=embed)
         self._load_all_nodes_to(self._map_store)
 
     @override
