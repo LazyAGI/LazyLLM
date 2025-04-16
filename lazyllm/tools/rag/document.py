@@ -8,9 +8,8 @@ from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from .doc_manager import DocManager
 from lazyllm.tools.sql.sql_manager import SqlManager
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder
-from .doc_db_handler import DocDbHandler
-from .doc_to_db import DocInfoSchema
 from .doc_node import DocNode
+from .doc_to_db import DocInfoSchema, DocToDbProcessor
 from .index_base import IndexBase
 from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .utils import DocListManager
@@ -18,11 +17,38 @@ from .global_metadata import GlobalMetadataDesc as DocField
 from .web import DocWebModule
 import copy
 import functools
+import weakref
 
 
 class CallableDict(dict):
     def __call__(self, cls, *args, **kw):
         return self[cls](*args, **kw)
+
+class DocDbHandler:
+    def __init__(self, document: "Document", sql_manager: SqlManager):
+        # use weakref to avoid circular reference
+        self._wref_document = weakref.ref(document)
+        self._processor = DocToDbProcessor(sql_manager=sql_manager)
+
+    def update(self, llm: Union[OnlineChatModule, TrainableModule]):
+        file_paths = self._wref_document()._list_all_files_in_dataset()
+        info_dicts = self._processor.extract_info_from_docs(llm, file_paths)
+        self._processor.export_info_to_db(info_dicts)
+
+    def extract_db_schema(
+        self, llm: Union[OnlineChatModule, TrainableModule], print_schema: bool = False
+    ) -> DocInfoSchema:
+        file_paths = self._wref_document()._list_all_files_in_dataset()
+        return self._processor.analyze_info_schema_wo_genre_by_llm(llm, file_paths)
+
+    def clear_and_reset_db_schema(self, db_info_schema: DocInfoSchema):
+        self._processor.reset_doc_info_schema(db_info_schema)
+
+    def get_manager(self):
+        if self._sql_manager is None:
+            raise Exception("SqlManager is not initialized")
+        return self._sql_manager
+
 
 class Document(ModuleBase):
     class _Manager(ModuleBase):
@@ -132,37 +158,42 @@ class Document(ModuleBase):
         llm: Union[OnlineChatModule, TrainableModule],
         doc_table_schma: Optional[DocInfoSchema] = None,
         force_refresh: bool = True,
-        export_doc_instantly: bool = False
+        export_doc_instantly: bool = False,
     ):
+        # 1. Check valid arguments
+        pre_doc_table_schema = None
+        if self._doc_to_db_handler and self._doc_to_db_handler._processor:
+            pre_doc_table_schema = self._doc_to_db_handler._processor.doc_info_schema
+        assert pre_doc_table_schema or doc_table_schma, "doc_table_schma must be given"
+        assert (
+            doc_table_schma == pre_doc_table_schema or force_refresh is True
+        ), "When changing doc_table_schema, force_refresh should be set to True"
+
+        # 2. Init handler if needed
         need_init_handler = False
         if self._doc_to_db_handler is None:
             need_init_handler = True
         else:
-            # avoid reinit schema for the same db
-            if self._doc_to_db_handler._sql_manager._gen_conn_url() != sql_manager._gen_conn_url():
+            # avoid reinit for the same db
+            if self._doc_to_db_handler._processor.sql_manager._gen_conn_url() != sql_manager._gen_conn_url():
                 need_init_handler = True
         if need_init_handler:
-            # Change db
-            self._doc_to_db_handler = DocDbHandler()
-            self._doc_to_db_handler.post_init(self, sql_manager)
-        else:
-            # Only change schema
-            if doc_table_schma is not None and force_refresh is False:
-                raise ValueError("When reset schema, force_refresh should be set to True")
-        if doc_table_schma is None:
-            doc_table_schma = self._doc_to_db_handler.extract_db_schema(llm=llm)
-        if not doc_table_schma:
-            raise RuntimeError("Can not extract db schema from llm, please try again")
-        # This api call will clear existing db table "lazyllm_doc_elements"
-        self._doc_to_db_handler.clear_and_reset_db_schema(doc_table_schma)
+            self._doc_to_db_handler = DocDbHandler(self, sql_manager)
+
+        # 3. Reset doc_table_schema if needed
+        if doc_table_schma and doc_table_schma != pre_doc_table_schema:
+            # This api call will clear existing db table "lazyllm_doc_elements"
+            self._doc_to_db_handler.clear_and_reset_db_schema(doc_table_schma)
+
+        # 4. export doc if needed
         if export_doc_instantly:
             self._doc_to_db_handler.update(llm=llm)
 
     def extract_db_schema(
         self, llm: Union[OnlineChatModule, TrainableModule], print_schema: bool = False
     ) -> DocInfoSchema:
-        assert self._doc_to_db_handler, "Please call connect_db to init handler first"
-        return self._doc_to_db_handler.extract_db_schema(llm, print_schema)
+        tmp_handler = DocDbHandler(self, None)
+        return tmp_handler.extract_db_schema(llm, print_schema)
 
     def update_doc_to_db(self, llm: Union[OnlineChatModule, TrainableModule]):
         assert self._doc_to_db_handler, "Please call connect_db to init handler first"
