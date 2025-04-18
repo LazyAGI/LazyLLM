@@ -78,6 +78,8 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             data = resp['choices'][0]
             content = data.get('delta', '') if 'delta' in data else data.get('message', '')
             message = {"role": data.pop("role"), "content": content}
+            if 'reasoning_content' in data:
+                message['reasoning_content'] = data.pop('reasoning_content')
             data["delta" if "delta" in data else "message"] = message
 
             if "tool_calls" in data:

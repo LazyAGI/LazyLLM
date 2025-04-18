@@ -367,7 +367,7 @@ class WebModule(ModuleBase):
                         suffix = os.path.splitext(url)[-1].lower()
                         if suffix in PIL.Image.registered_extensions().keys() and os.path.exists(url):
                             result = result.replace(url, "file=" + url)
-                    chat_history[-1][1] += result
+                    chat_history[-1][1] = result
         except requests.RequestException as e:
             chat_history = None
             log = str(e)
