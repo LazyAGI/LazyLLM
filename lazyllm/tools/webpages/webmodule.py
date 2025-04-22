@@ -357,17 +357,19 @@ class WebModule(ModuleBase):
                     chat_history.append([None, result])
             else:
                 assert isinstance(result, str), f'Result should only be str, but got {type(result)}'
-                if not contains_markdown_image(result):
-                    count = (len(match.group(1)) if (match := re.search(r'(\n+)$', result)) else 0) + len(result) + 1
-                    if result and not (result in chat_history[-1][1][-count:]):
-                        chat_history[-1][1] += "\n\n" + result
-                else:
-                    urls = extract_img_path(result)
+                show_result = result
+                if contains_markdown_image(show_result):
+                    urls = extract_img_path(show_result)
                     for url in urls:
                         suffix = os.path.splitext(url)[-1].lower()
                         if suffix in PIL.Image.registered_extensions().keys() and os.path.exists(url):
-                            result = result.replace(url, "file=" + url)
-                    chat_history[-1][1] += result
+                            show_result = show_result.replace(url, "file=" + url)
+                if result:
+                    count = (len(match.group(1)) if (match := re.search(r'(\n+)$', result)) else 0) + len(result) + 1
+                    if not (result in chat_history[-1][1][-count:]):
+                        chat_history[-1][1] += "\n\n" + result
+                    elif show_result != result:
+                        chat_history[-1][1] = chat_history[-1][1].replace(result, show_result)
         except requests.RequestException as e:
             chat_history = None
             log = str(e)

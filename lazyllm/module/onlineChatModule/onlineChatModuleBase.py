@@ -150,10 +150,14 @@ class OnlineChatModuleBase(ModuleBase):
             if stream_output:
                 color = stream_output.get('color') if isinstance(stream_output, dict) else None
                 for item in message.get("choices", []):
-                    delta = item.get("delta", {})
-                    content = delta.get("content", '')
-                    if content and "tool_calls" not in delta:
-                        FileSystemQueue().enqueue(lazyllm.colored_text(content, color))
+                    reasoning_content = item.get("reasoning_content", '')
+                    if reasoning_content:
+                        content = reasoning_content
+                    else:
+                        delta = item.get("delta", {})
+                        content = delta.get("content", '')
+                        if content and "tool_calls" not in delta:
+                            FileSystemQueue().enqueue(lazyllm.colored_text(content, color))
             lazyllm.LOG.debug(f"message: {message}")
             return message
         except Exception:
@@ -162,7 +166,10 @@ class OnlineChatModuleBase(ModuleBase):
     def _get_benchmark_data(self, data: Dict[str, Any]):
         if "choices" in data and isinstance(data["choices"], list):
             item = data['choices'][0]
-            return item.get("delta", {}) if "delta" in item else item.get("message", {})
+            outputs = item.get("message", item.get("delta", {}))
+            if 'reasoning_content' in outputs and 'content' in outputs:
+                outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
+            return outputs
         else:
             raise ValueError(f"The response {data} does not contain a 'choices' field.")
 
