@@ -52,8 +52,8 @@ class BuiltinGroups(object):
         def __str__(self): return self.name
 
     CoarseChunk = Struct('CoarseChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=1024, chunk_overlap=100)))
-    MediumChunk = Struct('MediumChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=1024, chunk_overlap=100)))
-    FineChunk = Struct('FineChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=1024, chunk_overlap=100)))
+    MediumChunk = Struct('MediumChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
+    FineChunk = Struct('FineChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
 
 
 class DocImpl:
