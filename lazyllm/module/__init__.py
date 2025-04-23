@@ -12,8 +12,12 @@ lazyllm.config.add("openai_api_key", str, "", "OPENAI_API_KEY")
 lazyllm.config.add("kimi_api_key", str, "", "KIMI_API_KEY")
 # glm api key
 lazyllm.config.add("glm_api_key", str, "", "GLM_API_KEY")
+# glm model name
+lazyllm.config.add("glm_model_name", str, "", "GLM_MODEL_NAME")
 # qwen api key
 lazyllm.config.add("qwen_api_key", str, "", "QWEN_API_KEY")
+# qwen model name
+lazyllm.config.add("qwen_model_name", str, "", "QWEN_MODEL_NAME")
 # sensenova ak sk
 lazyllm.config.add("sensenova_api_key", str, "", "SENSENOVA_API_KEY")
 lazyllm.config.add("sensenova_secret_key", str, "", "SENSENOVA_SECRET_KEY")

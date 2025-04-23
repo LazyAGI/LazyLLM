@@ -26,7 +26,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                                       model_series="QWEN",
                                       api_key=api_key or lazyllm.config['qwen_api_key'],
                                       base_url=base_url,
-                                      model_name=model,
+                                      model_name=lazyllm.config['qwen_model_name'] or model,
                                       stream=stream,
                                       trainable_models=QwenModule.TRAINABLE_MODEL_LIST,
                                       return_trace=return_trace,
