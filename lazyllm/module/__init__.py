@@ -19,6 +19,8 @@ lazyllm.config.add("sensenova_api_key", str, "", "SENSENOVA_API_KEY")
 lazyllm.config.add("sensenova_secret_key", str, "", "SENSENOVA_SECRET_KEY")
 # doubao api key
 lazyllm.config.add("doubao_api_key", str, "", "DOUBAO_API_KEY")
+# doubao model name
+lazyllm.config.add("doubao_model_name", str, "", "DOUBAO_MODEL_NAME")
 # deepseek api key
 lazyllm.config.add("deepseek_api_key", str, "", "DEEPSEEK_API_KEY")
 # https proxy
