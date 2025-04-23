@@ -230,7 +230,7 @@ class GraphDocImpl:
         if ed_ent == len(entities):
             return list(selected_chunkids)
         # Else truncate entities[ed].chunk_ids before adding to selected chunkids
-        sorted_chunkids = self._graph_network_store.sort_entitity_chunkids(entities[ed_ent])
+        sorted_chunkids = self._graph_network_store.sort_entity_chunkids(entities[ed_ent])
         ed_sub_chunk = 0
         while ed_sub_chunk < len(sorted_chunkids):
             cid = sorted_chunkids[ed_sub_chunk]
@@ -254,10 +254,34 @@ class GraphDocImpl:
     def _find_most_related_entities_from_relationships(
         self, relations: List[GraphRelationNode]
     ) -> List[GraphEntityNode]:
-        raise NotImplementedError
+        related_entities = self._graph_network_store.get_sorted_entities_from_relations(relations)
+        truncated_related_entities = self.truncate_list_by_token_size(
+            related_entities,
+            key=lambda x: x.description,
+        )
+        return truncated_related_entities
 
-    def _find_related_chunks_from_relationships(self, relationships: List[GraphRelationNode]) -> List[GraphChunkNode]:
-        raise NotImplementedError
+    def _find_most_related_chunks_from_relationships(self, relationships: List[GraphRelationNode]) -> List[GraphChunkNode]:
+        ed_relation = 0
+        acc_token_num = 0
+        selected_chunkids = set()
+        related_chunks: List[GraphChunkNode] = []
+        while ed_relation < len(relationships):
+            token_num_cur_relation = 0
+            for cid in relationships[ed_relation].source_chunk_ids:
+                if cid not in selected_chunkids:
+                    chunk = self._graph_chunk_store.get_chunk(cid)
+                    if not chunk:
+                        continue
+                    related_chunks.append(chunk)
+                    token_num_cur_relation += chunk.tokens
+            if acc_token_num + token_num_cur_relation <= self.TRUNKCATE_MAX_TOKEN_NUM:
+                acc_token_num += token_num_cur_relation
+                selected_chunkids.update(relationships[ed_relation].source_chunk_ids)
+            else:
+                break
+            ed_relation += 1
+        return related_chunks
 
     def _generate_doc_nodes(
         self,
@@ -291,8 +315,11 @@ class GraphDocImpl:
         related_relations: List[GraphRelationNode] = self._find_most_related_relations_from_entities(related_eneities)
         return self._generate_doc_nodes(related_eneities, related_relations, related_chunks)
 
-    def _retrieve_global(self, hl_keywords: str):
-        raise NotImplementedError
+    def _retrieve_global(self, hl_keywords: str, topk: int, similarity_cut_off: float):
+        related_relations: List[GraphRelationNode] = self._find_related_relations(hl_keywords, topk, similarity_cut_off)
+        related_eneities: List[GraphEntityNode] = self._find_most_related_entities_from_relationships(related_relations)
+        related_chunks: List[GraphChunkNode] = self._find_most_related_chunks_from_relationships(related_relations)
+        return self._generate_doc_nodes(related_eneities, related_relations, related_chunks)
 
     def retrieve(self, query: str, topk: int = 30, similarity_cut_off: float = 0.3, **kwargs) -> List[DocNode]:
         self._lazy_init()
@@ -300,11 +327,11 @@ class GraphDocImpl:
         hl_keywords, ll_keywords = self.extract_keywrods(query)
         str_ll_keywords = ", ".join(ll_keywords)
         str_hl_keywords = ", ".join(hl_keywords)
-        if ll_keywords:
-            return self._retrieve_local(str_ll_keywords, topk=topk, similarity_cut_off=similarity_cut_off)
+        mode = kwargs.get("mode", "global")
+        if hl_keywords and mode == "global":
+            return self._retrieve_global(str_hl_keywords, topk=topk, similarity_cut_off=similarity_cut_off)
         else:
-            raise NotImplementedError(f"high level retrieval not implemented yet, str_hl_keywords: {str_hl_keywords}")
-            # return self._retrieve_global(str_hl_keywords, topk=topk, similarity_cut_off=similarity_cut_off)
+            return self._retrieve_local(str_ll_keywords, topk=topk, similarity_cut_off=similarity_cut_off)
 
     def __call__(self, func_name: str, *args, **kwargs):
         return getattr(self, func_name)(*args, **kwargs)

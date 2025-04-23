@@ -85,7 +85,7 @@ class Retriever(ModuleBase, _PostProcess):
         return pipeline(lambda *a: self('Test Query'))
 
     def forward(
-            self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None
+            self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs
     ) -> Union[List[DocNode], str]:
         self._lazy_init()
         all_nodes: List[DocNode] = []
@@ -93,7 +93,7 @@ class Retriever(ModuleBase, _PostProcess):
             nodes = doc.forward(query=query, group_name=self._group_name, similarity=self._similarity,
                                 similarity_cut_off=self._similarity_cut_off, index=self._index,
                                 topk=self._topk, similarity_kws=self._similarity_kw, embed_keys=self._embed_keys,
-                                filters=filters)
+                                filters=filters, **kwargs)
             if nodes and self._target and self._target != nodes[0]._group:
                 nodes = doc.find(self._target)(nodes)
             all_nodes.extend(nodes)

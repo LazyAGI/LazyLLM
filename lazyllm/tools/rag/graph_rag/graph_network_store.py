@@ -121,7 +121,19 @@ class BaseGraphNetworkStore(ABC):
         return sorted(nodes, key=lambda node: self.node_degree(node.entity_name), reverse=True)
 
     def get_sorted_entities_from_relations(self, relations: List[GraphRelationNode]) -> List[GraphEntityNode]:
-        pass
+        visited_entity_ids = set()
+        # returned entities is sorted by original relations' order
+        related_entities: List[GraphEntityNode] = []
+        for relation in relations:
+            ent_ids_to_be_checked = [relation.src_id, relation.tgt_id]
+            for ent_id in ent_ids_to_be_checked:
+                if ent_id in visited_entity_ids:
+                    continue
+                visited_entity_ids.add(ent_id)
+                entity_node = self.get_node(ent_id)
+                if entity_node is not None:
+                    related_entities.append(entity_node)
+        return related_entities
 
     def get_sorted_chunkids_from_relations(self, relations: List[GraphRelationNode]) -> List[str]:
         pass
