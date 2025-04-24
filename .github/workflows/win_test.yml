@@ -227,10 +227,13 @@ jobs:
         env :
          LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
          LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
+         LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
          LAZYLLM_QWEN_API_KEY: ${{ secrets.LAZYLLM_QWEN_API_KEY }}
+         LAZYLLM_QWEN_MODEL_NAME: ${{ secrets.LAZYLLM_QWEN_MODEL_NAME }}
          LAZYLLM_SENSENOVA_API_KEY: ${{ secrets.LAZYLLM_SENSENOVA_API_KEY }}
          LAZYLLM_SENSENOVA_SECRET_KEY: ${{ secrets.LAZYLLM_SENSENOVA_SECRET_KEY }}
          LAZYLLM_DOUBAO_API_KEY: ${{ secrets.LAZYLLM_DOUBAO_API_KEY }}
+         LAZYLLM_DOUBAO_MODEL_NAME: ${{ secrets.LAZYLLM_DOUBAO_MODEL_NAME }}
          LAZYLLM_PostgreSQL_URL: ${{ secrets.LAZYLLM_PostgreSQL_URL }}
          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         timeout-minutes: 30

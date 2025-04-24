@@ -5,7 +5,7 @@ from .onlineChatModuleBase import OnlineChatModuleBase
 class DoubaoModule(OnlineChatModuleBase):
 
     def __init__(self,
-                 model: str = "mistral-7b-instruct-v0.2",
+                 model: str = "doubao-1-5-pro-32k-250115",
                  base_url: str = "https://ark.cn-beijing.volces.com/api/v3/",
                  api_key: str = None,
                  stream: bool = True,
@@ -13,7 +13,7 @@ class DoubaoModule(OnlineChatModuleBase):
         super().__init__(model_series="DOUBAO",
                          api_key=api_key or lazyllm.config['doubao_api_key'],
                          base_url=base_url,
-                         model_name=model,
+                         model_name=lazyllm.config['doubao_model_name'] or model,
                          stream=stream,
                          trainable_models=[],
                          return_trace=return_trace)
