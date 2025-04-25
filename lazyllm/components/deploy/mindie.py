@@ -10,7 +10,7 @@ from .utils import get_log_path, make_log_dir
 
 lazyllm.config.add('mindie_home', str, '', 'MINDIE_HOME')
 
-verify_fastapi_func = verify_func_factory(error_message='Service Startup Failed', 
+verify_fastapi_func = verify_func_factory(error_message='Service Startup Failed',
                                           running_message='Daemon start success')
 class Mindie(LazyLLMDeployBase):
     keys_name_handle = {
@@ -29,18 +29,19 @@ class Mindie(LazyLLMDeployBase):
 
     def __init__(self, trust_remote_code=True, launcher=launchers.remote(), stream=False, log_path=None, **kw):
         super().__init__(launcher=launcher)
-        assert lazyllm.config['mindie_home'], 'Ensure you have installed MindIE and "export LAZYLLM_MINDIE_HOME=/path/to/mindie/latest"'
+        assert lazyllm.config['mindie_home'], 'Ensure you have installed MindIE and \
+                                  "export LAZYLLM_MINDIE_HOME=/path/to/mindie/latest"'
         self.mindie_home = lazyllm.config['mindie_home']
         self.mindie_config_path = os.path.join(self.mindie_home, 'mindie-service/conf/config.json')
         self.backup_path = self.mindie_config_path + '.backup'
         self.custom_config = kw.pop('config', None)
         self.kw = ArgsDict({
             'npuDeviceIds': [[0]],
-            'worldSize' : 1,
+            'worldSize': 1,
             'port': 'auto',
             'host': '0.0.0.0',
             'maxSeqLen': 64000,
-            'maxInputTokenLen' : 8192
+            'maxInputTokenLen': 8192
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
@@ -48,8 +49,8 @@ class Mindie(LazyLLMDeployBase):
         self.temp_folder = make_log_dir(log_path, 'mindie') if log_path else None
 
         if self.custom_config:
-            self.config_dict = ArgsDict(self.load_config(self.custom_config)) \
-                               if isinstance(self.custom_config, str) else ArgsDict(self.custom_config)
+            self.config_dict = (ArgsDict(self.load_config(self.custom_config))
+                                if isinstance(self.custom_config, str) else ArgsDict(self.custom_config))
             self.kw['host'] = self.config_dict["ServerConfig"]["ipAddress"]
             self.kw['port'] = self.config_dict["ServerConfig"]["port"]
         else:
@@ -103,7 +104,7 @@ class Mindie(LazyLLMDeployBase):
 
             if self.random_port:
                 self.kw['port'] = random.randint(30000, 40000)
-        
+
             self.update_config()
 
         self.save_config()
