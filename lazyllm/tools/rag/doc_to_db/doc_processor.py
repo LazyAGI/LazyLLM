@@ -80,7 +80,7 @@ class DocToDbProcessor:
     def doc_info_schema(self, doc_info_schema: DocInfoSchema):
         raise NotImplementedError("As it'a dangerous operation, please use reset_doc_info_schema instead")
 
-    def save_description_to_db(self, doc_info_schema: DocInfoSchema):
+    def _save_description_to_db(self, doc_info_schema: DocInfoSchema):
         assert self._sql_manager is not None, "sqlManager is not initialized"
         json_data = json.dumps(doc_info_schema)  # 直接存储为 JSON（如果数据库支持）
         with self._sql_manager.get_session() as session:
@@ -109,12 +109,9 @@ class DocToDbProcessor:
         self._doc_info_schema = None
 
     # Alert, reset_doc_info_schema will drop old result in db
-    def reset_doc_info_schema(self, doc_info_schema: DocInfoSchema, recreate_doc_table=True):
-        # If doc_info_schema is the same, then do nothing
+    def _reset_doc_info_schema(self, doc_info_schema: DocInfoSchema, recreate_doc_table=True):
         assert isinstance(doc_info_schema, list)
-        if doc_info_schema == self._doc_info_schema:
-            return
-        self.save_description_to_db(doc_info_schema)
+        self._save_description_to_db(doc_info_schema)
         self._clear_table_orm(drop_doc_table=recreate_doc_table)
         for schema_item in doc_info_schema:
             is_success, err_msg = validate_schema_item(schema_item, DocInfoSchemaItem)
@@ -138,24 +135,20 @@ class DocToDbProcessor:
                 lazyllm.LOG.warning(f"Create table failed: {db_result.detail}")
                 self.clear()
 
-    def analyze_info_schema_wo_genre_by_llm(
-        self, llm: Union[OnlineChatModule, TrainableModule], doc_paths: List[str]
+    def analyze_info_schema_by_llm(
+        self, llm: Union[OnlineChatModule, TrainableModule], doc_paths: List[str], doc_topic: str = ""
     ) -> DocInfoSchema:
         assert len(doc_paths) > 0, "doc_paths should not be empty"
-        doc_genre = self._doc_genre_analyser.analyse_doc_genre(llm, doc_paths[0])
-        if doc_genre == "":
-            raise ValueError("Failed to detect doc type")
-        return self.analyze_info_schema_wi_genre_by_llm(llm, doc_genre, doc_paths)
-
-    def analyze_info_schema_wi_genre_by_llm(
-        self, llm: Union[OnlineChatModule, TrainableModule], doc_genre: str, doc_paths: List[str]
-    ) -> DocInfoSchema:
-        return self._doc_info_schema_analyser.analyse_info_schema(llm, doc_genre, doc_paths)
+        if not doc_topic:
+            doc_topic = self._doc_genre_analyser.analyse_doc_genre(llm, doc_paths[0])
+            if doc_topic == "":
+                raise ValueError("Failed to detect doc type")
+        return self._doc_info_schema_analyser.analyse_info_schema(llm, doc_topic, doc_paths)
 
     def extract_info_from_docs(
         self, llm: Union[OnlineChatModule, TrainableModule], doc_paths: List[str], extra_desc: str = ""
     ) -> List[dict]:
-        existent_doc_paths = self.list_existent_doc_paths_in_db(doc_paths)
+        existent_doc_paths = self._list_existent_doc_paths_in_db(doc_paths)
         # skip docs already in db
         doc_paths = list(set(doc_paths) - set(existent_doc_paths))
         info_dicts = []
@@ -180,23 +173,7 @@ class DocToDbProcessor:
         if db_result.status != DBStatus.SUCCESS:
             raise ValueError(f"Insert values failed: {db_result.detail}")
 
-    def auto_docs_to_sql(self, llm: Union[OnlineChatModule, TrainableModule], doc_paths: List[str]):
-        if self._doc_info_schema is None:
-            doc_info_schema = self.analyze_info_schema_wo_genre_by_llm(llm, doc_paths)
-            self.reset_doc_info_schema(doc_info_schema)
-        info_dicts = self.extract_info_from_docs(llm, doc_paths)
-        self.export_info_to_db(info_dicts)
-
-    def delete_doc_paths_records(self, doc_paths: list[str]):
-        doc_paths = [str(ele) for ele in doc_paths]
-        with self._sql_manager.get_session() as session:
-            stmt = sqlalchemy.delete(self._table_class).where(
-                getattr(self._table_class, self.DOC_PATH_COL_NAME).in_(doc_paths)
-            )
-            session.execute(stmt)
-            session.commit()
-
-    def list_existent_doc_paths_in_db(self, doc_paths: list[str]) -> List[str]:
+    def _list_existent_doc_paths_in_db(self, doc_paths: list[str]) -> List[str]:
         doc_paths = [str(ele) for ele in doc_paths]
         with self._sql_manager.get_session() as session:
             stmt = sqlalchemy.select(getattr(self._table_class, self.DOC_PATH_COL_NAME)).where(
@@ -204,3 +181,6 @@ class DocToDbProcessor:
             )
             result = session.execute(stmt).fetchall()
             return [ele[0] for ele in result]
+
+def extract_db_schema_from_files(file_paths: List[str], llm: Union[OnlineChatModule, TrainableModule]) -> DocInfoSchema:
+    return DocToDbProcessor(sql_manager=None).analyze_info_schema_by_llm(llm, file_paths)
