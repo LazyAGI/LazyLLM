@@ -186,6 +186,9 @@ class Document(ModuleBase, BuiltinGroups):
     def forward(self, *args, **kw) -> List[DocNode]:
         return self._forward('retrieve', *args, **kw)
 
+    def clear_cache(self, group_names: Optional[List[str]]) -> None:
+        return self._forward('clear_cache', group_names)
+
     def __repr__(self):
         return lazyllm.make_repr("Module", "Document", manager=hasattr(self._manager, '_manager'),
                                  server=isinstance(self._manager._kbs, ServerModule))

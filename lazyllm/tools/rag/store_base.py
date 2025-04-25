@@ -47,3 +47,15 @@ class StoreBase(ABC):
     @abstractmethod
     def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
         pass
+
+    def clear_cache(self, group_names: Optional[List[str]]) -> None:
+        if group_names is None:
+            group_names = self.all_groups()
+        elif isinstance(group_names, str):
+            group_names = [group_names]
+        elif isinstance(group_names, (tuple, list, set)):
+            group_names = list(group_names)
+        else:
+            raise TypeError(f"Invalid type {type(group_names)} for group_names, expected list of str")
+        for group_name in group_names:
+            self.remove_nodes(group_name, None)

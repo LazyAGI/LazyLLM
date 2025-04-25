@@ -57,6 +57,9 @@ class MapStore(StoreBase):
                 for uid in uids:
                     docs.pop(uid, None)
         else:
+            # Make if safe
+            if group_name not in self._group2docs:
+                return
             docs = self._group2docs.pop(group_name, None)
             if docs:
                 _remove_from_indices(self._name2index, list(docs.keys()))
@@ -87,7 +90,8 @@ class MapStore(StoreBase):
 
     @override
     def all_groups(self) -> List[str]:
-        return self._group2docs.keys()
+        # BUG HERE, keys() returns an interator not a list, and it'll be invalid when modifying this dict
+        return list(self._group2docs.keys())
 
     @override
     def query(self, *args, **kwargs) -> List[DocNode]:
