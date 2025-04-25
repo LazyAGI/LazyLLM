@@ -5,6 +5,7 @@ from .vllm import Vllm
 from .lmdeploy import LMDeploy
 from .infinity import Infinity
 from .ray import Distributed
+from .mindie import Mindie
 
 
 __all__ = [
@@ -14,6 +15,7 @@ __all__ = [
     'Lightllm',
     'Vllm',
     'LMDeploy',
+    'Mindie',
     'Infinity',
     'Distributed',
 ]
