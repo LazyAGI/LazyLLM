@@ -57,9 +57,6 @@ class MapStore(StoreBase):
                 for uid in uids:
                     docs.pop(uid, None)
         else:
-            # Make if safe
-            if group_name not in self._group2docs:
-                return
             docs = self._group2docs.pop(group_name, None)
             if docs:
                 _remove_from_indices(self._name2index, list(docs.keys()))
