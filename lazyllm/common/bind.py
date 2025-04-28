@@ -1,7 +1,9 @@
 import copy
 import builtins
+import itertools
 from typing import Callable, Any
 from .globals import globals
+from .common import package
 
 
 class AttrTree(object):
@@ -68,10 +70,12 @@ class Bind(object):
 
     class Args(object):
         class _None: pass
+        class Unpack(package): pass
 
-        def __init__(self, source_id: str, target_id: str = 'input'):
+        def __init__(self, source_id: str, target_id: str = 'input', *, unpack: bool = False):
             self._item_key, self._attr_key = Bind.Args._None, Bind.Args._None
             self._source_id, self._target_id = source_id, target_id
+            self._unpack = unpack
 
         def __getitem__(self, key: str):
             self._item_key = key
@@ -96,10 +100,12 @@ class Bind(object):
                 raise RuntimeError('Unable to find the bound parameter, possibly due to pipeline.input/output can only '
                                    'be bind in direct member of pipeline! You may solve this by defining the pipeline '
                                    'in a `with lazyllm.save_pipeline_result():` block.')
-            source, input = source['source'], source[self._target_id]
-            if self._item_key is not Bind.Args._None: return input[self._item_key]
-            elif self._attr_key is not Bind.Args._None: return getattr(input, self._attr_key)
-            return input
+            input = result = source[self._target_id]
+            source = source['source']
+            if self._item_key is not Bind.Args._None: result = input[self._item_key]
+            elif self._attr_key is not Bind.Args._None: result = getattr(input, self._attr_key)
+            if self._unpack and isinstance(result, package): result = Bind.Args.Unpack(result)
+            return result
 
     def __init__(self, __bind_func=_None, *args, **kw):
         self._f = __bind_func() if isinstance(__bind_func, type) and __bind_func is not Bind._None else __bind_func
@@ -121,8 +127,8 @@ class Bind(object):
         bind_args = args if len(self._args) == 0 else (
             [args[a.idx] if isinstance(a, Placeholder) else a for a in self._args])
         kwargs = {k: args[v.idx] if isinstance(v, Placeholder) else v for k, v in self._kw.items()}
-
         bind_args = [a.get_arg(_bind_args_source) if isinstance(a, Bind.Args) else a for a in bind_args]
+        bind_args = list(itertools.chain.from_iterable(x if isinstance(x, Bind.Args.Unpack) else [x] for x in bind_args))
         kwargs = {k: v.get_arg(_bind_args_source) if isinstance(v, Bind.Args) else v for k, v in kwargs.items()}
         return self._f(*bind_args, **kwargs, **kw)
 

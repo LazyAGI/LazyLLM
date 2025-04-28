@@ -78,7 +78,7 @@ class DefaultIndex(IndexBase):
         if topk is not None:
             similarities = similarities[:topk]
 
-        return [node for node, score in similarities if score > similarity_cut_off]
+        return [node.with_sim_score(score) for node, score in similarities if score > similarity_cut_off]
 
     def _check_supported(self, similarity_name: str, query_embedding: Dict[str, Any]) -> None:
         if similarity_name.lower() == 'cosine':

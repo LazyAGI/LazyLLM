@@ -328,6 +328,133 @@ add_example('finetune.LlamafactoryFinetune', '''\
 <lazyllm.llm.finetune type=LlamafactoryFinetune>
 ''')
 
+# Finetune-FlagembeddingFinetune
+add_chinese_doc('finetune.FlagembeddingFinetune', '''\
+该类是 ``LazyLLMFinetuneBase`` 的子类，基于 [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding) 框架提供的训练能力，用于训练嵌入和重排模型。
+
+Args:
+    base_model (str): 用于训练的基础模型。必须是基础模型的路径。
+    target_path (str): 训练后模型权重保存的路径。
+    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1, sync=True)``。
+    kw: 用于更新默认训练参数的关键字参数。
+
+该类嵌入模型的关键字参数及其默认值如下：
+
+Keyword Args:
+    train_group_size (int): 默认为：``8``。训练组的大小。用于控制每个训练集中的负样本数量。
+    query_max_len (int): 默认为：``512``。经过分词后，段落的最大总输入序列长度。超过此长度的序列将被截断，较短的序列将被填充。
+    passage_max_len (int): 默认为：``512``。经过分词后，段落的最大总输入序列长度。超过此长度的序列将被截断，较短的序列将被填充。
+    pad_to_multiple_of (int): 默认为：``8``。如果设置，将序列填充为提供值的倍数。
+    query_instruction_for_retrieval (str): 默认为：``Represent this sentence for searching relevant passages: ``。查询query的指令。
+    query_instruction_format (str): 默认为：``{}{}``。查询指令格式。
+    learning_rate (float): 默认为：``1e-5``。学习率。
+    num_train_epochs (int): 默认为：``1``。要执行的总训练周期数。
+    per_device_train_batch_size (int): 默认为：``2``。训练批量大小。
+    gradient_accumulation_steps (int): 默认为：``1``。在执行反向/更新传递之前要累积的更新步骤数。
+    dataloader_drop_last (bool): 默认为：``True``。如果数据集大小不能被批量大小整除，则丢弃最后一个不完整的批量，即 DataLoader 只返回完整的批量。
+    warmup_ratio (float): 默认为：``0.1``。线性调度器的预热比率。
+    weight_decay (float): 默认为：``0.01``。AdamW 中的权重衰减。
+    deepspeed (str): 默认为：````。DeepSpeed 配置文件的路径，默认使用 LazyLLM 代码仓库中的预置文件：``ds_stage0.json``。
+    logging_steps (int): 默认为：``1``。更新日志的频率。
+    save_steps (int): 默认为：``1000``。保存频率。
+    temperature (float): 默认为：``0.02``。用于相似度评分的温度。
+    sentence_pooling_method (str): 默认为：``cls``。池化方法。可用选项：'cls', 'mean', 'last_token'。
+    normalize_embeddings (bool): 默认为：``True``。是否归一化嵌入。
+    kd_loss_type (str): 默认为：``kl_div``。知识蒸馏的损失类型。可用选项：'kl_div', 'm3_kd_loss'。
+    overwrite_output_dir (bool): 默认为：``True``。用于允许程序覆盖现有的输出目录。
+    fp16 (bool): 默认为：``True``。是否使用 fp16（混合）精度而不是 32 位。
+    gradient_checkpointing (bool): 默认为：``True``。是否启用梯度检查点。
+    negatives_cross_device (bool): 默认为：``True``。是否在设备间共享负样本。
+
+该类重排模型的关键字参数及其默认值如下：
+
+Keyword Args:
+    train_group_size (int): 默认为：``8``。训练组的大小。用于控制每个训练集中的负样本数量。
+    query_max_len (int): 默认为：``256``。经过分词后，段落的最大总输入序列长度。超过此长度的序列将被截断，较短的序列将被填充。
+    passage_max_len (int): 默认为：``256``。经过分词后，段落的最大总输入序列长度。超过此长度的序列将被截断，较短的序列将被填充。
+    pad_to_multiple_of (int): 默认为：``8``。如果设置，将序列填充为提供值的倍数。
+    learning_rate (float): 默认为：``6e-5``。学习率。
+    num_train_epochs (int): 默认为：``1``。要执行的总训练周期数。
+    per_device_train_batch_size (int): 默认为：``2``。训练批量大小。
+    gradient_accumulation_steps (int): 默认为：``1``。在执行反向/更新传递之前要累积的更新步骤数。
+    dataloader_drop_last (bool): 默认为：``True``。如果数据集大小不能被批量大小整除，则丢弃最后一个不完整的批量，即 DataLoader 只返回完整的批量。
+    warmup_ratio (float): 默认为：``0.1``。线性调度器的预热比率。
+    weight_decay (float): 默认为：``0.01``。AdamW 中的权重衰减。
+    deepspeed (str): 默认为：````。DeepSpeed 配置文件的路径，默认使用 LazyLLM 代码仓库中的预置文件：``ds_stage0.json``。
+    logging_steps (int): 默认为：``1``。更新日志的频率。
+    save_steps (int): 默认为：``1000``。保存频率。
+    overwrite_output_dir (bool): 默认为：``True``。用于允许程序覆盖现有的输出目录。
+    fp16 (bool): 默认为：``True``。是否使用 fp16（混合）精度而不是 32 位。
+    gradient_checkpointing (bool): 默认为：``True``。是否启用梯度检查点。
+
+''')
+
+add_english_doc('finetune.FlagembeddingFinetune', '''\
+This class is a subclass of ``LazyLLMFinetuneBase``, based on the training capabilities provided by the [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding) framework, used for training embedding and reranker models.
+
+Args:
+    base_model (str): The base model used for training. It is required to be the path of the base model.
+    target_path (str): The path where the trained model weights are saved.
+    launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1, sync=True)``.
+    kw: Keyword arguments used to update the default training parameters.
+
+The keyword arguments and their default values for this class of embedding model are as follows:
+
+Keyword Args:
+    train_group_size (int): Default is: ``8``. The size of train group. It is used to control the number of negative samples in each training set.
+    query_max_len (int): Default is: ``512``. The maximum total input sequence length after tokenization for passage. Sequences longer than this will be truncated, sequences shorter will be padded.
+    passage_max_len (int): Default is: ``512``. The maximum total input sequence length after tokenization for passage. Sequences longer than this will be truncated, sequences shorter will be padded.
+    pad_to_multiple_of (int): Default is: ``8``. If set will pad the sequence to be a multiple of the provided value.
+    query_instruction_for_retrieval (str): Default is: ``Represent this sentence for searching relevant passages: ``. Instruction for query.
+    query_instruction_format (str): Default is: ``{}{}``. Format for query instruction.
+    learning_rate (float): Default is: ``1e-5``. Learning rate.
+    num_train_epochs (int): Default is: ``1``. Total number of training epochs to perform.
+    per_device_train_batch_size (int): Default is: ``2``. Train batch size
+    gradient_accumulation_steps (int): Default is: ``1``. Number of updates steps to accumulate before performing a backward/update pass.
+    dataloader_drop_last (bool): Default is: ``True``. When it='True', the last incomplete batch is dropped if the dataset size is not divisible by the batch size, meaning DataLoader only returns complete batches.
+    warmup_ratio (float): Default is: ``0.1``. Warmup ratio for linear scheduler.
+    weight_decay (float): Default is: ``0.01``. Weight decay in AdamW.
+    deepspeed (str): Default is: ````. The path of the DeepSpeed configuration file, default to use the pre-made configuration file in the LazyLLM code repository: ``ds_stage0.json``.
+    logging_steps (int): Default is: ``1``. Logging frequency according to logging strategy.
+    save_steps (int): Default is: ``1000``. Saving frequency.
+    temperature (float): Default is: ``0.02``. Temperature used for similarity score
+    sentence_pooling_method (str): Default is: ``cls``. The pooling method. Available options: 'cls', 'mean', 'last_token'.
+    normalize_embeddings (bool): Default is: ``True``. Whether to normalize the embeddings.
+    kd_loss_type (str): Default is: ``kl_div``. The loss type for knowledge distillation. Available options:'kl_div', 'm3_kd_loss'.
+    overwrite_output_dir (bool): Default is: ``True``. It is used to allow the program to overwrite an existing output directory.
+    fp16 (bool): Default is: ``True``.  Whether to use fp16 (mixed) precision instead of 32-bit.
+    gradient_checkpointing (bool): Default is: ``True``. Whether enable gradient checkpointing.
+    negatives_cross_device (bool): Default is: ``True``. Whether share negatives across devices.
+
+The keyword arguments and their default values for this class of reranker model are as follows:
+
+Keyword Args:
+    train_group_size (int): Default is: ``8``. The size of train group. It is used to control the number of negative samples in each training set.
+    query_max_len (int): Default is: ``256``. The maximum total input sequence length after tokenization for passage. Sequences longer than this will be truncated, sequences shorter will be padded.
+    passage_max_len (int): Default is: ``256``. The maximum total input sequence length after tokenization for passage. Sequences longer than this will be truncated, sequences shorter will be padded.
+    pad_to_multiple_of (int): Default is: ``8``. If set will pad the sequence to be a multiple of the provided value.
+    learning_rate (float): Default is: ``6e-5``. Learning rate.
+    num_train_epochs (int): Default is: ``1``. Total number of training epochs to perform.
+    per_device_train_batch_size (int): Default is: ``2``. Train batch size
+    gradient_accumulation_steps (int): Default is: ``1``. Number of updates steps to accumulate before performing a backward/update pass.
+    dataloader_drop_last (bool): Default is: ``True``. When it='True', the last incomplete batch is dropped if the dataset size is not divisible by the batch size, meaning DataLoader only returns complete batches.
+    warmup_ratio (float): Default is: ``0.1``. Warmup ratio for linear scheduler.
+    weight_decay (float): Default is: ``0.01``. Weight decay in AdamW.
+    deepspeed (str): Default is: ````. The path of the DeepSpeed configuration file, default to use the pre-made configuration file in the LazyLLM code repository: ``ds_stage0.json``.
+    logging_steps (int): Default is: ``1``. Logging frequency according to logging strategy.
+    save_steps (int): Default is: ``1000``. Saving frequency.
+    overwrite_output_dir (bool): Default is: ``True``. It is used to allow the program to overwrite an existing output directory.
+    fp16 (bool): Default is: ``True``.  Whether to use fp16 (mixed) precision instead of 32-bit.
+    gradient_checkpointing (bool): Default is: ``True``. Whether enable gradient checkpointing.
+
+''')
+
+add_example('finetune.FlagembeddingFinetune', '''\
+>>> from lazyllm import finetune
+>>> finetune.FlagembeddingFinetune('bge-m3', 'path/to/target')
+<lazyllm.llm.finetune type=FlagembeddingFinetune>
+''')
+
 # Finetune-Auto
 add_chinese_doc('auto.AutoFinetune', '''\
 此类是 ``LazyLLMFinetuneBase`` 的子类，可根据输入的参数自动选择合适的微调框架和参数，以对大语言模型进行微调。
@@ -831,23 +958,23 @@ add_example('EmptyFormatter', """\
 add_chinese_doc('prompter.PrompterBase', '''\
 Prompter的基类，自定义的Prompter需要继承此基类，并通过基类提供的 ``_init_prompt`` 函数来设置Prompt模板和Instruction的模板，以及截取结果所使用的字符串。可以查看 :[prompt](/Best%20Practice/prompt) 进一步了解Prompt的设计思想和使用方式。
 
-Prompt模板和Instruction模板都用 ``{}`` 表示要填充的字段，其中Prompt可包含的字段有 ``system``, ``history``, ``tools``, ``user`` 等，而instruction_template可包含的字段为 ``instruction`` 和 ``extro_keys`` 。
+Prompt模板和Instruction模板都用 ``{}`` 表示要填充的字段，其中Prompt可包含的字段有 ``system``, ``history``, ``tools``, ``user`` 等，而instruction_template可包含的字段为 ``instruction`` 和 ``extra_keys`` 。
 ``instruction`` 由应用的开发者传入， ``instruction`` 中也可以带有 ``{}`` 用于让定义可填充的字段，方便用户填入额外的信息。如果 ``instruction`` 字段为字符串，则认为是系统instruction；如果是字典，则它包含的key只能是 ``user`` 和 ``system`` 两种选择。 ``user`` 表示用户输入的instruction，在prompt中放在用户输入前面， ``system`` 表示系统instruction，在prompt中凡在system prompt后面。
 ''')
 
 add_english_doc('prompter.PrompterBase', '''\
 The base class of Prompter. A custom Prompter needs to inherit from this base class and set the Prompt template and the Instruction template using the `_init_prompt` function provided by the base class, as well as the string used to capture results. Refer to  [prompt](/Best%20Practice/prompt) for further understanding of the design philosophy and usage of Prompts.
 
-Both the Prompt template and the Instruction template use ``{}`` to indicate the fields to be filled in. The fields that can be included in the Prompt are `system`, `history`, `tools`, `user` etc., while the fields that can be included in the instruction_template are `instruction` and `extro_keys`. If the ``instruction`` field is a string, it is considered as a system instruction; if it is a dictionary, it can only contain the keys ``user`` and ``system``. ``user`` represents the user input instruction, which is placed before the user input in the prompt, and ``system`` represents the system instruction, which is placed after the system prompt in the prompt.
+Both the Prompt template and the Instruction template use ``{}`` to indicate the fields to be filled in. The fields that can be included in the Prompt are `system`, `history`, `tools`, `user` etc., while the fields that can be included in the instruction_template are `instruction` and `extra_keys`. If the ``instruction`` field is a string, it is considered as a system instruction; if it is a dictionary, it can only contain the keys ``user`` and ``system``. ``user`` represents the user input instruction, which is placed before the user input in the prompt, and ``system`` represents the system instruction, which is placed after the system prompt in the prompt.
 ``instruction`` is passed in by the application developer, and the ``instruction`` can also contain ``{}`` to define fillable fields, making it convenient for users to input additional information.
 ''')
 
 add_example('prompter.PrompterBase', '''\
 >>> from lazyllm.components.prompter import PrompterBase
 >>> class MyPrompter(PrompterBase):
-...     def __init__(self, instruction = None, extro_keys = None, show = False):
+...     def __init__(self, instruction = None, extra_keys = None, show = False):
 ...         super(__class__, self).__init__(show)
-...         instruction_template = f'{instruction}\\\\n{{extro_keys}}\\\\n'.replace('{extro_keys}', PrompterBase._get_extro_key_template(extro_keys))
+...         instruction_template = f'{instruction}\\\\n{{extra_keys}}\\\\n'.replace('{extra_keys}', PrompterBase._get_extro_key_template(extra_keys))
 ...         self._init_prompt("<system>{system}</system>\\\\n</instruction>{instruction}</instruction>{history}\\\\n{input}\\\\n, ## Response::", instruction_template, '## Response::')
 ... 
 >>> p = MyPrompter('ins {instruction}')
@@ -903,7 +1030,7 @@ Alpaca格式的Prompter，支持工具调用，不支持历史对话。
 
 Args:
     instruction (Option[str]): 大模型的任务指令，至少带一个可填充的槽位(如 ``{instruction}``)。或者使用字典指定 ``system`` 和 ``user`` 的指令。
-    extro_keys (Option[List]): 额外的字段，用户的输入会填充这些字段。
+    extra_keys (Option[List]): 额外的字段，用户的输入会填充这些字段。
     show (bool): 标志是否打印生成的Prompt，默认为False
     tools (Option[list]): 大模型可以使用的工具集合，默认为None
 ''')
@@ -914,7 +1041,7 @@ Alpaca-style Prompter, supports tool calls, does not support historical dialogue
 
 Args:
     instruction (Option[str]): Task instructions for the large model, with at least one fillable slot (e.g. ``{instruction}``). Or use a dictionary to specify the ``system`` and ``user`` instructions.
-    extro_keys (Option[List]): Additional fields that will be filled with user input.
+    extra_keys (Option[List]): Additional fields that will be filled with user input.
     show (bool): Flag indicating whether to print the generated Prompt, default is False.
     tools (Option[list]): Tool-set which is provived for LLMs, default is None.
 ''')
@@ -927,7 +1054,7 @@ add_example('AlpacaPrompter', '''\
 >>> p.generate_prompt('this is my input', return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world this is my input\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
 >>>
->>> p = AlpacaPrompter('hello world {instruction}, {input}', extro_keys=['knowledge'])
+>>> p = AlpacaPrompter('hello world {instruction}, {input}', extra_keys=['knowledge'])
 >>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'))
 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world hello world, my input\\\\n\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nlazyllm\\\\n\\\\n\\\\n### Response:\\\\n'
 >>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'), return_dict=True)
@@ -946,7 +1073,7 @@ add_chinese_doc('ChatPrompter', '''\
 
 Args:
     instruction (Option[str]): 大模型的任务指令，可以带0到多个待填充的槽位,用 ``{}`` 表示。针对用户instruction可以通过字典传递，字段为 ``user`` 和 ``system`` 。
-    extro_keys (Option[List]): 额外的字段，用户的输入会填充这些字段。
+    extra_keys (Option[List]): 额外的字段，用户的输入会填充这些字段。
     show (bool): 标志是否打印生成的Prompt，默认为False
 ''')
 
@@ -955,7 +1082,7 @@ chat prompt, supports tool calls and historical dialogue.
 
 Args:
     instruction (Option[str]): Task instructions for the large model, with 0 to multiple fillable slot, represented by ``{}``. For user instructions, you can pass a dictionary with fields ``user`` and ``system``.
-    extro_keys (Option[List]): Additional fields that will be filled with user input.
+    extra_keys (Option[List]): Additional fields that will be filled with user input.
     show (bool): Flag indicating whether to print the generated Prompt, default is False.
 ''')
 
@@ -967,7 +1094,7 @@ add_example('ChatPrompter', '''\
 >>> p.generate_prompt('this is my input', return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is my input'}]}
 >>>
->>> p = ChatPrompter('hello world {instruction}', extro_keys=['knowledge'])
+>>> p = ChatPrompter('hello world {instruction}', extra_keys=['knowledge'])
 >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'))
 'You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\nthis is my inp\\\\n\\\\n'
 >>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), return_dict=True)
@@ -1274,7 +1401,7 @@ TTSDeploy is a factory class for creating instances of different Text-to-Speech 
 `__new__(cls, name, **kwarg)`
 The constructor dynamically creates and returns the corresponding deployment instance based on the provided name argument.
 
-Args: 
+Args:
     name: A string specifying the type of deployment instance to be created.
     **kwarg: Keyword arguments to be passed to the constructor of the corresponding deployment instance.
                 
@@ -1291,7 +1418,7 @@ TTSDeploy 是一个用于根据指定的名称创建不同类型文本到语音(
 `__new__(cls, name, **kwarg)`
 构造函数，根据提供的名称参数动态创建并返回相应的部署实例。
 
-Args: 
+Args:
     name：字符串，用于指定要创建的部署实例的类型。
     **kwarg：关键字参数，用于传递给对应部署实例的构造函数。
                 

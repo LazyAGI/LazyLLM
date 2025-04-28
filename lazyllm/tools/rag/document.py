@@ -4,10 +4,10 @@ from typing import Callable, Optional, Dict, Union, List
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
+from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
 
 from .doc_manager import DocManager
-from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
-from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder
+from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups
 from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files
 from .index_base import IndexBase
@@ -23,7 +23,7 @@ class CallableDict(dict):
     def __call__(self, cls, *args, **kw):
         return self[cls](*args, **kw)
 
-class Document(ModuleBase):
+class Document(ModuleBase, BuiltinGroups):
     class _Manager(ModuleBase):
         def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: Union[bool, str] = False, server: bool = False, name: Optional[str] = None,
@@ -248,17 +248,23 @@ class Document(ModuleBase):
         # So the query of parent and child nodes can be performed locally, and there is no need to search the
         # document service through the server for the time being. When this item is optimized, the code will become:
         # return functools.partial(self._forward, 'find_parent', group=target)
-        return functools.partial(Document.find_parent, group=target)
+        return functools.partial(DocImpl.find_parent, group=target)
 
     def find_children(self, target) -> Callable:
         # TODO: Currently, when a DocNode is returned from the server, it will carry all parent nodes and child nodes.
         # So the query of parent and child nodes can be performed locally, and there is no need to search the
         # document service through the server for the time being. When this item is optimized, the code will become:
         # return functools.partial(self._forward, 'find_children', group=target)
-        return functools.partial(Document.find_children, group=target)
+        return functools.partial(DocImpl.find_children, group=target)
+
+    def find(self, target) -> Callable:
+        return functools.partial(self._forward, 'find', group=target)
 
     def forward(self, *args, **kw) -> List[DocNode]:
         return self._forward('retrieve', *args, **kw)
+
+    def clear_cache(self, group_names: Optional[List[str]]) -> None:
+        return self._forward('clear_cache', group_names)
 
     def __repr__(self):
         return lazyllm.make_repr("Module", "Document", manager=hasattr(self._manager, '_manager'),

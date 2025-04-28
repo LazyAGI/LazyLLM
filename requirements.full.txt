@@ -3,7 +3,7 @@ loralib
 toml
 fastapi>=0.111.0
 loguru>=0.7.2
-pydantic>=2.5.0
+pydantic<=2.10.6
 requests>=2.32.2
 uvicorn
 cloudpickle>=3.0.0
@@ -34,6 +34,7 @@ numpy==1.26.4
 pymilvus>=2.4.11, <2.5.0
 async-timeout
 httpx<0.28.0
+rapidfuzz
 redis>=5.0.4
 huggingface-hub>=0.23.1
 pandas>=2.2.2
@@ -52,21 +53,24 @@ scikit-learn>=1.5.0
 tensorboard>=2.16.2
 tensorboard-data-server>=0.7.2
 torchvision>=0.16.2
-vllm==0.5.0
+vllm==0.7.3
 wandb>=0.17.0
 chattts
 funasr
-lmdeploy
+lazyllm-lmdeploy==0.7.1rc0
 timm
 diffusers
 sortedcontainers
-flash-attn<=2.6.2
-lazyllm-llamafactory
+flash-attn
+lazyllm-llamafactory==0.9.1rc0
 rotary-embedding-torch
 lightllm
-infinity-emb
+infinity-emb==0.0.70
 ctranslate2
 optimum>=1.16.2
 typer
 pymongo
 pymysql
+flagembedding
+mcp>=1.5.0
+

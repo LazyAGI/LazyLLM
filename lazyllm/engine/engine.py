@@ -1,7 +1,7 @@
 from typing import List, Dict, Type, Optional, Union, Any, overload
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
-from lazyllm.tools import IntentClassifier
+from lazyllm.tools import IntentClassifier, SqlManager
 from lazyllm.common import compile_func
 from .node import all_nodes, Node
 from .node_meta_hook import NodeMetaHook
@@ -9,17 +9,47 @@ import inspect
 import functools
 import copy
 from abc import ABC, abstractclassmethod
-
+from enum import Enum
+from datetime import datetime, timedelta
+import requests
+import json
 
 # Each session will have a separate engine
 class Engine(ABC):
     __default_engine__ = None
     REPORT_URL = ""
 
+    class DefaultLockedDict(dict):
+        def __init__(self, default_data, *args, **kwargs):
+            self._default_keys = set(default_data.keys())  # 记录默认 key
+            super().__init__(default_data)
+            self.update(*args, **kwargs)
+
+        def __setitem__(self, key, value):
+            if key in self._default_keys: return
+            super(__class__, self).__setitem__(key, value)
+
+        def update(self, __other=None, **kw):
+            if __other:
+                has_kv = hasattr(__other, 'keys') and callable(__other.keys) and hasattr(__other, 'items')
+                [self.__setitem__(k, v) for k, v in (__other.items() if has_kv else __other)
+                 if k not in self._default_keys]
+            if kw:
+                [self.__setitem__(k, v) for k, v in kw.items() if k not in self._default_keys]
+
+        def __delitem__(self, key):
+            if key in self._default_keys: return
+            super(__class__, self).__delitem__(key)
+
+        def pop(self, key, __default=None):
+            if key in self._default_keys: return __default
+            return super(__class__, self).pop(key, __default)
+
     def __init__(self):
-        self._nodes: Dict[str, Node] = {
+        self._nodes: Engine.DefaultLockedDict[str, Node] = Engine.DefaultLockedDict({
             '__start__': Node(id='__start__', kind='__start__', name='__start__'),
-            '__end__': Node(id='__end__', kind='__end__', name='__end__')}
+            '__end__': Node(id='__end__', kind='__end__', name='__end__')})
+        self._key_db_connect_message = None
 
     def __new__(cls):
         if cls is not Engine:
@@ -57,6 +87,20 @@ class Engine(ABC):
 
     def build_node(self, node) -> Node:
         return _constructor.build(node)
+
+    def set_db_connect_message(self, key_db_connect_message: Optional[Union[Dict, str]]) -> None:
+        if isinstance(key_db_connect_message, str):
+            key_db_connect_message = json.loads(key_db_connect_message)
+
+        if not isinstance(key_db_connect_message, dict):
+            raise TypeError("The database connection information only supports dict and str, "
+                            f"not {type(key_db_connect_message)}.")
+
+        self._key_db_connect_message = key_db_connect_message
+
+    @property
+    def key_db_connect_message(self):
+        return self._key_db_connect_message
 
     def set_report_url(self, url) -> None:
         Engine.REPORT_URL = url
@@ -418,16 +462,174 @@ def _get_tools(tools):
         callable_list.append(wrapper_func)
     return callable_list
 
-@NodeConstructor.register('ToolsForLLM')
+@NodeConstructor.register('ToolsForLLM', subitems=['tools'])
 def make_tools_for_llm(tools: List[str]):
     return lazyllm.tools.ToolManager(_get_tools(tools))
 
-@NodeConstructor.register('FunctionCall')
+@NodeConstructor.register('FunctionCall', subitems=['tools'])
 def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
     return f(Engine().build_node(llm).func, _get_tools(tools))
+
+class AuthenticationFailedError(Exception):
+    def __init__(self, message="Authentication failed for the given user and tool."):
+        self._message = message
+        super().__init__(self._message)
+
+class TokenExpiredError(Exception):
+    """Access token expired"""
+    pass
+
+class TokenRefreshError(Exception):
+    """Access key request failed"""
+    pass
+
+class AuthType(Enum):
+    SERVICE_API = "service_api"
+    OAUTH = "oauth"
+    OIDC = "oidc"
+
+class SharedHttpTool(lazyllm.tools.HttpTool):
+    def __init__(self,
+                 method: Optional[str] = None,
+                 url: Optional[str] = None,
+                 params: Optional[Dict[str, str]] = None,
+                 headers: Optional[Dict[str, str]] = None,
+                 body: Optional[str] = None,
+                 timeout: int = 10,
+                 proxies: Optional[Dict[str, str]] = None,
+                 code_str: Optional[str] = None,
+                 vars_for_code: Optional[Dict[str, Any]] = None,
+                 outputs: Optional[List[str]] = None,
+                 extract_from_result: Optional[bool] = None,
+                 authentication_type: Optional[str] = None,
+                 tool_api_id: Optional[str] = None,
+                 user_id: Optional[str] = None,
+                 share_key: bool = False):
+        super().__init__(method, url, params, headers, body, timeout, proxies,
+                         code_str, vars_for_code, outputs, extract_from_result)
+        self._token_type = authentication_type
+        self._tool_api_id = tool_api_id
+        self._user_id = user_id
+        self._share_key = share_key
+        self._key_db_connect_message = Engine().key_db_connect_message
+        if self._key_db_connect_message:
+            self._sql_manager = SqlManager(
+                db_type=self._key_db_connect_message['db_type'],
+                user=self._key_db_connect_message.get('user', None),
+                password=self._key_db_connect_message.get('password', None),
+                host=self._key_db_connect_message.get('host', None),
+                port=self._key_db_connect_message.get('port', None),
+                db_name=self._key_db_connect_message['db_name'],
+                options_str=self._key_db_connect_message.get('options_str', None),
+                tables_info_dict=self._key_db_connect_message.get('tables_info_dict', None),
+            )
+        self._default_expired_days = 3
+
+    def _process_api_key(self, headers, params):
+        if not self._token_type:
+            return headers, params
+        if self._token_type == AuthType.SERVICE_API.value:
+            if self._location == "header":
+                headers[self._param_name] = self._token if self._token.startswith("Bearer") \
+                    else "Bearer " + self._token
+            elif self._location == "query":
+                params = params or {}
+                params[self._param_name] = self._token
+            else:
+                raise TypeError("The Service API authentication type only supports ['header', 'query'], "
+                                f"not {self._location}.")
+        elif self._token_type == AuthType.OAUTH.value:
+            headers['Authorization'] = f"Bearer {self._token}"
+        else:
+            raise TypeError("Currently, tool authentication only supports ['service_api', 'oauth'] types, "
+                            f"and does not support {self._token_type} type.")
+        return headers, params
+
+    def valid_key(self):
+        if not self._token_type:
+            return True
+        table_name = self._key_db_connect_message.get('tables_info_dict', {}).get('tables', [])[0]['name']
+        SQL_SELECT = (
+            f"SELECT id, tool_api_id, endpoint_url, client_id, client_secret, user_id, location, param_name, token, "
+            f"refresh_token, token_type, expires_at FROM {table_name} "
+            f"WHERE tool_api_id = {self._tool_api_id} AND is_auth_success = True AND token_type = '{self._token_type}'"
+        )
+        if self._share_key:
+            ret = self._fetch_valid_key(SQL_SELECT + " AND is_share = True")
+            if not ret:
+                raise AuthenticationFailedError(f"Authentication failed for share_key=True and "
+                                                f"tool_api_id='{self._tool_api_id}'")
+        else:
+            ret = self._fetch_valid_key(SQL_SELECT + f" AND user_id = '{self._user_id}'")
+            if not ret:
+                raise AuthenticationFailedError(f"Authentication failed for user_id='{self._user_id}' and "
+                                                f"tool_api_id='{self._tool_api_id}'")
+
+        if self._token_type == AuthType.SERVICE_API.value:
+            self._token = ret['token']
+            self._location = ret['location']
+            self._param_name = ret['param_name']
+        elif self._token_type == AuthType.OAUTH.value:
+            try:
+                expires_at = datetime.strptime(ret['expires_at'], "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                expires_at = datetime.strptime(ret['expires_at'], "%Y-%m-%d %H:%M:%S.%f")
+            self._token = self._validate_and_refresh_token(
+                id=ret['id'],
+                client_id=ret['client_id'],
+                client_secret=ret['client_secret'],
+                endpoint_url=ret['endpoint_url'],
+                token=ret['token'],
+                refresh_token=ret['refresh_token'],
+                expires_at=expires_at,
+                table_name=table_name)
+        elif self._token_type == AuthType.OIDC.value:
+            raise TypeError("OIDC authentication is not currently supported.")
+        else:
+            raise TypeError("The authentication type only supports ['no authentication', 'service_api', "
+                            f"'oauth', 'oidc'], and does not support type {self._token_type}.")
+
+    def _fetch_valid_key(self, query: str):
+        ret = self._sql_manager.execute_query(query)
+        ret = json.loads(ret)
+        return ret[0] if ret else None
+
+    def _validate_and_refresh_token(self, id: int, client_id: str, client_secret: str, endpoint_url: str,
+                                    token: str, refresh_token: str, expires_at: datetime, table_name):
+        now = datetime.now()
+        # 1、Access token has not expired
+        if now < expires_at:
+            if not refresh_token:
+                # Update only the expiration time
+                new_expires_at = now + timedelta(days=self._default_expired_days)
+                self._sql_manager.execute_commit(f"UPDATE {table_name} SET expires_at = "
+                                                 f"'{new_expires_at}' WHERE id = {id}")
+            return token
+
+        # 2、Access token expired
+        if not refresh_token:
+            raise TokenExpiredError("Access key has expired, and no refresh key was provided.")
+
+        # 3、Request a new access token with the refresh_token
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {client_secret}"}
+        data = {"client_id": client_id, "grant_type": "refresh_token", "refresh_token": refresh_token}
+        with requests.post(endpoint_url, json=data, headers=headers) as r:
+            if r.status_code != 200:
+                raise TokenRefreshError(f"Request failed, status code: {r.status_code}, message: {r.text}")
+
+            data = r.json()
+            new_token = data.get("access_token")
+            new_refresh_token = data.get("refresh_token")
+            new_expires_at = data.get("expires_in")
+
+            # update db
+            self._sql_manager.execute_commit(
+                f"UPDATE {table_name} SET token = '{new_token}', refresh_token = '{new_refresh_token}', "
+                f"expires_at = '{datetime.fromtimestamp(new_expires_at)}' where id = {id}")
+            return new_token
 
 @NodeConstructor.register('HttpTool')
 def make_http_tool(method: Optional[str] = None,
@@ -441,9 +643,14 @@ def make_http_tool(method: Optional[str] = None,
                    vars_for_code: Optional[Dict[str, Any]] = None,
                    doc: Optional[str] = None,
                    outputs: Optional[List[str]] = None,
-                   extract_from_result: Optional[bool] = None):
-    instance = lazyllm.tools.HttpTool(method, url, params, headers, body, timeout, proxies,
-                                      code_str, vars_for_code, outputs, extract_from_result)
+                   extract_from_result: Optional[bool] = None,
+                   authentication_type: Optional[str] = None,
+                   tool_api_id: Optional[str] = None,
+                   user_id: Optional[str] = None,
+                   share_key: bool = False):
+    instance = SharedHttpTool(method, url, params, headers, body, timeout, proxies,
+                              code_str, vars_for_code, outputs, extract_from_result, authentication_type,
+                              tool_api_id, user_id, share_key)
     if doc:
         instance.__doc__ = doc
     return instance

@@ -6,7 +6,7 @@ from typing import List, Dict, Optional, Set, Union
 
 import lazyllm
 from lazyllm import once_wrapper
-from .engine import Engine, Node, ServerGraph
+from .engine import Engine, Node, ServerGraph, SharedHttpTool
 from lazyllm.tools.train_service.serve import TrainServer
 from lazyllm.tools.train_service.client import LocalTrainClient, OnlineTrainClient
 from lazyllm.tools.infer_service import InferClient, InferServer
@@ -327,8 +327,9 @@ class LightEngine(Engine):
         for nodeid in node_ids:
             self.stop(nodeid)
             # TODO(wangzhihong): Analyze dependencies and only allow deleting nodes without dependencies
-            [self._nodes.pop(id) for id in self.subnodes(nodeid, recursive=True)]
-            self._nodes.pop(nodeid)
+            [self._nodes.pop(id, None) for id in self.subnodes(nodeid, recursive=True)
+             if id not in ('__start__', '__end__')]
+            if nodeid not in ('__start__', '__end__'): self._nodes.pop(nodeid, None)
 
     def update_node(self, node):
         if not isinstance(node, Node):
@@ -394,6 +395,8 @@ class LightEngine(Engine):
             args = [lazyllm.formatter.file(formatter='encode')(dict(query=args[0] if args else '', files=files))]
         if _file_resources:
             lazyllm.globals['lazyllm_files'] = _file_resources
+        nodes = [self.build_node(node).func for node in self.subnodes(id, recursive=True)]
+        [node.valid_key() for node in nodes if isinstance(node, SharedHttpTool)]
         f = self.build_node(id).func
         lazyllm.FileSystemQueue().dequeue()
         if history := _lazyllm_history:

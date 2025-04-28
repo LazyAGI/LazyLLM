@@ -166,4 +166,20 @@ jobs:
           echo "分支： ${GITHUB_REF}" >> $GITHUB_STEP_SUMMARY
           echo "提交 SHA： ${GITHUB_SHA}" >> $GITHUB_STEP_SUMMARY
           echo "您可以通过以下链接查看详细报告：" >> $GITHUB_STEP_SUMMARY
-          echo "[http://103.237.29.231:8088/${GITHUB_RUN_NUMBER}/htmlcov](http://103.237.29.231:8088/${GITHUB_RUN_NUMBER}/htmlcov)" >> $GITHUB_STEP_SUMMARY
+          echo "[http://10.210.0.49:8088/${GITHUB_RUN_NUMBER}/htmlcov](http://10.210.0.49:8088/${GITHUB_RUN_NUMBER}/htmlcov)" >> $GITHUB_STEP_SUMMARY
+
+  DocCheck:
+    runs-on: tps_sco_nv
+    needs: [ Clone ]
+    steps:
+      - name: RunTests
+        run: |
+          cd ${{ env.CI_PATH }}
+          pip install -r tests/requirements.txt
+          export PYTHONPATH=$PWD:$PYTHONPATH
+          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
+          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
+          mkdir -p $LAZYLLM_HOME
+          source ~/ENV/env.sh
+          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/doc_check

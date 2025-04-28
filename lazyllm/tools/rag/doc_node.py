@@ -40,6 +40,7 @@ class DocNode:
         self._lock = threading.Lock()
         self._embedding_state = set()
         self.relevance_score = None
+        self.similarity_score = None
 
         if global_metadata and parent:
             raise ValueError('only ROOT node can set global metadata.')
@@ -213,6 +214,11 @@ class DocNode:
         node.relevance_score = score
         return node
 
+    def with_sim_score(self, score):
+        node = copy.copy(self)
+        node.similarity_score = score
+        return node
+
 
 class QADocNode(DocNode):
     def __init__(self, query: str, answer: str, uid: Optional[str] = None, group: Optional[str] = None,
@@ -232,7 +238,7 @@ class ImageDocNode(DocNode):
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
                  metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None,
                  *, text: Optional[str] = None):
-        super().__init__(uid, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
+        super().__init__(uid, None, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
         self._image_path = image_path.strip()
         self._modality = "image"
 

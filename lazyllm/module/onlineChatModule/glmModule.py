@@ -10,10 +10,11 @@ from .fileHandler import FileHandlerBase
 
 class GLMModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ["chatglm3-6b", "chatglm_12b", "chatglm_32b", "chatglm_66b", "chatglm_130b"]
+    MODEL_NAME = "glm-4"
 
     def __init__(self,
                  base_url: str = "https://open.bigmodel.cn/api/paas/v4/",
-                 model: str = "glm-4",
+                 model: str = None,
                  api_key: str = None,
                  stream: str = True,
                  return_trace: bool = False,
@@ -22,7 +23,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
                                       model_series="GLM",
                                       api_key=api_key or lazyllm.config['glm_api_key'],
                                       base_url=base_url,
-                                      model_name=model,
+                                      model_name=model or lazyllm.config['glm_model_name'] or GLMModule.MODEL_NAME,
                                       stream=stream,
                                       trainable_models=GLMModule.TRAINABLE_MODEL_LIST,
                                       return_trace=return_trace,

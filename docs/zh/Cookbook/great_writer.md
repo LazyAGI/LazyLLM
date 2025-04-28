@@ -29,7 +29,7 @@ UI-Web 接收来自用户的请求发送给目录大纲生成机器人，该机�
 首先是大纲生成机器人的提示词：
 
 ```python
-toc_prompt=""" 你现在是一个智能助手。你的任务是理解用户的输入，将大纲以列表嵌套字典的列表。每个字典包含一个 `title` 和 `describe`，其中 `title` 中需要用Markdown格式标清层级，`describe` `describe` 是对该段的描述和写作指导。
+toc_prompt=""" 你现在是一个智能助手。你的任务是理解用户的输入，将大纲以列表嵌套字典的列表。每个字典包含一个 `title` 和 `describe`，其中 `title` 中需要用Markdown格式标清层级，`describe` 是对该段的描述和写作指导。
 
 请根据以下用户输入生成相应的列表嵌套字典：
 
@@ -143,7 +143,7 @@ import lazyllm
 from lazyllm import pipeline, warp, bind
 from lazyllm.components.formatter import JsonFormatter
 
-toc_prompt=""" 你现在是一个智能助手。你的任务是理解用户的输入，将大纲以列表嵌套字典的列表。每个字典包含一个 `title` 和 `describe`，其中 `title` 中需要用Markdown格式标清层级，`describe` `describe` 是对该段的描述和写作指导。
+toc_prompt=""" 你现在是一个智能助手。你的任务是理解用户的输入，将大纲以列表嵌套字典的列表。每个字典包含一个 `title` 和 `describe`，其中 `title` 中需要用Markdown格式标清层级，`describe` 是对该段的描述和写作指导。
 
 请根据以下用户输入生成相应的列表嵌套字典：
 

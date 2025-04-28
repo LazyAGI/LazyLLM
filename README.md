@@ -20,7 +20,7 @@ The AI application development process based on LazyLLM follows the **prototype 
 Scan the QR code below with WeChat to join the group chat(left) or learn more with a video(right)<br>
 <p align="center">
 <img src="https://github.com/user-attachments/assets/8ad8fd14-b218-48b3-80a4-7334b2a32c5a" width=250/>
-<img src="https://github.com/user-attachments/assets/9ce08228-8f59-4267-9e3d-9664988c510a" width=250/>
+<img src="https://github.com/user-attachments/assets/7a042a97-1339-459e-a451-4bcd6cf64c12" width=250/>
 </p>
 
 
@@ -121,7 +121,7 @@ with pipeline() as ppl:
 
     ppl.reranker = Reranker("ModuleReranker", model="bge-reranker-large", topk=1) | bind(query=ppl.input)
     ppl.formatter = (lambda nodes, query: dict(context_str="".join([node.get_content() for node in nodes]), query=query)) | bind(query=ppl.input)
-    ppl.llm = lazyllm.OnlineChatModule(stream=False).prompt(lazyllm.ChatPrompter(prompt, extro_keys=["context_str"]))
+    ppl.llm = lazyllm.OnlineChatModule(stream=False).prompt(lazyllm.ChatPrompter(prompt, extra_keys=["context_str"]))
 
 lazyllm.WebModule(ppl, port=23466).start().wait()
 ```
@@ -139,7 +139,7 @@ with pipeline() as ppl:
 
     ppl.reranker = Reranker("ModuleReranker", model="bge-reranker-large", topk=1) | bind(query=ppl.input)
     ppl.formatter = (lambda nodes, query: dict(context_str="".join([node.get_content() for node in nodes]), query=query)) | bind(query=ppl.input)
-    ppl.llm = lazyllm.TrainableModule("internlm2-chat-7b").prompt(lazyllm.ChatPrompter(prompt, extro_keys=["context_str"]))
+    ppl.llm = lazyllm.TrainableModule("internlm2-chat-7b").prompt(lazyllm.ChatPrompter(prompt, extra_keys=["context_str"]))
 
 lazyllm.WebModule(ppl, port=23456).start().wait()
 ```

@@ -2,6 +2,7 @@ import os
 from enum import Enum
 import json
 from typing import List, Union
+from contextlib import contextmanager
 
 
 class Mode(Enum):
@@ -40,6 +41,13 @@ class Config(object):
     def get_all_configs(self):
         return self.impl
 
+    @contextmanager
+    def temp(self, name, value):
+        old_value = self[name]
+        self.impl[name] = value
+        yield
+        self.impl[name] = old_value
+
     def add(self, name, type, default=None, env=None):
         update_params = (type, default, env)
         if name not in self._config_params or self._config_params[name] != update_params:
@@ -68,7 +76,10 @@ class Config(object):
             f'Invalid config type for {name}, type is {type}')
 
     def __getitem__(self, name):
-        return self.impl[name]
+        try:
+            return self.impl[name]
+        except KeyError:
+            raise RuntimeError(f'Key {name} is not in lazyllm global config')
 
     def __str__(self):
         return str(self.impl)
@@ -89,6 +100,7 @@ class Config(object):
 
 config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug)
                 ).add('repr_ml', bool, False, 'REPR_USE_ML'
+                ).add('repr_show_child', bool, False, 'REPR_SHOW_CHILD'
                 ).add('rag_store', str, 'none', 'RAG_STORE'
                 ).add('gpu_type', str, 'A100', 'GPU_TYPE'
                 ).add('train_target_root', str, os.path.join(os.getcwd(), 'save_ckpt'), 'TRAIN_TARGET_ROOT'

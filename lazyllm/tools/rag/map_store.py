@@ -87,7 +87,8 @@ class MapStore(StoreBase):
 
     @override
     def all_groups(self) -> List[str]:
-        return self._group2docs.keys()
+        # BUG HERE, keys() returns an interator not a list, and it'll be invalid when modifying this dict
+        return list(self._group2docs.keys())
 
     @override
     def query(self, *args, **kwargs) -> List[DocNode]:

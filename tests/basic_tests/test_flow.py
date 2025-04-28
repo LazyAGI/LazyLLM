@@ -183,6 +183,36 @@ class TestFlowBind(object):
             p.f3 = xy2z | bind(y=p.input, z=p.output('f1'))
         assert p(3) == 16  # 5 + 3 + 2 * 4
 
+    def test_bind_pipeline_unpack(self):
+        def func0(x, y, z): return lazyllm.package(x, y, z)
+        def func1(x, y, z): return lazyllm.package(x, y, z)
+        def func2(x, y, z): return lazyllm.package(x, y, z)
+        def func3(x, y, z): return lazyllm.package(x, y, z)
+
+        with lazyllm.pipeline() as ppl:
+            ppl.f1 = func1
+            with lazyllm.parallel() as ppl.pp:
+                ppl.pp.func2 = func2
+                ppl.pp.func3 = func3
+            ppl.fout = lazyllm.bind(func0, ppl.output('f1')[0], ppl.output('f1')[2], ppl.output('f1')[1])
+        assert ppl(1, 2, 3) == (1, 3, 2)
+
+        with lazyllm.pipeline() as ppl:
+            ppl.f1 = func1
+            with lazyllm.parallel() as ppl.pp:
+                ppl.pp.func2 = func2
+                ppl.pp.func3 = func3
+            ppl.fout = lazyllm.bind(func0, ppl.output('f1')[0], ppl.output('f1', unpack=True)[2:0:-1])
+        assert ppl(1, 2, 3) == (1, 3, 2)
+
+        with lazyllm.pipeline() as ppl:
+            ppl.f1 = func1
+            with lazyllm.parallel() as ppl.pp:
+                ppl.pp.func2 = func2
+                ppl.pp.func3 = func3
+            ppl.fout = lazyllm.bind(func0, ppl.output('f1', unpack=True))
+        assert ppl(1, 2, 3) == (1, 2, 3)
+
     def test_bind_pipeline_nested(self):
         with pipeline() as p:
             p.f1 = add_one

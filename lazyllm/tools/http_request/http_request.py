@@ -18,11 +18,12 @@ class HttpRequest(ModuleBase):
         self._body = body
         self._timeout = timeout
         self._proxies = proxies
-        self._process_api_key()
 
-    def _process_api_key(self):
+    def _process_api_key(self, headers, params):
         if self._api_key and self._api_key != '':
-            self._params['api_key'] = self._api_key
+            params = params or {}
+            params['api_key'] = self._api_key
+        return headers, params
 
     def forward(self, *args, **kwargs):
         def _map_input(target_str):
@@ -39,19 +40,34 @@ class HttpRequest(ModuleBase):
             for match in matches:
                 replacement = replacements.get(match)
                 if replacement is not None:
+                    if "{{" + match + "}}" == target_str:
+                        return replacement
                     target_str = re.sub(r"\{\{" + re.escape(match) + r"\}\}", replacement, target_str)
 
             return target_str
 
-        self._url = _map_input(self._url)
-        self._body = (json.dumps({k: _map_input(v) for k, v in self._body.items()})
-                      if isinstance(self._body, dict) else _map_input(self._body))
-        if self._params: self._params = {key: _map_input(value) for key, value in self._params.items()}
-        if self._headers: self._headers = {key: _map_input(value) for key, value in self._headers.items()}
+        url = _map_input(self._url)
+        params = {key: _map_input(value) for key, value in self._params.items()} if self._params else None
+        headers = {key: _map_input(value) for key, value in self._headers.items()} if self._headers else None
+        headers, params = self._process_api_key(headers, params)
+        if isinstance(headers, dict) and headers.get("Content-Type") == "application/json":
+            try:
+                body = json.loads(self._body) if isinstance(self._body, str) else self._body
+                body = {k: _map_input(v) for k, v in body.items()}
 
-        http_response = httpx.request(method=self._method, url=self._url, headers=self._headers,
-                                      params=self._params, data=self._body, timeout=self._timeout,
-                                      proxies=self._proxies)
+                http_response = httpx.request(method=self._method, url=url, headers=headers,
+                                              params=params, json=body, timeout=self._timeout,
+                                              proxies=self._proxies)
+            except json.JSONDecodeError:
+                raise ValueError(f"Invalid JSON format: {self._body}")
+        else:
+            body = (json.dumps({k: _map_input(v) for k, v in self._body.items()})
+                    if isinstance(self._body, dict) else _map_input(self._body))
+
+            http_response = httpx.request(method=self._method, url=url, headers=headers,
+                                          params=params, data=body, timeout=self._timeout,
+                                          proxies=self._proxies)
+
         response = HttpExecutorResponse(http_response)
 
         _, file_binary = response.extract_file()

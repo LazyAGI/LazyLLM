@@ -79,7 +79,7 @@ jobs:
         uses: JRubics/poetry-publish@v1.17
         with:
           pypi_token: ${{ secrets.LazyLLM_INDEX_PYPI_TOKEN }}
-          ignore_dev_requirements: "yes"
+
       - name: Skip publish
         if: env.pypi_version_exists == 'true'
         shell: bash

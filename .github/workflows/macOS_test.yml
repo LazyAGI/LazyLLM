@@ -111,7 +111,7 @@ jobs:
          pip install -r tests/requirements.txt
          pip install -r tests/requirements_mac.txt
          export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
-         python -m pytest -v  --reruns=2 tests/basic_tests/
+         python -m pytest -v -m "not skip_on_mac" --reruns=2 tests/basic_tests/
         timeout-minutes: 30
         env :
          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}       
@@ -198,14 +198,17 @@ jobs:
          git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git /tmp/lazyllm/data
          pip install -r tests/requirements.txt
          export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
-         python -m pytest -v --reruns=2 tests/charge_tests
+         python -m pytest -m "not skip_on_mac" -v --reruns=2 tests/charge_tests
         env :
          LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
          LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
+         LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
          LAZYLLM_QWEN_API_KEY: ${{ secrets.LAZYLLM_QWEN_API_KEY }}
+         LAZYLLM_QWEN_MODEL_NAME: ${{ secrets.LAZYLLM_QWEN_MODEL_NAME }}
          LAZYLLM_SENSENOVA_API_KEY: ${{ secrets.LAZYLLM_SENSENOVA_API_KEY }}
          LAZYLLM_SENSENOVA_SECRET_KEY: ${{ secrets.LAZYLLM_SENSENOVA_SECRET_KEY }}
          LAZYLLM_DOUBAO_API_KEY: ${{ secrets.LAZYLLM_DOUBAO_API_KEY }}
+         LAZYLLM_DOUBAO_MODEL_NAME: ${{ secrets.LAZYLLM_DOUBAO_MODEL_NAME }}
          LAZYLLM_PostgreSQL_URL: ${{ secrets.LAZYLLM_PostgreSQL_URL }}
          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         timeout-minutes: 25
