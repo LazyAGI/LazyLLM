@@ -2,6 +2,7 @@ import unittest
 import lazyllm
 from lazyllm.tools import SqlManager
 import pytest
+import os
 
 
 class DocToDbTester(unittest.TestCase):
@@ -9,7 +10,9 @@ class DocToDbTester(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.llm = lazyllm.OnlineChatModule(source="qwen")
-        cls.pdf_root = "/mnt/lustre/share_data/lazyllm/data/rag_master/default/__data/pdfs"
+        data_root_dir = os.getenv("LAZYLLM_DATA_PATH")
+        assert data_root_dir
+        cls.pdf_root = os.path.join(data_root_dir, "rag_master/default/__data/pdfs")
 
     def test_doc_to_db_sop(self):
         sql_manager = SqlManager(
