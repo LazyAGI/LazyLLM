@@ -12,7 +12,7 @@ Given the following SQL tables and current date {current_date}, your job is to w
 
 {desc}
 
-Alert: Just replay the sql query in a code block start with triple-backticks and keyword "sql"
+Alert: Just reply the sql query in a code block start with triple-backticks and keyword "sql"
 """  # noqa E501
 
 

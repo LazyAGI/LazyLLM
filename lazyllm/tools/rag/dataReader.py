@@ -18,7 +18,7 @@ from .doc_node import DocNode
 from .readers import (ReaderBase, PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader,
                       EpubReader, MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
                       get_default_fs, is_default_fs)
-from .global_metadata import (RAG_DOC_FILE_NAME, RAG_DOC_FILE_TYPE, RAG_DOC_FILE_SIZE,
+from .global_metadata import (RAG_DOC_PATH, RAG_DOC_FILE_NAME, RAG_DOC_FILE_TYPE, RAG_DOC_FILE_SIZE,
                               RAG_DOC_CREATION_DATE, RAG_DOC_LAST_MODIFIED_DATE, RAG_DOC_LAST_ACCESSED_DATE)
 
 def _file_timestamp_format(timestamp: float, include_time: bool = False) -> Optional[str]:
@@ -45,6 +45,7 @@ class _DefaultFileMetadataFunc:
         last_modified_date = _file_timestamp_format(stat_result.get("mtime"))
         last_accessed_date = _file_timestamp_format(stat_result.get("atime"))
         default_meta = {
+            RAG_DOC_PATH: file_path,
             RAG_DOC_FILE_NAME: file_name,
             RAG_DOC_FILE_TYPE: mimetypes.guess_type(file_path)[0],
             RAG_DOC_FILE_SIZE: stat_result.get("size"),
