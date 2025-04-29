@@ -150,11 +150,12 @@ class OnlineChatModuleBase(ModuleBase):
             if stream_output:
                 color = stream_output.get('color') if isinstance(stream_output, dict) else None
                 for item in message.get("choices", []):
-                    reasoning_content = item.get("reasoning_content", '')
+                    delta = item.get("delta", {})
+                    reasoning_content = delta.get("reasoning_content", '')
                     if reasoning_content:
                         content = reasoning_content
+                        FileSystemQueue().get_instance("think").enqueue(lazyllm.colored_text(content, color))
                     else:
-                        delta = item.get("delta", {})
                         content = delta.get("content", '')
                         if content and "tool_calls" not in delta:
                             FileSystemQueue().enqueue(lazyllm.colored_text(content, color))
