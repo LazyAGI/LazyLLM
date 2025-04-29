@@ -51,17 +51,16 @@ def do_upload(manager_url: str):
 
 
 class TestMilvusFilter(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.root_dir = os.path.expanduser(os.path.join(config['home'], 'rag_for_example_ut'))
-        cls.rag_dir = os.path.join(cls.root_dir, 'milvus_filter')
-        os.makedirs(cls.rag_dir, exist_ok=True)
-        cls.doc_dir = os.path.join(cls.rag_dir, 'docs')
-        os.makedirs(cls.doc_dir, exist_ok=True)
+    def setUp(self):
+        self.root_dir = os.path.expanduser(os.path.join(config['home'], 'rag_for_example_ut'))
+        self.rag_dir = os.path.join(self.root_dir, 'milvus_filter')
+        os.makedirs(self.rag_dir, exist_ok=True)
+        self.doc_dir = os.path.join(self.rag_dir, 'docs')
+        os.makedirs(self.doc_dir, exist_ok=True)
 
     @classmethod
-    def tearDownClass(cls):
-        shutil.rmtree(cls.rag_dir)
+    def tearDown(self):
+        shutil.rmtree(self.rag_dir)
         cleanup()
 
     def test_filter_by_tag(self):
@@ -79,6 +78,8 @@ class TestMilvusFilter(unittest.TestCase):
         query = "合同问题"
         nodes = retriever(query, filters={'department': ['dpt_123']})
         assert len(nodes) == 1 and nodes[0].global_metadata["department"] == "dpt_123"
+        # in case of re-run with old failing staus that will trigger reparsing, call release to clean db
+        doc._manager._dlm.release()
         doc.stop()
 
 

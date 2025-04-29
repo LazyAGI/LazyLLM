@@ -27,14 +27,14 @@ class DirectoryReader:
             LOG.warning(
                 f"No nodes load from path {input_files}, please check your data path."
             )
-        map_file_meta = {}
         if metadatas:
+            map_file_meta = {}
             for file_path, metadata in zip(input_files, metadatas):
                 if metadata:
                     map_file_meta[file_path] = metadata
-        for node in nodes:
-            file_path = node.global_metadata[RAG_DOC_PATH]
-            if file_path in map_file_meta:
-                node.global_metadata.update(map_file_meta[file_path])
+            for node in nodes:
+                file_path = node.global_metadata[RAG_DOC_PATH]
+                if file_path in map_file_meta:
+                    node.global_metadata.update(map_file_meta[file_path])
         LOG.info("DirectoryReader loads data done!")
         return nodes

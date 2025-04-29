@@ -21,7 +21,6 @@ class DocManager(lazyllm.ModuleBase):
         self._manager.enable_path_monitoring = False
 
     def __reduce__(self):
-        # For unknown reason, when deserializing _manager monitoring is always enabled
         self._manager.enable_path_monitoring = False
         return (__class__, (self._manager,))
 

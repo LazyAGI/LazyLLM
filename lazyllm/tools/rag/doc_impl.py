@@ -149,9 +149,7 @@ class DocImpl:
                 self._delete_doc_from_store(paths_need_delete)
             else:
                 LOG.warning(f"Found {len(paths_need_delete)} docs that are not in store: {paths_need_delete}")
-                # else dlm must turn on path monitoring to detect deleted files
-                assert (self._dlm.enable_path_monitoring is True
-                        ), 'DocListManager must turn on path monitoring or only use DocManager to delete files'
+                self._dlm.delete_files(ids_need_delete)
         return rt_ids, rt_paths, rt_metadatas
 
     def _resolve_index_pending_registrations(self):

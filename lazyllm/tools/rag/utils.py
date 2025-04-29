@@ -119,9 +119,6 @@ class DocListManager(ABC):
         if not os.path.isabs(path):
             raise ValueError(f"path [{path}] is not an absolute path")
 
-    def __reduce__(self):
-        return (__class__, (self._path, self._name, False,))
-
     def __new__(cls, *args, **kw):
         if cls is not DocListManager:
             return super().__new__(cls)
@@ -689,7 +686,7 @@ class SqliteDocListManager(DocListManager):
             conn.commit()
 
     def __reduce__(self):
-        return (__class__, (self._path, self._name))
+        return (__class__, (self._path, self._name, self._enable_path_monitoring))
 
 
 DocListManager.__pool__ = dict(sqlite=SqliteDocListManager)
