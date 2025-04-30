@@ -48,30 +48,33 @@ class InferServer(ServerBase):
             os.makedirs(save_root, exist_ok=True)
             update['log_path'] = self._get_log_path(save_root)
 
-        # Update Status
-        self._update_user_job_info(token, job_id, update)
-
         if Status[status] == Status.Cancelled:
             first_seen = info.get('first_cancelled_time')
             if not first_seen:
                 update['first_cancelled_time'] = datetime.now().strftime(self._time_format)
+                update['status'] = "Pending"
             else:
                 first_seen_time = datetime.strptime(first_seen, self._time_format)
                 if (datetime.now() - first_seen_time).total_seconds() > 60:  # Observe for 60 seconds
-                    m, _ = self._pop_active_job(token, job_id)
-                    m.stop()
+                    ret = self._pop_active_job(token, job_id)
+                    if ret is not None:
+                        ret[0].stop()
                     if info['started_at'] and not info['cost']:
                         cost = (first_seen_time - datetime.strptime(info['started_at'],
                                                                     self._time_format)).total_seconds()
-                        self._update_user_job_info(token, job_id, {'cost': cost})
+                        update['cost'] = cost
+                    self._update_user_job_info(token, job_id, update)
                     return
                 else:
                     # Still in the obsesrvation period, not cleaned up
-                    pass
+                    update['status'] = "Pending"
         else:
             # The status is restored, clear first_cancelled_time
             if 'first_cancelled_time' in info:
                 update['first_cancelled_time'] = None
+
+        # Update Status
+        self._update_user_job_info(token, job_id, update)
 
         # Pop and kill jobs with status: Done, Failed
         if Status[status] in (Status.Done, Status.Failed):
@@ -161,6 +164,11 @@ class InferServer(ServerBase):
             started_time = datetime.now().strftime(self._time_format)
         else:
             started_time = None
+        if Status[status] == Status.Cancelled:
+            first_seen = datetime.now().strftime(self._time_format)
+            status = 'Pending'
+        else:
+            first_seen = None
         self._update_active_jobs(token, job_id, (m, thread))
         self._update_user_job_info(token, job_id, {
             'job_id': job_id,
@@ -173,6 +181,7 @@ class InferServer(ServerBase):
             'cost': None,
             'deploy_method': m._deploy_type.__name__,
             'url': m._url,
+            'first_cancelled_time': first_seen,
         })
 
         return {'job_id': job_id, 'status': status}
