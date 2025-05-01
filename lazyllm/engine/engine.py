@@ -366,14 +366,17 @@ def make_ifs(cond: str, true: List[dict], false: List[dict], judge_on_full_input
 
 @NodeConstructor.register('LocalLLM')
 def make_local_llm(base_model: str, target_path: str = '', prompt: str = '', stream: bool = False,
-                   return_trace: bool = False, deploy_method: str = 'vllm', url: Optional[str] = None,
+                   return_trace: bool = False, deploy_method: str = 'auto', url: Optional[str] = None,
                    history: Optional[List[List[str]]] = None):
     if history and not (isinstance(history, list) and all(len(h) == 2 and isinstance(h, list) for h in history)):
         raise TypeError('history must be List[List[str, str]]')
     deploy_method = getattr(lazyllm.deploy, deploy_method)
     m = lazyllm.TrainableModule(base_model, target_path, stream=stream, return_trace=return_trace)
     m.prompt(prompt, history=history)
-    m.deploy_method(deploy_method, url=url)
+    if deploy_method is lazyllm.deploy.AutoDeploy:
+        m.deploy_method(deploy_method)
+    else:
+        m.deploy_method(deploy_method, url=url)
     return m
 
 
