@@ -2,6 +2,8 @@ import fsspec
 from fsspec.implementations.local import LocalFileSystem
 from typing import Iterable, List
 
+from lazyllm.thirdparty import torch
+
 from ....common import LazyLLMRegisterMetaClass
 from ..doc_node import DocNode
 from lazyllm.module import ModuleBase
@@ -30,7 +32,6 @@ def infer_torch_device() -> str:
     try:
         has_cuda = torch.cuda.is_available()
     except NameError:
-        import torch
         has_cuda = torch.cuda.is_available()
 
     if has_cuda: return "cuda"

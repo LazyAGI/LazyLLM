@@ -1,5 +1,9 @@
+import time
+
 from typing import Any, Dict, List
+
 import lazyllm
+from lazyllm.thirdparty import jwt
 from .onlineEmbeddingModuleBase import OnlineEmbeddingModuleBase
 
 class SenseNovaEmbedding(OnlineEmbeddingModuleBase):
@@ -24,7 +28,6 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase):
             "alg": "HS256",
             "typ": "JWT"
         }
-        import time
         payload = {
             "iss": ak,
             # Fill in the expected effective time, which represents the current time +24 hours
@@ -32,7 +35,6 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase):
             # Fill in the desired effective time starting point, which represents the current time
             "nbf": int(time.time())
         }
-        import jwt
         token = jwt.encode(payload, sk, headers=headers)
         return token
 
