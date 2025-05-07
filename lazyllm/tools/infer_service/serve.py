@@ -78,8 +78,9 @@ class InferServer(ServerBase):
 
         # Pop and kill jobs with status: Done, Failed
         if Status[status] in (Status.Done, Status.Failed):
-            m, _ = self._pop_active_job(token, job_id)
-            m.stop()
+            ret = self._pop_active_job(token, job_id)
+            if ret is not None:
+                ret[0].stop()
             if info['started_at'] and not info['cost']:
                 cost = (datetime.now() - datetime.strptime(info['started_at'], self._time_format)).total_seconds()
                 self._update_user_job_info(token, job_id, {'cost': cost})
