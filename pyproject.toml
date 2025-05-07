@@ -153,7 +153,6 @@ full = [
 ]
 
 [tool.lazyllm.extras_descriptions]
-lite = "Install minimal dependencies for LazyLLM core features, enabling use of online models for basic functionality (e.g., RAG, Agent)"
 standard = "Install minimal dependencies for all LazyLLM features. Supports online model fine-tuning and inference, as well as offline model fine-tuning (requires LLaMA-Factory) and inference (requires vLLM)"
 full = "Install all dependencies for LazyLLM, enabling every feature and advanced tools: automatic framework selection (AutoFinetune, AutoDeploy), additional offline inference engines (LightLLM), and extra training tools (AlpacaloraFinetune, CollieFinetune)"
 alpaca-lora = "Install dependencies for the Alpaca-LoRA fine-tuning framework for local model training"
