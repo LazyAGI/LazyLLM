@@ -4,8 +4,17 @@ import toml
 import requests
 import platform
 import os
+import argparse
+import importlib.metadata
 
+from collections import OrderedDict
+
+_PYPROJECT_CACHE = None
 PYPROJECT_TOML_URL = "https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/pyproject.toml"
+UNSUPPORTED_ON_DARWIN_WIN = [
+    'full', 'standard', 'fintune-all', 'alpaca-lora', 'colie', 'llama-factory', 'deploy-all', 'vllm',
+    'lmdeploy', 'lightllm', 'infinity'
+]
 
 def load_pyproject_from_lazyllm_path():
     try:
@@ -39,15 +48,17 @@ def load_remote_pyproject():
         sys.exit(1)
 
 def load_pyproject():
-    config = load_pyproject_from_lazyllm_path()
-    if config is not None:
-        return config
-    config = load_local_pyproject()
-    if config is not None:
-        return config
-    return load_remote_pyproject()
+    global _PYPROJECT_CACHE
+    if _PYPROJECT_CACHE is not None:
+        return _PYPROJECT_CACHE
+    for loader in (load_pyproject_from_lazyllm_path, load_local_pyproject, load_remote_pyproject):
+        cfg = loader()
+        if cfg:
+            _PYPROJECT_CACHE = cfg
+            return cfg
+    sys.exit(1)
 
-def load_packages():
+def load_extras():
     config = load_pyproject()
     try:
         return config['tool']['poetry']['extras']
@@ -63,6 +74,14 @@ def load_dependencies():
         print("No 'dependencies' information found in the pyproject.toml file.")
         sys.exit(1)
 
+def load_extras_descriptions():
+    config = load_pyproject()
+    try:
+        return config['tool']['lazyllm']['extras_descriptions']
+    except KeyError:
+        print("No 'extras_descriptions' information found in the pyproject.toml file.")
+        sys.exit(1)
+
 def install_packages(packages):
     if isinstance(packages, str):
         packages = [packages]
@@ -71,16 +90,6 @@ def install_packages(packages):
     except subprocess.CalledProcessError as e:
         print(f"安装失败: {e}")
         sys.exit(1)
-
-def install_full():
-    packages = load_packages()
-    install_multiple_packages(packages['full'])
-    install_packages(["flash-attn==2.7.0.post2", "transformers==4.46.1"])
-
-def install_standard():
-    packages = load_packages()
-    install_multiple_packages(packages['standard'])
-    install_packages("transformers==4.46.1")
 
 def parse_caret_to_tilde_version(version):
     if version.startswith("^"):
@@ -121,22 +130,65 @@ def install_multiple_packages(package_names_with_versions):
     install_packages(packages_to_install)
 
 def install(commands):
-    if not commands:
-        print("Usage: lazyllm install [full|standard|package_name]")
+    extras_desc = load_extras_descriptions()
+    epilog_lines = ["Supported extras groups:"]
+    for name, desc in extras_desc.items():
+        epilog_lines.append(f"  {name:<15}  {desc}")
+    epilog = "\n".join(epilog_lines)
+
+    parser = argparse.ArgumentParser(
+        prog="lazyllm install",
+        description="Install one or more extras groups or individual packages",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=epilog
+    )
+    parser.add_argument(
+        "items",
+        nargs="+",
+        metavar="ITEM",
+        help="Extras group(s) or package name(s) to install"
+    )
+    args = parser.parse_args(commands)
+    items = args.items
+
+    if platform.system() in ["Darwin", "Windows"] and \
+       any(i in UNSUPPORTED_ON_DARWIN_WIN for i in items):
+        print("Extras for finetune/local inference are not supported on macOS/Windows.")
         sys.exit(1)
 
-    if platform.system() == "Darwin":
-        if any(command == "full" or command == "standard" for command in commands):
-            print("Installation of 'full' or 'standard' packages is not supported on macOS.")
-            sys.exit(1)
+    extras = load_extras()        # dict of extras
+    deps = load_dependencies()  # dict of dependencies
+    to_install = OrderedDict()
 
-    if len(commands) == 1:
-        command = commands[0]
-        if command == "full":
-            install_full()
-        elif command == "standard":
-            install_standard()
+    for cmd in items:
+        if cmd in extras:
+            for pkg in extras[cmd]:
+                spec = process_package(pkg, deps)
+                to_install[spec] = None
         else:
-            install_multiple_packages([command])
+            spec = process_package(cmd, deps)
+            to_install[spec] = None
+
+    if not to_install:
+        print("No packages to install, please check your command.")
+        sys.exit(1)
+    pkgs = list(to_install.keys())
+    install_packages(pkgs)
+
+    extra_pkgs = []
+
+    try:
+        importlib.metadata.version("torch")
+    except importlib.metadata.PackageNotFoundError:
+        pass
     else:
-        install_multiple_packages(commands)
+        extra_pkgs.append("flash-attn==2.7.0.post2")
+
+    try:
+        tr_ver = importlib.metadata.version("transformers")
+    except importlib.metadata.PackageNotFoundError:
+        pass
+    else:
+        if tr_ver != "4.46.1":
+            extra_pkgs.append("transformers==4.46.1")
+    install_packages(extra_pkgs)

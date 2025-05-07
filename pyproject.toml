@@ -152,6 +152,24 @@ full = [
     "mcp"
 ]
 
+[tool.lazyllm.extras_descriptions]
+lite = "Install minimal dependencies for LazyLLM core features, enabling use of online models for basic functionality (e.g., RAG, Agent)"
+standard = "Install minimal dependencies for all LazyLLM features. Supports online model fine-tuning and inference, as well as offline model fine-tuning (requires LLaMA-Factory) and inference (requires vLLM)"
+full = "Install all dependencies for LazyLLM, enabling every feature and advanced tools: automatic framework selection (AutoFinetune, AutoDeploy), additional offline inference engines (LightLLM), and extra training tools (AlpacaloraFinetune, CollieFinetune)"
+alpaca-lora = "Install dependencies for the Alpaca-LoRA fine-tuning framework for local model training"
+colie = "Install dependencies for the Collie fine-tuning framework for local model training"
+llama-factory = "Install dependencies for LLaMA-Factory fine-tuning framework"
+finetune-all = "Install all fine-tuning frameworks, including alpaca-lora, colie, and llama-factory"
+vllm = "Install dependencies for vLLM local model inference framework"
+lmdeploy = "Install dependencies for LMDeploy local model inference framework"
+lightllm = "Install dependencies for LightLLM local model inference framework"
+infinity = "Install dependencies for local embedding inference using the Infinity framework"
+deploy-all = "Install all local inference frameworks, including LightLLM, vLLM, LMDeploy, and Infinity"
+multimodal = "Install dependencies for multimodal features (speech generation, text-to-image, etc.)"
+rag-advanced = "Install advanced RAG features, including vector database support and embedding fine-tuning"
+agent-advanced = "Install advanced agent-related features with MCP support"
+dev = "Install developer dependencies for code style checks and testing scripts"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
