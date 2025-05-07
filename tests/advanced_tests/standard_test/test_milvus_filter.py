@@ -58,7 +58,6 @@ class TestMilvusFilter(unittest.TestCase):
         self.doc_dir = os.path.join(self.rag_dir, 'docs')
         os.makedirs(self.doc_dir, exist_ok=True)
 
-    @classmethod
     def tearDown(self):
         shutil.rmtree(self.rag_dir)
         cleanup()
