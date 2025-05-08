@@ -224,6 +224,13 @@ model_name_mapping = {
         },
         "type": "vlm"
     },
+    "qwen2.5-vl-3b-instruct": {
+        "source": {
+            "huggingface": "Qwen/Qwen2.5-VL-3B-Instruct",
+            "modelscope": "Qwen/Qwen2.5-VL-3B-Instruct"
+        },
+        "type": "vlm"
+    },
     "musicgen-medium": {
         "source": {
             "huggingface": "facebook/musicgen-medium",
