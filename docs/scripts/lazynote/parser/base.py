@@ -18,7 +18,7 @@ class BaseParser:
             parser(member, manager, **kwargs)
 
     def parse_module(self, module, manager, **kwargs):
-        print(f"--Module: {module.__name__}--")
+        print(f"--Processing Module: {module.__name__}--")
         manager.modify_docstring(module)
 
     def parse_class(self, cls, manager, **kwargs):

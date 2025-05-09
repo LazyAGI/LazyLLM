@@ -118,7 +118,8 @@ class BaseEditor(cst.CSTTransformer):
         Returns:
             cst.Module: The updated Module node with a new docstring.
         """
-        return self._update_node_with_new_docstring(original_node, updated_node, self.module.__doc__)
+        return updated_node
+        # return self._update_node_with_new_docstring(original_node, updated_node, self.module.__doc__)
 
     def _get_obj_by_name(self, name: str) -> Optional[Any]:
         """
