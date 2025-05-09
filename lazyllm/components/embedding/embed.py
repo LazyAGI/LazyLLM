@@ -136,13 +136,14 @@ class EmbeddingDeploy():
                 LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                             f"base_model({base_model}) will be used")
             finetuned_model = base_model
-        if self._sparse_embed or lazyllm.config['default_embedding_engine'] == 'flagEmbedding':
-            return lazyllm.deploy.RelayServer(func=LazyFlagEmbedding(
-                finetuned_model, sparse=self._sparse_embed),
-                launcher=self.launcher, log_path=self._log_path, cls='embedding')()
         if self._model_type == 'embed':
-            return lazyllm.deploy.RelayServer(func=LazyHuggingFaceEmbedding(
-                finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding')()
+            if self._sparse_embed or lazyllm.config['default_embedding_engine'] == 'flagEmbedding':
+                return lazyllm.deploy.RelayServer(func=LazyFlagEmbedding(
+                    finetuned_model, sparse=self._sparse_embed),
+                    launcher=self.launcher, log_path=self._log_path, cls='embedding')()
+            else:
+                return lazyllm.deploy.RelayServer(func=LazyHuggingFaceEmbedding(
+                    finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding')()
         if self._model_type == 'reranker':
             return lazyllm.deploy.RelayServer(func=LazyHuggingFaceRerank(
                 finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding')()
