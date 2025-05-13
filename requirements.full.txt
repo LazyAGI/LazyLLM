@@ -73,4 +73,5 @@ pymongo
 pymysql
 flagembedding
 mcp>=1.5.0
-
+pytesseract
+openai-whisper
