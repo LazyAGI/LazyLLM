@@ -129,7 +129,7 @@ def install_multiple_packages(package_names_with_versions):
         packages_to_install.append(package_with_version)
     install_packages(packages_to_install)
 
-def install(commands):
+def install(commands):  # noqa C901
     extras_desc = load_extras_descriptions()
     epilog_lines = ["Supported extras groups:"]
     for name, desc in extras_desc.items():
@@ -172,23 +172,25 @@ def install(commands):
     if not to_install:
         print("No packages to install, please check your command.")
         sys.exit(1)
+
     pkgs = list(to_install.keys())
-    install_packages(pkgs)
+    filtered_pkgs = [p for p in pkgs if not p.startswith("flash-attn")]
 
-    extra_pkgs = []
+    extra_pkgs = set()
+    if any(p.startswith("flash-attn") for p in pkgs):
+        extra_pkgs.add("flash-attn==2.7.0.post2")
 
-    try:
-        importlib.metadata.version("torch")
-    except importlib.metadata.PackageNotFoundError:
-        pass
-    else:
-        extra_pkgs.append("flash-attn==2.7.0.post2")
+    if filtered_pkgs:
+        install_packages(filtered_pkgs)
 
-    try:
-        tr_ver = importlib.metadata.version("transformers")
-    except importlib.metadata.PackageNotFoundError:
-        pass
-    else:
-        if tr_ver != "4.46.1":
-            extra_pkgs.append("transformers==4.46.1")
-    install_packages(extra_pkgs)
+    if any(p.startswith("vllm") or p.startswith("lazyllm-llamafactory") for p in pkgs):
+        try:
+            tr_ver = importlib.metadata.version("transformers")
+        except importlib.metadata.PackageNotFoundError:
+            pass
+        else:
+            if tr_ver != "4.46.1":
+                extra_pkgs.add("transformers==4.46.1")
+
+    if extra_pkgs:
+        install_packages(list(extra_pkgs))
