@@ -183,19 +183,19 @@ def install(commands):  # noqa C901
     if filtered_pkgs:
         install_packages(filtered_pkgs)
 
-    # if vllm is installed, need to check if transformers==4.46.1 is installed
-    try:
-        importlib.metadata.version("vllm")
-    except importlib.metadata.PackageNotFoundError:
-        pass
-    else:
+    if any(p.startswith("vllm") for p in pkgs):
         try:
-            tr_ver = importlib.metadata.version("transformers")
+            importlib.metadata.version("llamafactory")
         except importlib.metadata.PackageNotFoundError:
             pass
         else:
-            if tr_ver != "4.46.1":
-                extra_pkgs.add("transformers==4.46.1")
+            try:
+                tr_ver = importlib.metadata.version("transformers")
+            except importlib.metadata.PackageNotFoundError:
+                pass
+            else:
+                if tr_ver != "4.46.1":
+                    extra_pkgs.add("transformers==4.46.1")
 
     if extra_pkgs:
         install_packages(list(extra_pkgs))
