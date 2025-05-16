@@ -31,5 +31,4 @@ html2text
 olefile
 openpyxl
 python-pptx
-setuptools<70.0.0
 tenacity

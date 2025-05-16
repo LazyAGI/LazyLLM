@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lazyllm"
-version = "0.4.1"
+version = "0.5.0"
 description = "A Low-code Development Tool For Building Multi-agent LLMs Applications."
 authors = ["wangzhihong <wangzhihong@sensetime.com>"]
 license = "Apache-2.0 license"
@@ -11,8 +11,6 @@ include = [
 
 [tool.poetry.dependencies]
 python = "^3.10"
-appdirs = "*"
-loralib = "*"
 toml = "*"
 fastapi = ">=0.111.0"
 loguru = ">=0.7.2"
@@ -20,7 +18,6 @@ pydantic = "<=2.10.6"
 requests = ">=2.32.2"
 uvicorn = "^0.23.2"
 cloudpickle = ">=3.0.0"
-flake8 = ">=7.0.0"
 gradio = "<5.0.0"
 gradio-client = ">=0.6.1"
 protobuf = ">=3.20.1"
@@ -28,25 +25,35 @@ docstring-parser = "^0.16"
 json5 = "^0.9.25"
 tiktoken = "^0.7.0"
 spacy = "<=3.7.5"
-chromadb = "^0.5.5"
 bm25s = "^0.1.10"
 pystemmer = "^2.2.0.1"
 nltk = "^3.8.1"
 jieba = ">=0.42.1"
 pyjwt = ">=2.8.0"
-sentence-transformers = "^3.0.1"
 sentencepiece = "^0.2.0"
-modelscope = "^1.17.1"
 psycopg2-binary = "^2.9.9"
 sqlalchemy = "^2.0.34"
 psutil = "^6.0.0"
 pypdf = "^5.0.0"
-pytest = "^8.3.3"
 numpy = "==1.26.4"
-pymilvus = ">=2.4.11, <2.5.0"
 async-timeout = "^5.0.1"
 httpx = "<0.28.0"
-rapidfuzz = "^3.12.2"
+docx2txt = "^0.9"
+ebooklib = "^0.19"
+html2text = "^2025.4.15"
+olefile = "^0.47"
+openpyxl = "^3.1.5"
+python-pptx = "^1.0.2"
+tenacity = "^9.1.2"
+appdirs = { version = "*", optional = true }
+loralib = { version = "*", optional = true }
+flake8 = { version = ">=7.0.0", optional = true }
+chromadb = { version = "^0.5.5", optional = true }
+sentence-transformers = { version = "^3.0.1", optional = true }
+modelscope = { version = "^1.17.1", optional = true }
+pytest = { version = "^8.3.3", optional = true }
+pymilvus = { version = ">=2.4.11, <2.5.0", optional = true }
+rapidfuzz = { version = "^3.12.2", optional = true }
 redis = { version = ">=5.0.4", optional = true }
 huggingface-hub = { version = ">=0.23.1", optional = true }
 pandas = { version = ">=2.2.2", optional = true }
@@ -81,11 +88,24 @@ infinity-emb = {version = "==0.0.70", optional = true}
 ctranslate2 = {version = "^4.0.0", optional = true}
 optimum = {version = ">=1.16.2", optional = true}
 typer = {version = "^0.12.5", optional = true}
+pymongo = {version = "^4.12.1", optional = true}
+pymysql = {version = "^1.1.1", optional = true}
 flagembedding = {version = "^1.3.4", optional = true}
 mcp = {version = ">=1.5.0", optional = true}
+pytesseract = {version = "^0.3.13", optional = true}
+openai-whisper = {version = "*", optional = true}
 
 [tool.poetry.extras]
 standard = [
+    "appdirs",
+    "chromadb",
+    "flake8",
+    "loralib",
+    "modelscope",
+    "pymilvus",
+    "pytest",
+    "rapidfuzz",
+    "sentence-transformers",
     "datasets",
     "deepspeed",
     "faiss-cpu",
@@ -103,17 +123,24 @@ standard = [
     "chattts",
     "funasr",
     "lazyllm-lmdeploy",
-    "timm",
-    "diffusers",
-    "lazyllm-llamafactory",
     "rotary-embedding-torch",
     "infinity-emb",
     "ctranslate2",
     "optimum",
     "typer",
-    "flagembedding"
+    "flagembedding",
+    "pytesseract"
 ]
 full = [
+    "appdirs",
+    "chromadb",
+    "flake8",
+    "loralib",
+    "modelscope",
+    "pymilvus",
+    "pytest",
+    "rapidfuzz",
+    "sentence-transformers",
     "datasets",
     "deepspeed",
     "faiss-cpu",
@@ -149,9 +176,134 @@ full = [
     "optimum",
     "typer",
     "flagembedding",
+    "mcp",
+    "pytesseract"
+]
+alpaca-lora = [
+    "appdirs",
+    "datasets",
+    "deepspeed",
+    "faiss-cpu",
+    "fire",
+    "loralib",
+    "peft",
+    "sentence-transformers",
+    "tensorboard",
+    "tensorboard-data-server",
+    "torch",
+    "transformers"
+]
+colie = [ 
+    "collie-lm",
+    "peft",
+    "tensorboard",
+    "tensorboard-data-server",
+    "torch"
+]
+llama-factory = [
+    "datasets",
+    "deepspeed",
+    "lazyllm-llamafactory",
+    "peft",
+    "tensorboard",
+    "tensorboard-data-server",
+    "torch",
+    "transformers"
+]
+finetune-all = [
+    "appdirs",
+    "collie-lm",
+    "ctranslate2",
+    "datasets",
+    "deepspeed",
+    "faiss-cpu",
+    "fire",
+    "flagembedding",
+    "flash-attn",
+    "huggingface-hub",
+    "lazyllm-llamafactory",
+    "loralib",
+    "modelscope",
+    "optimum",
+    "pandas",
+    "peft",
+    "rotary-embedding-torch",
+    "scikit-learn",
+    "sentence-transformers",
+    "tensorboard",
+    "tensorboard-data-server",
+    "timm",
+    "torch",
+    "torchvision",
+    "transformers",
+    "wandb" 
+]
+vllm = [
+    "huggingface-hub",
+    "modelscope",
+    "vllm"
+]
+lmdeploy = [
+    "huggingface-hub",
+    "modelscope",
+    "lazyllm-lmdeploy"
+]
+lightllm = [
+    "huggingface-hub",
+    "modelscope",
+    "lightllm"
+]
+infinity = [
+    "huggingface-hub",
+    "modelscope",
+    "infinity-emb"  
+]
+deploy-all = [
+    "huggingface-hub",
+    "modelscope",
+    "vllm",
+    "sentence-transformers",
+    "lazyllm-lmdeploy",
+    "infinity-emb"  
+]
+multimodal = [
+    "chattts",
+    "diffusers",
+    "funasr",
+    "openai-whisper",
+    "pytesseract",
+    "torch",
+    "transformers"
+]
+rag-advanced = [
+    "chromadb",
+    "ctranslate2",
+    "datasets",
+    "flagembedding",
+    "huggingface-hub",
+    "infinity-emb",
+    "modelscope",
+    "pandas",
+    "pymilvus",
+    "pymongo",
+    "pymysql",
+    "pytesseract",
+    "rank-bm25",
+    "rapidfuzz",
+    "redis",
+    "redisvl",
+    "sentence-transformers",
+    "torch",
+    "transformers"
+]
+agent-advanced = [
+    "ctranslate2",
     "mcp"
 ]
-
+dev = [
+    "flake8",
+    "pytest"
+]
 [tool.lazyllm.extras_descriptions]
 standard = "Install minimal dependencies for all LazyLLM features. Supports online model fine-tuning and inference, as well as offline model fine-tuning (requires LLaMA-Factory) and inference (requires vLLM)"
 full = "Install all dependencies for LazyLLM, enabling every feature and advanced tools: automatic framework selection (AutoFinetune, AutoDeploy), additional offline inference engines (LightLLM), and extra training tools (AlpacaloraFinetune, CollieFinetune)"
