@@ -211,14 +211,17 @@ def install(commands):  # noqa C901
             if tr_ver != "4.46.1":
                 extra_pkgs.add("transformers==4.46.1")
 
-    if any(p.startswith("flash-attn") for p in pkgs):
-        try:
-            tc_ver = importlib.metadata.version("torch")
-        except importlib.metadata.PackageNotFoundError:
-            pass
-        else:
-            if tc_ver == "2.5.1":
-                extra_pkgs.add("flash-attn==2.7.0.post2")
+    for p in pkgs:
+        if p.startswith("flash-attn"):
+            try:
+                tc_ver = importlib.metadata.version("torch")
+            except importlib.metadata.PackageNotFoundError:
+                pass
+            else:
+                if tc_ver == "2.5.1":
+                    extra_pkgs.add("flash-attn==2.7.0.post2")
+                else:
+                    extra_pkgs.add(p)
 
     if extra_pkgs:
         install_packages(list(extra_pkgs))
