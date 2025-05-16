@@ -176,26 +176,49 @@ def install(commands):  # noqa C901
     pkgs = list(to_install.keys())
     filtered_pkgs = [p for p in pkgs if not p.startswith("flash-attn")]
 
-    extra_pkgs = set()
-    if any(p.startswith("flash-attn") for p in pkgs):
-        extra_pkgs.add("flash-attn==2.7.0.post2")
-
     if filtered_pkgs:
         install_packages(filtered_pkgs)
 
-    if any(p.startswith("vllm") for p in pkgs):
+    extra_pkgs = set()
+
+    want_vllm = any(p.startswith("vllm") for p in pkgs)
+    want_llamafactory = any(p.startswith("lazyllm-llamafactory") for p in pkgs)
+
+    try:
+        importlib.metadata.version("vllm")
+        orig_vllm = True
+    except importlib.metadata.PackageNotFoundError:
+        orig_vllm = False
+
+    try:
+        importlib.metadata.version("lazyllm-llamafactory")
+        orig_llamafactory = True
+    except importlib.metadata.PackageNotFoundError:
+        orig_llamafactory = False
+
+    need_transformers = (
+        (want_vllm and orig_llamafactory)
+        or (want_llamafactory and orig_vllm)
+        or (want_vllm and want_llamafactory)
+    )
+
+    if need_transformers:
         try:
-            importlib.metadata.version("llamafactory")
+            tr_ver = importlib.metadata.version("transformers")
         except importlib.metadata.PackageNotFoundError:
             pass
         else:
-            try:
-                tr_ver = importlib.metadata.version("transformers")
-            except importlib.metadata.PackageNotFoundError:
-                pass
-            else:
-                if tr_ver != "4.46.1":
-                    extra_pkgs.add("transformers==4.46.1")
+            if tr_ver != "4.46.1":
+                extra_pkgs.add("transformers==4.46.1")
+
+    if any(p.startswith("flash-attn") for p in pkgs):
+        try:
+            tc_ver = importlib.metadata.version("torch")
+        except importlib.metadata.PackageNotFoundError:
+            pass
+        else:
+            if tc_ver == "2.5.1":
+                extra_pkgs.add("flash-attn==2.7.0.post2")
 
     if extra_pkgs:
         install_packages(list(extra_pkgs))
