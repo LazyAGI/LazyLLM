@@ -1,10 +1,10 @@
 import os
 import sys
 from typing import List, Dict
+import yaml
 import json
 import time
 import re
-from functools import partial
 import importlib
 import inspect
 import pkgutil
@@ -13,7 +13,7 @@ from lazyllm import ReactAgent
 from lazyllm import fc_register, LOG
 
 from lazynote.manager.llm_manager import LLMDocstringManager
-from .prompt import README_PROMPT, GITIGNORE_PROMPT, LICENSE_PROMPT, generate_mkdocs_config, MKDOCS_PROMPT, TRANSLATE_PROMPT
+from .prompt import README_PROMPT, GITIGNORE_PROMPT, LICENSE_PROMPT, generate_mkdocs_config, MKDOCS_PROMPT, TRANSLATE_PROMPT, PLUGIN_CONFIG
 
 
 class GitAgent:
@@ -36,16 +36,12 @@ class GitAgent:
         self._gen_module_dict()
         self.llm = llm
         self.tool_registed = False
-        self.llm = OnlineChatModule(source='qwen', model="qwen3-235b-a22b", stream=False, enable_thinking=False) 
+        self.llm = OnlineChatModule(source='qwen', model="qwen3-235b-a22b", stream=False) 
         
     def standardize_project(self, gen_docstrings: bool = True, gen_mkdocs: bool = True) -> None:
         """
         Standardize the project as a Git project
         """
-        if gen_docstrings:
-            self._generate_docstring() 
-            self._update_module_dict()
-        self._generate_readme()
         if gen_mkdocs:
             self._generate_mkdocs()
         self._generate_requirements()
@@ -179,14 +175,14 @@ class GitAgent:
             """
             Write given content to file at specified path.
             Args:
-                path (str): Target file's relative path (based on project root).
+                path (str): Target file's relative path (based on project root). 
                 content (str): Text content to write.
             Returns:
                 str: Returns 'success' if successful, error message if failed.
             """
             LOG.info(f"write_doc: {path}")
             try:
-                path = os.path.join(self.project_path, path)
+                path = os.path.join(self.project_path, path.strip('/'))
                 if not os.path.exists(os.path.dirname(path)):
                     os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, "w", encoding="utf-8") as f:
@@ -199,21 +195,34 @@ class GitAgent:
         self.tool_registed = True
     
     def _generate_mkdocs(self):
+        LOG.info("😊 Generating mkdocs...")
         self._register_tools()
         agent = ReactAgent(llm=self.llm, tools=['get_module_doc', 'write_doc'], max_retries=20)
         project_structure = self._generate_project_tree(module_list=self.module_doc_dict.keys())
         language = 'en' if self.language == 'en' else 'zh'
         query = MKDOCS_PROMPT.format(project_structure=project_structure, 
-                                     mkdocs_config=generate_mkdocs_config(site_name=os.path.basename(self.project_path), docs_dir=language),
+                                     mkdocs_config=generate_mkdocs_config(site_name=os.path.basename(self.project_path), docs_dir=f"docs/{language}"),
                                      language=language,
                                      language_type='英文' if self.language == 'en' else '中文', 
                                      docs_dir='zh')
         LOG.info(agent(query))
-        self.language = 'bingual'
-        if self.language == 'bingual':
-            docs_dir_zh = os.path.join(self.project_path, "docs", "zh")
-            docs_dir_en = os.path.join(self.project_path, "docs", "en")
-            self._translate_docs(docs_dir_zh, docs_dir_en)
+        try:
+            if self.language == 'bingual':
+                docs_dir_zh = os.path.join(self.project_path, "docs", "zh")
+                docs_dir_en = os.path.join(self.project_path, "docs", "en")
+                self._translate_docs(docs_dir_zh, docs_dir_en)
+                if not os.path.exists(os.path.join(self.project_path, "mkdocs.yml")):
+                    return 
+                with open(os.path.join(self.project_path, 'mkdocs.yml'), 'r', encoding='utf-8') as file:
+                    config = yaml.safe_load(file)
+                config['docs_dir'] = 'docs'
+                config['plugins'] = PLUGIN_CONFIG
+                with open(os.path.join(self.project_path, 'mkdocs.yml'), 'w', encoding='utf-8') as file:
+                    yaml.dump(config, file, allow_unicode=True, sort_keys=False)
+        except Exception as e:
+            LOG.info(f" ❗ (Error during generating mkdocs {e}")
+        LOG.info("✅ mkdocs generation completed...")
+
       
     def start_mkdocs_server(self, port=8333) -> None:
         docs_dir_base = os.path.join(self.project_path, "docs")
@@ -427,7 +436,7 @@ class GitAgent:
                     zh_content = f.read()
                 
                 query = TRANSLATE_PROMPT.format(zh_content=zh_content)
-                en_content = self.llm(query)
+                en_content = self.llm(query, enable_thinking=False)
 
                 with open(en_file_path, 'w', encoding='utf-8') as f:
                     f.write(en_content)

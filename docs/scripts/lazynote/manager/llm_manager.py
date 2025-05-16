@@ -7,34 +7,44 @@ import inspect
 import textwrap
 import json
 
-GENERAL_PROMPT = """请为以下代码生成注释字符串：  
+GENERAL_PROMPT = """你是一个专业代码文档生成器，请根据给定代码为指定目标对象生成文档字符串，严格遵循以下规则：
 
+要求：
+1. 使用{language}生成文档字符串。
+2. 只为目标对象生成文档字符串，且应符合 Google 风格。  
+3. 若目标对象为类，仅生成单行注释描述类的核心能力。
+4. 仅以字符串形式输出完整的注释内容，不包含原代吗，不包含三引号。  
+
+示例输出（函数）：
+Calculates the sum of two numbers.
+
+Args:
+    a (int): First number to add
+    b (int): Second number to add
+
+Returns:
+    int: Sum of the two numbers
+    
+示例输出（类）：
+Calculates the sum of two numbers.
+
+现在请为以下代码生成注释：
 目标对象：{object_name}  
 代码内容：  
 {node_code}  
-语言：{language}  
-
-要求：  
-1. 使用简洁明了的语言描述代码功能。  
-2. 方法注释需符合 Google 风格，包含功能描述、参数说明、返回值说明。  
-3. 若目标对象为类，则注释需为单行简短描述，概括类的核心功能。  
-
-注意：  
-- 仅以字符串形式输出完整的注释内容，不输出原代吗！不输出原代吗！ 
-- 注释格式规范，缩进与代码结构保持一致，可直接粘贴使用。  
 """
 
 
-CLASS_PROMPT = """你是一个专业代码文档生成器，请为指定代码生成可直接粘贴的注释，严格遵循以下规则：
+CLASS_PROMPT = """你是一个专业代码文档生成器，请为给定代码生成文档字符串，严格遵循以下规则：
+
+要求：  
+1. 使用{language}生成文档字符串。
+2. 使用Google风格的文档字符串，语言简洁明了，准确描述代码功能。  
+3. 以JSON格式输出，遵循给定输出格式，保持文档字符串的正确缩进和格式, 不包含三引号。  
+3. 仅输出JSON字符串，勿输出任何额外内容。
 
 代码内容：  
 {node_code}  
-语言：{language}  
-
-要求：  
-1. 使用Google风格的文档字符串，语言简洁明了，准确描述代码功能。  
-2. 以JSON格式输出，遵循给定格式，保持文档字符串的正确缩进和格式。  
-3. 仅输出JSON文件，勿输出任何额外内容。
 
 输出格式：
 {obj_dict}
@@ -72,16 +82,6 @@ class LLMDocstringManager(BaseManager):
             return None
     
     def gen_class_docstring(self, old_docstring: Optional[str], node_code: str) -> str:
-        """
-        为类及其方法生成文档字符串。
-
-        Args:
-            old_docstring (Optional[str]): 原有的文档字符串
-            node_code (str): 节点的代码内容
-
-        Returns:
-            str: 生成的文档字符串字典的JSON字符串
-        """
         try:
             module = cst.parse_module(node_code)
             obj_dict = {}
@@ -109,22 +109,17 @@ class LLMDocstringManager(BaseManager):
                 obj_dict=json.dumps(obj_dict, indent=4, ensure_ascii=False)
             )
             
-
             res = self.llm(prompt)
-            LOG.info(prompt)
-            LOG.info(f"ORIGENIAL RES\n{res}\n")
-            
             try:
                 doc_dict = json.loads(res)
+                doc_dict = {name : self._fix_docstring_indent(docstring, indent=4*(name.count('.')+1)) for name, docstring in doc_dict.items()}
                 if old_docstring:
                     obj_dict[class_name] = old_docstring
                 return doc_dict
             except json.JSONDecodeError as e:
-                LOG.info(f"Error parsing LLM response as JSON: {str(e)}")
                 return {}
                 
         except Exception as e:
-            LOG.info(f"Error generating class docstring: {str(e)}")
             return {}
         
     def gen_docstring(self, old_docstring: Optional[str], node_code: str) -> str:
@@ -143,19 +138,32 @@ class LLMDocstringManager(BaseManager):
             elif line.startswith('class '):
                 object_name = line.split('class ')[1].split('(')[0].split(':')[0].strip()
                 break
-            
         language = '中文' if self.language == 'zh' else '英文'
-        prompt = GENERAL_PROMPT.format(object_name, node_code, language)
+        prompt = GENERAL_PROMPT.format(object_name=object_name, node_code=node_code, language=language)
         res = self.llm(prompt)
-        LOG.info(f"ORIGENIAL RES\n{res}\n")
+        return self._fix_docstring_indent(res)
+    
+    def _fix_docstring_indent(self, docstring, indent: int = 4):
+        if not docstring or not indent:
+            return ''
 
-        if '"""' in res:
-            start = res.find('"""') + 3
-            end = res.rfind('"""')
-            if start < end:
-                content = res[start:end].strip()
-                lines = content.split('\n')
-                formatted_lines = [lines[0]]
-                formatted_lines += ['\t' + line for line in lines[1:]]
-                res = '\n'.join(formatted_lines)
-        return f"{res}\n\t"
+        lines = docstring.strip().split('\n')
+        if len(lines) <= 1:
+            return docstring.strip()
+        
+        def get_indent(line):
+            return len(line) - len(line.lstrip())
+        
+
+        non_empty_lines = [line for line in lines[1:] if line.strip()]
+        if not non_empty_lines:
+            return lines[0]
+        min_indent = min(get_indent(line) for line in non_empty_lines)
+
+        result = [lines[0].strip()]
+        for line in lines[1:]:
+            if line.strip():
+                result.append(' ' * indent + line[min_indent:])
+            else:
+                result.append(' ' * indent)
+        return '\n'.join(result)

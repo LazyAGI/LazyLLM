@@ -2,7 +2,7 @@
 存放 GitAgent 使用的各种 prompt
 """
 
-# README 生成的 prompt 模板
+
 README_PROMPT = """请根据以下项目结构生成一个标准的 README.md 文件：  
 
 项目结构：  
@@ -73,8 +73,8 @@ MKDOCS_PROMPT = """你是一个专业的 Python 文档生成助手。请根据�
    - 按照给定模板生成一个标准的 `mkdocs.yml` 文件：    
      - 文档导航设置，需包含已经生成的全部的 API 文档和最佳实践文档。
      - 导航标签一律设置为英文。
-     - 导航目录为相对于 docs_dir 的路径。 
-   - 使用工具调用，将配置文件保存到`docs` 目录。 
+     - 导航目录为相对于 `docs/{language}` 的路径。 
+   - 使用工具调用，将`mkdocs.yml` 配置文件保存到项目的根目录下。 
    
 **注意：**  
 - 使用 {language_type} 生成内容。
@@ -104,10 +104,7 @@ TRANSLATE_PROMPT = """请将以下Markdown文档从中文翻译成英文，保�
 def generate_mkdocs_config(site_name, docs_dir):
     mkdocs_config = {
             'site_name': site_name,
-            # 'site_url': f'https://{os.path.basename(self.project_path)}.docs',
-            # 'site_author': 'GitAgent',
             'site_description': f'API documentation for {site_name}',
-            # 'copyright': f'© {datetime.now().year} GitAgent',
             'docs_dir': docs_dir,
 
             'theme': {
@@ -171,3 +168,23 @@ MkDocs 配置文件：
 
 生成标准的 mkdocs.yml 配置文件，包含 API 文档和最佳实践文档的导航，使用 write_doc 保存至 docs 目录。
   """
+
+PLUGIN_CONFIG= [
+      {'i18n': 
+          {'docs_structure': 'folder','languages': 
+              [
+                  {
+                      'locale': 'en',
+                      'default': True,
+                      'name': 'English',
+                      'build': True
+                  },
+                  {
+                      'locale': 'zh',
+                      'name': '简体中文',
+                      'build': True
+                  }
+              ]
+          }
+      }
+  ]
