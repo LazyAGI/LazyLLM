@@ -163,6 +163,7 @@ class DocImpl:
 
     def _create_store(self, store_conf: Optional[Dict], embed_dims: Optional[Dict[str, int]] = None,
                       embed_datatypes: Optional[Dict[str, DataType]] = None) -> StoreBase:
+        # TODO (chenjiahao): add self._kb_group_name to Store()
         store_type = store_conf.get('type')
         if not store_type:
             raise ValueError('store type is not specified.')
