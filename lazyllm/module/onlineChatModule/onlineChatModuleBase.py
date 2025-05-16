@@ -4,6 +4,7 @@ import json
 import os
 import requests
 import re
+import random
 from typing import Tuple, List, Dict, Union, Any, Optional
 from urllib.parse import urljoin
 import time
@@ -399,7 +400,6 @@ class OnlineChatModuleBase(ModuleBase):
 
             if status.lower() == "failed":
                 raise ValueError(f"Fine tuning job {fine_tuning_job_id} failed")
-            import random
             while status.lower() != "succeeded":
                 try:
                     # wait 10 seconds before querying again

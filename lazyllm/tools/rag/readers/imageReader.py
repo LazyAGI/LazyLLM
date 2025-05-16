@@ -4,7 +4,10 @@ from io import BytesIO
 from pathlib import Path
 from typing import Dict, List, Optional, cast
 from fsspec import AbstractFileSystem
+
+from lazyllm import thirdparty
 from lazyllm.thirdparty import PIL
+from lazyllm.thirdparty import transformers as tf
 
 from .readerBase import LazyLLMReaderBase, infer_torch_device
 from ..doc_node import ImageDocNode
@@ -35,17 +38,10 @@ class ImageReader(LazyLLMReaderBase):
                 processor = None
                 model = pytesseract
             else:
-                try:
-                    import sentencepiece  # noqa
-                    import torch  # noqa
-                    from PIL import Image  # noqa
-                    from transformers import DonutProcessor, VisionEncoderDecoderModel
-                except ImportError:
-                    raise ImportError("Please install extra dependencies that are required for the "
-                                      "ImageCaptionReader: `pip install torch transformers sentencepiece Pillow`")
+                thirdparty.check_packages(["sentencepiece", "torch", "transformers"])
 
-                processor = DonutProcessor.from_pretrained("naver-clova-ix/donut-base-finetuned-cord-v2")
-                model = VisionEncoderDecoderModel.from_pretrained("naver-clova-ix/donut-base-finetuned-cord-v2")
+                processor = tf.DonutProcessor.from_pretrained("naver-clova-ix/donut-base-finetuned-cord-v2")
+                model = tf.VisionEncoderDecoderModel.from_pretrained("naver-clova-ix/donut-base-finetuned-cord-v2")
             parser_config = {'processor': processor, 'model': model}
 
         self._parser_config = parser_config

@@ -1,3 +1,6 @@
+import spacy
+from spacy.matcher import PhraseMatcher
+
 from functools import lru_cache
 from typing import Callable, List, Optional, Union
 
@@ -55,9 +58,6 @@ class Reranker(ModuleBase, _PostProcess):
 
 @lru_cache(maxsize=None)
 def get_nlp_and_matchers(language):
-    import spacy
-    from spacy.matcher import PhraseMatcher
-
     nlp = spacy.blank(language)
     required_matcher = PhraseMatcher(nlp.vocab)
     exclude_matcher = PhraseMatcher(nlp.vocab)

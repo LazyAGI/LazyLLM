@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import importlib.util
 
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
@@ -72,7 +73,6 @@ class LMDeploy(LazyLLMDeployBase):
                 self.kw['server-port'] = random.randint(30000, 40000)
             cmd = f"lmdeploy serve api_server {finetuned_model} "
 
-            import importlib.util
             if importlib.util.find_spec("torch_npu") is not None:
                 cmd += "--device ascend --eager-mode "
 

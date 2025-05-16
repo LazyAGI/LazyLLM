@@ -1,3 +1,7 @@
+import html2text
+import ebooklib
+
+from ebooklib import epub
 from pathlib import Path
 from typing import Dict, List, Optional
 from fsspec import AbstractFileSystem
@@ -9,14 +13,6 @@ from lazyllm import LOG
 class EpubReader(LazyLLMReaderBase):
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
                    fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
-        try:
-            import ebooklib
-            import html2text
-            from ebooklib import epub
-        except ImportError:
-            raise ImportError("Please install extra dependencies that are required "
-                              "for the EpubReader: `pip install EbookLib html2text`")
-
         if not isinstance(file, Path): file = Path(file)
 
         if fs:

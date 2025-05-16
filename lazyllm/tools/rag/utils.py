@@ -6,6 +6,8 @@ import shutil
 import sqlite3
 import threading
 import time
+import tarfile
+
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -742,7 +744,6 @@ def _save_file_to_cache(
     if file.filename.endswith(".tar"):
 
         def unpack_archive(tar_file_path: str, extract_folder_path: str):
-            import tarfile
 
             out_file_names = []
             try:

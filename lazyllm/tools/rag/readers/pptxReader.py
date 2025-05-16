@@ -4,24 +4,25 @@ from fsspec import AbstractFileSystem
 from pathlib import Path
 from typing import Optional, Dict, List
 
+from lazyllm.thirdparty import pptx
+from lazyllm.thirdparty import transformers as tf
+from lazyllm import thirdparty
+
 from .readerBase import LazyLLMReaderBase, infer_torch_device
 from ..doc_node import DocNode
 
 class PPTXReader(LazyLLMReaderBase):
     def __init__(self, return_trace: bool = True) -> None:
         try:
-            import torch  # noqa
-            from PIL import Image # noqa
-            from pptx import Presentation  # noqa
-            from transformers import (AutoTokenizer, VisionEncoderDecoderModel, ViTFeatureExtractor,)
+            thirdparty.check_packages(['python-pptx', 'torch', 'Pillow', 'transformers'])
         except ImportError:
             raise ImportError("Please install extra dependencies that are required for the "
                               "PPTXReader: `pip install torch transformers python-pptx Pillow`")
 
         super().__init__(return_trace=return_trace)
-        model = VisionEncoderDecoderModel.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
-        feature_extractor = ViTFeatureExtractor.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
-        tokenizer = AutoTokenizer.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
+        model = tf.VisionEncoderDecoderModel.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
+        feature_extractor = tf.ViTFeatureExtractor.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
+        tokenizer = tf.AutoTokenizer.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
 
         self._parser_config = {"feature_extractor": feature_extractor, "model": model, "tokenizer": tokenizer}
 
@@ -52,15 +53,13 @@ class PPTXReader(LazyLLMReaderBase):
 
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
                    fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
-        from pptx import Presentation
-
         if not isinstance(file, Path): file = Path(file)
 
         if fs:
             with fs.open(file) as f:
-                presentation = Presentation(f)
+                presentation = pptx.Presentation(f)
         else:
-            presentation = Presentation(file)
+            presentation = pptx.Presentation(file)
 
         result = ""
         for i, slide in enumerate(presentation.slides):

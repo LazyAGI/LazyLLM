@@ -1,8 +1,9 @@
 import os
 import json
+import traceback
+
 from typing import List, Optional, Dict, Union
 from pydantic import BaseModel, Field
-
 from starlette.responses import RedirectResponse
 from fastapi import UploadFile, Body
 
@@ -167,7 +168,6 @@ class DocManager(lazyllm.ModuleBase):
                       DocListManager.Status.failed] if alive else DocListManager.Status.all
             return BaseResponse(data=self._manager.list_kb_group_files(group_name, limit, details=True, status=status))
         except Exception as e:
-            import traceback
             return BaseResponse(code=500, msg=str(e) + '\ntraceback:\n' + str(traceback.format_exc()), data=None)
 
     class FileGroupRequest(BaseModel):

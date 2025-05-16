@@ -1,7 +1,8 @@
 import os
 import base64
 import uuid
-from lazyllm.thirdparty import PIL
+import importlib.util
+from lazyllm.thirdparty import PIL, torch, diffusers
 from lazyllm.thirdparty import numpy as np
 from io import BytesIO
 
@@ -25,14 +26,11 @@ class StableDiffusion3(object):
             lazyllm.call_once(self.init_flag, self.load_sd)
 
     def load_sd(self):
-        import torch
-        import importlib.util
         if importlib.util.find_spec("torch_npu") is not None:
             import torch_npu  # noqa F401
             from torch_npu.contrib import transfer_to_npu  # noqa F401
 
-        from diffusers import StableDiffusion3Pipeline
-        self.sd = StableDiffusion3Pipeline.from_pretrained(self.base_sd, torch_dtype=torch.float16).to("cuda")
+        self.sd = diffusers.StableDiffusion3Pipeline.from_pretrained(self.base_sd, torch_dtype=torch.float16).to("cuda")
 
     @staticmethod
     def image_to_base64(image):
