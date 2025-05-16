@@ -3,8 +3,9 @@ import argparse
 
 sys.path.append('.')
 sys.path.append('./docs/scripts')
-from lazynote.manager import SimpleManager
+from lazynote.manager import SimpleManager, LLMDocstringManager
 import lazyllm
+from lazyllm import OnlineChatModule
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--replace', action='store_true', help='Execute the replace part of the code.')
@@ -16,12 +17,13 @@ skip_list = [
     'lazyllm.components.deploy.relay.base',
     'lazyllm.components.finetune.easyllm',
     'lazyllm.tools.rag.component.bm25_retriever',
+    'lazyllm.cli'
 ]
 
 if args.replace or args.clean:
-    manager = SimpleManager(pattern='clear', skip_on_error=True)
+    manager = LLMDocstringManager(pattern='clear', skip_on_error=True)
     manager.traverse(lazyllm, skip_modules=skip_list)
 
 if not args.clean:
-    manager = SimpleManager(pattern='fill', skip_on_error=True)
+    manager = LLMDocstringManager(llm=OnlineChatModule(source='deepseek', stream=False), language='zh',pattern='fill', skip_on_error=True)
     manager.traverse(lazyllm, skip_modules=skip_list)
