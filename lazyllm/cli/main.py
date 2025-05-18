@@ -3,6 +3,7 @@ try:
     from install import install
     from deploy import deploy
     from run import run
+    from standardize import standardize
 except ImportError:
     from .install import install
     from .deploy import deploy
@@ -12,7 +13,8 @@ def main():
     def exit():
         print('Usage:\n  lazyllm install [full|standard|package_name]\n'
               '  lazyllm deploy modelname\n  lazyllm deploy mcp_server <command> [args ...] [options]\n'
-              '  lazyllm run graph.json\n  lazyllm run chatbot\n  lazyllm run rag\n')
+              '  lazyllm run graph.json\n  lazyllm run chatbot\n  lazyllm run rag\n'
+              '  lazyllm standardize <project_path>\n')
         sys.exit(1)
 
     if len(sys.argv) <= 1: exit()
@@ -24,6 +26,8 @@ def main():
         deploy(commands)
     elif sys.argv[1] == 'run':
         run(commands)
+    elif sys.argv[1] == 'standardize':
+        standardize(commands)
     else:
         exit()
 
