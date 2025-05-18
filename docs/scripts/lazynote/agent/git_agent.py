@@ -11,8 +11,7 @@ import pkgutil
 from lazyllm.module.onlineChatModule.onlineChatModule import OnlineChatModule
 from lazyllm import ReactAgent
 from lazyllm import fc_register, LOG
-
-from lazynote.manager.llm_manager import LLMDocstringManager
+from ..manager.custom import CustomManager
 from .prompt import (
     README_PROMPT,
     GITIGNORE_PROMPT,
@@ -36,7 +35,7 @@ class GitAgent:
                              f"Please choose from {self.supported_languages}.")
         self.language = language
 
-        self.docstring_manager = LLMDocstringManager(
+        self.docstring_manager = CustomManager(
             llm=llm, pattern="fill", skip_on_error=True, language=language
         )
         self.module_dict = {}
@@ -46,12 +45,12 @@ class GitAgent:
         self._gen_module_dict()
         self.llm = llm
         self.tool_registered = False
-        self.llm = OnlineChatModule(source="qwen", model="qwen3-235b-a22b", stream=False)
 
     def standardize_project(self, gen_docstrings: bool = True, gen_mkdocs: bool = True) -> None:
         """
         Standardize the project as a Git project
         """
+        self._generate_requirements()
         self._generate_gitignore()
         if gen_docstrings:
             self._generate_docstring()
@@ -59,7 +58,6 @@ class GitAgent:
         self._generate_readme()
         if gen_mkdocs:
             self._generate_mkdocs()
-        self._generate_requirements()
         LOG.info("✨Project standardization completed")
 
     def _generate_docstring(self) -> None:
@@ -136,7 +134,7 @@ class GitAgent:
         )
         LOG.info(agent(query))
         try:
-            if self.language == "bingual":
+            if self.language == "bilingual":
                 docs_dir_zh = os.path.join(self.project_path, "docs", "zh")
                 docs_dir_en = os.path.join(self.project_path, "docs", "en")
                 self._translate_docs(docs_dir_zh, docs_dir_en)
@@ -206,10 +204,10 @@ class GitAgent:
             tree = []
             indent = "  " * level
             for name, children in sorted(tree_dict.items()):
-                if children:  # 有子节点，作为目录
+                if children:
                     tree.append(f"{indent}- {name}/")
                     tree.extend(process_tree_dict(children, level + 1))
-                else:  # 叶子节点
+                else:
                     tree.append(f"{indent}- {name}")
             return tree
 

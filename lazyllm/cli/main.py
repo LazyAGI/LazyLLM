@@ -8,6 +8,7 @@ except ImportError:
     from .install import install
     from .deploy import deploy
     from .run import run
+    from .standardize import standardize
 
 def main():
     def exit():
