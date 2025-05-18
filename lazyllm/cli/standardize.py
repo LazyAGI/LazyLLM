@@ -6,12 +6,6 @@ sys.path.append('./docs/scripts')
 
 
 def standardize(commands):
-    """
-    标准化项目的入口函数
-
-    Args:
-        commands: 命令行参数列表，第一个参数为项目路径，第二个参数为可选的模型名称
-    """
     if not commands or len(commands) < 3:
         print("Usage: lazyllm standardize <model> <language> <project_path> ")
         sys.exit(1)
