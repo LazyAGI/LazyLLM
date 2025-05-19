@@ -41,7 +41,7 @@ CLASS_PROMPT = """你是一个专业代码文档生成器，请为给定代码�
 要求：
 1. 使用{language}生成文档字符串。
 2. 使用Google风格的文档字符串，语言简洁明了，准确描述代码功能。
-3. 以JSON格式输出，遵循给定输出格式，保持文档字符串的正确缩进和格式, 不包含三引号。
+3. 将生成的文档字符串组织为JSON字典输出，遵循给定输出格式，保持文档字符串的正确缩进和格式, 不包含三引号。
 3. 仅输出JSON字符串，勿输出任何额外内容。
 
 代码内容：
@@ -115,8 +115,16 @@ class CustomManager(BaseManager):
             )
 
             res = self.llm(prompt)
+            def extract_json_from_response(response: str) -> dict:
+                start = response.find('{')
+                end = response.rfind('}')
+                if start == -1 or end == -1:
+                    return response
+                json_str = response[start:end + 1]
+                return json.loads(json_str)
+
             try:
-                doc_dict = json.loads(res)
+                doc_dict = extract_json_from_response(res)
                 doc_dict = {
                     name: self._fix_docstring_indent(
                         docstring, indent=4 * (name.count(".") + 1)
