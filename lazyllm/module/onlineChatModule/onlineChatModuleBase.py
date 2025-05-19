@@ -282,7 +282,8 @@ class OnlineChatModuleBase(ModuleBase):
         if len(self._model_optional_params) > 0:
             data.update(self._model_optional_params)
 
-        if isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
+        if isinstance(__input, str) and (__input.startswith(LAZYLLM_QUERY_PREFIX)
+           or data["model"] in ('SenseNova-V6-Turbo', 'SenseChat-Vision')):
             for idx, message in enumerate(data["messages"]):
                 content = message["content"]
                 if content.startswith(LAZYLLM_QUERY_PREFIX):
