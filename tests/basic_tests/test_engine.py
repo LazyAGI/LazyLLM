@@ -1,4 +1,4 @@
-from lazyllm.engine import LightEngine
+from lazyllm.engine import LightEngine,engine
 import pytest
 import time
 from gradio_client import Client
@@ -11,7 +11,8 @@ import subprocess
 import socket
 import threading
 import requests
-
+import paddleocr
+import string
 HOOK_PORT = 33733
 HOOK_ROUTE = "mock_post"
 fastapi_code = """
@@ -665,7 +666,21 @@ class TestEngine(unittest.TestCase):
         engine.release_node(gid)
         assert '__start__' in engine._nodes and '__end__' in engine._nodes
 
-
+    def test_engine_pdf_reader(self):
+        nodes = [dict(id='1', kind='Reader', name='m1', args=dict())]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+        p = "D:\\Tutorial\\data\\data_txt\\6\\道德经.txt"
+        engine = LightEngine()
+        gid = engine.start(nodes, edges)        
+        data = engine.run(gid, p)
+        entrys = lazyllm.tools.rag.SimpleDirectoryReader(input_files=[p])._load_data()
+        assert len(data) == len(entrys)
+        engine.stop(gid)
+        engine.reset()
+        nodes = [dict(id='1', kind='OCR', name='m1', args=dict())]
+        gid = engine.start(nodes, edges)
+        data = engine.run(gid, "C:\\wangtianxiong\\桌面\\vdbpdf.pdf")
+        print([t.get_text() for t in data])
 class TestEngineRAG(object):
 
     def test_rag(self):

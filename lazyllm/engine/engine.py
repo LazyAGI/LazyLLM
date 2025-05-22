@@ -1,7 +1,8 @@
-from typing import List, Dict, Type, Optional, Union, Any, overload
+from typing import List, Dict, Type, Optional, Union, Any, overload,Callable
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier, SqlManager
+from lazyllm.tools.rag import SimpleDirectoryReader,DocNode
 from lazyllm.common import compile_func
 from .node import all_nodes, Node
 from .node_meta_hook import NodeMetaHook
@@ -13,7 +14,9 @@ from enum import Enum
 from datetime import datetime, timedelta
 import requests
 import json
-
+from fsspec import AbstractFileSystem
+import paddleocr
+import string
 # Each session will have a separate engine
 class Engine(ABC):
     __default_engine__ = None
@@ -772,3 +775,48 @@ class FileResource(object):
 @NodeConstructor.register('File')
 def make_file(id: str):
     return FileResource(id)
+
+
+
+class ReaderResource(object):
+       
+    def __call__(self, input_files: Union[str, List[str]] = "",
+                 exclude: Optional[List] = None, exclude_hidden: bool = True, recursive: bool = False,
+                 encoding: str = "utf-8", filename_as_id: bool = False, required_exts: Optional[List[str]] = None,
+                 file_extractor: Optional[Dict[str, Callable]] = None, fs: Optional[AbstractFileSystem] = None,
+                 metadata_genf: Optional[Callable[[str], Dict]] = None, num_files_limit: Optional[int] = None,
+                 return_trace: bool = False, metadatas: Optional[Dict] = None):
+        if len(input_files) == 0:
+            return []
+        if isinstance(input_files,str):
+            input_files = [input_files]
+        return SimpleDirectoryReader("",input_files,exclude,exclude_hidden,recursive,
+                          encoding,filename_as_id,required_exts,file_extractor,fs,
+                          metadata_genf,num_files_limit,return_trace,metadatas)._load_data()
+
+@NodeConstructor.register('Reader')
+def make_simple_reader():
+    return ReaderResource()
+
+punctuation = set(string.punctuation+ "，。！？；：“”‘’（）【】《》…—～、")
+def is_all_punctuation(s: str) -> bool:
+    return all(c in punctuation for c in s)
+class OCR(lazyllm.Module):
+    def __init__(self):
+        super().__init__()
+        self._m = paddleocr.PaddleOCR()
+    def forward(self, input,metadatas: Optional[Dict] = None):
+        result = self._m.predict(input)
+        txt = []
+        for res in result:
+            for sentence in res['rec_texts']:
+                t = sentence.strip()
+                if not is_all_punctuation(t) and len(t)>0 :
+                    txt.append(DocNode(text=t,global_metadata=metadatas or {}))             
+        return txt
+
+
+
+@NodeConstructor.register('OCR')
+def make_ocr():
+    return OCR()
