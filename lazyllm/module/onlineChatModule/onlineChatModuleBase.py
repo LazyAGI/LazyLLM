@@ -28,6 +28,7 @@ class OnlineChatModuleBase(ModuleBase):
                  stream: Union[bool, Dict[str, str]],
                  trainable_models: List[str],
                  return_trace: bool = False,
+                 vlm_models: List[str] = None,
                  **kwargs):
         super().__init__(return_trace=return_trace)
         self._model_series = model_series
@@ -38,6 +39,7 @@ class OnlineChatModuleBase(ModuleBase):
         self._model_name = model_name
         self._stream = stream
         self.trainable_models = trainable_models
+        self.vlm_models = vlm_models or []
         self._set_headers()
         self._set_chat_url()
         self.prompt()
@@ -45,6 +47,7 @@ class OnlineChatModuleBase(ModuleBase):
         self.formatter()
         self._field_extractor()
         self._model_optional_params = {}
+        self._vlm_force_format_input_with_files = False
 
     @property
     def series(self):
@@ -283,7 +286,7 @@ class OnlineChatModuleBase(ModuleBase):
             data.update(self._model_optional_params)
 
         if isinstance(__input, str) and (__input.startswith(LAZYLLM_QUERY_PREFIX)
-           or data["model"] in ('SenseNova-V6-Turbo', 'SenseChat-Vision')):
+           or (self._vlm_force_format_input_with_files and data["model"] in self.vlm_models)):
             for idx, message in enumerate(data["messages"]):
                 content = message["content"]
                 if content.startswith(LAZYLLM_QUERY_PREFIX):

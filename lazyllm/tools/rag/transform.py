@@ -401,6 +401,23 @@ Q: What can LazyLLM do?
 A: LazyLLM can assist you in building the most powerful large-scale model applications with minimal cost.
 
 You should not have any unnecessary output. Lets begin:
+""", qa_img="""
+## Role: Q&A Pair Extraction Engine
+You are a Q&A pair extraction engine, responsible for analyzing and extracting Q&A pairs from images.
+
+## Constraints:
+- Only reply with the requested output content: extracted Q&A pairs.
+- Do not add extra fields, explanations, or translations.
+
+## Example:
+Input an image of a pig.
+#output:
+Q: What color is the pig?
+A: The pig is pink.
+Q: What is the pig doing?
+A: The pig is running on the lawn.
+
+You should not output any extra characters. Let's start now.
 """),
     zh=dict(summary="""
 ## 角色：文本摘要
@@ -485,13 +502,11 @@ class LLMParser(NodeTransform):
         assert task_type in ['summary', 'keywords', 'qa', 'qa_img'], f'Not supported task_type {task_type}'
         self._task_type = task_type
         if self._task_type == 'qa_img':
-            self._llm = llm.share(prompt=AlpacaPrompter(dict(
-                system=templates[language][task_type], user='{input}'))).formatter(self._format)
+            prompt = dict(system=templates[language][task_type], user='{input}')
         else:
-            self._llm = llm.share(prompt=AlpacaPrompter(dict(
-                system=templates[language][task_type], user='#input:\n{input}\n#output:\n'))).formatter(self._format)
+            prompt = dict(system=templates[language][task_type], user='#input:\n{input}\n#output:\n')
+        self._llm = llm.share(prompt=AlpacaPrompter(prompt)).formatter(self._format)
         self._task_type = task_type
-        self.model_type = llm.type.lower()
 
     def transform(self, node: DocNode, **kwargs) -> List[str]:
         if self._task_type == 'qa_img':
@@ -499,7 +514,6 @@ class LLMParser(NodeTransform):
         else:
             inputs = node.get_text()
         result = self._llm(inputs)
-        # print("OOOO: ", result)
         return [result] if isinstance(result, str) else result
 
     def _format(self, input):
