@@ -40,16 +40,18 @@ WITHOUT_TOKEN_PROMPT = """Answering questions should include Thought regardless 
 call a tool.(Thought is required, tool_calls is optional.)"""
 
 class ReactAgent(ModuleBase):
-    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False):
+    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False,
+                 prompt: str = None, stream: bool = False):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
         assert llm and tools, "llm and tools cannot be empty."
 
-        prompt = INSTRUCTION.replace("{TOKENIZED_PROMPT}", WITHOUT_TOKEN_PROMPT if isinstance(llm, OnlineChatModule)
-                                     else WITH_TOKEN_PROMPT)
-        prompt = prompt.replace("{tool_names}", json.dumps([t.__name__ if callable(t) else t for t in tools],
-                                                           ensure_ascii=False))
-        self._agent = loop(FunctionCall(llm, tools, _prompt=prompt, return_trace=return_trace),
+        if not prompt:
+            prompt = INSTRUCTION.replace("{TOKENIZED_PROMPT}", WITHOUT_TOKEN_PROMPT if isinstance(llm, OnlineChatModule)
+                                         else WITH_TOKEN_PROMPT)
+            prompt = prompt.replace("{tool_names}", json.dumps([t.__name__ if callable(t) else t for t in tools],
+                                                               ensure_ascii=False))
+        self._agent = loop(FunctionCall(llm, tools, _prompt=prompt, return_trace=return_trace, stream=stream),
                            stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
