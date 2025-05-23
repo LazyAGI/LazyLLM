@@ -1,12 +1,12 @@
 ### ModelArguments
 model_name_or_path: internlm2-chat-7b
+trust_remote_code: true
 adapter_name_or_path: null
 adapter_folder: null
 cache_dir: null
 use_fast_tokenizer: true
 resize_vocab: false
 split_special_tokens: false
-new_special_tokens: null
 model_revision: main
 low_cpu_mem_usage: true
 quantization_bit: null
@@ -18,7 +18,6 @@ flash_attn: auto
 shift_attn: false
 mixture_of_depths: null
 use_unsloth: false
-# visual_inputs: false
 moe_aux_loss_coef: null
 disable_gradient_checkpointing: false
 upcast_layernorm: false
@@ -49,7 +48,6 @@ print_param_status: false
 template: null
 dataset: identity,alpaca_en_demo
 dataset_dir: lazyllm_temp_dir
-# split: train
 cutoff_len: 1024
 train_on_prompt: false
 streaming: false
@@ -172,7 +170,6 @@ gradient_checkpointing_kwargs: null
 include_inputs_for_metrics: false
 eval_do_concat_batches: true
 fp16_backend: auto
-evaluation_strategy: null
 push_to_hub_model_id: null
 push_to_hub_organization: null
 push_to_hub_token: null
@@ -185,8 +182,6 @@ ddp_timeout: 180000000
 torch_compile: false
 torch_compile_backend: null
 torch_compile_mode: null
-dispatch_batches: null
-split_batches: null
 include_tokens_per_second: false
 include_num_input_tokens_seen: false
 neftune_noise_alpha: null
@@ -254,7 +249,6 @@ stage: sft
 finetuning_type: lora
 use_llama_pro: false
 freeze_vision_tower: true
-train_mm_proj_only: false
 plot_loss: true
 
 ### GeneratingArguments

@@ -116,6 +116,31 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             assert os.path.isfile(datapath)
             file_name, _ = os.path.splitext(os.path.basename(datapath))
             temp_dataset_dict[file_name] = {'file_name': datapath}
+            formatting = 'alpaca'
+            try:
+                with open(datapath, 'r', encoding='utf-8') as file:
+                    data = json.load(file)
+                if 'messages' in data[0]:
+                    formatting = 'sharegpt'
+                media_types = []
+                for media in ['images', 'videos', 'audios']:
+                    if media in data[0]:
+                        media_types.append(media)
+                if media_types:
+                    columns = {item: item for item in media_types}
+                    columns.update({"messages": "messages"})
+                    temp_dataset_dict[file_name].update({
+                        "tags": {
+                            "role_tag": "role",
+                            "content_tag": "content",
+                            "user_tag": "user",
+                            "assistant_tag": "assistant"
+                        },
+                        "columns": columns
+                    })
+            except Exception:
+                pass
+            temp_dataset_dict[file_name].update({'formatting': formatting})
         self.temp_dataset_info_path = os.path.join(self.temp_folder, 'dataset_info.json')
         with open(self.temp_dataset_info_path, 'w') as json_file:
             json.dump(temp_dataset_dict, json_file, indent=4)
@@ -149,7 +174,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         random_value = random.randint(1000, 9999)
         self.log_file_path = f'{self.target_path}/train_log_{formatted_date}_{random_value}.log'
 
-        cmds = f'llamafactory-cli train {self.temp_yaml_file}'
+        cmds = f'export DISABLE_VERSION_CHECK=1 && llamafactory-cli train {self.temp_yaml_file}'
         cmds += f' 2>&1 | tee {self.log_file_path}'
         if self.temp_export_yaml_file:
             cmds += f' && llamafactory-cli export {self.temp_export_yaml_file}'
