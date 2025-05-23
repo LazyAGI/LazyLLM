@@ -12,7 +12,7 @@ from .formatter import FormatterBase, EmptyFormatter, JsonFormatter, FileFormatt
 from .stable_diffusion import StableDiffusionDeploy
 from .text_to_speech import TTSDeploy, BarkDeploy, ChatTTSDeploy, MusicGenDeploy
 from .speech_to_text import SenseVoiceDeploy
-
+from .ocr import OCRDeploy
 __all__ = [
     "register",
     "Prompter",
@@ -36,4 +36,5 @@ __all__ = [
     "ChatTTSDeploy",
     "MusicGenDeploy",
     "SenseVoiceDeploy",
+    "OCRDeploy",
 ]
