@@ -19,6 +19,8 @@ from ..module import ModuleBase, Pipeline
 
 
 class OnlineChatModuleBase(ModuleBase):
+    TRAINABLE_MODEL_LIST = []
+    VLM_MODEL_LIST = []
 
     def __init__(self,
                  model_series: str,
@@ -26,7 +28,6 @@ class OnlineChatModuleBase(ModuleBase):
                  base_url: str,
                  model_name: str,
                  stream: Union[bool, Dict[str, str]],
-                 trainable_models: List[str],
                  return_trace: bool = False,
                  vlm_models: List[str] = None,
                  **kwargs):
@@ -38,8 +39,8 @@ class OnlineChatModuleBase(ModuleBase):
         self._base_url = base_url
         self._model_name = model_name
         self._stream = stream
-        self.trainable_models = trainable_models
-        self.vlm_models = vlm_models or []
+        self.trainable_models = self.TRAINABLE_MODEL_LIST
+        self.vlm_models = self.VLM_MODEL_LIST
         self._set_headers()
         self._set_chat_url()
         self.prompt()

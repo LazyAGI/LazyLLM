@@ -510,7 +510,7 @@ class LLMParser(NodeTransform):
 
     def transform(self, node: DocNode, **kwargs) -> List[str]:
         if self._task_type == 'qa_img':
-            inputs = encode_query_with_filepaths('从图像中提取QA对。', [node.image_path])
+            inputs = encode_query_with_filepaths('Extract QA pairs from images.', [node.image_path])
         else:
             inputs = node.get_text()
         result = self._llm(inputs)

@@ -17,7 +17,6 @@ class KimiModule(OnlineChatModuleBase):
                          base_url=base_url,
                          model_name=model,
                          stream=stream,
-                         trainable_models=[],
                          return_trace=return_trace,
                          **kwargs)
 
