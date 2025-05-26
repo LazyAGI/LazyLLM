@@ -1,9 +1,8 @@
-import docx2txt
-
 from pathlib import Path
 from fsspec import AbstractFileSystem
 from typing import Dict, Optional, List
 
+from lazyllm.thirdparty import docx2txt
 from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
 

@@ -1,13 +1,10 @@
-import zlib
-import struct
-import olefile
-
 from fsspec import AbstractFileSystem
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 
 from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
+from lazyllm.thirdparty import zlib, struct, olefile
 from lazyllm import LOG
 
 class HWPReader(LazyLLMReaderBase):

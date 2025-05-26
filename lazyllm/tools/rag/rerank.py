@@ -1,10 +1,10 @@
-import spacy
-from spacy.matcher import PhraseMatcher
+import importlib.util
 
 from functools import lru_cache
 from typing import Callable, List, Optional, Union
 
 import lazyllm
+from lazyllm.thirdparty import spacy
 from lazyllm import ModuleBase, LOG
 from .doc_node import DocNode, MetadataMode
 from .retriever import _PostProcess
@@ -59,8 +59,18 @@ class Reranker(ModuleBase, _PostProcess):
 @lru_cache(maxsize=None)
 def get_nlp_and_matchers(language):
     nlp = spacy.blank(language)
-    required_matcher = PhraseMatcher(nlp.vocab)
-    exclude_matcher = PhraseMatcher(nlp.vocab)
+
+    spec = importlib.util.find_spec("spacy.matcher")
+    if spec is None:
+        raise ImportError(
+            "Please install spacy to use spacy module. "
+            "You can install it with `pip install spacy==3.7.5`"
+        )
+    matcher_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(matcher_module)
+
+    required_matcher = matcher_module.PhraseMatcher(nlp.vocab)
+    exclude_matcher = matcher_module.PhraseMatcher(nlp.vocab)
     return nlp, required_matcher, exclude_matcher
 
 

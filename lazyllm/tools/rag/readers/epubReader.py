@@ -1,13 +1,12 @@
-import html2text
-import ebooklib
+import importlib.util
 
-from ebooklib import epub
 from pathlib import Path
 from typing import Dict, List, Optional
 from fsspec import AbstractFileSystem
 
 from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
+from lazyllm.thirdparty import html2text, ebooklib
 from lazyllm import LOG
 
 class EpubReader(LazyLLMReaderBase):
@@ -20,7 +19,17 @@ class EpubReader(LazyLLMReaderBase):
                         "fsspec filesystems. Will load from local filesystem instead.")
 
         text_list = []
-        book = epub.read_epub(file, options={"ignore_ncs": True})
+
+        spec = importlib.util.find_spec("ebooklib.epub")
+        if spec is None:
+            raise ImportError(
+                "Please install ebooklib to use ebooklib module. "
+                "You can install it with `pip install ebooklib`"
+            )
+        epub_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(epub_module)
+
+        book = epub_module.read_epub(file, options={"ignore_ncs": True})
 
         for item in book.get_items():
             if item.get_type() == ebooklib.ITEM_DOCUMENT:

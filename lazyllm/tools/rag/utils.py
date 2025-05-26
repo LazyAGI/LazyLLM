@@ -6,7 +6,6 @@ import shutil
 import sqlite3
 import threading
 import time
-import tarfile
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -27,6 +26,7 @@ import lazyllm
 from lazyllm import config
 from lazyllm.common import override
 from lazyllm.common.queue import sqlite3_check_threadsafety
+from lazyllm.thirdparty import tarfile
 
 from .doc_node import DocNode
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
