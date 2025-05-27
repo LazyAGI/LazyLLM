@@ -258,7 +258,7 @@ class ServerResource(object):
 
 
 def merge_input(input):
-    if isinstance(input,list[str]) and len(input)>0:
+    if isinstance(input, list[str]) and len(input) > 0:
         ret = json.dumps(input)
         return ret
     else:
@@ -368,10 +368,10 @@ def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] =
 
 @NodeConstructor.register('Loop', subitems=['nodes', 'resources'])
 def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict] = [],
-              resources: List[dict] = [], judge_on_full_input: bool = True,count=sys.maxsize):
+              resources: List[dict] = [], judge_on_full_input: bool = True, count=sys.maxsize):
     stop_condition = make_code(stop_condition)
     return lazyllm.loop(make_graph(nodes, edges, resources, enable_server=False),
-                        stop_condition=stop_condition, judge_on_full_input=judge_on_full_input,count=count)
+                        stop_condition=stop_condition, judge_on_full_input=judge_on_full_input, count=count)
 
 
 @NodeConstructor.register('Ifs', subitems=['true', 'false'])
@@ -393,10 +393,7 @@ def make_local_llm(base_model: str, target_path: str = '', prompt: str = '', str
         m.deploy_method(deploy_method)
     else:
         m.deploy_method(deploy_method, url=url)
-    with pipeline() as ppl:
-        ppl.input_preprocess=merge_input
-        ppl.llm = m
-    return ppl
+    return m
 
 
 @NodeConstructor.register('Intention', subitems=['nodes:dict'])
@@ -708,47 +705,62 @@ class VQA(lazyllm.Module):
         self._vqa._stream = v
 
 
-@NodeConstructor.register('VQA')
+@NodeConstructor.register("VQA")
 def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
     return VQA(base_model, file_resource_id)
 
 
-@NodeConstructor.register('SharedLLM')
-def make_shared_llm(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
-                    stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
-                    history: Optional[List[List[str]]] = None):
+@NodeConstructor.register("SharedLLM")
+def make_shared_llm(
+    llm: str,
+    local: bool = True,
+    prompt: Optional[str] = None,
+    token: str = None,
+    stream: Optional[bool] = None,
+    file_resource_id: Optional[str] = None,
+    history: Optional[List[List[str]]] = None,
+):
     if local:
         llm = Engine().build_node(llm).func
-        if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
-        r = (VQA(llm._vqa.share(prompt=prompt, history=history), file_resource_id)
-             if file_resource_id else llm.share(prompt=prompt, history=history))
+        if file_resource_id:
+            assert isinstance(llm, VQA), "file_resource_id is only supported in VQA"
+        r = (
+            VQA(llm._vqa.share(prompt=prompt, history=history), file_resource_id)
+            if file_resource_id
+            else llm.share(prompt=prompt, history=history)
+        )
     else:
-        assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
+        assert (
+            Engine().launch_localllm_infer_service.flag
+        ), "Infer service should start first!"
         r = Engine().get_infra_handle(token, llm)
-        if prompt: r.prompt(prompt, history=history)
-    if stream is not None: r.stream = stream
-    
-    with pipeline() as ppl:
-        ppl.input_preprocess=merge_input
-        ppl.llm = r
-    return ppl
+        if prompt:
+            r.prompt(prompt, history=history)
+    if stream is not None:
+        r.stream = stream
+    return r
 
 
-@NodeConstructor.register('OnlineLLM')
-def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optional[str] = None,
-                    api_key: Optional[str] = None, secret_key: Optional[str] = None,
-                    stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
-                    history: Optional[List[List[str]]] = None):
-    if source and source.lower() == 'lazyllm':
-        return make_shared_llm(base_model, False, prompt, token, stream, history=history)
+@NodeConstructor.register("OnlineLLM")
+def make_online_llm(
+    source: str,
+    base_model: Optional[str] = None,
+    prompt: Optional[str] = None,
+    api_key: Optional[str] = None,
+    secret_key: Optional[str] = None,
+    stream: bool = False,
+    token: Optional[str] = None,
+    base_url: Optional[str] = None,
+    history: Optional[List[List[str]]] = None,
+):
+    if source and source.lower() == "lazyllm":
+        return make_shared_llm(
+            base_model, False, prompt, token, stream, history=history
+        )
     else:
-        m = lazyllm.OnlineChatModule(base_model, source, base_url, stream,
-                                        api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
-        with pipeline() as ppl:
-            ppl.input_preprocess=merge_input
-            ppl.llm = m
-        return ppl
-
+        return lazyllm.OnlineChatModule(
+            base_model, source, base_url, stream, api_key=api_key, secret_key=secret_key
+        ).prompt(prompt, history=history)
 
 class LLM(lazyllm.ModuleBase):
     def __init__(self, m: lazyllm.ModuleBase, keys: Optional[List[str]] = None):
@@ -777,17 +789,21 @@ def make_llm(kw: dict):
 class STT(lazyllm.Module):
     def __init__(self, base_model: Union[str, lazyllm.TrainableModule]):
         super().__init__()
-        self._m = lazyllm.TrainableModule(base_model) if isinstance(base_model, str) else base_model.share()
+        self._m = (
+            lazyllm.TrainableModule(base_model)
+            if isinstance(base_model, str)
+            else base_model.share()
+        )
 
     def forward(self, query: str):
-        if '<lazyllm-query>' in query:
-            for ext in ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma']:
+        if "<lazyllm-query>" in query:
+            for ext in [".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma"]:
                 if ext in query or ext.upper() in query:
                     return self._m(query)
         return query
 
     def share(self, prompt: str = None):
-        assert prompt is None, 'STT has no promot'
+        assert prompt is None, "STT has no promot"
         return STT(self._m)
 
     def status(self, task_name: Optional[str] = None):
@@ -802,14 +818,14 @@ class STT(lazyllm.Module):
         self._m._stream = v
 
 
-@NodeConstructor.register('STT')
+@NodeConstructor.register("STT")
 def make_stt(base_model: str):
     return STT(base_model)
 
 
-@NodeConstructor.register('Constant')
+@NodeConstructor.register("Constant")
 def make_constant(value: Any):
-    return (lambda *args, **kw: value)
+    return lambda *args, **kw: value
 
 
 class FileResource(object):
@@ -817,93 +833,32 @@ class FileResource(object):
         self.id = id
 
     def __call__(self, *args, **kw) -> Union[str, List[str]]:
-        return lazyllm.globals['lazyllm_files'].get(self.id)
+        return lazyllm.globals["lazyllm_files"].get(self.id)
 
 
-@NodeConstructor.register('File')
+@NodeConstructor.register("File")
 def make_file(id: str):
     return FileResource(id)
 
 
-class ParameterExtractor(lazyllm.Module):
-    def __init__(self, base_model: Union[str, lazyllm.TrainableModule],param:list[str],types:list[Type],prompt: str = ""):
-        super().__init__()
-        if isinstance(base_model, str):
-            self._m = lazyllm.TrainableModule(base_model).start().prompt(prompt)
-        else:
-            self._m = base_model.share(prompt)
-        self.param = param
-        self.types = types
-        self.param_dict = dict(zip(param,types))
-    def forward(self, query: str):
-        res = self._m(query)
-        try:
-            res_json = json.loads(res)
-        except:
-            return res
-        ret =dict()
-        for k in self.param:
-            if k in res_json:
-                v = res_json[k]
-                if isinstance(v,self.param_dict[k]):
-                    ret[k]=v
-                else:
-                    ret[k]=None
-        return ret
-
-    def share(self,prompt: str = ""):
-        return ParameterExtractor(self._m,self.param,self.types,prompt=prompt)
-
-    def status(self, task_name: Optional[str] = None):
-        return self._m.status(task_name)
-
-    @property
-    def stream(self):
-        return self._m._stream
-
-    @stream.setter
-    def stream(self, v: bool):
-        self._m._stream = v
-
-@NodeConstructor.register('ParameterExtractor')
-def make_parameter_extractor(base_model: Union[str, lazyllm.TrainableModule],prompt: str = ''):
-    return ParameterExtractor(base_model=base_model,prompt=prompt)
+@NodeConstructor.register("ParameterExtractor")
+def make_parameter_extractor(
+    base_model: Union[str, lazyllm.TrainableModule],
+    param: list[str],
+    types: list[str],
+    prompt: str = "",
+):
+    return lazyllm.components.parameter_extractor.ParameterExtractor(
+        base_model=base_model, param=param, types=types, prompt=prompt
+    )
 
 
+@NodeConstructor.register("QustionRewrite")
+def make_qustion_rewrite(
+    base_model: Union[str, lazyllm.TrainableModule],
+    rewrite_prompt: str = "",
+    formatter: str = "str",
+):
+    return lazyllm.components.qustion_rewriter.QustionRewrite(base_model, rewrite_prompt, formatter)
 
 
-class QustionRewrite(lazyllm.Module):
-    def __init__(self, base_model: Union[str, lazyllm.TrainableModule],rewrite_prompt: str = '',formatter:str="list"):
-        super().__init__()
-        if isinstance(base_model, str):
-            self._m = lazyllm.TrainableModule(base_model).start().prompt(rewrite_prompt)
-        else:
-            self._m = base_model.share(rewrite_prompt)
-        self.formatter = formatter
-    def forward(self, query: str):
-        res = self._m(query)
-        if self.formatter=="list":
-            return res.split('\n')
-        else:
-            return res
-
-    def share(self, prompt: str = None):
-        return QustionRewrite(self._m,rewrite_prompt=prompt,formatter=self.formatter)
-
-    def status(self, task_name: Optional[str] = None):
-        return self._m.status(task_name)
-
-    @property
-    def stream(self):
-        return self._m._stream
-
-    @stream.setter
-    def stream(self, v: bool):
-        self._m._stream = v
-
-@NodeConstructor.register('QustionRewrite')
-def make_qustion_rewrite(base_model: Union[str, lazyllm.TrainableModule],rewrite_prompt: str = '',formatter:str="str"):
-    return QustionRewrite(base_model,rewrite_prompt,formatter)
-       
-        
-    
