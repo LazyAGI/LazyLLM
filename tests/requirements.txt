@@ -12,3 +12,4 @@ pytesseract
 git+https://github.com/openai/whisper.git
 pydub
 pytest-cov
+rapidfuzz

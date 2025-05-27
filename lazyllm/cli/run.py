@@ -3,6 +3,8 @@ import argparse
 import json
 
 import lazyllm
+
+from lazyllm import pipeline, parallel, bind, SentenceSplitter, Document, Retriever, Reranker
 from lazyllm.engine.lightengine import LightEngine
 from lazyllm.tools.train_service.serve import TrainServer
 from lazyllm.tools.infer_service.serve import InferServer
@@ -12,13 +14,9 @@ from lazyllm.tools.infer_service.serve import InferServer
 # lazyllm run rag --model=xx --framework=xx --source=xx --documents=''
 
 def chatbot(llm):
-    import lazyllm
     lazyllm.WebModule(llm, port=range(20000, 25000)).start().wait()
 
-
 def rag(llm, docpath):
-    import lazyllm
-    from lazyllm import pipeline, parallel, bind, SentenceSplitter, Document, Retriever, Reranker
     prompt = ('You will play the role of an AI Q&A assistant and complete a dialogue task. In this '
               'task, you need to provide your answer based on the given context and question.')
 
@@ -86,7 +84,6 @@ def run(commands):
             parser.add_argument('--documents', required=True, type=str, help='document absolute path')
 
         args = parser.parse_args(commands)
-        import lazyllm
         llm = lazyllm.AutoModel(args.model, args.source, args.framework)
 
         if args.command == 'chatbot':

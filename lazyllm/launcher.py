@@ -6,6 +6,7 @@ import random
 import atexit
 import threading
 import subprocess
+import multiprocessing
 from enum import Enum
 from queue import Queue
 from datetime import datetime
@@ -1121,7 +1122,6 @@ class EmptyLauncher(LazyLLMLaunchersBase):
                 return f(*args, **kw)
             else:
                 LOG.info("Async execution of callable object is not supported currently.")
-                import multiprocessing
                 p = multiprocessing.Process(target=f, args=args, kwargs=kw)
                 p.start()
                 p.join()
