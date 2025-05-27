@@ -859,7 +859,7 @@ def make_qustion_rewrite(
     rewrite_prompt: str = "",
     formatter: str = "str",
 ):
-    return lazyllm.components.qustion_rewriter.QustionRewrite(base_model, rewrite_prompt, formatter)
+    return lazyllm.components.actors.QustionRewrite(base_model, rewrite_prompt, formatter)
 
 @NodeConstructor.register("Multimodal")
 def make_multimodal(kw: dict):

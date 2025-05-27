@@ -2,7 +2,6 @@ from typing import Union, Optional
 import json
 from ...module import ModuleBase, TrainableModule
 
-
 class ParameterExtractor(ModuleBase):
     type_map = {
         int.__name__: int,
