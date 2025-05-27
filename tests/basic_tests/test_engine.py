@@ -701,27 +701,48 @@ class TestEngine(unittest.TestCase):
                     RAG有什么特点？\
                     \
                 用户输入为："
-        nodes = [dict(id='1', kind='QustionRewrite', name='m1', args=dict(base_model="internlm2-chat-20b",rewrite_prompt=rewrite_prompt,formatter="str"))]
-        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+        nodes = [
+            dict(
+                id="1",
+                kind="QustionRewrite",
+                name="m1",
+                args=dict(
+                    base_model="internlm2-chat-20b",
+                    rewrite_prompt=rewrite_prompt,
+                    formatter="str",
+                ),
+            )
+        ]
+        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
 
         engine = LightEngine()
         gid = engine.start(nodes, edges)
         res = engine.run(gid, "Model Context Protocol是啥")
-        assert isinstance(res,str)
+        assert isinstance(res, str)
         engine.reset()
-        nodes = [dict(id='1', kind='QustionRewrite', name='m1', args=dict(base_model="internlm2-chat-20b",rewrite_prompt=rewrite_prompt,formatter="list"))]
+        nodes = [
+            dict(
+                id="1",
+                kind="QustionRewrite",
+                name="m1",
+                args=dict(
+                    base_model="internlm2-chat-20b",
+                    rewrite_prompt=rewrite_prompt,
+                    formatter="list",
+                ),
+            )
+        ]
         gid = engine.start(nodes, edges)
         res = engine.run(gid, "RAG是什么？")
-        assert isinstance(res,list) and len(res)>0
-
+        assert isinstance(res, list) and len(res) > 0
 
     def test_parameter_extractor(self):
         prompt = """
         你是一个智能助手，你的任务是从用户的输入中提取参数，并将其转换为json格式。
         ## 你需要根据提供的如下参数list，从文本提取相应的内容到json文件中。其中name是参数的名称，type是参数的类型，description是参数的说明。提取的参数名字、类型、说明如下：
-        '''{params}'''
+        '''[{{"name": "year", "type": "int", "description": "年份","require"：true}}]'''
         ## 用户的指令如下：
-        '''{prompt}'''
+        ''' '''
 
         ## 提取要求如下
         1. 你需要从用户的输入中提取出这些参数，并将其转换为json格式。请注意，json格式的键是参数的名称，值是提取到的值。请确保json格式正确，并且所有参数都被提取出来。
@@ -731,19 +752,30 @@ class TestEngine(unittest.TestCase):
         {{"year": 2023,"__is_success"：1,"__reason":"提取成功"}}
         4. 仅输出json字符串，不要输出其他任何内容；输出的json格式需要使用双引号
         5. 结合用户的输入和参数说明，尽量提取出更多的参数。
-        
         """
-        nodes = [dict(id='1', kind='ParameterExtractor', name='m1', args=dict(base_model="internlm2-chat-20b",prompt=prompt))]
-        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+        nodes = [
+            dict(
+                id="1",
+                kind="ParameterExtractor",
+                name="m1",
+                args=dict(
+                    base_model="internlm2-chat-20b",
+                    param=["year"],
+                    types=["int"],
+                    prompt=prompt,
+                ),
+            )
+        ]
+        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
 
         engine = LightEngine()
         gid = engine.start(nodes, edges)
-        input = '{"name": "year", "type": "int", "description": "年份","require"：true}'
+        input = "This year is 2023"
         res = engine.run(gid, input)
-        assert isinstance(res,dict)
+        assert isinstance(res, dict)
         assert "year" in res
-        assert isinstance(res["year"],int)
-        assert res["year"]==2023
+        assert isinstance(res["year"], int)
+        assert res["year"] == 2023
 
 class TestEngineRAG(object):
 

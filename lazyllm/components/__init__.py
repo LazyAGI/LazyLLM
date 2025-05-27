@@ -12,6 +12,8 @@ from .formatter import FormatterBase, EmptyFormatter, JsonFormatter, FileFormatt
 from .stable_diffusion import StableDiffusionDeploy
 from .text_to_speech import TTSDeploy, BarkDeploy, ChatTTSDeploy, MusicGenDeploy
 from .speech_to_text import SenseVoiceDeploy
+from .qustion_rewriter import QustionRewrite
+from .parameter_extractor import ParameterExtractor
 
 __all__ = [
     "register",
@@ -36,4 +38,6 @@ __all__ = [
     "ChatTTSDeploy",
     "MusicGenDeploy",
     "SenseVoiceDeploy",
+    "QustionRewrite",
+    "ParameterExtractor",
 ]
