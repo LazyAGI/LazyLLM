@@ -861,4 +861,14 @@ def make_qustion_rewrite(
 ):
     return lazyllm.components.qustion_rewriter.QustionRewrite(base_model, rewrite_prompt, formatter)
 
-
+@NodeConstructor.register("Multimodal")
+def make_multimodal(kw: dict):
+    kind: str = kw.pop('kind')
+    base_model = kw.pop("base_model")
+    assert kind in ('VQA', 'STT', 'STT'), f'Invalid type {kind} given'
+    if kind == 'VQA':
+        file_resource_id = None
+        if "file_resource_id" in kw:
+            file_resource_id = kw.pop("file_resource_id")
+        return make_vqa(base_model=base_model, file_resource_id=file_resource_id)
+    elif kind == 'STT': return make_stt(base_model)
