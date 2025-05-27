@@ -25,7 +25,6 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
                                       base_url=base_url,
                                       model_name=model or lazyllm.config['glm_model_name'] or GLMModule.MODEL_NAME,
                                       stream=stream,
-                                      trainable_models=GLMModule.TRAINABLE_MODEL_LIST,
                                       return_trace=return_trace,
                                       **kwargs)
         FileHandlerBase.__init__(self)

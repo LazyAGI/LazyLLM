@@ -14,7 +14,7 @@ from typing import List, Union
 
 import lazyllm
 from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule
-from lazyllm.components.formatter import decode_query_with_filepaths
+from lazyllm.components.formatter import decode_query_with_filepaths, encode_query_with_filepaths
 from ...module.module import ModuleBase
 
 
@@ -36,7 +36,8 @@ class WebModule(ModuleBase):
 
     def __init__(self, m, *, components=dict(), title='对话演示终端', port=None,
                  history=[], text_mode=None, trace_mode=None, audio=False, stream=False,
-                 files_target=None, static_paths: Union[str, Path, List[str | Path]] = None) -> None:
+                 files_target=None, static_paths: Union[str, Path, List[str | Path]] = None,
+                 encode_files=False) -> None:
         super().__init__()
         # Set the static directory of gradio so that gradio can access local resources in the directory
         if isinstance(static_paths, (str, Path)):
@@ -64,6 +65,7 @@ class WebModule(ModuleBase):
         self.audio = audio
         self.stream = stream
         self.files_target = files_target if isinstance(files_target, list) or files_target is None else [files_target]
+        self.encode_files = encode_files
         self.demo = self.init_web(components)
         self.url = None
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -263,8 +265,10 @@ class WebModule(ModuleBase):
                 string = chat_history[-1][0]
             else:
                 string = ''
-            if self.files_target is None:
+            if self.files_target is None and not self.encode_files:
                 self._get_all_file_submodule()
+            if self.encode_files and files:
+                string = encode_query_with_filepaths(string, files)
             if files and self.files_target:
                 for module in self.files_target:
                     assert isinstance(module, ModuleBase)
@@ -273,6 +277,10 @@ class WebModule(ModuleBase):
                     else:
                         globals['lazyllm_files'][module._module_id] = files
                 string += f' ## Get attachments: {os.path.basename(files[-1])}'
+            elif self.files_target:
+                for module in self.files_target:
+                    assert isinstance(module, ModuleBase)
+                    globals['lazyllm_files'][module._module_id] = []
             input = string
             history = chat_history[:-1] if use_context and len(chat_history) > 1 else list()
 
@@ -367,7 +375,7 @@ class WebModule(ModuleBase):
                 if result:
                     count = (len(match.group(1)) if (match := re.search(r'(\n+)$', result)) else 0) + len(result) + 1
                     if not (result in chat_history[-1][1][-count:]):
-                        chat_history[-1][1] += "\n\n" + result
+                        chat_history[-1][1] += "\n\n" + show_result
                     elif show_result != result:
                         chat_history[-1][1] = chat_history[-1][1].replace(result, show_result)
         except requests.RequestException as e:

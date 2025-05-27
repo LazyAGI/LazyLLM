@@ -14,6 +14,7 @@ from .fileHandler import FileHandlerBase
 
 class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ["nova-ptc-s-v2"]
+    VLM_MODEL_LIST = ['SenseNova-V6-Turbo', 'SenseChat-Vision']
 
     def __init__(self,
                  base_url: str = "https://api.sensenova.cn/v1/llm/",
@@ -43,11 +44,11 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
                                       base_url=base_url,
                                       model_name=model,
                                       stream=stream,
-                                      trainable_models=SenseNovaModule.TRAINABLE_MODEL_LIST,
                                       return_trace=return_trace,
                                       **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
+        self._vlm_force_format_input_with_files = True
 
     def _get_system_prompt(self):
         return "You are an AI assistant, developed by SenseTime."
