@@ -7,6 +7,7 @@ from .node import all_nodes, Node
 from .node_meta_hook import NodeMetaHook
 import inspect
 import functools
+from itertools import repeat
 import copy
 from abc import ABC, abstractclassmethod
 from enum import Enum
@@ -346,8 +347,16 @@ def make_diverter(nodes: List[dict]):
 
 
 @NodeConstructor.register('Warp', subitems=['nodes', 'resources'])
-def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] = []):
-    return lazyllm.warp(make_graph(nodes, edges, resources, enable_server=False))
+def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] = [],
+              batch_flags: Optional[List[int]] = None):
+    wp = lazyllm.warp(make_graph(nodes, edges, resources, enable_server=False))
+    if batch_flags and len(batch_flags) > 1:
+        def transform(*args):
+            args = [a if b else repeat(a) for a, b in zip(args, batch_flags)]
+            args = [lazyllm.package(a) for a in zip(*args)]
+            return args
+        wp = lazyllm.pipeline(transform, wp)
+    return wp
 
 
 @NodeConstructor.register('Loop', subitems=['nodes', 'resources'])
