@@ -148,6 +148,8 @@ jobs:
         run: |
           cd ${{ env.CI_PATH }}
           pip install -r tests/requirements.txt
+          python -m pip install paddlepaddle-gpu==3.0.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+          pip install paddleocr==3.0.0  
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
@@ -175,7 +177,7 @@ jobs:
       - name: RunTests
         run: |
           cd ${{ env.CI_PATH }}
-          pip install -r tests/requirements.txt
+          pip install -r tests/requirements.txt       
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models

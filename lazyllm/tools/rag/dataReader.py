@@ -14,6 +14,7 @@ from typing import Dict, Optional, List, Callable, Type
 from pathlib import Path, PurePosixPath, PurePath
 from fsspec import AbstractFileSystem
 from lazyllm import ModuleBase, LOG, config
+from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list
 from .doc_node import DocNode
 from .readers import (ReaderBase, PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader,
                       EpubReader, MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
@@ -272,3 +273,27 @@ class SimpleDirectoryReader(ModuleBase):
 
 config.add('rag_filename_as_id', bool, False, 'RAG_FILENAME_AS_ID')
 config.add('use_fallback_reader', bool, True, 'USE_FALLBACK_READER')
+class FileReader(object):
+    def __init__(self, file_resource: Optional[Callable] = None) -> None:
+        self.file_resource = file_resource
+
+    def __call__(self, input_files):
+        if input_files:
+            file_list = _lazyllm_get_file_list(input_files)
+        else:
+            file_list = []
+        if isinstance(file_list, str):
+            file_list = [file_list]
+        if self.file_resource is not None:
+            extra_file = self.file_resource()
+            if isinstance(extra_file, str):
+                file_list.append(extra_file)
+            elif isinstance(extra_file, list) and all(isinstance(item, str) for item in extra_file):
+                file_list.extend(extra_file)
+            else:
+                LOG.warning(f'not support type:{type(extra_file)}')
+        if len(file_list) == 0:
+            return []
+        nodes = SimpleDirectoryReader(input_files=file_list)._load_data()
+        txt = [node.get_text() for node in nodes]
+        return "\n".join(txt)

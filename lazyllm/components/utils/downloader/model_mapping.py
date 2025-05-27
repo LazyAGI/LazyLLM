@@ -314,5 +314,15 @@ model_name_mapping = {
             "modelscope": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
         },
         "type": "sd"
-    }
+    },
+    "pp-ocrv5_server": {
+        "source": {},
+        "download_by_other":True,
+        "type": "ocr"
+    },
+    "pp-ocrv5_mobile": {
+        "source": {},
+        "download_by_other":True,
+        "type": "ocr"
+    }    
 }

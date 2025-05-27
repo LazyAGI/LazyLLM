@@ -9,8 +9,8 @@ from .auto_helper import model_map, get_model_name, check_requirements
 from lazyllm.components.stable_diffusion.stable_diffusion3 import StableDiffusionDeploy
 from lazyllm.components.speech_to_text.sense_voice import SenseVoiceDeploy
 from lazyllm.components.text_to_speech.base import TTSDeploy
+from lazyllm.components.ocr.pp_ocr import OCRDeploy
 from ..utils.downloader import ModelManager
-
 class AutoDeploy(LazyLLMDeployBase):
     message_format = {}
     keys_name_handle = None
@@ -38,6 +38,8 @@ class AutoDeploy(LazyLLMDeployBase):
             return TTSDeploy(model_name, log_path=log_path, launcher=(launcher or launchers.remote(ngpus=1)))
         elif type == 'vlm':
             return deploy.LMDeploy((launcher or launchers.remote(ngpus=1)), log_path=log_path, **kw)
+        elif type == 'ocr':
+            return OCRDeploy(launcher, log_path=log_path)
 
         map_name, size = model_map(model_name)
         if not launcher:

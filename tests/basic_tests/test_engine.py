@@ -11,7 +11,7 @@ import subprocess
 import socket
 import threading
 import requests
-
+import os
 HOOK_PORT = 33733
 HOOK_ROUTE = "mock_post"
 fastapi_code = """
@@ -700,6 +700,15 @@ class TestEngine(unittest.TestCase):
         engine.release_node(gid)
         assert '__start__' in engine._nodes and '__end__' in engine._nodes
 
+    def test_engine_reader(self):
+        nodes = [dict(id='1', kind='Reader', name='m1', args=dict())]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+        data_root_dir = os.getenv("LAZYLLM_DATA_PATH")
+        p = os.path.join(data_root_dir, "rag_master/default/__data/sources/道德经.txt")
+        engine = LightEngine()
+        gid = engine.start(nodes, edges)
+        data = engine.run(gid, p)
+        assert len(data) > 0
 
 @pytest.mark.skip_on_win
 @pytest.mark.skip_on_mac

@@ -833,6 +833,23 @@ def make_qustion_rewrite(base_model: str, rewrite_prompt: str = "", formatter: s
     return lazyllm.tools.QustionRewrite(base_model, rewrite_prompt, formatter)
 
 
+@NodeConstructor.register("Reader")
+def make_simple_reader(file_resource_id: Optional[str] = None):
+    if file_resource_id:
+        file = Engine().build_node(file_resource_id).func
+        return lazyllm.tools.rag.FileReader(file_resource=file)
+    else:
+        return lazyllm.tools.rag.FileReader()
+
+
+@NodeConstructor.register("OCR")
+def make_ocr(model: Optional[str] = "PP-OCRv5_mobile"):
+    if model is None:
+        model = "PP-OCRv5_mobile"
+    assert model in ["PP-OCRv5_server", "PP-OCRv5_mobile"]
+    return lazyllm.TrainableModule(base_model=model).start()
+
+
 @NodeConstructor.register("CodeGenerator")
 def make_code_generator(base_model: str, prompt: str = ""):
     base_model = Engine().build_node(base_model).func

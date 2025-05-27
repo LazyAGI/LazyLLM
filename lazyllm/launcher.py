@@ -91,7 +91,7 @@ class Job(object):
         assert isinstance(cmd, LazyLLMCMD)
         self._origin_cmd = cmd
         self.sync = sync
-        self.launcher = launcher
+        self._launcher = launcher
         self.queue, self.jobid, self.ip, self.ps = Queue(), None, None, None
         self.output_hooks = []
 
@@ -133,13 +133,13 @@ class Job(object):
         if self.sync:
             self.ps.wait()
         else:
-            self.launcher.all_processes[self.launcher._id].append((self.jobid, self))
+            self._launcher.all_processes[self._launcher._id].append((self.jobid, self))
             n = 0
             while self.status in (Status.TBSubmitted, Status.InQueue, Status.Pending):
                 time.sleep(2)
                 n += 1
                 if n > 1800:  # 3600s
-                    self.launcher.all_processes[self.launcher._id].pop()
+                    self._launcher.all_processes[self._launcher._id].pop()
                     LOG.error('Launch failed: No computing resources are available.')
                     break
 
@@ -169,10 +169,14 @@ class Job(object):
                 try:
                     line = line.decode('utf-8')
                 except Exception:
-                    pass
-                queue.put(line)
-                if hooks:
-                    hooks(line) if callable(hooks) else [hook(line) for hook in hooks]
+                    try:
+                        line = line.decode('gb2312')
+                    except Exception:
+                        pass
+                if isinstance(line, str):
+                    queue.put(line)
+                    if hooks:
+                        hooks(line) if callable(hooks) else [hook(line) for hook in hooks]
                 LOG.info(f'{self.jobid}: {line.rstrip()}', )
                 if self.output_thread_event.is_set():
                     break
@@ -310,7 +314,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 raise
 
         def _delete_deployment(self, wait_for_completion=True, timeout=60, check_interval=5):
-            k8s.config.load_kube_config(self.launcher.kube_config_path)
+            k8s.config.load_kube_config(self._launcher.kube_config_path)
             api_instance = k8s.client.AppsV1Api()
             try:
                 api_instance.delete_namespaced_deployment(
@@ -369,7 +373,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 raise
 
         def _delete_service(self, wait_for_completion=True, timeout=60, check_interval=5):
-            k8s.config.load_kube_config(self.launcher.kube_config_path)
+            k8s.config.load_kube_config(self._launcher.kube_config_path)
             svc_instance = k8s.client.CoreV1Api()
             service_name = f"service-{self.deployment_name}"
             try:
@@ -470,7 +474,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     raise
 
         def _delete_or_update_gateway(self, wait_for_completion=True, timeout=60, check_interval=5):
-            k8s.config.load_kube_config(self.launcher.kube_config_path)
+            k8s.config.load_kube_config(self._launcher.kube_config_path)
             gateway_instance = k8s.client.CustomObjectsApi()
             try:
                 gateway = gateway_instance.get_namespaced_custom_object(
@@ -610,7 +614,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 raise
 
         def _delete_httproute(self, wait_for_deletion=True, timeout=60, check_interval=5):
-            k8s.config.load_kube_config(self.launcher.kube_config_path)
+            k8s.config.load_kube_config(self._launcher.kube_config_path)
             httproute_instance = k8s.client.CustomObjectsApi()
             httproute_name = f"httproute-{self.deployment_name}"
             try:
@@ -658,7 +662,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             self._create_or_update_gateway()
             self._create_httproute()
             self.jobid = self._get_jobid()
-            self.launcher.all_processes[self.launcher._id].append((self.jobid, self))
+            self._launcher.all_processes[self._launcher._id].append((self.jobid, self))
             ret = self.wait()
             LOG.info(ret)
 
@@ -1054,17 +1058,17 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             super(__class__, self).__init__(cmd, launcher, sync=sync)
 
         def _wrap_cmd(self, cmd):
-            if self.launcher.ngpus == 0:
+            if self._launcher.ngpus == 0:
                 return cmd
-            gpus = self.launcher._get_idle_gpus()
+            gpus = self._launcher._get_idle_gpus()
             if gpus and lazyllm.config['cuda_visible']:
-                if self.launcher.ngpus is None:
+                if self._launcher.ngpus is None:
                     empty_cmd = f'CUDA_VISIBLE_DEVICES={gpus[0]} '
-                elif self.launcher.ngpus <= len(gpus):
+                elif self._launcher.ngpus <= len(gpus):
                     empty_cmd = 'CUDA_VISIBLE_DEVICES=' + \
-                                ','.join([str(n) for n in gpus[:self.launcher.ngpus]]) + ' '
+                                ','.join([str(n) for n in gpus[:self._launcher.ngpus]]) + ' '
                 else:
-                    error_info = (f'Not enough GPUs available. Requested {self.launcher.ngpus} GPUs, '
+                    error_info = (f'Not enough GPUs available. Requested {self._launcher.ngpus} GPUs, '
                                   f'but only {len(gpus)} are available.')
                     LOG.error(error_info)
                     raise error_info
@@ -1167,13 +1171,13 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
         def _wrap_cmd(self, cmd):
             # Assemble the order
-            slurm_cmd = f'srun -p {self.launcher.partition} -N {self.launcher.nnode} --job-name={self.name}'
-            if self.launcher.nproc:
-                slurm_cmd += f' -n{self.launcher.nproc}'
-            if self.launcher.timeout:
-                slurm_cmd += f' -t {self.launcher.timeout}'
-            if self.launcher.ngpus:
-                slurm_cmd += f' --gres=gpu:{self.launcher.ngpus}'
+            slurm_cmd = f'srun -p {self._launcher.partition} -N {self._launcher.nnode} --job-name={self.name}'
+            if self._launcher.nproc:
+                slurm_cmd += f' -n{self._launcher.nproc}'
+            if self._launcher.timeout:
+                slurm_cmd += f' -t {self._launcher.timeout}'
+            if self._launcher.ngpus:
+                slurm_cmd += f' --gres=gpu:{self._launcher.ngpus}'
             return f'{slurm_cmd} bash -c \'{cmd}\''
 
         def _get_jobid(self):
@@ -1342,7 +1346,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
                 self.ip = line.split()[-1]
 
         def _wrap_cmd(self, cmd):
-            launcher = self.launcher
+            launcher = self._launcher
             # Assemble the cmd
             sco_cmd = f'srun -p {launcher.partition} --workspace-id {self.workspace_name} ' \
                       f'--job-name={self.name} -f {launcher.framework} ' \

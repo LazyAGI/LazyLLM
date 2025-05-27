@@ -13,7 +13,9 @@ Follow these principles when rewriting the above question:
 2. Clarify intent: ensure the core purpose of the question is clearly expressed.
 3. Add details: if the original question lacks key information, supply necessary context or constraints.
 4. Shift perspective: try posing the same question from different angles to spark new thinking paths.
-5. Break into steps: when applicable, decompose a question into smaller sub-questions for easier understanding.
+5. Break into steps: when applicable, decompose a question into smaller sub-questions for
+easier comprehension and answering.
+
 User Require
 '''{prompt}'''
 
