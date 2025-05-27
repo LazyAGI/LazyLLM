@@ -7,6 +7,7 @@ from .node import all_nodes, Node
 from .node_meta_hook import NodeMetaHook
 import inspect
 import functools
+from itertools import repeat
 import copy
 from abc import ABC, abstractclassmethod
 from enum import Enum
@@ -353,8 +354,16 @@ def make_diverter(nodes: List[dict]):
 
 
 @NodeConstructor.register('Warp', subitems=['nodes', 'resources'])
-def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] = []):
-    return lazyllm.warp(make_graph(nodes, edges, resources, enable_server=False))
+def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] = [],
+              batch_flags: Optional[List[int]] = None):
+    wp = lazyllm.warp(make_graph(nodes, edges, resources, enable_server=False))
+    if batch_flags and len(batch_flags) > 1:
+        def transform(*args):
+            args = [a if b else repeat(a) for a, b in zip(args, batch_flags)]
+            args = [lazyllm.package(a) for a in zip(*args)]
+            return args
+        wp = lazyllm.pipeline(transform, wp)
+    return wp
 
 
 @NodeConstructor.register('Loop', subitems=['nodes', 'resources'])
@@ -739,6 +748,30 @@ def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optio
             ppl.input_preprocess=merge_input
             ppl.llm = m
         return ppl
+
+
+class LLM(lazyllm.ModuleBase):
+    def __init__(self, m: lazyllm.ModuleBase, keys: Optional[List[str]] = None):
+        super().__init__()
+        self._m = m
+        self._keys = keys
+
+    def forward(self, *args, **kw):
+        if self._keys and len(self._keys) > 1:
+            assert len(args) == len(self._keys)
+            args = ({k: a for k, a in zip(self._keys, args)},)
+        else:
+            assert len(args) == 1
+        return self._m(*args, **kw)
+
+
+@NodeConstructor.register('LLM')
+def make_llm(kw: dict):
+    type: str = kw.pop('type')
+    keys: Optional[List[str]] = kw.pop('keys', None)
+    assert type in ('local', 'online'), f'Invalid type {type} given'
+    if type == 'local': return LLM(make_local_llm(**kw), keys)
+    elif type == 'online': return LLM(make_online_llm(**kw), keys)
 
 
 class STT(lazyllm.Module):

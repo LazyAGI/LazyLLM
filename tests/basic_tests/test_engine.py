@@ -289,6 +289,32 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 2, 3, 4, 5) == (4, 9, 16, 25)
         assert "prompt_tokens" in self.get_last_report()
 
+    def test_engine_warp_transform(self):
+        nodes = [dict(id='1', kind='Code', name='code', args=dict(
+            code='def sum(x: int, y: int, z: int): return x + y + z'))]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+
+        nodes = [
+            dict(
+                id="2",
+                kind="Warp",
+                name="warp",
+                args=dict(
+                    nodes=nodes,
+                    edges=edges,
+                    batch_flags=[True, False, True],
+                    _lazyllm_enable_report=True,
+                ),
+            )
+        ]
+        edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
+
+        engine = LightEngine()
+        engine.set_report_url(self.report_url)
+        gid = engine.start(nodes, edges)
+        assert engine.run(gid, [2, 3, 4, 5], 1, [1, 2, 3, 1]) == (4, 6, 8, 7)
+        assert "prompt_tokens" in self.get_last_report()
+
     def test_engine_formatter(self):
         nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='python', rule='[:]'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
