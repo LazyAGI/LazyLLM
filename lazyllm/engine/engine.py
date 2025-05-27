@@ -848,7 +848,7 @@ def make_parameter_extractor(
     types: list[str],
     prompt: str = "",
 ):
-    return lazyllm.components.parameter_extractor.ParameterExtractor(
+    return lazyllm.tools.ParameterExtractor(
         base_model=base_model, param=param, types=types, prompt=prompt
     )
 
@@ -859,16 +859,17 @@ def make_qustion_rewrite(
     rewrite_prompt: str = "",
     formatter: str = "str",
 ):
-    return lazyllm.components.actors.QustionRewrite(base_model, rewrite_prompt, formatter)
+    return lazyllm.tools.QustionRewrite(base_model, rewrite_prompt, formatter)
 
 @NodeConstructor.register("Multimodal")
 def make_multimodal(kw: dict):
     kind: str = kw.pop('kind')
     base_model = kw.pop("base_model")
-    assert kind in ('VQA', 'STT', 'STT'), f'Invalid type {kind} given'
+    assert kind in ('VQA', 'STT', 'TTS'), f'Invalid type {kind} given'
     if kind == 'VQA':
         file_resource_id = None
         if "file_resource_id" in kw:
             file_resource_id = kw.pop("file_resource_id")
         return make_vqa(base_model=base_model, file_resource_id=file_resource_id)
     elif kind == 'STT': return make_stt(base_model)
+    else: return make_local_llm(base_model, **kw)
