@@ -39,6 +39,12 @@ cd LazyLLM
 pip3 install -r requirements.txt
 ```
 
+如果您期望使用LazyLLM的所有功能，您可以运行以下命令来安装LazyLLM的全量依赖：
+
+```bash
+pip3 install -r requirements.full.txt
+```
+
 把 `LazyLLM` 加入到模块搜索路径中：
 
 ```bash
@@ -59,27 +65,46 @@ docker pull lazyllm/lazyllm
 
 ### 从 Pip 安装
 
-`LazyLLM` 支持用 `pip` 直接安装,下面三种安装方式分别对应不同功能的使用
+`LazyLLM` 支持用 `pip` 直接安装:
 
-1. 安装 `LazyLLM` 基础功能的最小依赖包。可以支持线上各类模型的微调和推理。
+```bash
+pip3 install lazyllm
+```
 
-    ```bash
-    pip3 install lazyllm
-    ```
+上述命令能够安装 `LazyLLM` 基础功能的最小依赖包。可以支持使用各类线上模型微调，推理，搭建基础的大模型应用（如基础的RAG系统与Agent）。
 
-2. 安装 `LazyLLM` 的所有功能最小依赖包。不仅支持线上模型的微调和推理，而且支持离线模型的微调（主要依赖 `LLaMA-Factory`）和推理（主要依赖 `vLLM`）。
+### 安装不同场景下的依赖
 
-    ```bash
-    pip3 install lazyllm
-    lazyllm install standard
-    ```
+成功安装`LazyLLM` 后，您可以在命令行中使用`lazyllm install xxx`的命令，以针对不同的使用场景安装响应的依赖。
 
-3. 安装 `LazyLLM` 的所有依赖包，所有功能以及高级功能都支持，比如自动框架选择（`AutoFinetune`、`AutoDeploy` 等）、更多的离线推理工具（如增加 `LightLLM` 等工具）、更多的离线训练工具（如增加 `AlpacaloraFinetune`、`CollieFinetune` 等工具）。
+例如：
+安装 `LazyLLM` 的所有功能最小依赖包。不仅支持线上模型的微调和推理，而且支持离线模型的微调（主要依赖 `LLaMA-Factory`）和推理（主要依赖 `vLLM`）。
 
-    ```bash
-    pip3 install lazyllm
-    lazyllm install full
-    ```
+```bash
+lazyllm install standard
+```
+
+安装 `LazyLLM` 的所有依赖包，所有功能以及高级功能都支持，比如自动框架选择（`AutoFinetune`、`AutoDeploy` 等）、更多的离线推理工具（如增加 `LightLLM` 等工具）、更多的离线训练工具（如增加 `AlpacaloraFinetune`、`CollieFinetune` 等工具）。
+
+```bash
+lazyllm install full
+```
+
+更多场景划分如下：
+
+* **alpaca-lora**：安装 Alpaca-LoRA 微调框架的依赖，适用于本地模型的轻量化微调训练任务。
+* **colie**：安装 Collie 微调框架的依赖，支持高性能的大模型本地训练与分布式微调方案。
+* **llama-factory**：安装 LLaMA-Factory 微调框架的依赖，支持LLaMA系列等主流大模型的本地训练与微调。
+* **finetune-all**：一次性安装所有微调框架的依赖，包括 Alpaca-LoRA、Collie 和 LLaMA-Factory，适用于需要兼容多种微调工具的场景。
+* **vllm**：安装 vLLM 本地推理框架的依赖，支持高速并发、低延迟的本地模型推理。
+* **lmdeploy**：安装 LMDeploy 推理框架的依赖，适用于在本地环境下部署优化后的大语言模型。
+* **lightllm**：安装 LightLLM 推理框架的依赖，提供更轻量的本地推理能力，适合资源受限场景。
+* **infinity**：安装 Infinity 框架的依赖，支持本地嵌入向量的高速推理，适用于向量检索、RAG 等任务。
+* **deploy-all**：一次性安装所有本地推理框架的依赖，包括 LightLLM、vLLM、LMDeploy 和 Infinity，适用于需要灵活切换或兼容多种推理方案的用户。
+* **multimodal**：安装多模态功能支持模块，包括语音生成、文本生成图像等跨模态能力所需的依赖。
+* **rag-advanced**：安装RAG系统高级功能依赖，涵盖向量数据库支持、嵌入模型微调等功能，适合构建企业级知识问答系统。
+* **agent-advanced**：安装智能体（Agent）系统高级功能的依赖，支持与 MCP 框架集成的复杂任务规划与工具调用能力。
+* **dev**：安装开发者工具依赖，包括代码风格检查、自动化测试等，用于参与项目开发、调试与贡献代码。
 
 ## Hello, world!
 
@@ -120,19 +145,19 @@ python3 chat.py
 `LazyLLM` 内建了以下平台的支持：
 [](){#platform}
 
-| 平台     | 获取 api key                         | 需要设置的环境变量                                           |
-| :------- | :----------------------------------- | :----------------------------------------------------------- |
-| [日日新](https://platform.sensenova.cn/)   | [获取访问密钥(ak and sk)](https://console.sensecore.cn/help/docs/model-as-a-service/nova/),<br>[获取访问密钥(only api key)](https://console.sensecore.cn/aistudio/management/api-key)       | `LAZYLLM_SENSENOVA_API_KEY`,<br>`LAZYLLM_SENSENOVA_SECRET_KEY` |
-| [OpenAI](https://openai.com/index/openai-api/)   | [获取访问密钥](https://platform.openai.com/api-keys) | `LAZYLLM_OPENAI_API_KEY`                                     |
-| [智谱](https://open.bigmodel.cn/)     | [获取访问密钥](https://open.bigmodel.cn/usercenter/apikeys)            | `LAZYLLM_GLM_API_KEY`                                        |
-| [Kimi](https://platform.moonshot.cn/)     | [获取访问密钥](https://platform.moonshot.cn/console/api-keys)        | `LAZYLLM_KIMI_API_KEY`                                       |
-| [通义千问](https://help.aliyun.com/zh/dashscope/developer-reference/use-qwen-by-api) | [获取访问密钥](https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key)     | `LAZYLLM_QWEN_API_KEY`                                       |
-| [豆包](https://www.volcengine.com/product/doubao)  | [获取访问密钥](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey) | `LAZYLLM_DOUBAO_API_KEY`               |
+| 平台                                                                                 | 获取 api key                                                                                                                                                                      | 需要设置的环境变量                                         |
+| :----------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------- |
+| [日日新](https://platform.sensenova.cn/)                                             | [获取访问密钥(ak and sk)](https://console.sensecore.cn/help/docs/model-as-a-service/nova/),[获取访问密钥(only api key)](https://console.sensecore.cn/aistudio/management/api-key) | `LAZYLLM_SENSENOVA_API_KEY`,`LAZYLLM_SENSENOVA_SECRET_KEY` |
+| [OpenAI](https://openai.com/index/openai-api/)                                       | [获取访问密钥](https://platform.openai.com/api-keys)                                                                                                                              | `LAZYLLM_OPENAI_API_KEY`                                   |
+| [智谱](https://open.bigmodel.cn/)                                                    | [获取访问密钥](https://open.bigmodel.cn/usercenter/apikeys)                                                                                                                       | `LAZYLLM_GLM_API_KEY`                                      |
+| [Kimi](https://platform.moonshot.cn/)                                                | [获取访问密钥](https://platform.moonshot.cn/console/api-keys)                                                                                                                     | `LAZYLLM_KIMI_API_KEY`                                     |
+| [通义千问](https://help.aliyun.com/zh/dashscope/developer-reference/use-qwen-by-api) | [获取访问密钥](https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key)                                                                 | `LAZYLLM_QWEN_API_KEY`                                     |
+| [豆包](https://www.volcengine.com/product/doubao)                                    | [获取访问密钥](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey)                                                                                                   | `LAZYLLM_DOUBAO_API_KEY`                                   |
 
 可以通过设置不同的环境变量来使用对应的平台。
 
 !!! Note "注意"
-    日日新平台可以使用两种方式配置 Key，一种是同时配置 ak (api key) 和 sk (secret key)， 即需要同时配置 `LAZYLLM_SENSENOVA_API_KEY` 和 `LAZYLLM_SENSENOVA_SECRET_KEY` 两个变量。 一种是只需要配置api key， 即只需要配置 `LAZYLLM_SENSENOVA_API_KEY` 变量即可。
+日日新平台可以使用两种方式配置 Key，一种是同时配置 ak (api key) 和 sk (secret key)， 即需要同时配置 `LAZYLLM_SENSENOVA_API_KEY` 和 `LAZYLLM_SENSENOVA_SECRET_KEY` 两个变量。 一种是只需要配置api key， 即只需要配置 `LAZYLLM_SENSENOVA_API_KEY` 变量即可。
 
 ## 再多一点：多轮对话
 
@@ -176,7 +201,7 @@ lazyllm.WebModule(chat, port=23333).start().wait()
 
 !!! Note "注意"
 
-    如果启动报错或者网页访问出错，请查看终端窗口的错误信息，检查是否端口被其它应用占用，或者启用了代理，或者被防火墙拦截等。
+如果启动报错或者网页访问出错，请查看终端窗口的错误信息，检查是否端口被其它应用占用，或者启用了代理，或者被防火墙拦截等。
 
 ## 使用命令行工具
 
@@ -194,6 +219,7 @@ lazyllm run chatbot --model=internlm2-chat-7b
 
 来启动基于本地模型的对话机器人。
 
------
+---
 
 以上就是 `LazyLLM` 的入门介绍，接下来的章节会从不同的方面来探索 `LazyLLM` 的强大功能。
+

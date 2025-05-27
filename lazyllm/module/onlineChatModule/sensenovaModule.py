@@ -1,10 +1,14 @@
 import json
+import time
 import os
 import requests
 from typing import Tuple, Dict, Any
 from urllib.parse import urljoin
 import uuid
+
 import lazyllm
+from lazyllm.thirdparty import jwt
+
 from .onlineChatModuleBase import OnlineChatModuleBase
 from .fileHandler import FileHandlerBase
 
@@ -54,7 +58,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             "alg": "HS256",
             "typ": "JWT"
         }
-        import time
         payload = {
             "iss": ak,
             # Fill in the expected effective time, which represents the current time +24 hours
@@ -62,7 +65,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             # Fill in the desired effective time starting point, which represents the current time
             "nbf": int(time.time())
         }
-        import jwt
         token = jwt.encode(payload, sk, headers=headers)
         return token
 
@@ -151,7 +153,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
 
                 dataset_id = r.json()["dataset"]["id"]
                 status = r.json()["dataset"]["status"]
-                import time
                 url = url + f"/{dataset_id}"
                 while status.lower() != "ready":
                     try:
