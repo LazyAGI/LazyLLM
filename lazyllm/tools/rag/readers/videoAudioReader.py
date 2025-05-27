@@ -14,7 +14,7 @@ class VideoAudioReader(LazyLLMReaderBase):
             import whisper
         except ImportError:
             raise ImportError("Please install OpenAI whisper model "
-                              "`pip install git+https://github.com/openai/whisper.git` to use the model")
+                              "`pip install openai-whisper` to use the model")
 
         model = whisper.load_model(self._model_version)
         self._parser_config = {"model": model}
