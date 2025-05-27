@@ -263,3 +263,10 @@ class ImageDocNode(DocNode):
     @property
     def image_path(self):
         return self._image_path
+
+    def get_text(self) -> str:  # Disable access to self._content
+        return self._image_path
+
+    @property
+    def text(self) -> str:  # Disable access to self._content
+        return self._image_path

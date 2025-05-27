@@ -48,12 +48,14 @@ class BuiltinGroups(object):
         name: str
         args: TransformArgs
         parent: str = LAZY_ROOT_NAME
+        trans_node: bool = None
 
         def __str__(self): return self.name
 
     CoarseChunk = Struct('CoarseChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=1024, chunk_overlap=100)))
     MediumChunk = Struct('MediumChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
     FineChunk = Struct('FineChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
+    ImgDesc = Struct('ImgDesc', lambda x: x._content, LAZY_IMAGE_GROUP, True)
 
 
 class DocImpl:
@@ -542,4 +544,4 @@ class DocImpl:
 for k, v in BuiltinGroups.__dict__.items():
     if not k.startswith('_') and isinstance(v, BuiltinGroups.Struct):
         assert k == v.name, 'builtin group name mismatch'
-        DocImpl._create_builtin_node_group(name=k, transform=v.args, parent=v.parent)
+        DocImpl._create_builtin_node_group(name=k, transform=v.args, parent=v.parent, trans_node=v.trans_node)
