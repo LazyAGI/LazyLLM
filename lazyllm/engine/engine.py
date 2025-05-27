@@ -723,6 +723,30 @@ def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optio
                                         api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
 
 
+class LLM(lazyllm.ModuleBase):
+    def __init__(self, m: lazyllm.ModuleBase, keys: Optional[List[str]] = None):
+        super().__init__()
+        self._m = m
+        self._keys = keys
+
+    def forward(self, *args, **kw):
+        if self._keys and len(self._keys) > 1:
+            assert len(args) == len(self._keys)
+            args = ({k: a for k, a in zip(self._keys, args)},)
+        else:
+            assert len(args) == 1
+        return self._m(*args, **kw)
+
+
+@NodeConstructor.register('LLM')
+def make_llm(kw: dict):
+    type: str = kw.pop('type')
+    keys: Optional[List[str]] = kw.pop('keys', None)
+    assert type in ('local', 'online'), f'Invalid type {type} given'
+    if type == 'local': return LLM(make_local_llm(**kw), keys)
+    elif type == 'online': return LLM(make_online_llm(**kw), keys)
+
+
 class STT(lazyllm.Module):
     def __init__(self, base_model: Union[str, lazyllm.TrainableModule]):
         super().__init__()
