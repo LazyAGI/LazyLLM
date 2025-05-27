@@ -16,7 +16,6 @@ class DoubaoModule(OnlineChatModuleBase):
                          base_url=base_url,
                          model_name=model or lazyllm.config['doubao_model_name'] or DoubaoModule.MODEL_NAME,
                          stream=stream,
-                         trainable_models=[],
                          return_trace=return_trace)
 
     def _get_system_prompt(self):

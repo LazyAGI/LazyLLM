@@ -39,6 +39,12 @@ Install the basic dependencies:
 pip3 install -r requirements.txt
 ```
 
+If you want to use all features of LazyLLM, you can install the full set of dependencies by running the following command:
+
+```bash
+pip3 install -r requirements.full.txt
+```
+
 Add `LazyLLM` to the module search path:
 
 ```bash
@@ -59,29 +65,50 @@ You can also view and pull the required version from [https://hub.docker.com/r/l
 
 ### Installing from Pip
 
-`LazyLLM` supports direct installation via `pip`, the following three installation methods correspond to the use of different features:
+`LazyLLM` supports direct installation via `pip`:
 
-1. Install the minimum dependency package for the basic functionality of `LazyLLM`. This can support the fine-tuning and inference of various online models.
+```bash
+pip3 install lazyllm
+```
 
-    ```bash
-    pip3 install lazyllm
-    ```
+### Install Dependencies for Different Scenarios
 
-2. Install the minimum dependency package for all features of `LazyLLM`. Not only does it support the fine-tuning and inference of online models, but it also supports the fine-tuning (mainly dependent on `LLaMA-Factory`) and inference (mainly dependent on `vLLM`) of offline models.
+After successfully installing `LazyLLM`, you can  install additional dependencies for specific use cases by using `lazyllm install xxx` in the terminal.
 
-    ```bash
-    pip3 install lazyllm
-    lazyllm install standard
-    ```
+For example:
 
-3. Install all dependency packages of `LazyLLM`, all features as well as advanced features are supported, such as automatic framework selection (`AutoFinetune`, `AutoDeploy`, etc.), more offline inference tools (such as `LightLLM`), and more offline training tools (such as `AlpacaloraFinetune`, `CollieFinetune`, etc.).
+To install the **minimal dependencies** required for all key features of `LazyLLM`, run:
 
-    ```bash
-    pip3 install lazyllm
-    lazyllm install full
-    ```
+```bash
+lazyllm install standard
+```
+
+This not only supports ​**online model fine-tuning and inference**​, but also enables **offline model fine-tuning** (mainly via `LLaMA-Factory`) and **local inference** (mainly via `vLLM`).
+
+To install **all dependencies** of `LazyLLM`, including ​**all core and advanced features**​, run:
+
+```bash
+lazyllm install full
+```
+
+For more dependency groups for Specific Scenarios, you can install specific sets of dependencies based on your use case:
+
+* ​**alpaca-lora**​: Install dependencies for the **Alpaca-LoRA** fine-tuning framework, suitable for lightweight local model fine-tuning tasks.
+* ​**colie**​: Install dependencies for the **Collie** fine-tuning framework, supporting high-performance and distributed training of large models locally.
+* ​**llama-factory**​: Install dependencies for the **LLaMA-Factory** fine-tuning framework, compatible with the LLaMA series and other mainstream local models.
+* ​**finetune-all**​: Install all fine-tuning frameworks at once, including Alpaca-LoRA, Collie, and LLaMA-Factory — ideal for users needing compatibility with multiple training tools.
+* ​**vllm**​: Install dependencies for the **vLLM** local inference framework, offering high-concurrency, low-latency inference performance.
+* ​**lmdeploy**​: Install dependencies for the **LMDeploy** inference framework, optimized for deploying large language models in local environments.
+* ​**lightllm**​: Install dependencies for the **LightLLM** inference framework, offering lightweight inference capabilities — ideal for resource-constrained environments.
+* ​**infinity**​: Install dependencies for the **Infinity** framework, enabling fast local embedding inference, suitable for vector search and RAG use cases.
+* ​**deploy-all**​: Install all local inference frameworks, including LightLLM, vLLM, LMDeploy, and Infinity — great for users who need flexibility in local deployment backends.
+* ​**multimodal**​: Install dependencies for multimodal features, including speech generation, text-to-image, and other cross-modal capabilities.
+* ​**rag-advanced**​: Install advanced RAG system features, including vector database support and embedding model fine-tuning — ideal for building enterprise-grade knowledge-based QA systems.
+* ​**agent-advanced**​: Install advanced features for Agent systems, including integration with the **MCP** framework for complex task planning and tool invocation.
+* ​**dev**​: Install developer dependencies, including code formatting tools and testing frameworks — recommended for contributing to the project or local development.
 
 ## Hello, world!
+
 
 To give you a basic understanding of `LazyLLM`, we will use it to create a chatbot based on the conversation capabilities provided by the [platform](#platform) below.
 
@@ -120,19 +147,19 @@ First, statement 1 imports the `lazyllm` module, and in statement 2, an instance
 `LazyLLM` has built-in support for the following platforms:
 [](){#platform}
 
-| Platform | API Key Acquisition URL              | Environment Variables to Set                            |
-|:---------|:-------------------------------------|:--------------------------------------------------------|
-| [Nova](https://platform.sensenova.cn/)     | [API Keys(ak and sk)](https://console.sensecore.cn/help/docs/model-as-a-service/nova/),<br>[API Keys(only api key)](https://console.sensecore.cn/aistudio/management/api-key)       | LAZYLLM_SENSENOVA_API_KEY,<br>LAZYLLM_SENSENOVA_SECRET_KEY |
-| [OpenAI](https://openai.com/index/openai-api/)   | [API Keys](https://platform.openai.com/api-keys) | LAZYLLM_OPENAI_API_KEY                                  |
-| [Zhipu](https://open.bigmodel.cn/)    | [API Keys](https://open.bigmodel.cn/usercenter/apikeys)            | LAZYLLM_GLM_API_KEY                                     |
-| [Kimi](https://platform.moonshot.cn/)     | [API Keys](https://platform.moonshot.cn/console/api-keys)        | LAZYLLM_KIMI_API_KEY                                    |
-| [Qwen](https://help.aliyun.com/zh/dashscope/developer-reference/use-qwen-by-api)     | [API Keys](https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key)     | LAZYLLM_QWEN_API_KEY                                    |
-| [Doubao](https://www.volcengine.com/product/doubao)  | [API Keys](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey)  |  LAZYLLM_DOUBAO_API_KEY               |
+| Platform                                                                         | API Key Acquisition URL                                                                                                                                                       | Environment Variables to Set                               |
+| :------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------- |
+| [Nova](https://platform.sensenova.cn/)                                           | [API Keys(ak and sk)](https://console.sensecore.cn/help/docs/model-as-a-service/nova/),[API Keys(only api key)](https://console.sensecore.cn/aistudio/management/api-key) | LAZYLLM_SENSENOVA_API_KEY,LAZYLLM_SENSENOVA_SECRET_KEY |
+| [OpenAI](https://openai.com/index/openai-api/)                                   | [API Keys](https://platform.openai.com/api-keys)                                                                                                                              | LAZYLLM_OPENAI_API_KEY                                     |
+| [Zhipu](https://open.bigmodel.cn/)                                               | [API Keys](https://open.bigmodel.cn/usercenter/apikeys)                                                                                                                       | LAZYLLM_GLM_API_KEY                                        |
+| [Kimi](https://platform.moonshot.cn/)                                            | [API Keys](https://platform.moonshot.cn/console/api-keys)                                                                                                                     | LAZYLLM_KIMI_API_KEY                                       |
+| [Qwen](https://help.aliyun.com/zh/dashscope/developer-reference/use-qwen-by-api) | [API Keys](https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key)                                                                 | LAZYLLM_QWEN_API_KEY                                       |
+| [Doubao](https://www.volcengine.com/product/doubao)                              | [API Keys](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey)                                                                                                   | LAZYLLM_DOUBAO_API_KEY                                     |
 
 You can use the corresponding platform by setting different environment variables.
 
 !!! Note "Note"
-    There are two ways to configure the key on the Nova platform. One is to configure both ak (api key) and sk (secret key), that is, you need to configure both the `LAZYLLM_SENSENOVA_API_KEY` and `LAZYLLM_SENSENOVA_SECRET_KEY` variables. The other is to only configure the api key, that is, you only need to configure the `LAZYLLM_SENSENOVA_API_KEY` variable.
+There are two ways to configure the key on the Nova platform. One is to configure both ak (api key) and sk (secret key), that is, you need to configure both the `LAZYLLM_SENSENOVA_API_KEY` and `LAZYLLM_SENSENOVA_SECRET_KEY` variables. The other is to only configure the api key, that is, you only need to configure the `LAZYLLM_SENSENOVA_API_KEY` variable.
 
 ## Going Further: Multi-turn Dialogue
 
@@ -176,7 +203,7 @@ The `WebModule` accepts two parameters: the chat module for conversation and the
 
 !!! Note "Note"
 
-    If there is an error starting up or accessing the web page, please check the error information in the terminal window to see if the port is occupied by another application, or if a proxy is enabled, or if it is blocked by a firewall.
+If there is an error starting up or accessing the web page, please check the error information in the terminal window to see if the port is occupied by another application, or if a proxy is enabled, or if it is blocked by a firewall.
 
 ## Using Command Line Interface
 
@@ -192,6 +219,7 @@ If you want to use a local model, you need to specify the model name with the `-
 lazyllm run chatbot --model=internlm2-chat-7b
 ```
 
------
+---
 
 This concludes the introductory section of `LazyLLM`. The following chapters will explore the powerful features of `LazyLLM` from different aspects.
+

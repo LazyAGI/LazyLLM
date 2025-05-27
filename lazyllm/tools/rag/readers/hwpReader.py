@@ -1,11 +1,10 @@
 from fsspec import AbstractFileSystem
 from pathlib import Path
-import struct
 from typing import Optional, Dict, List, Any
-import zlib
 
 from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
+from lazyllm.thirdparty import zlib, struct, olefile
 from lazyllm import LOG
 
 class HWPReader(LazyLLMReaderBase):
@@ -20,11 +19,6 @@ class HWPReader(LazyLLMReaderBase):
 
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
                    fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
-        try:
-            import olefile
-        except ImportError:
-            raise ImportError("olefile is required to read hwp files: `pip install olefile`")
-
         if fs:
             LOG.warning("fs was specified but HWPReader doesn't support loading from "
                         "fsspec filesystems. Will load from local filesystem instead.")

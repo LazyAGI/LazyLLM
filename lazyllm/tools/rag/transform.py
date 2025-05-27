@@ -13,6 +13,7 @@ import tiktoken
 
 from .doc_node import DocNode, MetadataMode, QADocNode
 from lazyllm import LOG, TrainableModule, ThreadPoolExecutor
+from lazyllm.components.formatter import encode_query_with_filepaths
 
 
 @dataclass
@@ -400,6 +401,23 @@ Q: What can LazyLLM do?
 A: LazyLLM can assist you in building the most powerful large-scale model applications with minimal cost.
 
 You should not have any unnecessary output. Lets begin:
+""", qa_img="""
+## Role: Q&A Pair Extraction Engine
+You are a Q&A pair extraction engine, responsible for analyzing and extracting Q&A pairs from images.
+
+## Constraints:
+- Only reply with the requested output content: extracted Q&A pairs.
+- Do not add extra fields, explanations, or translations.
+
+## Example:
+Input an image of a pig.
+#output:
+Q: What color is the pig?
+A: The pig is pink.
+Q: What is the pig doing?
+A: The pig is running on the lawn.
+
+You should not output any extra characters. Let's start now.
 """),
     zh=dict(summary="""
 ## 角色：文本摘要
@@ -458,26 +476,50 @@ Q: LazyLLM能做什么？
 A: LazyLLM可以协助用户，用最低的成本，构建最强大的大模型应用
 
 你不应输出任何多余的字符，现在我们开始吧
+""", qa_img="""
+## 角色：问答对提取引擎
+你是一个问答对提取引擎，负责分析从图像中提取其中的问答对。
+
+## 约束条件:
+- 仅回复请求的输出内容：抽取问答对。
+- 不要添加额外字段、解释或翻译。
+
+## 示例:
+输入一张小猪的图片。
+#output:
+Q: 小猪是什么颜色的？
+A: 小猪是粉红色的。
+Q: 小猪在做啥呢？
+A: 小猪在草坪上奔跑。
+
+你不应输出任何多余的字符，现在我们开始吧
 """))
 
 class LLMParser(NodeTransform):
     def __init__(self, llm: TrainableModule, language: str, task_type: str, num_workers: int = 0):
         super(__class__, self).__init__(num_workers=num_workers)
         assert language in ['en', 'zh'], f'Not supported language {language}'
-        assert task_type in ['summary', 'keywords', 'qa'], f'Not supported task_type {task_type}'
+        assert task_type in ['summary', 'keywords', 'qa', 'qa_img'], f'Not supported task_type {task_type}'
         self._task_type = task_type
-        self._llm = llm.share(prompt=AlpacaPrompter(dict(
-            system=templates[language][task_type], user='#input:\n{input}\n#output:\n'))).formatter(self._format)
+        if self._task_type == 'qa_img':
+            prompt = dict(system=templates[language][task_type], user='{input}')
+        else:
+            prompt = dict(system=templates[language][task_type], user='#input:\n{input}\n#output:\n')
+        self._llm = llm.share(prompt=AlpacaPrompter(prompt)).formatter(self._format)
         self._task_type = task_type
 
     def transform(self, node: DocNode, **kwargs) -> List[str]:
-        result = self._llm(node.get_text())
+        if self._task_type == 'qa_img':
+            inputs = encode_query_with_filepaths('Extract QA pairs from images.', [node.image_path])
+        else:
+            inputs = node.get_text()
+        result = self._llm(inputs)
         return [result] if isinstance(result, str) else result
 
     def _format(self, input):
         if self._task_type == 'keywords':
             return [s.strip() for s in input.split(',')]
-        elif self._task_type == 'qa':
+        elif self._task_type in ('qa', 'qa_img'):
             return [QADocNode(query=q.strip()[3:].strip(), answer=a.strip()[3:].strip()) for q, a in zip(
                 list(filter(None, map(str.strip, input.split("\n"))))[::2],
                 list(filter(None, map(str.strip, input.split("\n"))))[1::2])]
