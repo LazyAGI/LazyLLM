@@ -41,11 +41,15 @@ class Document(ModuleBase, BuiltinGroups):
             self._dataset_path = dataset_path
             self._embed = self._get_embeds(embed)
             self.name = name
+            # 如果是云服务,那么self._dlm则不需要.
             self._dlm = DocListManager(dataset_path, name, enable_path_monitoring=False if manager else True)
+            # 如果是云服务,那么需要提供解析服务,考虑一下解析服务和召回服务是在一起还是不在一起?
+            # 简单起见,这一版会以统一的入口提供服务,通过传参来区分召回还是解析.转发给解析服务; 同时解析服务各docimpl单独部署,可以通过ServerModule提供api服务,也可以作为dataloader-worker
             self._kbs = CallableDict({DocListManager.DEFAULT_GROUP_NAME:
                                       DocImpl(embed=self._embed, dlm=self._dlm,
                                               global_metadata_desc=doc_fields,
                                               store_conf=store_conf)})
+            # 如果是云服务,那么manager则不需要.
             if manager: self._manager = ServerModule(DocManager(self._dlm))
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
             if server: self._kbs = ServerModule(self._kbs)

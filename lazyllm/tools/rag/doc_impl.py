@@ -66,6 +66,7 @@ class DocImpl:
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
                  store_conf: Optional[Dict] = None):
         super().__init__()
+        # 如果云服务,则这个检查要修改,即使没有dlm也要通过检查
         assert (dlm is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
@@ -111,6 +112,7 @@ class DocImpl:
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
         self._resolve_index_pending_registrations()
 
+        # 如果是云服务,跳过这两步
         if not self.store.is_group_active(LAZY_ROOT_NAME):
             ids, paths, metadatas = self._list_files()
             ids, paths, metadatas = self._delete_nonexistent_docs_on_startup(ids, paths, metadatas)
@@ -351,20 +353,17 @@ class DocImpl:
             metadatas.append(json.loads(row[3]) if row[3] else {})
         return ids, paths, metadatas
 
+    # 接口1: 新增文档
     def _add_doc_to_store(self, input_files: List[str], ids: Optional[List[str]] = None,
                           metadatas: Optional[List[Dict[str, Any]]] = None):
-        if not input_files:
-            return
-        root_nodes = self._reader.load_data(input_files)
-        map_file_meta = {}
-        if metadatas:
-            for file_path, metadata in zip(input_files, metadatas):
-                map_file_meta[file_path] = metadata
-        for node in root_nodes:
-            file_path = node.global_metadata[RAG_DOC_PATH]
-            if file_path in map_file_meta:
-                node.global_metadata.update(map_file_meta[file_path])
-            node.global_metadata[RAG_DOC_ID] = gen_docid(node.docpath)
+        if not input_files: return
+        if not ids: ids = [gen_docid(path) for path in input_files]
+        if not metadatas:
+            metadatas = [{RAG_DOC_ID: id, RAG_DOC_PATH: path} for id, path in zip(ids, input_files)]
+        else:
+            for path, id, metadata in zip(input_files, ids, metadatas):
+                metadata.update({RAG_DOC_ID: id, RAG_DOC_PATH: path})
+        root_nodes = self._reader.load_data(input_files, metadatas)
         temp_store = self._create_store({"type": "map"})
         temp_store.update_nodes(root_nodes)
         all_groups = self.store.all_groups()
@@ -377,6 +376,7 @@ class DocImpl:
             self.store.update_nodes(nodes)
             LOG.debug(f"Merge {group} with {nodes}")
 
+    # 接口1: 删除文档
     def _delete_doc_from_store(self, input_files: List[str]) -> None:
         docs = self.store.get_index(type='file_node_map').query(input_files)
         LOG.info(f"delete_files: removing documents {input_files} and nodes {docs}")

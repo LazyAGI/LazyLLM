@@ -18,7 +18,7 @@ class DirectoryReader:
         for key, func in self._global_readers.items():
             if key not in file_readers: file_readers[key] = func
         LOG.info(f"DirectoryReader loads data, input files: {input_files}")
-        reader = SimpleDirectoryReader(input_files=input_files, file_extractor=file_readers)
+        reader = SimpleDirectoryReader(input_files=input_files, file_extractor=file_readers, metadatas=metadatas)
         nodes: List[DocNode] = []
         for doc in reader():
             doc._group = LAZY_IMAGE_GROUP if isinstance(doc, ImageDocNode) else LAZY_ROOT_NAME
@@ -27,14 +27,5 @@ class DirectoryReader:
             LOG.warning(
                 f"No nodes load from path {input_files}, please check your data path."
             )
-        if metadatas:
-            map_file_meta = {}
-            for file_path, metadata in zip(input_files, metadatas):
-                if metadata:
-                    map_file_meta[file_path] = metadata
-            for node in nodes:
-                file_path = node.global_metadata[RAG_DOC_PATH]
-                if file_path in map_file_meta:
-                    node.global_metadata.update(map_file_meta[file_path])
         LOG.info("DirectoryReader loads data done!")
         return nodes
