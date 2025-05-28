@@ -95,7 +95,7 @@ class arguments(object):
         args, kw = package(), kwargs()
         if isinstance(x, package):
             args = x
-        elif isinstance(x, kwargs) or isinstance(x, dict):
+        elif isinstance(x, kwargs):
             kw = x
         elif isinstance(x, arguments):
             args, kw = x.args, x.kw
