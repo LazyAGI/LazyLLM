@@ -31,9 +31,9 @@ def embed_wrapper(func: Optional[Callable[..., Any]]) -> Optional[Callable[..., 
     @wraps(func)
     def wrapper(*args, **kwargs) -> List[float]:
         result = func(*args, **kwargs)
-        # LOG.debug(f"type of result: {type(result)}")
+        LOG.debug(f"type of result: {type(result)}")
         if isinstance(result, str):
-            # LOG.debug(f"result string to be processed: {result[:50000]}")
+            LOG.debug(f"result string to be processed: {result[:50000]}")
             try:
                 # Use json.loads as it's generally more robust for list-like strings
                 return json.loads(result)
