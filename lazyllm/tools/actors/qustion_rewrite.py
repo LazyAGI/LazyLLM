@@ -16,8 +16,8 @@ class QustionRewrite(ModuleBase):
             self._m = base_model.share(rewrite_prompt)
         self.formatter = formatter
 
-    def forward(self, query: str):
-        res = self._m(query)
+    def forward(self, query: str, **kw):
+        res = self._m(query, **kw)
         if self.formatter == "list":
             return list(filter(None, res.split('\n')))
         else:

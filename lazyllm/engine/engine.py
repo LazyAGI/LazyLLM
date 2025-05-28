@@ -257,13 +257,6 @@ class ServerResource(object):
         return self._graph._g.status if self._kind == 'server' else self._graph._web.status
 
 
-def merge_input(input):
-    if isinstance(input, list[str]) and len(input) > 0:
-        ret = json.dumps(input)
-        return ret
-    else:
-        return input
-
 @NodeConstructor.register('web', 'server')
 def make_server_resource(kind: str, graph: ServerGraph, args: Dict[str, Any]):
     return ServerResource(graph, kind, args)
@@ -705,62 +698,39 @@ class VQA(lazyllm.Module):
         self._vqa._stream = v
 
 
-@NodeConstructor.register("VQA")
+@NodeConstructor.register('VQA')
 def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
     return VQA(base_model, file_resource_id)
 
 
-@NodeConstructor.register("SharedLLM")
-def make_shared_llm(
-    llm: str,
-    local: bool = True,
-    prompt: Optional[str] = None,
-    token: str = None,
-    stream: Optional[bool] = None,
-    file_resource_id: Optional[str] = None,
-    history: Optional[List[List[str]]] = None,
-):
+@NodeConstructor.register('SharedLLM')
+def make_shared_llm(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
+                    stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
+                    history: Optional[List[List[str]]] = None):
     if local:
         llm = Engine().build_node(llm).func
-        if file_resource_id:
-            assert isinstance(llm, VQA), "file_resource_id is only supported in VQA"
-        r = (
-            VQA(llm._vqa.share(prompt=prompt, history=history), file_resource_id)
-            if file_resource_id
-            else llm.share(prompt=prompt, history=history)
-        )
+        if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
+        r = (VQA(llm._vqa.share(prompt=prompt, history=history), file_resource_id)
+             if file_resource_id else llm.share(prompt=prompt, history=history))
     else:
-        assert (
-            Engine().launch_localllm_infer_service.flag
-        ), "Infer service should start first!"
+        assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
         r = Engine().get_infra_handle(token, llm)
-        if prompt:
-            r.prompt(prompt, history=history)
-    if stream is not None:
-        r.stream = stream
+        if prompt: r.prompt(prompt, history=history)
+    if stream is not None: r.stream = stream
     return r
 
 
-@NodeConstructor.register("OnlineLLM")
-def make_online_llm(
-    source: str,
-    base_model: Optional[str] = None,
-    prompt: Optional[str] = None,
-    api_key: Optional[str] = None,
-    secret_key: Optional[str] = None,
-    stream: bool = False,
-    token: Optional[str] = None,
-    base_url: Optional[str] = None,
-    history: Optional[List[List[str]]] = None,
-):
-    if source and source.lower() == "lazyllm":
-        return make_shared_llm(
-            base_model, False, prompt, token, stream, history=history
-        )
+@NodeConstructor.register('OnlineLLM')
+def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optional[str] = None,
+                    api_key: Optional[str] = None, secret_key: Optional[str] = None,
+                    stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
+                    history: Optional[List[List[str]]] = None):
+    if source and source.lower() == 'lazyllm':
+        return make_shared_llm(base_model, False, prompt, token, stream, history=history)
     else:
-        return lazyllm.OnlineChatModule(
-            base_model, source, base_url, stream, api_key=api_key, secret_key=secret_key
-        ).prompt(prompt, history=history)
+        return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
+                                        api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
+
 
 class LLM(lazyllm.ModuleBase):
     def __init__(self, m: lazyllm.ModuleBase, keys: Optional[List[str]] = None):
@@ -789,21 +759,17 @@ def make_llm(kw: dict):
 class STT(lazyllm.Module):
     def __init__(self, base_model: Union[str, lazyllm.TrainableModule]):
         super().__init__()
-        self._m = (
-            lazyllm.TrainableModule(base_model)
-            if isinstance(base_model, str)
-            else base_model.share()
-        )
+        self._m = lazyllm.TrainableModule(base_model) if isinstance(base_model, str) else base_model.share()
 
     def forward(self, query: str):
-        if "<lazyllm-query>" in query:
-            for ext in [".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma"]:
+        if '<lazyllm-query>' in query:
+            for ext in ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma']:
                 if ext in query or ext.upper() in query:
                     return self._m(query)
         return query
 
     def share(self, prompt: str = None):
-        assert prompt is None, "STT has no promot"
+        assert prompt is None, 'STT has no promot'
         return STT(self._m)
 
     def status(self, task_name: Optional[str] = None):
@@ -818,14 +784,14 @@ class STT(lazyllm.Module):
         self._m._stream = v
 
 
-@NodeConstructor.register("STT")
+@NodeConstructor.register('STT')
 def make_stt(base_model: str):
     return STT(base_model)
 
 
-@NodeConstructor.register("Constant")
+@NodeConstructor.register('Constant')
 def make_constant(value: Any):
-    return lambda *args, **kw: value
+    return (lambda *args, **kw: value)
 
 
 class FileResource(object):
@@ -833,10 +799,10 @@ class FileResource(object):
         self.id = id
 
     def __call__(self, *args, **kw) -> Union[str, List[str]]:
-        return lazyllm.globals["lazyllm_files"].get(self.id)
+        return lazyllm.globals['lazyllm_files'].get(self.id)
 
 
-@NodeConstructor.register("File")
+@NodeConstructor.register('File')
 def make_file(id: str):
     return FileResource(id)
 
@@ -860,16 +826,3 @@ def make_qustion_rewrite(
     formatter: str = "str",
 ):
     return lazyllm.tools.QustionRewrite(base_model, rewrite_prompt, formatter)
-
-@NodeConstructor.register("Multimodal")
-def make_multimodal(kw: dict):
-    kind: str = kw.pop('kind')
-    base_model = kw.pop("base_model")
-    assert kind in ('VQA', 'STT', 'TTS'), f'Invalid type {kind} given'
-    if kind == 'VQA':
-        file_resource_id = None
-        if "file_resource_id" in kw:
-            file_resource_id = kw.pop("file_resource_id")
-        return make_vqa(base_model=base_model, file_resource_id=file_resource_id)
-    elif kind == 'STT': return make_stt(base_model)
-    else: return make_local_llm(base_model, **kw)

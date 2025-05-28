@@ -27,8 +27,8 @@ class ParameterExtractor(ModuleBase):
 
         self.param_dict = dict(zip(param, self.types))
 
-    def forward(self, query: str):
-        res = self._m(query)
+    def forward(self, query: str, **kw):
+        res = self._m(query, **kw)
         res = res.split("\n")
         ret = dict()
         for param in res:

@@ -116,6 +116,14 @@ class TestDeploy(object):
         assert "files" in res
         assert len(res['files']) == 1
 
+    def test_temperature_parameter(self):
+        m = lazyllm.TrainableModule('internlm2-chat-7b')
+        m.update_server()
+        kw = {"temperature":0.61}
+        r = m('你好啊，很高兴认识你。',**kw)
+        assert isinstance(r, str)
+        assert len(r) > 0
+
     @reset_env
     def test_AutoModel(self):
         # No model_name and key
