@@ -4,11 +4,12 @@ from collections import defaultdict
 from functools import wraps
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
-from lazyllm import LOG, once_wrapper
+from lazyllm import LOG, once_wrapper, ServerModule, FastapiApp as app
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         AdaptiveTransform, make_transform, TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
 from .store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+from .readers import ReaderBase
 from .map_store import MapStore
 from .chroma_store import ChromadbStore
 from .milvus_store import MilvusStore
@@ -63,13 +64,18 @@ class DocImpl:
     _global_node_groups: Dict[str, Dict] = {}
     _registered_file_reader: Dict[str, Callable] = {}
 
+    class _Processer:
+        def __init__(self, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict]):
+            self._store, self._reader, self._node_groups = store, reader, node_groups
+
+        @app.post()
+        def add(): pass
+
     def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
                  store_conf: Optional[Dict] = None):
         super().__init__()
-        # 如果云服务,则这个检查要修改,即使没有dlm也要通过检查
-        assert (dlm is None) ^ (doc_files is None), 'Only one of dataset_path or doc_files should be provided'
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
         self._dlm, self._doc_files = dlm, doc_files
@@ -79,7 +85,8 @@ class DocImpl:
         self._global_metadata_desc = global_metadata_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
         self._activated_embeddings = {}
-        self.index_pending_registrations = []
+        self._index_pending_registrations = []
+        self._activated_groups = set()
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
@@ -114,10 +121,8 @@ class DocImpl:
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
         self._resolve_index_pending_registrations()
 
-        # 如果是云服务,跳过这两步
         if not self.store.is_group_active(LAZY_ROOT_NAME):
-            ids, paths, metadatas = self._list_files()
-            ids, paths, metadatas = self._delete_nonexistent_docs_on_startup(ids, paths, metadatas)
+            ids, paths, metadatas = self._delete_nonexistent_docs_on_startup(*self._list_files())
             if paths:
                 if not metadatas: metadatas = [{} for _ in range(len(paths))]
                 for idx, meta in enumerate(metadatas):
@@ -129,14 +134,19 @@ class DocImpl:
                     self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                               new_status=DocListManager.Status.success)
                 LOG.debug(f"building {LAZY_ROOT_NAME} nodes: {root_nodes}")
+
+        self._propessor = DocImpl._Processer(self.store, self._reader, self.node_groups, )
         if self._dlm:
             self._init_monitor_event = threading.Event()
             self._daemon = threading.Thread(target=self.worker)
             self._daemon.daemon = True
             self._daemon.start()
             self._init_monitor_event.wait()
+        elif not self._doc_files:
+            self._propessor = ServerModule(self._propessor)
 
     def _delete_nonexistent_docs_on_startup(self, ids, paths, metadatas):
+        if not self._dlm: return [], [], []
         path_existing = [Path(path).exists() for path in paths]
         paths_need_delete = [paths[idx] for idx, exist in enumerate(path_existing) if not exist]
         rt_metadatas = [meta for meta, exist in zip(metadatas, path_existing) if exist] if metadatas else None
@@ -157,11 +167,11 @@ class DocImpl:
         return rt_ids, rt_paths, rt_metadatas
 
     def _resolve_index_pending_registrations(self):
-        for index_type, index_cls, index_args, index_kwargs in self.index_pending_registrations:
+        for index_type, index_cls, index_args, index_kwargs in self._index_pending_registrations:
             args = [self._resolve_index_placeholder(arg) for arg in index_args]
             kwargs = {k: self._resolve_index_placeholder(v) for k, v in index_kwargs.items()}
             self.store.register_index(index_type, index_cls(*args, **kwargs))
-        self.index_pending_registrations.clear()
+        self._index_pending_registrations.clear()
 
     def _create_store(self, store_conf: Optional[Dict], embed_dims: Optional[Dict[str, int]] = None,
                       embed_datatypes: Optional[Dict[str, DataType]] = None) -> StoreBase:
@@ -287,7 +297,7 @@ class DocImpl:
             kwargs = {k: self._resolve_index_placeholder(v) for k, v in kwargs.items()}
             self.store.register_index(index_type, index_cls(*args, **kwargs))
         else:
-            self.index_pending_registrations.append((index_type, index_cls, args, kwargs))
+            self._index_pending_registrations.append((index_type, index_cls, args, kwargs))
 
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         assert callable(func), 'func for reader should be callable'
@@ -347,6 +357,7 @@ class DocImpl:
             upload_status: Union[str, List[str]] = DocListManager.Status.all
     ) -> Tuple[List[str], List[str], List[Dict]]:
         if self._doc_files: return None, self._doc_files, None
+        if not self._dlm: return [], [], []
         ids, paths, metadatas = [], [], []
         for row in self._dlm.list_kb_group_files(group=self._kb_group_name, status=status,
                                                  upload_status=upload_status, details=True):
@@ -378,15 +389,12 @@ class DocImpl:
             self.store.update_nodes(nodes)
             LOG.debug(f"Merge {group} with {nodes}")
 
-    # 接口1: 删除文档
+    # 接口2: 删除文档
     def _delete_doc_from_store(self, input_files: List[str]) -> None:
-        docs = self.store.get_index(type='file_node_map').query(input_files)
-        LOG.info(f"delete_files: removing documents {input_files} and nodes {docs}")
-        if len(docs) == 0:
-            return
-        self._delete_nodes_recursively(docs)
+        root_nodes = self.store.get_index(type='file_node_map').query(input_files)
+        LOG.info(f"delete_files: removing documents {input_files} and nodes {root_nodes}")
+        if len(root_nodes) == 0: return
 
-    def _delete_nodes_recursively(self, root_nodes: List[DocNode]) -> None:
         uids_to_delete = defaultdict(list)
         uids_to_delete[LAZY_ROOT_NAME] = [node._uid for node in root_nodes]
 
@@ -420,8 +428,14 @@ class DocImpl:
 
     def _get_nodes(self, group_name: str, store: Optional[StoreBase] = None) -> List[DocNode]:
         store = store or self.store
-        self._dynamic_create_nodes(group_name, store)
         return store.get_nodes(group_name)
+
+    def activate_group(self, group_name: str):
+        assert not self._lazy_init.flag, 'Cannot activate group when document is inited'
+        self._activated_groups.add(group_name)
+
+    def activate_embedding_keys(self, group_name: str, embed_keys: List[str]):
+        self._activated_embeddings.setdefault(group_name, set()).update(embed_keys)
 
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,
@@ -448,7 +462,6 @@ class DocImpl:
     def find(self, nodes: List[DocNode], group: str) -> List[DocNode]:
         if len(nodes) == 0: return nodes
         self._lazy_init()
-        self._dynamic_create_nodes(group, self.store)
 
         def get_depth(name):
             cnt = 0

@@ -3,7 +3,6 @@ from .doc_node import DocNode, ImageDocNode
 from .store_base import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from lazyllm import LOG
 from .dataReader import SimpleDirectoryReader
-from .global_metadata import RAG_DOC_PATH
 
 class DirectoryReader:
     def __init__(self, input_files: Optional[List[str]], local_readers: Optional[Dict] = None,
