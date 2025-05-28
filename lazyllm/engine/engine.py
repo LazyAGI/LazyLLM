@@ -669,10 +669,13 @@ def make_http_tool(method: Optional[str] = None,
 
 
 class VQA(lazyllm.Module):
-    def __init__(self, base_model: Union[str, lazyllm.TrainableModule], file_resource_id: Optional[str]):
+    def __init__(self, base_model: Union[str, lazyllm.TrainableModule], file_resource_id: Optional[str],
+                 prompt: Optional[str] = None):
         super().__init__()
-        self.vqa = self._vqa = (lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
-                                if not isinstance(base_model, lazyllm.TrainableModule) else base_model)
+        if not isinstance(base_model, lazyllm.TrainableModule):
+            self._vqa = lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
+            if prompt: self._vqa.prompt(prompt=prompt)
+        else: self.vqa = base_model
         self._file_resource_id = file_resource_id
         if file_resource_id:
             with pipeline() as self.vqa:
@@ -699,8 +702,8 @@ class VQA(lazyllm.Module):
 
 
 @NodeConstructor.register('VQA')
-def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
-    return VQA(base_model, file_resource_id)
+def make_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None):
+    return VQA(base_model, file_resource_id, prompt)
 
 
 @NodeConstructor.register('SharedLLM')
