@@ -18,6 +18,8 @@ class ParameterExtractor(ModuleBase):
         prompt: str = "",
     ):
         super().__init__()
+        if param is not None:
+            assert len(param) == len(types)
         if isinstance(base_model, str):
             self._m = TrainableModule(base_model).start().prompt(prompt)
         else:
@@ -48,8 +50,12 @@ class ParameterExtractor(ModuleBase):
                 continue
         return ret
 
-    def share(self, prompt: str = ""):
-        return ParameterExtractor(self._m, self.param, self.types, prompt=prompt)
+    def share(self, prompt: str = "", param: Optional[list[str]] = None,
+              types: Optional[list[str]] = None):
+        if param is None or types is None:
+            param = self.param
+            types = self.types
+        return ParameterExtractor(self._m, param, types, prompt)
 
     def status(self, task_name: Optional[str] = None):
         return self._m.status(task_name)

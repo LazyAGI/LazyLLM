@@ -23,8 +23,8 @@ class QustionRewrite(ModuleBase):
         else:
             return res
 
-    def share(self, prompt: str = None):
-        return QustionRewrite(self._m, rewrite_prompt=prompt, formatter=self.formatter)
+    def share(self, prompt: str = None, formatter: str = None):
+        return QustionRewrite(self._m, prompt, formatter)
 
     def status(self, task_name: Optional[str] = None):
         return self._m.status(task_name)
