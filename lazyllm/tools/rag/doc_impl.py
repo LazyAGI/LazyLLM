@@ -31,28 +31,27 @@ def embed_wrapper(func: Optional[Callable[..., Any]]) -> Optional[Callable[..., 
     @wraps(func)
     def wrapper(*args, **kwargs) -> List[float]:
         result = func(*args, **kwargs)
-        print(f"DEBUG: type of result: {type(result)}")
+        # LOG.debug(f"type of result: {type(result)}")
         if isinstance(result, str):
-            # print(f"DEBUG: result string to be processed: {result[:50000]}")
+            # LOG.debug(f"result string to be processed: {result[:50000]}")
             try:
                 # Use json.loads as it's generally more robust for list-like strings
                 return json.loads(result)
             except json.JSONDecodeError:
-                print(f"ERROR: Failed to decode string with json.loads. String: {result[:50000]}")
                 # Fallback or raise error if json.loads also fails
                 # For example, if ast.literal_eval was truly necessary for some non-JSON compatible Python literal
                 try:
-                    print("WARN: json.loads failed, attempting ast.literal_eval as a fallback (might hit recursion limit).")
+                    LOG.warning("json.loads failed, attempting ast.literal_eval as a fallback (might hit recursion limit).")
                     return ast.literal_eval(result)
                 except Exception as e:
-                    print(f"ERROR: Both json.loads and ast.literal_eval failed. Error: {e}")
+                    LOG.error(f"Both json.loads and ast.literal_eval failed. Error: {e}")
                     raise # Re-raise the original or a new error
         elif isinstance(result, list): # Explicitly check if it's already a list
             return result
         else:
             # Handle unexpected types by raising an error
             error_message = f"Expected List[float] or str (convertible to List[float]), but got {type(result)}"
-            print(f"ERROR: {error_message}")
+            LOG.error(f"{error_message}")
             raise TypeError(error_message)
 
 
