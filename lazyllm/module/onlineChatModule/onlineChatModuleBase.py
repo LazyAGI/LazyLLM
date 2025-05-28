@@ -4,6 +4,7 @@ import json
 import os
 import requests
 import re
+import random
 from typing import Tuple, List, Dict, Union, Any, Optional
 from urllib.parse import urljoin
 import time
@@ -19,6 +20,8 @@ from ..module import ModuleBase, Pipeline
 
 
 class OnlineChatModuleBase(ModuleBase):
+    TRAINABLE_MODEL_LIST = []
+    VLM_MODEL_LIST = []
 
     def __init__(self,
                  model_series: str,
@@ -26,8 +29,8 @@ class OnlineChatModuleBase(ModuleBase):
                  base_url: str,
                  model_name: str,
                  stream: Union[bool, Dict[str, str]],
-                 trainable_models: List[str],
                  return_trace: bool = False,
+                 vlm_models: List[str] = None,
                  **kwargs):
         super().__init__(return_trace=return_trace)
         self._model_series = model_series
@@ -37,7 +40,8 @@ class OnlineChatModuleBase(ModuleBase):
         self._base_url = base_url
         self._model_name = model_name
         self._stream = stream
-        self.trainable_models = trainable_models
+        self.trainable_models = self.TRAINABLE_MODEL_LIST
+        self.vlm_models = self.VLM_MODEL_LIST
         self._set_headers()
         self._set_chat_url()
         self.prompt()
@@ -45,6 +49,7 @@ class OnlineChatModuleBase(ModuleBase):
         self.formatter()
         self._field_extractor()
         self._model_optional_params = {}
+        self._vlm_force_format_input_with_files = False
 
     @property
     def series(self):
@@ -282,7 +287,8 @@ class OnlineChatModuleBase(ModuleBase):
         if len(self._model_optional_params) > 0:
             data.update(self._model_optional_params)
 
-        if isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
+        if isinstance(__input, str) and (__input.startswith(LAZYLLM_QUERY_PREFIX)
+           or (self._vlm_force_format_input_with_files and data["model"] in self.vlm_models)):
             for idx, message in enumerate(data["messages"]):
                 content = message["content"]
                 if content.startswith(LAZYLLM_QUERY_PREFIX):
@@ -399,7 +405,6 @@ class OnlineChatModuleBase(ModuleBase):
 
             if status.lower() == "failed":
                 raise ValueError(f"Fine tuning job {fine_tuning_job_id} failed")
-            import random
             while status.lower() != "succeeded":
                 try:
                     # wait 10 seconds before querying again

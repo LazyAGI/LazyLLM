@@ -6,6 +6,7 @@ import shutil
 import sqlite3
 import threading
 import time
+
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -25,6 +26,7 @@ import lazyllm
 from lazyllm import config
 from lazyllm.common import override
 from lazyllm.common.queue import sqlite3_check_threadsafety
+from lazyllm.thirdparty import tarfile
 
 from .doc_node import DocNode
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
@@ -118,9 +120,6 @@ class DocListManager(ABC):
         self._id = hashlib.sha256(f'{name}@+@{path}'.encode()).hexdigest()
         if not os.path.isabs(path):
             raise ValueError(f"path [{path}] is not an absolute path")
-
-    def __reduce__(self):
-        return (__class__, (self._path, self._name, False,))
 
     def __new__(cls, *args, **kw):
         if cls is not DocListManager:
@@ -689,7 +688,7 @@ class SqliteDocListManager(DocListManager):
             conn.commit()
 
     def __reduce__(self):
-        return (__class__, (self._path, self._name))
+        return (__class__, (self._path, self._name, self._enable_path_monitoring))
 
 
 DocListManager.__pool__ = dict(sqlite=SqliteDocListManager)
@@ -745,7 +744,6 @@ def _save_file_to_cache(
     if file.filename.endswith(".tar"):
 
         def unpack_archive(tar_file_path: str, extract_folder_path: str):
-            import tarfile
 
             out_file_names = []
             try:

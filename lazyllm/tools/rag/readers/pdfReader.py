@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from fsspec import AbstractFileSystem
 
+from lazyllm.thirdparty import pypdf
+
 from .readerBase import LazyLLMReaderBase, get_default_fs, is_default_fs
 from ..doc_node import DocNode
 
@@ -18,11 +20,6 @@ class PDFReader(LazyLLMReaderBase):
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
                    fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
-
-        try:
-            import pypdf
-        except ImportError:
-            raise ImportError("pypdf is required to read PDF files: `pip install pypdf`")
 
         fs = fs or get_default_fs()
         with fs.open(file, 'rb') as fp:
