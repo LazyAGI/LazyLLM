@@ -691,6 +691,7 @@ class TestEngine(unittest.TestCase):
         engine.release_node(gid)
         assert '__start__' in engine._nodes and '__end__' in engine._nodes
 
+
 class TestEngineRAG(object):
 
     def test_rag(self):
