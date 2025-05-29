@@ -181,36 +181,6 @@ def install(commands):  # noqa C901
 
     extra_pkgs = set()
 
-    want_vllm = any(p.startswith("vllm") for p in pkgs)
-    want_llamafactory = any(p.startswith("lazyllm-llamafactory") for p in pkgs)
-
-    try:
-        importlib.metadata.version("vllm")
-        orig_vllm = True
-    except importlib.metadata.PackageNotFoundError:
-        orig_vllm = False
-
-    try:
-        importlib.metadata.version("lazyllm-llamafactory")
-        orig_llamafactory = True
-    except importlib.metadata.PackageNotFoundError:
-        orig_llamafactory = False
-
-    need_transformers = (
-        (want_vllm and orig_llamafactory)
-        or (want_llamafactory and orig_vllm)
-        or (want_vllm and want_llamafactory)
-    )
-
-    if need_transformers:
-        try:
-            tr_ver = importlib.metadata.version("transformers")
-        except importlib.metadata.PackageNotFoundError:
-            pass
-        else:
-            if tr_ver != "4.46.1":
-                extra_pkgs.add("transformers==4.46.1")
-
     for p in pkgs:
         if p.startswith("flash-attn"):
             try:

@@ -182,6 +182,13 @@ model_name_mapping = {
         },
         "type": "tts"
     },
+    "chattts-new": {
+        "source": {
+            "huggingface": "2Noise/ChatTTS",
+            "modelscope": "AI-ModelScope/ChatTTS"
+        },
+        "type": "tts"
+    },
     "internvl-chat-v1-5": {
         "source": {
             "huggingface": "OpenGVLab/InternVL-Chat-V1-5",
@@ -221,6 +228,13 @@ model_name_mapping = {
         "source": {
             "huggingface": "OpenGVLab/Mini-InternVL-Chat-4B-V1-5",
             "modelscope": "OpenGVLab/Mini-InternVL-Chat-4B-V1-5"
+        },
+        "type": "vlm"
+    },
+    "qwen2.5-vl-3b-instruct": {
+        "source": {
+            "huggingface": "Qwen/Qwen2.5-VL-3B-Instruct",
+            "modelscope": "Qwen/Qwen2.5-VL-3B-Instruct"
         },
         "type": "vlm"
     },
