@@ -826,6 +826,6 @@ def make_parameter_extractor(
 def make_qustion_rewrite(
     base_model: Union[str, lazyllm.TrainableModule],
     rewrite_prompt: str = "",
-    formatter: str = "str",
+    formatter: str = "",
 ):
     return lazyllm.tools.QustionRewrite(base_model, rewrite_prompt, formatter)

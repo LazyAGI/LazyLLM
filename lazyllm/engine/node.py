@@ -29,7 +29,7 @@ class Node():
     arg_names: Optional[List[str]] = None
     enable_data_reflow: bool = False
     subitem_name: Optional[Union[List[str], str]] = None
-
+    hyperparameter: Optional[Dict] = None
     @property
     def subitems(self) -> List[str]:
         if not self.subitem_name: return []

@@ -7,7 +7,7 @@ class QustionRewrite(ModuleBase):
         self,
         base_model: Union[str, TrainableModule],
         rewrite_prompt: str = "",
-        formatter: str = "list",
+        formatter: str = "str",
     ):
         super().__init__()
         if isinstance(base_model, str):
