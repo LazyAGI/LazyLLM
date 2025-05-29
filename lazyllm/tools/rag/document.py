@@ -232,11 +232,10 @@ class Document(ModuleBase, BuiltinGroups):
     @property
     def manager(self): return self._manager
 
-    def activate_group(self, group_name: str): self._impl.activate_group(group_name)
-
-    def activate_embedding_keys(self, group_name: str, embed_keys: Union[str, List[str]]):
+    def activate_group(self, group_name: str, embed_keys: Optional[Union[str, List[str]]] = None):
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
-        self._impl.activate_embedding_keys(group_name, embed_keys)
+        elif embed_keys is None: embed_keys = []
+        self._impl.activate_group(group_name, embed_keys)
 
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
