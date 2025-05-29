@@ -61,11 +61,12 @@ class BuiltinGroups(object):
 
 
 class _Processer:
-    def __init__(self, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict]):
+    def __init__(self, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict], server: bool = False):
         self._store, self._reader, self._node_groups = store, reader, node_groups
-        self._task_queue = queue.Queue()
-        self._executor = ThreadPoolExecutor(num_workers=1)
-        self._tasks = {}
+        if server:
+            self._task_queue = queue.Queue()
+            self._executor = ThreadPoolExecutor(max_workers=1)
+            self._tasks = {}
 
     @app.post('/add_docs')
     async def async_add_doc(self, task_id: str, input_files: List[str], ids: Optional[List[str]] = None,
@@ -125,13 +126,12 @@ class _Processer:
                                  "or add a new one through `create_node_group`.")
 
             if group['parent'] == p_name:
-                sub_nodes = self._create_nodes_impl(p_nodes, group)
                 t = group['transform']
                 transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
                 nodes = transform.batch_forward(p_nodes, group_name)
                 self._store.update_nodes(nodes)
 
-                if sub_nodes: self._create_nodes_recursive(sub_nodes, group_name)
+                if nodes: self._create_nodes_recursive(nodes, group_name)
 
     def delete_doc(self, input_files: List[str]) -> None:
         root_nodes = self.store.get_index(type='file_node_map').query(input_files)
@@ -171,22 +171,27 @@ class DocImpl:
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
         self._dlm, self._doc_files = dlm, doc_files
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
-        self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: {}, LAZY_IMAGE_GROUP: {}}
+        self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: dict(parent=None), LAZY_IMAGE_GROUP: dict(parent=None)}
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self._global_metadata_desc = global_metadata_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
         self._activated_embeddings = {LAZY_ROOT_NAME: [], LAZY_IMAGE_GROUP: []}  # {group_name: [embed1, embed2, ...]}
         self._index_pending_registrations = []
 
-    @once_wrapper(reset_on_pickle=True)
-    def _lazy_init(self) -> None:
+    def _init_node_groups(self):
         node_groups = DocImpl._builtin_node_groups.copy()
         node_groups.update(DocImpl._global_node_groups)
         node_groups.update(self.node_groups)
         self.node_groups = node_groups
 
-        embed_dims = {}
-        embed_datatypes = {}
+        for group in self._activated_embeddings.keys():
+            while True:
+                parent_group = self.node_groups[group]['parent']
+                if not parent_group or parent_group in self._activated_embeddings: break
+                self._activated_embeddings.setdefault((group := parent_group), set())
+
+    def _init_store(self):
+        embed_dims, embed_datatypes = {}, {}
         for k, e in self.embed.items():
             embedding = e('a')
             if is_sparse(embedding):
@@ -201,6 +206,12 @@ class DocImpl:
                                             embed_datatypes=embed_datatypes)
         elif not isinstance(self.store, StoreBase):
             raise ValueError(f'store type [{type(self.store)}] is not a dict.')
+
+    @once_wrapper(reset_on_pickle=True)
+    def _lazy_init(self) -> None:
+        self._init_node_groups()
+        self._init_store()
+
         self._resolve_index_pending_registrations()
         self._propessor = _Processer(self.store, self._reader, self.node_groups)
 
@@ -474,10 +485,6 @@ class DocImpl:
     def activate_group(self, group_name: str, embed_keys: List[str]):
         assert not self._lazy_init.flag, 'Cannot activate embedding keys when document is inited'
         self._activated_embeddings.setdefault(group_name, set()).update(embed_keys)
-        while True:
-            parent_group = self.node_groups[group_name]['name']
-            if not parent_group or parent_group in self._activated_embeddings: break
-            self._activated_embeddings.setdefault((group_name := parent_group), set())
 
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,
