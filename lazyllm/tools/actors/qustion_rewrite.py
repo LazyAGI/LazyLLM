@@ -1,4 +1,4 @@
-from typing import Union, Optional
+from typing import Union
 from ...module import ModuleBase, TrainableModule
 
 
@@ -22,17 +22,3 @@ class QustionRewrite(ModuleBase):
             return list(filter(None, res.split('\n')))
         else:
             return res
-
-    def share(self, prompt: str = None, formatter: str = None):
-        return QustionRewrite(self._m, prompt, formatter)
-
-    def status(self, task_name: Optional[str] = None):
-        return self._m.status(task_name)
-
-    @property
-    def stream(self):
-        return self._m._stream
-
-    @stream.setter
-    def stream(self, v: bool):
-        self._m._stream = v

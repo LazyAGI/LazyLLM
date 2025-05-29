@@ -1,4 +1,4 @@
-from typing import Union, Optional
+from typing import Union
 import json
 from ...module import ModuleBase, TrainableModule
 
@@ -49,21 +49,3 @@ class ParameterExtractor(ModuleBase):
             except Exception:
                 continue
         return ret
-
-    def share(self, prompt: str = "", param: Optional[list[str]] = None,
-              types: Optional[list[str]] = None):
-        if param is None or types is None:
-            param = self.param
-            types = self.types
-        return ParameterExtractor(self._m, param, types, prompt)
-
-    def status(self, task_name: Optional[str] = None):
-        return self._m.status(task_name)
-
-    @property
-    def stream(self):
-        return self._m._stream
-
-    @stream.setter
-    def stream(self, v: bool):
-        self._m._stream = v
