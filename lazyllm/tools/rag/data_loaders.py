@@ -23,7 +23,7 @@ class DirectoryReader:
         image_nodes: List[ImageDocNode] = []
         for doc in reader():
             doc._group = LAZY_IMAGE_GROUP if isinstance(doc, ImageDocNode) else LAZY_ROOT_NAME
-            if not split_image_nodes or isinstance(doc, ImageDocNode):
+            if not split_image_nodes or not isinstance(doc, ImageDocNode):
                 nodes.append(doc)
             else:
                 image_nodes.append(doc)

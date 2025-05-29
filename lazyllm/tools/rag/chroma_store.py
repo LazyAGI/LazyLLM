@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Callable, Set
+from typing import Any, Dict, List, Optional, Callable, Set, Union
 from lazyllm.thirdparty import chromadb
 from lazyllm import LOG
 from lazyllm.common import override, obj2str, str2obj
@@ -50,6 +50,14 @@ class ChromadbStore(StoreBase):
     @override
     def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
         return self._map_store.get_nodes(group_name, uids)
+
+    @override
+    def activate_group(self, group_names: Union[str, List[str]]) -> bool:
+        return self._map_store.activate_group(group_names)
+
+    @override
+    def activated_groups(self):
+        return self._map_store.activated_groups()
 
     @override
     def is_group_active(self, name: str) -> bool:

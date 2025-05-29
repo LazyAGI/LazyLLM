@@ -87,6 +87,9 @@ class _Processer:
             return 'success'
         return 'failed'
 
+    def _send_status_message(self, url):
+        pass
+
     def _worker(self):
         while True:
             try:
@@ -112,26 +115,39 @@ class _Processer:
             for path, id, metadata in zip(input_files, ids, metadatas):
                 metadata.update({RAG_DOC_ID: id, RAG_DOC_PATH: path})
         root_nodes, image_nodes = self._reader.load_data(input_files, metadatas, split_image_nodes=True)
+        self._store.update_nodes(root_nodes)
         self._create_nodes_recursive(root_nodes, LAZY_ROOT_NAME)
-        if image_nodes: self._create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)
-
-    def _send_status_message(self, url):
-        pass
+        if image_nodes:
+            self._store.update_nodes(image_nodes)
+            self._create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)
 
     def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):
-        for group_name in self._store.all_groups():
+        for group_name in self._store.activated_groups():
             group = self._node_groups.get(group_name)
             if group is None:
                 raise ValueError(f"Node group '{group_name}' does not exist. Please check the group name "
                                  "or add a new one through `create_node_group`.")
 
             if group['parent'] == p_name:
-                t = group['transform']
-                transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
-                nodes = transform.batch_forward(p_nodes, group_name)
-                self._store.update_nodes(nodes)
-
+                nodes = self._create_nodes_impl(p_nodes, group_name)
                 if nodes: self._create_nodes_recursive(nodes, group_name)
+
+    def _create_nodes_impl(self, p_nodes, group_name):
+        t = self._node_groups[group_name]['transform']
+        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
+        nodes = transform.batch_forward(p_nodes, group_name)
+        self._store.update_nodes(nodes)
+        return nodes
+
+    def _get_or_create_nodes(self, group_name, ids: Optional[List[str]] = None):
+        nodes = self._store.get_nodes(group_name, ids) if self._store.is_group_active(group_name) else []
+        if not nodes and group_name not in (LAZY_IMAGE_GROUP, LAZY_ROOT_NAME):
+            p_nodes = self._get_or_create_nodes(self._node_groups[group_name]['parent'], ids)
+            nodes = self._create_nodes_impl(p_nodes, group_name)
+        return nodes
+
+    def reparse(self, group_name: str, ids: Optional[List[str]] = None):
+        self._get_or_create_nodes(group_name, ids)
 
     def delete_doc(self, input_files: List[str]) -> None:
         root_nodes = self.store.get_index(type='file_node_map').query(input_files)
@@ -175,6 +191,8 @@ class DocImpl:
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self._global_metadata_desc = global_metadata_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
+        self._activated_groups = set([LAZY_ROOT_NAME, LAZY_IMAGE_GROUP])
+        # activated_embeddings maintains all node_groups and active embeddings
         self._activated_embeddings = {LAZY_ROOT_NAME: [], LAZY_IMAGE_GROUP: []}  # {group_name: [embed1, embed2, ...]}
         self._index_pending_registrations = []
 
@@ -184,11 +202,14 @@ class DocImpl:
         node_groups.update(self.node_groups)
         self.node_groups = node_groups
 
-        for group in self._activated_embeddings.keys():
+        for group in node_groups: self._activated_embeddings.setdefault(group, set())
+
+        # use list to avoid `dictionary changed size during iteration` error
+        for group in list(self._activated_groups):
             while True:
                 parent_group = self.node_groups[group]['parent']
-                if not parent_group or parent_group in self._activated_embeddings: break
-                self._activated_embeddings.setdefault((group := parent_group), set())
+                if not parent_group or parent_group in self._activated_groups: break
+                self._activated_groups.add(group := parent_group)
 
     def _init_store(self):
         embed_dims, embed_datatypes = {}, {}
@@ -282,6 +303,7 @@ class DocImpl:
             raise NotImplementedError(
                 f"Not implemented store type for {store_type}"
             )
+        store.activate_group(self._activated_groups)
 
         indices_conf = store_conf.get('indices', {})
         if not isinstance(indices_conf, Dict):
@@ -483,8 +505,19 @@ class DocImpl:
             LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
     def activate_group(self, group_name: str, embed_keys: List[str]):
-        assert not self._lazy_init.flag, 'Cannot activate embedding keys when document is inited'
-        self._activated_embeddings.setdefault(group_name, set()).update(embed_keys)
+        group_name = str(group_name)
+        if not self._dlm and not self._doc_files:
+            assert not self._lazy_init.flag, 'Cannot activate embedding keys when Document is inited'
+        self._activated_groups.add(group_name)
+        if embed_keys: self._activated_embeddings.setdefault(str(group_name), set()).update(embed_keys)
+        if self._lazy_init.flag:
+            assert not embed_keys, 'Connot add new embed_keys for node_group when Document is inited'
+            self.store.activate_group(parent := group_name)
+            while True:
+                parent = self.node_groups[parent]['parent']
+                if parent in self._activated_groups: break
+                self.store.activate_group(parent)
+            self._propessor.reparse(group_name)
 
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,

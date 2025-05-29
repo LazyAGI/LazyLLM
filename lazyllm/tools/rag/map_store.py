@@ -28,6 +28,8 @@ class MapStore(StoreBase):
             'file_node_map': _FileNodeIndex(),
         }
 
+        self._activated_groups = set()
+
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
         for node in nodes:
@@ -79,6 +81,15 @@ class MapStore(StoreBase):
             if doc:
                 ret.append(doc)
         return ret
+
+    @override
+    def activate_group(self, group_names: Union[str, List[str]]) -> bool:
+        if isinstance(group_names, str): group_names = [group_names]
+        self._activated_groups.update(group_names)
+
+    @override
+    def activated_groups(self):
+        return list(self._activated_groups)
 
     @override
     def is_group_active(self, name: str) -> bool:

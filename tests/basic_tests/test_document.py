@@ -31,7 +31,7 @@ class TestDocImpl(unittest.TestCase):
         self.tmp_file_b = tempfile.NamedTemporaryFile()
         mock_node = DocNode(group=LAZY_ROOT_NAME, text="dummy text")
         mock_node._global_metadata = {RAG_DOC_PATH: self.tmp_file_a.name}
-        self.mock_directory_reader.load_data.return_value = [mock_node]
+        self.mock_directory_reader.load_data.return_value = ([mock_node], [])
 
         self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
         self.doc_impl._reader = self.mock_directory_reader
@@ -64,6 +64,7 @@ class TestDocImpl(unittest.TestCase):
 
     def test_retrieve(self):
         self.mock_embed.return_value = "[0.1, 0.2, 0.3]"
+        self.doc_impl.activate_group(Document.FineChunk, [])
         result = self.doc_impl.retrieve(
             query="test query",
             group_name="FineChunk",
@@ -82,7 +83,7 @@ class TestDocImpl(unittest.TestCase):
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
         new_doc._global_metadata = {RAG_DOC_PATH: self.tmp_file_b.name}
-        self.mock_directory_reader.load_data.return_value = [new_doc]
+        self.mock_directory_reader.load_data.return_value = ([new_doc], [])
         self.doc_impl._add_doc_to_store([self.tmp_file_b.name])
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 2
 
