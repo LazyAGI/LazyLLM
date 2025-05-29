@@ -39,19 +39,19 @@ def embed_wrapper(func: Optional[Callable[..., Any]]) -> Optional[Callable[..., 
                 # Fallback or raise error if json.loads also fails
                 # For example, if ast.literal_eval was truly necessary for some non-JSON compatible Python literal
                 try:
-                    LOG.warning("json.loads failed, attempting ast.literal_eval as a fallback (might hit recursion limit).")
+                    LOG.warning("json.loads failed, attempting ast.literal_eval as a "
+                                "fallback (might hit recursion limit).")
                     return ast.literal_eval(result)
                 except Exception as e:
                     LOG.error(f"Both json.loads and ast.literal_eval failed. Error: {e}")
-                    raise # Re-raise the original or a new error
-        elif isinstance(result, list): # Explicitly check if it's already a list
+                    raise  # Re-raise the original or a new error
+        elif isinstance(result, list):  # Explicitly check if it's already a list
             return result
         else:
             # Handle unexpected types by raising an error
             error_message = f"Expected List[float] or str (convertible to List[float]), but got {type(result)}"
             LOG.error(f"{error_message}")
             raise TypeError(error_message)
-
 
     return wrapper
 
