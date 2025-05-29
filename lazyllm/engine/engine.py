@@ -360,9 +360,11 @@ def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] =
 
 
 @NodeConstructor.register('Loop', subitems=['nodes', 'resources'])
-def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict] = [],
-              resources: List[dict] = [], judge_on_full_input: bool = True, count=sys.maxsize):
-    stop_condition = make_code(stop_condition)
+def make_loop(nodes: List[dict], edges: List[dict] = [], resources: List[dict] = [], 
+              stop_condition: Optional[str] = None, judge_on_full_input: bool = True, count=sys.maxsize):
+    assert stop_condition is not None or count > 1, 'stop_condition or count is required'
+    if stop_condition is not None:
+        stop_condition = make_code(stop_condition)
     return lazyllm.loop(make_graph(nodes, edges, resources, enable_server=False),
                         stop_condition=stop_condition, judge_on_full_input=judge_on_full_input, count=count)
 
