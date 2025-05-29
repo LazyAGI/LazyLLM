@@ -7,7 +7,6 @@ package_name_map = {
     'huggingface_hub': 'huggingface-hub',
     'jwt': 'PyJWT',
     'rank_bm25': 'rank-bm25',
-    'collie': 'collie-lm',
     'faiss': 'faiss-cpu',
     'flash_attn': 'flash-attn',
     'sklearn': 'scikit-learn'
@@ -78,7 +77,7 @@ class PackageWrapper(object):
             raise ImportError(err_msg)
 
 modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', 'rank_bm25', 'redisvl', 'datasets',
-           'deepspeed', 'fire', 'numpy', 'peft', 'torch', 'transformers', 'collie', 'faiss', 'flash_attn', 'google',
+           'deepspeed', 'fire', 'numpy', 'peft', 'torch', 'transformers', 'faiss', 'flash_attn', 'google',
            'lightllm', 'vllm', 'ChatTTS', 'wandb', 'funasr', 'sklearn', 'torchvision', 'scipy', 'pymilvus',
            'sentence_transformers', 'gradio', 'chromadb', 'nltk', 'PIL', 'httpx', 'bm25s', 'kubernetes', 'pymongo',
            'rapidfuzz', 'FlagEmbedding', 'mcp', 'diffusers', 'pypdf', 'pptx', 'html2text', 'ebooklib', 'docx2txt',

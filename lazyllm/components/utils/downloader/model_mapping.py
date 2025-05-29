@@ -182,6 +182,13 @@ model_name_mapping = {
         },
         "type": "tts"
     },
+    "chattts-new": {
+        "source": {
+            "huggingface": "2Noise/ChatTTS",
+            "modelscope": "AI-ModelScope/ChatTTS"
+        },
+        "type": "tts"
+    },
     "internvl-chat-v1-5": {
         "source": {
             "huggingface": "OpenGVLab/InternVL-Chat-V1-5",

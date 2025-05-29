@@ -57,7 +57,7 @@ class ChatTTSModule(object):
                                   params_refine_text=params_refine_text,
                                   params_infer_code=params_infer_code,
                                 )
-        file_path = sounds_to_files(speech[0], self.save_path)
+        file_path = sounds_to_files(speech, self.save_path)
         return encode_query_with_filepaths(files=file_path)
 
     @classmethod
