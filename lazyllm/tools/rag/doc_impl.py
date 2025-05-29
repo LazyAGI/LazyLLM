@@ -24,14 +24,34 @@ import time
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
-def embed_wrapper(func):
+def embed_wrapper(func: Optional[Callable[..., Any]]) -> Optional[Callable[..., List[float]]]:
     if not func:
         return None
 
     @wraps(func)
     def wrapper(*args, **kwargs) -> List[float]:
         result = func(*args, **kwargs)
-        return ast.literal_eval(result) if isinstance(result, str) else result
+        if isinstance(result, str):
+            try:
+                # Use json.loads as it's generally more robust for list-like strings
+                return json.loads(result)
+            except json.JSONDecodeError:
+                # Fallback or raise error if json.loads also fails
+                # For example, if ast.literal_eval was truly necessary for some non-JSON compatible Python literal
+                try:
+                    LOG.warning("json.loads failed, attempting ast.literal_eval as a "
+                                "fallback (might hit recursion limit).")
+                    return ast.literal_eval(result)
+                except Exception as e:
+                    LOG.error(f"Both json.loads and ast.literal_eval failed. Error: {e}")
+                    raise  # Re-raise the original or a new error
+        elif isinstance(result, list):  # Explicitly check if it's already a list
+            return result
+        else:
+            # Handle unexpected types by raising an error
+            error_message = f"Expected List[float] or str (convertible to List[float]), but got {type(result)}"
+            LOG.error(f"{error_message}")
+            raise TypeError(error_message)
 
     return wrapper
 
