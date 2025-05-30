@@ -16,13 +16,14 @@ from .milvus_store import MilvusStore
 from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import DocListManager, gen_docid, is_sparse
+from .utils import DocListManager, gen_docid, is_sparse, BaseResponse
 from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH
 from .data_type import DataType
 import queue
 from dataclasses import dataclass
 import threading
 import time
+import requests
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
@@ -72,23 +73,24 @@ class _Processer:
     async def async_add_doc(self, task_id: str, input_files: List[str], ids: Optional[List[str]] = None,
                             metadatas: Optional[List[Dict[str, Any]]] = None, feedback_url: Optional[str] = None):
         self._task_queue.put(('add', task_id, input_files, ids, metadatas, feedback_url))
-        return None  # 改成Response
+        return BaseResponse(code=200, msg='task submit successfully', data=None)
 
     @app.delete('/delete_docs')
     async def async_delete_doc(self, task_id: str, input_files: List[str], feedback_url: Optional[str] = None) -> None:
         self._task_queue.put(('delete', task_id, input_files, None, None, feedback_url))
-        return None  # 改成Response
+        return BaseResponse(code=200, msg='task submit successfully', data=None)
 
     @app.post('/cancel')
     async def cancel_task(self, task_id: str):
         future = self._tasks.pop(task_id, None)
-        if future:
+        if future and not future.done():
             future.cancel()
-            return 'success'
-        return 'failed'
+            return BaseResponse(code=200, msg=f'task {task_id} cancelled successfully', data=None)
+        return BaseResponse(code=200, msg=f'task {task_id} cancelled failed', data=None)
 
-    def _send_status_message(self, url):
-        pass
+    def _send_status_message(self, success: bool, task_id: str, url: str):
+        headers = {"Content-Type": "application/json"}
+        requests.post(url, json=dict(task_id=task_id, success=success), headers=headers)
 
     def _worker(self):
         while True:
@@ -96,14 +98,15 @@ class _Processer:
                 task_type, task_id, input_files, ids, metadatas, feedback_url = self._task_queue.get(timeout=1)
                 if task_type == 'add':
                     future = self._executor.submit(self.add_doc, input_files=input_files, ids=ids, metadatas=metadatas)
-                    self._tasks[task_id] = (future, input_files, feedback_url)
+                    self._tasks[task_id] = (future, feedback_url)
                 elif task_type == 'delete':
                     future = self._executor.submit(self.delete_doc, input_files=input_files)
                     self._tasks[task_id] = (future, feedback_url)
             except queue.Empty:
                 for task_id, (future, input_files, feedback_url) in self._tasks.items():
                     if future.done():
-                        self._tasks.pop(task_id)
+                        future, feedback_url = self._tasks.pop(task_id)
+                        self._send_status_message(not future.exception(), task_id, feedback_url)
                 time.sleep(5)
 
     def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,
