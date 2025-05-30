@@ -9,8 +9,8 @@ from lazyllm.components.embedding.embed import EmbeddingDeploy
 from lazyllm.components.stable_diffusion.stable_diffusion3 import StableDiffusionDeploy
 from lazyllm.components.speech_to_text.sense_voice import SenseVoiceDeploy
 from lazyllm.components.text_to_speech.base import TTSDeploy
+from lazyllm.components.ocr.pp_ocr import OCRDeploy
 from ..utils.downloader import ModelManager
-
 class AutoDeploy(LazyLLMDeployBase):
     message_format = {}
     keys_name_handle = None
@@ -36,6 +36,8 @@ class AutoDeploy(LazyLLMDeployBase):
             return TTSDeploy(model_name, log_path=log_path, launcher=launcher)
         elif type == 'vlm':
             return deploy.LMDeploy(launcher, stream=stream, log_path=log_path, **kw)
+        elif type == 'ocr':
+            return OCRDeploy(launcher, log_path=log_path)
         map_name = model_map(model_name)
         candidates = get_configer().query_deploy(lazyllm.config['gpu_type'], launcher.ngpus,
                                                  map_name, max_token_num)

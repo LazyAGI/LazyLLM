@@ -805,3 +805,22 @@ class FileResource(object):
 @NodeConstructor.register('File')
 def make_file(id: str):
     return FileResource(id)
+
+@NodeConstructor.register("Reader")
+def make_simple_reader():
+    return lazyllm.tools.rag.FileReader()
+
+
+@NodeConstructor.register("OCR")
+def make_ocr(
+    model: Optional[str] = "PP-OCRv5_server",
+    use_doc_orientation_classify: Optional[bool] = False,
+    use_doc_unwarping: Optional[bool] = False,
+    use_textline_orientation: Optional[bool] = False,
+):
+    return lazyllm.components.ocr.pp_ocr.OCR(
+        model=model,
+        use_doc_orientation_classify=use_doc_orientation_classify,
+        use_doc_unwarping=use_doc_unwarping,
+        use_textline_orientation=use_textline_orientation,
+    )
