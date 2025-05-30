@@ -252,11 +252,12 @@ class SimpleDirectoryReader(ModuleBase):
         else:
             if show_progress:
                 process_file = tqdm(self._input_files, desc="Loading files", unit="file")
-            for input_file in process_file:
+            for input_file, metadata in zip(process_file, self._metadatas):
                 documents.extend(
-                    SimpleDirectoryReader.load_file(input_file=input_file, metadata_genf=self._metadata_genf,
-                                                    file_extractor=file_readers, filename_as_id=self._filename_as_id,
-                                                    encoding=self._encoding, pathm=self._Path, fs=self._fs))
+                    SimpleDirectoryReader.load_file(
+                        input_file=input_file, metadata_genf=self._metadata_genf, file_extractor=file_readers,
+                        filename_as_id=self._filename_as_id, encoding=self._encoding, pathm=self._Path,
+                        fs=self._fs, metadata=metadata))
 
         return self._exclude_metadata(documents)
 

@@ -108,6 +108,7 @@ class _Processer:
 
     def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,
                 metadatas: Optional[List[Dict[str, Any]]] = None):
+        if not input_files: return
         if not ids: ids = [gen_docid(path) for path in input_files]
         if not metadatas:
             metadatas = [{RAG_DOC_ID: id, RAG_DOC_PATH: path} for id, path in zip(ids, input_files)]
@@ -203,6 +204,7 @@ class DocImpl:
         self.node_groups = node_groups
 
         for group in node_groups: self._activated_embeddings.setdefault(group, set())
+        self._activated_groups = set([g for g in self._activated_groups if g in node_groups])
 
         # use list to avoid `dictionary changed size during iteration` error
         for group in list(self._activated_groups):
@@ -511,6 +513,7 @@ class DocImpl:
         self._activated_groups.add(group_name)
         if embed_keys: self._activated_embeddings.setdefault(str(group_name), set()).update(embed_keys)
         if self._lazy_init.flag:
+            if group_name not in self.node_groups: return
             assert not embed_keys, 'Connot add new embed_keys for node_group when Document is inited'
             self.store.activate_group(parent := group_name)
             while True:

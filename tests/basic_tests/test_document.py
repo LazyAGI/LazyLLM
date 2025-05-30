@@ -90,8 +90,9 @@ class TestDocImpl(unittest.TestCase):
 class TestDocument(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.embed_model1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
-        cls.embed_model2 = lazyllm.TrainableModule("bge-m3").start()
+        # cls.embed_model1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
+        # cls.embed_model2 = lazyllm.TrainableModule("bge-m3").start()
+        pass
 
     @classmethod
     def tearDownClass(cls):
@@ -247,7 +248,7 @@ class TestDocumentServer(unittest.TestCase):
         response = httpx.post(url, params=params, files=files, timeout=10)
         assert response.status_code == 200 and response.json().get('code') == 200, response.json()
         ids = response.json().get('data')[0]
-        lazyllm.LOG.error(f'debug!!! ids -> {ids}')
+        lazyllm.LOG.info(f'debug!!! ids -> {ids}')
         assert len(ids) == 2
 
         time.sleep(20)  # waiting for worker thread to update newly uploaded files
