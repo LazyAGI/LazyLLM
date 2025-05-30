@@ -31,7 +31,7 @@ class TestDocImpl(unittest.TestCase):
         self.tmp_file_b = tempfile.NamedTemporaryFile()
         mock_node = DocNode(group=LAZY_ROOT_NAME, text="dummy text")
         mock_node._global_metadata = {RAG_DOC_PATH: self.tmp_file_a.name}
-        self.mock_directory_reader.load_data.return_value = [mock_node]
+        self.mock_directory_reader.load_data.return_value = ([mock_node], [])
 
         self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
         self.doc_impl._reader = self.mock_directory_reader
@@ -64,6 +64,7 @@ class TestDocImpl(unittest.TestCase):
 
     def test_retrieve(self):
         self.mock_embed.return_value = "[0.1, 0.2, 0.3]"
+        self.doc_impl.activate_group(Document.FineChunk, [])
         result = self.doc_impl.retrieve(
             query="test query",
             group_name="FineChunk",
@@ -82,16 +83,11 @@ class TestDocImpl(unittest.TestCase):
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
         new_doc._global_metadata = {RAG_DOC_PATH: self.tmp_file_b.name}
-        self.mock_directory_reader.load_data.return_value = [new_doc]
+        self.mock_directory_reader.load_data.return_value = ([new_doc], [])
         self.doc_impl._add_doc_to_store([self.tmp_file_b.name])
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 2
 
 class TestDocument(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.embed_model1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
-        cls.embed_model2 = lazyllm.TrainableModule("bge-m3").start()
-
     @classmethod
     def tearDownClass(cls):
         cleanup()
@@ -146,6 +142,9 @@ class TestDocument(unittest.TestCase):
         retriever('什么是道')
 
     def test_multi_embedding_with_document(self):
+        self.embed_model1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
+        self.embed_model2 = lazyllm.TrainableModule("bge-m3").start()
+
         Document(dataset_path="rag_master")._impl._dlm.release()
         document1 = Document(dataset_path="rag_master", embed=self.embed_model1)
         document1.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
@@ -246,7 +245,7 @@ class TestDocumentServer(unittest.TestCase):
         response = httpx.post(url, params=params, files=files, timeout=10)
         assert response.status_code == 200 and response.json().get('code') == 200, response.json()
         ids = response.json().get('data')[0]
-        lazyllm.LOG.error(f'debug!!! ids -> {ids}')
+        lazyllm.LOG.info(f'debug!!! ids -> {ids}')
         assert len(ids) == 2
 
         time.sleep(20)  # waiting for worker thread to update newly uploaded files

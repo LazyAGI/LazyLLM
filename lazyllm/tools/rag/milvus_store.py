@@ -189,6 +189,14 @@ class MilvusStore(StoreBase):
         return self._map_store.get_nodes(group_name, uids)
 
     @override
+    def activate_group(self, group_names: Union[str, List[str]]) -> bool:
+        return self._map_store.activate_group(group_names)
+
+    @override
+    def activated_groups(self):
+        return self._map_store.activated_groups()
+
+    @override
     def is_group_active(self, name: str) -> bool:
         return self._map_store.is_group_active(name)
 
