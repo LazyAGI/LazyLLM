@@ -258,7 +258,7 @@ class DocImpl:
             self._propessor = ServerModule(self._propessor)
 
     def _delete_nonexistent_docs_on_startup(self, ids, paths, metadatas):
-        if not self._dlm: return [], [], []
+        if not self._dlm: return ids, paths, metadatas
         path_existing = [Path(path).exists() for path in paths]
         paths_need_delete = [paths[idx] for idx, exist in enumerate(path_existing) if not exist]
         rt_metadatas = [meta for meta, exist in zip(metadatas, path_existing) if exist] if metadatas else None

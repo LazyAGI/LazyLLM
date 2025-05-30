@@ -90,9 +90,8 @@ class TestDocImpl(unittest.TestCase):
 class TestDocument(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # cls.embed_model1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
-        # cls.embed_model2 = lazyllm.TrainableModule("bge-m3").start()
-        pass
+        cls.embed_model1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
+        cls.embed_model2 = lazyllm.TrainableModule("bge-m3").start()
 
     @classmethod
     def tearDownClass(cls):
