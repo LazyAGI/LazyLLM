@@ -10,10 +10,11 @@ from tqdm import tqdm
 from datetime import datetime
 from functools import reduce
 from itertools import repeat
-from typing import Dict, Optional, List, Callable, Type, Union
+from typing import Dict, Optional, List, Callable, Type
 from pathlib import Path, PurePosixPath, PurePath
 from fsspec import AbstractFileSystem
 from lazyllm import ModuleBase, LOG
+from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list
 from .doc_node import DocNode
 from .readers import (ReaderBase, PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader,
                       EpubReader, MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
@@ -266,11 +267,12 @@ class SimpleDirectoryReader(ModuleBase):
 
 class FileReader(object):
 
-    def __call__(self, input_files: Union[str, list[str]]):
-        if len(input_files) == 0:
+    def __call__(self, input_files):
+        file_list = _lazyllm_get_file_list(input_files)
+        if isinstance(file_list, str) and file_list is not None:
+            file_list = [file_list]
+        if len(file_list) == 0:
             return []
-        if isinstance(input_files, str):
-            input_files = [input_files]
-        nodes = SimpleDirectoryReader(input_files=input_files)._load_data()
+        nodes = SimpleDirectoryReader(input_files=file_list)._load_data()
         txt = [node.get_text() for node in nodes]
         return "\n".join(txt)

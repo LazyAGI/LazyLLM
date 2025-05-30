@@ -45,15 +45,17 @@ class OCR(object):
         )
 
     def __call__(self, input):
-        if isinstance(input, dict):
-            input = input["inputs"]
-        result = self.ocr.predict(input)
+        file_list = lazyllm.components.formatter.formatterbase._lazyllm_get_file_list(input)
+        if isinstance(file_list, str):
+            file_list = [file_list]
         txt = []
-        for res in result:
-            for sentence in res["rec_texts"]:
-                t = sentence.strip()
-                if not is_all_punctuation(t) and len(t) > 0:
-                    txt.append(t)
+        for file in file_list:
+            result = self.ocr.predict(file)
+            for res in result:
+                for sentence in res["rec_texts"]:
+                    t = sentence.strip()
+                    if not is_all_punctuation(t) and len(t) > 0:
+                        txt.append(t)
         return "\n".join(txt)
 
     @classmethod
