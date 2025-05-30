@@ -489,10 +489,17 @@ class Switch(LazyLLMFlowsBase):
             __input = __input[1] if len(__input) == 2 else __input[1:]
         if self._conversion: exp = self._conversion(exp)
 
+        default_idx = None
         for idx, cond in enumerate(self.conds):
+            if cond == 'default':
+                default_idx = idx
+                continue
             if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or (
-                    exp == package((cond,))) or cond == 'default':
+                    exp == package((cond,))):
                 return self.invoke(self._items[idx], __input, **kw)
+        
+        if default_idx is not None:
+            return self.invoke(self._items[default_idx], __input, **kw)
 
     class Case:
         def __init__(self, m) -> None: self._m = m
