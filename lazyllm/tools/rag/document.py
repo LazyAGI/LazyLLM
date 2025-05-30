@@ -237,6 +237,11 @@ class Document(ModuleBase, BuiltinGroups):
         elif embed_keys is None: embed_keys = []
         self._impl.activate_group(group_name, embed_keys)
 
+    def activate_groups(self, groups: Union[str, List[str]]):
+        if isinstance(groups, str): groups = [groups]
+        for group in groups:
+            self.activate_group(group)
+
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
                           trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
@@ -292,6 +297,9 @@ class Document(ModuleBase, BuiltinGroups):
 
     def clear_cache(self, group_names: Optional[List[str]]) -> None:
         return self._forward('clear_cache', group_names)
+
+    def _get_post_process_tasks(self):
+        return lazyllm.pipeline(lambda *a: self._forward('_lazy_init'))
 
     def __repr__(self):
         return lazyllm.make_repr("Module", "Document", manager=hasattr(self._manager, '_manager'),

@@ -89,11 +89,6 @@ class TestDocImpl(unittest.TestCase):
 
 class TestDocument(unittest.TestCase):
     @classmethod
-    def setUpClass(cls):
-        cls.embed_model1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
-        cls.embed_model2 = lazyllm.TrainableModule("bge-m3").start()
-
-    @classmethod
     def tearDownClass(cls):
         cleanup()
 
@@ -147,6 +142,9 @@ class TestDocument(unittest.TestCase):
         retriever('什么是道')
 
     def test_multi_embedding_with_document(self):
+        self.embed_model1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
+        self.embed_model2 = lazyllm.TrainableModule("bge-m3").start()
+
         Document(dataset_path="rag_master")._impl._dlm.release()
         document1 = Document(dataset_path="rag_master", embed=self.embed_model1)
         document1.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
