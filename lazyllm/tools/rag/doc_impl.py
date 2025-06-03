@@ -289,11 +289,10 @@ class DocImpl:
 
         self._resolve_index_pending_registrations()
         if self._processor:
-            assert isinstance(self._processor, DocumentProcessor)
+            assert cloud and isinstance(self._processor, DocumentProcessor)
             self._processor.register_algorithm(self._algo_name, self.store, self._reader, self.node_groups)
         else:
             self._processor = _Processor(self.store, self._reader, self.node_groups)
-            if cloud: self._processor = ServerModule(self._processor).start()
 
         # init files when `cloud` is False
         if not cloud and not self.store.is_group_active(LAZY_ROOT_NAME):
