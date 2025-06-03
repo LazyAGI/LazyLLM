@@ -1,6 +1,6 @@
 from lazyllm import ModuleBase, once_wrapper
 from .doc_node import DocNode
-from .document import Document, DocImpl
+from .document import Document, UrlDocument, DocImpl
 from typing import List, Optional, Union, Dict, Set
 from .similarity import registered_similarities
 
@@ -49,7 +49,8 @@ class Retriever(ModuleBase, _PostProcess):
 
         self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
         for doc in self._docs:
-            assert isinstance(doc, Document), 'Only Document or List[Document] are supported'
+            assert isinstance(doc, (Document, UrlDocument)), 'Only Document or List[Document] are supported'
+            if isinstance(doc, UrlDocument): continue
             self._submodules.append(doc)
             if mode == 'embedding' and not embed_keys:
                 embed_keys = list(doc._impl.embed.keys())
@@ -68,8 +69,8 @@ class Retriever(ModuleBase, _PostProcess):
 
     @once_wrapper
     def _lazy_init(self):
-        docs = [doc for doc in self._docs if self._group_name in doc._impl.node_groups or self._group_name
-                in DocImpl._builtin_node_groups or self._group_name in DocImpl._global_node_groups]
+        docs = [doc for doc in self._docs if isinstance(doc, UrlDocument) or self._group_name in doc._impl.node_groups
+                or self._group_name in DocImpl._builtin_node_groups or self._group_name in DocImpl._global_node_groups]
         if not docs: raise RuntimeError(f'Group {self._group_name} not found in document {self._docs}')
         self._docs = docs
 

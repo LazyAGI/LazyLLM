@@ -2,6 +2,9 @@ from os import PathLike, makedirs
 from os.path import expanduser, expandvars, isfile, join, normpath
 from typing import Union, Dict, Callable, Any, Optional
 import re
+import os
+from contextlib import contextmanager
+import cloudpickle
 import ast
 import pickle
 import base64
@@ -111,3 +114,16 @@ def str2bool(v: str) -> bool:
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+
+def dump_obj(f):
+    @contextmanager
+    def env_helper():
+        os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'ON'
+        yield
+        os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'OFF'
+
+    with env_helper():
+        return None if f is None else base64.b64encode(cloudpickle.dumps(f)).decode('utf-8')
+
+def load_obj(f):
+    return cloudpickle.loads(base64.b64decode(f.encode('utf-8')))

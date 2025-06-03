@@ -81,7 +81,7 @@ class BuiltinGroups(object):
     ImgDesc = Struct('ImgDesc', lambda x: x._content, LAZY_IMAGE_GROUP, True)
 
 
-class _Processer:
+class _Processor:
     def __init__(self, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict], server: bool = False):
         self._store, self._reader, self._node_groups = store, reader, node_groups
         if server:
@@ -199,6 +199,76 @@ class _Processer:
             LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
 
+class DocumentProcessor():
+
+    class Impl():
+        def __init__(self, server: bool):
+            self._processors = dict()
+            if server:
+                self._task_queue = queue.Queue()
+                self._executor = ThreadPoolExecutor(max_workers=1)
+                self._tasks = {}
+                self._worker_thread = threading.Thread(target=self._worker, daemon=True)
+
+        def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase,
+                               node_groups: Dict[str, Dict], force_refresh: bool = False):
+            if name in self._processors and not force_refresh:
+                raise KeyError(f'Duplicated algo key {name} for processor!')
+            self._processors[name] = _Processor(store, reader, node_groups)
+
+        @app.post('/add_docs')
+        async def async_add_doc(self, task_id: str, algoid: str, input_files: List[str], ids: Optional[List[str]] = None,
+                                metadatas: Optional[List[Dict[str, Any]]] = None, feedback_url: Optional[str] = None):
+            self._task_queue.put(('add', algoid, task_id, input_files, ids, metadatas, feedback_url))
+            return BaseResponse(code=200, msg='task submit successfully', data=None)
+
+        @app.delete('/delete_docs')
+        async def async_delete_doc(self, task_id: str, algoid: str, input_files: List[str],
+                                   feedback_url: Optional[str] = None) -> None:
+            self._task_queue.put(('delete', algoid, task_id, input_files, None, None, feedback_url))
+            return BaseResponse(code=200, msg='task submit successfully', data=None)
+
+        @app.post('/cancel')
+        async def cancel_task(self, task_id: str):
+            future = self._tasks.pop(task_id, None)
+            if future and not future.done():
+                future.cancel()
+                return BaseResponse(code=200, msg=f'task {task_id} cancelled successfully', data=None)
+            return BaseResponse(code=200, msg=f'task {task_id} cancelled failed', data=None)
+
+        def _send_status_message(self, success: bool, task_id: str, url: str):
+            headers = {"Content-Type": "application/json"}
+            requests.post(url, json=dict(task_id=task_id, success=success), headers=headers)
+
+        def _worker(self):
+            while True:
+                try:
+                    algoid, task_type, task_id, input_files, ids, metadatas, url = self._task_queue.get(timeout=1)
+                    if task_type == 'add':
+                        future = self._executor.submit(self._processors[algoid].add_doc, input_files=input_files,
+                                                       ids=ids, metadatas=metadatas)
+                        self._tasks[task_id] = (future, url)
+                    elif task_type == 'delete':
+                        future = self._executor.submit(self._processors[algoid].delete_doc, input_files=input_files)
+                        self._tasks[task_id] = (future, url)
+                except queue.Empty:
+                    for task_id, (future, input_files, url) in self._tasks.items():
+                        if future.done():
+                            future, url = self._tasks.pop(task_id)
+                            self._send_status_message(not future.exception(), task_id, url)
+                    time.sleep(5)
+
+    def __init__(self, server: bool = True):
+        self._impl = DocumentProcessor.Impl(server=server)
+        if server: self._impl = ServerModule(self._impl)
+
+    def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase,
+                           node_groups: Dict[str, Dict], force_refresh: bool = False):
+        if isinstance(self._impl, ServerModule):
+            self._impl._call('register_algorithm', name, store, reader, node_groups, force_refresh)
+        else:
+            self._impl.register_algorithm(name, store, reader, node_groups, force_refresh)
+
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
     _global_node_groups: Dict[str, Dict] = {}
@@ -206,8 +276,8 @@ class DocImpl:
 
     def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
-                 global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
-                 store_conf: Optional[Dict] = None):
+                 global_metadata_desc: Dict[str, GlobalMetadataDesc] = None, store_conf: Optional[Dict] = None,
+                 processor: Optional[DocumentProcessor] = None, algo_name: Optional[str] = None):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
@@ -221,6 +291,8 @@ class DocImpl:
         # activated_embeddings maintains all node_groups and active embeddings
         self._activated_embeddings = {LAZY_ROOT_NAME: [], LAZY_IMAGE_GROUP: []}  # {group_name: [embed1, embed2, ...]}
         self._index_pending_registrations = []
+        self._processor = processor
+        self._algo_name = algo_name
 
     def _init_node_groups(self):
         node_groups = DocImpl._builtin_node_groups.copy()
@@ -259,13 +331,19 @@ class DocImpl:
     def _lazy_init(self) -> None:
         self._init_node_groups()
         self._init_store()
+        cloud = not (self._dlm or self._doc_files)
 
         self._resolve_index_pending_registrations()
-        self._propessor = _Processer(self.store, self._reader, self.node_groups)
+        if self._processor:
+            assert cloud and isinstance(self._processor, DocumentProcessor)
+            self._processor.register_algorithm(self._algo_name, self.store, self._reader, self.node_groups)
+        else:
+            self._processor = _Processor(self.store, self._reader, self.node_groups)
 
-        if not self.store.is_group_active(LAZY_ROOT_NAME):
+        # init files when `cloud` is False
+        if not cloud and not self.store.is_group_active(LAZY_ROOT_NAME):
             ids, pathes, metadatas = self._delete_nonexistent_docs_on_startup(*self._list_files())
-            self._propessor.add_doc(pathes, ids, metadatas)
+            self._processor.add_doc(pathes, ids, metadatas)
             if pathes and self._dlm:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.success)
@@ -276,8 +354,6 @@ class DocImpl:
             self._daemon.daemon = True
             self._daemon.start()
             self._init_monitor_event.wait()
-        elif not self._doc_files:
-            self._propessor = ServerModule(self._propessor)
 
     def _delete_nonexistent_docs_on_startup(self, ids, paths, metadatas):
         if not self._dlm: return ids, paths, metadatas
@@ -505,10 +581,10 @@ class DocImpl:
     def _add_doc_to_store(self, input_files: List[str], ids: Optional[List[str]] = None,
                           metadatas: Optional[List[Dict[str, Any]]] = None):
         if not input_files: return
-        self._propessor.add_doc(input_files, ids, metadatas)
+        self._processor.add_doc(input_files, ids, metadatas)
 
     def _delete_doc_from_store(self, input_files: List[str]) -> None:
-        return self._propessor.delete_doc(input_files)
+        return self._processor.delete_doc(input_files)
 
     def activate_group(self, group_name: str, embed_keys: List[str]):
         group_name = str(group_name)
@@ -524,7 +600,10 @@ class DocImpl:
                 parent = self.node_groups[parent]['parent']
                 if parent in self._activated_groups: break
                 self.store.activate_group(parent)
-            self._propessor.reparse(group_name)
+            self._processor.reparse(group_name)
+
+    def active_node_groups(self):
+        return {k: v for k, v in self._activated_embeddings.items() if k in self._activated_groups}
 
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,

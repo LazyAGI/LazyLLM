@@ -54,6 +54,18 @@ class TestModule:
         server_module.eval()
         assert server_module.eval_result == ['INPUT12', 'INPUT22']
 
+    def test_ServerModule_url(self):
+        class Test(object):
+            def test1(self, a, b):
+                return a + b
+
+            def __call__(self, a, b):
+                return a * b
+
+        s = lazyllm.ServerModule(Test()).start()
+        assert s(1, 2) == 2
+        assert s._call('test1', 1, 2) == 3
+
     def test_TrainableModule(self):
         tm1 = lazyllm.TrainableModule(self.base_model, self.target_path)
         tm2 = tm1.share()

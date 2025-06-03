@@ -1,13 +1,11 @@
-import cloudpickle
 import uvicorn
 import argparse
-import base64
 import os
 import sys
 import inspect
 import traceback
 from types import GeneratorType
-from lazyllm import kwargs, package
+from lazyllm import kwargs, package, load_obj
 from lazyllm import FastapiApp, globals, decode_request
 import pickle
 import codecs
@@ -35,17 +33,14 @@ parser.add_argument("--after_function")
 parser.add_argument("--pythonpath")
 args = parser.parse_args()
 
-def load_func(f):
-    return cloudpickle.loads(base64.b64decode(f.encode('utf-8')))
-
 if args.pythonpath:
     sys.path.append(args.pythonpath)
 
-func = load_func(args.function)
+func = load_obj(args.function)
 if args.before_function:
-    before_func = load_func(args.before_function)
+    before_func = load_obj(args.before_function)
 if args.after_function:
-    after_func = load_func(args.after_function)
+    after_func = load_obj(args.after_function)
 
 
 app = FastAPI()
@@ -61,6 +56,13 @@ async def async_wrapper(func, *args, **kwargs):
 
     result = await loop.run_in_executor(None, partial(impl, func, globals._sid, globals._data, *args, **kwargs))
     return result
+
+@app.post("/_call")
+async def lazyllm_call(request: Request):
+    fname, args, kwargs = await request.json()
+    args, kwargs = load_obj(args), load_obj(kwargs)
+    r = getattr(func, fname)(*args, **kwargs)
+    return Response(content=codecs.encode(pickle.dumps(r), 'base64'))
 
 @app.post("/generate")
 async def generate(request: Request): # noqa C901
