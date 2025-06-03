@@ -3,7 +3,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Union, Callable, Set
 from lazyllm.thirdparty import pymilvus
 from .doc_node import DocNode
-from .map_store import MapStore
+from .store import MapStore
 from .utils import parallel_do_embedding
 from .index_base import IndexBase
 from .store_base import StoreBase
@@ -182,7 +182,7 @@ class MilvusStore(StoreBase):
         else:
             self._client.drop_collection(collection_name=group_name)
 
-        self._map_store.remove_nodes(group_name, uids)
+        self._map_store.remove_nodes(uids=uids)
 
     @override
     def get_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:

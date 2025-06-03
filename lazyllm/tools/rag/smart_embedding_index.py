@@ -2,7 +2,7 @@ from typing import List, Optional
 from .doc_node import DocNode
 from .index_base import IndexBase
 from lazyllm.common import override
-from .map_store import MapStore
+from .store import MapStore
 from .milvus_store import MilvusStore
 
 class SmartEmbeddingIndex(IndexBase):
@@ -20,7 +20,7 @@ class SmartEmbeddingIndex(IndexBase):
 
     @override
     def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
-        self._store.remove_nodes(group_name, uids)
+        self._store.remove_nodes(uids=uids)
 
     @override
     def query(self, *args, **kwargs) -> List[DocNode]:

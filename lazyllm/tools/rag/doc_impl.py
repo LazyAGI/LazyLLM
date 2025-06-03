@@ -10,7 +10,7 @@ from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMP
 from .index_base import IndexBase
 from .store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from .readers import ReaderBase
-from .map_store import MapStore
+from .store import MapStore
 from .chroma_store import ChromadbStore
 from .milvus_store import MilvusStore
 from .smart_embedding_index import SmartEmbeddingIndex
@@ -89,18 +89,18 @@ class _Processer:
             self._executor = ThreadPoolExecutor(max_workers=1)
             self._tasks = {}
 
-    @app.post('/add_docs')
+    @app.post('/doc/add')
     async def async_add_doc(self, task_id: str, input_files: List[str], ids: Optional[List[str]] = None,
                             metadatas: Optional[List[Dict[str, Any]]] = None, feedback_url: Optional[str] = None):
         self._task_queue.put(('add', task_id, input_files, ids, metadatas, feedback_url))
         return BaseResponse(code=200, msg='task submit successfully', data=None)
 
-    @app.delete('/delete_docs')
+    @app.delete('/doc/delete')
     async def async_delete_doc(self, task_id: str, input_files: List[str], feedback_url: Optional[str] = None) -> None:
         self._task_queue.put(('delete', task_id, input_files, None, None, feedback_url))
         return BaseResponse(code=200, msg='task submit successfully', data=None)
 
-    @app.post('/cancel')
+    @app.post('/doc/cancel')
     async def cancel_task(self, task_id: str):
         future = self._tasks.pop(task_id, None)
         if future and not future.done():
@@ -139,8 +139,10 @@ class _Processer:
             for path, id, metadata in zip(input_files, ids, metadatas):
                 metadata.update({RAG_DOC_ID: id, RAG_DOC_PATH: path})
         root_nodes, image_nodes = self._reader.load_data(input_files, metadatas, split_image_nodes=True)
+
         self._store.update_nodes(root_nodes)
         self._create_nodes_recursive(root_nodes, LAZY_ROOT_NAME)
+
         if image_nodes:
             self._store.update_nodes(image_nodes)
             self._create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)

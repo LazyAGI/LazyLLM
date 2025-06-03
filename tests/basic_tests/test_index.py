@@ -1,7 +1,7 @@
 import time
 import unittest
 from unittest.mock import MagicMock
-from lazyllm.tools.rag.map_store import MapStore
+from lazyllm.tools.rag.store import MapStore
 from lazyllm.tools.rag import DocNode, IndexBase, StoreBase, Document
 from lazyllm.tools.rag.default_index import DefaultIndex
 from lazyllm.tools.rag.similarity import register_similarity, registered_similarities

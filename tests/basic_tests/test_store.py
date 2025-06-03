@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
-from lazyllm.tools.rag.map_store import MapStore
+from lazyllm.tools.rag.store import MapStore
 from lazyllm.tools.rag.chroma_store import ChromadbStore
 from lazyllm.tools.rag.milvus_store import MilvusStore
 from lazyllm.tools.rag.doc_node import DocNode
@@ -160,13 +160,13 @@ class TestMapStore(unittest.TestCase):
 
         n1 = self.store.get_nodes("group1", ["1"])[0]
         assert n1.text == self.node1.text
-        self.store.remove_nodes("group1", ["1"])
+        self.store.remove_nodes(uids=["1"])
         n1 = self.store.get_nodes("group1", ["1"])
         assert not n1
 
         n2 = self.store.get_nodes("group1", ["2"])[0]
         assert n2.text == self.node2.text
-        self.store.remove_nodes("group1", ["2"])
+        self.store.remove_nodes(uids=["2"])
         n2 = self.store.get_nodes("group1", ["2"])
         assert not n2
 

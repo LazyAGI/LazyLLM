@@ -1,0 +1,108 @@
+from typing import Dict, List, Optional, Callable, Union, Set
+from lazyllm.common import override
+from lazyllm.tools.rag import IndexBase, DocNode
+from lazyllm.tools.rag.default_index import DefaultIndex
+from lazyllm.tools.rag.global_metadata import RAG_SYSTEM_META_KEYS
+from lazyllm.tools.rag.utils import _FileNodeIndex
+from .store_base import StoreBase
+
+
+class MapStore(StoreBase):
+    def __init__(self, node_groups: Union[List[str], Set[str]], embed: Dict[str, Callable], **kwargs):
+        self._group2uids: Dict[str, Set[str]] = {
+            group: set() for group in node_groups
+        }
+        self._uid2node: Dict[str, DocNode] = {}
+        self._name2index = {
+            'default': DefaultIndex(embed, self),
+            'file_node_map': _FileNodeIndex(),
+        }
+        self._activated_groups = set()
+
+    @override
+    def update_nodes(self, nodes: List[DocNode]) -> None:
+        for node in nodes:
+            self._uid2node[node._uid] = node
+            self._group2uids[node._group].add(node._uid)
+
+        for index in self._name2index.values():
+            index.update(nodes)
+
+    @override
+    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
+        doc_nodes: List[DocNode] = self._name2index['file_node_map'].query([filepath])
+        if not doc_nodes:
+            return
+        root_node = doc_nodes[0].root_node
+        keys_to_delete = []
+        for k in root_node.global_metadata:
+            if not (k in RAG_SYSTEM_META_KEYS or k in metadata):
+                keys_to_delete.append(k)
+        for k in keys_to_delete:
+            root_node.global_metadata.pop(k)
+        root_node.global_metadata.update(metadata)
+
+    @override
+    def remove_nodes(
+        self,
+        doc_ids: Optional[Set[str]] = None,
+        uids: Optional[List[str]] = None
+    ) -> None:
+        if uids:
+            need_delete = uids
+        elif doc_ids:
+            doc_id_set = set(doc_ids)
+            need_delete = [
+                uid for uid, node in self._uid2node.items()
+                if node.metadata.get('docid') in doc_id_set
+            ]
+        else:
+            return
+
+        for index in self._name2index.values():
+            index.remove(need_delete)
+
+        for uid in need_delete:
+            node = self._uid2node.pop(uid, None)
+            if node:
+                self._group2uids.get(node._group, {}).pop(uid, None)
+
+    @override
+    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None) -> List[DocNode]:
+        if uids:
+            return [self._uid2node[uid] for uid in uids]
+        elif group_name:
+            uids = self._group2uids.get(group_name, set())
+            return [self._uid2node[uid] for uid in uids]
+
+    @override
+    def is_group_active(self, name: str) -> bool:
+        uids = self._group2uids.get(name)
+        return True if uids else False
+
+    @override
+    def all_groups(self) -> List[str]:
+        return list(self._group2docs.keys())
+
+    @override
+    def activate_group(self, group_names: Union[str, List[str]]) -> bool:
+        if isinstance(group_names, str): group_names = [group_names]
+        self._activated_groups.update(group_names)
+
+    @override
+    def activated_groups(self):
+        return list(self._activated_groups)
+
+    @override
+    def query(self, *args, **kwargs) -> List[DocNode]:
+        return self.get_index('default').query(*args, **kwargs)
+
+    @override
+    def register_index(self, type: str, index: IndexBase) -> None:
+        self._name2index[type] = index
+
+    @override
+    def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
+        if type is None:
+            type = 'default'
+        return self._name2index.get(type)

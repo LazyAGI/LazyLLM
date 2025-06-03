@@ -7,7 +7,7 @@ from .doc_node import DocNode
 from .index_base import IndexBase
 from .utils import _FileNodeIndex, sparse2normal
 from .default_index import DefaultIndex
-from .map_store import MapStore
+from .store import MapStore
 
 # ---------------------------------------------------------------------------- #
 
@@ -41,7 +41,7 @@ class ChromadbStore(StoreBase):
             self._delete_group_nodes(group_name, uids)
         else:
             self._db_client.delete_collection(name=group_name)
-        return self._map_store.remove_nodes(group_name, uids)
+        return self._map_store.remove_nodes(uids=uids)
 
     @override
     def update_doc_meta(self, filepath: str, metadata: dict) -> None:
