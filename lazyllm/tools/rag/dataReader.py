@@ -13,7 +13,7 @@ from itertools import repeat
 from typing import Dict, Optional, List, Callable, Type
 from pathlib import Path, PurePosixPath, PurePath
 from fsspec import AbstractFileSystem
-from lazyllm import ModuleBase, LOG
+from lazyllm import ModuleBase, LOG, config
 from .doc_node import DocNode
 from .readers import (ReaderBase, PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader,
                       EpubReader, MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
@@ -118,7 +118,7 @@ class SimpleDirectoryReader(ModuleBase):
         self._file_extractor = file_extractor or {}
 
         self._metadata_genf = metadata_genf or _DefaultFileMetadataFunc(self._fs)
-        self._filename_as_id = filename_as_id
+        if filename_as_id: LOG.warning('Argument `filename_as_id` for DataReader is no longer used')
 
     def _add_files(self, input_dir: Path) -> List[Path]:  # noqa: C901
         all_files = set()
@@ -193,8 +193,8 @@ class SimpleDirectoryReader(ModuleBase):
 
     @staticmethod
     def load_file(input_file: Path, metadata_genf: Callable[[str], Dict], file_extractor: Dict[str, Callable],
-                  filename_as_id: bool = False, encoding: str = "utf-8", pathm: PurePath = Path,
-                  fs: Optional[AbstractFileSystem] = None, metadata: Optional[Dict] = None) -> List[DocNode]:
+                  encoding: str = "utf-8", pathm: PurePath = Path, fs: Optional[AbstractFileSystem] = None,
+                  metadata: Optional[Dict] = None) -> List[DocNode]:
         metadata: dict = metadata or {}
         documents: List[DocNode] = []
 
@@ -207,14 +207,14 @@ class SimpleDirectoryReader(ModuleBase):
             if fnmatch.fnmatch(input_file, match_pattern):
                 reader = file_extractor[pattern]
                 reader = reader() if isinstance(reader, type) else reader
-                kwargs = {"extra_info": metadata}
-                if fs and not is_default_fs(fs): kwargs['fs'] = fs
+                kwargs = {'fs': fs} if fs and not is_default_fs(fs) else {}
                 docs = reader(input_file, **kwargs)
+                if isinstance(docs, DocNode): docs = [docs]
+                for doc in docs: doc._global_metadata = metadata
 
-                if filename_as_id:
+                if config['rag_filename_as_id']:
                     for i, doc in enumerate(docs):
                         doc._uid = f"{input_file!s}_index_{i}"
-                        doc.docpath = str(input_file)
                 documents.extend(docs)
                 break
         else:
@@ -223,8 +223,6 @@ class SimpleDirectoryReader(ModuleBase):
                 data = f.read().decode(encoding)
 
             doc = DocNode(text=data, global_metadata=metadata or {})
-            doc.docpath = str(input_file)
-            if filename_as_id: doc._uid = str(input_file)
             documents.append(doc)
 
         return documents
@@ -246,19 +244,22 @@ class SimpleDirectoryReader(ModuleBase):
             with multiprocessing.get_context("spawn").Pool(num_workers) as p:
                 results = p.starmap(SimpleDirectoryReader.load_file,
                                     zip(process_file, repeat(self._metadata_genf), repeat(file_readers),
-                                        repeat(self._filename_as_id), repeat(self._encoding), repeat(self._Path),
+                                        repeat(self._encoding), repeat(self._Path),
                                         repeat(self._fs), self._metadatas or repeat(None)))
                 documents = reduce(lambda x, y: x + y, results)
         else:
             if show_progress:
                 process_file = tqdm(self._input_files, desc="Loading files", unit="file")
-            for input_file in process_file:
+            for input_file, metadata in zip(process_file, self._metadatas or repeat(None)):
                 documents.extend(
-                    SimpleDirectoryReader.load_file(input_file=input_file, metadata_genf=self._metadata_genf,
-                                                    file_extractor=file_readers, filename_as_id=self._filename_as_id,
-                                                    encoding=self._encoding, pathm=self._Path, fs=self._fs))
+                    SimpleDirectoryReader.load_file(
+                        input_file=input_file, metadata_genf=self._metadata_genf, file_extractor=file_readers,
+                        encoding=self._encoding, pathm=self._Path, fs=self._fs, metadata=metadata))
 
         return self._exclude_metadata(documents)
 
     def forward(self, *args, **kwargs) -> List[DocNode]:
         return self._load_data(*args, **kwargs)
+
+
+config.add('rag_filename_as_id', bool, False, 'RAG_FILENAME_AS_ID')

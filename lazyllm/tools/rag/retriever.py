@@ -1,4 +1,4 @@
-from lazyllm import ModuleBase, pipeline, once_wrapper
+from lazyllm import ModuleBase, once_wrapper
 from .doc_node import DocNode
 from .document import Document, DocImpl
 from typing import List, Optional, Union, Dict, Set
@@ -53,8 +53,8 @@ class Retriever(ModuleBase, _PostProcess):
             self._submodules.append(doc)
             if mode == 'embedding' and not embed_keys:
                 embed_keys = list(doc._impl.embed.keys())
-            if embed_keys:
-                doc._impl._activated_embeddings.setdefault(group_name, set()).update(embed_keys)
+            doc.activate_group(group_name, embed_keys)
+            if target: doc.activate_group(target)
 
         self._group_name = group_name
         self._similarity = similarity  # similarity function str
@@ -72,9 +72,6 @@ class Retriever(ModuleBase, _PostProcess):
                 in DocImpl._builtin_node_groups or self._group_name in DocImpl._global_node_groups]
         if not docs: raise RuntimeError(f'Group {self._group_name} not found in document {self._docs}')
         self._docs = docs
-
-    def _get_post_process_tasks(self):
-        return pipeline(lambda *a: self('Test Query'))
 
     def forward(
             self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None

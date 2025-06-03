@@ -405,7 +405,7 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]],
 
 @NodeConstructor.register('Document')
 def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False,
-                  server: bool = False, node_group: List = []):
+                  server: bool = False, node_group: List = [], activated_groups: List[str] = []):
     document = lazyllm.tools.rag.Document(
         dataset_path, Engine().build_node(embed).func if embed else None, server=server, manager=create_ui)
     for group in node_group:
@@ -416,6 +416,7 @@ def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False
             group['transform'] = 'function'
             group['function'] = make_code(group['function'])
         document.create_node_group(**group)
+    document.activate_groups(activated_groups + [g['name'] for g in node_group])
     return document
 
 @NodeConstructor.register('Reranker')
