@@ -1,6 +1,6 @@
 from fsspec import AbstractFileSystem
 from pathlib import Path
-from typing import Optional, Dict, List, Any
+from typing import Optional, List, Any
 
 from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
@@ -34,9 +34,6 @@ class HWPReader(LazyLLMReaderBase):
     def _is_valid(self, dirs: List[str]) -> bool:
         if [self._FILE_HEADER_SECTION] not in dirs: return False
         return [self._HWP_SUMMARY_SECTION] in dirs
-
-    def _text_to_docnode(self, text: str, extra_info: Optional[Dict] = None) -> DocNode:
-        return DocNode(text=text, metadata=extra_info or {})
 
     def _get_text(self, load_file: Any, file_dirs: List[str]) -> str:
         sections = self._get_body_sections(file_dirs)

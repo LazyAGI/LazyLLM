@@ -4,17 +4,17 @@ from lazyllm.tools.rag.readers import ReaderBase
 from lazyllm.tools.rag import SimpleDirectoryReader, DocNode, Document
 
 class YmlReader(ReaderBase):
-    def _load_data(self, file, extra_info=None, fs=None):
+    def _load_data(self, file, fs=None):
         with open(file, 'r') as f:
             data = f.read()
-            node = DocNode(text=data, metadata=extra_info or {})
+            node = DocNode(text=data)
             node._content = "Call the class YmlReader."
             return [node]
 
-def processYml(file, extra_info=None):
+def processYml(file):
     with open(file, 'r') as f:
         data = f.read()
-        node = DocNode(text=data, metadata=extra_info or {})
+        node = DocNode(text=data)
         node._content = "Call the function processYml."
         return [node]
 
