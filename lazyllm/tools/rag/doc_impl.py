@@ -212,7 +212,7 @@ class DocumentProcessor():
                             self._send_status_message(not future.exception(), task_id, url)
                     time.sleep(5)
 
-    def __init__(self, server: bool = False):
+    def __init__(self, server: bool = True):
         self._impl = DocumentProcessor.Impl(server=server)
         if server: self._impl = ServerModule(self._impl)
 
