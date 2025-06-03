@@ -5,7 +5,7 @@ import sys
 import inspect
 import traceback
 from types import GeneratorType
-from lazyllm import kwargs, package, load_obj, dump_obj
+from lazyllm import kwargs, package, load_obj
 from lazyllm import FastapiApp, globals, decode_request
 import pickle
 import codecs
@@ -61,7 +61,8 @@ async def async_wrapper(func, *args, **kwargs):
 async def lazyllm_call(request: Request):
     fname, args, kwargs = await request.json()
     args, kwargs = load_obj(args), load_obj(kwargs)
-    return Response(content=dump_obj(getattr(func, fname)(*args, **kwargs)))
+    r = getattr(func, fname)(*args, **kwargs)
+    return Response(content=codecs.encode(pickle.dumps(r), 'base64'))
 
 @app.post("/generate")
 async def generate(request: Request): # noqa C901

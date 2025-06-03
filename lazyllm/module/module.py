@@ -608,7 +608,7 @@ class ServerModule(UrlModule):
         args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
         url = urljoin(self._url.rsplit("/", 1)[0], '_call')
         r = requests.post(url, json=(fname, args, kwargs), headers={'Content-Type': 'application/json'})
-        return lazyllm.load_obj(r.content())
+        return pickle.loads(codecs.decode(r.content, "base64"))
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
