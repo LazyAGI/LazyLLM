@@ -1,26 +1,11 @@
 import os
 import random
-import base64
 import inspect
 import sys
 
-from lazyllm import launchers, LazyLLMCMD
+from lazyllm import launchers, LazyLLMCMD, dump_obj
 from ..base import LazyLLMDeployBase, verify_fastapi_func
-import cloudpickle
-from contextlib import contextmanager
 from ..utils import get_log_path, make_log_dir
-
-
-def dump_func(f, old_value=None):
-    @contextmanager
-    def env_helper():
-        os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'ON'
-        yield
-        os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'OFF'
-
-    f = old_value if f is None else f
-    with env_helper():
-        return None if f is None else base64.b64encode(cloudpickle.dumps(f)).decode('utf-8')
 
 
 class RelayServer(LazyLLMDeployBase):
@@ -32,8 +17,8 @@ class RelayServer(LazyLLMDeployBase):
                  pythonpath=None, log_path=None, cls=None, launcher=launchers.remote(sync=False)):
         # func must dump in __call__ to wait for dependancies.
         self.func = func
-        self.pre = dump_func(pre_func)
-        self.post = dump_func(post_func)
+        self.pre = dump_obj(pre_func)
+        self.post = dump_obj(post_func)
         self.port, self.real_port = port, None
         self.pythonpath = pythonpath
         super().__init__(launcher=launcher)
@@ -41,7 +26,7 @@ class RelayServer(LazyLLMDeployBase):
 
     def cmd(self, func=None):
         FastapiApp.update()
-        self.func = dump_func(func, self.func)
+        self.func = dump_obj(func or self.func)
         folder_path = os.path.dirname(os.path.abspath(__file__))
         run_file_path = os.path.join(folder_path, 'server.py')
 
