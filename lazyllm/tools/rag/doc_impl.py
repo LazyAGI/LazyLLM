@@ -154,7 +154,7 @@ class _Processer:
         self._get_or_create_nodes(group_name, ids)
 
     def delete_doc(self, input_files: List[str]) -> None:
-        root_nodes = self.store.get_index(type='file_node_map').query(input_files)
+        root_nodes = self._store.get_index(type='file_node_map').query(input_files)
         LOG.info(f"delete_files: removing documents {input_files} and nodes {root_nodes}")
         if len(root_nodes) == 0: return
 
@@ -173,7 +173,7 @@ class _Processer:
 
         # Delete nodes in all groups
         for group, node_uids in uids_to_delete.items():
-            self.store.remove_nodes(group, node_uids)
+            self._store.remove_nodes(group, node_uids)
             LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
 
 
@@ -495,7 +495,7 @@ class DocImpl:
         if embed_keys: self._activated_embeddings.setdefault(str(group_name), set()).update(embed_keys)
         if self._lazy_init.flag:
             if group_name not in self.node_groups: return
-            assert not embed_keys, 'Connot add new embed_keys for node_group when Document is inited'
+            assert not embed_keys, 'Cannot add new embed_keys for node_group when Document is inited'
             self.store.activate_group(parent := group_name)
             while True:
                 parent = self.node_groups[parent]['parent']
