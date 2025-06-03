@@ -173,10 +173,10 @@ Args:
 add_example('Document.register_global_reader', '''
 >>> from lazyllm.tools.rag import Document, DocNode
 >>> @Document.register_global_reader("**/*.yml")
->>> def processYml(file, extra_info=None):
+>>> def processYml(file):
 ...     with open(file, 'r') as f:
 ...         data = f.read()
-...     return [DocNode(text=data, metadata=extra_info or {})]
+...     return [DocNode(text=data)]
 ...
 >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
@@ -207,7 +207,7 @@ add_example('Document.add_reader', '''
 >>> from lazyllm.tools.rag import Document, DocNode
 >>> from lazyllm.tools.rag.readers import ReaderBase
 >>> class YmlReader(ReaderBase):
-...     def _load_data(self, file, extra_info=None, fs=None):
+...     def _load_data(self, file, fs=None):
 ...         try:
 ...             import yaml
 ...         except ImportError:
@@ -215,13 +215,13 @@ add_example('Document.add_reader', '''
 ...         with open(file, 'r') as f:
 ...             data = yaml.safe_load(f)
 ...         print("Call the class YmlReader.")
-...         return [DocNode(text=data, metadata=extra_info or {})]
+...         return [DocNode(text=data)]
 ...
->>> def processYml(file, extra_info=None):
+>>> def processYml(file):
 ...     with open(file, 'r') as f:
 ...         data = f.read()
 ...     print("Call the function processYml.")
-...     return [DocNode(text=data, metadata=extra_info or {})]
+...     return [DocNode(text=data)]
 ...
 >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
 >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
@@ -239,7 +239,7 @@ Call the function processYml.
 ''')
 
 add_english_doc('rag.readers.ReaderBase', '''
-The base class of file readers, which inherits from the ModuleBase base class and has Callable capabilities. Subclasses that inherit from this class only need to implement the _load_data function, and its return parameter type is List[DocNode]. Generally, the input parameters of the _load_data function are file (Path), extra_info(Dict), and fs (AbstractFileSystem).
+The base class of file readers, which inherits from the ModuleBase base class and has Callable capabilities. Subclasses that inherit from this class only need to implement the _load_data function, and its return parameter type is List[DocNode]. Generally, the input parameters of the _load_data function are file (Path) and fs (AbstractFileSystem).
 
 Args:
     args (Any): Pass the corresponding position parameters as needed.
@@ -248,7 +248,7 @@ Args:
 ''')
 
 add_chinese_doc('rag.readers.ReaderBase', '''
-文件读取器的基类，它继承自 ModuleBase 基类，具有 Callable 的能力，继承自该类的子类只需要实现 _load_data 函数即可，它的返回参数类型为 List[DocNode]. 一般 _load_data 函数的入参为 file (Path), extra_info (Dict), fs(AbstractFileSystem) 三个参数。
+文件读取器的基类，它继承自 ModuleBase 基类，具有 Callable 的能力，继承自该类的子类只需要实现 _load_data 函数即可，它的返回参数类型为 List[DocNode]. 一般 _load_data 函数的入参为 file (Path), fs(AbstractFileSystem) 三个参数。
 
 Args:
     args (Any): 根据需要传输相应的位置参数
@@ -264,7 +264,7 @@ add_example('rag.readers.ReaderBase', '''
 >>> from fsspec import AbstractFileSystem
 >>> @Document.register_global_reader("**/*.yml")
 >>> class YmlReader(ReaderBase):
-...     def _load_data(self, file: Path, extra_info: Optional[Dict] = None, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+...     def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
 ...         try:
 ...             import yaml
 ...         except ImportError:
@@ -272,7 +272,7 @@ add_example('rag.readers.ReaderBase', '''
 ...         with open(file, 'r') as f:
 ...             data = yaml.safe_load(f)
 ...         print("Call the class YmlReader.")
-...         return [DocNode(text=data, metadata=extra_info or {})]
+...         return [DocNode(text=data)]
 ...
 >>> files = ["your_yml_files"]
 >>> doc = Document(dataset_path="your_files_path", create_ui=False)

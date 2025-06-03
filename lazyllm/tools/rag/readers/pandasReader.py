@@ -16,8 +16,7 @@ class PandasCSVReader(LazyLLMReaderBase):
         self._row_joiner = row_joiner
         self._pandas_config = pandas_config or {}
 
-    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:
@@ -28,8 +27,8 @@ class PandasCSVReader(LazyLLMReaderBase):
 
         text_list = df.apply(lambda row: (self._col_joiner).join(row.astype(str).tolist()), axis=1).tolist()
 
-        if self._concat_rows: return [DocNode(text=(self._row_joiner).join(text_list), metadata=extra_info or {})]
-        else: return [DocNode(text=text, metadata=extra_info or {}) for text in text_list]
+        if self._concat_rows: return [DocNode(text=(self._row_joiner).join(text_list))]
+        else: return [DocNode(text=text) for text in text_list]
 
 class PandasExcelReader(LazyLLMReaderBase):
     def __init__(self, concat_rows: bool = True, sheet_name: Optional[str] = None,

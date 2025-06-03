@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List, Optional, cast
+from typing import List, Optional, cast
 from fsspec import AbstractFileSystem
 
 from .readerBase import LazyLLMReaderBase
@@ -19,8 +19,7 @@ class VideoAudioReader(LazyLLMReaderBase):
         model = whisper.load_model(self._model_version)
         self._parser_config = {"model": model}
 
-    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         import whisper
 
         if not isinstance(file, Path): file = Path(file)
@@ -45,4 +44,4 @@ class VideoAudioReader(LazyLLMReaderBase):
         result = model.transcribe(str(file))
 
         transcript = result['text']
-        return [DocNode(text=transcript, global_metadata=extra_info)]
+        return [DocNode(text=transcript)]
