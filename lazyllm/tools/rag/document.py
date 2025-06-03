@@ -7,7 +7,7 @@ from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
 
 from .doc_manager import DocManager
-from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups
+from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor
 from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files
 from .index_base import IndexBase
@@ -29,7 +29,7 @@ class Document(ModuleBase, BuiltinGroups):
                      manager: Union[bool, str] = False, server: bool = False, name: Optional[str] = None,
                      launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
-                     doc_files: Optional[List[str]] = None):
+                     doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
 
@@ -43,13 +43,13 @@ class Document(ModuleBase, BuiltinGroups):
             self._launcher: Launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
             self._dataset_path = dataset_path
             self._embed = self._get_embeds(embed)
-            self.name = name
+            self._algo_name = name
 
             self._dlm = None if (self._cloud or self._doc_files) else DocListManager(
                 dataset_path, name, enable_path_monitoring=False if manager else True)
-            self._kbs = CallableDict({DocListManager.DEFAULT_GROUP_NAME:
-                                      DocImpl(embed=self._embed, dlm=self._dlm, doc_files=doc_files,
-                                              global_metadata_desc=doc_fields, store_conf=store_conf)})
+            self._kbs = CallableDict({DocListManager.DEFAULT_GROUP_NAME: DocImpl(
+                embed=self._embed, dlm=self._dlm, doc_files=doc_files, global_metadata_desc=doc_fields,
+                store_conf=store_conf, processor=processor, alog_name=name)})
 
             if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
@@ -102,9 +102,10 @@ class Document(ModuleBase, BuiltinGroups):
             return self._kbs(*args, **kw)
 
     def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
-                 create_ui: bool = False, manager: Union[bool, str, "Document._Manager"] = False, server: bool = False,
-                 name: Optional[str] = None, launcher: Optional[Launcher] = None, doc_files: Optional[List[str]] = None,
-                 doc_fields: Dict[str, DocField] = None, store_conf: Optional[Dict] = None):
+                 create_ui: bool = False, manager: Union[bool, str, "Document._Manager", DocumentProcessor] = False,
+                 server: bool = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
+                 doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
+                 store_conf: Optional[Dict] = None):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
@@ -129,14 +130,16 @@ class Document(ModuleBase, BuiltinGroups):
             self._manager = manager
             self._curr_group = name
         else:
-            if manager == 'cloud':
+            if manager == 'cloud' or isinstance(manager, DocumentProcessor):
+                processor = manager if isinstance(manager, DocumentProcessor) else None
                 cloud, manager = True, False
+                assert name, '`Name` of Document is necessary when using cloud service'
                 assert store_conf['type'] != 'map', 'Cloud manager is not supported when using map store'
                 assert not dataset_path, 'Cloud manager is not supported with local dataset path'
             else:
-                cloud = False
-            self._manager = Document._Manager(dataset_path, embed, manager, server, name, launcher,
-                                              store_conf, doc_fields, cloud=cloud, doc_files=doc_files)
+                cloud, processor = False, None
+            self._manager = Document._Manager(dataset_path, embed, manager, server, name, launcher, store_conf,
+                                              doc_fields, cloud=cloud, doc_files=doc_files, processor=processor)
             self._curr_group = DocListManager.DEFAULT_GROUP_NAME
         self._doc_to_db_processor: DocToDbProcessor = None
 
