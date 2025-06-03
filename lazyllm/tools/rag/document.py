@@ -23,6 +23,7 @@ class CallableDict(dict):
     def __call__(self, cls, *args, **kw):
         return self[cls](*args, **kw)
 
+
 class Document(ModuleBase, BuiltinGroups):
     class _Manager(ModuleBase):
         def __init__(self, dataset_path: Optional[str], embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
@@ -100,7 +101,16 @@ class Document(ModuleBase, BuiltinGroups):
         def __call__(self, *args, **kw):
             return self._kbs(*args, **kw)
 
-    def __init__(self, dataset_path: str, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
+    def __new__(cls, *args, **kw):
+        if url := kw.pop('url', None):
+            name = kw.pop('name', None)
+            assert name, 'Document name must be provided with `url`'
+            assert not args and not kw, 'Only `name` is supported with `url`'
+            return UrlDocument(url, name)
+        else:
+            return super().__new__(cls)
+
+    def __init__(self, dataset_path: Optional[str] = None, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                  create_ui: bool = False, manager: Union[bool, str, "Document._Manager", DocumentProcessor] = False,
                  server: bool = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
@@ -306,3 +316,22 @@ class Document(ModuleBase, BuiltinGroups):
     def __repr__(self):
         return lazyllm.make_repr("Module", "Document", manager=hasattr(self._manager, '_manager'),
                                  server=isinstance(self._manager._kbs, ServerModule))
+
+class UrlDocument(ModuleBase):
+    def __init__(self, url: str, name: str):
+        self._missing_keys = set(dir(Document)) - set(dir(UrlDocument))
+        self._manager = lazyllm.UrlModule(url=url)
+        self._curr_group = name
+
+    def _forward(self, func_name: str, *args, **kw):
+        return self._manager(self._curr_group, func_name, *args, **kw)
+
+    def find(self, target) -> Callable:
+        return functools.partial(self._forward, 'find', group=target)
+
+    def forward(self, *args, **kw):
+        return self._forward('retrieve', *args, **kw)
+
+    def __getattr__(self, name):
+        if name in self._missing_keys:
+            raise RuntimeError(f'Document generated with url and name has no attribute `{name}`')
