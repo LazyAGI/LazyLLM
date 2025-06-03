@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 from fsspec import AbstractFileSystem
 
 from .readerBase import LazyLLMReaderBase
@@ -26,8 +26,7 @@ class MboxReader(LazyLLMReaderBase):
         self._max_count = max_count
         self._message_format = message_format
 
-    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         import mailbox
         from email.parser import BytesParser
         from email.policy import default
@@ -65,4 +64,4 @@ class MboxReader(LazyLLMReaderBase):
 
             i += 1
             if self._max_count > 0 and i >= self._max_count: break
-        return [DocNode(text=result, global_metadata=extra_info) for result in results]
+        return [DocNode(text=result) for result in results]

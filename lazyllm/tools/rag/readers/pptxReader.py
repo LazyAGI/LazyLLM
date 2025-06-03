@@ -2,7 +2,7 @@ import os
 import tempfile
 from fsspec import AbstractFileSystem
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, List
 
 from lazyllm.thirdparty import pptx
 from lazyllm.thirdparty import transformers as tf
@@ -51,8 +51,7 @@ class PPTXReader(LazyLLMReaderBase):
         preds = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
         return preds[0].strip()
 
-    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:
@@ -77,4 +76,4 @@ class PPTXReader(LazyLLMReaderBase):
                         os.unlink(f.name)
 
                 if hasattr(shape, "text"): result += f"{shape.text}\n"
-        return [DocNode(text=result, global_metadata=extra_info)]
+        return [DocNode(text=result)]

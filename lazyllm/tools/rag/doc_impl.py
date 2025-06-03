@@ -479,35 +479,13 @@ class DocImpl:
             metadatas.append(json.loads(row[3]) if row[3] else {})
         return ids, paths, metadatas
 
-    # 接口1: 新增文档
     def _add_doc_to_store(self, input_files: List[str], ids: Optional[List[str]] = None,
                           metadatas: Optional[List[Dict[str, Any]]] = None):
         if not input_files: return
         self._propessor.add_doc(input_files, ids, metadatas)
 
-    # 接口2: 删除文档
     def _delete_doc_from_store(self, input_files: List[str]) -> None:
-        root_nodes = self.store.get_index(type='file_node_map').query(input_files)
-        LOG.info(f"delete_files: removing documents {input_files} and nodes {root_nodes}")
-        if len(root_nodes) == 0: return
-
-        uids_to_delete = defaultdict(list)
-        uids_to_delete[LAZY_ROOT_NAME] = [node._uid for node in root_nodes]
-
-        # Gather all nodes to be deleted including their children
-        def gather_children(node: DocNode):
-            for children_group, children_list in node.children.items():
-                for child in children_list:
-                    uids_to_delete[children_group].append(child._uid)
-                    gather_children(child)
-
-        for node in root_nodes:
-            gather_children(node)
-
-        # Delete nodes in all groups
-        for group, node_uids in uids_to_delete.items():
-            self.store.remove_nodes(group, node_uids)
-            LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
+        return self._propessor.delete_doc(input_files)
 
     def activate_group(self, group_name: str, embed_keys: List[str]):
         group_name = str(group_name)

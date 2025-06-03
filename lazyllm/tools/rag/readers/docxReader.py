@@ -1,14 +1,13 @@
 from pathlib import Path
 from fsspec import AbstractFileSystem
-from typing import Dict, Optional, List
+from typing import Optional, List
 
 from lazyllm.thirdparty import docx2txt
 from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
 
 class DocxReader(LazyLLMReaderBase):
-    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:
@@ -17,4 +16,4 @@ class DocxReader(LazyLLMReaderBase):
         else:
             text = docx2txt.process(file)
 
-        return [DocNode(text=text, global_metadata=extra_info)]
+        return [DocNode(text=text)]
