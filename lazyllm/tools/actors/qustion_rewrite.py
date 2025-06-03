@@ -1,5 +1,5 @@
 from typing import Union
-from ...module import ModuleBase, TrainableModule
+from ...module import ModuleBase, TrainableModule, OnlineChatModuleBase
 
 en_qustion_rewrite_prompt = """
 ## Task
@@ -41,7 +41,7 @@ ch_qustion_rewrite_prompt = """
 class QustionRewrite(ModuleBase):
     def __init__(
         self,
-        base_model: Union[str, TrainableModule],
+        base_model: Union[str, TrainableModule, OnlineChatModuleBase],
         rewrite_prompt: str = "",
         formatter: str = "str",
     ):

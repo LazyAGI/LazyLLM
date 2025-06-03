@@ -814,19 +814,21 @@ def make_file(id: str):
 
 @NodeConstructor.register("ParameterExtractor")
 def make_parameter_extractor(
-    base_model: Union[str, lazyllm.TrainableModule],
+    base_model: str,
     param: list[str],
     type: list[str],
     description: list[str],
     require: list[bool],
 ):
+    base_model = Engine().build_node(base_model).func
     return lazyllm.tools.ParameterExtractor(base_model, param, type, description, require)
 
 
 @NodeConstructor.register("QustionRewrite")
 def make_qustion_rewrite(
-    base_model: Union[str, lazyllm.TrainableModule],
+    base_model: str,
     rewrite_prompt: str = "",
     formatter: str = "str",
 ):
+    base_model = Engine().build_node(base_model).func
     return lazyllm.tools.QustionRewrite(base_model, rewrite_prompt, formatter)

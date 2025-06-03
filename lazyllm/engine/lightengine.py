@@ -317,12 +317,8 @@ class LightEngine(Engine):
                     node = resource
                 else:
                     return self._nodes.get(node)
-            hyperparameter = None
-            if 'hyperparameter' in node:
-                hyperparameter = node['hyperparameter']
             node = Node(id=node['id'], kind=node['kind'], name=node['name'], args=node['args'],
-                        hyperparameter=hyperparameter)
-
+                        hyperparameter=node.get('hyperparameter'))
         if node.id not in self._nodes:
             self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]

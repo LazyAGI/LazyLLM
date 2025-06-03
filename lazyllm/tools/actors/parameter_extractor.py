@@ -1,6 +1,6 @@
 from typing import Union
 import json
-from ...module import ModuleBase, TrainableModule
+from ...module import ModuleBase, TrainableModule, OnlineChatModuleBase
 
 
 ch_parameter_extractor_prompt = """
@@ -51,7 +51,7 @@ class ParameterExtractor(ModuleBase):
 
     def __init__(
         self,
-        base_model: Union[str, TrainableModule],
+        base_model: Union[str, TrainableModule, OnlineChatModuleBase],
         param: list[str],
         type: list[str],
         description: list[str],
