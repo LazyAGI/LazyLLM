@@ -60,6 +60,17 @@ class Infinity(LazyLLMDeployBase):
             if self.random_port:
                 self.kw['port'] = random.randint(30000, 40000)
             cmd = f'infinity_emb v2 --model-id {finetuned_model} '
+            if isinstance(self.launcher, launchers.EmptyLauncher) and self.launcher.ngpus:
+                available_gpus = self.launcher._get_idle_gpus()
+                required_count = self.launcher.ngpus
+                if required_count <= len(available_gpus):
+                    gpu_ids = ','.join(map(str, available_gpus[:required_count]))
+                    cmd += f'--device-id={gpu_ids} '
+                else:
+                    raise RuntimeError(
+                        f"Insufficient GPUs available (required: {required_count}, "
+                        f"available: {len(available_gpus)})"
+                    )
             cmd += self.kw.parse_kwargs()
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd

@@ -12,8 +12,7 @@ class IPYNBReader(LazyLLMReaderBase):
         self._parser_config = parser_config
         self._concatenate = concatenate
 
-    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if file.name.endswith(".ipynb"):
@@ -31,7 +30,7 @@ class IPYNBReader(LazyLLMReaderBase):
         splits = re.split(r"In\[\d+\]:", doc_str)
         splits.pop(0)
 
-        if self._concatenate: docs = [DocNode(text="\n\n".join(splits), metadata=extra_info or {})]
-        else: docs = [DocNode(text=s, global_metadata=extra_info) for s in splits]
+        if self._concatenate: docs = [DocNode(text="\n\n".join(splits))]
+        else: docs = [DocNode(text=s) for s in splits]
 
         return docs

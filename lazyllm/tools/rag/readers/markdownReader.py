@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
@@ -56,12 +56,10 @@ class MarkdownReader(LazyLLMReaderBase):
         if self._remove_images: content = self.remove_images(content)
         return self._markdown_to_tups(content)
 
-    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         tups = self._parse_tups(file, fs=fs)
         results = [DocNode(
-            content=[value if header is None else f"\n\n{header}\n{value}" for header, value in tups],
-            global_metadata=extra_info)]
+            content=[value if header is None else f"\n\n{header}\n{value}" for header, value in tups])]
         return results
