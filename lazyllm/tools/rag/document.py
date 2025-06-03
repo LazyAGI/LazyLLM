@@ -332,6 +332,9 @@ class UrlDocument(ModuleBase):
     def forward(self, *args, **kw):
         return self._forward('retrieve', *args, **kw)
 
+    def active_node_groups(self):
+        return self._forward('active_node_groups')
+
     def __getattr__(self, name):
         if name in self._missing_keys:
             raise RuntimeError(f'Document generated with url and name has no attribute `{name}`')

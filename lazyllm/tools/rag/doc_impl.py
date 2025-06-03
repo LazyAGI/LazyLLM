@@ -555,6 +555,9 @@ class DocImpl:
                 self.store.activate_group(parent)
             self._processor.reparse(group_name)
 
+    def active_node_groups(self):
+        return {k: v for k, v in self._activated_embeddings.items() if k in self._activated_groups}
+
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,
                  filters: Optional[Dict[str, Union[str, int, List, Set]]] = None) -> List[DocNode]:

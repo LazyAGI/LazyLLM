@@ -747,6 +747,9 @@ class LLM(lazyllm.ModuleBase):
             assert len(args) == 1
         return self._m(*args, **kw)
 
+    def share(self, prompt: str, history: Optional[List[List[str]]] = None):
+        return LLM(self._m.share(prompt=prompt, history=history), self._keys)
+
 
 @NodeConstructor.register('LLM')
 def make_llm(kw: dict):
