@@ -72,8 +72,7 @@ class ParameterExtractor(ModuleBase):
             t["description"] = description[i]
             t["require"] = require[i]
             param_prompt.append(t)
-            if require[i]:
-                self._param_dict[param[i]] = ParameterExtractor.type_map[type[i]]
+            self._param_dict[param[i]] = ParameterExtractor.type_map[type[i]]
         param_prompt = repr(param_prompt)
         self._prompt = self.choose_prompt(param_prompt).format(prompt=param_prompt)
         if isinstance(base_model, str):
