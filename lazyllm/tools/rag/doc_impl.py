@@ -297,7 +297,6 @@ class DocImpl:
         # init files when `cloud` is False
         if not cloud and not self.store.is_group_active(LAZY_ROOT_NAME):
             ids, pathes, metadatas = self._delete_nonexistent_docs_on_startup(*self._list_files())
-            print(pathes)
             self._processor.add_doc(pathes, ids, metadatas)
             if pathes and self._dlm:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
