@@ -140,7 +140,7 @@ class DocImpl:
     def _lazy_init(self) -> None:
         self._init_node_groups()
         self._init_store()
-        cloud = not (self._dlm or self._doc_files)
+        cloud = not (self._dlm or self._doc_files is not None)
 
         self._resolve_index_pending_registrations()
         if self._processor:
@@ -376,7 +376,7 @@ class DocImpl:
             self, status: Union[str, List[str]] = DocListManager.Status.all,
             upload_status: Union[str, List[str]] = DocListManager.Status.all
     ) -> Tuple[List[str], List[str], List[Dict]]:
-        if self._doc_files: return None, self._doc_files, None
+        if self._doc_files is not None: return None, self._doc_files, None
         if not self._dlm: return [], [], []
         ids, paths, metadatas = [], [], []
         for row in self._dlm.list_kb_group_files(group=self._kb_group_name, status=status,
@@ -396,8 +396,6 @@ class DocImpl:
 
     def activate_group(self, group_name: str, embed_keys: List[str]):
         group_name = str(group_name)
-        if not self._dlm and not self._doc_files:
-            assert not self._lazy_init.flag, 'Cannot activate embedding keys when Document is inited'
         self._activated_groups.add(group_name)
         if embed_keys: self._activated_embeddings.setdefault(str(group_name), set()).update(embed_keys)
         if self._lazy_init.flag:

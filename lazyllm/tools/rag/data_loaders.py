@@ -27,7 +27,7 @@ class DirectoryReader:
                 nodes.append(doc)
             else:
                 image_nodes.append(doc)
-        if not nodes or not image_nodes:
+        if not nodes and not image_nodes:
             LOG.warning(
                 f"No nodes load from path {input_files}, please check your data path."
             )

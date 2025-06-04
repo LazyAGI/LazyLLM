@@ -106,7 +106,9 @@ class SimpleDirectoryReader(ModuleBase):
             self._input_files = []
             for path in input_files:
                 if not self._fs.isfile(path):
-                    raise ValueError(f"File {path} does not exist.")
+                    path = os.path.join(config['data_path'], path)
+                    if not self._fs.isfile(path):
+                        raise ValueError(f"File {path} does not exist.")
                 input_file = self._Path(path)
                 self._input_files.append(input_file)
         elif input_dir:

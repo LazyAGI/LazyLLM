@@ -4,7 +4,7 @@ from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH, RAG_DOC_ID
-from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform
+from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform, TempDocRetriever
 from lazyllm.tools.rag.doc_manager import DocManager
 from lazyllm.tools.rag.utils import DocListManager
 from lazyllm.launcher import cleanup
@@ -209,6 +209,23 @@ class TestDocument(unittest.TestCase):
         assert doc2._curr_group == 'test_group2'
         assert doc2.manager == doc.manager
         doc.stop()
+
+
+class TestTempRetriever():
+    def test_temp_retriever(self):
+        r = TempDocRetriever()(os.path.join(config['data_path'], 'rag_master/default/__data/sources/大学.txt'), '大学')
+        assert len(r) > 0 and isinstance(r[0], DocNode)
+
+        r = TempDocRetriever(output_format='content')('rag_master/default/__data/sources/大学.txt', '大学')
+        assert len(r) > 0 and isinstance(r[0], str)
+
+        ret = TempDocRetriever(output_format='dict')
+        ret.create_node_group('block', transform=lambda x: x.split('\n'))
+        ret.add_subretriever(Document.CoarseChunk, topk=1)
+        ret.add_subretriever('block', topk=3)
+        r = ret(['rag_master/default/__data/sources/大学.txt', 'rag_master/default/__data/sources/论语.txt'], '大学')
+        assert len(r) == 4 and isinstance(r[0], dict)
+
 
 class TmpDir:
     def __init__(self):
