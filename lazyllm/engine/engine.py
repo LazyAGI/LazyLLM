@@ -674,10 +674,9 @@ class VQA(lazyllm.Module):
     def __init__(self, base_model: Union[str, lazyllm.TrainableModule], file_resource_id: Optional[str],
                  prompt: Optional[str] = None):
         super().__init__()
-        if not isinstance(base_model, lazyllm.TrainableModule):
-            self._vqa = lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
-            if prompt: self._vqa.prompt(prompt=prompt)
-        else: self.vqa = base_model
+        self.vqa = self._vqa = (lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
+                                if not isinstance(base_model, lazyllm.TrainableModule) else base_model)
+        if prompt: self._vqa.prompt(prompt=prompt)
         self._file_resource_id = file_resource_id
         if file_resource_id:
             with pipeline() as self.vqa:
