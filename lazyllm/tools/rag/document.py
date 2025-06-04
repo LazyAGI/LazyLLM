@@ -44,8 +44,9 @@ class Document(ModuleBase, BuiltinGroups):
             self._launcher: Launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
             self._dataset_path = dataset_path
             self._embed = self._get_embeds(embed)
+            self._processor = processor
 
-            self._dlm = None if (self._cloud or self._doc_files) else DocListManager(
+            self._dlm = None if (self._cloud or self._doc_files is not None) else DocListManager(
                 dataset_path, name, enable_path_monitoring=False if manager else True)
             self._kbs = CallableDict({DocListManager.DEFAULT_GROUP_NAME: DocImpl(
                 embed=self._embed, dlm=self._dlm, doc_files=doc_files, global_metadata_desc=doc_fields,
@@ -122,16 +123,17 @@ class Document(ModuleBase, BuiltinGroups):
         if isinstance(dataset_path, (tuple, list)):
             doc_fields = dataset_path
             dataset_path = None
-        if doc_files:
+        if doc_files is not None:
             assert dataset_path is None and not manager, (
                 'Manager and dataset_path are not supported for Document with temp-files')
-            assert store_conf['type'] == 'map', 'Only map store is supported for Document with temp-files'
+            assert store_conf is None or store_conf['type'] == 'map', (
+                'Only map store is supported for Document with temp-files')
 
         if isinstance(manager, Document._Manager):
             assert not server, 'Server infomation is already set to by manager'
             assert not launcher, 'Launcher infomation is already set to by manager'
             assert not manager._cloud, 'manager is not allowed to share in cloud mode'
-            assert not manager._doc_files, 'manager is not allowed to share with temp files'
+            assert manager._doc_files is None, 'manager is not allowed to share with temp files'
             if dataset_path != manager._dataset_path and dataset_path != manager._origin_path:
                 raise RuntimeError(f'Document path mismatch, expected `{manager._dataset_path}`'
                                    f'while received `{dataset_path}`')
@@ -242,7 +244,7 @@ class Document(ModuleBase, BuiltinGroups):
     def _impl(self) -> DocImpl: return self._manager.get_doc_by_kb_group(self._curr_group)
 
     @property
-    def manager(self): return self._manager
+    def manager(self): return self._manager._processor or self._manager
 
     def activate_group(self, group_name: str, embed_keys: Optional[Union[str, List[str]]] = None):
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
@@ -332,6 +334,7 @@ class UrlDocument(ModuleBase):
     def forward(self, *args, **kw):
         return self._forward('retrieve', *args, **kw)
 
+    @functools.lru_cache
     def active_node_groups(self):
         return self._forward('active_node_groups')
 
