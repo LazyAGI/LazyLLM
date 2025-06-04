@@ -1,4 +1,4 @@
-from .rag import Document, Reranker, Retriever, SentenceSplitter, LLMParser
+from .rag import Document, Reranker, Retriever, TempDocRetriever, SentenceSplitter, LLMParser
 from .webpages import WebModule
 from .agent import (
     ToolManager,
@@ -18,6 +18,7 @@ from .mcp.client import MCPClient
 __all__ = [
     "Document",
     "Reranker",
+    "TempDocRetriever",
     "Retriever",
     "WebModule",
     "ToolManager",
