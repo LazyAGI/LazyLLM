@@ -149,6 +149,19 @@ class DocumentProcessor():
                 raise KeyError(f'Duplicated algo key {name} for processor!')
             self._processors[name] = _Processor(store, reader, node_groups)
 
+        @app.get('/group/info')
+        async def get_group_info(self, algoid: str) -> None:
+            processor = self._processors[algoid]
+            infos = []
+            for group_name in processor._store.activated_groups():
+                if group_name in processor._node_groups:
+                    group_info = {
+                        "name": group_name,
+                        "display_name": processor._node_groups[group_name]['display_name'],
+                    }
+                    infos.append(group_info)
+            return BaseResponse(code=200, msg='success', data=infos)
+
         @app.post('/doc/add')
         async def async_add_doc(
             self,
