@@ -2,7 +2,9 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Union, Set
 
 from lazyllm import LOG
-from lazyllm.tools.rag import DocNode, IndexBase, DataType
+from lazyllm.tools.rag.doc_node import DocNode
+from lazyllm.tools.rag.index_base import IndexBase
+from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import (
     GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_FILE_NAME,
     RAG_DOC_FILE_TYPE, RAG_DOC_FILE_SIZE, RAG_DOC_CREATION_DATE,
@@ -64,7 +66,12 @@ class StoreBase(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None) -> List[DocNode]:
+    def get_nodes(
+        self,
+        group_name: Optional[str] = None,
+        uids: Optional[List[str]] = None,
+        doc_ids: Optional[Set] = None
+    ) -> List[DocNode]:
         """ get nodes from the store """
         raise NotImplementedError
 

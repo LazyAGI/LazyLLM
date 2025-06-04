@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Set
 from .doc_node import DocNode
 from .index_base import IndexBase
 
@@ -25,7 +25,12 @@ class StoreBase(ABC):
         pass
 
     @abstractmethod
-    def get_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:
+    def get_nodes(
+        self,
+        group_name: Optional[str] = None,
+        uids: Optional[List[str]] = None,
+        doc_ids: Optional[Set] = None,
+    ) -> List[DocNode]:
         pass
 
     @abstractmethod

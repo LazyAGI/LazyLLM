@@ -10,11 +10,9 @@ from typing import Optional, List, Dict, Any, Union, Set
 
 from lazyllm import warp, pipeline
 from lazyllm.common import override
-from lazyllm.tools.rag import (
-    DocNode,
-    IndexBase,
-    DataType
-)
+from lazyllm.tools.rag.doc_node import DocNode
+from lazyllm.tools.rag.index_base import IndexBase
+from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.doc_node import (
     ImageDocNode,
     QADocNode
@@ -44,7 +42,7 @@ class Segment(BaseModel):
     excluded_llm_metadata_keys: Optional[List[str]] = []
     global_meta: Optional[Dict[str, Any]] = {}
     parent: str
-    children: List[str] = []
+    children: Dict[str, List[str]] = []
     embedding_state: Optional[List[str]] = []
     answer: Optional[str] = ""
     image_keys: Optional[List[str]] = []
@@ -106,7 +104,7 @@ class SenseCoreStore(DocStoreBase):
             excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
             global_meta=node.global_metadata,
             parent=node.parent._uid if node.parent else "",
-            children=node.children.keys() if node.children else [],
+            children={group: [n._uid for n in c_l] for group, c_l in node.children.items()},
             embedding_state=node._embedding_state,
         )
 
@@ -149,6 +147,7 @@ class SenseCoreStore(DocStoreBase):
             )
         node.excluded_llm_metadata_keys = segment["excluded_embed_metadata_keys"]
         node.excluded_embed_metadata_keys = segment["excluded_llm_metadata_keys"]
+        node.children = segment["children"]
         if node._group == LAZY_ROOT_NAME:
             obj_key = node._content
             node._content = download_data_from_s3(
@@ -271,7 +270,12 @@ class SenseCoreStore(DocStoreBase):
         return
 
     @override
-    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None) -> List[DocNode]:
+    def get_nodes(
+        self,
+        group_name: Optional[str] = None,
+        uids: Optional[List[str]] = None,
+        doc_ids: Optional[Set] = None
+    ) -> List[DocNode]:
         """ get nodes from the store """
         if not (uids or group_name):
             raise ValueError("group_name or uids must be provided")
@@ -288,7 +292,6 @@ class SenseCoreStore(DocStoreBase):
             payload['group'] = group_name
         if uids:
             payload['segment_ids'] = uids
-
         segments = []
         while True:
             response = requests.post(url, headers=headers, json=payload)
@@ -301,7 +304,8 @@ class SenseCoreStore(DocStoreBase):
             if not next_page_token:
                 break
             payload['page_token'] = next_page_token
-
+        if doc_ids:
+            segments = [segment for segment in segments if segment['document_id'] in doc_ids]
         return [self._deserialize_node(segment) for segment in segments]
 
     @override

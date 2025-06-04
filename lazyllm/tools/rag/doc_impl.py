@@ -1,29 +1,26 @@
 import json
 import ast
-from collections import defaultdict
 from functools import wraps
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
-from lazyllm import LOG, once_wrapper, ServerModule, FastapiApp as app, ThreadPoolExecutor
+from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
-                        AdaptiveTransform, make_transform, TransformArgs, TransformArgs as TArgs)
+                        TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
 from .store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
-from .readers import ReaderBase
 from .store import MapStore
 from .chroma_store import ChromadbStore
 from .milvus_store import MilvusStore
 from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import DocListManager, gen_docid, is_sparse, BaseResponse
-from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH
+from .utils import DocListManager, gen_docid, is_sparse
+from .global_metadata import GlobalMetadataDesc
 from .data_type import DataType
-import queue
+from .doc_processor import _Processor, DocumentProcessor
 from dataclasses import dataclass
 import threading
 import time
-import requests
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
@@ -80,194 +77,6 @@ class BuiltinGroups(object):
     FineChunk = Struct('FineChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
     ImgDesc = Struct('ImgDesc', lambda x: x._content, LAZY_IMAGE_GROUP, True)
 
-
-class _Processor:
-    def __init__(self, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict], server: bool = False):
-        self._store, self._reader, self._node_groups = store, reader, node_groups
-        if server:
-            self._task_queue = queue.Queue()
-            self._executor = ThreadPoolExecutor(max_workers=1)
-            self._tasks = {}
-
-    @app.post('/doc/add')
-    async def async_add_doc(self, task_id: str, input_files: List[str], ids: Optional[List[str]] = None,
-                            metadatas: Optional[List[Dict[str, Any]]] = None, feedback_url: Optional[str] = None):
-        self._task_queue.put(('add', task_id, input_files, ids, metadatas, feedback_url))
-        return BaseResponse(code=200, msg='task submit successfully', data=None)
-
-    @app.delete('/doc/delete')
-    async def async_delete_doc(self, task_id: str, input_files: List[str], feedback_url: Optional[str] = None) -> None:
-        self._task_queue.put(('delete', task_id, input_files, None, None, feedback_url))
-        return BaseResponse(code=200, msg='task submit successfully', data=None)
-
-    @app.post('/doc/cancel')
-    async def cancel_task(self, task_id: str):
-        future = self._tasks.pop(task_id, None)
-        if future and not future.done():
-            future.cancel()
-            return BaseResponse(code=200, msg=f'task {task_id} cancelled successfully', data=None)
-        return BaseResponse(code=200, msg=f'task {task_id} cancelled failed', data=None)
-
-    def _send_status_message(self, success: bool, task_id: str, url: str):
-        headers = {"Content-Type": "application/json"}
-        requests.post(url, json=dict(task_id=task_id, success=success), headers=headers)
-
-    def _worker(self):
-        while True:
-            try:
-                task_type, task_id, input_files, ids, metadatas, feedback_url = self._task_queue.get(timeout=1)
-                if task_type == 'add':
-                    future = self._executor.submit(self.add_doc, input_files=input_files, ids=ids, metadatas=metadatas)
-                    self._tasks[task_id] = (future, feedback_url)
-                elif task_type == 'delete':
-                    future = self._executor.submit(self.delete_doc, input_files=input_files)
-                    self._tasks[task_id] = (future, feedback_url)
-            except queue.Empty:
-                for task_id, (future, input_files, feedback_url) in self._tasks.items():
-                    if future.done():
-                        future, feedback_url = self._tasks.pop(task_id)
-                        self._send_status_message(not future.exception(), task_id, feedback_url)
-                time.sleep(5)
-
-    def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,
-                metadatas: Optional[List[Dict[str, Any]]] = None):
-        if not input_files: return
-        if not ids: ids = [gen_docid(path) for path in input_files]
-        if not metadatas:
-            metadatas = [{RAG_DOC_ID: id, RAG_DOC_PATH: path} for id, path in zip(ids, input_files)]
-        else:
-            for path, id, metadata in zip(input_files, ids, metadatas):
-                metadata.update({RAG_DOC_ID: id, RAG_DOC_PATH: path})
-        root_nodes, image_nodes = self._reader.load_data(input_files, metadatas, split_image_nodes=True)
-
-        self._store.update_nodes(root_nodes)
-        self._create_nodes_recursive(root_nodes, LAZY_ROOT_NAME)
-
-        if image_nodes:
-            self._store.update_nodes(image_nodes)
-            self._create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)
-
-    def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):
-        for group_name in self._store.activated_groups():
-            group = self._node_groups.get(group_name)
-            if group is None:
-                raise ValueError(f"Node group '{group_name}' does not exist. Please check the group name "
-                                 "or add a new one through `create_node_group`.")
-
-            if group['parent'] == p_name:
-                nodes = self._create_nodes_impl(p_nodes, group_name)
-                if nodes: self._create_nodes_recursive(nodes, group_name)
-
-    def _create_nodes_impl(self, p_nodes, group_name):
-        t = self._node_groups[group_name]['transform']
-        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
-        nodes = transform.batch_forward(p_nodes, group_name)
-        self._store.update_nodes(nodes)
-        return nodes
-
-    def _get_or_create_nodes(self, group_name, ids: Optional[List[str]] = None):
-        nodes = self._store.get_nodes(group_name, ids) if self._store.is_group_active(group_name) else []
-        if not nodes and group_name not in (LAZY_IMAGE_GROUP, LAZY_ROOT_NAME):
-            p_nodes = self._get_or_create_nodes(self._node_groups[group_name]['parent'], ids)
-            nodes = self._create_nodes_impl(p_nodes, group_name)
-        return nodes
-
-    def reparse(self, group_name: str, ids: Optional[List[str]] = None):
-        self._get_or_create_nodes(group_name, ids)
-
-    def delete_doc(self, input_files: List[str]) -> None:
-        root_nodes = self._store.get_index(type='file_node_map').query(input_files)
-        LOG.info(f"delete_files: removing documents {input_files} and nodes {root_nodes}")
-        if len(root_nodes) == 0: return
-
-        uids_to_delete = defaultdict(list)
-        uids_to_delete[LAZY_ROOT_NAME] = [node._uid for node in root_nodes]
-
-        # Gather all nodes to be deleted including their children
-        def gather_children(node: DocNode):
-            for children_group, children_list in node.children.items():
-                for child in children_list:
-                    uids_to_delete[children_group].append(child._uid)
-                    gather_children(child)
-
-        for node in root_nodes:
-            gather_children(node)
-
-        # Delete nodes in all groups
-        for group, node_uids in uids_to_delete.items():
-            self._store.remove_nodes(group, node_uids)
-            LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
-
-
-class DocumentProcessor():
-
-    class Impl():
-        def __init__(self, server: bool):
-            self._processors = dict()
-            if server:
-                self._task_queue = queue.Queue()
-                self._executor = ThreadPoolExecutor(max_workers=1)
-                self._tasks = {}
-                self._worker_thread = threading.Thread(target=self._worker, daemon=True)
-
-        def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase,
-                               node_groups: Dict[str, Dict], force_refresh: bool = False):
-            if name in self._processors and not force_refresh:
-                raise KeyError(f'Duplicated algo key {name} for processor!')
-            self._processors[name] = _Processor(store, reader, node_groups)
-
-        @app.post('/add_docs')
-        async def async_add_doc(self, task_id: str, algoid: str, input_files: List[str], ids: Optional[List[str]] = None,
-                                metadatas: Optional[List[Dict[str, Any]]] = None, feedback_url: Optional[str] = None):
-            self._task_queue.put(('add', algoid, task_id, input_files, ids, metadatas, feedback_url))
-            return BaseResponse(code=200, msg='task submit successfully', data=None)
-
-        @app.delete('/delete_docs')
-        async def async_delete_doc(self, task_id: str, algoid: str, input_files: List[str],
-                                   feedback_url: Optional[str] = None) -> None:
-            self._task_queue.put(('delete', algoid, task_id, input_files, None, None, feedback_url))
-            return BaseResponse(code=200, msg='task submit successfully', data=None)
-
-        @app.post('/cancel')
-        async def cancel_task(self, task_id: str):
-            future = self._tasks.pop(task_id, None)
-            if future and not future.done():
-                future.cancel()
-                return BaseResponse(code=200, msg=f'task {task_id} cancelled successfully', data=None)
-            return BaseResponse(code=200, msg=f'task {task_id} cancelled failed', data=None)
-
-        def _send_status_message(self, success: bool, task_id: str, url: str):
-            headers = {"Content-Type": "application/json"}
-            requests.post(url, json=dict(task_id=task_id, success=success), headers=headers)
-
-        def _worker(self):
-            while True:
-                try:
-                    algoid, task_type, task_id, input_files, ids, metadatas, url = self._task_queue.get(timeout=1)
-                    if task_type == 'add':
-                        future = self._executor.submit(self._processors[algoid].add_doc, input_files=input_files,
-                                                       ids=ids, metadatas=metadatas)
-                        self._tasks[task_id] = (future, url)
-                    elif task_type == 'delete':
-                        future = self._executor.submit(self._processors[algoid].delete_doc, input_files=input_files)
-                        self._tasks[task_id] = (future, url)
-                except queue.Empty:
-                    for task_id, (future, input_files, url) in self._tasks.items():
-                        if future.done():
-                            future, url = self._tasks.pop(task_id)
-                            self._send_status_message(not future.exception(), task_id, url)
-                    time.sleep(5)
-
-    def __init__(self, server: bool = True):
-        self._impl = DocumentProcessor.Impl(server=server)
-        if server: self._impl = ServerModule(self._impl)
-
-    def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase,
-                           node_groups: Dict[str, Dict], force_refresh: bool = False):
-        if isinstance(self._impl, ServerModule):
-            self._impl._call('register_algorithm', name, store, reader, node_groups, force_refresh)
-        else:
-            self._impl.register_algorithm(name, store, reader, node_groups, force_refresh)
 
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
@@ -385,7 +194,6 @@ class DocImpl:
 
     def _create_store(self, store_conf: Optional[Dict], embed_dims: Optional[Dict[str, int]] = None,
                       embed_datatypes: Optional[Dict[str, DataType]] = None) -> StoreBase:
-        # TODO (chenjiahao): add self._kb_group_name to Store()
         store_type = store_conf.get('type')
         if not store_type:
             raise ValueError('store type is not specified.')
@@ -655,18 +463,32 @@ class DocImpl:
             nodes = DocImpl.find_children(nodes, group)
         return nodes
 
-    @staticmethod
-    def find_parent(nodes: List[DocNode], group: str) -> List[DocNode]:
-        def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
-            if node.parent:
-                if node.parent._group == group:
-                    visited.add(node.parent)
-                else:
-                    recurse_parents(node.parent, visited)
-
+    def find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
         result = set()
-        for node in nodes:
-            recurse_parents(node, result)
+        if isinstance(nodes[0].parent, DocNode):
+            def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
+                if node.parent:
+                    if node.parent._group == group:
+                        visited.add(node.parent)
+                    else:
+                        recurse_parents(node.parent, visited)
+            for node in nodes:
+                recurse_parents(node, result)
+        else:
+            cur_group = nodes[0]._group
+            cur_nodes = nodes
+            while cur_group != group and cur_nodes[0].parent:
+                name = self.node_groups[cur_group]['parent']
+                parent_uids = set()
+                for node in cur_nodes:
+                    parent_uids.add(node.parent)
+                parents = self.store.get_nodes(group_name=name, uids=list(parent_uids))
+                if not parents:
+                    break
+                cur_group = parents[0]._group
+                cur_nodes = parents
+            if cur_group == group:
+                result = cur_nodes
         if not result:
             LOG.warning(
                 f"We can not find any nodes for group `{group}`, please check your input"
@@ -674,41 +496,62 @@ class DocImpl:
         LOG.debug(f"Found parent node for {group}: {result}")
         return list(result)
 
-    @staticmethod
-    def find_children(nodes: List[DocNode], group: str) -> List[DocNode]:
-        def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
-            if group in node.children:
-                visited.update(node.children[group])
-                return True
-
-            found_in_any_child = False
-
-            for children_list in node.children.values():
-                for child in children_list:
-                    if recurse_children(child, visited):
-                        found_in_any_child = True
-                    else:
-                        break
-
-            return found_in_any_child
-
+    def find_children(self, nodes: List[DocNode], group: str) -> List[DocNode]:  # noqa:C901
         result = set()
 
-        for node in nodes:
-            if group in node.children:
-                result.update(node.children[group])
+        for _, children in nodes[0].children.items():
+            if isinstance(children[0], DocNode):
+                is_memory_tree = True
             else:
-                if not recurse_children(node, result):
-                    LOG.warning(
-                        f"Node {node} and its children do not contain any nodes with the group `{group}`. "
-                        "Skipping further search in this branch."
-                    )
+                is_memory_tree = False
+            break
+
+        if is_memory_tree:
+            def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
+                if group in node.children:
+                    visited.update(node.children[group])
+                    return True
+
+                found = False
+                for children_list in node.children.values():
+                    for child in children_list:
+                        if recurse_children(child, visited):
+                            found = True
+                return found
+
+            for node in nodes:
+                if group in node.children:
+                    result.update(node.children[group])
+                else:
+                    recurse_children(node, result)
+
+        else:
+            cur_group = nodes[0]._group
+            cur_nodes = nodes
+
+            while cur_group != group:
+                next_group = None
+                for g, v in self.node_groups.items():
+                    if v.get("parent") == cur_group:
+                        next_group = g
+                        break
+
+                if not next_group:
+                    LOG.warning(f"No child group found under group {cur_group}")
                     break
 
+                if next_group == group:
+                    parent_uids = [n._uid for n in cur_nodes]
+                    children = self.store.get_nodes(group_name=group, uids=parent_uids)
+                    result.update(children)
+                    break
+                else:
+                    parent_uids = [n._uid for n in cur_nodes]
+                    cur_nodes = self.store.get_nodes(group_name=next_group, uids=parent_uids)
+                    cur_group = next_group
+
         if not result:
-            LOG.warning(
-                f"We cannot find any nodes for group `{group}`, please check your input."
-            )
+            LOG.warning(f"We cannot find any nodes for group `{group}`, please check your input.")
 
         LOG.debug(f"Found children nodes for {group}: {result}")
         return list(result)

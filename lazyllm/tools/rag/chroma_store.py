@@ -48,8 +48,13 @@ class ChromadbStore(StoreBase):
         self._map_store.update_doc_meta(filepath, metadata)
 
     @override
-    def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
-        return self._map_store.get_nodes(group_name, uids)
+    def get_nodes(
+        self,
+        group_name: Optional[str] = None,
+        uids: Optional[List[str]] = None,
+        doc_ids: Optional[Set] = None
+    ) -> List[DocNode]:
+        return self._map_store.get_nodes(group_name, uids, doc_ids)
 
     @override
     def activate_group(self, group_names: Union[str, List[str]]) -> bool:

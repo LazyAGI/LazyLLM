@@ -1,8 +1,9 @@
 from typing import Dict, List, Optional, Callable, Union, Set
 from lazyllm.common import override
-from lazyllm.tools.rag import IndexBase, DocNode
+from lazyllm.tools.rag.index_base import IndexBase
+from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.default_index import DefaultIndex
-from lazyllm.tools.rag.global_metadata import RAG_SYSTEM_META_KEYS
+from lazyllm.tools.rag.global_metadata import RAG_SYSTEM_META_KEYS, RAG_DOC_ID
 from lazyllm.tools.rag.utils import _FileNodeIndex
 from .store_base import StoreBase
 
@@ -68,12 +69,22 @@ class MapStore(StoreBase):
                 self._group2uids.get(node._group, {}).pop(uid, None)
 
     @override
-    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None) -> List[DocNode]:
+    def get_nodes(
+        self,
+        group_name: Optional[str] = None,
+        uids: Optional[List[str]] = None,
+        doc_ids: Optional[Set] = None,
+    ) -> List[DocNode]:
         if uids:
             return [self._uid2node[uid] for uid in uids]
         elif group_name:
             uids = self._group2uids.get(group_name, set())
-            return [self._uid2node[uid] for uid in uids]
+            if not doc_ids:
+                return [self._uid2node[uid] for uid in uids]
+            else:
+                return [
+                    self._uid2node[uid] for uid in uids if self._uid2node[uid].metadata.get(RAG_DOC_ID) in doc_ids
+                ]
 
     @override
     def is_group_active(self, name: str) -> bool:
@@ -106,3 +117,17 @@ class MapStore(StoreBase):
         if type is None:
             type = 'default'
         return self._name2index.get(type)
+
+    @override
+    def clear_cache(self, group_names: Optional[List[str]]) -> None:
+        if group_names is None:
+            group_names = self.all_groups()
+        elif isinstance(group_names, str):
+            group_names = [group_names]
+        elif isinstance(group_names, (tuple, list, set)):
+            group_names = list(group_names)
+        else:
+            raise TypeError(f"Invalid type {type(group_names)} for group_names, expected list of str")
+        for group_name in group_names:
+            uids = list(self._group2uids.get(group_name))
+            self.remove_nodes(uids=uids)
