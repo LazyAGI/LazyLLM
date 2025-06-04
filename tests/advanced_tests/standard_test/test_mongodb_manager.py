@@ -184,8 +184,7 @@ class TestMongoDBManager(unittest.TestCase):
         print(f"str_results:\n{str_results}")
 
     def test_llm_query_local(self):
-        local_llm = lazyllm.TrainableModule("qwen2-72b-instruct-awq").deploy_method(
-            lazyllm.deploy.vllm, {'max-num-batched-tokens': 64000}).start()
+        local_llm = lazyllm.TrainableModule("qwen2-72b-instruct-awq").deploy_method(lazyllm.deploy.vllm).start()
         sql_call = SqlCall(local_llm, self.mongodb_manager, use_llm_for_sql_result=True, return_trace=True)
         str_results = sql_call("总人口超过了300万的州有哪些?")
         self.assertIn("TX", str_results)
