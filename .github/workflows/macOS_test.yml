@@ -86,7 +86,7 @@ jobs:
           mkdir -p /Users/runner/.lazyllm
           mkdir -p /Users/runner/.cache/modelscope/hub
           ln -s /Users/runner/.cache/modelscope/hub /Users/runner/.lazyllm/model
-          modelscope download Shanghai_AI_Laboratory/internlm2-chat-7b &
+          modelscope download qwen/qwen2-1.5b &
           
       - name: Install Poetry
         uses: snok/install-poetry@v1
