@@ -199,7 +199,7 @@ class TestTrainableFunctionCall(object):
     def setup_class(cls):
         models = ["internlm2-chat-20b", "glm-4-9b-chat", "qwen2-7b-instruct", "qwen2-72b-instruct-awq"]
         model = random.choice(models)
-        cls.llm = lazyllm.TrainableModule(model).deploy_method(deploy.vllm).start()
+        cls.llm = lazyllm.TrainableModule(model).deploy_method(deploy.vllm, {'max-num-batched-tokens': 64000}).start()
 
     @classmethod
     def teardown_class(cls):
