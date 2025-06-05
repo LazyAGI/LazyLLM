@@ -140,7 +140,7 @@ class TestDeploy(object):
         assert len(res['files']) == 1
 
     def test_chattts(self):
-        m = lazyllm.TrainableModule('ChatTTS')
+        m = lazyllm.TrainableModule('ChatTTS-new')
         m.update_server()
         r = m('你好啊，很高兴认识你。')
         res = decode_query_with_filepaths(r)

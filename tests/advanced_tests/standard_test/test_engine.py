@@ -238,7 +238,7 @@ class TestEngine(object):
         token = '123'
         engine = LightEngine()
         engine.launch_localllm_infer_service()
-        jobid, _ = engine.deploy_model(token, 'ChatTTS')
+        jobid, _ = engine.deploy_model(token, 'ChatTTS-new')
         engine.infer_client.wait_ready(token, jobid)
         r = engine.get_infra_handle(token, jobid)
         assert isinstance(r, lazyllm.TrainableModule) and r._impl._get_deploy_tasks.flag

@@ -407,7 +407,7 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]],
 
 @NodeConstructor.register('Document')
 def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False,
-                  server: bool = False, node_group: List = []):
+                  server: bool = False, node_group: List = [], activated_groups: List[str] = []):
     document = lazyllm.tools.rag.Document(
         dataset_path, Engine().build_node(embed).func if embed else None, server=server, manager=create_ui)
     for group in node_group:
@@ -418,6 +418,7 @@ def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False
             group['transform'] = 'function'
             group['function'] = make_code(group['function'])
         document.create_node_group(**group)
+    document.activate_groups(activated_groups + [g['name'] for g in node_group])
     return document
 
 @NodeConstructor.register('Reranker')
@@ -749,6 +750,9 @@ class LLM(lazyllm.ModuleBase):
         else:
             assert len(args) == 1
         return self._m(*args, **kw)
+
+    def share(self, prompt: str, history: Optional[List[List[str]]] = None):
+        return LLM(self._m.share(prompt=prompt, history=history), self._keys)
 
 
 @NodeConstructor.register('LLM')

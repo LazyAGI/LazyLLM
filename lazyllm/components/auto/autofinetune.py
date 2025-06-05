@@ -15,7 +15,7 @@ class AutoFinetune(LazyLLMFinetuneBase):
         model_type = ModelManager.get_model_type(model_name)
         if model_type in ['embed', 'tts', 'vlm', 'stt', 'sd']:
             raise RuntimeError(f'Fine-tuning of the {model_type} model is not currently supported.')
-        map_name = model_map(model_name)
+        map_name, _ = model_map(model_name)
         base_name = model_name.split('-')[0].split('_')[0].lower()
         candidates = get_configer().query_finetune(lazyllm.config['gpu_type'], launcher.ngpus,
                                                    map_name, ctx_len, batch_size, lora_r)

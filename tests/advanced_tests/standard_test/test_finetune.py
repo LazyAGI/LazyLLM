@@ -6,12 +6,16 @@ import pytest
 import lazyllm
 from lazyllm import finetune
 from lazyllm.launcher import cleanup
+from lazyllm.components.formatter import encode_query_with_filepaths
+
 
 class TestFinetune(object):
 
     def setup_method(self):
         self.llm_data = 'alpaca/alpaca_data_zh_128.json'
         self.llm_path = 'qwen1.5-0.5b-chat'
+        self.vlm_data = 'ci_data/vqa_rad/train.json'
+        self.vlm_path = 'qwen2.5-vl-3b-instruct'
         self.embed_data = os.path.join(lazyllm.config['data_path'], 'sft_embeding/embedding.json')
         self.embed_path = 'bge-m3'
         self.rerank_data = os.path.join(lazyllm.config['data_path'], 'sft_embeding/rerank.jsonl')
@@ -46,6 +50,25 @@ class TestFinetune(object):
         ppl()
         assert self.has_bin_file(os.path.join(self.save_path, 'lazyllm_lora'))
         assert self.has_bin_file(os.path.join(self.save_path, 'lazyllm_merge'))
+
+    def test_finetune_vlm_llamafactory(self):
+        m = lazyllm.TrainableModule(self.vlm_path, self.save_path)\
+            .mode('finetune')\
+            .trainset(self.vlm_data)\
+            .finetune_method(
+                (lazyllm.finetune.llamafactory, {
+                    'learning_rate': 1e-4,
+                    'cutoff_len': 5120,
+                    'max_samples': 20000,
+                    'val_size': 0.01,
+                    'num_train_epochs': 1.0,
+                    'per_device_train_batch_size': 4,
+                }))
+        m.update()
+        assert self.has_bin_file(m.finetuned_model_path)
+        image_path = os.path.join(lazyllm.config['data_path'], 'ci_data/vqa_rad/imgs/train_image_0.jpg')
+        res = m(encode_query_with_filepaths('are regions of the brain infarcted?', image_path))
+        assert type(res) is str
 
     def test_finetune_embedding(self):
         m = lazyllm.TrainableModule(self.embed_path, self.save_path)\

@@ -49,8 +49,7 @@ class ImageReader(LazyLLMReaderBase):
         self._parse_text = parse_text
         self._pytesseract_model_kwargs = pytesseract_model_kwargs or {}
 
-    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                   fs: Optional[AbstractFileSystem] = None) -> List[ImageDocNode]:
+    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[ImageDocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:
@@ -95,4 +94,4 @@ class ImageReader(LazyLLMReaderBase):
                 model = cast(pytesseract, self._parser_config['model'])
                 text_str = model.image_to_string(image, **self._pytesseract_model_kwargs)
 
-        return [ImageDocNode(text=text_str, image_path=str(file), global_metadata=extra_info)]
+        return [ImageDocNode(text=text_str, image_path=str(file))]

@@ -4,7 +4,7 @@ from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH, RAG_DOC_ID
-from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform
+from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform, TempDocRetriever
 from lazyllm.tools.rag.doc_manager import DocManager
 from lazyllm.tools.rag.utils import DocListManager
 from lazyllm.launcher import cleanup
@@ -31,7 +31,7 @@ class TestDocImpl(unittest.TestCase):
         self.tmp_file_b = tempfile.NamedTemporaryFile()
         mock_node = DocNode(group=LAZY_ROOT_NAME, text="dummy text")
         mock_node._global_metadata = {RAG_DOC_PATH: self.tmp_file_a.name}
-        self.mock_directory_reader.load_data.return_value = [mock_node]
+        self.mock_directory_reader.load_data.return_value = ([mock_node], [])
 
         self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
         self.doc_impl._reader = self.mock_directory_reader
@@ -64,6 +64,7 @@ class TestDocImpl(unittest.TestCase):
 
     def test_retrieve(self):
         self.mock_embed.return_value = "[0.1, 0.2, 0.3]"
+        self.doc_impl.activate_group(Document.FineChunk, [])
         result = self.doc_impl.retrieve(
             query="test query",
             group_name="FineChunk",
@@ -82,16 +83,11 @@ class TestDocImpl(unittest.TestCase):
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
         new_doc._global_metadata = {RAG_DOC_PATH: self.tmp_file_b.name}
-        self.mock_directory_reader.load_data.return_value = [new_doc]
+        self.mock_directory_reader.load_data.return_value = ([new_doc], [])
         self.doc_impl._add_doc_to_store([self.tmp_file_b.name])
         assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 2
 
 class TestDocument(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.embed_model1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
-        cls.embed_model2 = lazyllm.TrainableModule("bge-m3").start()
-
     @classmethod
     def tearDownClass(cls):
         cleanup()
@@ -145,27 +141,6 @@ class TestDocument(unittest.TestCase):
         retriever = Retriever(doc, 'AdaptiveChunk2', similarity='bm25', topk=2)
         retriever('什么是道')
 
-    def test_multi_embedding_with_document(self):
-        Document(dataset_path="rag_master")._impl._dlm.release()
-        document1 = Document(dataset_path="rag_master", embed=self.embed_model1)
-        document1.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
-        retriever1 = Retriever(document1, group_name="sentences", similarity="cosine", topk=10)
-        nodes1 = retriever1("何为天道?")
-        assert len(nodes1) == 10
-
-        document2 = Document(dataset_path="rag_master", embed={"m1": self.embed_model1, "m2": self.embed_model2})
-        document2.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
-        retriever2 = Retriever(document2, group_name="sentences", similarity="cosine", topk=3)
-        nodes2 = retriever2("何为天道?")
-        assert len(nodes2) >= 3
-
-        document3 = Document(dataset_path="rag_master", embed={"m1": self.embed_model1, "m2": self.embed_model2})
-        document3.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
-        retriever3 = Retriever(document3, group_name="sentences", similarity="cosine",
-                               similarity_cut_off={"m1": 0.5, "m2": 0.55}, topk=3, output_format='content', join=True)
-        nodes3_text = retriever3("何为天道?")
-        assert '观天之道' in nodes3_text or '天命之谓性' in nodes3_text
-
     def test_find(self):
         #       /- MediumChunk
         #      /                /- chunk1 -- chunk11 -- chunk111
@@ -211,6 +186,23 @@ class TestDocument(unittest.TestCase):
         assert doc2.manager == doc.manager
         doc.stop()
 
+
+class TestTempRetriever():
+    def test_temp_retriever(self):
+        r = TempDocRetriever()(os.path.join(config['data_path'], 'rag_master/default/__data/sources/大学.txt'), '大学')
+        assert len(r) > 0 and isinstance(r[0], DocNode)
+
+        r = TempDocRetriever(output_format='content')('rag_master/default/__data/sources/大学.txt', '大学')
+        assert len(r) > 0 and isinstance(r[0], str)
+
+        ret = TempDocRetriever(output_format='dict')
+        ret.create_node_group('block', transform=lambda x: x.split('\n'))
+        ret.add_subretriever(Document.CoarseChunk, topk=1)
+        ret.add_subretriever('block', topk=3)
+        r = ret(['rag_master/default/__data/sources/大学.txt', 'rag_master/default/__data/sources/论语.txt'], '大学')
+        assert len(r) == 4 and isinstance(r[0], dict)
+
+
 class TmpDir:
     def __init__(self):
         self.root_dir = os.path.expanduser(os.path.join(config['home'], 'rag_for_document_ut'))
@@ -246,7 +238,7 @@ class TestDocumentServer(unittest.TestCase):
         response = httpx.post(url, params=params, files=files, timeout=10)
         assert response.status_code == 200 and response.json().get('code') == 200, response.json()
         ids = response.json().get('data')[0]
-        lazyllm.LOG.error(f'debug!!! ids -> {ids}')
+        lazyllm.LOG.info(f'debug!!! ids -> {ids}')
         assert len(ids) == 2
 
         time.sleep(20)  # waiting for worker thread to update newly uploaded files

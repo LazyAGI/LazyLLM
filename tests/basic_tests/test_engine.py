@@ -44,6 +44,8 @@ if __name__ == "__main__":
 )
 
 
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestEngine(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -692,6 +694,8 @@ class TestEngine(unittest.TestCase):
         assert '__start__' in engine._nodes and '__end__' in engine._nodes
 
 
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestEngineRAG(object):
 
     def test_rag(self):

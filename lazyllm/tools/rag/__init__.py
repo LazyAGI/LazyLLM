@@ -1,5 +1,5 @@
 from .document import Document
-from .retriever import Retriever
+from .retriever import Retriever, TempDocRetriever
 from .rerank import Reranker, register_reranker
 from .transform import SentenceSplitter, LLMParser, NodeTransform, TransformArgs, AdaptiveTransform
 from .similarity import register_similarity
@@ -18,6 +18,7 @@ __all__ = [
     "Document",
     "Reranker",
     "Retriever",
+    "TempDocRetriever",
     "NodeTransform",
     "AdaptiveTransform",
     "TransformArgs",

@@ -24,6 +24,7 @@ from ..launcher import LazyLLMLaunchersBase as Launcher
 import uuid
 from ..client import get_redis, redis_client
 from ..hook import LazyLLMHook
+from urllib.parse import urljoin
 
 
 # use _MetaBind:
@@ -602,6 +603,12 @@ class ServerModule(UrlModule):
     @property
     def status(self):
         return self._impl._launcher.status
+
+    def _call(self, fname, *args, **kwargs):
+        args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
+        url = urljoin(self._url.rsplit("/", 1)[0], '_call')
+        r = requests.post(url, json=(fname, args, kwargs), headers={'Content-Type': 'application/json'})
+        return pickle.loads(codecs.decode(r.content, "base64"))
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
