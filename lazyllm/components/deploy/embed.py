@@ -3,6 +3,7 @@ import json
 import lazyllm
 from lazyllm import LOG
 from lazyllm.thirdparty import transformers as tf, torch, sentence_transformers, numpy as np, FlagEmbedding as fe
+from .base import LazyLLMDeployBase
 from typing import Union, List, Dict
 
 
@@ -120,7 +121,7 @@ class LazyHuggingFaceRerank(object):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
         return LazyHuggingFaceRerank.rebuild, (self.base_rerank, init)
 
-class EmbeddingDeploy():
+class EmbeddingDeploy(LazyLLMDeployBase):
     message_format = {
         'text': str,
         'images': Union[str, List[str]]

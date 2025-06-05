@@ -6,7 +6,6 @@ from ..deploy.base import LazyLLMDeployBase
 from .configure import get_configer
 from .dependencies.requirements import requirements
 from .auto_helper import model_map, get_model_name, check_requirements
-from lazyllm.components.embedding.embed import EmbeddingDeploy
 from lazyllm.components.stable_diffusion.stable_diffusion3 import StableDiffusionDeploy
 from lazyllm.components.speech_to_text.sense_voice import SenseVoiceDeploy
 from lazyllm.components.text_to_speech.base import TTSDeploy
@@ -27,7 +26,7 @@ class AutoDeploy(LazyLLMDeployBase):
         if type in ('embed', 'cross_modal_embed', 'reranker'):
             if lazyllm.config['default_embedding_engine'] == 'transformers' or lazyllm.config['default_embedding_engine'] == 'flagEmbedding' \
                 or kw.get('embed_type')=='sparse' or not check_requirements('infinity_emb'):
-                return EmbeddingDeploy((launcher or launchers.remote(ngpus=1)), model_type=type,
+                return deploy.Embedding((launcher or launchers.remote(ngpus=1)), model_type=type,
                                        log_path=log_path, embed_type=kw.get('embed_type', 'dense'))
             else:
                 return deploy.Infinity((launcher or launchers.remote(ngpus=1)), model_type=type, log_path=log_path)
