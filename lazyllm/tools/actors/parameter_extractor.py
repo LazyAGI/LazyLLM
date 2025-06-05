@@ -92,19 +92,20 @@ class ParameterExtractor(ModuleBase):
         res = self._m(query, **kw)
         res = res.split("\n")
         ret = dict()
+        is_success = True
         for param in res:
             try:
                 t = json.loads(param)
+                if '__is_success' in t:
+                    is_success &= t['__is_success']==1
+                if '__reason' in t:
+                    ret['__reason'] = t['__reason']
                 for k, v in t.items():
                     if k in self._param_dict:
-                        ret[k] = None
-                        if (
-                            isinstance(v, self._param_dict[k])
-                            and "__is_success" in t
-                            and t["__is_success"] == 1
-                        ):
-                            ret[k] = v
-                        break
+                        ret[k] = v
+                        if not isinstance(v, self._param_dict[k]):
+                            is_success=False
             except Exception:
                 continue
+        ret['__is_success'] = 1 if is_success else 0
         return ret
