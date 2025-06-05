@@ -42,8 +42,8 @@ class DocNode:
         self.relevance_score = None
         self.similarity_score = None
 
-        if global_metadata and parent:
-            raise ValueError('only ROOT node can set global metadata.')
+        # if global_metadata and parent:
+        #     raise ValueError('only ROOT node can set global metadata.')
         self._global_metadata = global_metadata or {}
 
     @property
@@ -94,17 +94,23 @@ class DocNode:
 
     @property
     def global_metadata(self) -> Dict[str, Any]:
-        return self.root_node._global_metadata
+        if isinstance(self.parent, DocNode):
+            return {**self.root_node._global_metadata, **self._global_metadata}
+        else:
+            return self._global_metadata
 
     @global_metadata.setter
     def global_metadata(self, global_metadata: Dict) -> None:
-        if self.parent:
-            raise ValueError("only root node can set global metadata.")
+        # if self.parent:
+        #     raise ValueError("only root node can set global metadata.")
         self._global_metadata = global_metadata
 
     @property
     def metadata(self) -> Dict:
-        return {**self.root_node._metadata, **self._metadata}
+        if isinstance(self.parent, DocNode):
+            return {**self.root_node._metadata, **self._metadata}
+        else:
+            return self._metadata
 
     @metadata.setter
     def metadata(self, metadata: Dict) -> None:
@@ -112,7 +118,10 @@ class DocNode:
 
     @property
     def excluded_embed_metadata_keys(self) -> List:
-        return list(set(self.root_node._excluded_embed_metadata_keys + self._excluded_embed_metadata_keys))
+        if isinstance(self.parent, DocNode):
+            return list(set(self.root_node._excluded_embed_metadata_keys + self._excluded_embed_metadata_keys))
+        else:
+            return self._excluded_embed_metadata_keys
 
     @excluded_embed_metadata_keys.setter
     def excluded_embed_metadata_keys(self, excluded_embed_metadata_keys: List) -> None:
@@ -120,7 +129,10 @@ class DocNode:
 
     @property
     def excluded_llm_metadata_keys(self) -> List:
-        return list(set(self.root_node._excluded_llm_metadata_keys + self._excluded_llm_metadata_keys))
+        if isinstance(self.parent, DocNode):
+            return list(set(self.root_node._excluded_llm_metadata_keys + self._excluded_llm_metadata_keys))
+        else:
+            return self._excluded_llm_metadata_keys
 
     @excluded_llm_metadata_keys.setter
     def excluded_llm_metadata_keys(self, excluded_llm_metadata_keys: List) -> None:
@@ -128,7 +140,10 @@ class DocNode:
 
     @property
     def docpath(self) -> str:
-        return self.root_node._global_metadata.get(RAG_DOC_PATH, '')
+        if isinstance(self.parent, DocNode):
+            return self.root_node._global_metadata.get(RAG_DOC_PATH, '')
+        else:
+            return self.global_metadata.get(RAG_DOC_PATH, '')
 
     @docpath.setter
     def docpath(self, path):

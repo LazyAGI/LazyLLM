@@ -179,7 +179,6 @@ class DocStoreBase(ABC):
         segment_store: SegmentStoreBase = None,
         vector_store: VectorStoreBase = None,
         uri: str = "",
-        active_groups: List[str] = None,
     ):
         # uri or (segment_store + vector_store)
         if uri:
@@ -195,9 +194,6 @@ class DocStoreBase(ABC):
             raise ValueError("Either uri or (segment_store, vector_store) must be provided")
         self._kb_id = kb_id
         self._activated_groups: Set = {LAZY_ROOT_NAME, LAZY_IMAGE_GROUP}
-
-        if active_groups:
-            self.activate_group(active_groups)
 
     @abstractmethod
     def _connect_store(self, uri: str) -> bool:
@@ -253,7 +249,7 @@ class DocStoreBase(ABC):
     @property
     def all_groups(self) -> List[str]:
         """ get all node groups for Document """
-        return self._active_groups
+        return list(self._activated_groups)
 
     def activate_group(self, group_names: Union[str, List[str]]) -> bool:
         if isinstance(group_names, str): group_names = [group_names]

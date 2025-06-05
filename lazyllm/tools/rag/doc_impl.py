@@ -9,7 +9,7 @@ from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMP
                         TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
 from .store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
-from .store import MapStore, SenseCoreStore
+from .store import MapStore, SenseCoreStore, DocStoreBase
 from .chroma_store import ChromadbStore
 from .milvus_store import MilvusStore
 from .smart_embedding_index import SmartEmbeddingIndex
@@ -236,7 +236,8 @@ class DocImpl:
                                 embed_dims=embed_dims, embed_datatypes=embed_datatypes,
                                 global_metadata_desc=self._global_metadata_desc, **kwargs)
         elif store_type == "sensecore":
-            store = SenseCoreStore(global_metadata_desc=self._global_metadata_desc, **kwargs)
+            store = SenseCoreStore(group_embed_keys=self._activated_embeddings,
+                                   global_metadata_desc=self._global_metadata_desc, **kwargs)
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {store_type}"
@@ -374,7 +375,10 @@ class DocImpl:
                 # update status and need_reparse
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working, new_need_reparse=False)
-                self._delete_doc_from_store(filepaths)
+                if isinstance(self.store, DocStoreBase):
+                    self._delete_doc_from_store(doc_ids=ids)
+                else:
+                    self._delete_doc_from_store(input_files=filepaths)
                 self._add_doc_to_store(input_files=filepaths, ids=ids, metadatas=metadatas)
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.success)
@@ -386,7 +390,10 @@ class DocImpl:
             # Step 3: do doc-deleting
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
             if files:
-                self._delete_doc_from_store(files)
+                if isinstance(self.store, DocStoreBase):
+                    self._delete_doc_from_store(doc_ids=ids)
+                else:
+                    self._delete_doc_from_store(input_files=files)
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
 
             # Step 4: do doc-adding
@@ -424,8 +431,11 @@ class DocImpl:
         if not input_files: return
         self._processor.add_doc(input_files, ids, metadatas)
 
-    def _delete_doc_from_store(self, input_files: List[str]) -> None:
-        return self._processor.delete_doc(input_files)
+    def _delete_doc_from_store(self, input_files: List[str] = None, doc_ids: List[str] = None) -> None:
+        if input_files:
+            self._processor.delete_doc(input_files=input_files)
+        elif doc_ids:
+            self._processor.delete_doc(doc_ids=doc_ids)
 
     def activate_group(self, group_name: str, embed_keys: List[str]):
         group_name = str(group_name)

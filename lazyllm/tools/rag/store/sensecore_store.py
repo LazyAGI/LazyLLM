@@ -37,12 +37,12 @@ class Segment(BaseModel):
     document_id: str
     group: str
     content: Optional[str] = ""
-    meta: Dict[str, Any]
+    meta: str
+    global_meta: str
     excluded_embed_metadata_keys: Optional[List[str]] = []
     excluded_llm_metadata_keys: Optional[List[str]] = []
-    global_meta: Optional[Dict[str, Any]] = {}
     parent: str
-    children: Dict[str, List[str]] = []
+    children: Dict[str, Any] = {}
     embedding_state: Optional[List[str]] = []
     answer: Optional[str] = ""
     image_keys: Optional[List[str]] = []
@@ -81,7 +81,6 @@ class SenseCoreStore(DocStoreBase):
 
     def _serialize_node(self, node: DocNode) -> Dict:
         """ serialize node to dict """
-
         segment = Segment(
             segment_id=node._uid,
             document_id=node.global_metadata.get(RAG_DOC_ID),
@@ -170,7 +169,7 @@ class SenseCoreStore(DocStoreBase):
 
         if node._group == LAZY_ROOT_NAME:
             obj_key = node._content
-            node._content = download_data_from_s3(
+            content = download_data_from_s3(
                 bucket_name=self._s3_config["bucket_name"],
                 object_key=obj_key,
                 aws_access_key_id=self._s3_config["access_key"],
@@ -179,6 +178,7 @@ class SenseCoreStore(DocStoreBase):
                 endpoint_url=self._s3_config["endpoint_url"],
                 encoding="utf-8"
             )
+            node._content = json.loads(content)
         return node
 
     def _create_filters_str(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
@@ -300,8 +300,15 @@ class SenseCoreStore(DocStoreBase):
             }
         if group_name:
             payload["group"] = group_name
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()
+            response = requests.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+        else:
+            for group in self.activated_groups():
+                if not self.is_group_active(group):
+                    continue
+                payload["group"] = group
+                response = requests.post(url, headers=headers, json=payload)
+                response.raise_for_status()
         return
 
     @override
@@ -356,6 +363,7 @@ class SenseCoreStore(DocStoreBase):
         """ search nodes from the store """
 
         url = urljoin(self._uri, "v1/segments:hybrid")
+        self.get_nodes(group_name="block")
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
@@ -407,18 +415,22 @@ class SenseCoreStore(DocStoreBase):
     @override
     def is_group_active(self, name: str) -> bool:
         """ check if a group has nodes (active) """
-        url = urljoin(self._uri, "/v1/segments:scroll")
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "dataset_id": self._kb_id,
-            "group": name,
-        }
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        data = response.json()
-        if len(data.get("segments", [])):
-            return True
+        try:
+            url = urljoin(self._uri, "/v1/segments:scroll")
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "dataset_id": self._kb_id,
+                "group": name,
+            }
+            response = requests.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            if len(data.get("segments", [])):
+                return True
+        except Exception as e:
+            LOG.error(f"is_group_active error for group {name}: {str(e)}")
+
         return False
