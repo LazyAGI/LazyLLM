@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from urllib.parse import urljoin
 from typing import Optional, List, Dict, Any, Union, Set
 
-from lazyllm import warp, pipeline
+from lazyllm import warp, pipeline, LOG
 from lazyllm.common import override
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.index_base import IndexBase
@@ -18,11 +18,11 @@ from lazyllm.tools.rag.doc_node import (
     QADocNode
 )
 from lazyllm.tools.rag.global_metadata import (GlobalMetadataDesc, RAG_DOC_ID)
-from lazyllm.tools.rag.store.store_base import DocStoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP, BUILDIN_GLOBAL_META_DESC
+from lazyllm.tools.rag.store.store_base import DocStoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC
 from lazyllm.tools.rag.store.utils import upload_data_to_s3, download_data_from_s3
 
 INSERT_BATCH_SIZE = 3000
-INSERT_MAX_RETRIES = 20
+INSERT_MAX_RETRIES = 10
 
 def _fibonacci_backoff(max_retries: int = INSERT_MAX_RETRIES):
     a, b = 1, 1
@@ -33,10 +33,10 @@ def _fibonacci_backoff(max_retries: int = INSERT_MAX_RETRIES):
 
 class Segment(BaseModel):
     segment_id: str
-    knowledge_base_id: Optional[str] = "__default__"
+    dataset_id: Optional[str] = "__default__"
     document_id: str
-    group_name: str
-    content: str
+    group: str
+    content: Optional[str] = ""
     meta: Dict[str, Any]
     excluded_embed_metadata_keys: Optional[List[str]] = []
     excluded_llm_metadata_keys: Optional[List[str]] = []
@@ -49,22 +49,51 @@ class Segment(BaseModel):
 
 
 class SenseCoreStore(DocStoreBase):
-    def __init__(self, kb_id: str = "__default__", uri: str = "",
-                 global_metadata_desc: Dict[str, GlobalMetadataDesc] = None, **kwargs):
+    def __init__(self, group_embed_keys: Dict[str, Set[str]],
+                 global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
+                 kb_id: str = "__default__", uri: str = "", **kwargs):
         super().__init__(kb_id=kb_id, uri=uri)
         if global_metadata_desc:
             self._global_metadata_desc = global_metadata_desc | BUILDIN_GLOBAL_META_DESC
         else:
             self._global_metadata_desc = BUILDIN_GLOBAL_META_DESC
+        self._group_embed_keys = group_embed_keys
         self._s3_config = kwargs.get("s3_config")
+        self._check_s3()
 
     @override
     def _connect_store(self, uri: str) -> bool:
         # TODO get the url for testing connection
         return True
 
+    def _check_s3(self):
+        obj_key = "lazyllm/warmup.txt"
+        upload_data_to_s3(
+            "warmup",
+            bucket_name=self._s3_config["bucket_name"],
+            object_key=obj_key,
+            aws_access_key_id=self._s3_config["access_key"],
+            aws_secret_access_key=self._s3_config["secret_access_key"],
+            use_minio=self._s3_config["use_minio"],
+            endpoint_url=self._s3_config["endpoint_url"],
+        )
+        return
+
     def _serialize_node(self, node: DocNode) -> Dict:
         """ serialize node to dict """
+
+        segment = Segment(
+            segment_id=node._uid,
+            document_id=node.global_metadata.get(RAG_DOC_ID),
+            group=node._group,
+            meta=json.dumps(node.metadata),
+            excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
+            excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
+            global_meta=json.dumps(node.global_metadata),
+            parent=node.parent._uid if node.parent else "",
+            children={group: {"ids": [n._uid for n in c_l]} for group, c_l in node.children.items()},
+            embedding_state=node._embedding_state,
+        )
 
         if node._group == LAZY_ROOT_NAME:
             content = json.dumps(node._content)
@@ -78,8 +107,11 @@ class SenseCoreStore(DocStoreBase):
                 use_minio=self._s3_config["use_minio"],
                 endpoint_url=self._s3_config["endpoint_url"],
             )
-            node._content = obj_key
-        elif node._group == LAZY_IMAGE_GROUP:
+            segment.content = obj_key
+        else:
+            segment.content = node._content
+
+        if isinstance(node, ImageDocNode):
             image_path = node._image_path
             image_file_name = os.path.basename(image_path)
             obj_key = f"lazyllm/images/{image_file_name}"
@@ -93,26 +125,9 @@ class SenseCoreStore(DocStoreBase):
                     use_minio=self._s3_config["use_minio"],
                     endpoint_url=self._s3_config["endpoint_url"],
                 )
-                node._image_path = obj_key
-        segment = Segment(
-            segment_id=node._uid,
-            document_id=node.metadata.get(RAG_DOC_ID),
-            group_name=node._group,
-            content=node._content if isinstance(node._content, str) else json.dumps(node._content),
-            meta=node.metadata,
-            excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
-            excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
-            global_meta=node.global_metadata,
-            parent=node.parent._uid if node.parent else "",
-            children={group: [n._uid for n in c_l] for group, c_l in node.children.items()},
-            embedding_state=node._embedding_state,
-        )
-
-        if isinstance(node, ImageDocNode):
-            segment.image_keys = [node._image_path]
+                segment.image_keys = [image_path]
         elif isinstance(node, QADocNode):
             segment.answer = node._answer
-
         return segment.model_dump()
 
     def _deserialize_node(self, segment: Dict) -> DocNode:
@@ -122,32 +137,37 @@ class SenseCoreStore(DocStoreBase):
                 query=segment["content"],
                 answer=segment["answer"],
                 uid=segment["segment_id"],
-                group=segment["group_name"],
-                metadata=segment["meta"],
-                global_metadata=segment["global_meta"],
+                group=segment["group"],
+                metadata=json.loads(segment["meta"]),
+                global_metadata=json.loads(segment["global_meta"]),
                 parent=segment["parent"],
             )
         elif len(segment.get("image_keys", [])):
             node = ImageDocNode(
                 image_path=segment["image_keys"][0],
                 uid=segment["segment_id"],
-                group=segment["group_name"],
-                metadata=segment["meta"],
-                global_metadata=segment["global_meta"],
+                group=segment["group"],
+                metadata=json.loads(segment["meta"]),
+                global_metadata=json.loads(segment["global_meta"]),
                 parent=segment["parent"],
             )
         else:
             node = DocNode(
                 uid=segment["segment_id"],
                 content=segment["content"],
-                group=segment["group_name"],
-                metadata=segment["meta"],
-                global_metadata=segment["global_meta"],
+                group=segment["group"],
+                metadata=json.loads(segment["meta"]),
+                global_metadata=json.loads(segment["global_meta"]),
                 parent=segment["parent"],
             )
         node.excluded_llm_metadata_keys = segment["excluded_embed_metadata_keys"]
         node.excluded_embed_metadata_keys = segment["excluded_llm_metadata_keys"]
-        node.children = segment["children"]
+        if segment["children"]:
+            children = {group: item["ids"] for group, item in segment["children"].items()}
+        else:
+            children = {}
+        node.children = children
+
         if node._group == LAZY_ROOT_NAME:
             obj_key = node._content
             node._content = download_data_from_s3(
@@ -189,13 +209,17 @@ class SenseCoreStore(DocStoreBase):
 
         with pipeline() as insert_ppl:
             insert_ppl.get_ids = warp(self._upload_nodes_and_insert).aslist
-            insert_ppl.check_status = warp(self._check_insert_task_status)
+            insert_ppl.check_status = warp(self._check_insert_job_status)
 
         insert_ppl(batched_nodes)
         return
 
     def _upload_nodes_and_insert(self, segments: List[DocNode]) -> str:
         job_id = str(uuid.uuid4())
+        groups = set()
+        for node in segments:
+            groups.add(node._group)
+        groups = list(groups)
         segments = [self._serialize_node(node) for node in segments]
         obj_key = f"lazyllm/segments/{job_id}.jsonl"
 
@@ -209,6 +233,11 @@ class SenseCoreStore(DocStoreBase):
             endpoint_url=self._s3_config["endpoint_url"],
         )
 
+        embed_keys = set()
+        for group in groups:
+            if group in self._group_embed_keys:
+                embed_keys.update(self._group_embed_keys[group])
+
         url = urljoin(self._uri, "v1/writerSegmentJob:submit")
         params = {"writer_segment_job_id": job_id}
         headers = {
@@ -218,11 +247,13 @@ class SenseCoreStore(DocStoreBase):
         payload = {
             "dataset_id": self._kb_id,
             "file_key": obj_key,
+            "groups": groups,
+            "embedding_confs": [{"model": model_key} for model_key in embed_keys]
         }
 
         response = requests.post(url, params=params, headers=headers, json=payload)
         response.raise_for_status()
-
+        LOG.info(f"SenseCore Store: insert task {job_id} submitted")
         return job_id
 
     def _check_insert_job_status(self, job_id: str) -> None:
@@ -236,6 +267,7 @@ class SenseCoreStore(DocStoreBase):
             response.raise_for_status()
             status = response.json()["state"]
             if status == 2:
+                LOG.info(f"SenseCore Store: insert task {job_id} finished")
                 return
             elif status == 3:
                 raise Exception(f"Insert task {job_id} failed")
@@ -246,6 +278,7 @@ class SenseCoreStore(DocStoreBase):
     @override
     def remove_nodes(
         self,
+        group_name: Optional[str] = None,
         doc_ids: Optional[List[str]] = None,
         uids: Optional[List[str]] = None
     ) -> None:
@@ -265,6 +298,8 @@ class SenseCoreStore(DocStoreBase):
                 "dataset_id": self._kb_id,
                 "segment_ids": uids,
             }
+        if group_name:
+            payload["group"] = group_name
         response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
         return
@@ -330,6 +365,12 @@ class SenseCoreStore(DocStoreBase):
         for embed_key in embed_keys:
             payload = {
                 "query": query,
+                "hybrid_search_datasets": [
+                    {
+                        "dataset_id": self._kb_id,
+                    }
+                ],
+                "hybrid_search_type": 2,
                 "top_k": topk,
                 "filters": filter_str,
                 "group": group_name,

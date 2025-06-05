@@ -1,5 +1,6 @@
 import json
 import ast
+from enum import Enum
 from functools import wraps
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
@@ -8,7 +9,7 @@ from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMP
                         TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
 from .store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
-from .store import MapStore
+from .store import MapStore, SenseCoreStore
 from .chroma_store import ChromadbStore
 from .milvus_store import MilvusStore
 from .smart_embedding_index import SmartEmbeddingIndex
@@ -62,30 +63,43 @@ class EmbedPlaceholder:
     pass
 
 
+class NodeGroupType(str, Enum):
+    ORIGINAL = "Original Source"
+    CHUNK = "Chunk"
+    SUMMARY = "Summary"
+    IMAGE_INFO = "Image Info"
+
+
 class BuiltinGroups(object):
     @dataclass
     class Struct:
         name: str
         display_name: str
+        type: NodeGroupType
         args: TransformArgs
         parent: str = LAZY_ROOT_NAME
         trans_node: bool = None
 
         def __str__(self): return self.name
 
-    CoarseChunk = Struct('CoarseChunk', '1024 Tokens Chunk',
+    CoarseChunk = Struct('CoarseChunk', NodeGroupType.CHUNK, '1024 Tokens Chunk',
                          TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=1024, chunk_overlap=100)))
-    MediumChunk = Struct('MediumChunk', '256 Tokens Chunk',
+    MediumChunk = Struct('MediumChunk', NodeGroupType.CHUNK, '256 Tokens Chunk',
                          TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
-    FineChunk = Struct('FineChunk', '128 Tokens Chunk',
+    FineChunk = Struct('FineChunk', NodeGroupType.CHUNK, '128 Tokens Chunk',
                        TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
-    ImgDesc = Struct('ImgDesc', 'Image Description', lambda x: x._content, LAZY_IMAGE_GROUP, True)
+    ImgDesc = Struct('ImgDesc', NodeGroupType.IMAGE_INFO, 'Image Desc',
+                     lambda x: x._content, LAZY_IMAGE_GROUP, True)
 
 
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
     _global_node_groups: Dict[str, Dict] = {}
     _registered_file_reader: Dict[str, Callable] = {}
+    _registered_node_group_info: Dict[str, str] = {
+        LAZY_ROOT_NAME: {"name": "Original Source", "type": NodeGroupType.ORIGINAL},
+        LAZY_IMAGE_GROUP: {"name": "Image Node", "type": NodeGroupType.IMAGE_INFO}
+    }
 
     def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
@@ -97,8 +111,8 @@ class DocImpl:
         self._dlm, self._doc_files = dlm, doc_files
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {
-            LAZY_ROOT_NAME: dict(parent=None, display_name='Original Source'),
-            LAZY_IMAGE_GROUP: dict(parent=None, display_name='Image')
+            LAZY_ROOT_NAME: dict(parent=None),
+            LAZY_IMAGE_GROUP: dict(parent=None)
         }
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self._global_metadata_desc = global_metadata_desc
@@ -125,6 +139,9 @@ class DocImpl:
                 parent_group = self.node_groups[group]['parent']
                 if not parent_group or parent_group in self._activated_groups: break
                 self._activated_groups.add(group := parent_group)
+        for group_name in self.node_groups.keys():
+            if group_name in self._registered_node_group_info:
+                self.node_groups[group_name]['info'] = self._registered_node_group_info[group_name]
 
     def _init_store(self):
         embed_dims, embed_datatypes = {}, {}
@@ -218,6 +235,8 @@ class DocImpl:
             store = MilvusStore(group_embed_keys=self._activated_embeddings, embed=self.embed,
                                 embed_dims=embed_dims, embed_datatypes=embed_datatypes,
                                 global_metadata_desc=self._global_metadata_desc, **kwargs)
+        elif store_type == "sensecore":
+            store = SenseCoreStore(global_metadata_desc=self._global_metadata_desc, **kwargs)
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {store_type}"
@@ -251,7 +270,7 @@ class DocImpl:
     @staticmethod
     def _create_node_group_impl(cls, group_name, name, transform: Union[str, Callable] = None,
                                 parent: str = LAZY_ROOT_NAME, *, trans_node: bool = None,
-                                num_workers: int = 0, display_name: str = None, **kwargs):
+                                num_workers: int = 0, **kwargs):
         group_name, parent = str(group_name), str(parent)
         groups = getattr(cls, group_name)
 
@@ -281,33 +300,25 @@ class DocImpl:
                     'target parameter of Retriever may have strange anomalies. Please use it at your own risk.')
             else:
                 assert callable(t.f), f"transform should be callable, but get {t.f}"
-        if not display_name:
-            display_name = name
-        groups[name] = dict(transform=transforms, parent=parent, display_name=display_name)
+        groups[name] = dict(transform=transforms, parent=parent)
 
     @classmethod
     def _create_builtin_node_group(cls, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
-                                   *, trans_node: bool = None, num_workers: int = 0,
-                                   display_name: str = None, **kwargs) -> None:
+                                   *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
         DocImpl._create_node_group_impl(cls, '_builtin_node_groups', name=name, transform=transform, parent=parent,
-                                        trans_node=trans_node, num_workers=num_workers,
-                                        display_name=display_name, **kwargs)
+                                        trans_node=trans_node, num_workers=num_workers, **kwargs)
 
     @classmethod
     def create_global_node_group(cls, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
-                                 *, trans_node: bool = None, num_workers: int = 0,
-                                 display_name: str = None, **kwargs) -> None:
+                                 *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
         DocImpl._create_node_group_impl(cls, '_global_node_groups', name=name, transform=transform, parent=parent,
-                                        trans_node=trans_node, num_workers=num_workers,
-                                        display_name=display_name, **kwargs)
+                                        trans_node=trans_node, num_workers=num_workers, **kwargs)
 
     def create_node_group(self, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
-                          *, trans_node: bool = None, num_workers: int = 0,
-                          display_name: str = None, **kwargs) -> None:
+                          *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
         assert not self._lazy_init.flag, 'Cannot add node group after document started'
         DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
-                                        trans_node=trans_node, num_workers=num_workers,
-                                        display_name=display_name, **kwargs)
+                                        trans_node=trans_node, num_workers=num_workers, **kwargs)
 
     @classmethod
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
@@ -333,6 +344,13 @@ class DocImpl:
             self.store.register_index(index_type, index_cls(*args, **kwargs))
         else:
             self._index_pending_registrations.append((index_type, index_cls, args, kwargs))
+
+    def register_info_for_group(self, group_name: str, display_name: str, type: NodeGroupType) -> None:
+        self._registered_node_group_info[group_name] = {"name": display_name, "type": type}
+
+    @classmethod
+    def register_info_for_buildin_group(cls, group_name: str, display_name: str, type: NodeGroupType) -> None:
+        cls._registered_node_group_info[group_name] = {"name": display_name, "type": type}
 
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         assert callable(func), 'func for reader should be callable'
@@ -579,7 +597,5 @@ class DocImpl:
 for k, v in BuiltinGroups.__dict__.items():
     if not k.startswith('_') and isinstance(v, BuiltinGroups.Struct):
         assert k == v.name, 'builtin group name mismatch'
-        DocImpl._create_builtin_node_group(
-            name=k, transform=v.args, parent=v.parent,
-            trans_node=v.trans_node, display_name=v.display_name
-        )
+        DocImpl._create_builtin_node_group(name=k, transform=v.args, parent=v.parent, trans_node=v.trans_node)
+        DocImpl.register_info_for_buildin_group(group_name=v.name, display_name=v.display_name, type=v.type)

@@ -7,7 +7,7 @@ from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
 
 from .doc_manager import DocManager
-from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor
+from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files
 from .index_base import IndexBase
@@ -258,14 +258,13 @@ class Document(ModuleBase, BuiltinGroups):
 
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
-                          trans_node: bool = None, num_workers: int = 0,
-                          display_name: str = None, **kwargs) -> None:
+                          trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
         if isinstance(self, type):
             DocImpl.create_global_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
-                                             num_workers=num_workers, display_name=display_name, **kwargs)
+                                             num_workers=num_workers, **kwargs)
         else:
             self._impl.create_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
-                                         num_workers=num_workers, display_name=display_name, **kwargs)
+                                         num_workers=num_workers, **kwargs)
 
     @DynamicDescriptor
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
@@ -286,6 +285,9 @@ class Document(ModuleBase, BuiltinGroups):
 
     def register_index(self, index_type: str, index_cls: IndexBase, *args, **kwargs) -> None:
         self._impl.register_index(index_type, index_cls, *args, **kwargs)
+
+    def register_info_for_group(self, group_name: str, display_name: str, type: NodeGroupType) -> None:
+        self._impl.register_info_for_group(group_name, display_name, type)
 
     def _forward(self, func_name: str, *args, **kw):
         return self._manager(self._curr_group, func_name, *args, **kw)

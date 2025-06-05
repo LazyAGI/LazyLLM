@@ -54,7 +54,7 @@ def upload_data_to_s3(
             Bucket=bucket_name,
             Key=object_key,
         )
-        LOG.debug(f"Upload Successful: s3://{bucket_name}/{object_key}")
+        LOG.info(f"Upload Successful: s3://{bucket_name}/{object_key}")
     except Exception as e:
         LOG.error(f"Upload Failed: {e}")
         raise

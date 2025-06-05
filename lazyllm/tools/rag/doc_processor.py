@@ -13,6 +13,7 @@ import queue
 import threading
 import time
 import requests
+import uuid
 
 class _Processor:
     def __init__(self, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict], server: bool = False):
@@ -110,7 +111,7 @@ class _Processor:
 class FileInfo(BaseModel):
     file_path: str
     doc_id: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = {}
     reparse_group: Optional[str] = None
 
 
@@ -120,8 +121,26 @@ class DBInfo(BaseModel):
     user: str
     password: str
     host: str
-    port: str
-    options_str: str
+    port: int
+    table_name: str
+    options_str: Optional[str] = None
+
+
+class AddDocRequest(BaseModel):
+    task_id: str
+    algo_id: str
+    file_infos: List[FileInfo]
+    db_info: DBInfo
+    feedback_url: Optional[str] = None
+
+
+class DeleteDocRequest(BaseModel):
+    algo_id: str
+    doc_ids: List[str]
+
+
+class CancelDocRequest(BaseModel):
+    task_id: str
 
 
 class DocumentProcessor():
@@ -150,27 +169,34 @@ class DocumentProcessor():
             self._processors[name] = _Processor(store, reader, node_groups)
 
         @app.get('/group/info')
-        async def get_group_info(self, algoid: str) -> None:
-            processor = self._processors[algoid]
+        async def get_group_info(self, algo_id: str) -> None:
+            processor = self._processors[algo_id]
             infos = []
             for group_name in processor._store.activated_groups():
                 if group_name in processor._node_groups:
+                    if processor._node_groups[group_name].get('info', {}).get('type'):
+                        type = processor._node_groups[group_name].get('info', {}).get('type').value
+                        display_name = processor._node_groups[group_name].get('info', {}).get('name')
+                    else:
+                        type = "unknown"
+                        display_name = group_name
                     group_info = {
                         "name": group_name,
-                        "display_name": processor._node_groups[group_name]['display_name'],
+                        "type": type,
+                        "display_name": display_name,
                     }
                     infos.append(group_info)
             return BaseResponse(code=200, msg='success', data=infos)
 
         @app.post('/doc/add')
-        async def async_add_doc(
-            self,
-            task_id: str,
-            algoid: str,
-            file_infos: List[FileInfo],
-            db_info: DBInfo,
-            feedback_url: Optional[str] = None
-        ):
+        async def async_add_doc(self, request: AddDocRequest):
+
+            task_id = request.task_id
+            algo_id = request.algo_id
+            file_infos = request.file_infos
+            db_info = request.db_info
+            feedback_url = request.feedback_url
+
             if task_id in self._pending_task_ids or task_id in self._tasks:
                 return BaseResponse(code=400, msg=f'The task {task_id} already exists in queue', data=None)
 
@@ -180,18 +206,24 @@ class DocumentProcessor():
                 "feedback_url": feedback_url
             }
 
-            self._task_queue.put(('add', algoid, task_id, params))
+            self._task_queue.put(('add', algo_id, task_id, params))
             self._pending_task_ids.add(task_id)
             return BaseResponse(code=200, msg='task submit successfully', data={"task_id": task_id})
 
         @app.delete('/doc/delete')
-        async def async_delete_doc(self, task_id: str, algoid: str, doc_ids: List[str]) -> None:
-            self._task_queue.put(('delete', algoid, task_id, doc_ids))
+        async def async_delete_doc(self, request: DeleteDocRequest) -> None:
+
+            algo_id = request.algo_id
+            doc_ids = request.doc_ids
+
+            task_id = str(uuid.uuid4())
+            self._task_queue.put(('delete', algo_id, task_id, doc_ids))
             self._pending_task_ids.add(task_id)
             return BaseResponse(code=200, msg='task submit successfully', data={"task_id": task_id})
 
         @app.post('/doc/cancel')
-        async def cancel_task(self, task_id: str):
+        async def cancel_task(self, request: CancelDocRequest):
+            task_id = request.task_id
             if task_id in self._pending_task_ids:
                 self._pending_task_ids.remove(task_id)
                 status = 1
@@ -228,7 +260,7 @@ class DocumentProcessor():
         def _worker(self):  # noqa: C901
             while True:
                 try:
-                    task_type, algoid, task_id, params = self._task_queue.get(timeout=1)
+                    task_type, algo_id, task_id, params = self._task_queue.get(timeout=1)
                     if task_id not in self._pending_task_ids:
                         continue
                     if task_type == 'add':
@@ -250,13 +282,14 @@ class DocumentProcessor():
                                 metadatas.append(file_info.metadata)
                         if input_files:
                             future = self._add_executor.submit(
-                                self._processors[algoid].add_doc,
+                                self._processors[algo_id].add_doc,
                                 input_files=input_files,
+                                ids=ids,
                                 metadatas=metadatas
                             )
                         elif reparse_group:
                             future = self._add_executor.submit(
-                                self._processors[algoid].reparse,
+                                self._processors[algo_id].reparse,
                                 group_name=reparse_group,
                                 doc_ids=reparse_docs
                             )
@@ -264,7 +297,7 @@ class DocumentProcessor():
                         self._tasks[task_id] = (future, url)
                     elif task_type == 'delete':
                         doc_ids = params
-                        future = self._delete_executor.submit(self._processors[algoid].delete_doc, doc_ids=doc_ids)
+                        future = self._delete_executor.submit(self._processors[algo_id].delete_doc, doc_ids=doc_ids)
                         self._pending_task_ids.remove(task_id)
                         self._tasks[task_id] = (future, None)
                     time.sleep(0.2)
@@ -298,9 +331,9 @@ class DocumentProcessor():
                         self._tasks.pop(task_id)
                     time.sleep(5)
 
-    def __init__(self, server: bool = True):
+    def __init__(self, server: bool = True, port: int = None):
         self._impl = DocumentProcessor.Impl(server=server)
-        if server: self._impl = ServerModule(self._impl)
+        if server: self._impl = ServerModule(self._impl, port=port)
 
     def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase,
                            node_groups: Dict[str, Dict], force_refresh: bool = False):

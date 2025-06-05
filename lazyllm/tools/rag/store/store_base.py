@@ -12,7 +12,7 @@ from lazyllm.tools.rag.global_metadata import (
 )
 
 LAZY_ROOT_NAME = "lazyllm_root"
-LAZY_IMAGE_GROUP = "Image"
+LAZY_IMAGE_GROUP = "image"
 EMBED_DEFAULT_KEY = '__default__'
 BUILDIN_GLOBAL_META_DESC = {
     RAG_DOC_ID: GlobalMetadataDesc(
@@ -211,6 +211,7 @@ class DocStoreBase(ABC):
     @abstractmethod
     def remove_nodes(
         self,
+        group_name: Optional[str] = None,
         doc_ids: Optional[List[str]] = None,
         uids: Optional[List[str]] = None
     ) -> None:
