@@ -12,3 +12,4 @@ mkdocs.yml
 lazyllm_chroma/
 docs/en/assets
 docs/zh/assets
+infer_log/

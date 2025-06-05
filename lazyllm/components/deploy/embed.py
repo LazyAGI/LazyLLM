@@ -123,8 +123,8 @@ class LazyHuggingFaceRerank(object):
 
 class EmbeddingDeploy(LazyLLMDeployBase):
     message_format = {
-        'text': str,
-        'images': Union[str, List[str]]
+        'text': 'text',  # str,
+        'images': []  # Union[str, List[str]]
     }
     keys_name_handle = {
         'inputs': 'text',

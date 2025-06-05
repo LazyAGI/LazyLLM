@@ -24,7 +24,7 @@ class AutoDeploy(LazyLLMDeployBase):
             type = ModelManager.get_model_type(model_name)
 
         if type in ('embed', 'cross_modal_embed', 'reranker'):
-            if lazyllm.config['default_embedding_engine'] == 'transformers' or lazyllm.config['default_embedding_engine'] == 'flagEmbedding' \
+            if lazyllm.config['default_embedding_engine'] in ('transformers', 'flagEmbedding') \
                 or kw.get('embed_type')=='sparse' or not check_requirements('infinity_emb'):
                 return deploy.Embedding((launcher or launchers.remote(ngpus=1)), model_type=type,
                                        log_path=log_path, embed_type=kw.get('embed_type', 'dense'))
