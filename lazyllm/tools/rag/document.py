@@ -100,7 +100,10 @@ class Document(ModuleBase, BuiltinGroups):
             self._launcher.cleanup()
 
         def __call__(self, *args, **kw):
-            return self._kbs(*args, **kw)
+            if isinstance(self._kbs, ServerModule):
+                return self._kbs._call('__call__', *args, **kw)
+            else:
+                return self._kbs(*args, **kw)
 
     def __new__(cls, *args, **kw):
         if url := kw.pop('url', None):
