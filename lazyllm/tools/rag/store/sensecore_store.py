@@ -52,18 +52,18 @@ class SenseCoreStore(DocStoreBase):
     def __init__(self, group_embed_keys: Dict[str, Set[str]],
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
                  kb_id: str = "__default__", uri: str = "", **kwargs):
-        super().__init__(kb_id=kb_id, uri=uri)
         if global_metadata_desc:
             self._global_metadata_desc = global_metadata_desc | BUILDIN_GLOBAL_META_DESC
         else:
             self._global_metadata_desc = BUILDIN_GLOBAL_META_DESC
         self._group_embed_keys = group_embed_keys
         self._s3_config = kwargs.get("s3_config")
-        self._check_s3()
+        super().__init__(kb_id=kb_id, uri=uri)
 
     @override
     def _connect_store(self, uri: str) -> bool:
         # TODO get the url for testing connection
+        self._check_s3()
         return True
 
     def _check_s3(self):
@@ -363,7 +363,6 @@ class SenseCoreStore(DocStoreBase):
         """ search nodes from the store """
 
         url = urljoin(self._uri, "v1/segments:hybrid")
-        self.get_nodes(group_name="block")
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
@@ -411,6 +410,17 @@ class SenseCoreStore(DocStoreBase):
             node.metadata.update(metadata)
         self.update_nodes(nodes)
         return
+
+    @override
+    def activate_group(self, group_names: Union[str, List[str]]) -> bool:
+        if isinstance(group_names, str): group_names = [group_names]
+        active_groups = []
+        for group_name in group_names:
+            if group_name.isupper():
+                LOG.error(f"Group name {group_name} should be lowercase (`_` is allowed)")
+                continue
+            active_groups.append(group_name)
+        self._activated_groups.update(active_groups)
 
     @override
     def is_group_active(self, name: str) -> bool:
