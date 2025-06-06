@@ -5,13 +5,12 @@ from functools import wraps
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
 from lazyllm import LOG, once_wrapper
+from lazyllm.tools.rag.store.store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
-from .store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
-from .store import MapStore, SenseCoreStore, DocStoreBase
-from .chroma_store import ChromadbStore
-from .milvus_store import MilvusStore
+from .store import MapStore, MilvusStore, ChromadbStore, SenseCoreStore, DocStoreBase
 from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader

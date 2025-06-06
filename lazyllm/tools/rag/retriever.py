@@ -1,7 +1,8 @@
 from lazyllm import ModuleBase, once_wrapper
+from lazyllm.tools.rag.store.store_base import LAZY_ROOT_NAME
+
 from .doc_node import DocNode
 from .document import Document, UrlDocument, DocImpl
-from .store_base import LAZY_ROOT_NAME
 from typing import List, Optional, Union, Dict, Set, Callable
 from .similarity import registered_similarities
 import lazyllm

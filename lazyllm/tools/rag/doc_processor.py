@@ -3,8 +3,9 @@ from collections import defaultdict
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 from lazyllm import LOG, ServerModule, FastapiApp as app, ThreadPoolExecutor, config
+from lazyllm.tools.rag.store.store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+
 from .transform import (AdaptiveTransform, make_transform,)
-from .store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from .readers import ReaderBase
 from .doc_node import DocNode
 from .utils import gen_docid, BaseResponse

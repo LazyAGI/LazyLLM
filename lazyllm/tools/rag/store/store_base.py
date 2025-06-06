@@ -91,10 +91,6 @@ class StoreBase(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def clear_cache(self, group_names: Optional[List[str]]) -> bool:
-        raise NotImplementedError
-
-    @abstractmethod
     def update_doc_meta(self, filepath: str, metadata: dict) -> None:
         """ update doc meta """
         raise NotImplementedError
@@ -116,6 +112,18 @@ class StoreBase(ABC):
     def is_group_active(self, name: str) -> bool:
         """ check if a group has nodes (active) """
         raise NotImplementedError
+
+    def clear_cache(self, group_names: Optional[List[str]]) -> None:
+        if group_names is None:
+            group_names = self.all_groups()
+        elif isinstance(group_names, str):
+            group_names = [group_names]
+        elif isinstance(group_names, (tuple, list, set)):
+            group_names = list(group_names)
+        else:
+            raise TypeError(f"Invalid type {type(group_names)} for group_names, expected list of str")
+        for group_name in group_names:
+            self.remove_nodes(group_name, None)
 
 
 class StoreBaseMixin:

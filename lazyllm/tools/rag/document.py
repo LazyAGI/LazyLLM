@@ -5,13 +5,13 @@ import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
+from lazyllm.tools.rag.store.store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 
 from .doc_manager import DocManager
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files
 from .index_base import IndexBase
-from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .utils import DocListManager
 from .global_metadata import GlobalMetadataDesc as DocField
 from .web import DocWebModule
@@ -143,6 +143,7 @@ class Document(ModuleBase, BuiltinGroups):
         else:
             if isinstance(manager, DocumentProcessor):
                 processor, cloud = manager, True
+                processor._impl.start()
                 manager = False
                 assert name, '`Name` of Document is necessary when using cloud service'
                 assert store_conf['type'] != 'map', 'Cloud manager is not supported when using map store'
@@ -238,7 +239,8 @@ class Document(ModuleBase, BuiltinGroups):
 
     @property
     @deprecated('Document._manager')
-    def _impls(self): return self._manager
+    def _impls(self):
+        return self._manager
 
     @property
     def _impl(self) -> DocImpl: return self._manager.get_doc_by_kb_group(self._curr_group)

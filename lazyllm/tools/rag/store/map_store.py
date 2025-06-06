@@ -46,6 +46,7 @@ class MapStore(StoreBase):
     @override
     def remove_nodes(
         self,
+        group_name: Optional[str] = None,
         doc_ids: Optional[Set[str]] = None,
         uids: Optional[List[str]] = None
     ) -> None:
@@ -66,7 +67,7 @@ class MapStore(StoreBase):
         for uid in need_delete:
             node = self._uid2node.pop(uid, None)
             if node:
-                self._group2uids.get(node._group, {}).pop(uid, None)
+                self._group2uids.get(node._group, set()).discard(uid)
 
     @override
     def get_nodes(
