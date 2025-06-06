@@ -47,6 +47,8 @@ class ParameterExtractor(ModuleBase):
         str.__name__: str,
         float.__name__: float,
         bool.__name__: bool,
+        list.__name__: list,
+        dict.__name__: dict,
     }
 
     def __init__(
