@@ -114,11 +114,7 @@ class ModuleReranker(Reranker):
 
         docs = [node.get_text(metadata_mode=MetadataMode.EMBED) for node in nodes]
         top_n = self._kwargs['topk'] if 'topk' in self._kwargs else len(docs)
-        if self._reranker.type == "ONLINE_RERANK" or self._reranker._deploy_type == lazyllm.deploy.Infinity:
-            sorted_indices = self._reranker(query, documents=docs, top_n=top_n)
-        else:
-            inps = {'query': query, 'documents': docs, 'top_n': top_n}
-            sorted_indices = self._reranker(inps)
+        sorted_indices = self._reranker(query, documents=docs, top_n=top_n)
         results = []
         for index, relevance_score in sorted_indices:
             results.append(nodes[index].with_score(relevance_score))

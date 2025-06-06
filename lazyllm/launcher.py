@@ -1478,8 +1478,8 @@ class ScoLauncher(LazyLLMLaunchersBase):
                         return Status.Cancelled
                     elif job_state == 'succeeded':
                         return Status.Done
-                except Exception:
-                    pass
+                except Exception as e:
+                    lazyllm.LOG.error(f'Failed to get job status, reason is {str(e)}')
             return Status.Failed
 
     def __init__(self, partition=None, workspace_name=lazyllm.config['sco.workspace'],

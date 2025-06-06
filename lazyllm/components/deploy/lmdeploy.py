@@ -36,7 +36,7 @@ class LMDeploy(LazyLLMDeployBase):
     }
     auto_map = {}
 
-    def __init__(self, launcher=launchers.remote(ngpus=1), stream=False, log_path=None, **kw):
+    def __init__(self, launcher=launchers.remote(ngpus=1), log_path=None, **kw):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'server-name': '0.0.0.0',
