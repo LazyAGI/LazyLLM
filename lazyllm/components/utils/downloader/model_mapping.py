@@ -265,5 +265,33 @@ model_name_mapping = {
             "modelscope": "AI-ModelScope/stable-diffusion-3-medium-diffusers"
         },
         "type": "sd"
+    },
+    "stable-diffusion-3_5-large": {
+        "source": {
+            "huggingface": "stabilityai/stable-diffusion-3.5-large",
+            "modelscope": "AI-ModelScope/stable-diffusion-3.5-large"
+        },
+        "type": "sd"
+    },
+    "flux.1-dev": {
+        "source": {
+            "huggingface": "black-forest-labs/FLUX.1-dev",
+            "modelscope": "MusePublic/489_ckpt_FLUX_1"
+        },
+        "type": "sd"
+    },
+    "cogview4-6b": {
+        "source": {
+            "huggingface": "THUDM/CogView4-6B",
+            "modelscope": "ZhipuAI/CogView4-6B"
+        },
+        "type": "sd"
+    },
+    "wan2_1-t2v-1_3b-diffusers": {
+        "source": {
+            "huggingface": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+            "modelscope": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+        },
+        "type": "sd"
     }
 }
