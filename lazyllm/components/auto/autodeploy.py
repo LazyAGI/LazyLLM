@@ -37,7 +37,7 @@ class AutoDeploy(LazyLLMDeployBase):
         elif type == 'tts':
             return TTSDeploy(model_name, log_path=log_path, launcher=(launcher or launchers.remote(ngpus=1)))
         elif type == 'vlm':
-            return deploy.LMDeploy((launcher or launchers.remote(ngpus=1)), stream=stream, log_path=log_path, **kw)
+            return deploy.LMDeploy((launcher or launchers.remote(ngpus=1)), log_path=log_path, **kw)
 
         map_name, size = model_map(model_name)
         if not launcher:
@@ -57,6 +57,5 @@ class AutoDeploy(LazyLLMDeployBase):
             for key, value in deploy_cls.auto_map.items():
                 if value:
                     kw[value] = getattr(c, key)
-            return deploy_cls(trust_remote_code=trust_remote_code, launcher=launcher,
-                              stream=stream, log_path=log_path, **kw)
+            return deploy_cls(trust_remote_code=trust_remote_code, launcher=launcher, log_path=log_path, **kw)
         raise RuntimeError(f'No valid framework found, candidates are {[c.framework.lower() for c in candidates]}')

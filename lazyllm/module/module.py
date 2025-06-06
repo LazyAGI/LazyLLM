@@ -717,7 +717,8 @@ class _TrainableModuleImpl(ModuleBase):
             self._deployer = self._deploy(base_model=self._base_model, **self._deploy_args)
             self._set_template(self._deployer)
         else:
-            self._deployer = self._deploy(**self._deploy_args)
+            kwargs = {'stream': self._stream} if self._deploy is lazyllm.deploy.dummy else {}
+            self._deployer = self._deploy(**kwargs, **self._deploy_args)
 
         def before_deploy(*no_use_args):
             if hasattr(self, '_temp_finetuned_model_path') and self._temp_finetuned_model_path:
