@@ -88,8 +88,8 @@ class ParameterExtractor(ModuleBase):
                 return ch_parameter_extractor_prompt
         return en_parameter_extractor_prompt
 
-    def forward(self, query: str, **kw):
-        res = self._m(query, **kw)
+    def forward(self, *args, **kw):
+        res = self._m(*args, **kw)
         res = res.split("\n")
         ret = dict()
         is_success = True
@@ -97,14 +97,14 @@ class ParameterExtractor(ModuleBase):
             try:
                 t = json.loads(param)
                 if '__is_success' in t:
-                    is_success &= t['__is_success']==1
+                    is_success &= t['__is_success'] == 1
                 if '__reason' in t:
                     ret['__reason'] = t['__reason']
                 for k, v in t.items():
                     if k in self._param_dict:
                         ret[k] = v
                         if not isinstance(v, self._param_dict[k]):
-                            is_success=False
+                            is_success = False
             except Exception:
                 continue
         ret['__is_success'] = 1 if is_success else 0

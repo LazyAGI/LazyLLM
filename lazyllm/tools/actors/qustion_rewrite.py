@@ -61,8 +61,8 @@ class QustionRewrite(ModuleBase):
                 return ch_qustion_rewrite_prompt
         return en_qustion_rewrite_prompt
 
-    def forward(self, query: str, **kw):
-        res = self._m(query, **kw)
+    def forward(self, *args, **kw):
+        res = self._m(*args, **kw)
         if self.formatter == "list":
             return list(filter(None, res.split('\n')))
         else:
