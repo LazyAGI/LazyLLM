@@ -5,13 +5,13 @@ import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
+from lazyllm.tools.rag.store.store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 
 from .doc_manager import DocManager
-from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor
+from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files
 from .index_base import IndexBase
-from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .utils import DocListManager
 from .global_metadata import GlobalMetadataDesc as DocField
 from .web import DocWebModule
@@ -100,7 +100,10 @@ class Document(ModuleBase, BuiltinGroups):
             self._launcher.cleanup()
 
         def __call__(self, *args, **kw):
-            return self._kbs(*args, **kw)
+            if isinstance(self._kbs, ServerModule):
+                return self._kbs._call('__call__', *args, **kw)
+            else:
+                return self._kbs(*args, **kw)
 
     def __new__(cls, *args, **kw):
         if url := kw.pop('url', None):
@@ -143,6 +146,7 @@ class Document(ModuleBase, BuiltinGroups):
         else:
             if isinstance(manager, DocumentProcessor):
                 processor, cloud = manager, True
+                processor._impl.start()
                 manager = False
                 assert name, '`Name` of Document is necessary when using cloud service'
                 assert store_conf['type'] != 'map', 'Cloud manager is not supported when using map store'
@@ -238,7 +242,8 @@ class Document(ModuleBase, BuiltinGroups):
 
     @property
     @deprecated('Document._manager')
-    def _impls(self): return self._manager
+    def _impls(self):
+        return self._manager
 
     @property
     def _impl(self) -> DocImpl: return self._manager.get_doc_by_kb_group(self._curr_group)
@@ -286,6 +291,9 @@ class Document(ModuleBase, BuiltinGroups):
     def register_index(self, index_type: str, index_cls: IndexBase, *args, **kwargs) -> None:
         self._impl.register_index(index_type, index_cls, *args, **kwargs)
 
+    def register_info_for_group(self, group_name: str, display_name: str, type: NodeGroupType) -> None:
+        self._impl.register_info_for_group(group_name, display_name, type)
+
     def _forward(self, func_name: str, *args, **kw):
         return self._manager(self._curr_group, func_name, *args, **kw)
 
@@ -293,15 +301,15 @@ class Document(ModuleBase, BuiltinGroups):
         # TODO: Currently, when a DocNode is returned from the server, it will carry all parent nodes and child nodes.
         # So the query of parent and child nodes can be performed locally, and there is no need to search the
         # document service through the server for the time being. When this item is optimized, the code will become:
-        # return functools.partial(self._forward, 'find_parent', group=target)
-        return functools.partial(DocImpl.find_parent, group=target)
+        return functools.partial(self._forward, 'find_parent', group=target)
+        # return functools.partial(DocImpl.find_parent, group=target)
 
     def find_children(self, target) -> Callable:
         # TODO: Currently, when a DocNode is returned from the server, it will carry all parent nodes and child nodes.
         # So the query of parent and child nodes can be performed locally, and there is no need to search the
         # document service through the server for the time being. When this item is optimized, the code will become:
-        # return functools.partial(self._forward, 'find_children', group=target)
-        return functools.partial(DocImpl.find_children, group=target)
+        return functools.partial(self._forward, 'find_children', group=target)
+        # return functools.partial(DocImpl.find_children, group=target)
 
     def find(self, target) -> Callable:
         return functools.partial(self._forward, 'find', group=target)
@@ -321,12 +329,15 @@ class Document(ModuleBase, BuiltinGroups):
 
 class UrlDocument(ModuleBase):
     def __init__(self, url: str, name: str):
+        super().__init__()
         self._missing_keys = set(dir(Document)) - set(dir(UrlDocument))
         self._manager = lazyllm.UrlModule(url=url)
         self._curr_group = name
 
-    def _forward(self, func_name: str, *args, **kw):
-        return self._manager(self._curr_group, func_name, *args, **kw)
+    def _forward(self, func_name: str, *args, **kwargs):
+        args = (self._curr_group, func_name, *args)
+        args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
+        return self._manager("__call__", args, kwargs)
 
     def find(self, target) -> Callable:
         return functools.partial(self._forward, 'find', group=target)

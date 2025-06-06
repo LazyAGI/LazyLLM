@@ -1,29 +1,26 @@
 import json
 import ast
-from collections import defaultdict
+from enum import Enum
 from functools import wraps
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
-from lazyllm import LOG, once_wrapper, ServerModule, FastapiApp as app, ThreadPoolExecutor
+from lazyllm import LOG, once_wrapper
+from lazyllm.tools.rag.store.store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
-                        AdaptiveTransform, make_transform, TransformArgs, TransformArgs as TArgs)
+                        TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
-from .store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
-from .readers import ReaderBase
-from .map_store import MapStore
-from .chroma_store import ChromadbStore
-from .milvus_store import MilvusStore
+from .store import MapStore, MilvusStore, ChromadbStore, SenseCoreStore, DocStoreBase
 from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import DocListManager, gen_docid, is_sparse, BaseResponse
-from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH
+from .utils import DocListManager, gen_docid, is_sparse
+from .global_metadata import GlobalMetadataDesc
 from .data_type import DataType
-import queue
+from .doc_processor import _Processor, DocumentProcessor
 from dataclasses import dataclass
 import threading
 import time
-import requests
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
@@ -65,168 +62,43 @@ class EmbedPlaceholder:
     pass
 
 
+class NodeGroupType(str, Enum):
+    ORIGINAL = "Original Source"
+    CHUNK = "Chunk"
+    SUMMARY = "Summary"
+    IMAGE_INFO = "Image Info"
+
+
 class BuiltinGroups(object):
     @dataclass
     class Struct:
         name: str
+        display_name: str
+        type: NodeGroupType
         args: TransformArgs
         parent: str = LAZY_ROOT_NAME
         trans_node: bool = None
 
         def __str__(self): return self.name
 
-    CoarseChunk = Struct('CoarseChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=1024, chunk_overlap=100)))
-    MediumChunk = Struct('MediumChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
-    FineChunk = Struct('FineChunk', TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
-    ImgDesc = Struct('ImgDesc', lambda x: x._content, LAZY_IMAGE_GROUP, True)
+    CoarseChunk = Struct('CoarseChunk', NodeGroupType.CHUNK, '1024 Tokens Chunk',
+                         TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=1024, chunk_overlap=100)))
+    MediumChunk = Struct('MediumChunk', NodeGroupType.CHUNK, '256 Tokens Chunk',
+                         TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
+    FineChunk = Struct('FineChunk', NodeGroupType.CHUNK, '128 Tokens Chunk',
+                       TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
+    ImgDesc = Struct('ImgDesc', NodeGroupType.IMAGE_INFO, 'Image Desc',
+                     lambda x: x._content, LAZY_IMAGE_GROUP, True)
 
-
-class _Processor:
-    def __init__(self, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict], server: bool = False):
-        self._store, self._reader, self._node_groups = store, reader, node_groups
-
-    def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,
-                metadatas: Optional[List[Dict[str, Any]]] = None):
-        if not input_files: return
-        if not ids: ids = [gen_docid(path) for path in input_files]
-        if not metadatas:
-            metadatas = [{RAG_DOC_ID: id, RAG_DOC_PATH: path} for id, path in zip(ids, input_files)]
-        else:
-            for path, id, metadata in zip(input_files, ids, metadatas):
-                metadata.update({RAG_DOC_ID: id, RAG_DOC_PATH: path})
-        root_nodes, image_nodes = self._reader.load_data(input_files, metadatas, split_image_nodes=True)
-        self._store.update_nodes(root_nodes)
-        self._create_nodes_recursive(root_nodes, LAZY_ROOT_NAME)
-        if image_nodes:
-            self._store.update_nodes(image_nodes)
-            self._create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)
-
-    def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):
-        for group_name in self._store.activated_groups():
-            group = self._node_groups.get(group_name)
-            if group is None:
-                raise ValueError(f"Node group '{group_name}' does not exist. Please check the group name "
-                                 "or add a new one through `create_node_group`.")
-
-            if group['parent'] == p_name:
-                nodes = self._create_nodes_impl(p_nodes, group_name)
-                if nodes: self._create_nodes_recursive(nodes, group_name)
-
-    def _create_nodes_impl(self, p_nodes, group_name):
-        t = self._node_groups[group_name]['transform']
-        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
-        nodes = transform.batch_forward(p_nodes, group_name)
-        self._store.update_nodes(nodes)
-        return nodes
-
-    def _get_or_create_nodes(self, group_name, ids: Optional[List[str]] = None):
-        nodes = self._store.get_nodes(group_name, ids) if self._store.is_group_active(group_name) else []
-        if not nodes and group_name not in (LAZY_IMAGE_GROUP, LAZY_ROOT_NAME):
-            p_nodes = self._get_or_create_nodes(self._node_groups[group_name]['parent'], ids)
-            nodes = self._create_nodes_impl(p_nodes, group_name)
-        return nodes
-
-    def reparse(self, group_name: str, ids: Optional[List[str]] = None):
-        self._get_or_create_nodes(group_name, ids)
-
-    def delete_doc(self, input_files: List[str]) -> None:
-        root_nodes = self._store.get_index(type='file_node_map').query(input_files)
-        LOG.info(f"delete_files: removing documents {input_files} and nodes {root_nodes}")
-        if len(root_nodes) == 0: return
-
-        uids_to_delete = defaultdict(list)
-        uids_to_delete[LAZY_ROOT_NAME] = [node._uid for node in root_nodes]
-
-        # Gather all nodes to be deleted including their children
-        def gather_children(node: DocNode):
-            for children_group, children_list in node.children.items():
-                for child in children_list:
-                    uids_to_delete[children_group].append(child._uid)
-                    gather_children(child)
-
-        for node in root_nodes:
-            gather_children(node)
-
-        # Delete nodes in all groups
-        for group, node_uids in uids_to_delete.items():
-            self._store.remove_nodes(group, node_uids)
-            LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
-
-
-class DocumentProcessor():
-
-    class Impl():
-        def __init__(self, server: bool):
-            self._processors = dict()
-            if server:
-                self._task_queue = queue.Queue()
-                self._executor = ThreadPoolExecutor(max_workers=1)
-                self._tasks = {}
-                self._worker_thread = threading.Thread(target=self._worker, daemon=True)
-
-        def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase,
-                               node_groups: Dict[str, Dict], force_refresh: bool = False):
-            if name in self._processors and not force_refresh:
-                raise KeyError(f'Duplicated algo key {name} for processor!')
-            self._processors[name] = _Processor(store, reader, node_groups)
-
-        @app.post('/add_docs')
-        async def async_add_doc(self, task_id: str, algoid: str, input_files: List[str], ids: Optional[List[str]] = None,
-                                metadatas: Optional[List[Dict[str, Any]]] = None, feedback_url: Optional[str] = None):
-            self._task_queue.put(('add', algoid, task_id, input_files, ids, metadatas, feedback_url))
-            return BaseResponse(code=200, msg='task submit successfully', data=None)
-
-        @app.delete('/delete_docs')
-        async def async_delete_doc(self, task_id: str, algoid: str, input_files: List[str],
-                                   feedback_url: Optional[str] = None) -> None:
-            self._task_queue.put(('delete', algoid, task_id, input_files, None, None, feedback_url))
-            return BaseResponse(code=200, msg='task submit successfully', data=None)
-
-        @app.post('/cancel')
-        async def cancel_task(self, task_id: str):
-            future = self._tasks.pop(task_id, None)
-            if future and not future.done():
-                future.cancel()
-                return BaseResponse(code=200, msg=f'task {task_id} cancelled successfully', data=None)
-            return BaseResponse(code=200, msg=f'task {task_id} cancelled failed', data=None)
-
-        def _send_status_message(self, success: bool, task_id: str, url: str):
-            headers = {"Content-Type": "application/json"}
-            requests.post(url, json=dict(task_id=task_id, success=success), headers=headers)
-
-        def _worker(self):
-            while True:
-                try:
-                    algoid, task_type, task_id, input_files, ids, metadatas, url = self._task_queue.get(timeout=1)
-                    if task_type == 'add':
-                        future = self._executor.submit(self._processors[algoid].add_doc, input_files=input_files,
-                                                       ids=ids, metadatas=metadatas)
-                        self._tasks[task_id] = (future, url)
-                    elif task_type == 'delete':
-                        future = self._executor.submit(self._processors[algoid].delete_doc, input_files=input_files)
-                        self._tasks[task_id] = (future, url)
-                except queue.Empty:
-                    for task_id, (future, input_files, url) in self._tasks.items():
-                        if future.done():
-                            future, url = self._tasks.pop(task_id)
-                            self._send_status_message(not future.exception(), task_id, url)
-                    time.sleep(5)
-
-    def __init__(self, server: bool = True):
-        self._impl = DocumentProcessor.Impl(server=server)
-        if server: self._impl = ServerModule(self._impl)
-
-    def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase,
-                           node_groups: Dict[str, Dict], force_refresh: bool = False):
-        if isinstance(self._impl, ServerModule):
-            self._impl._call('register_algorithm', name, store, reader, node_groups, force_refresh)
-        else:
-            self._impl.register_algorithm(name, store, reader, node_groups, force_refresh)
 
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
     _global_node_groups: Dict[str, Dict] = {}
     _registered_file_reader: Dict[str, Callable] = {}
+    _registered_node_group_info: Dict[str, str] = {
+        LAZY_ROOT_NAME: {"name": "Original Source", "type": NodeGroupType.ORIGINAL},
+        LAZY_IMAGE_GROUP: {"name": "Image Node", "type": NodeGroupType.IMAGE_INFO}
+    }
 
     def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
@@ -237,7 +109,10 @@ class DocImpl:
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
         self._dlm, self._doc_files = dlm, doc_files
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
-        self.node_groups: Dict[str, Dict] = {LAZY_ROOT_NAME: dict(parent=None), LAZY_IMAGE_GROUP: dict(parent=None)}
+        self.node_groups: Dict[str, Dict] = {
+            LAZY_ROOT_NAME: dict(parent=None),
+            LAZY_IMAGE_GROUP: dict(parent=None)
+        }
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self._global_metadata_desc = global_metadata_desc
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
@@ -263,6 +138,9 @@ class DocImpl:
                 parent_group = self.node_groups[group]['parent']
                 if not parent_group or parent_group in self._activated_groups: break
                 self._activated_groups.add(group := parent_group)
+        for group_name in self.node_groups.keys():
+            if group_name in self._registered_node_group_info:
+                self.node_groups[group_name]['info'] = self._registered_node_group_info[group_name]
 
     def _init_store(self):
         embed_dims, embed_datatypes = {}, {}
@@ -356,6 +234,9 @@ class DocImpl:
             store = MilvusStore(group_embed_keys=self._activated_embeddings, embed=self.embed,
                                 embed_dims=embed_dims, embed_datatypes=embed_datatypes,
                                 global_metadata_desc=self._global_metadata_desc, **kwargs)
+        elif store_type == "sensecore":
+            store = SenseCoreStore(group_embed_keys=self._activated_embeddings,
+                                   global_metadata_desc=self._global_metadata_desc, **kwargs)
         else:
             raise NotImplementedError(
                 f"Not implemented store type for {store_type}"
@@ -464,6 +345,13 @@ class DocImpl:
         else:
             self._index_pending_registrations.append((index_type, index_cls, args, kwargs))
 
+    def register_info_for_group(self, group_name: str, display_name: str, type: NodeGroupType) -> None:
+        self._registered_node_group_info[group_name] = {"name": display_name, "type": type}
+
+    @classmethod
+    def register_info_for_buildin_group(cls, group_name: str, display_name: str, type: NodeGroupType) -> None:
+        cls._registered_node_group_info[group_name] = {"name": display_name, "type": type}
+
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
@@ -486,7 +374,10 @@ class DocImpl:
                 # update status and need_reparse
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working, new_need_reparse=False)
-                self._delete_doc_from_store(filepaths)
+                if isinstance(self.store, DocStoreBase):
+                    self._delete_doc_from_store(doc_ids=ids)
+                else:
+                    self._delete_doc_from_store(input_files=filepaths)
                 self._add_doc_to_store(input_files=filepaths, ids=ids, metadatas=metadatas)
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.success)
@@ -498,7 +389,10 @@ class DocImpl:
             # Step 3: do doc-deleting
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
             if files:
-                self._delete_doc_from_store(files)
+                if isinstance(self.store, DocStoreBase):
+                    self._delete_doc_from_store(doc_ids=ids)
+                else:
+                    self._delete_doc_from_store(input_files=files)
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
 
             # Step 4: do doc-adding
@@ -536,8 +430,11 @@ class DocImpl:
         if not input_files: return
         self._processor.add_doc(input_files, ids, metadatas)
 
-    def _delete_doc_from_store(self, input_files: List[str]) -> None:
-        return self._processor.delete_doc(input_files)
+    def _delete_doc_from_store(self, input_files: List[str] = None, doc_ids: List[str] = None) -> None:
+        if input_files:
+            self._processor.delete_doc(input_files=input_files)
+        elif doc_ids:
+            self._processor.delete_doc(doc_ids=doc_ids)
 
     def activate_group(self, group_name: str, embed_keys: List[str]):
         group_name = str(group_name)
@@ -606,18 +503,32 @@ class DocImpl:
             nodes = DocImpl.find_children(nodes, group)
         return nodes
 
-    @staticmethod
-    def find_parent(nodes: List[DocNode], group: str) -> List[DocNode]:
-        def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
-            if node.parent:
-                if node.parent._group == group:
-                    visited.add(node.parent)
-                else:
-                    recurse_parents(node.parent, visited)
-
+    def find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
         result = set()
-        for node in nodes:
-            recurse_parents(node, result)
+        if isinstance(nodes[0].parent, DocNode):
+            def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
+                if node.parent:
+                    if node.parent._group == group:
+                        visited.add(node.parent)
+                    else:
+                        recurse_parents(node.parent, visited)
+            for node in nodes:
+                recurse_parents(node, result)
+        else:
+            cur_group = nodes[0]._group
+            cur_nodes = nodes
+            while cur_group != group and cur_nodes[0].parent:
+                name = self.node_groups[cur_group]['parent']
+                parent_uids = set()
+                for node in cur_nodes:
+                    parent_uids.add(node.parent)
+                parents = self.store.get_nodes(group_name=name, uids=list(parent_uids))
+                if not parents:
+                    break
+                cur_group = parents[0]._group
+                cur_nodes = parents
+            if cur_group == group:
+                result = cur_nodes
         if not result:
             LOG.warning(
                 f"We can not find any nodes for group `{group}`, please check your input"
@@ -625,41 +536,62 @@ class DocImpl:
         LOG.debug(f"Found parent node for {group}: {result}")
         return list(result)
 
-    @staticmethod
-    def find_children(nodes: List[DocNode], group: str) -> List[DocNode]:
-        def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
-            if group in node.children:
-                visited.update(node.children[group])
-                return True
-
-            found_in_any_child = False
-
-            for children_list in node.children.values():
-                for child in children_list:
-                    if recurse_children(child, visited):
-                        found_in_any_child = True
-                    else:
-                        break
-
-            return found_in_any_child
-
+    def find_children(self, nodes: List[DocNode], group: str) -> List[DocNode]:  # noqa:C901
         result = set()
 
-        for node in nodes:
-            if group in node.children:
-                result.update(node.children[group])
+        for _, children in nodes[0].children.items():
+            if isinstance(children[0], DocNode):
+                is_memory_tree = True
             else:
-                if not recurse_children(node, result):
-                    LOG.warning(
-                        f"Node {node} and its children do not contain any nodes with the group `{group}`. "
-                        "Skipping further search in this branch."
-                    )
+                is_memory_tree = False
+            break
+
+        if is_memory_tree:
+            def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
+                if group in node.children:
+                    visited.update(node.children[group])
+                    return True
+
+                found = False
+                for children_list in node.children.values():
+                    for child in children_list:
+                        if recurse_children(child, visited):
+                            found = True
+                return found
+
+            for node in nodes:
+                if group in node.children:
+                    result.update(node.children[group])
+                else:
+                    recurse_children(node, result)
+
+        else:
+            cur_group = nodes[0]._group
+            cur_nodes = nodes
+
+            while cur_group != group:
+                next_group = None
+                for g, v in self.node_groups.items():
+                    if v.get("parent") == cur_group:
+                        next_group = g
+                        break
+
+                if not next_group:
+                    LOG.warning(f"No child group found under group {cur_group}")
                     break
 
+                if next_group == group:
+                    parent_uids = [n._uid for n in cur_nodes]
+                    children = self.store.get_nodes(group_name=group, uids=parent_uids)
+                    result.update(children)
+                    break
+                else:
+                    parent_uids = [n._uid for n in cur_nodes]
+                    cur_nodes = self.store.get_nodes(group_name=next_group, uids=parent_uids)
+                    cur_group = next_group
+
         if not result:
-            LOG.warning(
-                f"We cannot find any nodes for group `{group}`, please check your input."
-            )
+            LOG.warning(f"We cannot find any nodes for group `{group}`, please check your input.")
 
         LOG.debug(f"Found children nodes for {group}: {result}")
         return list(result)
@@ -675,3 +607,4 @@ for k, v in BuiltinGroups.__dict__.items():
     if not k.startswith('_') and isinstance(v, BuiltinGroups.Struct):
         assert k == v.name, 'builtin group name mismatch'
         DocImpl._create_builtin_node_group(name=k, transform=v.args, parent=v.parent, trans_node=v.trans_node)
+        DocImpl.register_info_for_buildin_group(group_name=v.name, display_name=v.display_name, type=v.type)
