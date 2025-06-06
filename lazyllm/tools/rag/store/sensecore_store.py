@@ -10,12 +10,12 @@ from typing import Optional, List, Dict, Any, Union, Set
 
 from lazyllm import warp, pipeline, LOG
 from lazyllm.common import override
-from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.index_base import IndexBase
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.doc_node import (
     ImageDocNode,
-    QADocNode
+    QADocNode,
+    DocNode
 )
 from lazyllm.tools.rag.global_metadata import (GlobalMetadataDesc, RAG_DOC_ID)
 from lazyllm.tools.rag.store.store_base import DocStoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC
@@ -205,12 +205,11 @@ class SenseCoreStore(DocStoreBase):
     @override
     def update_nodes(self, nodes: List[DocNode]):
         """ update nodes to the store """
-        batched_nodes = [nodes[i:i + INSERT_BATCH_SIZE] for i in range(0, len(nodes), INSERT_BATCH_SIZE)]
-
         with pipeline() as insert_ppl:
             insert_ppl.get_ids = warp(self._upload_nodes_and_insert).aslist
             insert_ppl.check_status = warp(self._check_insert_job_status)
 
+        batched_nodes = [nodes[i:i + INSERT_BATCH_SIZE] for i in range(0, len(nodes), INSERT_BATCH_SIZE)]
         insert_ppl(batched_nodes)
         return
 
