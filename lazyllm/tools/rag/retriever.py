@@ -38,7 +38,7 @@ class Retriever(ModuleBase, _PostProcess):
             mode = 'embedding'  # TODO FIXME XXX should be removed after similarity args refactor
         group_name, target = str(group_name), (str(target) if target else None)
 
-        self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
+        self._docs: List[Document] = [doc] if isinstance(doc, (Document, UrlDocument)) else doc
         for doc in self._docs:
             assert isinstance(doc, (Document, UrlDocument)), 'Only Document or List[Document] are supported'
             if isinstance(doc, UrlDocument): continue

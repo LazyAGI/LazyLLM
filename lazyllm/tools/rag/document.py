@@ -329,12 +329,15 @@ class Document(ModuleBase, BuiltinGroups):
 
 class UrlDocument(ModuleBase):
     def __init__(self, url: str, name: str):
+        super().__init__()
         self._missing_keys = set(dir(Document)) - set(dir(UrlDocument))
         self._manager = lazyllm.UrlModule(url=url)
         self._curr_group = name
 
-    def _forward(self, func_name: str, *args, **kw):
-        return self._manager(self._curr_group, func_name, *args, **kw)
+    def _forward(self, func_name: str, *args, **kwargs):
+        args = (self._curr_group, func_name, *args)
+        args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
+        return self._manager("__call__", args, kwargs)
 
     def find(self, target) -> Callable:
         return functools.partial(self._forward, 'find', group=target)
