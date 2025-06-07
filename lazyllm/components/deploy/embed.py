@@ -133,7 +133,7 @@ class EmbeddingDeploy(LazyLLMDeployBase):
     default_headers = {'Content-Type': 'application/json'}
 
     def __init__(self, launcher=None, model_type='embed', log_path=None, embed_type='dense'):
-        self.launcher = launcher
+        self._launcher = launcher
         self._model_type = model_type
         self._log_path = log_path
         self._sparse_embed = True if embed_type == 'sparse' else False
@@ -163,12 +163,12 @@ class EmbeddingDeploy(LazyLLMDeployBase):
             if self._sparse_embed or lazyllm.config['default_embedding_engine'] == 'flagEmbedding':
                 return lazyllm.deploy.RelayServer(func=LazyFlagEmbedding(
                     finetuned_model, sparse=self._sparse_embed),
-                    launcher=self.launcher, log_path=self._log_path, cls='embedding')()
+                    launcher=self._launcher, log_path=self._log_path, cls='embedding')()
             else:
                 return lazyllm.deploy.RelayServer(func=LazyHuggingFaceEmbedding(
-                    finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding')()
+                    finetuned_model), launcher=self._launcher, log_path=self._log_path, cls='embedding')()
         if self._model_type == 'reranker':
             return lazyllm.deploy.RelayServer(func=LazyHuggingFaceRerank(
-                finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding')()
+                finetuned_model), launcher=self._launcher, log_path=self._log_path, cls='embedding')()
         else:
             raise RuntimeError(f'Not support model type: {self._model_type}.')

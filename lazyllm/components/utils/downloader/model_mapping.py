@@ -265,5 +265,15 @@ model_name_mapping = {
             "modelscope": "AI-ModelScope/stable-diffusion-3-medium-diffusers"
         },
         "type": "sd"
-    }
+    },
+    "pp-ocrv5_server": {
+        "source": {},
+        "download_by_other":True,
+        "type": "ocr"
+    },
+    "pp-ocrv5_mobile": {
+        "source": {},
+        "download_by_other":True,
+        "type": "ocr"
+    }    
 }

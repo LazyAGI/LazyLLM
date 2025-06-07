@@ -388,6 +388,8 @@ class UrlModule(ModuleBase, UrlTemplate):
                 data[self.keys_name_handle['image']] = files
             elif 'audio' in self.keys_name_handle and files:
                 data[self.keys_name_handle['audio']] = files
+            elif 'ocr_files' in self.keys_name_handle and files:
+                data[self.keys_name_handle['ocr_files']] = files
         else:
             if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
             data = __input

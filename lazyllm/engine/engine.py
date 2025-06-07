@@ -809,3 +809,15 @@ class FileResource(object):
 @NodeConstructor.register('File')
 def make_file(id: str):
     return FileResource(id)
+
+@NodeConstructor.register("Reader")
+def make_simple_reader():
+    return lazyllm.tools.rag.FileReader()
+
+
+@NodeConstructor.register("OCR")
+def make_ocr(model: Optional[str] = "PP-OCRv5_server"):
+    if model is None:
+        model = "PP-OCRv5_mobile"
+    assert model in ["PP-OCRv5_server", "PP-OCRv5_mobile"]
+    return lazyllm.TrainableModule(base_model=model).start()
