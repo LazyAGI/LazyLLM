@@ -737,6 +737,7 @@ class LLM(lazyllm.ModuleBase):
     def __init__(self, m: lazyllm.ModuleBase, keys: Optional[List[str]] = None):
         super().__init__()
         self._m = m
+        self._m.used_by(self._module_id)
         self._keys = keys
 
     def forward(self, *args, **kw):
