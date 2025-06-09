@@ -16,6 +16,7 @@ import time
 import requests
 import uuid
 
+
 class _Processor:
     def __init__(self, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict], server: bool = False):
         self._store, self._reader, self._node_groups = store, reader, node_groups
@@ -167,6 +168,7 @@ class DocumentProcessor():
                                node_groups: Dict[str, Dict], force_refresh: bool = False):
             if name in self._processors and not force_refresh:
                 raise KeyError(f'Duplicated algo key {name} for processor!')
+            self._init_components(server=self._server)
             self._processors[name] = _Processor(store, reader, node_groups)
 
         @app.get('/group/info')
@@ -308,26 +310,24 @@ class DocumentProcessor():
                         if future.done():
                             task_need_pop.append(task_id)
                             ex = future.exception()
-                            if not ex:
-                                if url:
-                                    self._send_status_message(
-                                        task_id=task_id,
-                                        url=url,
-                                        success=True,
-                                        error_code="",
-                                        error_msg=""
-                                    )
-                            else:
-                                if url:
-                                    self._send_status_message(
-                                        task_id=task_id,
-                                        url=url,
-                                        success=False,
-                                        error_code=type(ex).__name__,
-                                        error_msg=str(ex)
-                                    )
-                                else:
-                                    LOG.error(f"task {task_id} failed: {str(ex)}")
+                            if url and not ex:
+                                self._send_status_message(
+                                    task_id=task_id,
+                                    url=url,
+                                    success=True,
+                                    error_code="",
+                                    error_msg=""
+                                )
+                            elif url and ex:
+                                self._send_status_message(
+                                    task_id=task_id,
+                                    url=url,
+                                    success=False,
+                                    error_code=type(ex).__name__,
+                                    error_msg=str(ex)
+                                )
+                            elif ex:
+                                LOG.error(f"task {task_id} failed: {str(ex)}")
                     for task_id in task_need_pop:
                         self._tasks.pop(task_id)
                     time.sleep(5)
@@ -338,12 +338,6 @@ class DocumentProcessor():
 
     def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase,
                            node_groups: Dict[str, Dict], force_refresh: bool = False):
-
-        if isinstance(self._impl, ServerModule):
-            self._impl._call('_init_components', True)
-        else:
-            self._impl._init_components(server=False)
-
         if isinstance(self._impl, ServerModule):
             self._impl._call('register_algorithm', name, store, reader, node_groups, force_refresh)
         else:
