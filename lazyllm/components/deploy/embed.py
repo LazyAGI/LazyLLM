@@ -3,6 +3,8 @@ import json
 import lazyllm
 from lazyllm import LOG
 from lazyllm.thirdparty import transformers as tf, torch, sentence_transformers, numpy as np, FlagEmbedding as fe
+from .base import LazyLLMDeployBase
+from typing import Union, List, Dict
 
 
 class LazyHuggingFaceEmbedding(object):
@@ -23,8 +25,9 @@ class LazyHuggingFaceEmbedding(object):
         self.embed = tf.AutoModel.from_pretrained(self.base_embed).to(self.device)
         self.embed.eval()
 
-    def __call__(self, string):
+    def __call__(self, data: Dict[str, Union[str, List[str]]]):
         lazyllm.call_once(self.init_flag, self.load_embed)
+        string, _ = data['text'], data['images']
         encoded_input = self.tokenizer(string, padding=True, truncation=True, return_tensors='pt',
                                        max_length=512, add_special_tokens=True).to(self.device)
         with torch.no_grad():
@@ -60,8 +63,9 @@ class LazyFlagEmbedding(object):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.embed = fe.FlagAutoModel.from_finetuned(self.base_embed, use_fp16=False, devices=[self.device])
 
-    def __call__(self, string):
+    def __call__(self, data: Dict[str, Union[str, List[str]]]):
         lazyllm.call_once(self.init_flag, self.load_embed)
+        string, _ = data['text'], data['images']
         with torch.no_grad():
             model_output = self.embed.encode(string, return_sparse=self.sparse)
         if self.sparse:
@@ -117,9 +121,15 @@ class LazyHuggingFaceRerank(object):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
         return LazyHuggingFaceRerank.rebuild, (self.base_rerank, init)
 
-class EmbeddingDeploy():
-    message_format = None
-    keys_name_handle = None
+class EmbeddingDeploy(LazyLLMDeployBase):
+    message_format = {
+        'text': 'text',  # str,
+        'images': []  # Union[str, List[str]]
+    }
+    keys_name_handle = {
+        'inputs': 'text',
+        'image': 'images'
+    }
     default_headers = {'Content-Type': 'application/json'}
 
     def __init__(self, launcher=None, model_type='embed', log_path=None, embed_type='dense'):
@@ -127,6 +137,19 @@ class EmbeddingDeploy():
         self._model_type = model_type
         self._log_path = log_path
         self._sparse_embed = True if embed_type == 'sparse' else False
+        if self._model_type == "reranker":
+            self._update_reranker_message()
+
+    def _update_reranker_message(self):
+        self.keys_name_handle = {
+            'inputs': 'query',
+        }
+        self.message_format = {
+            'query': 'who are you ?',
+            'documents': ['string'],
+            'top_n': 1,
+        }
+        self.default_headers = {'Content-Type': 'application/json'}
 
     def __call__(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \

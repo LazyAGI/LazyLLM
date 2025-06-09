@@ -6,6 +6,7 @@ from .lmdeploy import LMDeploy
 from .infinity import Infinity
 from .ray import Distributed
 from .mindie import Mindie
+from .embed import EmbeddingDeploy
 
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     'Mindie',
     'Infinity',
     'Distributed',
+    'EmbeddingDeploy',
 ]

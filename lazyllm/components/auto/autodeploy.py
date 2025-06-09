@@ -6,7 +6,6 @@ from ..deploy.base import LazyLLMDeployBase
 from .configure import get_configer
 from .dependencies.requirements import requirements
 from .auto_helper import model_map, get_model_name, check_requirements
-from lazyllm.components.embedding.embed import EmbeddingDeploy
 from lazyllm.components.stable_diffusion.stable_diffusion3 import StableDiffusionDeploy
 from lazyllm.components.speech_to_text.sense_voice import SenseVoiceDeploy
 from lazyllm.components.text_to_speech.base import TTSDeploy
@@ -25,9 +24,9 @@ class AutoDeploy(LazyLLMDeployBase):
             type = ModelManager.get_model_type(model_name)
 
         if type in ('embed', 'cross_modal_embed', 'reranker'):
-            if lazyllm.config['default_embedding_engine'] == 'transformers' or lazyllm.config['default_embedding_engine'] == 'flagEmbedding' \
+            if lazyllm.config['default_embedding_engine'] in ('transformers', 'flagEmbedding') \
                 or kw.get('embed_type')=='sparse' or not check_requirements('infinity_emb'):
-                return EmbeddingDeploy((launcher or launchers.remote(ngpus=1)), model_type=type,
+                return deploy.Embedding((launcher or launchers.remote(ngpus=1)), model_type=type,
                                        log_path=log_path, embed_type=kw.get('embed_type', 'dense'))
             else:
                 return deploy.Infinity((launcher or launchers.remote(ngpus=1)), model_type=type, log_path=log_path)
@@ -38,7 +37,7 @@ class AutoDeploy(LazyLLMDeployBase):
         elif type == 'tts':
             return TTSDeploy(model_name, log_path=log_path, launcher=(launcher or launchers.remote(ngpus=1)))
         elif type == 'vlm':
-            return deploy.LMDeploy((launcher or launchers.remote(ngpus=1)), stream=stream, log_path=log_path, **kw)
+            return deploy.LMDeploy((launcher or launchers.remote(ngpus=1)), log_path=log_path, **kw)
 
         map_name, size = model_map(model_name)
         if not launcher:
@@ -58,6 +57,5 @@ class AutoDeploy(LazyLLMDeployBase):
             for key, value in deploy_cls.auto_map.items():
                 if value:
                     kw[value] = getattr(c, key)
-            return deploy_cls(trust_remote_code=trust_remote_code, launcher=launcher,
-                              stream=stream, log_path=log_path, **kw)
+            return deploy_cls(trust_remote_code=trust_remote_code, launcher=launcher, log_path=log_path, **kw)
         raise RuntimeError(f'No valid framework found, candidates are {[c.framework.lower() for c in candidates]}')
