@@ -83,3 +83,5 @@ openai-whisper
 qwen-vl-utils
 accelerate==1.6.0
 lmdeploy==0.8.0
+boto3
+botocore
