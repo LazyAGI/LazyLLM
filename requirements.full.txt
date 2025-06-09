@@ -72,7 +72,7 @@ lazyllm-llamafactory==0.9.3.dev0
 rotary-embedding-torch
 infinity-emb==0.0.70
 ctranslate2
-optimum>=1.16.2
+optimum==1.16.2
 typer
 pymongo
 pymysql
