@@ -110,7 +110,7 @@ class TempDocRetriever(ModuleBase, _PostProcess):
         active_node_groups = self._node_groups or [[Document.MediumChunk,
                                                     dict(similarity=('cosine' if self._embed else 'bm25'))]]
         if isinstance(files, str): files = [files]
-        doc = self._get_document(doc_files=files)
+        doc = self._get_document(doc_files=tuple(set(files)))
         retrievers = [Retriever(doc, name, **kw) for (name, kw) in active_node_groups]
         r = lazyllm.parallel(*retrievers).sum
         return self._post_process(r(query))
