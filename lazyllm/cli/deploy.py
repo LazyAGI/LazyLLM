@@ -59,25 +59,33 @@ def deploy(commands):
             )
         )
     else:
-        parser = argparse.ArgumentParser(description="lazyllm deploy command for deploying a model.")
-        parser.add_argument("model", help="model name")
-        parser.add_argument("--framework", help="deploy framework", default="auto",
-                            choices=["auto", "vllm", "lightllm", "lmdeploy"])
-        parser.add_argument("--chat", help="chat ", default='false',
-                            choices=["ON", "on", "1", "true", "True", "OFF", "off", "0", "False", "false"])
-        parser.add_argument("--deploy_config_path", type=str,
-                            help="Path to YAML configuration file containing framework specific parameters",
-                            default=None)
+        parser = argparse.ArgumentParser(description='lazyllm deploy command for deploying a model.')
+        parser.add_argument('model', help='model name')
+        parser.add_argument('--framework', help='deploy framework', default='auto',
+                            choices=['auto', 'vllm', 'lightllm', 'lmdeploy'])
+        parser.add_argument('--chat', help='chat ', default='false',
+                            choices=['ON', 'on', '1', 'true', 'True', 'OFF', 'off', '0', 'False', 'false'])
 
-        args = parser.parse_args(commands)
-
-        t = lazyllm.TrainableModule(args.model)
-        if args.deploy_config_path:
-            with open(args.deploy_config_path, 'r') as f:
-                deploy_config = yaml.safe_load(f)
-            t.deploy_method(getattr(lazyllm.deploy, args.framework), **deploy_config)
-        else:
-            t.deploy_method(getattr(lazyllm.deploy, args.framework))
+        args, unknown = parser.parse_known_args(commands)
+        kwargs = {}
+        for arg in unknown:
+            if not arg.startswith('--'):
+                lazyllm.LOG.warning(f'Ignore invalid argument: {arg}')
+                continue
+            
+            if '=' not in arg:
+                lazyllm.LOG.warning(f'Argument format error, should be --key=value: {arg}')
+                continue
+                
+            try:
+                key, value = arg[2:].split('=', 1)
+                kwargs[key] = value
+            except Exception as e:
+                lazyllm.LOG.warning(f'Error while processing argument {arg}: {str(e)}')
+                continue
+              
+        lazyllm.LOG.debug(f'Use arguments: {kwargs}')
+        t = lazyllm.TrainableModule(args.model).deploy_method(getattr(lazyllm.deploy, args.framework), **kwargs)
         if args.chat in ["ON", "on", "1", "true", "True"]:
             t = lazyllm.WebModule(t)
         t.start()
