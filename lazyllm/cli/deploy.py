@@ -2,7 +2,6 @@ import os
 import time
 import argparse
 import asyncio
-import yaml
 
 import lazyllm
 
@@ -62,7 +61,7 @@ def deploy(commands):
         parser = argparse.ArgumentParser(description='lazyllm deploy command for deploying a model.')
         parser.add_argument('model', help='model name')
         parser.add_argument('--framework', help='deploy framework', default='auto',
-                            choices=['auto', 'vllm', 'lightllm', 'lmdeploy'])
+                            choices=['auto', 'vllm', 'lightllm', 'lmdeploy', 'infinity', 'embedding'])
         parser.add_argument('--chat', help='chat ', default='false',
                             choices=['ON', 'on', '1', 'true', 'True', 'OFF', 'off', '0', 'False', 'false'])
 
