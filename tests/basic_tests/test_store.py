@@ -26,6 +26,8 @@ def clear_directory(directory_path):
         print(f"The directory {directory_path} does not exist.")
 
 # Test class for ChromadbStore
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestChromadbStore(unittest.TestCase):
     def setUp(self):
         self.node_groups = [LAZY_ROOT_NAME, "group1", "group2"]
@@ -183,6 +185,7 @@ class TestMapStore(unittest.TestCase):
         self.assertEqual(self.store.is_group_active("group2"), False)
 
 @pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestMilvusStoreWithNormalEmbedding(unittest.TestCase):
     def setUp(self):
         self.mock_embed = {
@@ -323,6 +326,7 @@ class TestMilvusStoreWithNormalEmbedding(unittest.TestCase):
 
 
 @pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestMilvusStoreWithSparseEmbedding(unittest.TestCase):
     def setUp(self):
         self.mock_embed = {

@@ -31,7 +31,7 @@ class Lightllm(LazyLLMDeployBase):
     }
     auto_map = {'tp': 'tp'}
 
-    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), stream=False, log_path=None, **kw):
+    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None, **kw):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'tp': 1,

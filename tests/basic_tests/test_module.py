@@ -9,7 +9,7 @@ from lazyllm.launcher import cleanup
 class TestModule:
 
     def setup_method(self):
-        self.base_model = 'internlm2-chat-7b'
+        self.base_model = 'qwen2-1.5b'
         self.target_path = ''
         self.data_path = 'data_path'
 

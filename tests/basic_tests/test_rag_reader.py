@@ -1,5 +1,6 @@
 import os
 import lazyllm
+import pytest
 from lazyllm.tools.rag.readers import ReaderBase
 from lazyllm.tools.rag import SimpleDirectoryReader, DocNode, Document
 
@@ -37,6 +38,9 @@ class TestRagReader(object):
             docs.append(doc)
         assert len(docs) == 3
 
+    # TODO: remove *.pptx and *.jpg, *.png in mac and win
+    @pytest.mark.skip_on_mac
+    @pytest.mark.skip_on_win
     def test_reader_dir(self):
         input_dir = self.datasets
         reader = SimpleDirectoryReader(input_dir=input_dir,

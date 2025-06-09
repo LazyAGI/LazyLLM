@@ -6,10 +6,10 @@ from packaging import version
 from .dependencies.modelsconfig import models_config
 from lazyllm import LOG
 
-def model_map(name):
+def model_map(name: str):
     match = re.search(r'(\d+)[bB]', name)
     size = int(match.group(1)) if match else 0
-    return 'LLAMA_7B' if size <= 7 else 'LLAMA_20B' if size <= 20 else 'LLAMA_70B' if size <= 70 else 'LLAMA_100B'
+    return 'LLAMA_7B' if size <= 7 else 'LLAMA_20B' if size <= 20 else 'LLAMA_70B' if size <= 70 else 'LLAMA_100B', size
 
 def get_model_name(name_or_path):
     return name_or_path.split('/')[-1]

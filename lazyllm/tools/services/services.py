@@ -63,16 +63,21 @@ class ServerBase(object):
                     return False
             return True
 
-    def _pop_dict(self, lock, dicts, k1, k2=None, vk=None):
+    def _pop_dict(self, lock, dicts, k1, k2=None, vk=None, default=None):
         with lock:
-            if k1 and k2 and vk:
-                return dicts[k1][k2].pop(vk)
-            elif k1 and k2:
-                return dicts[k1].pop(k2)
-            elif k1:
-                return dicts.pop(k1)
-            else:
-                raise RuntimeError('At least specific k1.')
+            if k1 not in dicts:
+                return default
+
+            if k2:
+                if k2 not in dicts[k1]:
+                    return default
+
+                if vk:
+                    return dicts[k1][k2].pop(vk, default)
+                else:
+                    return dicts[k1].pop(k2, default)
+
+            return dicts.pop(k1, default)
 
     def _update_user_job_info(self, token, job_id=None, dict_value=None):
         self._update_dict(self._info_lock, self._user_job_info, token, job_id, dict_value)

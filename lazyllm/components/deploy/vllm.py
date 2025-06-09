@@ -30,7 +30,7 @@ class Vllm(LazyLLMDeployBase):
     auto_map = {'tp': 'tensor-parallel-size'}
     vllm_version = None
 
-    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), stream=False, log_path=None, **kw):
+    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None, **kw):
         self.launcher_list, launcher = reallocate_launcher(launcher)
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
@@ -45,7 +45,7 @@ class Vllm(LazyLLMDeployBase):
             'host': '0.0.0.0',
             'max-num-seqs': 256,
             'pipeline-parallel-size': 1,
-            'max-num-batched-tokens': 128000,
+            'max-num-batched-tokens': 64000,
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
