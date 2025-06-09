@@ -68,21 +68,14 @@ def deploy(commands):
         args, unknown = parser.parse_known_args(commands)
         kwargs = {}
         for arg in unknown:
-            if not arg.startswith('--'):
-                lazyllm.LOG.warning(f'Ignore invalid argument: {arg}')
-                continue
-            
-            if '=' not in arg:
-                lazyllm.LOG.warning(f'Argument format error, should be --key=value: {arg}')
-                continue
-                
             try:
+                assert arg.startswith('--') and '=' in arg
                 key, value = arg[2:].split('=', 1)
                 kwargs[key] = value
             except Exception as e:
-                lazyllm.LOG.warning(f'Error while processing argument {arg}: {str(e)}')
+                lazyllm.LOG.warning(f'Format error: `{arg}` should be --key=value. {str(e)}')
                 continue
-              
+
         lazyllm.LOG.debug(f'Use arguments: {kwargs}')
         t = lazyllm.TrainableModule(args.model).deploy_method(getattr(lazyllm.deploy, args.framework), **kwargs)
         if args.chat in ['ON', 'on', '1', 'true', 'True']:
