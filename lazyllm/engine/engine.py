@@ -434,6 +434,9 @@ class JoinFormatter(lazyllm.components.FormatterBase):
         self.names = names
         self.symbol = symbol
 
+    def _load(self, msg: str):
+        return lazyllm.components.formatter.decode_query_with_filepaths(msg)
+
     def _parse_py_data_by_formatter(self, data):
         if self.type == 'sum':
             assert len(data) > 0, 'Cannot sum empty inputs'
