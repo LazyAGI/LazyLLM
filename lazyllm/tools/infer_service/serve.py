@@ -20,7 +20,7 @@ class JobDescription(BaseModel):
 
 class InferServer(ServerBase):
 
-    def _update_status(self, token, job_id):
+    def _update_status(self, token, job_id):  # noqa: C901
         if not self._in_active_jobs(token, job_id):
             return
         # Get basic info
@@ -45,15 +45,42 @@ class InferServer(ServerBase):
         # Some tasks cannot obtain the storage path when they are just started
         if not log_path:
             save_root = os.path.join(lazyllm.config['infer_log_root'], token, job_id)
+            os.makedirs(save_root, exist_ok=True)
             update['log_path'] = self._get_log_path(save_root)
+
+        if Status[status] == Status.Cancelled:
+            first_seen = info.get('first_cancelled_time')
+            if not first_seen:
+                update['first_cancelled_time'] = datetime.now().strftime(self._time_format)
+                update['status'] = "Pending"
+            else:
+                first_seen_time = datetime.strptime(first_seen, self._time_format)
+                if (datetime.now() - first_seen_time).total_seconds() > 60:  # Observe for 60 seconds
+                    ret = self._pop_active_job(token, job_id)
+                    if ret is not None:
+                        ret[0].stop()
+                    if info['started_at'] and not info['cost']:
+                        cost = (first_seen_time - datetime.strptime(info['started_at'],
+                                                                    self._time_format)).total_seconds()
+                        update['cost'] = cost
+                    self._update_user_job_info(token, job_id, update)
+                    return
+                else:
+                    # Still in the obsesrvation period, not cleaned up
+                    update['status'] = "Pending"
+        else:
+            # The status is restored, clear first_cancelled_time
+            if 'first_cancelled_time' in info:
+                update['first_cancelled_time'] = None
 
         # Update Status
         self._update_user_job_info(token, job_id, update)
 
         # Pop and kill jobs with status: Done, Failed
-        if Status[status] in (Status.Done, Status.Cancelled, Status.Failed):
-            m, _ = self._pop_active_job(token, job_id)
-            m.stop()
+        if Status[status] in (Status.Done, Status.Failed):
+            ret = self._pop_active_job(token, job_id)
+            if ret is not None:
+                ret[0].stop()
             if info['started_at'] and not info['cost']:
                 cost = (datetime.now() - datetime.strptime(info['started_at'], self._time_format)).total_seconds()
                 self._update_user_job_info(token, job_id, {'cost': cost})
@@ -114,6 +141,7 @@ class InferServer(ServerBase):
         # - No-Env-Set: (work/path + infer_log) + token + job_id;
         # - Env-Set:    (infer_log_root)     + token + job_id;
         save_root = os.path.join(lazyllm.config['infer_log_root'], token, job_id)
+        os.makedirs(save_root, exist_ok=True)
         hypram = dict(launcher=lazyllm.launchers.remote(sync=False, ngpus=job.num_gpus), log_path=save_root)
         m = lazyllm.TrainableModule(job.deploy_model).deploy_method((lazyllm.deploy.auto, hypram))
 
@@ -137,6 +165,11 @@ class InferServer(ServerBase):
             started_time = datetime.now().strftime(self._time_format)
         else:
             started_time = None
+        if Status[status] == Status.Cancelled:
+            first_seen = datetime.now().strftime(self._time_format)
+            status = 'Pending'
+        else:
+            first_seen = None
         self._update_active_jobs(token, job_id, (m, thread))
         self._update_user_job_info(token, job_id, {
             'job_id': job_id,
@@ -149,6 +182,7 @@ class InferServer(ServerBase):
             'cost': None,
             'deploy_method': m._deploy_type.__name__,
             'url': m._url,
+            'first_cancelled_time': first_seen,
         })
 
         return {'job_id': job_id, 'status': status}
@@ -185,6 +219,7 @@ class InferServer(ServerBase):
             self._update_user_job_info(token)
         server_running_dict = self._read_user_job_info(token)
         save_root = os.path.join(lazyllm.config['infer_log_root'], token)
+        os.makedirs(save_root, exist_ok=True)
         for job_id in os.listdir(save_root):
             if job_id not in server_running_dict:
                 log_path = os.path.join(save_root, job_id)
