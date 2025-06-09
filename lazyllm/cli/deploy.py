@@ -85,7 +85,7 @@ def deploy(commands):
               
         lazyllm.LOG.debug(f'Use arguments: {kwargs}')
         t = lazyllm.TrainableModule(args.model).deploy_method(getattr(lazyllm.deploy, args.framework), **kwargs)
-        if args.chat in ["ON", "on", "1", "true", "True"]:
+        if args.chat in ['ON', 'on', '1', 'true', 'True']:
             t = lazyllm.WebModule(t)
         t.start()
         if args.chat in ['ON', 'on', '1', 'true', 'True']:
