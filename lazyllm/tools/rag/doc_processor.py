@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 from lazyllm import LOG, ServerModule, FastapiApp as app, ThreadPoolExecutor, config
 from lazyllm.tools.rag.store.store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+from lazyllm.tools.rag.store.utils import fibonacci_backoff
 
 from .transform import (AdaptiveTransform, make_transform,)
 from .readers import ReaderBase
@@ -65,19 +66,51 @@ class _Processor:
             nodes = self._create_nodes_impl(p_nodes, group_name)
         return nodes
 
-    def reparse(self, group_name: str, ids: Optional[List[str]] = None, doc_ids: Optional[List[str]] = None):
+    def reparse(self, group_name: str, ids: Optional[List[str]] = None, doc_ids: Optional[List[str]] = None, **kwargs):
         if doc_ids:
-            nodes = self._store.get_nodes(group_name=group_name, doc_ids=doc_ids)
-            if nodes:
-                if nodes[0].children:
-                    raise ValueError(f"Cannot reparse group '{group_name}': "
-                                     "the group has children. ")
-                self._store.remove_nodes(group_name=group_name, uids=[node._uid for node in nodes])
-                p_nodes = self._store.get_nodes(group_name=self._node_groups[group_name]['parent'])
-                nodes = self._create_nodes_impl(p_nodes, group_name)
-                self._store.update_nodes(p_nodes + nodes)
+            self._reparse_docs(group_name=group_name, doc_ids=doc_ids, **kwargs)
         else:
             self._get_or_create_nodes(group_name, ids)
+
+    def _reparse_docs(self, group_name: str, doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict]):
+        if group_name == "all":
+            self._store.remove_nodes(doc_ids=doc_ids)
+            removed_flag = False
+            for wait_time in fibonacci_backoff():
+                nodes = self._store.get_nodes(group_name=LAZY_ROOT_NAME, doc_ids=doc_ids)
+                if not nodes:
+                    removed_flag = True
+                    break
+                time.sleep(wait_time)
+            if not removed_flag:
+                raise Exception(f"Failed to remove nodes for docs {doc_ids} from store")
+            self.add_doc(input_files=doc_paths, ids=doc_ids, metadatas=metadatas)
+        else:
+            p_nodes = self._store.get_nodes(group_name=self._node_groups[group_name]['parent'])
+            self._reparse_group_recursive(p_nodes=p_nodes, cur_name=group_name, doc_ids=doc_ids)
+
+    def _reparse_group_recursive(self, p_nodes: List[DocNode], cur_name: str, doc_ids: List[str]):
+        self._store.remove_nodes(group_name=cur_name, doc_ids=doc_ids)
+
+        removed_flag = False
+        for wait_time in fibonacci_backoff():
+            nodes = self._store.get_nodes(group_name=cur_name, doc_ids=doc_ids)
+            if not nodes:
+                removed_flag = True
+                break
+            time.sleep(wait_time)
+        if not removed_flag:
+            raise Exception(f"Failed to remove nodes for docs {doc_ids} group {cur_name} from store")
+
+        nodes = self._create_nodes_impl(p_nodes, cur_name)
+
+        for group_name in self._store.activated_groups():
+            group = self._node_groups.get(group_name)
+            if group is None:
+                raise ValueError(f"Node group '{group_name}' does not exist. Please check the group name "
+                                 "or add a new one through `create_node_group`.")
+            if group['parent'] == cur_name:
+                self._reparse_group_recursive(p_nodes=nodes, cur_name=group_name, doc_ids=doc_ids)
 
     def delete_doc(self, input_files: List[str] = None, doc_ids: List[str] = None) -> None:
         if input_files:
@@ -274,17 +307,23 @@ class DocumentProcessor():
                         input_files = []
                         ids = []
                         metadatas = []
+
                         reparse_group = None
-                        reparse_docs = []
+                        reparse_doc_ids = []
+                        reparse_files = []
+                        reparse_metadatas = []
 
                         for file_info in file_infos:
                             if file_info.reparse_group:
                                 reparse_group = reparse_group
-                                reparse_docs.append(file_info.doc_id)
+                                reparse_doc_ids.append(file_info.doc_id)
+                                reparse_files.append(file_info.file_path)
+                                reparse_metadatas.append(gen_docid(file_info.file_path))
                             else:
                                 input_files.append(file_info.file_path)
                                 ids.append(file_info.doc_id)
                                 metadatas.append(file_info.metadata)
+
                         if input_files:
                             future = self._add_executor.submit(
                                 self._processors[algo_id].add_doc,
@@ -292,11 +331,13 @@ class DocumentProcessor():
                                 ids=ids,
                                 metadatas=metadatas
                             )
-                        elif reparse_group:
+                        if reparse_group:
                             future = self._add_executor.submit(
                                 self._processors[algo_id].reparse,
                                 group_name=reparse_group,
-                                doc_ids=reparse_docs
+                                doc_ids=reparse_doc_ids,
+                                doc_paths=reparse_files,
+                                metadatas=reparse_metadatas
                             )
                         self._pending_task_ids.remove(task_id)
                         self._tasks[task_id] = (future, callback_path)

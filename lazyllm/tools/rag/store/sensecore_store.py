@@ -19,16 +19,9 @@ from lazyllm.tools.rag.doc_node import (
 )
 from lazyllm.tools.rag.global_metadata import (GlobalMetadataDesc, RAG_DOC_ID)
 from lazyllm.tools.rag.store.store_base import DocStoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC
-from lazyllm.tools.rag.store.utils import upload_data_to_s3, download_data_from_s3
+from lazyllm.tools.rag.store.utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff
 
 INSERT_BATCH_SIZE = 3000
-INSERT_MAX_RETRIES = 10
-
-def _fibonacci_backoff(max_retries: int = INSERT_MAX_RETRIES):
-    a, b = 1, 1
-    for _ in range(max_retries):
-        yield a
-        a, b = b, a + b
 
 
 class Segment(BaseModel):
@@ -261,7 +254,7 @@ class SenseCoreStore(DocStoreBase):
         headers = {
             "Accept": "application/json",
         }
-        for wait_time in _fibonacci_backoff():
+        for wait_time in fibonacci_backoff():
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             status = response.json()["state"]
@@ -299,15 +292,8 @@ class SenseCoreStore(DocStoreBase):
             }
         if group_name:
             payload["group"] = group_name
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-        else:
-            for group in self.activated_groups():
-                if not self.is_group_active(group):
-                    continue
-                payload["group"] = group
-                response = requests.post(url, headers=headers, json=payload)
-                response.raise_for_status()
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
         return
 
     @override

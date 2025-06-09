@@ -8,6 +8,8 @@ from lazyllm.thirdparty import boto3
 
 from typing import Optional, Union
 
+INSERT_MAX_RETRIES = 10
+
 def upload_data_to_s3(
     data: Union[bytes, str],
     bucket_name: str,
@@ -112,3 +114,9 @@ def download_data_from_s3(
             os.remove(tmp.name)
         except OSError:
             pass
+
+def fibonacci_backoff(max_retries: int = INSERT_MAX_RETRIES):
+    a, b = 1, 1
+    for _ in range(max_retries):
+        yield a
+        a, b = b, a + b
