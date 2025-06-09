@@ -152,6 +152,7 @@ class DocumentProcessor():
             self._processors: Dict[str, _Processor] = dict()
             self._server = server
             self._inited = False
+            self._feedback_url = config['process_feedback_service']
 
         def _init_components(self, server: bool):
             if server and not self._inited:
@@ -245,9 +246,11 @@ class DocumentProcessor():
                 data={"task_id": task_id, "status": status}
             )
 
-        def _send_status_message(self, task_id: str, url: str, success: bool,
+        def _send_status_message(self, task_id: str, callback_path: str, success: bool,
                                  error_code: str = "", error_msg: str = ""):
-            if config['process_feedback_service']:
+            if self._feedback_url:
+                endpoint = callback_path.format(task_id=task_id)
+                full_url = self._feedback_url + endpoint
                 payload = {
                     "task_id": task_id,
                     "status": 1 if success else 0,
@@ -255,8 +258,7 @@ class DocumentProcessor():
                     "error_msg": error_msg,
                 }
                 headers = {"Content-Type": "application/json"}
-                url = urljoin(config['process_feedback_service'], url)
-                requests.post(url, json=payload, headers=headers, timeout=5)
+                requests.post(full_url, json=payload, headers=headers, timeout=5)
             else:
                 raise ValueError("process_feedback_service is not set")
 
@@ -268,7 +270,7 @@ class DocumentProcessor():
                         continue
                     if task_type == 'add':
                         file_infos: List[FileInfo] = params.get('file_infos')
-                        url = params.get('feedback_url')
+                        callback_path = params.get('feedback_url')
                         input_files = []
                         ids = []
                         metadatas = []
@@ -297,7 +299,7 @@ class DocumentProcessor():
                                 doc_ids=reparse_docs
                             )
                         self._pending_task_ids.remove(task_id)
-                        self._tasks[task_id] = (future, url)
+                        self._tasks[task_id] = (future, callback_path)
                     elif task_type == 'delete':
                         doc_ids = params
                         future = self._delete_executor.submit(self._processors[algo_id].delete_doc, doc_ids=doc_ids)
@@ -306,22 +308,22 @@ class DocumentProcessor():
                     time.sleep(0.2)
                 except queue.Empty:
                     task_need_pop = []
-                    for task_id, (future, url) in self._tasks.items():
+                    for task_id, (future, callback_path) in self._tasks.items():
                         if future.done():
                             task_need_pop.append(task_id)
                             ex = future.exception()
-                            if url and not ex:
+                            if callback_path and not ex:
                                 self._send_status_message(
                                     task_id=task_id,
-                                    url=url,
+                                    callback_path=callback_path,
                                     success=True,
                                     error_code="",
                                     error_msg=""
                                 )
-                            elif url and ex:
+                            elif callback_path and ex:
                                 self._send_status_message(
                                     task_id=task_id,
-                                    url=url,
+                                    callback_path=callback_path,
                                     success=False,
                                     error_code=type(ex).__name__,
                                     error_msg=str(ex)
