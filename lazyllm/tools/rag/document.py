@@ -272,6 +272,15 @@ class Document(ModuleBase, BuiltinGroups):
                                          num_workers=num_workers, **kwargs)
 
     @DynamicDescriptor
+    def register_info_for_group(self, group_name: str, display_name: str, group_type: NodeGroupType) -> None:
+        if isinstance(self, type):
+            DocImpl._registered_node_group_info.update({group_name: {"name": display_name, "type": group_type}})
+        else:
+            group_infos = getattr(self._impl, 'node_groups')
+            assert group_name in group_infos, f"{group_name} is not created yet"
+            group_infos[group_name]["info"] = {"name": display_name, "type": group_type}
+
+    @DynamicDescriptor
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         if isinstance(self, type):
             return DocImpl.register_global_reader(pattern=pattern, func=func)
@@ -290,9 +299,6 @@ class Document(ModuleBase, BuiltinGroups):
 
     def register_index(self, index_type: str, index_cls: IndexBase, *args, **kwargs) -> None:
         self._impl.register_index(index_type, index_cls, *args, **kwargs)
-
-    def register_info_for_group(self, group_name: str, display_name: str, type: NodeGroupType) -> None:
-        self._impl.register_info_for_group(group_name, display_name, type)
 
     def _forward(self, func_name: str, *args, **kw):
         return self._manager(self._curr_group, func_name, *args, **kw)

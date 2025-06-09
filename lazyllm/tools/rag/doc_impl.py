@@ -124,6 +124,7 @@ class DocImpl:
         self._algo_name = algo_name
 
     def _init_node_groups(self):
+        LOG.info(f"node groups: {self.node_groups}")
         node_groups = DocImpl._builtin_node_groups.copy()
         node_groups.update(DocImpl._global_node_groups)
         node_groups.update(self.node_groups)
@@ -138,6 +139,11 @@ class DocImpl:
                 parent_group = self.node_groups[group]['parent']
                 if not parent_group or parent_group in self._activated_groups: break
                 self._activated_groups.add(group := parent_group)
+        
+        register_infos = DocImpl._registered_node_group_info.copy()
+        register_infos.update(self._registered_node_group_info)
+        self._registered_node_group_info = register_infos
+
         for group_name in self.node_groups.keys():
             if group_name in self._registered_node_group_info:
                 self.node_groups[group_name]['info'] = self._registered_node_group_info[group_name]
@@ -320,6 +326,15 @@ class DocImpl:
         DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, **kwargs)
 
+    @staticmethod
+    def _register_group_info_impl(cls, group_name: str, display_name: str, group_type: NodeGroupType):
+        group_infos = getattr(cls, '_registered_node_group_info')
+        group_infos[group_name] = (display_name, group_type)
+
+    @classmethod
+    def register_info_for_buildin_group(cls, name: str, display_name: str, type: NodeGroupType) -> None:
+        DocImpl._register_group_info_impl(cls, name, display_name, type)
+
     @classmethod
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
         if func is not None:
@@ -344,13 +359,6 @@ class DocImpl:
             self.store.register_index(index_type, index_cls(*args, **kwargs))
         else:
             self._index_pending_registrations.append((index_type, index_cls, args, kwargs))
-
-    def register_info_for_group(self, group_name: str, display_name: str, type: NodeGroupType) -> None:
-        self._registered_node_group_info[group_name] = {"name": display_name, "type": type}
-
-    @classmethod
-    def register_info_for_buildin_group(cls, group_name: str, display_name: str, type: NodeGroupType) -> None:
-        cls._registered_node_group_info[group_name] = {"name": display_name, "type": type}
 
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         assert callable(func), 'func for reader should be callable'
@@ -607,4 +615,4 @@ for k, v in BuiltinGroups.__dict__.items():
     if not k.startswith('_') and isinstance(v, BuiltinGroups.Struct):
         assert k == v.name, 'builtin group name mismatch'
         DocImpl._create_builtin_node_group(name=k, transform=v.args, parent=v.parent, trans_node=v.trans_node)
-        DocImpl.register_info_for_buildin_group(group_name=v.name, display_name=v.display_name, type=v.type)
+        DocImpl.register_info_for_buildin_group(name=v.name, display_name=v.display_name, type=v.type)
