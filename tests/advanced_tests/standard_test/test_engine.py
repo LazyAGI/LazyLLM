@@ -251,61 +251,23 @@ class TestEngine(object):
         r = engine.run(gid, "这张图片描述的是什么？")
         assert '.wav' in r
 
-    def test_QustionRewrite(self):
+    def test_tools_with_llm(self):
         resources = [dict(id='0', kind='LocalLLM', name='base', args=dict(base_model='internlm2-chat-7b'))]
-        nodes = [
-            dict(
-                id="1",
-                kind="QustionRewrite",
-                name="m1",
-                args=dict(
-                    base_model='0',
-                    formatter="str",
-                ),
-            )
-        ]
-        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
+        nodes = [dict(id="1", kind="QustionRewrite", name="m1", args=dict(base_model='0', formatter="str")),
+                 dict(id="2", kind="QustionRewrite", name="m2", args=dict(base_model='0', formatter="list")),
+                 dict(id="3", kind="ParameterExtractor", name="m3", args=dict(
+                      base_model='0', param=["year"], type=["int"], description=["年份"], require=[True]))]
 
         engine = LightEngine()
-        gid = engine.start(nodes, edges, resources)
+        gid = engine.start(nodes, [['__start__', '1'], ['1', '__end__']], resources)
         res = engine.run(gid, "Model Context Protocol是啥")
         assert isinstance(res, str)
-        engine.reset()
 
-        nodes = [
-            dict(
-                id="1",
-                kind="QustionRewrite",
-                name="m2",
-                args=dict(
-                    base_model='0',
-                    formatter="list",
-                ),
-            )
-        ]
-        gid = engine.start(nodes, edges, resources)
+        gid = engine.start(nodes, [['__start__', '2'], ['2', '__end__']], resources)
         res = engine.run(gid, "RAG是什么？")
         assert isinstance(res, list) and len(res) > 0
 
-    def test_ParameterExtractor(self):
-        resources = [dict(id='0', kind='LocalLLM', name='base', args=dict(base_model='internlm2-chat-7b'))]
-        nodes = [
-            dict(
-                id="1",
-                kind="ParameterExtractor",
-                name="m1",
-                args=dict(
-                    base_model='0',
-                    param=["year"],
-                    types=["int"],
-                    description=["年份"],
-                    require=[True],
-                ),
-            )
-        ]
-        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
-        engine = LightEngine()
-        gid = engine.start(nodes, edges, resources)
+        gid = engine.start(nodes, [['__start__', '3'], ['3', '__end__']], resources)
         input = "This year is 2023"
         res = engine.run(gid, input)
         assert isinstance(res, dict)

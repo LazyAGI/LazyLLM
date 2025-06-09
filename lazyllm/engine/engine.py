@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 import requests
 import json
 import sys
+
 # Each session will have a separate engine
 class Engine(ABC):
     __default_engine__ = None
@@ -819,31 +820,19 @@ def make_file(id: str):
 
 
 @NodeConstructor.register("ParameterExtractor")
-def make_parameter_extractor(
-    base_model: str,
-    param: list[str],
-    type: list[str],
-    description: list[str],
-    require: list[bool],
-):
+def make_parameter_extractor(base_model: str, param: list[str], type: list[str],
+                             description: list[str], require: list[bool]):
     base_model = Engine().build_node(base_model).func
     return lazyllm.tools.ParameterExtractor(base_model, param, type, description, require)
 
 
 @NodeConstructor.register("QustionRewrite")
-def make_qustion_rewrite(
-    base_model: str,
-    rewrite_prompt: str = "",
-    formatter: str = "str",
-):
+def make_qustion_rewrite(base_model: str, rewrite_prompt: str = "", formatter: str = "str"):
     base_model = Engine().build_node(base_model).func
     return lazyllm.tools.QustionRewrite(base_model, rewrite_prompt, formatter)
 
 
 @NodeConstructor.register("CodeGenerator")
-def make_code_generator(
-    base_model: str,
-    prompt: str = "",
-):
+def make_code_generator(base_model: str, prompt: str = ""):
     base_model = Engine().build_node(base_model).func
     return lazyllm.tools.CodeGenerator(base_model, prompt)
