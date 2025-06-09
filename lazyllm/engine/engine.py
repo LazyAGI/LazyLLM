@@ -816,7 +816,7 @@ def make_simple_reader():
 
 
 @NodeConstructor.register("OCR")
-def make_ocr(model: Optional[str] = "PP-OCRv5_server"):
+def make_ocr(model: Optional[str] = "PP-OCRv5_mobile"):
     if model is None:
         model = "PP-OCRv5_mobile"
     assert model in ["PP-OCRv5_server", "PP-OCRv5_mobile"]
