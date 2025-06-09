@@ -2,6 +2,7 @@ import os
 import time
 import argparse
 import asyncio
+import yaml
 
 import lazyllm
 
@@ -64,10 +65,19 @@ def deploy(commands):
                             choices=["auto", "vllm", "lightllm", "lmdeploy"])
         parser.add_argument("--chat", help="chat ", default='false',
                             choices=["ON", "on", "1", "true", "True", "OFF", "off", "0", "False", "false"])
+        parser.add_argument("--deploy_config_path", type=str,
+                            help="Path to YAML configuration file containing framework specific parameters",
+                            default=None)
 
         args = parser.parse_args(commands)
 
-        t = lazyllm.TrainableModule(args.model).deploy_method(getattr(lazyllm.deploy, args.framework))
+        t = lazyllm.TrainableModule(args.model)
+        if args.deploy_config_path:
+            with open(args.deploy_config_path, 'r') as f:
+                deploy_config = yaml.safe_load(f)
+            t.deploy_method(getattr(lazyllm.deploy, args.framework), **deploy_config)
+        else:
+            t.deploy_method(getattr(lazyllm.deploy, args.framework))
         if args.chat in ["ON", "on", "1", "true", "True"]:
             t = lazyllm.WebModule(t)
         t.start()
