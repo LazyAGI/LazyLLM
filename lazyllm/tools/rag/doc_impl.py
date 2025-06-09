@@ -124,7 +124,6 @@ class DocImpl:
         self._algo_name = algo_name
 
     def _init_node_groups(self):
-        LOG.info(f"node groups: {self.node_groups}")
         node_groups = DocImpl._builtin_node_groups.copy()
         node_groups.update(DocImpl._global_node_groups)
         node_groups.update(self.node_groups)
