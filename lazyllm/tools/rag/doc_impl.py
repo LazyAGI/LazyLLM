@@ -47,6 +47,8 @@ def embed_wrapper(func: Optional[Callable[..., Any]]) -> Optional[Callable[..., 
                     raise  # Re-raise the original or a new error
         elif isinstance(result, list):  # Explicitly check if it's already a list
             return result
+        elif isinstance(result, dict):
+            return result
         else:
             # Handle unexpected types by raising an error
             error_message = f"Expected List[float] or str (convertible to List[float]), but got {type(result)}"
