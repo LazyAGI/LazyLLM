@@ -1,7 +1,7 @@
 from typing import Union
 import json
 from ...module import ModuleBase, TrainableModule, OnlineChatModuleBase
-
+from ...common import package
 
 ch_parameter_extractor_prompt = """
 你是一个智能助手，你的任务是从用户的输入中提取参数，并将其转换为json格式。
@@ -21,9 +21,9 @@ __is_success字段解释：表示是否成功，成功时值为 1，失败时值
 en_parameter_extractor_prompt = """
 You are an intelligent assistant. Your task is to extract parameters from the user’s input
 and convert them into JSON.
-You need to extract the following parameters from the text and generate JSON
-Each parameter has a name, type, description, and a "require" flag.
+You need to extract the following parameters from the text and generate JSON:
 '''{prompt}'''
+Each parameter has a name, type, description, and a "require" flag.
 ## Extraction requirements
 1. Extract the specified parameters from the user’s input and convert them into JSON.
    The JSON keys should be the parameter names, and the values should be the extracted values.
@@ -60,22 +60,10 @@ class ParameterExtractor(ModuleBase):
         require: list[bool],
     ):
         super().__init__()
-        assert len(param) > 0
-        assert len(param) == len(type)
-        assert len(param) == len(description)
-        assert len(param) == len(require)
-        self._param_dict = dict()
-        param_prompt = []
-        for i in range(0, len(param)):
-            t = {}
-            t["name"] = param[i]
-            t["type"] = type[i]
-            assert type[i] in ParameterExtractor.type_map
-            t["description"] = description[i]
-            t["require"] = require[i]
-            param_prompt.append(t)
-            self._param_dict[param[i]] = ParameterExtractor.type_map[type[i]]
-        param_prompt = repr(param_prompt)
+        assert len(param) == len(type) == len(description) == len(require) > 0
+        self._param_dict = {p: ParameterExtractor.type_map[t] for p, t in zip(param, type)}
+        param_prompt = repr([dict(name=p, type=t, description=d, require=r)
+                             for p, t, d, r in zip(param, type, description, require)])
         self._prompt = self.choose_prompt(param_prompt).format(prompt=param_prompt)
         if isinstance(base_model, str):
             self._m = TrainableModule(base_model).start().prompt(self._prompt)
@@ -93,7 +81,7 @@ class ParameterExtractor(ModuleBase):
     def forward(self, *args, **kw):
         res = self._m(*args, **kw)
         res = res.split("\n")
-        ret = dict()
+        ret_dict = dict()
         is_success = True
         for param in res:
             try:
@@ -101,13 +89,20 @@ class ParameterExtractor(ModuleBase):
                 if '__is_success' in t:
                     is_success &= t['__is_success'] == 1
                 if '__reason' in t:
-                    ret['__reason'] = t['__reason']
+                    ret_dict['__reason'] = t['__reason']
                 for k, v in t.items():
                     if k in self._param_dict:
-                        ret[k] = v
+                        ret_dict[k] = v
                         if not isinstance(v, self._param_dict[k]):
                             is_success = False
             except Exception:
                 continue
-        ret['__is_success'] = 1 if is_success else 0
+        ret_dict['__is_success'] = 1 if is_success else 0
+        ret = []
+        for param_name in self._param_dict.keys():
+            if param_name in ret_dict:
+                ret.append(ret_dict[param_name])
+            else:
+                ret.append(None)
+        ret = package(ret)
         return ret
