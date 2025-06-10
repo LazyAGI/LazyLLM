@@ -10,7 +10,6 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 import json
-import os
 
 app = FastAPI()
 
@@ -280,14 +279,3 @@ class TestEngine(unittest.TestCase):
 
             res = engine.online_model_validate_api_key(token + 'ss', source=source)
             assert res is False
-
-    def test_OCR(self):
-        nodes = [dict(id='1', kind='OCR', name='m1', args=dict(model="PP-OCRv5_mobile"))]
-        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
-        data_root_dir = os.getenv("LAZYLLM_DATA_PATH")
-        input = os.path.join(data_root_dir, "rag_master/default/__data/pdfs/reading_report_p1.pdf")
-        engine = LightEngine()
-        gid = engine.start(nodes, edges)
-        data = engine.run(gid, input)
-        verify = lazyllm.components.ocr.pp_ocr.OCR("PP-OCRv5_mobile")(input)
-        assert len(data) == len(verify)

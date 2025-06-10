@@ -811,8 +811,12 @@ def make_file(id: str):
     return FileResource(id)
 
 @NodeConstructor.register("Reader")
-def make_simple_reader():
-    return lazyllm.tools.rag.FileReader()
+def make_simple_reader(file_resource_id: Optional[str] = None):
+    if file_resource_id:
+        file = Engine().build_node(file_resource_id).func
+        return lazyllm.tools.rag.FileReader(file_resource=file)
+    else:
+        return lazyllm.tools.rag.FileReader()
 
 
 @NodeConstructor.register("OCR")
