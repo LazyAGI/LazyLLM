@@ -256,7 +256,8 @@ class TestEngine(object):
         nodes = [dict(id="1", kind="QustionRewrite", name="m1", args=dict(base_model='0', formatter="str")),
                  dict(id="2", kind="QustionRewrite", name="m2", args=dict(base_model='0', formatter="list")),
                  dict(id="3", kind="ParameterExtractor", name="m3", args=dict(
-                      base_model='0', param=["year"], type=["int"], description=["年份"], require=[True]))]
+                      base_model='0', param=["year"], type=["int"], description=["年份"], require=[True])),
+                 dict(id="4", kind="CodeGenerator", name="m4", args=dict(base_model='0'))]
 
         engine = LightEngine()
         gid = engine.start(nodes, [['__start__', '1'], ['1', '__end__']], resources)
@@ -270,7 +271,13 @@ class TestEngine(object):
         gid = engine.start(nodes, [['__start__', '3'], ['3', '__end__']], resources)
         input = "This year is 2023"
         res = engine.run(gid, input)
-        assert isinstance(res, dict)
-        assert "year" in res
-        assert isinstance(res["year"], int)
-        assert res["year"] == 2023
+        assert len(res)==3
+        assert res[0] == 2023
+
+        gid = engine.start(nodes, [['__start__', '4'], ['4', '__end__']], resources)
+        input = "帮我写一个函数，计算两数之和"
+        res = engine.run(gid, input)
+        compiled = lazyllm.common.utils.compile_func(res)
+        assert compiled(2, 3) == 5
+
+

@@ -1,5 +1,6 @@
 from typing import Union
 from ...module import ModuleBase, TrainableModule, OnlineChatModuleBase
+import re
 
 en_code_generate_prompt = """
 ## Task
@@ -67,4 +68,8 @@ class CodeGenerator(ModuleBase):
 
     def forward(self, *args, **kw):
         res = self._m(*args, **kw)
+        pattern = r"```python(.*?)\n```"
+        matches = re.findall(pattern, res, re.DOTALL)
+        if len(matches) > 0:
+            return matches[0]
         return res
