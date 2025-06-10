@@ -227,11 +227,12 @@ class DocumentProcessor():
                         "display_name": display_name,
                     }
                     infos.append(group_info)
+            LOG.info(f"Get group info for {algo_id} success with {infos}")
             return BaseResponse(code=200, msg='success', data=infos)
 
         @app.post('/doc/add')
         async def async_add_doc(self, request: AddDocRequest):
-
+            LOG.info(f"Add doc for {request.model_dump_json()}")
             task_id = request.task_id
             algo_id = request.algo_id
             file_infos = request.file_infos
@@ -256,7 +257,7 @@ class DocumentProcessor():
 
         @app.delete('/doc/delete')
         async def async_delete_doc(self, request: DeleteDocRequest) -> None:
-
+            LOG.info(f"Del doc for {request.model_dump_json()}")
             algo_id = request.algo_id
             doc_ids = request.doc_ids
 
@@ -312,6 +313,7 @@ class DocumentProcessor():
                     if task_id not in self._pending_task_ids:
                         continue
                     if task_type == 'add':
+                        LOG.info(f"Processing add task for {params}")
                         file_infos: List[FileInfo] = params.get('file_infos')
                         callback_path = params.get('feedback_url')
                         input_files = []
@@ -352,6 +354,7 @@ class DocumentProcessor():
                         self._pending_task_ids.remove(task_id)
                         self._tasks[task_id] = (future, callback_path)
                     elif task_type == 'delete':
+                        LOG.info(f'Received delete task: {params}')
                         doc_ids = params
                         future = self._delete_executor.submit(self._processors[algo_id].delete_doc, doc_ids=doc_ids)
                         self._pending_task_ids.remove(task_id)
