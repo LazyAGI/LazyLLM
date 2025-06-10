@@ -5,6 +5,7 @@ import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
+from lazyllm.common.bind import _MetaBind
 
 from .doc_manager import DocManager
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor
@@ -24,7 +25,13 @@ class CallableDict(dict):
         return self[cls](*args, **kw)
 
 
-class Document(ModuleBase, BuiltinGroups):
+class _MetaDocument(_MetaBind):
+    def __instancecheck__(self, __instance):
+        if isinstance(__instance, UrlDocument): return True
+        return super().__instancecheck__(__instance)
+
+
+class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     class _Manager(ModuleBase):
         def __init__(self, dataset_path: Optional[str], embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: Union[bool, str] = False, server: bool = False, name: Optional[str] = None,
@@ -321,6 +328,7 @@ class Document(ModuleBase, BuiltinGroups):
 
 class UrlDocument(ModuleBase):
     def __init__(self, url: str, name: str):
+        super().__init__()
         self._missing_keys = set(dir(Document)) - set(dir(UrlDocument))
         self._manager = lazyllm.UrlModule(url=url)
         self._curr_group = name
