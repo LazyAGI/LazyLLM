@@ -69,6 +69,7 @@ class NodeGroupType(str, Enum):
     CHUNK = "Chunk"
     SUMMARY = "Summary"
     IMAGE_INFO = "Image Info"
+    QUESTION_ANSWER = "Question Answer"
 
 
 class BuiltinGroups(object):
@@ -140,7 +141,7 @@ class DocImpl:
                 parent_group = self.node_groups[group]['parent']
                 if not parent_group or parent_group in self._activated_groups: break
                 self._activated_groups.add(group := parent_group)
-        
+
         register_infos = DocImpl._registered_node_group_info.copy()
         register_infos.update(self._registered_node_group_info)
         self._registered_node_group_info = register_infos
