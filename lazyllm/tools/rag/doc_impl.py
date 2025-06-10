@@ -544,7 +544,7 @@ class DocImpl:
         self._activated_groups.add(group_name)
         if embed_keys:
             activated_embeddings = self._activated_embeddings.setdefault(group_name, set())
-            if len(set(embed_keys) - activated_embeddings[group_name]) == 0: return
+            if len(set(embed_keys) - activated_embeddings) == 0: return
             activated_embeddings.update(embed_keys)
 
         if self._lazy_init.flag:
