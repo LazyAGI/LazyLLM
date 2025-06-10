@@ -112,6 +112,9 @@ class _Processor:
             if group['parent'] == cur_name:
                 self._reparse_group_recursive(p_nodes=nodes, cur_name=group_name, doc_ids=doc_ids)
 
+    def update_doc_meta(self, doc_id: list[str], metadata: list[dict]):
+        self._store.update_doc_meta(doc_id=doc_id, metadata=metadata)
+
     def delete_doc(self, input_files: List[str] = None, doc_ids: List[str] = None) -> None:
         if input_files:
             LOG.info(f"delete_files: {input_files}")
@@ -318,7 +321,7 @@ class DocumentProcessor():
                                 reparse_group = reparse_group
                                 reparse_doc_ids.append(file_info.doc_id)
                                 reparse_files.append(file_info.file_path)
-                                reparse_metadatas.append(gen_docid(file_info.file_path))
+                                reparse_metadatas.append(file_info.metadata)
                             else:
                                 input_files.append(file_info.file_path)
                                 ids.append(file_info.doc_id)

@@ -390,9 +390,10 @@ class SenseCoreStore(DocStoreBase):
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
         """ update doc meta """
         # TODO 性能优化
-        nodes = self.get_nodes(uids=[doc_id])
-        for node in nodes:
-            node.metadata.update(metadata)
+        for group in self.activated_groups():
+            nodes = self.get_nodes(group_name=group, doc_ids=[doc_id])
+            for node in nodes:
+                node.metadata.update(metadata)
         self.update_nodes(nodes)
         return
 
