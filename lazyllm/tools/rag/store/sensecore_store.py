@@ -243,26 +243,25 @@ class SenseCoreStore(DocStoreBase):
             endpoint_url=self._s3_config["endpoint_url"],
         )
 
-        embed_keys = set()
-        for group in groups:
-            if group in self._group_embed_keys:
-                embed_keys.update(self._group_embed_keys[group])
+        try:
+            url = urljoin(self._uri, "v1/writerSegmentJob:submit")
+            params = {"writer_segment_job_id": job_id}
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "dataset_id": self._kb_id,
+                "file_key": obj_key,
+                "groups": groups
+            }
 
-        url = urljoin(self._uri, "v1/writerSegmentJob:submit")
-        params = {"writer_segment_job_id": job_id}
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "dataset_id": self._kb_id,
-            "file_key": obj_key,
-            "groups": groups
-        }
-
-        response = requests.post(url, params=params, headers=headers, json=payload)
-        response.raise_for_status()
-        LOG.info(f"SenseCore Store: insert task {job_id} submitted")
+            response = requests.post(url, params=params, headers=headers, json=payload)
+            response.raise_for_status()
+            LOG.info(f"SenseCore Store: insert task {job_id} submitted")
+        except Exception as e:
+            LOG.error(f"SenseCore Store: insert task {job_id} failed: {e}")
+            raise e
         return job_id
 
     def _check_insert_job_status(self, job_id: str) -> None:
