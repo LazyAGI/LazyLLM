@@ -542,7 +542,11 @@ class DocImpl:
     def activate_group(self, group_name: str, embed_keys: List[str]):
         group_name = str(group_name)
         self._activated_groups.add(group_name)
-        if embed_keys: self._activated_embeddings.setdefault(str(group_name), set()).update(embed_keys)
+        if embed_keys:
+            activated_embeddings = self._activated_embeddings.setdefault(group_name, set())
+            if len(set(embed_keys) - activated_embeddings[group_name]) == 0: return
+            activated_embeddings.update(embed_keys)
+
         if self._lazy_init.flag:
             if group_name not in self.node_groups: return
             assert not embed_keys, 'Cannot add new embed_keys for node_group when Document is inited'

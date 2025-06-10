@@ -101,16 +101,16 @@ class TempDocRetriever(ModuleBase, _PostProcess):
         return self
 
     @functools.lru_cache
-    def _get_document(self, doc_files: List[str]):
-        doc = Document(embed=self._embed, doc_files=doc_files)
-        doc._impl.node_groups = self._doc._impl.node_groups
-        return doc
-
-    def forward(self, files: Union[str, List[str]], query: str):
+    def _get_retrievers(self, doc_files: List[str]):
         active_node_groups = self._node_groups or [[Document.MediumChunk,
                                                     dict(similarity=('cosine' if self._embed else 'bm25'))]]
-        if isinstance(files, str): files = [files]
-        doc = self._get_document(doc_files=tuple(set(files)))
+        doc = Document(embed=self._embed, doc_files=doc_files)
+        doc._impl.node_groups = self._doc._impl.node_groups
         retrievers = [Retriever(doc, name, **kw) for (name, kw) in active_node_groups]
+        return retrievers
+
+    def forward(self, files: Union[str, List[str]], query: str):
+        if isinstance(files, str): files = [files]
+        retrievers = self._get_retrievers(doc_files=tuple(set(files)))
         r = lazyllm.parallel(*retrievers).sum
         return self._post_process(r(query))
