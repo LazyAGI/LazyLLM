@@ -1,7 +1,7 @@
 from typing import Union
 import json
 from ...module import ModuleBase, TrainableModule, OnlineChatModuleBase
-
+from ...common import package
 
 ch_parameter_extractor_prompt = """
 你是一个智能助手，你的任务是从用户的输入中提取参数，并将其转换为json格式。
@@ -117,7 +117,5 @@ class ParameterExtractor(ModuleBase):
                 ret.append(ret_dict[param_name])
             else:
                 ret.append(None)
-        ret.append(ret_dict['__is_success'])
-        ret.append(ret_dict['__reason'])
-        ret = tuple(ret)
+        ret = package(ret)
         return ret
