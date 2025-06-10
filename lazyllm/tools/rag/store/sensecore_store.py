@@ -122,6 +122,22 @@ class SenseCoreStore(DocStoreBase):
                 segment.image_keys = [image_path]
         elif isinstance(node, QADocNode):
             segment.answer = node._answer
+        elif node.__class__.__name__ == 'MixDocNode':
+            image_paths = node._image_path
+            for image_path in image_paths:
+                image_file_name = os.path.basename(image_path)
+                obj_key = f"lazyllm/images/{image_file_name}"
+                with open(image_path, "rb") as f:
+                    upload_data_to_s3(
+                        f.read(),
+                        bucket_name=self._s3_config["bucket_name"],
+                        object_key=obj_key,
+                        aws_access_key_id=self._s3_config["access_key"],
+                        aws_secret_access_key=self._s3_config["secret_access_key"],
+                        use_minio=self._s3_config["use_minio"],
+                        endpoint_url=self._s3_config["endpoint_url"],
+                    )
+                    segment.image_keys = [image_path]
         return segment.model_dump()
 
     def _deserialize_node(self, segment: Dict) -> DocNode:
