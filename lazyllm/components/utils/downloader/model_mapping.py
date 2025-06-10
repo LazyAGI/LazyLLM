@@ -175,6 +175,20 @@ model_name_mapping = {
         },
         "type": "reranker"
     },
+    "bge-reranker-v2-m3": {
+        "source": {
+            "huggingface": "BAAI/bge-reranker-v2-m3",
+            "modelscope": "BAAI/bge-reranker-v2-m3"
+        },
+        "type": "reranker"
+    },
+    "bge-vl-v1.5-mmeb": {
+        "source": {
+            "huggingface": "BAAI/BGE-VL-v1.5-mmeb",
+            "modelscope": "BAAI/BGE-VL-v1.5-mmeb"
+        },
+        "type": "cross_modal_embed" # image - text
+    },
     "chattts": {
         "source": {
             "huggingface": "2Noise/ChatTTS",
@@ -235,6 +249,13 @@ model_name_mapping = {
         "source": {
             "huggingface": "Qwen/Qwen2.5-VL-3B-Instruct",
             "modelscope": "Qwen/Qwen2.5-VL-3B-Instruct"
+        },
+        "type": "vlm"
+    },
+    "qwen2.5-vl-32b-instruct": {
+        "source": {
+            "huggingface": "Qwen/Qwen2.5-VL-32B-Instruct",
+            "modelscope": "Qwen/Qwen2.5-VL-32B-Instruct"
         },
         "type": "vlm"
     },

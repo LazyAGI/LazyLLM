@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Union
 from .doc_node import DocNode
 from .index_base import IndexBase
 
@@ -29,7 +29,17 @@ class StoreBase(ABC):
         pass
 
     @abstractmethod
+    def activate_group(self, group_names: Union[str, List[str]]) -> bool:
+        # activated means the group is in use.
+        pass
+
+    @abstractmethod
+    def activated_groups(self):
+        pass
+
+    @abstractmethod
     def is_group_active(self, name: str) -> bool:
+        # active means the group has valid data.
         pass
 
     @abstractmethod

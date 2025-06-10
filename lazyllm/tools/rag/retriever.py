@@ -1,8 +1,11 @@
-from lazyllm import ModuleBase, pipeline, once_wrapper
+from lazyllm import ModuleBase, once_wrapper
 from .doc_node import DocNode
-from .document import Document, DocImpl
-from typing import List, Optional, Union, Dict, Set
+from .document import Document, UrlDocument, DocImpl
+from .store_base import LAZY_ROOT_NAME
+from typing import List, Optional, Union, Dict, Set, Callable
 from .similarity import registered_similarities
+import functools
+import lazyllm
 
 class _PostProcess(object):
     def __init__(self, output_format: Optional[str] = None,
@@ -23,22 +26,10 @@ class _PostProcess(object):
         return nodes
 
 class Retriever(ModuleBase, _PostProcess):
-    __enable_request__ = False
-
-    def __init__(
-        self,
-        doc: object,
-        group_name: str,
-        similarity: Optional[str] = None,
-        similarity_cut_off: Union[float, Dict[str, float]] = float("-inf"),
-        index: str = "default",
-        topk: int = 6,
-        embed_keys: Optional[List[str]] = None,
-        target: Optional[str] = None,
-        output_format: Optional[str] = None,
-        join: Union[bool, str] = False,
-        **kwargs,
-    ):
+    def __init__(self, doc: object, group_name: str, similarity: Optional[str] = None,
+                 similarity_cut_off: Union[float, Dict[str, float]] = float("-inf"), index: str = "default",
+                 topk: int = 6, embed_keys: Optional[List[str]] = None, target: Optional[str] = None,
+                 output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs):
         super().__init__()
 
         if similarity:
@@ -49,12 +40,13 @@ class Retriever(ModuleBase, _PostProcess):
 
         self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
         for doc in self._docs:
-            assert isinstance(doc, Document), 'Only Document or List[Document] are supported'
+            assert isinstance(doc, (Document, UrlDocument)), 'Only Document or List[Document] are supported'
+            if isinstance(doc, UrlDocument): continue
             self._submodules.append(doc)
             if mode == 'embedding' and not embed_keys:
                 embed_keys = list(doc._impl.embed.keys())
-            if embed_keys:
-                doc._impl._activated_embeddings.setdefault(group_name, set()).update(embed_keys)
+            doc.activate_group(group_name, embed_keys)
+            if target: doc.activate_group(target)
 
         self._group_name = group_name
         self._similarity = similarity  # similarity function str
@@ -68,13 +60,10 @@ class Retriever(ModuleBase, _PostProcess):
 
     @once_wrapper
     def _lazy_init(self):
-        docs = [doc for doc in self._docs if self._group_name in doc._impl.node_groups or self._group_name
-                in DocImpl._builtin_node_groups or self._group_name in DocImpl._global_node_groups]
+        docs = [doc for doc in self._docs if isinstance(doc, UrlDocument) or self._group_name in doc._impl.node_groups
+                or self._group_name in DocImpl._builtin_node_groups or self._group_name in DocImpl._global_node_groups]
         if not docs: raise RuntimeError(f'Group {self._group_name} not found in document {self._docs}')
         self._docs = docs
-
-    def _get_post_process_tasks(self):
-        return pipeline(lambda *a: self('Test Query'))
 
     def forward(
             self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None
@@ -90,3 +79,38 @@ class Retriever(ModuleBase, _PostProcess):
                 nodes = doc.find(self._target)(nodes)
             all_nodes.extend(nodes)
         return self._post_process(all_nodes)
+
+
+class TempDocRetriever(ModuleBase, _PostProcess):
+    def __init__(self, embed: Callable = None, output_format: Optional[str] = None, join: Union[bool, str] = False):
+        super().__init__()
+        self._doc = Document(doc_files=[])
+        self._embed = embed
+        self._node_groups = []
+        _PostProcess.__init__(self, output_format, join)
+
+    def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
+                          trans_node: bool = None, num_workers: int = 0, **kwargs):
+        self._doc.create_node_group(name, transform=transform, parent=parent,
+                                    trans_node=trans_node, num_workers=num_workers, **kwargs)
+        return self
+
+    def add_subretriever(self, group: str, **kwargs):
+        if 'similarity' not in kwargs: kwargs['similarity'] = ('cosine' if self._embed else 'bm25')
+        self._node_groups.append((group, kwargs))
+        return self
+
+    @functools.lru_cache
+    def _get_document(self, doc_files: List[str]):
+        doc = Document(embed=self._embed, doc_files=doc_files)
+        doc._impl.node_groups = self._doc._impl.node_groups
+        return doc
+
+    def forward(self, files: Union[str, List[str]], query: str):
+        active_node_groups = self._node_groups or [[Document.MediumChunk,
+                                                    dict(similarity=('cosine' if self._embed else 'bm25'))]]
+        if isinstance(files, str): files = [files]
+        doc = self._get_document(doc_files=tuple(set(files)))
+        retrievers = [Retriever(doc, name, **kw) for (name, kw) in active_node_groups]
+        r = lazyllm.parallel(*retrievers).sum
+        return self._post_process(r(query))

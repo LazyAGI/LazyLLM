@@ -1,4 +1,4 @@
-from .rag import Document, Reranker, Retriever, SentenceSplitter, LLMParser
+from .rag import Document, Reranker, Retriever, TempDocRetriever, SentenceSplitter, LLMParser
 from .webpages import WebModule
 from .agent import (
     ToolManager,
@@ -14,10 +14,12 @@ from .sql import SqlManager, MongoDBManager, DBResult, DBStatus
 from .sql_call import SqlCall
 from .tools.http_tool import HttpTool
 from .mcp.client import MCPClient
+from .actors import ParameterExtractor, QustionRewrite, CodeGenerator
 
 __all__ = [
     "Document",
     "Reranker",
+    "TempDocRetriever",
     "Retriever",
     "WebModule",
     "ToolManager",
@@ -37,4 +39,7 @@ __all__ = [
     "SqlCall",
     "HttpTool",
     "MCPClient",
+    "ParameterExtractor",
+    "QustionRewrite",
+    "CodeGenerator",
 ]

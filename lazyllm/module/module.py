@@ -24,6 +24,7 @@ from ..launcher import LazyLLMLaunchersBase as Launcher
 import uuid
 from ..client import get_redis, redis_client
 from ..hook import LazyLLMHook
+from urllib.parse import urljoin
 
 
 # use _MetaBind:
@@ -603,6 +604,12 @@ class ServerModule(UrlModule):
     def status(self):
         return self._impl._launcher.status
 
+    def _call(self, fname, *args, **kwargs):
+        args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
+        url = urljoin(self._url.rsplit("/", 1)[0], '_call')
+        r = requests.post(url, json=(fname, args, kwargs), headers={'Content-Type': 'application/json'})
+        return pickle.loads(codecs.decode(r.content, "base64"))
+
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
                                  stream=self._stream, return_trace=self._return_trace)
@@ -707,10 +714,11 @@ class _TrainableModuleImpl(ModuleBase):
         if self._deploy is None: return None
 
         if self._deploy is lazyllm.deploy.AutoDeploy:
-            self._deployer = self._deploy(base_model=self._base_model, stream=bool(self._stream), **self._deploy_args)
+            self._deployer = self._deploy(base_model=self._base_model, **self._deploy_args)
             self._set_template(self._deployer)
         else:
-            self._deployer = self._deploy(stream=bool(self._stream), **self._deploy_args)
+            kwargs = {'stream': self._stream} if self._deploy is lazyllm.deploy.dummy else {}
+            self._deployer = self._deploy(**kwargs, **self._deploy_args)
 
         def before_deploy(*no_use_args):
             if hasattr(self, '_temp_finetuned_model_path') and self._temp_finetuned_model_path:

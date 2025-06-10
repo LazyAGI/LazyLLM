@@ -14,6 +14,7 @@ from enum import Enum
 from datetime import datetime, timedelta
 import requests
 import json
+import sys
 
 # Each session will have a separate engine
 class Engine(ABC):
@@ -360,11 +361,13 @@ def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] =
 
 
 @NodeConstructor.register('Loop', subitems=['nodes', 'resources'])
-def make_loop(stop_condition: str, nodes: List[dict], edges: List[dict] = [],
-              resources: List[dict] = [], judge_on_full_input: bool = True):
-    stop_condition = make_code(stop_condition)
+def make_loop(nodes: List[dict], edges: List[dict] = [], resources: List[dict] = [],
+              stop_condition: Optional[str] = None, judge_on_full_input: bool = True, count=sys.maxsize):
+    assert stop_condition is not None or count > 1, 'stop_condition or count is required'
+    if stop_condition is not None:
+        stop_condition = make_code(stop_condition)
     return lazyllm.loop(make_graph(nodes, edges, resources, enable_server=False),
-                        stop_condition=stop_condition, judge_on_full_input=judge_on_full_input)
+                        stop_condition=stop_condition, judge_on_full_input=judge_on_full_input, count=count)
 
 
 @NodeConstructor.register('Ifs', subitems=['true', 'false'])
@@ -405,7 +408,7 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]],
 
 @NodeConstructor.register('Document')
 def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False,
-                  server: bool = False, node_group: List = []):
+                  server: bool = False, node_group: List = [], activated_groups: List[str] = []):
     document = lazyllm.tools.rag.Document(
         dataset_path, Engine().build_node(embed).func if embed else None, server=server, manager=create_ui)
     for group in node_group:
@@ -416,6 +419,7 @@ def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False
             group['transform'] = 'function'
             group['function'] = make_code(group['function'])
         document.create_node_group(**group)
+    document.activate_groups(activated_groups + [g['name'] for g in node_group])
     return document
 
 @NodeConstructor.register('Reranker')
@@ -430,6 +434,9 @@ class JoinFormatter(lazyllm.components.FormatterBase):
         self.type = type
         self.names = names
         self.symbol = symbol
+
+    def _load(self, msg: str):
+        return lazyllm.components.formatter.decode_query_with_filepaths(msg)
 
     def _parse_py_data_by_formatter(self, data):
         if self.type == 'sum':
@@ -669,10 +676,12 @@ def make_http_tool(method: Optional[str] = None,
 
 
 class VQA(lazyllm.Module):
-    def __init__(self, base_model: Union[str, lazyllm.TrainableModule], file_resource_id: Optional[str]):
+    def __init__(self, base_model: Union[str, lazyllm.TrainableModule], file_resource_id: Optional[str],
+                 prompt: Optional[str] = None):
         super().__init__()
         self.vqa = self._vqa = (lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
                                 if not isinstance(base_model, lazyllm.TrainableModule) else base_model)
+        if prompt: self._vqa.prompt(prompt=prompt)
         self._file_resource_id = file_resource_id
         if file_resource_id:
             with pipeline() as self.vqa:
@@ -699,8 +708,8 @@ class VQA(lazyllm.Module):
 
 
 @NodeConstructor.register('VQA')
-def make_vqa(base_model: str, file_resource_id: Optional[str] = None):
-    return VQA(base_model, file_resource_id)
+def make_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None):
+    return VQA(base_model, file_resource_id, prompt)
 
 
 @NodeConstructor.register('SharedLLM')
@@ -736,6 +745,7 @@ class LLM(lazyllm.ModuleBase):
     def __init__(self, m: lazyllm.ModuleBase, keys: Optional[List[str]] = None):
         super().__init__()
         self._m = m
+        self._m.used_by(self._module_id)
         self._keys = keys
 
     def forward(self, *args, **kw):
@@ -745,6 +755,9 @@ class LLM(lazyllm.ModuleBase):
         else:
             assert len(args) == 1
         return self._m(*args, **kw)
+
+    def share(self, prompt: str, history: Optional[List[List[str]]] = None):
+        return LLM(self._m.share(prompt=prompt, history=history), self._keys)
 
 
 @NodeConstructor.register('LLM')
@@ -805,3 +818,22 @@ class FileResource(object):
 @NodeConstructor.register('File')
 def make_file(id: str):
     return FileResource(id)
+
+
+@NodeConstructor.register("ParameterExtractor")
+def make_parameter_extractor(base_model: str, param: list[str], type: list[str],
+                             description: list[str], require: list[bool]):
+    base_model = Engine().build_node(base_model).func
+    return lazyllm.tools.ParameterExtractor(base_model, param, type, description, require)
+
+
+@NodeConstructor.register("QustionRewrite")
+def make_qustion_rewrite(base_model: str, rewrite_prompt: str = "", formatter: str = "str"):
+    base_model = Engine().build_node(base_model).func
+    return lazyllm.tools.QustionRewrite(base_model, rewrite_prompt, formatter)
+
+
+@NodeConstructor.register("CodeGenerator")
+def make_code_generator(base_model: str, prompt: str = ""):
+    base_model = Engine().build_node(base_model).func
+    return lazyllm.tools.CodeGenerator(base_model, prompt)
