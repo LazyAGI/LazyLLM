@@ -508,9 +508,9 @@ class DocImpl:
 
         # 2. if ancestor != current group, go to ancestor; then if ancestor != target group, go to target group
         if nodes and nodes[0]._group != ancestor:
-            nodes = DocImpl.find_parent(nodes, ancestor)
+            nodes = self.find_parent(nodes, ancestor)
         if nodes and nodes[0]._group != group:
-            nodes = DocImpl.find_children(nodes, group)
+            nodes = self.find_children(nodes, group)
         return nodes
 
     def find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
