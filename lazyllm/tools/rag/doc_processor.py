@@ -10,6 +10,7 @@ from .readers import ReaderBase
 from .doc_node import DocNode
 from .utils import gen_docid, BaseResponse
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
+import os
 import queue
 import threading
 import time
@@ -188,6 +189,7 @@ class DocumentProcessor():
             self._server = server
             self._inited = False
             self._feedback_url = config['process_feedback_service']
+            self._path_prefix = config['process_path_prefix']
 
         def _init_components(self, server: bool):
             if server and not self._inited:
@@ -238,6 +240,9 @@ class DocumentProcessor():
 
             if task_id in self._pending_task_ids or task_id in self._tasks:
                 return BaseResponse(code=400, msg=f'The task {task_id} already exists in queue', data=None)
+            if self._path_prefix:
+                for file_info in file_infos:
+                    file_info.file_path = os.path.join(self._path_prefix, file_info.file_path)
 
             params = {
                 "file_infos": file_infos,
