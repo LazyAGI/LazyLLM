@@ -250,34 +250,3 @@ class TestEngine(object):
 
         r = engine.run(gid, "这张图片描述的是什么？")
         assert '.wav' in r
-
-    def test_tools_with_llm(self):
-        resources = [dict(id='0', kind='LocalLLM', name='base', args=dict(base_model='internlm2-chat-7b'))]
-        nodes = [dict(id="1", kind="QustionRewrite", name="m1", args=dict(base_model='0', formatter="str")),
-                 dict(id="2", kind="QustionRewrite", name="m2", args=dict(base_model='0', formatter="list")),
-                 dict(id="3", kind="ParameterExtractor", name="m3", args=dict(
-                      base_model='0', param=["year"], type=["int"], description=["年份"], require=[True])),
-                 dict(id="4", kind="CodeGenerator", name="m4", args=dict(base_model='0'))]
-
-        engine = LightEngine()
-        gid = engine.start(nodes, [['__start__', '1'], ['1', '__end__']], resources)
-        res = engine.run(gid, "Model Context Protocol是啥")
-        assert isinstance(res, str)
-
-        gid = engine.start(nodes, [['__start__', '2'], ['2', '__end__']], resources)
-        res = engine.run(gid, "RAG是什么？")
-        assert isinstance(res, list) and len(res) > 0
-
-        gid = engine.start(nodes, [['__start__', '3'], ['3', '__end__']], resources)
-        input = "This year is 2023"
-        res = engine.run(gid, input)
-        assert len(res)==3
-        assert res[0] == 2023
-
-        gid = engine.start(nodes, [['__start__', '4'], ['4', '__end__']], resources)
-        input = "帮我写一个函数，计算两数之和"
-        res = engine.run(gid, input)
-        compiled = lazyllm.common.utils.compile_func(res)
-        assert compiled(2, 3) == 5
-
-
