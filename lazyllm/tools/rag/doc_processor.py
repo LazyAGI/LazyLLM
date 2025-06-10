@@ -1,11 +1,10 @@
-from urllib.parse import urljoin
 from collections import defaultdict
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 from lazyllm import LOG, ServerModule, FastapiApp as app, ThreadPoolExecutor, config
-from lazyllm.tools.rag.store.store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
-from lazyllm.tools.rag.store.utils import fibonacci_backoff
 
+from .store.store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+from .store.utils import fibonacci_backoff
 from .transform import (AdaptiveTransform, make_transform,)
 from .readers import ReaderBase
 from .doc_node import DocNode
@@ -285,18 +284,21 @@ class DocumentProcessor():
         def _send_status_message(self, task_id: str, callback_path: str, success: bool,
                                  error_code: str = "", error_msg: str = ""):
             if self._feedback_url:
-                endpoint = callback_path.format(task_id=task_id)
-                full_url = self._feedback_url + endpoint
-                payload = {
-                    "task_id": task_id,
-                    "status": 1 if success else 0,
-                    "error_code": error_code,
-                    "error_msg": error_msg,
-                }
-                headers = {"Content-Type": "application/json"}
-                requests.post(full_url, json=payload, headers=headers, timeout=5)
+                try:
+                    endpoint = callback_path.format(task_id=task_id)
+                    full_url = self._feedback_url + endpoint
+                    payload = {
+                        "task_id": task_id,
+                        "status": 1 if success else 0,
+                        "error_code": error_code,
+                        "error_msg": error_msg,
+                    }
+                    headers = {"Content-Type": "application/json"}
+                    requests.post(full_url, json=payload, headers=headers, timeout=5)
+                except Exception as e:
+                    LOG.error(f"Failed to send feedback to {full_url}: {e}")
             else:
-                raise ValueError("process_feedback_service is not set")
+                LOG.error("process_feedback_service is not set")
 
         def _worker(self):  # noqa: C901
             while True:

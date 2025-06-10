@@ -3,7 +3,7 @@ from .doc_node import DocNode
 from .index_base import IndexBase
 from lazyllm import LOG
 from lazyllm.common import override
-from lazyllm.tools.rag.store.store_base import StoreBase
+from .store import StoreBase
 from .utils import parallel_do_embedding, generic_process_filters, is_sparse
 from .similarity import registered_similarities
 

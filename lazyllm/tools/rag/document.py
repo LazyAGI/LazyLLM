@@ -5,12 +5,12 @@ import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
-from lazyllm.tools.rag.store.store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 
 from .doc_manager import DocManager
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files
+from .store.store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .index_base import IndexBase
 from .utils import DocListManager
 from .global_metadata import GlobalMetadataDesc as DocField

@@ -18,8 +18,9 @@ from lazyllm.tools.rag.doc_node import (
     DocNode
 )
 from lazyllm.tools.rag.global_metadata import (GlobalMetadataDesc, RAG_DOC_ID)
-from lazyllm.tools.rag.store.store_base import DocStoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC
-from lazyllm.tools.rag.store.utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff
+
+from .store_base import DocStoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC
+from .utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff
 
 INSERT_BATCH_SIZE = 3000
 
@@ -76,6 +77,7 @@ class SenseCoreStore(DocStoreBase):
         """ serialize node to dict """
         segment = Segment(
             segment_id=node._uid,
+            dataset_id=self._kb_id,
             document_id=node.global_metadata.get(RAG_DOC_ID),
             group=node._group,
             meta=json.dumps(node.metadata),
@@ -239,8 +241,7 @@ class SenseCoreStore(DocStoreBase):
         payload = {
             "dataset_id": self._kb_id,
             "file_key": obj_key,
-            "groups": groups,
-            "embedding_confs": [{"model": model_key} for model_key in embed_keys]
+            "groups": groups
         }
 
         response = requests.post(url, params=params, headers=headers, json=payload)
