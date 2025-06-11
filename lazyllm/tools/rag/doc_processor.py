@@ -171,14 +171,14 @@ class DBInfo(BaseModel):
 
 class AddDocRequest(BaseModel):
     task_id: str
-    algo_id: str
+    algo_id: Optional[str] = "__default__"
     file_infos: List[FileInfo]
     db_info: DBInfo
     feedback_url: Optional[str] = None
 
 
 class DeleteDocRequest(BaseModel):
-    algo_id: str
+    algo_id: Optional[str] = "__default__"
     dataset_id: str
     doc_ids: List[str]
 
