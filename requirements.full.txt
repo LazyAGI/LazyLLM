@@ -64,7 +64,7 @@ wandb>=0.17.0
 chattts
 funasr
 timm
-diffusers
+diffusers==0.33.1
 sortedcontainers
 flash-attn
 lightllm
@@ -72,7 +72,7 @@ lazyllm-llamafactory==0.9.3.dev0
 rotary-embedding-torch
 infinity-emb==0.0.70
 ctranslate2
-optimum>=1.16.2
+optimum==1.16.2
 typer
 pymongo
 pymysql
@@ -85,3 +85,6 @@ accelerate==1.6.0
 lmdeploy==0.8.0
 boto3
 botocore
+ftfy==6.3.1
+imageio==2.37.0
+imageio-ffmpeg==0.6.0

@@ -317,7 +317,8 @@ class LightEngine(Engine):
                     node = resource
                 else:
                     return self._nodes.get(node)
-            node = Node(id=node['id'], kind=node['kind'], name=node['name'], args=node['args'])
+            node = Node(id=node['id'], kind=node['kind'], name=node['name'], args=node['args'],
+                        hyperparameter=node.get('hyperparameter'))
         if node.id not in self._nodes:
             self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]
@@ -395,8 +396,8 @@ class LightEngine(Engine):
             args = [lazyllm.formatter.file(formatter='encode')(dict(query=args[0] if args else '', files=files))]
         if _file_resources:
             lazyllm.globals['lazyllm_files'] = _file_resources
-        nodes = [self.build_node(node).func for node in self.subnodes(id, recursive=True)]
-        [node.valid_key() for node in nodes if isinstance(node, SharedHttpTool)]
+        nodes = [self.build_node(node) for node in self.subnodes(id, recursive=True)]
+        [node.func.valid_key() for node in nodes if isinstance(node.func, SharedHttpTool)]
         f = self.build_node(id).func
         lazyllm.FileSystemQueue().dequeue()
         if history := _lazyllm_history:
@@ -404,6 +405,9 @@ class LightEngine(Engine):
             if not isinstance(history, list) and all([isinstance(h, list) for h in history]):
                 raise RuntimeError('History shoule be [[str, str], ..., [str, str]] (list of list of str)')
             lazyllm.globals['chat_history'] = {Engine().build_node(i).func._module_id: history for i in f._history_ids}
+        for node in nodes:
+            if isinstance(node, Node) and node.hyperparameter is not None and hasattr(node.func, "_module_id"):
+                lazyllm.globals['global_parameters'][node.func._module_id] = node.hyperparameter
         result = self.build_node(id).func(*args, **kw)
         lazyllm.globals['lazyllm_files'] = {}
         lazyllm.globals['chat_history'] = {}

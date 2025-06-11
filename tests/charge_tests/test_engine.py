@@ -279,3 +279,36 @@ class TestEngine(unittest.TestCase):
 
             res = engine.online_model_validate_api_key(token + 'ss', source=source)
             assert res is False
+
+    def test_tools_with_llm(self):
+        resources = [dict(id='0', kind='OnlineLLM', name='base', args=dict(source="qwen"))]
+        nodes = [dict(id="1", kind="QustionRewrite", name="m1", args=dict(base_model='0', formatter="str")),
+                 dict(id="2", kind="QustionRewrite", name="m2", args=dict(base_model='0', formatter="list")),
+                 dict(id="3", kind="ParameterExtractor", name="m3", args=dict(
+                      base_model='0', param=["year"], type=["int"], description=["年份"], require=[True])),
+                 dict(id="4", kind="ParameterExtractor", name="m4", args=dict(
+                      base_model='0', param=["year", "month"], type=["int", "int"], description=["年份", "月份"],
+                      require=[True, True])),
+                 dict(id="5", kind="CodeGenerator", name="m5", args=dict(base_model='0'))]
+
+        engine = LightEngine()
+        gid = engine.start(nodes, [['__start__', '1'], ['1', '__end__']], resources)
+        res = engine.run(gid, "Model Context Protocol是啥")
+        assert isinstance(res, str)
+
+        gid = engine.start(nodes, [['__start__', '2'], ['2', '__end__']], resources)
+        res = engine.run(gid, "RAG是什么？")
+        assert isinstance(res, list) and len(res) > 0
+
+        gid = engine.start(nodes, [['__start__', '3'], ['3', '__end__']], resources)
+        res = engine.run(gid, "This year is 2023")
+        assert res == 2023
+
+        gid = engine.start(nodes, [['__start__', '4'], ['4', '__end__']], resources)
+        res = engine.run(gid, "Today is 2022/06/06")
+        assert res[0] == 2022 and res[1] == 6
+
+        gid = engine.start(nodes, [['__start__', '5'], ['5', '__end__']], resources)
+        res = engine.run(gid, "帮我写一个函数，计算两数之和")
+        compiled = lazyllm.common.utils.compile_func(res)
+        assert compiled(2, 3) == 5

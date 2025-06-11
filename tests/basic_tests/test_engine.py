@@ -372,6 +372,13 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 1) == '1[2, 4]1'
         assert engine.run(gid, 2) == '2[4, 8]4'
 
+    def test_engine_edge_formatter_from_start(self):
+        nodes = [dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return x\n'))]
+        edges = [dict(iid='__start__', oid='1', formatter='[1:5]'), dict(iid='1', oid='__end__', formatter='[0:2]')]
+        engine = LightEngine()
+        gid = engine.start(nodes, edges)
+        assert engine.run(gid, [0, 1, 2, 3, 4, 5]) == [1, 2]
+
     def test_engine_edge_formatter_start(self):
         nodes = [dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int): return x')),
                  dict(id='2', kind='Code', name='m2', args=dict(code='def test(x: int): return 2 * x')),

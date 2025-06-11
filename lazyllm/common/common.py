@@ -127,14 +127,14 @@ class LazyLLMCMD(object):
 
     def __str__(self):
         assert not callable(self.cmd), f'Cannot convert cmd function {self.cmd} to str'
+        cmd = re.sub(r'\b(LAZYLLM_[A-Z0-9_]*?_(?:API|SECRET)_KEY)=\S+', r'\1=xxxxxx', self.cmd)
         if self.no_displays:
-            cmd = self.cmd
             for item in self.no_displays:
                 pattern = r'(-{1,2}' + re.escape(item) + r')(\s|=|)(\S+|)'
                 cmd = re.sub(pattern, "", cmd)
             return cmd
         else:
-            return self.cmd
+            return cmd
 
     def with_cmd(self, cmd):
         # Attention: Cannot use copy.deepcopy because of class method.

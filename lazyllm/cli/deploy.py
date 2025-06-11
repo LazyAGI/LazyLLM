@@ -65,9 +65,19 @@ def deploy(commands):
         parser.add_argument('--chat', help='chat ', default='false',
                             choices=['ON', 'on', '1', 'true', 'True', 'OFF', 'off', '0', 'False', 'false'])
 
-        args = parser.parse_args(commands)
+        args, unknown = parser.parse_known_args(commands)
+        kwargs = {}
+        for arg in unknown:
+            try:
+                assert arg.startswith('--') and '=' in arg
+                key, value = arg[2:].split('=', 1)
+                kwargs[key] = value
+            except Exception as e:
+                lazyllm.LOG.warning(f'Format error: `{arg}` should be --key=value. {str(e)}')
+                continue
 
-        t = lazyllm.TrainableModule(args.model).deploy_method(getattr(lazyllm.deploy, args.framework))
+        lazyllm.LOG.debug(f'Use arguments: {kwargs}')
+        t = lazyllm.TrainableModule(args.model).deploy_method(getattr(lazyllm.deploy, args.framework), **kwargs)
         if args.chat in ['ON', 'on', '1', 'true', 'True']:
             t = lazyllm.WebModule(t)
         t.start()

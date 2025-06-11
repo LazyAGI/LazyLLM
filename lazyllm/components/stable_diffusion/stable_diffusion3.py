@@ -14,12 +14,30 @@ from ..utils.file_operate import delete_old_files
 
 
 class StableDiffusion3(object):
+
+    _load_registry = {}
+    _call_registry = {}
+
+    @classmethod
+    def register_loader(cls, model_type):
+        def decorator(loader_func):
+            cls._load_registry[model_type] = loader_func
+            return loader_func
+        return decorator
+
+    @classmethod
+    def register_caller(cls, model_type):
+        def decorator(caller_func):
+            cls._call_registry[model_type] = caller_func
+            return caller_func
+        return decorator
+
     def __init__(self, base_sd, source=None, embed_batch_size=30, trust_remote_code=True, save_path=None, init=False):
         source = lazyllm.config['model_source'] if not source else source
         self.base_sd = ModelManager(source).download(base_sd) or ''
         self.embed_batch_size = embed_batch_size
         self.trust_remote_code = trust_remote_code
-        self.sd = None
+        self.paintor = None
         self.init_flag = lazyllm.once_flag()
         self.save_path = save_path or os.path.join(lazyllm.config['temp_dir'], 'sd3')
         if init:
@@ -30,7 +48,13 @@ class StableDiffusion3(object):
             import torch_npu  # noqa F401
             from torch_npu.contrib import transfer_to_npu  # noqa F401
 
-        self.sd = diffusers.StableDiffusion3Pipeline.from_pretrained(self.base_sd, torch_dtype=torch.float16).to("cuda")
+        for model_type, loader in self._load_registry.items():
+            if model_type in self.base_sd.lower():
+                loader(self)
+                return
+
+        self.paintor = diffusers.StableDiffusion3Pipeline.from_pretrained(
+            self.base_sd, torch_dtype=torch.float16).to("cuda")
 
     @staticmethod
     def image_to_base64(image):
@@ -76,14 +100,19 @@ class StableDiffusion3(object):
 
     def __call__(self, string):
         lazyllm.call_once(self.init_flag, self.load_sd)
-        imgs = self.sd(
+
+        for model_type, caller in self._call_registry.items():
+            if model_type in self.base_sd.lower():
+                return caller(self, string)
+
+        imgs = self.paintor(
             string,
             negative_prompt="",
             num_inference_steps=28,
             guidance_scale=7.0,
             max_sequence_length=512,
         ).images
-        img_path_list = StableDiffusion3.images_to_files(imgs, self.save_path)
+        img_path_list = self.images_to_files(imgs, self.save_path)
         return encode_query_with_filepaths(files=img_path_list)
 
     @classmethod
@@ -93,6 +122,91 @@ class StableDiffusion3(object):
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
         return StableDiffusion3.rebuild, (self.base_sd, self.embed_batch_size, init, self.save_path)
+
+@StableDiffusion3.register_loader('flux')
+def load_flux(model):
+    import torch
+    from diffusers import FluxPipeline
+    model.paintor = FluxPipeline.from_pretrained(
+        model.base_sd, torch_dtype=torch.bfloat16).to("cuda")
+
+@StableDiffusion3.register_caller('flux')
+def call_flux(model, prompt):
+    imgs = model.paintor(
+        prompt,
+        height=1024,
+        width=1024,
+        num_inference_steps=50,
+        guidance_scale=3.5,
+        max_sequence_length=512,
+    ).images
+    img_path_list = model.images_to_files(imgs, model.save_path)
+    return encode_query_with_filepaths(files=img_path_list)
+
+@StableDiffusion3.register_loader('cogview')
+def load_cogview(model):
+    import torch
+    from diffusers import CogView4Pipeline
+    model.paintor = CogView4Pipeline.from_pretrained(
+        model.base_sd, torch_dtype=torch.bfloat16).to("cuda")
+
+@StableDiffusion3.register_caller('cogview')
+def call_cogview(model, prompt):
+    imgs = model.paintor(
+        prompt,
+        height=1024,
+        width=1024,
+        num_inference_steps=50,
+        guidance_scale=3.5,
+        num_images_per_prompt=1,
+    ).images
+    img_path_list = model.images_to_files(imgs, model.save_path)
+    return encode_query_with_filepaths(files=img_path_list)
+
+@StableDiffusion3.register_loader('wan')
+def load_wan(model):
+    import torch
+    from diffusers import AutoencoderKLWan, WanPipeline
+    from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+    vae = AutoencoderKLWan.from_pretrained(
+        model.base_sd, subfolder="vae", torch_dtype=torch.float32)
+    scheduler = UniPCMultistepScheduler(
+        prediction_type='flow_prediction',
+        use_flow_sigmas=True,
+        num_train_timesteps=1000,
+        flow_shift=3.0
+    )
+    model.paintor = WanPipeline.from_pretrained(
+        model.base_sd, vae=vae, torch_dtype=torch.bfloat16)
+    model.paintor.scheduler = scheduler
+    model.paintor.to("cuda")
+
+@StableDiffusion3.register_caller('wan')
+def call_wan(model, prompt):
+    from diffusers.utils import export_to_video
+    videos = model.paintor(
+        prompt,
+        negative_prompt=(
+            "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, "
+            "static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, "
+            "extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, "
+            "fused fingers, still picture, messy background, three legs, "
+            "many people in the background, walking backwards"),
+        height=480,
+        width=832,
+        num_frames=81,
+        guidance_scale=5.0,
+    ).frames
+    unique_id = uuid.uuid4()
+    if not os.path.exists(model.save_path):
+        os.makedirs(model.save_path)
+    vid_path_list = []
+    for i, vid in enumerate(videos):
+        file_path = os.path.join(model.save_path, f'video_{unique_id}_{i}.mp4')
+        export_to_video(vid, file_path, fps=16)
+        vid_path_list.append(file_path)
+    return encode_query_with_filepaths(files=vid_path_list)
+
 
 class StableDiffusionDeploy(object):
     message_format = None
