@@ -1,6 +1,7 @@
 import re
 import pkg_resources
 import functools
+import shutil
 from packaging import version
 
 from .dependencies.modelsconfig import models_config
@@ -27,6 +28,11 @@ def compare_versions(version1, version2):
         return -1
     else:
         return 0
+
+@functools.lru_cache
+def check_cmd(framework):
+    path = shutil.which(framework)
+    return path is not None
 
 @functools.lru_cache
 def check_requirements(requirements):

@@ -41,10 +41,13 @@ class Mindie(LazyLLMDeployBase):
             'port': 'auto',
             'host': '0.0.0.0',
             'maxSeqLen': 64000,
-            'maxInputTokenLen': 8192
+            'maxInputTokenLen': 8192,
+            'maxPrefillTokens': 4096,
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
+        if isinstance(self.kw['npuDeviceIds'], str):
+            self.kw['npuDeviceIds'] = json.loads(self.kw['npuDeviceIds'])
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
         self.temp_folder = make_log_dir(log_path, 'mindie') if log_path else None
 
@@ -85,6 +88,7 @@ class Mindie(LazyLLMDeployBase):
         backend_config["ModelDeployConfig"]["ModelConfig"][0].update(model_config)
         backend_config["ModelDeployConfig"]["maxSeqLen"] = self.kw["maxSeqLen"]
         backend_config["ModelDeployConfig"]["maxInputTokenLen"] = self.kw["maxInputTokenLen"]
+        backend_config["ScheduleConfig"]["maxPrefillTokens"] = self.kw["maxPrefillTokens"]
         self.config_dict["BackendConfig"] = backend_config
         if self.kw["host"] != '0.0.0.0':
             self.config_dict["ServerConfig"]["ipAddress"] = self.kw["host"]
