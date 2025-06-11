@@ -43,8 +43,16 @@ class LazyDict(dict):
     # if self.name ends with 's' or 'es', ignor it
     def _match(self, key):
         key = self._default if key == 'default' else key
-        keys = [key, f'{key[0].upper()}{key[1:]}', f'{key}{self.name}', f'{key[0].upper()}{key[1:]}{self.name}',
-                f'{key}{self.name.lower()}', f'{key[0].upper()}{key[1:]}{self.name.lower()}']
+        if key.endswith(self.name.lower()):
+            key = key[:-len(self.name)]
+        keys = [key, 
+                f'{key.upper()}{self.name}', 
+                f'{key.upper()}{self.name.lower()}',
+                f'{key[0].upper()}{key[1:]}', 
+                f'{key}{self.name}', 
+                f'{key[0].upper()}{key[1:]}{self.name}',
+                f'{key}{self.name.lower()}', 
+                f'{key[0].upper()}{key[1:]}{self.name.lower()}']
         if self.name.endswith('s'):
             n = 2 if self.name.endswith('es') else 1
             keys.extend([f'{key}{self.name[:-n]}', f'{key[0].upper()}{key[1:]}{self.name[:-n]}'])
