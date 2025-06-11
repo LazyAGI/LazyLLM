@@ -301,7 +301,19 @@ class DocumentProcessor():
                         "error_msg": error_msg,
                     }
                     headers = {"Content-Type": "application/json"}
-                    res = requests.post(full_url, json=payload, headers=headers, timeout=5)
+                    res = None
+                    for wait_time in fibonacci_backoff(max_retries=3):
+                        try:
+                            res = requests.post(full_url, json=payload, headers=headers, timeout=5)
+                            if res.status_code == 200:
+                                break
+                            LOG.warning(f"Unexpected status {res.status_code}, retrying in {wait_time}s…")
+                        except Exception as e:
+                            LOG.error(f"Request failed: {e}, retrying in {wait_time}s…")
+                        time.sleep(wait_time)
+
+                    if res is None:
+                        raise RuntimeError("Failed to send feedback—no response received after retries")
                     res.raise_for_status()
                 except Exception as e:
                     LOG.error(f"Failed to send feedback to {full_url}: {e}")
