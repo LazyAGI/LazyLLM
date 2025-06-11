@@ -322,7 +322,7 @@ class SenseCoreStore(DocStoreBase):
     def get_nodes(
         self,
         group_name: Optional[str] = None,
-        daytaset_id: Optional[str] = None,
+        dataset_id: Optional[str] = None,
         uids: Optional[List[str]] = None,
         doc_ids: Optional[Set] = None
     ) -> List[DocNode]:
@@ -336,7 +336,7 @@ class SenseCoreStore(DocStoreBase):
             "Content-Type": "application/json",
         }
         payload = {
-            "dataset_id": daytaset_id or self._kb_id,
+            "dataset_id": dataset_id or self._kb_id,
         }
         if group_name:
             payload['group'] = group_name
@@ -423,8 +423,9 @@ class SenseCoreStore(DocStoreBase):
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
         """ update doc meta """
         # TODO 性能优化
+        dataset_id = metadata.get("kb_id", None)
         for group in self.activated_groups():
-            nodes = self.get_nodes(group_name=group, doc_ids=[doc_id])
+            nodes = self.get_nodes(group_name=group, dataset_id=dataset_id, doc_ids=[doc_id])
             for node in nodes:
                 node.metadata.update(metadata)
         self.update_nodes(nodes)

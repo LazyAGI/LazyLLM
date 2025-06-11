@@ -74,11 +74,12 @@ class _Processor:
             self._get_or_create_nodes(group_name, ids)
 
     def _reparse_docs(self, group_name: str, doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict]):
+        dataset_id = metadatas[0].get("kb_id", None)
         if group_name == "all":
-            self._store.remove_nodes(doc_ids=doc_ids)
+            self._store.remove_nodes(dataset_id=dataset_id, doc_ids=doc_ids)
             removed_flag = False
             for wait_time in fibonacci_backoff():
-                nodes = self._store.get_nodes(group_name=LAZY_ROOT_NAME, doc_ids=doc_ids)
+                nodes = self._store.get_nodes(group_name=LAZY_ROOT_NAME, dataset_id=dataset_id, doc_ids=doc_ids)
                 if not nodes:
                     removed_flag = True
                     break
@@ -87,15 +88,18 @@ class _Processor:
                 raise Exception(f"Failed to remove nodes for docs {doc_ids} from store")
             self.add_doc(input_files=doc_paths, ids=doc_ids, metadatas=metadatas)
         else:
-            p_nodes = self._store.get_nodes(group_name=self._node_groups[group_name]['parent'])
+            p_nodes = self._store.get_nodes(
+                group_name=self._node_groups[group_name]['parent'], dataset_id=dataset_id
+            )
             self._reparse_group_recursive(p_nodes=p_nodes, cur_name=group_name, doc_ids=doc_ids)
 
     def _reparse_group_recursive(self, p_nodes: List[DocNode], cur_name: str, doc_ids: List[str]):
-        self._store.remove_nodes(group_name=cur_name, doc_ids=doc_ids)
+        dataset_id = p_nodes[0].global_metadata.get("kb_id", None)
+        self._store.remove_nodes(group_name=cur_name, dataset_id=dataset_id, doc_ids=doc_ids)
 
         removed_flag = False
         for wait_time in fibonacci_backoff():
-            nodes = self._store.get_nodes(group_name=cur_name, doc_ids=doc_ids)
+            nodes = self._store.get_nodes(group_name=cur_name, dataset_id=dataset_id, doc_ids=doc_ids)
             if not nodes:
                 removed_flag = True
                 break
