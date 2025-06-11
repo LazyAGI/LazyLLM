@@ -150,16 +150,18 @@ class DocImpl:
                 self.node_groups[group_name]['info'] = self._registered_node_group_info[group_name]
 
     def _init_store(self):
-        embed_dims, embed_datatypes = {}, {}
-        for k, e in self.embed.items():
-            embedding = e('a')
-            if is_sparse(embedding):
-                embed_datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
-            else:
-                embed_dims[k] = len(embedding)
-                embed_datatypes[k] = DataType.FLOAT_VECTOR
-
         if self.store is None: self.store = {'type': 'map'}
+        embed_dims, embed_datatypes = {}, {}
+        # NOTE Temp skip embedding in this way
+        if self.store.get("type", "map") != "sensecore":
+            for k, e in self.embed.items():
+                embedding = e('a')
+                if is_sparse(embedding):
+                    embed_datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
+                else:
+                    embed_dims[k] = len(embedding)
+                    embed_datatypes[k] = DataType.FLOAT_VECTOR
+
         if isinstance(self.store, Dict):
             self.store = self._create_store(store_conf=self.store, embed_dims=embed_dims,
                                             embed_datatypes=embed_datatypes)
