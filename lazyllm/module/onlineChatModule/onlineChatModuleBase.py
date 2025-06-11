@@ -173,7 +173,7 @@ class OnlineChatModuleBase(ModuleBase):
         if "choices" in data and isinstance(data["choices"], list):
             item = data['choices'][0]
             outputs = item.get("message", item.get("delta", {}))
-            if 'reasoning_content' in outputs and 'content' in outputs:
+            if 'reasoning_content' in outputs and outputs["reasoning_content"] and 'content' in outputs:
                 outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
             return outputs
         else:
