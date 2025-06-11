@@ -213,9 +213,10 @@ class StableDiffusionDeploy(object):
     keys_name_handle = None
     default_headers = {'Content-Type': 'application/json'}
 
-    def __init__(self, launcher=None, log_path=None):
+    def __init__(self, launcher=None, log_path=None, port=None):
         self.launcher = launcher
         self._log_path = log_path
+        self._port = port
 
     def __call__(self, finetuned_model=None, base_model=None):
         if not finetuned_model:
@@ -227,4 +228,4 @@ class StableDiffusionDeploy(object):
                         f"base_model({base_model}) will be used")
             finetuned_model = base_model
         return lazyllm.deploy.RelayServer(func=StableDiffusion3(finetuned_model), launcher=self.launcher,
-                                          log_path=self._log_path, cls='stable_diffusion')()
+                                          log_path=self._log_path, cls='stable_diffusion', port=self._port)()

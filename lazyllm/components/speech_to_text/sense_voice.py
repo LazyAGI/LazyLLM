@@ -84,9 +84,10 @@ class SenseVoiceDeploy(object):
     }
     default_headers = {'Content-Type': 'application/json'}
 
-    def __init__(self, launcher=None, log_path=None):
+    def __init__(self, launcher=None, log_path=None, port=None):
         self.launcher = launcher
         self._log_path = log_path
+        self._port = port
 
     def __call__(self, finetuned_model=None, base_model=None):
         if not finetuned_model:
@@ -98,4 +99,4 @@ class SenseVoiceDeploy(object):
                         f"base_model({base_model}) will be used")
             finetuned_model = base_model
         return lazyllm.deploy.RelayServer(func=SenseVoice(finetuned_model), launcher=self.launcher,
-                                          log_path=self._log_path, cls='sensevoice')()
+                                          log_path=self._log_path, cls='sensevoice', port=self._port)()

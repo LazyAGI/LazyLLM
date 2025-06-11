@@ -31,15 +31,15 @@ class AutoDeploy(LazyLLMDeployBase):
             if lazyllm.config['default_embedding_engine'] in ('transformers', 'flagEmbedding') \
                 or kw.get('embed_type')=='sparse' or not check_requirements('infinity_emb'):
                 return deploy.Embedding((launcher or launchers.remote(ngpus=1)), model_type=type,
-                                       log_path=log_path, embed_type=kw.get('embed_type', 'dense'))
+                                       log_path=log_path, embed_type=kw.get('embed_type', 'dense'), port=kw.get('port'))
             else:
-                return deploy.Infinity((launcher or launchers.remote(ngpus=1)), model_type=type, log_path=log_path)
+                return deploy.Infinity((launcher or launchers.remote(ngpus=1)), model_type=type, log_path=log_path, **kw)
         elif type == 'sd':
-            return StableDiffusionDeploy((launcher or launchers.remote(ngpus=1)), log_path=log_path)
+            return StableDiffusionDeploy((launcher or launchers.remote(ngpus=1)), log_path=log_path, port=kw.get('port'))
         elif type == 'stt':
-            return SenseVoiceDeploy((launcher or launchers.remote(ngpus=1)), log_path=log_path)
+            return SenseVoiceDeploy((launcher or launchers.remote(ngpus=1)), log_path=log_path, port=kw.get('port'))
         elif type == 'tts':
-            return TTSDeploy(model_name, log_path=log_path, launcher=(launcher or launchers.remote(ngpus=1)))
+            return TTSDeploy(model_name, log_path=log_path, launcher=(launcher or launchers.remote(ngpus=1)), port=kw.get('port'))
         elif type == 'vlm':
             return deploy.LMDeploy((launcher or launchers.remote(ngpus=1)), log_path=log_path, **kw)
 
