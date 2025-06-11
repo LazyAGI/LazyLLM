@@ -38,6 +38,7 @@ class _Processor:
         if image_nodes:
             self._store.update_nodes(image_nodes)
             self._create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)
+        LOG.info("Add documents done!")
 
     def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):
         for group_name in self._store.activated_groups():
@@ -201,6 +202,7 @@ class DocumentProcessor():
                 self._worker_thread = threading.Thread(target=self._worker, daemon=True)
                 self._worker_thread.start()
             self._inited = True
+            LOG.info(f"[DocStore] init done. feedback {self._feedback_url}, prefix {self._path_prefix}")
 
         def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase,
                                node_groups: Dict[str, Dict], force_refresh: bool = False):
@@ -291,8 +293,7 @@ class DocumentProcessor():
                                  error_code: str = "", error_msg: str = ""):
             if self._feedback_url:
                 try:
-                    endpoint = callback_path.format(task_id=task_id)
-                    full_url = self._feedback_url + endpoint
+                    full_url = self._feedback_url + callback_path
                     payload = {
                         "task_id": task_id,
                         "status": 1 if success else 0,
@@ -300,7 +301,8 @@ class DocumentProcessor():
                         "error_msg": error_msg,
                     }
                     headers = {"Content-Type": "application/json"}
-                    requests.post(full_url, json=payload, headers=headers, timeout=5)
+                    res = requests.post(full_url, json=payload, headers=headers, timeout=5)
+                    res.raise_for_status()
                 except Exception as e:
                     LOG.error(f"Failed to send feedback to {full_url}: {e}")
             else:
@@ -393,6 +395,7 @@ class DocumentProcessor():
                                 LOG.error(f"task {task_id} failed: {str(ex)}")
                     for task_id in task_need_pop:
                         self._tasks.pop(task_id)
+                        LOG.info(f"task {task_id} done")
                     time.sleep(5)
 
     def __init__(self, server: bool = True, port: int = None):
