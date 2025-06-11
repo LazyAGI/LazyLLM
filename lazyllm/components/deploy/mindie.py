@@ -46,6 +46,7 @@ class Mindie(LazyLLMDeployBase):
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
+        self.kw['port'] = int(self.kw['port']) if self.kw['port'] != 'auto' else 'auto'
         self.kw['worldSize'] = int(self.kw['worldSize'])
         self.kw['maxInputTokenLen'] = int(self.kw['maxInputTokenLen'])
         self.kw['maxPrefillTokens'] = int(self.kw['maxPrefillTokens'])
