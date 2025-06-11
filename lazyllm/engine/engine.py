@@ -841,13 +841,9 @@ def make_simple_reader(file_resource_id: Optional[str] = None):
             if isinstance(input, package):
                 input = input[0]
             input = _lazyllm_get_file_list(input)
-            if isinstance(input, str):
-                input = [input]
-            if isinstance(extra_file, str):
-                input.append(extra_file)
-            else:
-                input.extend(extra_file)
-            return input
+            input = [input] if isinstance(input, str) else input
+            extra = [extra_file] if isinstance(extra_file, str) else extra_file
+            return input + extra
         with pipeline() as ppl:
             ppl.extra_file = Engine().build_node(file_resource_id).func
             ppl.merge = lazyllm.bind(merge_input, ppl.input, lazyllm._0)
