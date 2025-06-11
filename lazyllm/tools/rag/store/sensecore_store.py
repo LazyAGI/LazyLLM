@@ -77,7 +77,7 @@ class SenseCoreStore(DocStoreBase):
         """ serialize node to dict """
         segment = Segment(
             segment_id=node._uid,
-            dataset_id=self._kb_id,
+            dataset_id=node.global_metadata.get("kb_id", None) or self._kb_id,
             document_id=node.global_metadata.get(RAG_DOC_ID),
             group=node._group,
             meta=json.dumps(node.metadata),
@@ -230,7 +230,12 @@ class SenseCoreStore(DocStoreBase):
         for node in segments:
             groups.add(node._group)
         groups = list(groups)
+
         segments = [self._serialize_node(node) for node in segments]
+        dataset_id = None
+        for segment in segments:
+            dataset_id = segment.dataset_id
+            break
         obj_key = f"lazyllm/segments/{job_id}.jsonl"
 
         upload_data_to_s3(
@@ -251,7 +256,7 @@ class SenseCoreStore(DocStoreBase):
                 "Content-Type": "application/json",
             }
             payload = {
-                "dataset_id": self._kb_id,
+                "dataset_id": dataset_id or self._kb_id,
                 "file_key": obj_key,
                 "groups": groups
             }
@@ -287,6 +292,7 @@ class SenseCoreStore(DocStoreBase):
     def remove_nodes(
         self,
         group_name: Optional[str] = None,
+        dataset_id: Optional[str] = None,
         doc_ids: Optional[List[str]] = None,
         uids: Optional[List[str]] = None
     ) -> None:
@@ -298,12 +304,12 @@ class SenseCoreStore(DocStoreBase):
         }
         if doc_ids:
             payload = {
-                "dataset_id": self._kb_id,
+                "dataset_id": dataset_id or self._kb_id,
                 "document_ids": doc_ids,
             }
         else:
             payload = {
-                "dataset_id": self._kb_id,
+                "dataset_id": dataset_id or self._kb_id,
                 "segment_ids": uids,
             }
         if group_name:
@@ -316,6 +322,7 @@ class SenseCoreStore(DocStoreBase):
     def get_nodes(
         self,
         group_name: Optional[str] = None,
+        daytaset_id: Optional[str] = None,
         uids: Optional[List[str]] = None,
         doc_ids: Optional[Set] = None
     ) -> List[DocNode]:
@@ -329,7 +336,7 @@ class SenseCoreStore(DocStoreBase):
             "Content-Type": "application/json",
         }
         payload = {
-            "dataset_id": self._kb_id,
+            "dataset_id": daytaset_id or self._kb_id,
         }
         if group_name:
             payload['group'] = group_name
@@ -369,15 +376,25 @@ class SenseCoreStore(DocStoreBase):
             "Content-Type": "application/json",
         }
         filter_str = self._create_filters_str(filters) if filters else None
+        dataset_ids = []
+        if filters:
+            for name, candidates in filters.items():
+                desc = self._global_metadata_desc.get(name)
+                if not desc:
+                    raise ValueError(f'cannot find desc of field [{name}]')
+                key = name
+                if key == "kb_id":
+                    if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
+                        dataset_ids = list(candidates)
+        if dataset_ids:
+            hybrid_search_datasets = [{"dataset_id": dataset_id} for dataset_id in dataset_ids]
+        else:
+            hybrid_search_datasets = [{"dataset_id": self._kb_id}]
         nodes = []
         for embed_key in embed_keys:
             payload = {
                 "query": query,
-                "hybrid_search_datasets": [
-                    {
-                        "dataset_id": self._kb_id,
-                    }
-                ],
+                "hybrid_search_datasets": hybrid_search_datasets,
                 "hybrid_search_type": 2,
                 "top_k": topk,
                 "filters": filter_str,

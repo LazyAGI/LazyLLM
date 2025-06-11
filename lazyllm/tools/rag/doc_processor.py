@@ -116,7 +116,7 @@ class _Processor:
     def update_doc_meta(self, doc_id: list[str], metadata: list[dict]):
         self._store.update_doc_meta(doc_id=doc_id, metadata=metadata)
 
-    def delete_doc(self, input_files: List[str] = None, doc_ids: List[str] = None) -> None:
+    def delete_doc(self, input_files: List[str] = None, dataset_id: str = None, doc_ids: List[str] = None) -> None:
         if input_files:
             LOG.info(f"delete_files: {input_files}")
             root_nodes = self._store.get_index(type='file_node_map').query(input_files)
@@ -142,7 +142,7 @@ class _Processor:
                 LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
         elif doc_ids:
             LOG.info(f"delete_doc_ids: {doc_ids}")
-            self._store.remove_nodes(doc_ids=doc_ids)
+            self._store.remove_nodes(dataset_id=dataset_id, doc_ids=doc_ids)
         else:
             raise ValueError("Please specify either input_files or doc_ids.")
 
@@ -175,6 +175,7 @@ class AddDocRequest(BaseModel):
 
 class DeleteDocRequest(BaseModel):
     algo_id: str
+    dataset_id: str
     doc_ids: List[str]
 
 
@@ -261,10 +262,11 @@ class DocumentProcessor():
         async def async_delete_doc(self, request: DeleteDocRequest) -> None:
             LOG.info(f"Del doc for {request.model_dump_json()}")
             algo_id = request.algo_id
+            dataset_id = request.dataset_id
             doc_ids = request.doc_ids
 
             task_id = str(uuid.uuid4())
-            self._task_queue.put(('delete', algo_id, task_id, doc_ids))
+            self._task_queue.put(('delete', algo_id, task_id, {"dataset_id": dataset_id, "doc_ids": doc_ids}))
             self._pending_task_ids.add(task_id)
             return BaseResponse(code=200, msg='task submit successfully', data={"task_id": task_id})
 
@@ -376,8 +378,11 @@ class DocumentProcessor():
                             LOG.error(f"add task error {e}")
                     elif task_type == 'delete':
                         LOG.info(f'Received delete task: {params}')
-                        doc_ids = params
-                        future = self._delete_executor.submit(self._processors[algo_id].delete_doc, doc_ids=doc_ids)
+                        dataset_id = params.get("dataset_id")
+                        doc_ids = params.get("doc_ids")
+                        future = self._delete_executor.submit(
+                            self._processors[algo_id].delete_doc, dataset_id=dataset_id, doc_ids=doc_ids
+                        )
                         self._tasks[task_id] = (future, None)
                         self._pending_task_ids.remove(task_id)
                     time.sleep(0.2)

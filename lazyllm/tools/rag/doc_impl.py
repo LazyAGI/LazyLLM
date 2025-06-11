@@ -533,7 +533,8 @@ class DocImpl:
                 parent_uids = set()
                 for node in cur_nodes:
                     parent_uids.add(node.parent)
-                parents = self.store.get_nodes(group_name=name, uids=list(parent_uids))
+                dataset_id = cur_nodes[0].global_metadata.get("kb_id", None)
+                parents = self.store.get_nodes(group_name=name, dataset_id=dataset_id, uids=list(parent_uids))
                 if not parents:
                     break
                 cur_group = parents[0]._group
@@ -593,12 +594,14 @@ class DocImpl:
 
                 if next_group == group:
                     parent_uids = [n._uid for n in cur_nodes]
-                    children = self.store.get_nodes(group_name=group, uids=parent_uids)
+                    dataset_id = cur_nodes[0].global_metadata.get("kb_id", None)
+                    children = self.store.get_nodes(group_name=group, dataset_id=dataset_id, uids=parent_uids)
                     result.update(children)
                     break
                 else:
                     parent_uids = [n._uid for n in cur_nodes]
-                    cur_nodes = self.store.get_nodes(group_name=next_group, uids=parent_uids)
+                    dataset_id = cur_nodes[0].global_metadata.get("kb_id", None)
+                    cur_nodes = self.store.get_nodes(group_name=next_group, dataset_id=dataset_id, uids=parent_uids)
                     cur_group = next_group
 
         if not result:
