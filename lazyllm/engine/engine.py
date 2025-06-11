@@ -3,6 +3,7 @@ import lazyllm
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier, SqlManager
 from lazyllm.common import compile_func
+from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list
 from .node import all_nodes, Node
 from .node_meta_hook import NodeMetaHook
 import inspect
@@ -836,8 +837,22 @@ def make_qustion_rewrite(base_model: str, rewrite_prompt: str = "", formatter: s
 @NodeConstructor.register("Reader")
 def make_simple_reader(file_resource_id: Optional[str] = None):
     if file_resource_id:
-        file = Engine().build_node(file_resource_id).func
-        return lazyllm.tools.rag.FileReader(file_resource=file)
+        def merge_input(input, extra_file: Union[str, List[str]]):
+            if isinstance(input, package):
+                input = input[0]
+            input = _lazyllm_get_file_list(input)
+            if isinstance(input, str):
+                input = [input]
+            if isinstance(extra_file, str):
+                input.append(extra_file)
+            else:
+                input.extend(extra_file)
+            return input
+        with pipeline() as ppl:
+            ppl.extra_file = Engine().build_node(file_resource_id).func
+            ppl.merge = lazyllm.bind(merge_input, ppl.input, lazyllm._0)
+            ppl.reader = lazyllm.tools.rag.FileReader()
+        return ppl
     else:
         return lazyllm.tools.rag.FileReader()
 
