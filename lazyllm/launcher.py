@@ -1025,7 +1025,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 return Status.Failed
 
     def __init__(self, kube_config_path=None, volume_configs=None, image=None, resource_config=None,
-                 namespace=None, gateway_name=None, gateway_class_name=None, host=None, path=None,
+                 namespace=None, on_gateway=None, gateway_name=None, gateway_class_name=None, host=None, path=None,
                  svc_type: Literal["LoadBalancer", "NodePort", "ClusterIP"] = None, retry=3,
                  sync=True, ngpus=None, **kwargs):
         super().__init__()
