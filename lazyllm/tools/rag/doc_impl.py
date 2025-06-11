@@ -8,8 +8,8 @@ from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
-from .store.store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
-from .store import MapStore, MilvusStore, ChromadbStore, SenseCoreStore, DocStoreBase
+from .store import (MapStore, MilvusStore, ChromadbStore, SenseCoreStore, DocStoreBase, StoreBase,
+                    LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)
 from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader

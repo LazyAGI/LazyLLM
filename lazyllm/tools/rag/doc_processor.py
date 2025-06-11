@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 from lazyllm import LOG, ServerModule, FastapiApp as app, ThreadPoolExecutor, config
 
-from .store.store_base import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+from .store import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from .store.utils import fibonacci_backoff
 from .transform import (AdaptiveTransform, make_transform,)
 from .readers import ReaderBase
@@ -314,51 +314,58 @@ class DocumentProcessor():
                         continue
                     if task_type == 'add':
                         LOG.info(f"Processing add task for {params}")
-                        file_infos: List[FileInfo] = params.get('file_infos')
-                        callback_path = params.get('feedback_url')
-                        input_files = []
-                        ids = []
-                        metadatas = []
+                        try:
+                            file_infos: List[FileInfo] = params.get('file_infos')
+                            callback_path = params.get('feedback_url')
+                            input_files = []
+                            ids = []
+                            metadatas = []
 
-                        reparse_group = None
-                        reparse_doc_ids = []
-                        reparse_files = []
-                        reparse_metadatas = []
+                            reparse_group = None
+                            reparse_doc_ids = []
+                            reparse_files = []
+                            reparse_metadatas = []
 
-                        for file_info in file_infos:
-                            if file_info.reparse_group:
-                                reparse_group = reparse_group
-                                reparse_doc_ids.append(file_info.doc_id)
-                                reparse_files.append(file_info.file_path)
-                                reparse_metadatas.append(file_info.metadata)
+                            for file_info in file_infos:
+                                if file_info.reparse_group:
+                                    reparse_group = reparse_group
+                                    reparse_doc_ids.append(file_info.doc_id)
+                                    reparse_files.append(file_info.file_path)
+                                    reparse_metadatas.append(file_info.metadata)
+                                else:
+                                    input_files.append(file_info.file_path)
+                                    ids.append(file_info.doc_id)
+                                    metadatas.append(file_info.metadata)
+
+                            if input_files:
+                                future = self._add_executor.submit(
+                                    self._processors[algo_id].add_doc,
+                                    input_files=input_files,
+                                    ids=ids,
+                                    metadatas=metadatas
+                                )
+                            elif reparse_group:
+                                future = self._add_executor.submit(
+                                    self._processors[algo_id].reparse,
+                                    group_name=reparse_group,
+                                    doc_ids=reparse_doc_ids,
+                                    doc_paths=reparse_files,
+                                    metadatas=reparse_metadatas
+                                )
                             else:
-                                input_files.append(file_info.file_path)
-                                ids.append(file_info.doc_id)
-                                metadatas.append(file_info.metadata)
-
-                        if input_files:
-                            future = self._add_executor.submit(
-                                self._processors[algo_id].add_doc,
-                                input_files=input_files,
-                                ids=ids,
-                                metadatas=metadatas
-                            )
-                        if reparse_group:
-                            future = self._add_executor.submit(
-                                self._processors[algo_id].reparse,
-                                group_name=reparse_group,
-                                doc_ids=reparse_doc_ids,
-                                doc_paths=reparse_files,
-                                metadatas=reparse_metadatas
-                            )
-                        self._pending_task_ids.remove(task_id)
-                        self._tasks[task_id] = (future, callback_path)
+                                LOG.error(
+                                    f"add task error, no input files {input_files} or reparse group {reparse_group}"
+                                )
+                            self._tasks[task_id] = (future, callback_path)
+                            self._pending_task_ids.remove(task_id)
+                        except Exception as e:
+                            LOG.error(f"add task error {e}")
                     elif task_type == 'delete':
                         LOG.info(f'Received delete task: {params}')
                         doc_ids = params
                         future = self._delete_executor.submit(self._processors[algo_id].delete_doc, doc_ids=doc_ids)
-                        self._pending_task_ids.remove(task_id)
                         self._tasks[task_id] = (future, None)
+                        self._pending_task_ids.remove(task_id)
                     time.sleep(0.2)
                 except queue.Empty:
                     task_need_pop = []

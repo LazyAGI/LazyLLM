@@ -162,7 +162,7 @@ class MilvusStore(StoreBase):
             if self._global_metadata_desc:
                 for key, desc in self._global_metadata_desc.items():
                     if desc.data_type == DataType.ARRAY:
-                        if not desc.element_type:
+                        if desc.element_type is None:
                             raise ValueError(f'Milvus field [{key}]: `element_type` is required when '
                                              '`data_type` is ARRAY.')
                         field_args = {

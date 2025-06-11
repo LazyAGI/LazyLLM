@@ -1,4 +1,12 @@
-from .store_base import StoreBase, DocStoreBase, SegmentStoreBase, VectorStoreBase
+from .store_base import (
+    StoreBase,
+    DocStoreBase,
+    SegmentStoreBase,
+    VectorStoreBase,
+    LAZY_IMAGE_GROUP,
+    LAZY_ROOT_NAME,
+    EMBED_DEFAULT_KEY
+)
 from .sensecore_store import SenseCoreStore
 from .map_store import MapStore
 from .chroma_store import ChromadbStore
@@ -12,5 +20,8 @@ __all__ = [
     "SenseCoreStore",
     "MapStore",
     "ChromadbStore",
-    "MilvusStore"
+    "MilvusStore",
+    "LAZY_IMAGE_GROUP",
+    "LAZY_ROOT_NAME",
+    "EMBED_DEFAULT_KEY",
 ]

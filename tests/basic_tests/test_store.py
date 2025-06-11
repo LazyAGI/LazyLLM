@@ -4,8 +4,7 @@ import pytest
 import tempfile
 import unittest
 from unittest.mock import MagicMock
-from lazyllm.tools.rag.store.store_base import LAZY_ROOT_NAME
-from lazyllm.tools.rag.store import MapStore, ChromadbStore, MilvusStore
+from lazyllm.tools.rag.store import MapStore, ChromadbStore, MilvusStore, LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import GlobalMetadataDesc

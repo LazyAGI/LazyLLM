@@ -3,7 +3,7 @@ from lazyllm import ModuleBase, once_wrapper
 
 from .doc_node import DocNode
 from .document import Document, UrlDocument, DocImpl
-from .store.store_base import LAZY_ROOT_NAME
+from .store import LAZY_ROOT_NAME
 from .similarity import registered_similarities
 import lazyllm
 

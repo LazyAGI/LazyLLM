@@ -41,9 +41,6 @@ class DocNode:
         self._embedding_state = set()
         self.relevance_score = None
         self.similarity_score = None
-
-        # if global_metadata and parent:
-        #     raise ValueError('only ROOT node can set global metadata.')
         self._global_metadata = global_metadata or {}
 
     @property
@@ -101,8 +98,6 @@ class DocNode:
 
     @global_metadata.setter
     def global_metadata(self, global_metadata: Dict) -> None:
-        # if self.parent:
-        #     raise ValueError("only root node can set global metadata.")
         self._global_metadata = global_metadata
 
     @property
