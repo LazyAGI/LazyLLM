@@ -41,11 +41,14 @@ class Mindie(LazyLLMDeployBase):
             'port': 'auto',
             'host': '0.0.0.0',
             'maxSeqLen': 64000,
-            'maxInputTokenLen': 8192,
-            'maxPrefillTokens': 4096,
+            'maxInputTokenLen': 4096,
+            'maxPrefillTokens': 8192,
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
+        self.kw['worldSize'] = int(self.kw['worldSize'])
+        self.kw['maxInputTokenLen'] = int(self.kw['maxInputTokenLen'])
+        self.kw['maxPrefillTokens'] = int(self.kw['maxPrefillTokens'])
         if isinstance(self.kw['npuDeviceIds'], str):
             self.kw['npuDeviceIds'] = json.loads(self.kw['npuDeviceIds'])
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True

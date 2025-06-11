@@ -22,7 +22,7 @@ class LazyHuggingFaceEmbedding(object):
     def load_embed(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.tokenizer = tf.AutoTokenizer.from_pretrained(self.base_embed)
-        self.embed = tf.AutoModel.from_pretrained(self.base_embed).to(self.device)
+        self.embed = tf.AutoModel.from_pretrained(self.base_embed, trust_remote_code=True).to(self.device)
         self.embed.eval()
 
     def __call__(self, data: Dict[str, Union[str, List[str]]]):
