@@ -328,7 +328,7 @@ class DocumentProcessor():
 
                             for file_info in file_infos:
                                 if file_info.reparse_group:
-                                    reparse_group = reparse_group
+                                    reparse_group = file_info.reparse_group
                                     reparse_doc_ids.append(file_info.doc_id)
                                     reparse_files.append(file_info.file_path)
                                     reparse_metadatas.append(file_info.metadata)
