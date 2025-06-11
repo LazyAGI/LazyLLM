@@ -234,7 +234,7 @@ class SenseCoreStore(DocStoreBase):
         segments = [self._serialize_node(node) for node in segments]
         dataset_id = None
         for segment in segments:
-            dataset_id = segment.dataset_id
+            dataset_id = segment.get("dataset_id", None)
             break
         obj_key = f"lazyllm/segments/{job_id}.jsonl"
 
