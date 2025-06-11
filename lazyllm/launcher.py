@@ -841,7 +841,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             self.queue.put(f"ERROR: Kubernetes Service failed to start on '{url}'.")
             return False
 
-        def wait_for_service_ready(self, timeout=300):
+        def wait_for_service_ready(self, timeout=300, interval=5):
             svc_instance = k8s.client.CoreV1Api()
             start_time = time.time()
             while time.time() - start_time < timeout:
