@@ -34,10 +34,11 @@ class _MetaDocument(_MetaBind):
 class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     class _Manager(ModuleBase):
         def __init__(self, dataset_path: Optional[str], embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
-                     manager: Union[bool, str] = False, server: bool = False, name: Optional[str] = None,
-                     launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
-                     doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
-                     doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None):
+                     manager: Union[bool, str] = False, server: bool = False, port: int = None,
+                     name: Optional[str] = None, launcher: Optional[Launcher] = None,
+                     store_conf: Optional[Dict] = None, doc_fields: Optional[Dict[str, DocField]] = None,
+                     cloud: bool = False, doc_files: Optional[List[str]] = None,
+                     processor: Optional[DocumentProcessor] = None):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
 
@@ -61,7 +62,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
             if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
-            if server: self._kbs = ServerModule(self._kbs)
+            if server: self._kbs = ServerModule(self._kbs, port=port)
             self._global_metadata_desc = doc_fields
 
         @property
@@ -123,7 +124,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     def __init__(self, dataset_path: Optional[str] = None, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                  create_ui: bool = False, manager: Union[bool, str, "Document._Manager", DocumentProcessor] = False,
-                 server: bool = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
+                 server: bool = False, port: int = None, name: Optional[str] = None, launcher: Optional[Launcher] = None,
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
                  store_conf: Optional[Dict] = None):
         super().__init__()
@@ -160,7 +161,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 assert not dataset_path, 'Cloud manager is not supported with local dataset path'
             else:
                 cloud, processor = False, None
-            self._manager = Document._Manager(dataset_path, embed, manager, server, name, launcher, store_conf,
+            self._manager = Document._Manager(dataset_path, embed, manager, server, port, name, launcher, store_conf,
                                               doc_fields, cloud=cloud, doc_files=doc_files, processor=processor)
             self._curr_group = DocListManager.DEFAULT_GROUP_NAME
         self._doc_to_db_processor: DocToDbProcessor = None

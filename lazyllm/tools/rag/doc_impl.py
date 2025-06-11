@@ -538,6 +538,7 @@ class DocImpl:
                 for node in cur_nodes:
                     parent_uids.add(node.parent)
                 dataset_id = cur_nodes[0].global_metadata.get("kb_id", None)
+                LOG.info(f"Store get_nodes: {name} {dataset_id}, {parent_uids}")
                 parents = self.store.get_nodes(group_name=name, dataset_id=dataset_id, uids=list(parent_uids))
                 if not parents:
                     break
