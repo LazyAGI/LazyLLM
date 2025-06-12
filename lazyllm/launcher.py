@@ -841,7 +841,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             self.queue.put(f"ERROR: Kubernetes Service failed to start on '{url}'.")
             return False
 
-        def wait_for_service_ready(self, timeout=300, interval=5):
+        def _wait_for_service_ready(self, timeout=300):
             svc_instance = k8s.client.CoreV1Api()
             start_time = time.time()
             while time.time() - start_time < timeout:
@@ -850,11 +850,11 @@ class K8sLauncher(LazyLLMLaunchersBase):
                         name=f"service-{self.deployment_name}",
                         namespace=self.namespace
                     )
-                    if service.spec.type == "LoadBalancer" and service.status.load_balancer.ingress and self._is_service_ready(timeout=interval):
+                    if service.spec.type == "LoadBalancer" and service.status.load_balancer.ingress:
                         ip = service.status.load_balancer.ingress[0].ip
                         LOG.info(f"Kubernetes Service 'service-{self.deployment_name}' is ready with IP: {ip}")
                         return ip
-                    elif service.spec.cluster_ip and self._is_service_ready(timeout=interval):
+                    elif service.spec.cluster_ip:
                         LOG.info(f"Kubernetes Service 'service-{self.deployment_name}' is ready with ClusterIP: "
                                  f"{service.spec.cluster_ip}")
                         return service.spec.cluster_ip
@@ -864,12 +864,12 @@ class K8sLauncher(LazyLLMLaunchersBase):
                             nodes = svc_instance.list_node()
                             for node in nodes.items:
                                 for address in node.status.addresses:
-                                    if address.type == "InternalIP" and self._is_service_ready(timeout=interval):
+                                    if address.type == "InternalIP":
                                         node_ip = address.address
                                         LOG.info(f"Kubernetes Service 'service-{self.deployment_name}' is ready on "
                                                  f"NodePort(s): {node_ports} at Node IP: {node_ip}")
                                         return {"ip": node_ip, "ports": node_ports}
-                                    elif address.type == "ExternalIP" and self._is_service_ready(timeout=interval):
+                                    elif address.type == "ExternalIP":
                                         node_ip = address.address
                                         LOG.info(f"Kubernetes Service 'service-{self.deployment_name}' is ready on "
                                                  f"NodePort(s): {node_ports} at External Node IP: {node_ip}")
@@ -881,6 +881,10 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     raise
             LOG.warning(f"Timed out waiting for Service 'service-{self.deployment_name}' to be ready.")
             return None
+
+        def wait_for_service_ready(self, timeout=300, interval=5):
+            _service_ready = self._wait_for_service_ready(timeout=timeout)
+            return _service_ready if _service_ready and self._is_service_ready(timeout=interval) else None
 
         def _is_gateway_ready(self, timeout):
             url = f"http://{self.get_jobip()}:{self.deployment_port}{self.path}"
