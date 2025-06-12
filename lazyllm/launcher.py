@@ -797,6 +797,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 return None
 
         def get_jobip(self):
+            if not self.on_gateway: return f"service-{self.deployment_name}"
             host = self._get_httproute_host()
             ip = self._get_gateway_ip()
             LOG.info(f"gateway ip: {ip}, hostname: {host}")
