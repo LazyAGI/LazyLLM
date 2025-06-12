@@ -203,6 +203,8 @@ class SenseCoreStore(DocStoreBase):
                 encoding="utf-8"
             )
             node._content = json.loads(content)
+        if segment.get("metadata", {}).get("score", None):
+            node = node.with_sim_score(score=segment["metadata"]["score"])
         return node
 
     def _create_filters_str(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
