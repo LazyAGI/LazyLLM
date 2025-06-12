@@ -2,6 +2,7 @@ from typing import Union
 import json
 from ...module import ModuleBase, TrainableModule, OnlineChatModuleBase
 from ...common import package
+import re
 
 ch_parameter_extractor_prompt = """
 你是一个智能助手，你的任务是从用户的输入中提取参数，并将其转换为json格式。
@@ -80,6 +81,16 @@ class ParameterExtractor(ModuleBase):
 
     def forward(self, *args, **kw):
         res = self._m(*args, **kw)
+        pattern = r"```json(.*?)\n```"
+        matches = re.findall(pattern, res, re.DOTALL)
+        if len(matches) > 0:
+            res = matches[0]
+            res.strip()
+            try:
+                res = json.loads(res)
+                res = json.dumps(res, ensure_ascii=False)
+            except Exception:
+                pass
         res = res.split("\n")
         ret_dict = dict()
         is_success = True
@@ -98,11 +109,6 @@ class ParameterExtractor(ModuleBase):
             except Exception:
                 continue
         ret_dict['__is_success'] = 1 if is_success else 0
-        ret = []
-        for param_name in self._param_dict.keys():
-            if param_name in ret_dict:
-                ret.append(ret_dict[param_name])
-            else:
-                ret.append(None)
+        ret = [ret_dict.get(param_name, None) for param_name in self._param_dict]
         ret = package(ret)
         return ret
