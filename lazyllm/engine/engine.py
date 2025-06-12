@@ -411,9 +411,10 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]],
 @NodeConstructor.register('Document', need_id=True)
 def make_document(dataset_path: str, _node_id: str, embed: Node = None, create_ui: bool = False, server: bool = False,
                   node_group: List[Dict] = [], activated_groups: List[Tuple[str, Optional[List[Node]]]] = []):
-    groups = [(g if len(g) < 2 else g + [None]) if isinstance(g, list) else [g, None] for g in activated_groups]
-    groups += [[g['name'], g.pop('embed', None)] for g in node_group] + activated_groups
-    embed = {e: Engine().build_node(e).func for e in set([g[1] for g in groups if g[1]])}
+    groups = [[g, None] if isinstance(g, str) else g for g in activated_groups]
+    groups += [[g['name'], g.pop('embed', None)] for g in node_group]
+    groups = [[g, e] if (not e or isinstance(e, list)) else [g, [e]] for g, e in groups]
+    embed = {e: Engine().build_node(e).func for e in set(sum([g[1] for g in groups if g[1]], []))}
     document = lazyllm.tools.rag.Document(dataset_path, embed or None, server=server, manager=create_ui, name=_node_id)
 
     for group in node_group:
