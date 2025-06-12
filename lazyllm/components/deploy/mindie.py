@@ -48,6 +48,7 @@ class Mindie(LazyLLMDeployBase):
         self.kw.check_and_update(kw)
         self.kw['port'] = int(self.kw['port']) if self.kw['port'] != 'auto' else 'auto'
         self.kw['worldSize'] = int(self.kw['worldSize'])
+        self.kw['maxSeqLen'] = int(self.kw['maxSeqLen'])
         self.kw['maxInputTokenLen'] = int(self.kw['maxInputTokenLen'])
         self.kw['maxPrefillTokens'] = int(self.kw['maxPrefillTokens'])
         if isinstance(self.kw['npuDeviceIds'], str):
