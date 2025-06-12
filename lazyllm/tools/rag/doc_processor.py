@@ -210,13 +210,16 @@ class DocumentProcessor():
 
         def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase,
                                node_groups: Dict[str, Dict], force_refresh: bool = False):
-            if name in self._processors and not force_refresh:
-                raise KeyError(f'Duplicated algo key {name} for processor!')
             self._init_components(server=self._server)
+            if name in self._processors and not force_refresh:
+                LOG.warning(f'Duplicated algo key {name} for processor!')
+                return
             self._processors[name] = _Processor(store, reader, node_groups)
 
         @app.get('/group/info')
         async def get_group_info(self, algo_id: str) -> None:
+            if algo_id not in self._processors:
+                return BaseResponse(code=400, msg=f"Invalid algo_id {algo_id}")
             processor = self._processors[algo_id]
             infos = []
             for group_name in processor._store.activated_groups():
@@ -244,7 +247,8 @@ class DocumentProcessor():
             file_infos = request.file_infos
             db_info = request.db_info
             feedback_url = request.feedback_url
-
+            if algo_id not in self._processors:
+                return BaseResponse(code=400, msg=f"Invalid algo_id {algo_id}")
             if task_id in self._pending_task_ids or task_id in self._tasks:
                 return BaseResponse(code=400, msg=f'The task {task_id} already exists in queue', data=None)
             if self._path_prefix:
@@ -267,6 +271,9 @@ class DocumentProcessor():
             algo_id = request.algo_id
             dataset_id = request.dataset_id
             doc_ids = request.doc_ids
+
+            if algo_id not in self._processors:
+                return BaseResponse(code=400, msg=f"Invalid algo_id {algo_id}")
 
             task_id = str(uuid.uuid4())
             self._task_queue.put(('delete', algo_id, task_id, {"dataset_id": dataset_id, "doc_ids": doc_ids}))
