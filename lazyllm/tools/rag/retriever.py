@@ -1,8 +1,9 @@
+from typing import List, Optional, Union, Dict, Set, Callable
 from lazyllm import ModuleBase, once_wrapper
+
 from .doc_node import DocNode
 from .document import Document, UrlDocument, DocImpl
-from .store_base import LAZY_ROOT_NAME
-from typing import List, Optional, Union, Dict, Set, Callable
+from .store import LAZY_ROOT_NAME
 from .similarity import registered_similarities
 import functools
 import lazyllm
@@ -38,7 +39,7 @@ class Retriever(ModuleBase, _PostProcess):
             mode = 'embedding'  # TODO FIXME XXX should be removed after similarity args refactor
         group_name, target = str(group_name), (str(target) if target else None)
 
-        self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
+        self._docs: List[Document] = [doc] if isinstance(doc, (Document, UrlDocument)) else doc
         for doc in self._docs:
             assert isinstance(doc, (Document, UrlDocument)), 'Only Document or List[Document] are supported'
             if isinstance(doc, UrlDocument): continue

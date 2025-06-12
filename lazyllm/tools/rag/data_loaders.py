@@ -1,7 +1,8 @@
 from typing import List, Optional, Dict
-from .doc_node import DocNode, ImageDocNode
-from .store_base import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from lazyllm import LOG
+
+from .doc_node import DocNode, ImageDocNode
+from .store import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from .dataReader import SimpleDirectoryReader
 
 class DirectoryReader:

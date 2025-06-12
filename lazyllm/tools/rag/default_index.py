@@ -1,9 +1,9 @@
 from typing import List, Callable, Optional, Dict, Union, Tuple, Any
 from .doc_node import DocNode
-from .store_base import StoreBase
 from .index_base import IndexBase
 from lazyllm import LOG
 from lazyllm.common import override
+from .store import StoreBase
 from .utils import parallel_do_embedding, generic_process_filters, is_sparse
 from .similarity import registered_similarities
 

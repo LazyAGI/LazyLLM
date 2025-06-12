@@ -1,7 +1,7 @@
 from lazyllm.tools.rag.utils import generic_process_filters
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.utils import _FileNodeIndex, sparse2normal, is_sparse
-from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
+from lazyllm.tools.rag.store import LAZY_ROOT_NAME
 from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH
 import unittest
 
