@@ -221,13 +221,19 @@ class SimpleDirectoryReader(ModuleBase):
                 documents.extend(docs)
                 break
         else:
+            if not config['use_fallback_reader']:
+                LOG.warning(f'no pattern found for {input_file}! If you want fallback to default Reader, '
+                            'set environment variable `LAZYLLM_USE_FALLBACK_READER=True`.')
+                return documents
             fs = fs or get_default_fs()
             with fs.open(input_file, encoding=encoding) as f:
-                data = f.read().decode(encoding)
-
-            doc = DocNode(text=data, global_metadata=metadata or {})
-            documents.append(doc)
-
+                try:
+                    data = f.read().decode(encoding)
+                    doc = DocNode(text=data, global_metadata=metadata or {})
+                    documents.append(doc)
+                except Exception:
+                    LOG.error(f'no pattern found for {input_file} and it is not encode by utf-8, will skip it!')
+                    pass
         return documents
 
     def _load_data(self, show_progress: bool = False, num_workers: Optional[int] = None,
@@ -266,6 +272,7 @@ class SimpleDirectoryReader(ModuleBase):
 
 
 config.add('rag_filename_as_id', bool, False, 'RAG_FILENAME_AS_ID')
+config.add('use_fallback_reader', bool, True, 'USE_FALLBACK_READER')
 
 
 class FileReader(object):
