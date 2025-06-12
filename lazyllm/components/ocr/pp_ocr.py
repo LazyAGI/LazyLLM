@@ -50,7 +50,10 @@ class OCR(object):
             print(f"paddleocr read files:{file_list}")
         txt = []
         for file in file_list:
-            result = self.ocr.predict(file)
+            if hasattr(self.ocr, 'predict'):
+                result = self.ocr.predict(file)
+            else:
+                result = self.ocr.ocr(file)
             for res in result:
                 for sentence in res["rec_texts"]:
                     t = sentence.strip()
