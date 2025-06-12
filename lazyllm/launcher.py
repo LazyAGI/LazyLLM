@@ -1001,11 +1001,11 @@ class K8sLauncher(LazyLLMLaunchersBase):
             if not service_ip:
                 raise TimeoutError("Kubernetes Service did not become ready in time.")
 
-            httproute_ready = self.wait_for_httproute() if self.on_gateway else True
+            httproute_ready = True if not self.on_gateway else self.wait_for_httproute()
             if not httproute_ready:
                 raise TimeoutError("Kubernetes Httproute did not become ready in time.")
 
-            gateway_ready = self.wait_for_gateway() if self.on_gateway else True
+            gateway_ready = True if not self.on_gateway else self.wait_for_gateway() 
             if not gateway_ready:
                 raise TimeoutError("Kubernetes Gateway did not become ready in time.")
 
