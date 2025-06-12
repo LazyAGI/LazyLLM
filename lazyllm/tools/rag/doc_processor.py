@@ -4,13 +4,12 @@ from typing import Dict, List, Optional, Any
 from lazyllm import LOG, ServerModule, FastapiApp as app, ThreadPoolExecutor, config
 
 from .store import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
-from .store.utils import fibonacci_backoff
+from .store.utils import fibonacci_backoff, create_file_path
 from .transform import (AdaptiveTransform, make_transform,)
 from .readers import ReaderBase
 from .doc_node import DocNode
 from .utils import gen_docid, BaseResponse
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
-import os
 import queue
 import threading
 import time
@@ -250,7 +249,7 @@ class DocumentProcessor():
                 return BaseResponse(code=400, msg=f'The task {task_id} already exists in queue', data=None)
             if self._path_prefix:
                 for file_info in file_infos:
-                    file_info.file_path = os.path.join(self._path_prefix, file_info.file_path)
+                    file_info.file_path = create_file_path(path=file_info.file_path, prefix=self._path_prefix)
 
             params = {
                 "file_infos": file_infos,

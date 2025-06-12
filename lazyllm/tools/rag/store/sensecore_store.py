@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from urllib.parse import urljoin
 from typing import Optional, List, Dict, Any, Union, Set
 
-from lazyllm import warp, pipeline, LOG
+from lazyllm import warp, pipeline, LOG, config
 from lazyllm.common import override
 from lazyllm.tools.rag.index_base import IndexBase
 from lazyllm.tools.rag.data_type import DataType
@@ -20,7 +20,7 @@ from lazyllm.tools.rag.doc_node import (
 from lazyllm.tools.rag.global_metadata import (GlobalMetadataDesc, RAG_DOC_ID)
 
 from .store_base import DocStoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC
-from .utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff
+from .utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, create_file_path
 
 INSERT_BATCH_SIZE = 3000
 
@@ -40,6 +40,7 @@ class Segment(BaseModel):
     embedding_state: Optional[List[str]] = []
     answer: Optional[str] = ""
     image_keys: Optional[List[str]] = []
+    image_map: Optional[Dict[str, str]] = {}
 
 
 class SenseCoreStore(DocStoreBase):
@@ -119,15 +120,21 @@ class SenseCoreStore(DocStoreBase):
                     use_minio=self._s3_config["use_minio"],
                     endpoint_url=self._s3_config["endpoint_url"],
                 )
-                segment.image_keys = [image_path]
+                segment.image_keys = [obj_key]
         elif isinstance(node, QADocNode):
             segment.answer = node._answer
         elif node.__class__.__name__ == 'MixDocNode':
             image_paths = node._image_path
+            content = node._content
             for image_path in image_paths:
                 image_file_name = os.path.basename(image_path)
                 obj_key = f"lazyllm/images/{image_file_name}"
-                with open(image_path, "rb") as f:
+                try:
+                    prefix = config['process_path_prefix']
+                except Exception as e:
+                    LOG.info(f"No process_path_prefix found in config {e}")
+                    prefix = ""
+                with open(create_file_path(path=image_path, prefix=prefix), "rb") as f:
                     upload_data_to_s3(
                         f.read(),
                         bucket_name=self._s3_config["bucket_name"],
@@ -137,7 +144,10 @@ class SenseCoreStore(DocStoreBase):
                         use_minio=self._s3_config["use_minio"],
                         endpoint_url=self._s3_config["endpoint_url"],
                     )
-                    segment.image_keys = [image_path]
+                    segment.image_keys.append(obj_key)
+                    if isinstance(content, str):
+                        content = content.replace(image_path, obj_key)
+            segment.content = content
         return segment.model_dump()
 
     def _deserialize_node(self, segment: Dict) -> DocNode:
@@ -275,7 +285,7 @@ class SenseCoreStore(DocStoreBase):
         headers = {
             "Accept": "application/json",
         }
-        for wait_time in fibonacci_backoff():
+        for wait_time in fibonacci_backoff(max_retries=15):
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             status = response.json()["state"]

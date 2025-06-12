@@ -56,7 +56,7 @@ def upload_data_to_s3(
             Bucket=bucket_name,
             Key=object_key,
         )
-        LOG.info(f"Upload Successful: s3://{bucket_name}/{object_key}")
+        # LOG.info(f"Upload Successful: s3://{bucket_name}/{object_key}")
     except Exception as e:
         LOG.error(f"Upload Failed: {e}")
         raise
@@ -120,3 +120,9 @@ def fibonacci_backoff(max_retries: int = INSERT_MAX_RETRIES):
     for _ in range(max_retries):
         yield a
         a, b = b, a + b
+
+def create_file_path(path: str, prefix: str = ""):
+    if prefix:
+        return os.path.join(prefix, path)
+    else:
+        return path
