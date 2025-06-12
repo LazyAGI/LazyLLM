@@ -220,9 +220,9 @@ class SimpleDirectoryReader(ModuleBase):
                 documents.extend(docs)
                 break
         else:
-            if not config['use_default_reader']:
-                LOG.warning(f'no pattern found for {input_file}! If you want allback to default Reader, '
-                            'set environment variable `LAZYLLM_USE_DEFAULT_READER=True`.')
+            if not config['use_fallback_reader']:
+                LOG.warning(f'no pattern found for {input_file}! If you want fallback to default Reader, '
+                            'set environment variable `LAZYLLM_USE_FALLBACK_READER=True`.')
                 return documents
             LOG.warning(f'no pattern found for {input_file}! fallback to default Reader.')
             fs = fs or get_default_fs()
@@ -272,4 +272,4 @@ class SimpleDirectoryReader(ModuleBase):
 
 
 config.add('rag_filename_as_id', bool, False, 'RAG_FILENAME_AS_ID')
-config.add('use_default_reader', bool, False, 'USE_DEFAULT_READER')
+config.add('use_fallback_reader', bool, False, 'USE_FALLBACK_READER')
