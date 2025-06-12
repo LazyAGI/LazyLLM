@@ -41,6 +41,7 @@ class Segment(BaseModel):
     answer: Optional[str] = ""
     image_keys: Optional[List[str]] = []
     image_map: Optional[Dict[str, str]] = {}
+    number: Optional[int] = 0
 
 
 class SenseCoreStore(DocStoreBase):
@@ -76,6 +77,7 @@ class SenseCoreStore(DocStoreBase):
 
     def _serialize_node(self, node: DocNode) -> Dict:
         """ serialize node to dict """
+
         segment = Segment(
             segment_id=node._uid,
             dataset_id=node.global_metadata.get("kb_id", None) or self._kb_id,
@@ -88,6 +90,7 @@ class SenseCoreStore(DocStoreBase):
             parent=node.parent._uid if node.parent else "",
             children={group: {"ids": [n._uid for n in c_l]} for group, c_l in node.children.items()},
             embedding_state=node._embedding_state,
+            number=node.metadata.get("store_num", 0)
         )
 
         if node._group == LAZY_ROOT_NAME:
@@ -226,6 +229,11 @@ class SenseCoreStore(DocStoreBase):
     @override
     def update_nodes(self, nodes: List[DocNode]):
         """ update nodes to the store """
+        cnt = 1
+        for node in nodes:
+            node._metadata["store_num"] = cnt
+            cnt += 1
+
         with pipeline() as insert_ppl:
             insert_ppl.get_ids = warp(self._upload_nodes_and_insert).aslist
             insert_ppl.check_status = warp(self._check_insert_job_status)
