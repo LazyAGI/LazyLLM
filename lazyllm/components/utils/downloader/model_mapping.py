@@ -315,6 +315,16 @@ model_name_mapping = {
         },
         "type": "sd"
     },
+    "pp-ocrv4_server": {
+        "source": {},
+        "download_by_other":True,
+        "type": "ocr"
+    },
+    "pp-ocrv4_mobile": {
+        "source": {},
+        "download_by_other":True,
+        "type": "ocr"
+    },
     "pp-ocrv5_server": {
         "source": {},
         "download_by_other":True,
