@@ -385,7 +385,9 @@ class SenseCoreStore(DocStoreBase):
                 key = name
                 if key == "kb_id":
                     if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
-                        dataset_ids = list(candidates)
+                        candidates = list(candidates)
+                    dataset_ids = candidates
+
         if dataset_ids:
             hybrid_search_datasets = [{"dataset_id": dataset_id} for dataset_id in dataset_ids]
         else:
