@@ -834,8 +834,8 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     else:
                         LOG.info(f"Kubernetes Service at '{url}' returned status code {response.status_code}")
                 except requests.RequestException as e:
-                    LOG.error(f"Failed to access service at '{url}': {e}")
-                    raise
+                    LOG.error(f"Failed to access service at '{url}': {e}, retry: {i}/{self.gateway_retry}")
+                    # raise
                 time.sleep(timeout)
 
             self.queue.put(f"ERROR: Kubernetes Service failed to start on '{url}'.")
