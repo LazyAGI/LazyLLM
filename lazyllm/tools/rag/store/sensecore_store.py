@@ -203,8 +203,8 @@ class SenseCoreStore(DocStoreBase):
                 encoding="utf-8"
             )
             node._content = json.loads(content)
-        if segment.get("metadata", {}).get("score", None):
-            node = node.with_sim_score(score=segment["metadata"]["score"])
+        if segment.get("metadata", {}) is not None:
+            node = node.with_sim_score(score=segment.get("metadata", {}).get("score", 0))
         return node
 
     def _create_filters_str(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
@@ -374,6 +374,7 @@ class SenseCoreStore(DocStoreBase):
             if not next_page_token:
                 break
             payload['page_token'] = next_page_token
+        LOG.info(f"segments: {segments}")
         if doc_ids:
             segments = [segment for segment in segments if segment['document_id'] in doc_ids]
         return [self._deserialize_node(segment) for segment in segments]
