@@ -865,4 +865,3 @@ def make_qustion_rewrite(base_model: str, rewrite_prompt: str = "", formatter: s
 def make_code_generator(base_model: str, prompt: str = ""):
     base_model = Engine().build_node(base_model).func
     return lazyllm.tools.CodeGenerator(base_model, prompt)
-
