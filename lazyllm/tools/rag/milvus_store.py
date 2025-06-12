@@ -224,7 +224,7 @@ class MilvusStore(StoreBase):
 
         filter_str = self._construct_filter_expr(filters) if filters else ""
 
-        uidset = set()
+        uid_score = {}
         for key in embed_keys:
             embed_func = self._embed.get(key)
             query_embedding = embed_func(query)
@@ -234,11 +234,16 @@ class MilvusStore(StoreBase):
             # we have only one `data` for search() so there is only one result in `results`
             if len(results) != 1:
                 raise ValueError(f'number of results [{len(results)}] != expected [1]')
+            sim_cut_off = similarity_cut_off if isinstance(similarity_cut_off, float) else similarity_cut_off[key]
 
             for result in results[0]:
-                uidset.add(result['id'])
-
-        return self._map_store.get_nodes(group_name, list(uidset))
+                if result['distance'] < sim_cut_off:
+                    continue
+                uid_score[result['id']] = result['distance'] if result['id'] not in uid_score \
+                    else max(uid_score[result['id']], result['distance'])
+        uids = list(uid_score.keys())
+        nodes = self._map_store.get_nodes(group_name, uids)
+        return [node.with_sim_score(uid_score[node._uid]) for node in nodes]
 
     # ----- internal helper functions ----- #
 
