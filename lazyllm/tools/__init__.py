@@ -14,7 +14,6 @@ from .sql import SqlManager, MongoDBManager, DBResult, DBStatus
 from .sql_call import SqlCall
 from .tools.http_tool import HttpTool
 from .mcp.client import MCPClient
-from .actors import ParameterExtractor, QustionRewrite, CodeGenerator
 
 __all__ = [
     "Document",
@@ -39,7 +38,4 @@ __all__ = [
     "SqlCall",
     "HttpTool",
     "MCPClient",
-    "ParameterExtractor",
-    "QustionRewrite",
-    "CodeGenerator",
 ]

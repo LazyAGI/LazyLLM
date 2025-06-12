@@ -201,10 +201,6 @@ class TestTempRetriever():
         ret.add_subretriever('block', topk=3)
         r = ret(['rag_master/default/__data/sources/大学.txt', 'rag_master/default/__data/sources/论语.txt'], '大学')
         assert len(r) == 4 and isinstance(r[0], dict)
-        r = ret(['rag_master/default/__data/sources/大学.txt', 'rag_master/default/__data/sources/论语.txt'], '大学')
-        assert len(r) == 4 and isinstance(r[0], dict)
-        r = ret(['rag_master/default/__data/sources/论语.txt', 'rag_master/default/__data/sources/大学.txt'], '大学')
-        assert len(r) == 4 and isinstance(r[0], dict)
 
 
 class TmpDir:

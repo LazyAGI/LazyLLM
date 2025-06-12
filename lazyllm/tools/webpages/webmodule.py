@@ -355,8 +355,6 @@ class WebModule(ModuleBase):
                         file = gr.Image(file_path)
                     elif suffix in ('.mp3', '.wav'):
                         file = gr.Audio(file_path)
-                    elif suffix in ('.mp4'):
-                        file = gr.Video(file_path)
                     else:
                         LOG.error(f'Not supported typr: {suffix}, for file: {file}')
                     if i == 0:

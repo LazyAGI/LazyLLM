@@ -4,7 +4,6 @@ from .document import Document, UrlDocument, DocImpl
 from .store_base import LAZY_ROOT_NAME
 from typing import List, Optional, Union, Dict, Set, Callable
 from .similarity import registered_similarities
-import functools
 import lazyllm
 
 class _PostProcess(object):
@@ -100,17 +99,12 @@ class TempDocRetriever(ModuleBase, _PostProcess):
         self._node_groups.append((group, kwargs))
         return self
 
-    @functools.lru_cache
-    def _get_retrievers(self, doc_files: List[str]):
+    def forward(self, files: Union[str, List[str]], query: str):
         active_node_groups = self._node_groups or [[Document.MediumChunk,
                                                     dict(similarity=('cosine' if self._embed else 'bm25'))]]
-        doc = Document(embed=self._embed, doc_files=doc_files)
+        if isinstance(files, str): files = [files]
+        doc = Document(embed=self._embed, doc_files=files)
         doc._impl.node_groups = self._doc._impl.node_groups
         retrievers = [Retriever(doc, name, **kw) for (name, kw) in active_node_groups]
-        return retrievers
-
-    def forward(self, files: Union[str, List[str]], query: str):
-        if isinstance(files, str): files = [files]
-        retrievers = self._get_retrievers(doc_files=tuple(set(files)))
         r = lazyllm.parallel(*retrievers).sum
         return self._post_process(r(query))
