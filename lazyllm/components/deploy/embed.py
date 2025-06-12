@@ -160,7 +160,7 @@ class EmbeddingDeploy(LazyLLMDeployBase):
                 LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                             f"base_model({base_model}) will be used")
             finetuned_model = base_model
-        if self._model_type == 'embed':
+        if self._model_type in ['embed', 'cross_modal_embed']:
             if self._sparse_embed or lazyllm.config['default_embedding_engine'] == 'flagEmbedding':
                 return lazyllm.deploy.RelayServer(func=LazyFlagEmbedding(
                     finetuned_model, sparse=self._sparse_embed),
