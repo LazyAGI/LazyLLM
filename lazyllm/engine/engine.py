@@ -834,5 +834,5 @@ def make_simple_reader(file_resource_id: Optional[str] = None):
 def make_ocr(model: Optional[str] = "PP-OCRv5_mobile"):
     if model is None:
         model = "PP-OCRv5_mobile"
-    assert model in ["PP-OCRv5_server", "PP-OCRv5_mobile"]
+    assert model in ["PP-OCRv5_server", "PP-OCRv5_mobile", "PP-OCRv4_server", "PP-OCRv4_mobile"]
     return lazyllm.TrainableModule(base_model=model).start()

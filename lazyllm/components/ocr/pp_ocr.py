@@ -20,11 +20,8 @@ class OCR(object):
         **kw
     ):
         self.model = model
-        self.text_detection_model_name = "PP-OCRv5_mobile_det"
-        self.text_recognition_model_name = "PP-OCRv5_mobile_rec"
-        if model.endswith("server"):
-            self.text_detection_model_name = "PP-OCRv5_server_det"
-            self.text_recognition_model_name = "PP-OCRv5_server_rec"
+        self.text_detection_model_name = model + "_det"
+        self.text_recognition_model_name = model + "_rec"
         self.use_doc_orientation_classify = use_doc_orientation_classify
         self.use_doc_unwarping = use_doc_unwarping
         self.use_textline_orientation = use_textline_orientation
