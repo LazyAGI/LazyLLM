@@ -663,7 +663,8 @@ class Graph(LazyLLMFlowsBase):
 
             for node in self._sorted_nodes:
                 if node.name == '__start__':
-                    intermediate_results['values'][node.name] = arguments(__input, kw)
+                    intermediate_results['values'][node.name] = (
+                        arguments(__input, kw) if (__input and kw) else (kw or __input))
                 else:
                     future = executor.submit(self.compute_node, globals._sid, node, intermediate_results, futures)
                     futures[node.name] = future
