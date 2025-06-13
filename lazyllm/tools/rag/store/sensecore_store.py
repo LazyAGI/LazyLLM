@@ -268,30 +268,29 @@ class SenseCoreStore(DocStoreBase):
         return
 
     def _upload_nodes_and_insert(self, segments: List[DocNode]) -> str:
-        job_id = str(uuid.uuid4())
-        groups = set()
-        for node in segments:
-            groups.add(node._group)
-        groups = list(groups)
-
-        segments = [self._serialize_node(node) for node in segments]
-        dataset_id = None
-        for segment in segments:
-            dataset_id = segment.get("dataset_id", None)
-            break
-        obj_key = f"lazyllm/segments/{job_id}.jsonl"
-
-        upload_data_to_s3(
-            data=segments,
-            bucket_name=self._s3_config["bucket_name"],
-            object_key=obj_key,
-            aws_access_key_id=self._s3_config["access_key"],
-            aws_secret_access_key=self._s3_config["secret_access_key"],
-            use_minio=self._s3_config["use_minio"],
-            endpoint_url=self._s3_config["endpoint_url"],
-        )
-
         try:
+            job_id = str(uuid.uuid4())
+            groups = set()
+            for node in segments:
+                groups.add(node._group)
+            groups = list(groups)
+
+            segments = [self._serialize_node(node) for node in segments]
+            dataset_id = None
+            for segment in segments:
+                dataset_id = segment.get("dataset_id", None)
+                break
+            obj_key = f"lazyllm/segments/{job_id}.jsonl"
+
+            upload_data_to_s3(
+                data=segments,
+                bucket_name=self._s3_config["bucket_name"],
+                object_key=obj_key,
+                aws_access_key_id=self._s3_config["access_key"],
+                aws_secret_access_key=self._s3_config["secret_access_key"],
+                use_minio=self._s3_config["use_minio"],
+                endpoint_url=self._s3_config["endpoint_url"],
+            )
             url = urljoin(self._uri, "v1/writerSegmentJob:submit")
             params = {"writer_segment_job_id": job_id}
             headers = {

@@ -295,11 +295,11 @@ class DocumentProcessor():
                     metadata=metadata
                 )
 
-                self._pending_futures[doc_id] = new_fut
+                self._update_futures[doc_id] = new_fut
 
                 def _cleanup(fut, doc_id=doc_id):
-                    if self._pending_futures.get(doc_id) is fut:
-                        del self._pending_futures[doc_id]
+                    if self._update_futures.get(doc_id) is fut:
+                        del self._update_futures[doc_id]
                 new_fut.add_done_callback(_cleanup)
 
             return BaseResponse(code=200, msg='success')
