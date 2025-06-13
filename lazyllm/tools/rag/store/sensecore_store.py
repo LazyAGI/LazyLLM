@@ -104,9 +104,8 @@ class SenseCoreStore(DocStoreBase):
                 obj_key = f"lazyllm/images/{image_file_name}"
                 try:
                     prefix = config['image_path_prefix']
-                except Exception as e:
-                    LOG.info(f"No image_path_prefix found in config {e}")
-                    prefix = ""
+                except Exception:
+                    prefix = os.getenv("RAG_IMAGE_PATH_PREFIX", "")
                 file_path = create_file_path(path=image_path, prefix=prefix)
                 try:
                     with open(file_path, "rb") as f:
