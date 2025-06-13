@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import uuid
 import time
@@ -23,6 +24,7 @@ from .store_base import DocStoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC
 from .utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, create_file_path
 
 INSERT_BATCH_SIZE = 3000
+IMAGE_PATTERN = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
 
 
 class Segment(BaseModel):
@@ -40,7 +42,6 @@ class Segment(BaseModel):
     embedding_state: Optional[List[str]] = []
     answer: Optional[str] = ""
     image_keys: Optional[List[str]] = []
-    image_map: Optional[Dict[str, str]] = {}
     number: Optional[int] = 0
 
 
@@ -77,7 +78,6 @@ class SenseCoreStore(DocStoreBase):
 
     def _serialize_node(self, node: DocNode) -> Dict:
         """ serialize node to dict """
-
         segment = Segment(
             segment_id=node._uid,
             dataset_id=node.global_metadata.get("kb_id", None) or self._kb_id,
@@ -94,10 +94,43 @@ class SenseCoreStore(DocStoreBase):
         )
 
         if node._group == LAZY_ROOT_NAME:
-            content = json.dumps(node._content)
+            content = json.dumps(node._content, ensure_ascii=False)
+            # image extract
+            matches = IMAGE_PATTERN.findall(content)
+            for title, image_path in matches:
+                if image_path.startswith("lazyllm"):
+                    continue
+                image_file_name = os.path.basename(image_path)
+                obj_key = f"lazyllm/images/{image_file_name}"
+                try:
+                    prefix = config['image_path_prefix']
+                except Exception as e:
+                    LOG.info(f"No image_path_prefix found in config {e}")
+                    prefix = ""
+                file_path = create_file_path(path=image_path, prefix=prefix)
+                try:
+                    with open(file_path, "rb") as f:
+                        upload_data_to_s3(
+                            f.read(),
+                            bucket_name=self._s3_config["bucket_name"],
+                            object_key=obj_key,
+                            aws_access_key_id=self._s3_config["access_key"],
+                            aws_secret_access_key=self._s3_config["secret_access_key"],
+                            use_minio=self._s3_config["use_minio"],
+                            endpoint_url=self._s3_config["endpoint_url"],
+                        )
+                        segment.image_keys.append(obj_key)
+                        content = content.replace(image_path, obj_key)
+                except FileNotFoundError:
+                    LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
+                except Exception as e:
+                    LOG.error(f"Error when uploading `{image_path}` {e!r}")
+            node._content = json.loads(content)
+
+            # upload content
             obj_key = f"lazyllm/lazyllm_root/{node._uid}.json"
             upload_data_to_s3(
-                content,
+                content.encode('utf-8'),
                 bucket_name=self._s3_config["bucket_name"],
                 object_key=obj_key,
                 aws_access_key_id=self._s3_config["access_key"],
@@ -126,31 +159,6 @@ class SenseCoreStore(DocStoreBase):
                 segment.image_keys = [obj_key]
         elif isinstance(node, QADocNode):
             segment.answer = node._answer
-        elif node.__class__.__name__ == 'MixDocNode':
-            image_paths = node._image_path
-            content = node._content
-            for image_path in image_paths:
-                image_file_name = os.path.basename(image_path)
-                obj_key = f"lazyllm/images/{image_file_name}"
-                try:
-                    prefix = config['process_path_prefix']
-                except Exception as e:
-                    LOG.info(f"No process_path_prefix found in config {e}")
-                    prefix = ""
-                with open(create_file_path(path=image_path, prefix=prefix), "rb") as f:
-                    upload_data_to_s3(
-                        f.read(),
-                        bucket_name=self._s3_config["bucket_name"],
-                        object_key=obj_key,
-                        aws_access_key_id=self._s3_config["access_key"],
-                        aws_secret_access_key=self._s3_config["secret_access_key"],
-                        use_minio=self._s3_config["use_minio"],
-                        endpoint_url=self._s3_config["endpoint_url"],
-                    )
-                    segment.image_keys.append(obj_key)
-                    if isinstance(content, str):
-                        content = content.replace(image_path, obj_key)
-            segment.content = content
         return segment.model_dump()
 
     def _deserialize_node(self, segment: Dict) -> DocNode:
@@ -374,7 +382,6 @@ class SenseCoreStore(DocStoreBase):
             if not next_page_token:
                 break
             payload['page_token'] = next_page_token
-        LOG.info(f"segments: {segments}")
         if doc_ids:
             segments = [segment for segment in segments if segment['document_id'] in doc_ids]
         return [self._deserialize_node(segment) for segment in segments]
