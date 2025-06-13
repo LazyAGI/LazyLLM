@@ -714,6 +714,11 @@ class TestEngine(unittest.TestCase):
 
         engine.reset()
         gid = engine.start(nodes, [['__start__', '2'], ['2', '__end__']], resources)
+        data = engine.run(gid, p)
+        assert '道可道' in data
+
+        engine.reset()
+        gid = engine.start(nodes, [['__start__', '2'], ['2', '__end__']], resources)
         file = os.path.join(data_root_dir, "rag_master/default/__data/sources/大学.txt")
         data = engine.run(gid, p, _file_resources={'file-resource': file})
         assert '道可道' in data
