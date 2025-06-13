@@ -677,10 +677,18 @@ def make_http_tool(method: Optional[str] = None,
 
 class VQA(lazyllm.Module):
     def __init__(self, base_model: Union[str, lazyllm.TrainableModule], file_resource_id: Optional[str],
-                 prompt: Optional[str] = None):
+                 prompt: Optional[str] = None, deploy_method: str = "auto", url: Optional[str] = None):
         super().__init__()
-        self.vqa = self._vqa = (lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
-                                if not isinstance(base_model, lazyllm.TrainableModule) else base_model)
+        if isinstance(base_model, str):
+            self._vqa = lazyllm.TrainableModule(base_model)
+            deploy_method = getattr(lazyllm.deploy, deploy_method)
+            if deploy_method is lazyllm.deploy.AutoDeploy:
+                self._vqa.deploy_method(deploy_method)
+            else:
+                self._vqa.deploy_method(deploy_method, url=url)
+        else:
+            self._vqa = base_model.share()
+        self.vqa = self._vqa
         if prompt: self._vqa.prompt(prompt=prompt)
         self._file_resource_id = file_resource_id
         if file_resource_id:
@@ -708,8 +716,8 @@ class VQA(lazyllm.Module):
 
 
 @NodeConstructor.register('VQA')
-def make_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None):
-    return VQA(base_model, file_resource_id, prompt)
+def make_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None, deploy_method: str = "auto", url: Optional[str] = None):
+    return VQA(base_model, file_resource_id, prompt, deploy_method, url)
 
 
 @NodeConstructor.register('SharedLLM')
@@ -770,9 +778,17 @@ def make_llm(kw: dict):
 
 
 class STT(lazyllm.Module):
-    def __init__(self, base_model: Union[str, lazyllm.TrainableModule]):
+    def __init__(self, base_model: Union[str, lazyllm.TrainableModule], deploy_method: str = "auto", url: Optional[str] = None):
         super().__init__()
-        self._m = lazyllm.TrainableModule(base_model) if isinstance(base_model, str) else base_model.share()
+        if isinstance(base_model, str):
+            self._m = lazyllm.TrainableModule(base_model)
+            deploy_method = getattr(lazyllm.deploy, deploy_method)
+            if deploy_method is lazyllm.deploy.AutoDeploy:
+                self._m.deploy_method(deploy_method)
+            else:
+                self._m.deploy_method(deploy_method, url=url)
+        else:
+            self._m = base_model.share()
 
     def forward(self, query: str):
         if '<lazyllm-query>' in query:
@@ -798,8 +814,8 @@ class STT(lazyllm.Module):
 
 
 @NodeConstructor.register('STT')
-def make_stt(base_model: str):
-    return STT(base_model)
+def make_stt(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+    return STT(base_model, deploy_method, url)
 
 
 @NodeConstructor.register('Constant')

@@ -57,7 +57,8 @@ all_nodes = dict()
 all_nodes['LocalEmbedding'] = dict(
     module=lazyllm.TrainableModule,
     init_arguments=dict(base_model=NodeArgs(str)),
-    builder_argument=dict(deploy_method=NodeArgs(str, 'infinity', getattr_f=partial(getattr, lazyllm.deploy)))
+    builder_argument=dict(deploy_method=NodeArgs(str, 'auto', getattr_f=partial(getattr, lazyllm.deploy))),
+    other_arguments=dict(deploy_method=dict(url=NodeArgs(str, None)))
 )
 
 all_nodes['OnlineEmbedding'] = dict(
@@ -73,7 +74,9 @@ all_nodes['OnlineEmbedding'] = dict(
 
 all_nodes['SD'] = all_nodes['TTS'] = dict(
     module=lazyllm.TrainableModule,
-    init_arguments=dict(base_model=NodeArgs(str))
+    init_arguments=dict(base_model=NodeArgs(str)),
+    builder_argument=dict(deploy_method=NodeArgs(str, 'auto', getattr_f=partial(getattr, lazyllm.deploy))),
+    other_arguments=dict(deploy_method=dict(url=NodeArgs(str, None)))
 )
 
 all_nodes['HTTP'] = dict(
