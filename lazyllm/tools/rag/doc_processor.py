@@ -210,6 +210,7 @@ class DocumentProcessor():
                 self._add_executor = ThreadPoolExecutor(max_workers=1)
                 self._delete_executor = ThreadPoolExecutor(max_workers=1)
                 self._update_executor = ThreadPoolExecutor(max_workers=1)
+                self._update_futures = {}
                 self._worker_thread = threading.Thread(target=self._worker, daemon=True)
                 self._worker_thread.start()
             self._inited = True
@@ -283,17 +284,24 @@ class DocumentProcessor():
             for file_info in file_infos:
                 doc_id = file_info.doc_id
                 metadata = file_info.metadata
-                try:
-                    future = self._add_executor.submit(
-                        self._processors[algo_id].update_doc_meta,
-                        doc_id=doc_id,
-                        metadata=metadata
-                    )
-                    future.add_done_callback(lambda fut: LOG.error(f"meta update failed: {fut.exception()}")
-                                             if fut.exception() else None)
-                except Exception as e:
-                    LOG.error(f"update doc meta for {doc_id} failed, meta  {metadata}, error {e}")
-                    return BaseResponse(code=500, msg=f"update doc meta for {doc_id} failed, error {e}")
+                old_fut = self._update_futures.get(doc_id)
+                if old_fut and not old_fut.done():
+                    cancelled = old_fut.cancel()
+                    LOG.info(f"Canceled previous update for {doc_id}: {cancelled}")
+
+                new_fut = self._update_executor.submit(
+                    self._processors[algo_id].update_doc_meta,
+                    doc_id=doc_id,
+                    metadata=metadata
+                )
+
+                self._pending_futures[doc_id] = new_fut
+
+                def _cleanup(fut, doc_id=doc_id):
+                    if self._pending_futures.get(doc_id) is fut:
+                        del self._pending_futures[doc_id]
+                new_fut.add_done_callback(_cleanup)
+
             return BaseResponse(code=200, msg='success')
 
         @app.delete('/doc/delete')
