@@ -207,6 +207,7 @@ class DocumentProcessor():
                 self._tasks = {}    # running tasks
                 self._pending_task_ids = set()  # pending tasks
                 self._add_executor = ThreadPoolExecutor(max_workers=1)
+                self._add_futures = {}
                 self._delete_executor = ThreadPoolExecutor(max_workers=1)
                 self._update_executor = ThreadPoolExecutor(max_workers=1)
                 self._update_futures = {}
@@ -325,14 +326,14 @@ class DocumentProcessor():
                 self._pending_task_ids.remove(task_id)
                 status = 1
             elif task_id in self._tasks:
-                future = self._tasks.pop(task_id, None)
+                future = self._tasks.get(task_id)
                 if future and not future.done():
-                    future.cancel()
-                    status = 1
+                    cancelled = future.cancel()
+                    status = 1 if cancelled else 0
+                    if cancelled:
+                        self._tasks.pop(task_id, None)
                 else:
                     status = 0
-            else:
-                status = 0
             return BaseResponse(
                 code=200,
                 msg="success" if status else "failed",
