@@ -419,7 +419,8 @@ class SenseCoreStore(DocStoreBase):
         if dataset_ids:
             hybrid_search_datasets = [{"dataset_id": dataset_id} for dataset_id in dataset_ids]
         else:
-            hybrid_search_datasets = [{"dataset_id": self._kb_id}]
+            LOG.error(f"SenseCore Store: no dataset_id provided, please check your filters: {filters}")
+            return []
         nodes = []
         for embed_key in embed_keys:
             payload = {
