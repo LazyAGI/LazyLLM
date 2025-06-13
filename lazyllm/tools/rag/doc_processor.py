@@ -23,7 +23,6 @@ class _Processor:
 
     def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,
                 metadatas: Optional[List[Dict[str, Any]]] = None):
-        LOG.info("Adding documents")
         if not input_files: return
         if not ids: ids = [gen_docid(path) for path in input_files]
         if not metadatas:
@@ -457,6 +456,7 @@ class DocumentProcessor():
                                     error_code=type(ex).__name__,
                                     error_msg=str(ex)
                                 )
+                                LOG.error(f"task {task_id} failed: {str(ex)}")
                             elif ex:
                                 LOG.error(f"task {task_id} failed: {str(ex)}")
                     for task_id in task_need_pop:

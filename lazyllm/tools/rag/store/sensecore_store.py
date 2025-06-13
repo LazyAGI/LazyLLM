@@ -98,53 +98,51 @@ class SenseCoreStore(DocStoreBase):
                 segment.parent = node.parent
 
         if node._group == LAZY_ROOT_NAME:
-            if not (isinstance(node._content, str) and node._content.startswith("lazyllm")):
-                content = json.dumps(node._content, ensure_ascii=False)
-                # image extract
-                matches = IMAGE_PATTERN.findall(content)
-                for title, image_path in matches:
-                    if image_path.startswith("lazyllm"):
-                        continue
-                    image_file_name = os.path.basename(image_path)
-                    obj_key = f"lazyllm/images/{image_file_name}"
-                    try:
-                        prefix = config['image_path_prefix']
-                    except Exception:
-                        prefix = os.getenv("RAG_IMAGE_PATH_PREFIX", "")
-                    file_path = create_file_path(path=image_path, prefix=prefix)
-                    try:
-                        with open(file_path, "rb") as f:
-                            upload_data_to_s3(
-                                f.read(),
-                                bucket_name=self._s3_config["bucket_name"],
-                                object_key=obj_key,
-                                aws_access_key_id=self._s3_config["access_key"],
-                                aws_secret_access_key=self._s3_config["secret_access_key"],
-                                use_minio=self._s3_config["use_minio"],
-                                endpoint_url=self._s3_config["endpoint_url"],
-                            )
-                            segment.image_keys.append(obj_key)
-                            content = content.replace(image_path, obj_key)
-                    except FileNotFoundError:
-                        LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
-                    except Exception as e:
-                        LOG.error(f"Error when uploading `{image_path}` {e!r}")
-                node._content = json.loads(content)
+            # content is root, process image key
+            content = json.dumps(node._content, ensure_ascii=False)
+            # image extract
+            matches = IMAGE_PATTERN.findall(content)
+            for title, image_path in matches:
+                if image_path.startswith("lazyllm"):
+                    continue
+                image_file_name = os.path.basename(image_path)
+                obj_key = f"lazyllm/images/{image_file_name}"
+                try:
+                    prefix = config['image_path_prefix']
+                except Exception:
+                    prefix = os.getenv("RAG_IMAGE_PATH_PREFIX", "")
+                file_path = create_file_path(path=image_path, prefix=prefix)
+                try:
+                    with open(file_path, "rb") as f:
+                        upload_data_to_s3(
+                            f.read(),
+                            bucket_name=self._s3_config["bucket_name"],
+                            object_key=obj_key,
+                            aws_access_key_id=self._s3_config["access_key"],
+                            aws_secret_access_key=self._s3_config["secret_access_key"],
+                            use_minio=self._s3_config["use_minio"],
+                            endpoint_url=self._s3_config["endpoint_url"],
+                        )
+                        segment.image_keys.append(obj_key)
+                        content = content.replace(image_path, obj_key)
+                except FileNotFoundError:
+                    LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
+                except Exception as e:
+                    LOG.error(f"Error when uploading `{image_path}` {e!r}")
+            node._content = json.loads(content)
 
-                # upload content
-                obj_key = f"lazyllm/lazyllm_root/{node._uid}.json"
-                upload_data_to_s3(
-                    content.encode('utf-8'),
-                    bucket_name=self._s3_config["bucket_name"],
-                    object_key=obj_key,
-                    aws_access_key_id=self._s3_config["access_key"],
-                    aws_secret_access_key=self._s3_config["secret_access_key"],
-                    use_minio=self._s3_config["use_minio"],
-                    endpoint_url=self._s3_config["endpoint_url"],
-                )
-                segment.content = obj_key
-            else:
-                segment.content = node._content
+            # upload content
+            obj_key = f"lazyllm/lazyllm_root/{node._uid}.json"
+            upload_data_to_s3(
+                content.encode('utf-8'),
+                bucket_name=self._s3_config["bucket_name"],
+                object_key=obj_key,
+                aws_access_key_id=self._s3_config["access_key"],
+                aws_secret_access_key=self._s3_config["secret_access_key"],
+                use_minio=self._s3_config["use_minio"],
+                endpoint_url=self._s3_config["endpoint_url"],
+            )
+            segment.content = obj_key
         else:
             segment.content = node._content
 
@@ -152,7 +150,7 @@ class SenseCoreStore(DocStoreBase):
             # image extract
             matches = IMAGE_PATTERN.findall(content)
             for title, image_path in matches:
-                segment.image_keys.append(obj_key)
+                segment.image_keys.append(image_path)
 
         if isinstance(node, ImageDocNode):
             image_path = node._image_path
