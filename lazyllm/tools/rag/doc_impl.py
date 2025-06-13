@@ -539,7 +539,8 @@ class DocImpl:
                     parent_uids.add(node.parent)
                 dataset_id = cur_nodes[0].global_metadata.get("kb_id", None)
                 LOG.info(f"Store get_nodes: {name} {dataset_id}, {parent_uids}")
-                parents = self.store.get_nodes(group_name=name, dataset_id=dataset_id, uids=list(parent_uids))
+                parents = self.store.get_nodes(group_name=name, dataset_id=dataset_id,
+                                               uids=list(parent_uids), display=True)
                 if not parents:
                     break
                 cur_group = parents[0]._group
@@ -600,13 +601,15 @@ class DocImpl:
                 if next_group == group:
                     parent_uids = [n._uid for n in cur_nodes]
                     dataset_id = cur_nodes[0].global_metadata.get("kb_id", None)
-                    children = self.store.get_nodes(group_name=group, dataset_id=dataset_id, uids=parent_uids)
+                    children = self.store.get_nodes(group_name=group, dataset_id=dataset_id,
+                                                    uids=parent_uids, display=True)
                     result.update(children)
                     break
                 else:
                     parent_uids = [n._uid for n in cur_nodes]
                     dataset_id = cur_nodes[0].global_metadata.get("kb_id", None)
-                    cur_nodes = self.store.get_nodes(group_name=next_group, dataset_id=dataset_id, uids=parent_uids)
+                    cur_nodes = self.store.get_nodes(group_name=next_group, dataset_id=dataset_id,
+                                                     uids=parent_uids, display=True)
                     cur_group = next_group
 
         if not result:

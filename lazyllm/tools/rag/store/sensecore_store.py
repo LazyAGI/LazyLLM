@@ -367,7 +367,8 @@ class SenseCoreStore(DocStoreBase):
         group_name: Optional[str] = None,
         dataset_id: Optional[str] = None,
         uids: Optional[List[str]] = None,
-        doc_ids: Optional[Set] = None
+        doc_ids: Optional[Set] = None,
+        display: bool = False
     ) -> List[DocNode]:
         """ get nodes from the store """
         if not (uids or group_name):
@@ -401,6 +402,10 @@ class SenseCoreStore(DocStoreBase):
             payload['page_token'] = next_page_token
         if doc_ids:
             segments = [segment for segment in segments if segment['document_id'] in doc_ids]
+        if display:
+            for s in segments:
+                if len(s.get('display_content', '')):
+                    s['content'] = s['display_content']
         return [self._deserialize_node(segment) for segment in segments]
 
     @override
@@ -451,6 +456,10 @@ class SenseCoreStore(DocStoreBase):
             }
             response = requests.post(url, headers=headers, json=payload)
             response.raise_for_status()
+            segments = response.json()['segments']
+            for s in segments:
+                if len(s.get('display_content', '')):
+                    s['content'] = s['display_content']
             nodes.extend([self._deserialize_node(node) for node in response.json()['segments']])
         return nodes
 
@@ -478,7 +487,7 @@ class SenseCoreStore(DocStoreBase):
             nodes.extend(group_nodes)
 
         for node in nodes:
-            node.metadata.update(metadata)
+            node._global_metadata.update(metadata)
         self.update_nodes(nodes)
         return
 
