@@ -141,6 +141,12 @@ class SenseCoreStore(DocStoreBase):
         else:
             segment.content = node._content
 
+            content = json.dumps(node._content, ensure_ascii=False)
+            # image extract
+            matches = IMAGE_PATTERN.findall(content)
+            for title, image_path in matches:
+                segment.image_keys.append(obj_key)
+
         if isinstance(node, ImageDocNode):
             image_path = node._image_path
             image_file_name = os.path.basename(image_path)
