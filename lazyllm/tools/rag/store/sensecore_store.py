@@ -37,7 +37,7 @@ class Segment(BaseModel):
     global_meta: str
     excluded_embed_metadata_keys: Optional[List[str]] = []
     excluded_llm_metadata_keys: Optional[List[str]] = []
-    parent: str
+    parent: Optional[str] = ""
     children: Dict[str, Any] = {}
     embedding_state: Optional[List[str]] = []
     answer: Optional[str] = ""
@@ -76,7 +76,7 @@ class SenseCoreStore(DocStoreBase):
         )
         return
 
-    def _serialize_node(self, node: DocNode) -> Dict:
+    def _serialize_node(self, node: DocNode) -> Dict:  # noqa: C901
         """ serialize node to dict """
         segment = Segment(
             segment_id=node._uid,
@@ -87,57 +87,64 @@ class SenseCoreStore(DocStoreBase):
             excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
             excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
             global_meta=json.dumps(node.global_metadata),
-            parent=node.parent._uid if node.parent else "",
             children={group: {"ids": [n._uid for n in c_l]} for group, c_l in node.children.items()},
             embedding_state=node._embedding_state,
             number=node.metadata.get("store_num", 0)
         )
+        if node.parent:
+            if isinstance(node.parent, DocNode):
+                segment.parent = node.parent._uid
+            elif isinstance(node.parent, str):
+                segment.parent = node.parent
 
         if node._group == LAZY_ROOT_NAME:
-            content = json.dumps(node._content, ensure_ascii=False)
-            # image extract
-            matches = IMAGE_PATTERN.findall(content)
-            for title, image_path in matches:
-                if image_path.startswith("lazyllm"):
-                    continue
-                image_file_name = os.path.basename(image_path)
-                obj_key = f"lazyllm/images/{image_file_name}"
-                try:
-                    prefix = config['image_path_prefix']
-                except Exception:
-                    prefix = os.getenv("RAG_IMAGE_PATH_PREFIX", "")
-                file_path = create_file_path(path=image_path, prefix=prefix)
-                try:
-                    with open(file_path, "rb") as f:
-                        upload_data_to_s3(
-                            f.read(),
-                            bucket_name=self._s3_config["bucket_name"],
-                            object_key=obj_key,
-                            aws_access_key_id=self._s3_config["access_key"],
-                            aws_secret_access_key=self._s3_config["secret_access_key"],
-                            use_minio=self._s3_config["use_minio"],
-                            endpoint_url=self._s3_config["endpoint_url"],
-                        )
-                        segment.image_keys.append(obj_key)
-                        content = content.replace(image_path, obj_key)
-                except FileNotFoundError:
-                    LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
-                except Exception as e:
-                    LOG.error(f"Error when uploading `{image_path}` {e!r}")
-            node._content = json.loads(content)
+            if not (isinstance(node._content, str) and node._content.startswith("lazyllm")):
+                content = json.dumps(node._content, ensure_ascii=False)
+                # image extract
+                matches = IMAGE_PATTERN.findall(content)
+                for title, image_path in matches:
+                    if image_path.startswith("lazyllm"):
+                        continue
+                    image_file_name = os.path.basename(image_path)
+                    obj_key = f"lazyllm/images/{image_file_name}"
+                    try:
+                        prefix = config['image_path_prefix']
+                    except Exception:
+                        prefix = os.getenv("RAG_IMAGE_PATH_PREFIX", "")
+                    file_path = create_file_path(path=image_path, prefix=prefix)
+                    try:
+                        with open(file_path, "rb") as f:
+                            upload_data_to_s3(
+                                f.read(),
+                                bucket_name=self._s3_config["bucket_name"],
+                                object_key=obj_key,
+                                aws_access_key_id=self._s3_config["access_key"],
+                                aws_secret_access_key=self._s3_config["secret_access_key"],
+                                use_minio=self._s3_config["use_minio"],
+                                endpoint_url=self._s3_config["endpoint_url"],
+                            )
+                            segment.image_keys.append(obj_key)
+                            content = content.replace(image_path, obj_key)
+                    except FileNotFoundError:
+                        LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
+                    except Exception as e:
+                        LOG.error(f"Error when uploading `{image_path}` {e!r}")
+                node._content = json.loads(content)
 
-            # upload content
-            obj_key = f"lazyllm/lazyllm_root/{node._uid}.json"
-            upload_data_to_s3(
-                content.encode('utf-8'),
-                bucket_name=self._s3_config["bucket_name"],
-                object_key=obj_key,
-                aws_access_key_id=self._s3_config["access_key"],
-                aws_secret_access_key=self._s3_config["secret_access_key"],
-                use_minio=self._s3_config["use_minio"],
-                endpoint_url=self._s3_config["endpoint_url"],
-            )
-            segment.content = obj_key
+                # upload content
+                obj_key = f"lazyllm/lazyllm_root/{node._uid}.json"
+                upload_data_to_s3(
+                    content.encode('utf-8'),
+                    bucket_name=self._s3_config["bucket_name"],
+                    object_key=obj_key,
+                    aws_access_key_id=self._s3_config["access_key"],
+                    aws_secret_access_key=self._s3_config["secret_access_key"],
+                    use_minio=self._s3_config["use_minio"],
+                    endpoint_url=self._s3_config["endpoint_url"],
+                )
+                segment.content = obj_key
+            else:
+                segment.content = node._content
         else:
             segment.content = node._content
 
@@ -244,6 +251,9 @@ class SenseCoreStore(DocStoreBase):
     @override
     def update_nodes(self, nodes: List[DocNode]):
         """ update nodes to the store """
+        if not nodes:
+            LOG.warning("no nodes to update")
+            return
         cnt = 1
         for node in nodes:
             node._metadata["store_num"] = cnt
@@ -378,7 +388,9 @@ class SenseCoreStore(DocStoreBase):
         segments = []
         while True:
             response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
+            if response.status_code != 200:
+                LOG.warning(f"SenseCore Store: get node task failed: {response.text}")
+                break
             data = response.json()
             if not len(data.get('segments', [])):
                 break
@@ -460,10 +472,13 @@ class SenseCoreStore(DocStoreBase):
         """ update doc meta """
         # TODO 性能优化
         dataset_id = metadata.get("kb_id", None)
+        nodes = []
         for group in self.activated_groups():
-            nodes = self.get_nodes(group_name=group, dataset_id=dataset_id, doc_ids=[doc_id])
-            for node in nodes:
-                node.metadata.update(metadata)
+            group_nodes = self.get_nodes(group_name=group, dataset_id=dataset_id, doc_ids=[doc_id])
+            nodes.extend(group_nodes)
+
+        for node in nodes:
+            node.metadata.update(metadata)
         self.update_nodes(nodes)
         return
 

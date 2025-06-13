@@ -116,7 +116,7 @@ class _Processor:
             if group['parent'] == cur_name:
                 self._reparse_group_recursive(p_nodes=nodes, cur_name=group_name, doc_ids=doc_ids)
 
-    def update_doc_meta(self, doc_id: list[str], metadata: list[dict]):
+    def update_doc_meta(self, doc_id: str, metadata: dict):
         self._store.update_doc_meta(doc_id=doc_id, metadata=metadata)
 
     def delete_doc(self, input_files: List[str] = None, dataset_id: str = None, doc_ids: List[str] = None) -> None:
@@ -151,7 +151,7 @@ class _Processor:
 
 
 class FileInfo(BaseModel):
-    file_path: str
+    file_path: Optional[str] = None
     doc_id: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = {}
     reparse_group: Optional[str] = None
@@ -174,6 +174,12 @@ class AddDocRequest(BaseModel):
     file_infos: List[FileInfo]
     db_info: DBInfo
     feedback_url: Optional[str] = None
+
+
+class UpdateMetaRequest(BaseModel):
+    algo_id: Optional[str] = "__default__"
+    file_infos: List[FileInfo]
+    db_info: DBInfo
 
 
 class DeleteDocRequest(BaseModel):
@@ -203,6 +209,7 @@ class DocumentProcessor():
                 self._pending_task_ids = set()  # pending tasks
                 self._add_executor = ThreadPoolExecutor(max_workers=1)
                 self._delete_executor = ThreadPoolExecutor(max_workers=1)
+                self._update_executor = ThreadPoolExecutor(max_workers=1)
                 self._worker_thread = threading.Thread(target=self._worker, daemon=True)
                 self._worker_thread.start()
             self._inited = True
@@ -264,6 +271,30 @@ class DocumentProcessor():
             self._task_queue.put(('add', algo_id, task_id, params))
             self._pending_task_ids.add(task_id)
             return BaseResponse(code=200, msg='task submit successfully', data={"task_id": task_id})
+
+        @app.post('/doc/meta/update')
+        async def async_update_meta(self, request: UpdateMetaRequest):
+            LOG.info(f"update doc meta for {request.model_dump_json()}")
+            algo_id = request.algo_id
+            file_infos = request.file_infos
+            if algo_id not in self._processors:
+                return BaseResponse(code=400, msg=f"Invalid algo_id {algo_id}")
+
+            for file_info in file_infos:
+                doc_id = file_info.doc_id
+                metadata = file_info.metadata
+                try:
+                    future = self._add_executor.submit(
+                        self._processors[algo_id].update_doc_meta,
+                        doc_id=doc_id,
+                        metadata=metadata
+                    )
+                    future.add_done_callback(lambda fut: LOG.error(f"meta update failed: {fut.exception()}")
+                                             if fut.exception() else None)
+                except Exception as e:
+                    LOG.error(f"update doc meta for {doc_id} failed, meta  {metadata}, error {e}")
+                    return BaseResponse(code=500, msg=f"update doc meta for {doc_id} failed, error {e}")
+            return BaseResponse(code=200, msg='success')
 
         @app.delete('/doc/delete')
         async def async_delete_doc(self, request: DeleteDocRequest) -> None:
