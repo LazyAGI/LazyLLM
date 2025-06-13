@@ -26,6 +26,14 @@ class Mindie(LazyLLMDeployBase):
         'temperature': 0.5,
         'top_p': 0.95
     }
+    kw_map = {
+        'port': {'new_key': 'port', 'type_func': int},
+        'host': {'new_key': 'host', 'type_func': str},
+        'tp': {'new_key': 'world_size', 'type_func': int},
+        'max_input_token_len': {'new_key': 'maxInputTokenLen', 'type_func': int},
+        'max_prefill_tokens': {'new_key': 'maxPrefillTokens', 'type_func': int},
+        'max_seq_len': {'new_key': 'maxSeqLen', 'type_func': int},
+    }
 
     def __init__(self, trust_remote_code=True, launcher=launchers.remote(), log_path=None, **kw):
         super().__init__(launcher=launcher)
@@ -45,14 +53,9 @@ class Mindie(LazyLLMDeployBase):
             'maxPrefillTokens': 8192,
         })
         self.trust_remote_code = trust_remote_code
+        kw = self.kw_map_for_framework(kw, self.kw_map)
+        kw['npuDeviceIds'] = [[i for i in range(kw['worldSize'])]]
         self.kw.check_and_update(kw)
-        self.kw['port'] = int(self.kw['port']) if self.kw['port'] != 'auto' else 'auto'
-        self.kw['worldSize'] = int(self.kw['worldSize'])
-        self.kw['maxSeqLen'] = int(self.kw['maxSeqLen'])
-        self.kw['maxInputTokenLen'] = int(self.kw['maxInputTokenLen'])
-        self.kw['maxPrefillTokens'] = int(self.kw['maxPrefillTokens'])
-        if isinstance(self.kw['npuDeviceIds'], str):
-            self.kw['npuDeviceIds'] = json.loads(self.kw['npuDeviceIds'])
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
         self.temp_folder = make_log_dir(log_path, 'mindie') if log_path else None
 

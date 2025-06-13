@@ -35,6 +35,13 @@ class LMDeploy(LazyLLMDeployBase):
         "adapter_name": None
     }
     auto_map = {}
+    kw_map = {
+        'port': {'new_key': 'server-port', 'type_func': int},
+        'host': {'new_key': 'server-name', 'type_func': str},
+        'tp': {'new_key': 'tp', 'type_func': int},
+        'max_batch_size': {'new_key': 'max-batch-size', 'type_func': int},
+        'chat_template': {'new_key': 'chat-template', 'type_func': str},
+    }
 
     def __init__(self, launcher=launchers.remote(ngpus=1), log_path=None, **kw):
         super().__init__(launcher=launcher)
@@ -45,6 +52,7 @@ class LMDeploy(LazyLLMDeployBase):
             "max-batch-size": 128,
             "chat-template": None,
         })
+        kw = self.kw_map_for_framework(kw, self.kw_map)
         self.kw.check_and_update(kw)
         self.random_port = False if 'server-port' in kw and kw['server-port'] else True
         self.temp_folder = make_log_dir(log_path, 'lmdeploy') if log_path else None
