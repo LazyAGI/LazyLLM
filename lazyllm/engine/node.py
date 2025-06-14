@@ -54,13 +54,6 @@ class NodeArgs(object):
 
 all_nodes = dict()
 
-all_nodes['LocalEmbedding'] = dict(
-    module=lazyllm.TrainableModule,
-    init_arguments=dict(base_model=NodeArgs(str)),
-    builder_argument=dict(deploy_method=NodeArgs(str, 'auto', getattr_f=partial(getattr, lazyllm.deploy))),
-    other_arguments=dict(deploy_method=dict(url=NodeArgs(str, None)))
-)
-
 all_nodes['OnlineEmbedding'] = dict(
     module=lazyllm.OnlineEmbeddingModule,
     init_arguments=dict(
@@ -72,7 +65,7 @@ all_nodes['OnlineEmbedding'] = dict(
         secret_key=NodeArgs(str, None))
 )
 
-all_nodes['SD'] = all_nodes['TTS'] = dict(
+all_nodes['SD'] = dict(
     module=lazyllm.TrainableModule,
     init_arguments=dict(base_model=NodeArgs(str)),
     builder_argument=dict(deploy_method=NodeArgs(str, 'auto', getattr_f=partial(getattr, lazyllm.deploy))),

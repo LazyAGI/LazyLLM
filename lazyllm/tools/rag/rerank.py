@@ -100,16 +100,11 @@ def KeywordFilter(
 class ModuleReranker(Reranker):
 
     def __init__(self, name: str = "ModuleReranker", model: Union[Callable, str] = None, target: Optional[str] = None,
-                 output_format: Optional[str] = None, join: Union[bool, str] = False, deploy_method: str = 'auto', url: Optional[str] = None, **kwargs) -> None:
+                 output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs) -> None:
         super().__init__(name, target, output_format, join, **kwargs)
         assert model is not None, "Reranker model must be specified as a model name or a callable."
         if isinstance(model, str):
             self._reranker = lazyllm.TrainableModule(model)
-            deploy_method = getattr(lazyllm.deploy, deploy_method)
-            if deploy_method is lazyllm.deploy.AutoDeploy:
-                self._reranker.deploy_method(deploy_method)
-            else:
-                self._reranker.deploy_method(deploy_method, url=url)
         else:
             self._reranker = model
 
