@@ -461,7 +461,7 @@ class SenseCoreStore(DocStoreBase):
                 for s in segments:
                     if len(s.get('display_content', '')):
                         s['content'] = s['display_content']
-                nodes.extend([self._deserialize_node(node) for node in response.json()['segments']])
+                nodes.extend([self._deserialize_node(node) for node in segments])
             return nodes
         except Exception as e:
             LOG.error(f"SenseCore Store: query task failed: {e}")
