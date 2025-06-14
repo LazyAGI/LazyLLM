@@ -12,7 +12,7 @@ from lazyllm.thirdparty import nltk
 import tiktoken
 
 from .doc_node import DocNode, MetadataMode, QADocNode
-from lazyllm import LOG, TrainableModule, ThreadPoolExecutor
+from lazyllm import LOG, TrainableModule, ThreadPoolExecutor, config
 from lazyllm.components.formatter import encode_query_with_filepaths
 
 
@@ -147,7 +147,12 @@ class SentenceSplitter(NodeTransform):
         ), 'chunk size should > 0 and chunk_overlap should >= 0'
 
         try:
+            if 'TIKTOKEN_CACHE_DIR' not in os.environ and 'DATA_GYM_CACHE_DIR' not in os.environ:
+                path = os.path.join(config['model_path'], 'tiktoken')
+                os.makedirs(path, exist_ok=True)
+                os.environ['TIKTOKEN_CACHE_DIR'] = path
             self._tiktoken_tokenizer = tiktoken.encoding_for_model('gpt-3.5-turbo')
+            os.environ.pop('TIKTOKEN_CACHE_DIR')
         except requests.exceptions.ConnectionError:
             LOG.error(
                 'Unable to download the vocabulary file for tiktoken `gpt-3.5-turbo`. '
