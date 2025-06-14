@@ -423,6 +423,8 @@ def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
                   output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {},
                   base_model: Optional[str] = None, deploy_method: Optional[str] = 'auto', url: Optional[str] = None):
     if type == 'ModuleReranker':
+        assert arguments.get('model') or base_model, 'model or base_model is required'
+        base_model = arguments.get('model') or base_model
         if node := Engine().build_node(base_model):
             model = node.func
         else:
