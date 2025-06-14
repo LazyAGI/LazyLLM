@@ -3,6 +3,7 @@ import lazyllm
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier, SqlManager
 from lazyllm.common import compile_func
+from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list
 from .node import all_nodes, Node
 from .node_meta_hook import NodeMetaHook
 import inspect
@@ -818,6 +819,36 @@ class FileResource(object):
 @NodeConstructor.register('File')
 def make_file(id: str):
     return FileResource(id)
+
+
+@NodeConstructor.register("Reader")
+def make_simple_reader(file_resource_id: Optional[str] = None):
+    if file_resource_id:
+        def merge_input(input, extra_file: Union[str, List[str]]):
+            if isinstance(input, package):
+                input = input[0]
+            input = _lazyllm_get_file_list(input)
+            input = [input] if isinstance(input, str) else input
+            if extra_file is not None:
+                extra = [extra_file] if isinstance(extra_file, str) else extra_file
+                return input + extra
+            else:
+                return input
+        with pipeline() as ppl:
+            ppl.extra_file = Engine().build_node(file_resource_id).func
+            ppl.merge = lazyllm.bind(merge_input, ppl.input, lazyllm._0)
+            ppl.reader = lazyllm.tools.rag.FileReader()
+        return ppl
+    else:
+        return lazyllm.tools.rag.FileReader()
+
+
+@NodeConstructor.register("OCR")
+def make_ocr(model: Optional[str] = "PP-OCRv5_mobile"):
+    if model is None:
+        model = "PP-OCRv5_mobile"
+    assert model in ["PP-OCRv5_server", "PP-OCRv5_mobile", "PP-OCRv4_server", "PP-OCRv4_mobile"]
+    return lazyllm.TrainableModule(base_model=model).start()
 
 
 @NodeConstructor.register("ParameterExtractor")
