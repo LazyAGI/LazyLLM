@@ -26,6 +26,9 @@ class ComponentBase(object, metaclass=LazyLLMRegisterMetaClass):
     @name.setter
     def name(self, name): self._llm_name = name
 
+    @property
+    def launcher(self): return self._launcher
+
     def _get_job_with_cmd(self, *args, **kw):
         cmd = self.cmd(*args, **kw)
         cmd = cmd if isinstance(cmd, LazyLLMCMD) else LazyLLMCMD(cmd)
