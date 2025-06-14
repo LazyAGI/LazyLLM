@@ -148,6 +148,15 @@ class _Processor:
         else:
             raise ValueError("Please specify either input_files or doc_ids.")
 
+    def create_table(self, db_info):
+        # if db_info.get("db_type") == "mysql":
+        #     url = (
+        #         f"mysql+pymysql://{db_info['user']}:{db_info['password']}"
+        #         f"@{db_info['host']}:{db_info['port']}/{db_info['db_name']}"
+        #         "?charset=utf8mb4"
+        #     )
+        pass
+
 
 class FileInfo(BaseModel):
     file_path: Optional[str] = None

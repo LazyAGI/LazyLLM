@@ -7,6 +7,7 @@ from .store import LAZY_ROOT_NAME
 from .similarity import registered_similarities
 import functools
 import lazyllm
+from lazyllm import LOG
 
 class _PostProcess(object):
     def __init__(self, output_format: Optional[str] = None,
@@ -79,6 +80,7 @@ class Retriever(ModuleBase, _PostProcess):
             if nodes and self._target and self._target != nodes[0]._group:
                 nodes = doc.find(self._target)(nodes)
             all_nodes.extend(nodes)
+        LOG.info(f'Retrieved {len(all_nodes)} nodes from documents')
         return self._post_process(all_nodes)
 
 
