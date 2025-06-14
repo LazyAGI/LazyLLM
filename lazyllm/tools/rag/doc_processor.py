@@ -1,6 +1,9 @@
 from collections import defaultdict
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
+from sqlalchemy import create_engine, Column, JSON, String, TIMESTAMP, Table, MetaData, inspect, delete, text
+from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.engine import Engine
 from lazyllm import LOG, ServerModule, FastapiApp as app, ThreadPoolExecutor, config
 
 from .store import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
@@ -15,6 +18,10 @@ import threading
 import time
 import requests
 import uuid
+import os
+
+DB_TYPES = ['mysql']
+ENABLE_DB = os.getenv("RAG_ENABLE_DB", "false").lower() == "true"
 
 
 class _Processor:
@@ -105,7 +112,15 @@ class _Processor:
         if not removed_flag:
             raise Exception(f"Failed to remove nodes for docs {doc_ids} group {cur_name} from store")
 
-        nodes = self._create_nodes_impl(p_nodes, cur_name)
+        t = self._node_groups[cur_name]['transform']
+        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
+        nodes = transform.batch_forward(p_nodes, cur_name)
+        # reparse need set global_metadata
+        global_meta = p_nodes[0]._global_metadata
+        for node in nodes:
+            node._global_metadata.update(global_meta)
+
+        self._store.update_nodes(nodes)
 
         for group_name in self._store.activated_groups():
             group = self._node_groups.get(group_name)
@@ -148,15 +163,6 @@ class _Processor:
         else:
             raise ValueError("Please specify either input_files or doc_ids.")
 
-    def create_table(self, db_info):
-        # if db_info.get("db_type") == "mysql":
-        #     url = (
-        #         f"mysql+pymysql://{db_info['user']}:{db_info['password']}"
-        #         f"@{db_info['host']}:{db_info['port']}/{db_info['db_name']}"
-        #         "?charset=utf8mb4"
-        #     )
-        pass
-
 
 class FileInfo(BaseModel):
     file_path: Optional[str] = None
@@ -194,6 +200,7 @@ class DeleteDocRequest(BaseModel):
     algo_id: Optional[str] = "__default__"
     dataset_id: str
     doc_ids: List[str]
+    db_info: Optional[DBInfo] = None
 
 
 class CancelDocRequest(BaseModel):
@@ -220,6 +227,10 @@ class DocumentProcessor():
                 self._delete_executor = ThreadPoolExecutor(max_workers=1)
                 self._update_executor = ThreadPoolExecutor(max_workers=1)
                 self._update_futures = {}
+
+                self._engines: dict[str, Engine] = {}
+                self._inspectors: dict[str, inspect] = {}
+
                 self._worker_thread = threading.Thread(target=self._worker, daemon=True)
                 self._worker_thread.start()
             self._inited = True
@@ -232,6 +243,122 @@ class DocumentProcessor():
                 LOG.warning(f'Duplicated algo key {name} for processor!')
                 return
             self._processors[name] = _Processor(store, reader, node_groups)
+
+        def _get_engine(self, url) -> Engine:
+            if url not in self._engines:
+                engine = create_engine(url, echo=False, pool_pre_ping=True)
+                self._engines[url] = engine
+                self._inspectors[url] = inspect(engine)
+            return self._engines[url]
+
+        def _get_inspector(self, url):
+            self._get_engine(url=url)
+            return self._inspectors[url]
+
+        def _get_url_from_db_info(self, db_info: DBInfo):
+            return (
+                f"mysql+pymysql://{db_info.user}:{db_info.password}"
+                f"@{db_info.host}:{db_info.port}/{db_info.db_name}"
+                "?charset=utf8mb4"
+            )
+
+        def create_table(self, db_info: DBInfo):
+            if db_info.db_type == "mysql":
+                try:
+                    url = self._get_url_from_db_info(db_info)
+                    engine = self._get_engine(url=url)
+                    inspector = self._get_inspector(url=url)
+                    tbl = db_info.table_name
+                    schema = db_info.db_name
+
+                    if not inspector.has_table(tbl, schema=schema):
+                        metadata = MetaData()
+                        table = Table(
+                            tbl, metadata,
+                            Column('document_id', String(255), primary_key=True),
+                            Column('file_name', String(255), nullable=False),
+                            Column('file_path', String(255), nullable=False),
+                            Column('description', String(255), nullable=True),
+                            Column('creater', String(255), nullable=False),
+                            Column('dataset_id', String(255), nullable=False),
+                            Column('tags', JSON, nullable=True),
+                            Column('created_at', TIMESTAMP, server_default=text("CURRENT_TIMESTAMP")),
+                        )
+                        metadata.create_all(engine, tables=[table])
+                        LOG.info(f"Created table `{tbl}` in `{schema}`")
+                except Exception as e:
+                    LOG.error(f"Failed to create table `{tbl}` in `{schema}`: {e}")
+                    return
+            else:
+                raise ValueError(f"Unsupported database type: {db_info.db_type}")
+
+        def operate_db(self, db_info: DBInfo, operation: str,
+                       file_infos: List[FileInfo] = None, params: Dict = None) -> None:
+            db_type = db_info.db_type
+            if db_type not in DB_TYPES:
+                raise ValueError(f"Unsupported db_type: {db_type}")
+            url = self._get_url_from_db_info(db_info)
+            engine = self._get_engine(url=url)
+            if operation == 'upsert':
+                self._upsert_records(engine, db_info, file_infos)
+            elif operation == 'delete':
+                self._delete_records(engine, db_info, params)
+            else:
+                raise ValueError(f"Unsupported operation: {operation}")
+
+        def _upsert_records(self, engine, db_info, file_infos):
+            table_name = db_info['table_name']
+            metadata = MetaData()
+            metadata.reflect(bind=engine, only=[table_name])
+            table = metadata.tables[table_name]
+            with engine.begin() as conn:
+                for file_info in file_infos:
+                    document_id = file_info.get("doc_id")
+                    file_path = file_info.get("file_path")
+                    if not document_id or not file_path:
+                        raise ValueError(f"Invalid file_info: {file_info}")
+
+                    raw_infos = {
+                        "document_id": document_id,
+                        "file_name": os.path.basename(file_path),
+                        "file_path": file_path,
+                        "description": file_info["metadata"].get("description", None),
+                        "creater": file_info["metadata"].get("creater", None),
+                        "dataset_id": file_info["metadata"].get("kb_id", None),
+                        "tags": file_info["metadata"].get("tags", []) or [],
+                    }
+
+                    infos = {}
+                    for k, v in raw_infos.items():
+                        if v is None:
+                            continue
+                        if isinstance(v, str) and not v.strip():
+                            continue
+                        if isinstance(v, (list, dict)) and not v:
+                            continue
+                        infos[k] = v
+                    if "document_id" not in infos:
+                        infos["document_id"] = document_id
+
+                    stmt = mysql_insert(table).values(**infos)
+                    update_dict = {
+                        k: stmt.inserted[k]
+                        for k in infos if k != 'document_id'
+                    }
+                    upsert_stmt = stmt.on_duplicate_key_update(**update_dict)
+                    conn.execute(upsert_stmt)
+
+        def _delete_records(self, engine, db_info, params):
+            table_name = db_info['table_name']
+            metadata = MetaData()
+            metadata.reflect(bind=engine, only=[table_name])
+            table = metadata.tables[table_name]
+
+            with engine.begin() as conn:  # 自动提交或回滚事务
+                doc_ids = params.get("doc_ids", [])
+                for document_id in doc_ids:
+                    stmt = delete(table).where(table.c.document_id == document_id)
+                    conn.execute(stmt)
 
         @app.get('/group/info')
         async def get_group_info(self, algo_id: str) -> None:
@@ -277,6 +404,8 @@ class DocumentProcessor():
                 "db_info": db_info,
                 "feedback_url": feedback_url
             }
+            if ENABLE_DB:
+                self.create_table(db_info=db_info)
 
             self._task_queue.put(('add', algo_id, task_id, params))
             self._pending_task_ids.add(task_id)
@@ -287,6 +416,8 @@ class DocumentProcessor():
             LOG.info(f"update doc meta for {request.model_dump_json()}")
             algo_id = request.algo_id
             file_infos = request.file_infos
+            db_info = request.db_info
+
             if algo_id not in self._processors:
                 return BaseResponse(code=400, msg=f"Invalid algo_id {algo_id}")
 
@@ -310,6 +441,9 @@ class DocumentProcessor():
                     if self._update_futures.get(doc_id) is fut:
                         del self._update_futures[doc_id]
                 new_fut.add_done_callback(_cleanup)
+                if ENABLE_DB:
+                    new_fut.add_done_callback(
+                        lambda fut, dbi=db_info, fi=file_info: self.operate_db(dbi, 'upsert', file_infos=[fi]))
 
             return BaseResponse(code=200, msg='success')
 
@@ -319,12 +453,14 @@ class DocumentProcessor():
             algo_id = request.algo_id
             dataset_id = request.dataset_id
             doc_ids = request.doc_ids
+            db_info = request.db_info
 
             if algo_id not in self._processors:
                 return BaseResponse(code=400, msg=f"Invalid algo_id {algo_id}")
 
             task_id = str(uuid.uuid4())
-            self._task_queue.put(('delete', algo_id, task_id, {"dataset_id": dataset_id, "doc_ids": doc_ids}))
+            self._task_queue.put(('delete', algo_id, task_id,
+                                  {"dataset_id": dataset_id, "doc_ids": doc_ids, "db_info": db_info}))
             self._pending_task_ids.add(task_id)
             return BaseResponse(code=200, msg='task submit successfully', data={"task_id": task_id})
 
@@ -367,18 +503,83 @@ class DocumentProcessor():
                             res = requests.post(full_url, json=payload, headers=headers, timeout=5)
                             if res.status_code == 200:
                                 break
-                            LOG.warning(f"Unexpected status {res.status_code}, retrying in {wait_time}s…")
+                            LOG.warning(
+                                f"Task-{task_id}: Unexpected status {res.status_code}, retrying in {wait_time}s…")
                         except Exception as e:
-                            LOG.error(f"Request failed: {e}, retrying in {wait_time}s…")
+                            LOG.error(f"Task-{task_id}: Request failed: {e}, retrying in {wait_time}s…")
                         time.sleep(wait_time)
 
                     if res is None:
                         raise RuntimeError("Failed to send feedback—no response received after retries")
                     res.raise_for_status()
                 except Exception as e:
-                    LOG.error(f"Failed to send feedback to {full_url}: {e}")
+                    LOG.error(f"Task-{task_id}: Failed to send feedback to {full_url}: {e}")
             else:
                 LOG.error("process_feedback_service is not set")
+
+        def _exec_add_task(self, algo_id, task_id, params):
+            try:
+                file_infos: List[FileInfo] = params.get('file_infos')
+                callback_path = params.get('feedback_url')
+                db_info: DBInfo = params.get('db_info')
+
+                input_files = []
+                ids = []
+                metadatas = []
+
+                reparse_group = None
+                reparse_doc_ids = []
+                reparse_files = []
+                reparse_metadatas = []
+
+                for file_info in file_infos:
+                    if file_info.reparse_group:
+                        reparse_group = file_info.reparse_group
+                        reparse_doc_ids.append(file_info.doc_id)
+                        reparse_files.append(file_info.file_path)
+                        reparse_metadatas.append(file_info.metadata)
+                    else:
+                        input_files.append(file_info.file_path)
+                        ids.append(file_info.doc_id)
+                        metadatas.append(file_info.metadata)
+
+                if input_files:
+                    future = self._add_executor.submit(
+                        self._processors[algo_id].add_doc,
+                        input_files=input_files,
+                        ids=ids,
+                        metadatas=metadatas
+                    )
+                    if ENABLE_DB:
+                        future.add_done_callback(lambda fut: self.operate_db(db_info, 'upsert', file_infos=file_infos))
+                elif reparse_group:
+                    future = self._add_executor.submit(
+                        self._processors[algo_id].reparse,
+                        group_name=reparse_group,
+                        doc_ids=reparse_doc_ids,
+                        doc_paths=reparse_files,
+                        metadatas=reparse_metadatas
+                    )
+                else:
+                    LOG.error(
+                        f"Task-{task_id}: add task error, no input files {input_files} or reparse group {reparse_group}"
+                    )
+                self._tasks[task_id] = (future, callback_path)
+                self._pending_task_ids.remove(task_id)
+            except Exception as e:
+                LOG.error(f"Task-{task_id}: add task error {e}")
+
+        def _exec_delete_task(self, algo_id, task_id, params):
+            dataset_id = params.get("dataset_id")
+            doc_ids = params.get("doc_ids")
+            future = self._delete_executor.submit(
+                self._processors[algo_id].delete_doc, dataset_id=dataset_id, doc_ids=doc_ids
+            )
+            if ENABLE_DB and params.get("db_info") is not None:
+                db_info = params.get("db_info")
+                future.add_done_callback(lambda fut: self.operate_db(db_info, 'delete', params=params))
+            self._tasks[task_id] = (future, None)
+            self._pending_task_ids.remove(task_id)
 
         def _worker(self):  # noqa: C901
             while True:
@@ -387,62 +588,9 @@ class DocumentProcessor():
                     if task_id not in self._pending_task_ids:
                         continue
                     if task_type == 'add':
-                        LOG.info(f"Processing add task for {params}")
-                        try:
-                            file_infos: List[FileInfo] = params.get('file_infos')
-                            callback_path = params.get('feedback_url')
-                            input_files = []
-                            ids = []
-                            metadatas = []
-
-                            reparse_group = None
-                            reparse_doc_ids = []
-                            reparse_files = []
-                            reparse_metadatas = []
-
-                            for file_info in file_infos:
-                                if file_info.reparse_group:
-                                    reparse_group = file_info.reparse_group
-                                    reparse_doc_ids.append(file_info.doc_id)
-                                    reparse_files.append(file_info.file_path)
-                                    reparse_metadatas.append(file_info.metadata)
-                                else:
-                                    input_files.append(file_info.file_path)
-                                    ids.append(file_info.doc_id)
-                                    metadatas.append(file_info.metadata)
-
-                            if input_files:
-                                future = self._add_executor.submit(
-                                    self._processors[algo_id].add_doc,
-                                    input_files=input_files,
-                                    ids=ids,
-                                    metadatas=metadatas
-                                )
-                            elif reparse_group:
-                                future = self._add_executor.submit(
-                                    self._processors[algo_id].reparse,
-                                    group_name=reparse_group,
-                                    doc_ids=reparse_doc_ids,
-                                    doc_paths=reparse_files,
-                                    metadatas=reparse_metadatas
-                                )
-                            else:
-                                LOG.error(
-                                    f"add task error, no input files {input_files} or reparse group {reparse_group}"
-                                )
-                            self._tasks[task_id] = (future, callback_path)
-                            self._pending_task_ids.remove(task_id)
-                        except Exception as e:
-                            LOG.error(f"add task error {e}")
+                        self._exec_add_task(algo_id=algo_id, task_id=task_id, params=params)
                     elif task_type == 'delete':
-                        LOG.info(f'Received delete task: {params}')
-                        dataset_id = params.get("dataset_id")
-                        doc_ids = params.get("doc_ids")
-                        future = self._delete_executor.submit(
-                            self._processors[algo_id].delete_doc, dataset_id=dataset_id, doc_ids=doc_ids
-                        )
-                        self._tasks[task_id] = (future, None)
-                        self._pending_task_ids.remove(task_id)
+                        self._exec_delete_task(algo_id=algo_id, task_id=task_id, params=params)
                     time.sleep(0.2)
                 except queue.Empty:
                     task_need_pop = []
