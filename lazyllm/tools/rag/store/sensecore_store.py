@@ -183,15 +183,15 @@ class SenseCoreStore(DocStoreBase):
                 global_metadata=json.loads(segment["global_meta"]),
                 parent=segment["parent"],
             )
-        elif len(segment.get("image_keys", [])):
-            node = ImageDocNode(
-                image_path=segment["image_keys"][0],
-                uid=segment["segment_id"],
-                group=segment["group"],
-                metadata=json.loads(segment["meta"]),
-                global_metadata=json.loads(segment["global_meta"]),
-                parent=segment["parent"],
-            )
+        # elif len(segment.get("image_keys", [])):
+        #     node = ImageDocNode(
+        #         image_path=segment["image_keys"][0],
+        #         uid=segment["segment_id"],
+        #         group=segment["group"],
+        #         metadata=json.loads(segment["meta"]),
+        #         global_metadata=json.loads(segment["global_meta"]),
+        #         parent=segment["parent"],
+        #     )
         else:
             node = DocNode(
                 uid=segment["segment_id"],
