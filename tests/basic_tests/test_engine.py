@@ -730,7 +730,8 @@ class TestEngineRAG(object):
 
     def test_rag(self):
         resources = [
-            dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', embed='00')),
+            dict(id='0', kind='Document', name='d1', args=dict(
+                dataset_path='rag_master', activated_groups=['CoarseChunk', '00'])),
             dict(id='00', kind='LocalEmbedding', name='e1', args=dict(base_model='bge-large-zh-v1.5'))]
         nodes = [dict(id='1', kind='Retriever', name='ret1',
                       args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
@@ -750,7 +751,7 @@ class TestEngineRAG(object):
 
         # test add doc_group
         resources[0] = dict(id='0', kind='Document', name='d1', args=dict(
-            dataset_path='rag_master', server=True, node_group=[
+            dataset_path='rag_master', server=True, activated_groups=['CoarseChunk', '00'], node_group=[
                 dict(name='sentence', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))
         nodes.extend([dict(id='2', kind='Retriever', name='ret2',
                            args=dict(doc='0', group_name='sentence', similarity='bm25', topk=3)),

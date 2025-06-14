@@ -43,7 +43,7 @@ class Retriever(ModuleBase, _PostProcess):
             assert isinstance(doc, (Document, UrlDocument)), 'Only Document or List[Document] are supported'
             if isinstance(doc, UrlDocument): continue
             self._submodules.append(doc)
-            if mode == 'embedding' and not embed_keys:
+            if mode == 'embedding' and embed_keys is None:
                 embed_keys = list(doc._impl.embed.keys())
             doc.activate_group(group_name, embed_keys)
             if target: doc.activate_group(target)
