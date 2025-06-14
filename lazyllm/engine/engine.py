@@ -420,14 +420,16 @@ def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False
 
 @NodeConstructor.register('Reranker')
 def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
-                  output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
+                  output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {},
+                  base_model: Optional[str] = None, deploy_method: Optional[str] = 'auto', url: Optional[str] = None):
     if type == 'ModuleReranker':
-        if node := Engine().build_node(arguments['model']):
-            arguments['model'] = node.func
+        if node := Engine().build_node(base_model):
+            model = node.func
         else:
-            model = lazyllm.TrainableModule(arguments['model'])
-            setup_deploy_method(model, 'RerankerDeploy', arguments.get('url'))
-            arguments['model'] = model
+            model = lazyllm.TrainableModule(base_model)
+            # TODO: Separate RerankerDeploy from EmbeddingDeploy
+            setup_deploy_method(model, 'RerankerDeploy', url)
+        arguments['model'] = model
     return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
 
 class JoinFormatter(lazyllm.components.FormatterBase):
