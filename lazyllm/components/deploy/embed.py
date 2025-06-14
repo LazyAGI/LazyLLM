@@ -172,3 +172,16 @@ class EmbeddingDeploy(LazyLLMDeployBase):
                 finetuned_model), launcher=self._launcher, log_path=self._log_path, cls='embedding')()
         else:
             raise RuntimeError(f'Not support model type: {self._model_type}.')
+
+class RerankerDeploy(LazyLLMDeployBase):
+    message_format = {
+        'query': 'query',  # str,
+        'documents': ['string'],
+        'top_n': 1,
+    }
+    keys_name_handle = {
+        'inputs': 'query',
+        'documents': 'documents',
+        'top_n': 'top_n',
+    }
+    default_headers = {'Content-Type': 'application/json'}

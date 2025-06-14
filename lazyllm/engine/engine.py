@@ -383,13 +383,9 @@ def make_local_llm(base_model: str, target_path: str = '', prompt: str = '', str
                    history: Optional[List[List[str]]] = None):
     if history and not (isinstance(history, list) and all(len(h) == 2 and isinstance(h, list) for h in history)):
         raise TypeError('history must be List[List[str, str]]')
-    deploy_method = getattr(lazyllm.deploy, deploy_method)
     m = lazyllm.TrainableModule(base_model, target_path, stream=stream, return_trace=return_trace)
     m.prompt(prompt, history=history)
-    if deploy_method is lazyllm.deploy.AutoDeploy:
-        m.deploy_method(deploy_method)
-    else:
-        m.deploy_method(deploy_method, url=url)
+    setup_deploy_method(m, deploy_method, url)
     return m
 
 
@@ -426,8 +422,13 @@ def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False
 @NodeConstructor.register('Reranker')
 def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
                   output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
-    if type == 'ModuleReranker' and (node := Engine().build_node(arguments['model'])):
-        arguments['model'] = node.func
+    if type == 'ModuleReranker':
+        if node := Engine().build_node(arguments['model']):
+            arguments['model'] = node.func
+        else:
+            model = lazyllm.TrainableModule(arguments['model'])
+            setup_deploy_method(model, 'RerankerDeploy', arguments.get('url'))
+            arguments['model'] = model
     return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
 
 class JoinFormatter(lazyllm.components.FormatterBase):
@@ -678,10 +679,14 @@ def make_http_tool(method: Optional[str] = None,
 
 class VQA(lazyllm.Module):
     def __init__(self, base_model: Union[str, lazyllm.TrainableModule], file_resource_id: Optional[str],
-                 prompt: Optional[str] = None):
+                 prompt: Optional[str] = None, deploy_method: str = "auto", url: Optional[str] = None):
         super().__init__()
-        self.vqa = self._vqa = (lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
-                                if not isinstance(base_model, lazyllm.TrainableModule) else base_model)
+        if isinstance(base_model, str):
+            self._vqa = lazyllm.TrainableModule(base_model)
+            setup_deploy_method(self._vqa, deploy_method, url)
+        else:
+            self._vqa = base_model.share()
+        self.vqa = self._vqa
         if prompt: self._vqa.prompt(prompt=prompt)
         self._file_resource_id = file_resource_id
         if file_resource_id:
@@ -709,8 +714,9 @@ class VQA(lazyllm.Module):
 
 
 @NodeConstructor.register('VQA')
-def make_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None):
-    return VQA(base_model, file_resource_id, prompt)
+def make_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None,
+             deploy_method: str = "auto", url: Optional[str] = None):
+    return VQA(base_model, file_resource_id, prompt, deploy_method, url)
 
 
 @NodeConstructor.register('SharedLLM')
@@ -771,9 +777,14 @@ def make_llm(kw: dict):
 
 
 class STT(lazyllm.Module):
-    def __init__(self, base_model: Union[str, lazyllm.TrainableModule]):
+    def __init__(self, base_model: Union[str, lazyllm.TrainableModule], deploy_method: str = "auto",
+                 url: Optional[str] = None):
         super().__init__()
-        self._m = lazyllm.TrainableModule(base_model) if isinstance(base_model, str) else base_model.share()
+        if isinstance(base_model, str):
+            self._m = lazyllm.TrainableModule(base_model)
+            setup_deploy_method(self._m, deploy_method, url)
+        else:
+            self._m = base_model.share()
 
     def forward(self, query: str):
         if '<lazyllm-query>' in query:
@@ -799,9 +810,18 @@ class STT(lazyllm.Module):
 
 
 @NodeConstructor.register('STT')
-def make_stt(base_model: str):
-    return STT(base_model)
+def make_stt(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+    return STT(base_model, deploy_method, url)
 
+@NodeConstructor.register('TTS')
+def make_tts(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+    m = lazyllm.TrainableModule(base_model)
+    return setup_deploy_method(m, deploy_method, url)
+
+@NodeConstructor.register('LocalEmbedding')
+def make_local_embedding(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+    m = lazyllm.TrainableModule(base_model)
+    return setup_deploy_method(m, deploy_method, url)
 
 @NodeConstructor.register('Constant')
 def make_constant(value: Any):
@@ -865,3 +885,18 @@ def make_ocr(model: Optional[str] = "PP-OCRv5_mobile"):
 def make_code_generator(base_model: str, prompt: str = ""):
     base_model = Engine().build_node(base_model).func
     return lazyllm.tools.CodeGenerator(base_model, prompt)
+
+def setup_deploy_method(model: lazyllm.TrainableModule, deploy_method: str, url: Optional[str] = None):
+    """设置模块的部署方法
+
+    Args:
+        module: 要设置部署方法的模块
+        deploy_method: 部署方法名称
+        url: 可选的部署URL
+    """
+    deploy_method = getattr(lazyllm.deploy, deploy_method)
+    if deploy_method is lazyllm.deploy.AutoDeploy:
+        model.deploy_method(deploy_method)
+    else:
+        model.deploy_method(deploy_method, url=url)
+    return model
