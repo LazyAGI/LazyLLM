@@ -69,6 +69,7 @@ class NodeGroupType(str, Enum):
     SUMMARY = "Summary"
     IMAGE_INFO = "Image Info"
     QUESTION_ANSWER = "Question Answer"
+    OTHER = "Other"
 
 
 class BuiltinGroups(object):
@@ -89,7 +90,7 @@ class BuiltinGroups(object):
                          TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
     FineChunk = Struct('FineChunk', NodeGroupType.CHUNK, '128 Tokens Chunk',
                        TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
-    ImgDesc = Struct('ImgDesc', NodeGroupType.IMAGE_INFO, 'Image Desc',
+    ImgDesc = Struct('ImgDesc', NodeGroupType.OTHER, 'Image Desc',
                      lambda x: x._content, LAZY_IMAGE_GROUP, True)
 
 
@@ -99,7 +100,7 @@ class DocImpl:
     _registered_file_reader: Dict[str, Callable] = {}
     _registered_node_group_info: Dict[str, str] = {
         LAZY_ROOT_NAME: {"name": "Original Source", "type": NodeGroupType.ORIGINAL},
-        LAZY_IMAGE_GROUP: {"name": "Image Node", "type": NodeGroupType.IMAGE_INFO}
+        LAZY_IMAGE_GROUP: {"name": "Image Node", "type": NodeGroupType.OTHER}
     }
 
     def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,

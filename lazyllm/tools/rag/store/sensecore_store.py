@@ -337,25 +337,29 @@ class SenseCoreStore(DocStoreBase):
         uids: Optional[List[str]] = None
     ) -> None:
         """ remove nodes from the store by doc_ids or uids """
-        url = urljoin(self._uri, "v1/segments:bulkDelete")
-        headers = {
-            "Accept": "*/*",
-            "Content-Type": "application/json",
-        }
-        if doc_ids:
-            payload = {
-                "dataset_id": dataset_id or self._kb_id,
-                "document_ids": doc_ids,
+        try:
+            url = urljoin(self._uri, "v1/segments:bulkDelete")
+            headers = {
+                "Accept": "*/*",
+                "Content-Type": "application/json",
             }
-        else:
-            payload = {
-                "dataset_id": dataset_id or self._kb_id,
-                "segment_ids": uids,
-            }
-        if group_name:
-            payload["group"] = group_name
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()
+            if doc_ids:
+                payload = {
+                    "dataset_id": dataset_id or self._kb_id,
+                    "document_ids": doc_ids,
+                }
+            else:
+                payload = {
+                    "dataset_id": dataset_id or self._kb_id,
+                    "segment_ids": uids,
+                }
+            if group_name:
+                payload["group"] = group_name
+            response = requests.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+        except Exception as e:
+            LOG.error(f"SenseCore Store: remove task failed: {e}")
+            raise e
         return
 
     @override
@@ -416,49 +420,52 @@ class SenseCoreStore(DocStoreBase):
         **kwargs
     ) -> List[DocNode]:
         """ search nodes from the store """
-
-        url = urljoin(self._uri, "v1/segments:hybrid")
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
-        filter_str = self._create_filters_str(filters) if filters else None
-        dataset_ids = []
-        if filters:
-            for name, candidates in filters.items():
-                desc = self._global_metadata_desc.get(name)
-                if not desc:
-                    raise ValueError(f'cannot find desc of field [{name}]')
-                key = name
-                if key == "kb_id":
-                    if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
-                        candidates = list(candidates)
-                    dataset_ids = candidates
-
-        if dataset_ids:
-            hybrid_search_datasets = [{"dataset_id": dataset_id} for dataset_id in dataset_ids]
-        else:
-            LOG.error(f"SenseCore Store: no dataset_id provided, please check your filters: {filters}")
-            return []
-        nodes = []
-        for embed_key in embed_keys:
-            payload = {
-                "query": query,
-                "hybrid_search_datasets": hybrid_search_datasets,
-                "hybrid_search_type": 2,
-                "top_k": topk,
-                "filters": filter_str,
-                "group": group_name,
-                "embedding_model": embed_key,
+        try:
+            url = urljoin(self._uri, "v1/segments:hybrid")
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
             }
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            segments = response.json()['segments']
-            for s in segments:
-                if len(s.get('display_content', '')):
-                    s['content'] = s['display_content']
-            nodes.extend([self._deserialize_node(node) for node in response.json()['segments']])
-        return nodes
+            filter_str = self._create_filters_str(filters) if filters else None
+            dataset_ids = []
+            if filters:
+                for name, candidates in filters.items():
+                    desc = self._global_metadata_desc.get(name)
+                    if not desc:
+                        raise ValueError(f'cannot find desc of field [{name}]')
+                    key = name
+                    if key == "kb_id":
+                        if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
+                            candidates = list(candidates)
+                        dataset_ids = candidates
+
+            if dataset_ids:
+                hybrid_search_datasets = [{"dataset_id": dataset_id} for dataset_id in dataset_ids]
+            else:
+                LOG.error(f"SenseCore Store: no dataset_id provided, please check your filters: {filters}")
+                return []
+            nodes = []
+            for embed_key in embed_keys:
+                payload = {
+                    "query": query,
+                    "hybrid_search_datasets": hybrid_search_datasets,
+                    "hybrid_search_type": 2,
+                    "top_k": topk,
+                    "filters": filter_str,
+                    "group": group_name,
+                    "embedding_model": embed_key,
+                }
+                response = requests.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                segments = response.json()['segments']
+                for s in segments:
+                    if len(s.get('display_content', '')):
+                        s['content'] = s['display_content']
+                nodes.extend([self._deserialize_node(node) for node in response.json()['segments']])
+            return nodes
+        except Exception as e:
+            LOG.error(f"SenseCore Store: query task failed: {e}")
+            raise e
 
     @override
     def register_index(self, type: str, index: IndexBase) -> None:
