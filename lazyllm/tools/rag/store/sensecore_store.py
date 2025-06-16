@@ -455,6 +455,7 @@ class SenseCoreStore(DocStoreBase):
                     "group": group_name,
                     "embedding_model": embed_key,
                 }
+                LOG.info(f"[Sensecore Store]: query request body: {payload}.")
                 response = requests.post(url, headers=headers, json=payload)
                 response.raise_for_status()
                 segments = response.json()['segments']
