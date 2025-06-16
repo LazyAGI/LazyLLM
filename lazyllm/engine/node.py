@@ -101,6 +101,30 @@ all_nodes['Retriever'] = dict(
     )
 )
 
+all_nodes['Reranker'] = dict(
+    module=lazyllm.tools.rag.Reranker,
+    init_arguments=dict(
+        name=NodeArgs(str, 'ModuleReranker'),
+        target=NodeArgs(str, None),
+        output_format=NodeArgs(str, None),
+        join=NodeArgs(bool, False),
+        arguments={
+            '__name__': 'name',
+            '__cls__': 'init_arguments',
+            'ModuleReranker': dict(
+                model=NodeArgs(str, 'bge-reranker-large'),
+                topk=NodeArgs(int, -1)
+            ),
+            'KeywordFilter': dict(
+                required_keys=NodeArgs(list, []),
+                exclude_keys=NodeArgs(list, []),
+                language=NodeArgs(str, "en")
+            )
+        }
+    )
+)
+
+
 all_nodes["SqlManager"] = dict(
     module=lazyllm.tools.SqlManager,
     init_arguments=dict(
