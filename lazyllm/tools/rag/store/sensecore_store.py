@@ -83,13 +83,13 @@ class SenseCoreStore(DocStoreBase):
             dataset_id=node.global_metadata.get("kb_id", None) or self._kb_id,
             document_id=node.global_metadata.get(RAG_DOC_ID),
             group=node._group,
-            meta=json.dumps(node.metadata),
+            meta=json.dumps(node._metadata),
             excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
             excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
             global_meta=json.dumps(node.global_metadata),
             children={group: {"ids": [n._uid for n in c_l]} for group, c_l in node.children.items()},
             embedding_state=node._embedding_state,
-            number=node.metadata.get("store_num", 0)
+            number=node._metadata.get("store_num", 0)
         )
         if node.parent:
             if isinstance(node.parent, DocNode):
