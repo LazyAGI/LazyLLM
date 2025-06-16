@@ -385,14 +385,15 @@ def make_local_llm(base_model: str, target_path: str = '', prompt: str = '', str
         raise TypeError('history must be List[List[str, str]]')
     m = lazyllm.TrainableModule(base_model, target_path, stream=stream, return_trace=return_trace)
     m.prompt(prompt, history=history)
-    setup_deploy_method(m, deploy_method, url)
+    _setup_deploy_method(m, deploy_method, url)
     return m
 
 
 @NodeConstructor.register('Intention', subitems=['nodes:dict'])
-def make_intention(base_model: str, nodes: Dict[str, List[dict]],
+def make_intention(base_model: str, nodes: Dict[str, List[dict]], deploy_method: str = 'auto', url: Optional[str] = None,
                    prompt: str = '', constrain: str = '', attention: str = ''):
-    with IntentClassifier(Engine().build_node(base_model).func,
+    model = _get_model(base_model, deploy_method, url)
+    with IntentClassifier(model,
                           prompt=prompt, constrain=constrain, attention=attention) as ic:
         for cond, nodes in nodes.items():
             if isinstance(nodes, list) and len(nodes) > 1:
@@ -404,14 +405,20 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]],
 
 
 @NodeConstructor.register('Document')
-def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False,
+def make_document(dataset_path: str, embed_base_model: str = None, embed_deploy_method: str = 'auto',
+                  embed_url: Optional[str] = None, create_ui: bool = False, llm_base_model: str = None,
+                  llm_deploy_method: str = 'auto', llm_url: Optional[str] = None,
                   server: bool = False, node_group: List = [], activated_groups: List[str] = []):
+    embed_model = _get_model(embed_base_model, embed_deploy_method, embed_url) if embed_base_model else None
     document = lazyllm.tools.rag.Document(
-        dataset_path, Engine().build_node(embed).func if embed else None, server=server, manager=create_ui)
+        dataset_path, embed_model, server=server, manager=create_ui)
     for group in node_group:
         if group['transform'] == 'LLMParser':
             group['transform'] = 'llm'
-            group['llm'] = Engine().build_node(group['llm']).func
+            assert group['llm'] or llm_base_model, 'llm or llm_base_model is required'
+            llm_base_model = group['llm'] or llm_base_model
+            llm_model = _get_model(llm_base_model, llm_deploy_method, llm_url)
+            group['llm'] = llm_model
         elif group['transform'] == 'FuncNode':
             group['transform'] = 'function'
             group['function'] = make_code(group['function'])
@@ -421,14 +428,14 @@ def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False
 
 @NodeConstructor.register('Reranker')
 def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
-                  output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
+                  output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {},
+                  base_model: Optional[str] = None, deploy_method: Optional[str] = 'auto', url: Optional[str] = None):
     if type == 'ModuleReranker':
-        if node := Engine().build_node(arguments['model']):
-            arguments['model'] = node.func
-        else:
-            model = lazyllm.TrainableModule(arguments['model'])
-            setup_deploy_method(model, 'RerankerDeploy', arguments.get('url'))
-            arguments['model'] = model
+        assert arguments.get('model') or base_model, 'model or base_model is required'
+        # TODO: Separate RerankerDeploy from EmbeddingDeploy in server
+        base_model = arguments.get('model') or base_model
+        model = _get_model(base_model, "RerankerDeploy", url)
+        arguments['model'] = model
     return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
 
 class JoinFormatter(lazyllm.components.FormatterBase):
@@ -678,14 +685,10 @@ def make_http_tool(method: Optional[str] = None,
 
 
 class VQA(lazyllm.Module):
-    def __init__(self, base_model: Union[str, lazyllm.TrainableModule], file_resource_id: Optional[str],
-                 prompt: Optional[str] = None, deploy_method: str = "auto", url: Optional[str] = None):
+    def __init__(self, model: lazyllm.TrainableModule, file_resource_id: Optional[str],
+                 prompt: Optional[str] = None):
         super().__init__()
-        if isinstance(base_model, str):
-            self._vqa = lazyllm.TrainableModule(base_model)
-            setup_deploy_method(self._vqa, deploy_method, url)
-        else:
-            self._vqa = base_model.share()
+        self._vqa = model
         self.vqa = self._vqa
         if prompt: self._vqa.prompt(prompt=prompt)
         self._file_resource_id = file_resource_id
@@ -716,7 +719,8 @@ class VQA(lazyllm.Module):
 @NodeConstructor.register('VQA')
 def make_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None,
              deploy_method: str = "auto", url: Optional[str] = None):
-    return VQA(base_model, file_resource_id, prompt, deploy_method, url)
+    model = _get_model(base_model, deploy_method, url)
+    return VQA(model, file_resource_id, prompt)
 
 
 @NodeConstructor.register('SharedLLM')
@@ -777,14 +781,9 @@ def make_llm(kw: dict):
 
 
 class STT(lazyllm.Module):
-    def __init__(self, base_model: Union[str, lazyllm.TrainableModule], deploy_method: str = "auto",
-                 url: Optional[str] = None):
+    def __init__(self, model: lazyllm.TrainableModule):
         super().__init__()
-        if isinstance(base_model, str):
-            self._m = lazyllm.TrainableModule(base_model)
-            setup_deploy_method(self._m, deploy_method, url)
-        else:
-            self._m = base_model.share()
+        self._m = model
 
     def forward(self, query: str):
         if '<lazyllm-query>' in query:
@@ -811,17 +810,16 @@ class STT(lazyllm.Module):
 
 @NodeConstructor.register('STT')
 def make_stt(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
-    return STT(base_model, deploy_method, url)
+    model = _get_model(base_model, deploy_method, url)
+    return STT(model)
 
 @NodeConstructor.register('TTS')
 def make_tts(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
-    m = lazyllm.TrainableModule(base_model)
-    return setup_deploy_method(m, deploy_method, url)
+    return _get_model(base_model, deploy_method, url)
 
 @NodeConstructor.register('LocalEmbedding')
 def make_local_embedding(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
-    m = lazyllm.TrainableModule(base_model)
-    return setup_deploy_method(m, deploy_method, url)
+    return _get_model(base_model, deploy_method, url)
 
 @NodeConstructor.register('Constant')
 def make_constant(value: Any):
@@ -843,15 +841,17 @@ def make_file(id: str):
 
 @NodeConstructor.register("ParameterExtractor")
 def make_parameter_extractor(base_model: str, param: list[str], type: list[str],
-                             description: list[str], require: list[bool]):
-    base_model = Engine().build_node(base_model).func
-    return lazyllm.tools.ParameterExtractor(base_model, param, type, description, require)
+                             description: list[str], require: list[bool], deploy_method: str = 'auto',
+                             url: Optional[str] = None):
+    model = _get_model(base_model, deploy_method, url)
+    return lazyllm.tools.ParameterExtractor(model, param, type, description, require)
 
 
 @NodeConstructor.register("QustionRewrite")
-def make_qustion_rewrite(base_model: str, rewrite_prompt: str = "", formatter: str = "str"):
-    base_model = Engine().build_node(base_model).func
-    return lazyllm.tools.QustionRewrite(base_model, rewrite_prompt, formatter)
+def make_qustion_rewrite(base_model: str, rewrite_prompt: str = "", formatter: str = "str", deploy_method: str = 'auto',
+                         url: Optional[str] = None):
+    model = _get_model(base_model, deploy_method, url)
+    return lazyllm.tools.QustionRewrite(model, rewrite_prompt, formatter)
 
 
 @NodeConstructor.register("Reader")
@@ -882,11 +882,19 @@ def make_ocr(model: Optional[str] = "PP-OCRv5_mobile"):
 
 
 @NodeConstructor.register("CodeGenerator")
-def make_code_generator(base_model: str, prompt: str = ""):
-    base_model = Engine().build_node(base_model).func
-    return lazyllm.tools.CodeGenerator(base_model, prompt)
+def make_code_generator(base_model: str, prompt: str = "", deploy_method: str = 'auto', url: Optional[str] = None):
+    model = _get_model(base_model, deploy_method, url)
+    return lazyllm.tools.CodeGenerator(model, prompt)
 
-def setup_deploy_method(model: lazyllm.TrainableModule, deploy_method: str, url: Optional[str] = None):
+def _get_model(base_model: str, deploy_method: str = 'auto', url: Optional[str] = None):
+    if node := Engine().build_node(base_model):
+        model = node.func
+    else:
+        model = lazyllm.TrainableModule(base_model)
+        _setup_deploy_method(model, deploy_method, url)
+    return model
+
+def _setup_deploy_method(model: lazyllm.TrainableModule, deploy_method: str, url: Optional[str] = None):
     """设置模块的部署方法
 
     Args:
