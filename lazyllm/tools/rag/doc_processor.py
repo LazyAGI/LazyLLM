@@ -225,7 +225,7 @@ class DocumentProcessor():
                 self._add_executor = ThreadPoolExecutor(max_workers=8)
                 self._add_futures = {}
                 self._delete_executor = ThreadPoolExecutor(max_workers=4)
-                self._update_executor = ThreadPoolExecutor(max_workers=1)
+                self._update_executor = ThreadPoolExecutor(max_workers=4)
                 self._update_futures = {}
 
                 self._engines: dict[str, Engine] = {}
