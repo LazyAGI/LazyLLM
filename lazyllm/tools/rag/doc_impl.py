@@ -243,7 +243,7 @@ class DocImpl:
         self.store = store_conf  # NOTE: will be initialized in _lazy_init()
         self._activated_groups = set([LAZY_ROOT_NAME, LAZY_IMAGE_GROUP])
         # activated_embeddings maintains all node_groups and active embeddings
-        self._activated_embeddings = {LAZY_ROOT_NAME: [], LAZY_IMAGE_GROUP: []}  # {group_name: [embed1, embed2, ...]}
+        self._activated_embeddings = {LAZY_ROOT_NAME: set(), LAZY_IMAGE_GROUP: set()}  # {group_name: {em1, em2, ...}}
         self._index_pending_registrations = []
         self._processor = processor
         self._algo_name = algo_name
