@@ -2,8 +2,9 @@ from typing import List, Dict, Type, Optional, Union, Any, overload
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier, SqlManager
+from lazyllm.tools.http_request.http_request import HttpRequest
 from lazyllm.common import compile_func
-from .node import all_nodes, Node
+from .node import Node
 from .node_meta_hook import NodeMetaHook
 import inspect
 import functools
@@ -161,34 +162,8 @@ class NodeConstructor(object):
                 set(inspect.getfullargspec(createf).args)) else createf(node_args)
             self._process_hook(node, node.func)
             return node
-
-        node_msgs = all_nodes[node.kind]
-        init_args, build_args, other_args = dict(), dict(), dict()
-
-        def get_args(cls, key, value, builder_key=None):
-            node_args = node_msgs[cls][builder_key][key] if builder_key else node_msgs[cls][key]
-            if node_args.type == Node:
-                return Engine().build_node(value).func
-            return node_args.getattr_f(value) if node_args.getattr_f else value
-
-        for key, value in node_args.items():
-            if key in node_msgs['init_arguments']:
-                init_args[key] = get_args('init_arguments', key, value)
-            elif key in node_msgs['builder_argument']:
-                build_args[key] = get_args('builder_argument', key, value)
-            elif '.' in key:
-                builder_key, key = key.split('.')
-                if builder_key not in other_args: other_args[builder_key] = dict()
-                other_args[builder_key][key] = get_args('other_arguments', key, value, builder_key=builder_key)
-            else:
-                raise KeyError(f'Invalid key `{key}` found')
-
-        module = node_msgs['module'](**init_args)
-        for key, value in build_args.items():
-            module = getattr(module, key)(value, **other_args.get(key, dict()))
-        node.func = module
-        self._process_hook(node, module)
-        return node
+        else:
+            raise KeyError(f'Invalid node kind `{node.kind}` found')
 
     def _process_hook(self, node, module):
         if not node.enable_data_reflow:
@@ -751,6 +726,13 @@ def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optio
         return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
                                         api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
 
+@NodeConstructor.register('OnlineEmbedding')
+def make_online_embedding(source: str, type: Optional[str] = None, embed_model_name: Optional[str] = None,
+                          embed_url: Optional[str] = None, api_key: Optional[str] = None,
+                          secret_key: Optional[str] = None):
+    source = source.lower()
+    return lazyllm.OnlineEmbeddingModule(source, type, embed_model_name, embed_url, api_key, secret_key)
+
 
 class LLM(lazyllm.ModuleBase):
     def __init__(self, m: lazyllm.ModuleBase, keys: Optional[List[str]] = None):
@@ -831,6 +813,33 @@ def make_local_embedding(base_model: str, deploy_method: str = "auto", url: Opti
 def make_constant(value: Any):
     return (lambda *args, **kw: value)
 
+
+@NodeConstructor.register('SqlCall')
+def make_sql_call(sql_manager: Node, llm: Node, sql_examples: str = "", use_llm_for_sql_result: bool = True,
+                  return_trace: bool = True):
+    return lazyllm.tools.SqlCall(llm, sql_manager, sql_examples, use_llm_for_sql_result, return_trace)
+
+@NodeConstructor.register('SqlManager')
+def make_sql_manager(db_type: str = None, user: str = None, password: str = None, host: str = None,
+                     port: str = None, db_name: str = None, options_str: str = "", tables_info_dict: dict = None):
+    return lazyllm.tools.SqlManager(db_type, user, password, host, port, db_name, options_str=options_str,
+                                    tables_info_dict=tables_info_dict)
+
+@NodeConstructor.register('Retriever')
+def make_retriever(doc: Node, group_name: str, similarity: str = "cosine", similarity_cut_off: float = float("-inf"),
+                   index: str = "default", topk: int = 6, embed_keys: list[str] = None, target: str = None,
+                   output_format: str = None, join: bool = False):
+    return lazyllm.tools.rag.Retriever(doc, group_name, similarity, similarity_cut_off, index, topk, embed_keys, target,
+                                       output_format, join)
+
+@NodeConstructor.register('HTTP')
+def make_http(method: str, url: str, api_key: str = '', headers: dict = {}, params: dict = {}, body: str = ''):
+    return HttpRequest(method, url, api_key, headers, params, body)
+
+@NodeConstructor.register('SD')
+def make_sd(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+    m = lazyllm.TrainableModule(base_model)
+    return setup_deploy_method(m, deploy_method, url)
 
 class FileResource(object):
     def __init__(self, id) -> None:

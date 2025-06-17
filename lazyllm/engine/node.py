@@ -1,10 +1,6 @@
 # noqa: E121
-import lazyllm
-from typing import Any, Optional, List, Callable, Dict, Union
+from typing import Optional, List, Callable, Dict, Union
 from dataclasses import dataclass
-from functools import partial
-
-from lazyllm.tools.http_request.http_request import HttpRequest
 
 
 def extract_all_ids(data) -> list[str]:
@@ -42,86 +38,3 @@ class Node():
             for s in source.values():
                 result.extend(extract_all_ids(s))
         return result
-
-
-@dataclass
-class NodeArgs(object):
-    type: type
-    default: Any = None
-    options: Optional[List] = None
-    getattr_f: Optional[Callable] = None
-
-
-all_nodes = dict()
-
-all_nodes['OnlineEmbedding'] = dict(
-    module=lazyllm.OnlineEmbeddingModule,
-    init_arguments=dict(
-        source=NodeArgs(str),
-        type=NodeArgs(str, 'embedding'),
-        embed_model_name=NodeArgs(str),
-        embed_url=NodeArgs(str),
-        api_key=NodeArgs(str, None),
-        secret_key=NodeArgs(str, None))
-)
-
-all_nodes['SD'] = dict(
-    module=lazyllm.TrainableModule,
-    init_arguments=dict(base_model=NodeArgs(str)),
-    builder_argument=dict(deploy_method=NodeArgs(str, 'auto', getattr_f=partial(getattr, lazyllm.deploy))),
-    other_arguments=dict(deploy_method=dict(url=NodeArgs(str, None)))
-)
-
-all_nodes['HTTP'] = dict(
-    module=HttpRequest,
-    init_arguments=dict(
-        method=NodeArgs(str),
-        url=NodeArgs(str),
-        api_key=NodeArgs(str, ''),
-        headers=NodeArgs(dict, {}),
-        params=NodeArgs(dict, {}),
-        body=NodeArgs(str, ''),
-    ),
-    builder_argument=dict(),
-    other_arguments=dict()
-)
-
-all_nodes['Retriever'] = dict(
-    module=lazyllm.tools.rag.Retriever,
-    init_arguments=dict(
-        doc=NodeArgs(Node),
-        group_name=NodeArgs(str),
-        similarity=NodeArgs(str, "cosine"),
-        similarity_cut_off=NodeArgs(float, float("-inf")),
-        index=NodeArgs(str, "default"),
-        topk=NodeArgs(int, 6),
-        target=NodeArgs(str, None),
-        output_format=NodeArgs(str, None),
-        join=NodeArgs(bool, False)
-    )
-)
-
-all_nodes["SqlManager"] = dict(
-    module=lazyllm.tools.SqlManager,
-    init_arguments=dict(
-        db_type=NodeArgs(str, None),
-        user=NodeArgs(str, None),
-        password=NodeArgs(str, None),
-        host=NodeArgs(str, None),
-        port=NodeArgs(str, None),
-        db_name=NodeArgs(str, None),
-        options_str=NodeArgs(str, ""),
-        tables_info_dict=NodeArgs(dict, None),
-    ),
-)
-
-all_nodes["SqlCall"] = dict(
-    module=lazyllm.tools.SqlCall,
-    init_arguments=dict(
-        sql_manager=NodeArgs(Node),
-        llm=NodeArgs(Node),
-        sql_examples=NodeArgs(str, ""),
-        use_llm_for_sql_result=NodeArgs(bool, True),
-        return_trace=NodeArgs(bool, True),
-    ),
-)
