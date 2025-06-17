@@ -687,10 +687,16 @@ class VQA(lazyllm.Module):
     def stream(self, v: bool):
         self._vqa._stream = v
 
-
 @NodeConstructor.register('VQA')
-def make_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None,
-             deploy_method: str = "auto", url: Optional[str] = None):
+def make_vqa(kw: dict):
+    type: str = kw.pop('type')
+    assert type in ('local', 'online'), f'Invalid type {type} given'
+    if type == 'local': return make_local_vqa(**kw)
+    else: raise ValueError(f'Not supported type {type} for VQA')
+
+@NodeConstructor.register('LocalVQA')
+def make_local_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None,
+                   deploy_method: str = "auto", url: Optional[str] = None):
     return VQA(base_model, file_resource_id, prompt, deploy_method, url)
 
 
@@ -791,15 +797,35 @@ class STT(lazyllm.Module):
     def stream(self, v: bool):
         self._m._stream = v
 
-
 @NodeConstructor.register('STT')
-def make_stt(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+def make_stt(kw: dict):
+    type: str = kw.pop('type')
+    assert type in ('local', 'online'), f'Invalid type {type} given'
+    if type == 'local': return make_local_stt(**kw)
+    else: raise ValueError(f'Not supported type {type} for STT')
+
+@NodeConstructor.register('LocalSTT')
+def make_local_stt(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
     return STT(base_model, deploy_method, url)
 
 @NodeConstructor.register('TTS')
-def make_tts(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+def make_tts(kw: dict):
+    type: str = kw.pop('type')
+    assert type in ('local', 'online'), f'Invalid type {type} given'
+    if type == 'local': return make_local_tts(**kw)
+    else: raise ValueError(f'Not supported type {type} for TTS')
+
+@NodeConstructor.register('LocalTTS')
+def make_local_tts(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
     m = lazyllm.TrainableModule(base_model)
-    return setup_deploy_method(m, deploy_method, url)
+    return setup_deploy_method(m, deploy_method, url, type)
+
+@NodeConstructor.register('Embedding')
+def make_embedding(kw: dict):
+    type: str = kw.pop('type')
+    assert type in ('local', 'online'), f'Invalid type {type} given'
+    if type == 'local': return make_local_embedding(**kw)
+    else: return make_online_embedding(**kw)
 
 @NodeConstructor.register('LocalEmbedding')
 def make_local_embedding(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
@@ -834,7 +860,14 @@ def make_http(method: str, url: str, api_key: str = '', headers: dict = {}, para
     return HttpRequest(method, url, api_key, headers, params, body)
 
 @NodeConstructor.register('SD')
-def make_sd(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+def make_sd(kw: dict):
+    type: str = kw.pop('type')
+    assert type in ('local', 'online'), f'Invalid type {type} given'
+    if type == 'local': return make_local_sd(**kw)
+    else: raise ValueError(f'Not supported type {type} for SD')
+
+@NodeConstructor.register('LocalSD')
+def make_local_sd(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
     m = lazyllm.TrainableModule(base_model)
     return setup_deploy_method(m, deploy_method, url)
 
