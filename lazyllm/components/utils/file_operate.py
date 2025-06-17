@@ -80,7 +80,7 @@ def base64_to_audio(base64_str: str):
             suffix = f'.{ext}'
             break
     if suffix is None:
-        raise ValueError(f"不支持的音频MIME类型: {mime_type}")
+        raise ValueError(f"Unsupported audio MIME type: {mime_type}")
 
     # 创建临时文件
     import tempfile

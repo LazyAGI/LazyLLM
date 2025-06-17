@@ -409,7 +409,7 @@ class UrlModule(ModuleBase, UrlTemplate):
                         base64_str, mime = audio_to_base64(file_path)
                         encoded_files.append(f"data:{mime};base64," + base64_str)
                     except Exception as e:
-                        LOG.error(f"处理文件 {file} 时出错: {e}")
+                        LOG.error(f"Error processing file {file}: {e}")
                         continue
                 if encoded_files:
                     data[self.keys_name_handle['audio']] = encoded_files

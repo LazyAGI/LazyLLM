@@ -55,8 +55,8 @@ class SenseVoice(object):
             try:
                 string = base64_to_audio(string)
             except Exception as e:
-                LOG.error(f"处理base64编码时出错: {e}")
-                return "处理base64编码时出错"
+                LOG.error(f"Error processing base64 encoding: {e}")
+                return "Error processing base64 encoding"
         if not string.endswith(('.mp3', '.wav')):
             return "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported."
         if not is_valid_path(string) and not is_valid_url(string):
