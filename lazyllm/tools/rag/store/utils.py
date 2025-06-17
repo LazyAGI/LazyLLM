@@ -121,8 +121,7 @@ def fibonacci_backoff(max_retries: int = INSERT_MAX_RETRIES):
         yield a
         a, b = b, a + b
 
-def create_file_path(path: str, prefix: str = ""):
-    if prefix:
+def create_file_path(path: str, prefix: str = "") -> str:
+    if prefix and not os.path.isabs(path):
         return os.path.join(prefix, path)
-    else:
-        return path
+    return path
