@@ -4,6 +4,7 @@ from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier, SqlManager
 from lazyllm.tools.http_request.http_request import HttpRequest
 from lazyllm.common import compile_func
+from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list
 from .node import Node
 from .node_meta_hook import NodeMetaHook
 import inspect
@@ -395,18 +396,14 @@ def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False
 
 @NodeConstructor.register('Reranker')
 def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
-                  output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {},
-                  base_model: Optional[str] = None, deploy_method: Optional[str] = 'auto', url: Optional[str] = None):
+                  output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
     if type == 'ModuleReranker':
-        assert arguments.get('model') or base_model, 'model or base_model is required'
-        base_model = arguments.get('model') or base_model
-        if node := Engine().build_node(base_model):
-            model = node.func
+        if node := Engine().build_node(arguments['model']):
+            arguments['model'] = node.func
         else:
-            model = lazyllm.TrainableModule(base_model)
-            # TODO: Separate RerankerDeploy from EmbeddingDeploy
-            setup_deploy_method(model, 'RerankerDeploy', url)
-        arguments['model'] = model
+            model = lazyllm.TrainableModule(arguments['model'])
+            setup_deploy_method(model, 'RerankerDeploy', arguments.get('url'))
+            arguments['model'] = model
     return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
 
 class JoinFormatter(lazyllm.components.FormatterBase):
@@ -865,6 +862,33 @@ def make_parameter_extractor(base_model: str, param: list[str], type: list[str],
 def make_qustion_rewrite(base_model: str, rewrite_prompt: str = "", formatter: str = "str"):
     base_model = Engine().build_node(base_model).func
     return lazyllm.tools.QustionRewrite(base_model, rewrite_prompt, formatter)
+
+
+@NodeConstructor.register("Reader")
+def make_simple_reader(file_resource_id: Optional[str] = None):
+    if file_resource_id:
+        def merge_input(input, extra_file: Union[str, List[str]]):
+            if isinstance(input, package):
+                input = input[0]
+            input = _lazyllm_get_file_list(input)
+            input = [input] if isinstance(input, str) else input
+            extra = [extra_file] if isinstance(extra_file, str) else extra_file
+            return input + extra
+        with pipeline() as ppl:
+            ppl.extra_file = Engine().build_node(file_resource_id).func
+            ppl.merge = lazyllm.bind(merge_input, ppl.input, lazyllm._0)
+            ppl.reader = lazyllm.tools.rag.FileReader()
+        return ppl
+    else:
+        return lazyllm.tools.rag.FileReader()
+
+
+@NodeConstructor.register("OCR")
+def make_ocr(model: Optional[str] = "PP-OCRv5_mobile"):
+    if model is None:
+        model = "PP-OCRv5_mobile"
+    assert model in ["PP-OCRv5_server", "PP-OCRv5_mobile", "PP-OCRv4_server", "PP-OCRv4_mobile"]
+    return lazyllm.TrainableModule(base_model=model).start()
 
 
 @NodeConstructor.register("CodeGenerator")

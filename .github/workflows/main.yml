@@ -175,7 +175,7 @@ jobs:
       - name: RunTests
         run: |
           cd ${{ env.CI_PATH }}
-          pip install -r tests/requirements.txt
+          pip install -r tests/requirements.txt       
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models

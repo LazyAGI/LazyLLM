@@ -91,7 +91,7 @@ class Job(object):
         assert isinstance(cmd, LazyLLMCMD)
         self._origin_cmd = cmd
         self.sync = sync
-        self.launcher = launcher
+        self._launcher = launcher
         self.queue, self.jobid, self.ip, self.ps = Queue(), None, None, None
         self.output_hooks = []
 
@@ -133,13 +133,13 @@ class Job(object):
         if self.sync:
             self.ps.wait()
         else:
-            self.launcher.all_processes[self.launcher._id].append((self.jobid, self))
+            self._launcher.all_processes[self._launcher._id].append((self.jobid, self))
             n = 0
             while self.status in (Status.TBSubmitted, Status.InQueue, Status.Pending):
                 time.sleep(2)
                 n += 1
                 if n > 1800:  # 3600s
-                    self.launcher.all_processes[self.launcher._id].pop()
+                    self._launcher.all_processes[self._launcher._id].pop()
                     LOG.error('Launch failed: No computing resources are available.')
                     break
 
@@ -169,10 +169,14 @@ class Job(object):
                 try:
                     line = line.decode('utf-8')
                 except Exception:
-                    pass
-                queue.put(line)
-                if hooks:
-                    hooks(line) if callable(hooks) else [hook(line) for hook in hooks]
+                    try:
+                        line = line.decode('gb2312')
+                    except Exception:
+                        pass
+                if isinstance(line, str):
+                    queue.put(line)
+                    if hooks:
+                        hooks(line) if callable(hooks) else [hook(line) for hook in hooks]
                 LOG.info(f'{self.jobid}: {line.rstrip()}', )
                 if self.output_thread_event.is_set():
                     break
@@ -206,6 +210,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             self.path = launcher.http_path
             self.svc_type = launcher.svc_type
             self.gateway_retry = launcher.gateway_retry
+            self.on_gateway = launcher.on_gateway
             self.image = launcher.image
             self.resource_config = launcher.resource_config
 
@@ -310,7 +315,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 raise
 
         def _delete_deployment(self, wait_for_completion=True, timeout=60, check_interval=5):
-            k8s.config.load_kube_config(self.launcher.kube_config_path)
+            k8s.config.load_kube_config(self._launcher.kube_config_path)
             api_instance = k8s.client.AppsV1Api()
             try:
                 api_instance.delete_namespaced_deployment(
@@ -369,7 +374,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 raise
 
         def _delete_service(self, wait_for_completion=True, timeout=60, check_interval=5):
-            k8s.config.load_kube_config(self.launcher.kube_config_path)
+            k8s.config.load_kube_config(self._launcher.kube_config_path)
             svc_instance = k8s.client.CoreV1Api()
             service_name = f"service-{self.deployment_name}"
             try:
@@ -470,7 +475,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     raise
 
         def _delete_or_update_gateway(self, wait_for_completion=True, timeout=60, check_interval=5):
-            k8s.config.load_kube_config(self.launcher.kube_config_path)
+            k8s.config.load_kube_config(self._launcher.kube_config_path)
             gateway_instance = k8s.client.CustomObjectsApi()
             try:
                 gateway = gateway_instance.get_namespaced_custom_object(
@@ -610,7 +615,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 raise
 
         def _delete_httproute(self, wait_for_deletion=True, timeout=60, check_interval=5):
-            k8s.config.load_kube_config(self.launcher.kube_config_path)
+            k8s.config.load_kube_config(self._launcher.kube_config_path)
             httproute_instance = k8s.client.CustomObjectsApi()
             httproute_name = f"httproute-{self.deployment_name}"
             try:
@@ -655,16 +660,18 @@ class K8sLauncher(LazyLLMLaunchersBase):
         def _start(self, *, fixed=False):
             self._create_deployment(fixed=fixed)
             self._expose_deployment()
-            self._create_or_update_gateway()
-            self._create_httproute()
+            if self.on_gateway:
+                self._create_or_update_gateway()
+                self._create_httproute()
             self.jobid = self._get_jobid()
-            self.launcher.all_processes[self.launcher._id].append((self.jobid, self))
+            self._launcher.all_processes[self._launcher._id].append((self.jobid, self))
             ret = self.wait()
             LOG.info(ret)
 
         def stop(self):
-            self._delete_or_update_gateway()
-            self._delete_httproute()
+            if self.on_gateway:
+                self._delete_or_update_gateway()
+                self._delete_httproute()
             self._delete_service()
             self._delete_deployment()
 
@@ -790,6 +797,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 return None
 
         def get_jobip(self):
+            if not self.on_gateway: return f"service-{self.deployment_name}"
             host = self._get_httproute_host()
             ip = self._get_gateway_ip()
             LOG.info(f"gateway ip: {ip}, hostname: {host}")
@@ -814,7 +822,27 @@ class K8sLauncher(LazyLLMLaunchersBase):
             LOG.warning(f"Timed out waiting for Deployment '{self.deployment_name}' to be ready.")
             return False
 
-        def wait_for_service_ready(self, timeout=300):
+        def _is_service_ready(self, timeout):
+            if self.on_gateway: return True
+            url = f"http://service-{self.deployment_name}:{self.deployment_port}{self.path}"
+            for i in range(self.gateway_retry):
+                try:
+                    response = requests.get(url, timeout=timeout)
+                    if response.status_code != 503:
+                        LOG.info(f"Kubernetes Service is ready at '{url}'")
+                        self.queue.put(f"Uvicorn running on {url}")
+                        return True
+                    else:
+                        LOG.info(f"Kubernetes Service at '{url}' returned status code {response.status_code}")
+                except requests.RequestException as e:
+                    LOG.error(f"Failed to access service at '{url}': {e}, retry: {i}/{self.gateway_retry}")
+                    # raise
+                time.sleep(timeout)
+
+            self.queue.put(f"ERROR: Kubernetes Service failed to start on '{url}'.")
+            return False
+
+        def _wait_for_service_ready(self, timeout=300):
             svc_instance = k8s.client.CoreV1Api()
             start_time = time.time()
             while time.time() - start_time < timeout:
@@ -854,6 +882,10 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     raise
             LOG.warning(f"Timed out waiting for Service 'service-{self.deployment_name}' to be ready.")
             return None
+
+        def wait_for_service_ready(self, timeout=300, interval=5):
+            _service_ready = self._wait_for_service_ready(timeout=timeout)
+            return _service_ready if _service_ready and self._is_service_ready(timeout=interval) else None
 
         def _is_gateway_ready(self, timeout):
             url = f"http://{self.get_jobip()}:{self.deployment_port}{self.path}"
@@ -970,11 +1002,11 @@ class K8sLauncher(LazyLLMLaunchersBase):
             if not service_ip:
                 raise TimeoutError("Kubernetes Service did not become ready in time.")
 
-            httproute_ready = self.wait_for_httproute()
+            httproute_ready = True if not self.on_gateway else self.wait_for_httproute()
             if not httproute_ready:
                 raise TimeoutError("Kubernetes Httproute did not become ready in time.")
 
-            gateway_ready = self.wait_for_gateway()
+            gateway_ready = True if not self.on_gateway else self.wait_for_gateway() 
             if not gateway_ready:
                 raise TimeoutError("Kubernetes Gateway did not become ready in time.")
 
@@ -998,7 +1030,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 return Status.Failed
 
     def __init__(self, kube_config_path=None, volume_configs=None, image=None, resource_config=None,
-                 namespace=None, gateway_name=None, gateway_class_name=None, host=None, path=None,
+                 namespace=None, on_gateway=None, gateway_name=None, gateway_class_name=None, host=None, path=None,
                  svc_type: Literal["LoadBalancer", "NodePort", "ClusterIP"] = None, retry=3,
                  sync=True, ngpus=None, **kwargs):
         super().__init__()
@@ -1014,6 +1046,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             else config_data.get('kube_config_path', "~/.kube/config")
         self.svc_type = svc_type if svc_type else config_data.get("svc_type", "LoadBalancer")
         self.namespace = namespace if namespace else config_data.get("namespace", "default")
+        self.on_gateway = on_gateway if on_gateway else config_data.get("on_gateway", False)
         self.gateway_name = gateway_name if gateway_name else config_data.get("gateway_name", "lazyllm-gateway")
         self.gateway_class_name = gateway_class_name if gateway_class_name \
             else config_data.get("gateway_class_name", "istio")
@@ -1054,17 +1087,17 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             super(__class__, self).__init__(cmd, launcher, sync=sync)
 
         def _wrap_cmd(self, cmd):
-            if self.launcher.ngpus == 0:
+            if self._launcher.ngpus == 0:
                 return cmd
-            gpus = self.launcher._get_idle_gpus()
+            gpus = self._launcher._get_idle_gpus()
             if gpus and lazyllm.config['cuda_visible']:
-                if self.launcher.ngpus is None:
+                if self._launcher.ngpus is None:
                     empty_cmd = f'CUDA_VISIBLE_DEVICES={gpus[0]} '
-                elif self.launcher.ngpus <= len(gpus):
+                elif self._launcher.ngpus <= len(gpus):
                     empty_cmd = 'CUDA_VISIBLE_DEVICES=' + \
-                                ','.join([str(n) for n in gpus[:self.launcher.ngpus]]) + ' '
+                                ','.join([str(n) for n in gpus[:self._launcher.ngpus]]) + ' '
                 else:
-                    error_info = (f'Not enough GPUs available. Requested {self.launcher.ngpus} GPUs, '
+                    error_info = (f'Not enough GPUs available. Requested {self._launcher.ngpus} GPUs, '
                                   f'but only {len(gpus)} are available.')
                     LOG.error(error_info)
                     raise error_info
@@ -1167,13 +1200,13 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
         def _wrap_cmd(self, cmd):
             # Assemble the order
-            slurm_cmd = f'srun -p {self.launcher.partition} -N {self.launcher.nnode} --job-name={self.name}'
-            if self.launcher.nproc:
-                slurm_cmd += f' -n{self.launcher.nproc}'
-            if self.launcher.timeout:
-                slurm_cmd += f' -t {self.launcher.timeout}'
-            if self.launcher.ngpus:
-                slurm_cmd += f' --gres=gpu:{self.launcher.ngpus}'
+            slurm_cmd = f'srun -p {self._launcher.partition} -N {self._launcher.nnode} --job-name={self.name}'
+            if self._launcher.nproc:
+                slurm_cmd += f' -n{self._launcher.nproc}'
+            if self._launcher.timeout:
+                slurm_cmd += f' -t {self._launcher.timeout}'
+            if self._launcher.ngpus:
+                slurm_cmd += f' --gres=gpu:{self._launcher.ngpus}'
             return f'{slurm_cmd} bash -c \'{cmd}\''
 
         def _get_jobid(self):
@@ -1342,7 +1375,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
                 self.ip = line.split()[-1]
 
         def _wrap_cmd(self, cmd):
-            launcher = self.launcher
+            launcher = self._launcher
             # Assemble the cmd
             sco_cmd = f'srun -p {launcher.partition} --workspace-id {self.workspace_name} ' \
                       f'--job-name={self.name} -f {launcher.framework} ' \
