@@ -85,10 +85,10 @@ class SenseCoreStore(DocStoreBase):
             dataset_id=node.global_metadata.get("kb_id", None) or self._kb_id,
             document_id=node.global_metadata.get(RAG_DOC_ID),
             group=node._group,
-            meta=json.dumps(node._metadata),
+            meta=json.dumps(node._metadata, ensure_ascii=False),
             excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
             excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
-            global_meta=json.dumps(node.global_metadata),
+            global_meta=json.dumps(node.global_metadata, ensure_ascii=False),
             children={group: {"ids": [n._uid for n in c_l]} for group, c_l in node.children.items()},
             embedding_state=node._embedding_state,
             number=node._metadata.get("store_num", 0)
@@ -170,6 +170,41 @@ class SenseCoreStore(DocStoreBase):
                 )
                 segment.image_keys = [obj_key]
         elif isinstance(node, QADocNode):
+            answer = node._answer
+            # image extract
+            matches = IMAGE_PATTERN.findall(answer)
+            for title, image_path in matches:
+                if image_path.startswith("lazyllm"):
+                    continue
+                image_file_name = os.path.basename(image_path)
+                obj_key = f"lazyllm/images/{image_file_name}"
+                try:
+                    prefix = config['image_path_prefix']
+                except Exception:
+                    prefix = os.getenv("RAG_IMAGE_PATH_PREFIX", "")
+                file_path = create_file_path(path=image_path, prefix=prefix)
+                try:
+                    with open(file_path, "rb") as f:
+                        upload_data_to_s3(
+                            f.read(),
+                            bucket_name=self._s3_config["bucket_name"],
+                            object_key=obj_key,
+                            aws_access_key_id=self._s3_config["access_key"],
+                            aws_secret_access_key=self._s3_config["secret_access_key"],
+                            use_minio=self._s3_config["use_minio"],
+                            endpoint_url=self._s3_config["endpoint_url"],
+                        )
+                        answer = answer.replace(image_path, obj_key)
+                except FileNotFoundError:
+                    LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
+                except Exception as e:
+                    LOG.error(f"Error when uploading `{image_path}` {e!r}")
+            node._answer = answer
+
+            matches = IMAGE_PATTERN.findall(node._answer)
+            for title, image_path in matches:
+                segment.image_keys.append(image_path)
+
             segment.answer = node._answer
         return segment.model_dump()
 
@@ -185,6 +220,16 @@ class SenseCoreStore(DocStoreBase):
                 global_metadata=json.loads(segment["global_meta"]),
                 parent=segment["parent"],
             )
+            # get doc id by target file name
+            if len(node.metadata.get("target_file_name", "")):
+                # NOTE temp solution
+                kb_id = node.global_metadata.get("kb_id")
+                target_nodes = self.query(
+                    query="test query", group_name="block", topk=1, embed_keys=["bge_m3_dense"],
+                    filters={"kb_id": [kb_id], "file_name": node.metadata["target_file_name"]}
+                )
+                if len(target_nodes):
+                    node._global_metadata['docid'] = target_nodes[0].global_metadata.get('docid')
         # elif len(segment.get("image_keys", [])):
         #     node = ImageDocNode(
         #         image_path=segment["image_keys"][0],
@@ -211,7 +256,7 @@ class SenseCoreStore(DocStoreBase):
             children = {}
         node.children = children
 
-        if node._group == LAZY_ROOT_NAME:
+        if node._group == LAZY_ROOT_NAME and node._content.startswith("lazyllm/lazyllm_root/"):
             obj_key = node._content
             content = download_data_from_s3(
                 bucket_name=self._s3_config["bucket_name"],

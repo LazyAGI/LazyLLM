@@ -30,20 +30,24 @@ class _Processor:
 
     def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,
                 metadatas: Optional[List[Dict[str, Any]]] = None):
-        if not input_files: return
-        if not ids: ids = [gen_docid(path) for path in input_files]
-        if not metadatas:
-            metadatas = [{RAG_DOC_ID: id, RAG_DOC_PATH: path} for id, path in zip(ids, input_files)]
-        else:
-            for path, id, metadata in zip(input_files, ids, metadatas):
-                metadata.update({RAG_DOC_ID: id, RAG_DOC_PATH: path})
-        root_nodes, image_nodes = self._reader.load_data(input_files, metadatas, split_image_nodes=True)
-        self._store.update_nodes(root_nodes)
-        self._create_nodes_recursive(root_nodes, LAZY_ROOT_NAME)
-        if image_nodes:
-            self._store.update_nodes(image_nodes)
-            self._create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)
-        LOG.info("Add documents done!")
+        try:
+            if not input_files: return
+            if not ids: ids = [gen_docid(path) for path in input_files]
+            if not metadatas:
+                metadatas = [{RAG_DOC_ID: id, RAG_DOC_PATH: path} for id, path in zip(ids, input_files)]
+            else:
+                for path, id, metadata in zip(input_files, ids, metadatas):
+                    metadata.update({RAG_DOC_ID: id, RAG_DOC_PATH: path})
+            root_nodes, image_nodes = self._reader.load_data(input_files, metadatas, split_image_nodes=True)
+            self._store.update_nodes(root_nodes)
+            self._create_nodes_recursive(root_nodes, LAZY_ROOT_NAME)
+            if image_nodes:
+                self._store.update_nodes(image_nodes)
+                self._create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)
+            LOG.info("Add documents done!")
+        except Exception as e:
+            LOG.error(f"Add documents failed: {e}")
+            raise e
 
     def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):
         for group_name in self._store.activated_groups():

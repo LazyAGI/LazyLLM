@@ -32,5 +32,6 @@ class DirectoryReader:
             LOG.warning(
                 f"No nodes load from path {input_files}, please check your data path."
             )
+            raise ValueError(f"No nodes load from path {input_files}, please check your data path or file.")
         LOG.info("DirectoryReader loads data done!")
         return (nodes, image_nodes) if split_image_nodes else nodes
