@@ -54,12 +54,6 @@ class NodeArgs(object):
 
 all_nodes = dict()
 
-all_nodes['LocalEmbedding'] = dict(
-    module=lazyllm.TrainableModule,
-    init_arguments=dict(base_model=NodeArgs(str)),
-    builder_argument=dict(deploy_method=NodeArgs(str, 'infinity', getattr_f=partial(getattr, lazyllm.deploy)))
-)
-
 all_nodes['OnlineEmbedding'] = dict(
     module=lazyllm.OnlineEmbeddingModule,
     init_arguments=dict(
@@ -71,9 +65,11 @@ all_nodes['OnlineEmbedding'] = dict(
         secret_key=NodeArgs(str, None))
 )
 
-all_nodes['SD'] = all_nodes['TTS'] = dict(
+all_nodes['SD'] = dict(
     module=lazyllm.TrainableModule,
-    init_arguments=dict(base_model=NodeArgs(str))
+    init_arguments=dict(base_model=NodeArgs(str)),
+    builder_argument=dict(deploy_method=NodeArgs(str, 'auto', getattr_f=partial(getattr, lazyllm.deploy))),
+    other_arguments=dict(deploy_method=dict(url=NodeArgs(str, None)))
 )
 
 all_nodes['HTTP'] = dict(
@@ -104,30 +100,6 @@ all_nodes['Retriever'] = dict(
         join=NodeArgs(bool, False)
     )
 )
-
-all_nodes['Reranker'] = dict(
-    module=lazyllm.tools.rag.Reranker,
-    init_arguments=dict(
-        name=NodeArgs(str, 'ModuleReranker'),
-        target=NodeArgs(str, None),
-        output_format=NodeArgs(str, None),
-        join=NodeArgs(bool, False),
-        arguments={
-            '__name__': 'name',
-            '__cls__': 'init_arguments',
-            'ModuleReranker': dict(
-                model=NodeArgs(str, 'bge-reranker-large'),
-                topk=NodeArgs(int, -1)
-            ),
-            'KeywordFilter': dict(
-                required_keys=NodeArgs(list, []),
-                exclude_keys=NodeArgs(list, []),
-                language=NodeArgs(str, "en")
-            )
-        }
-    )
-)
-
 
 all_nodes["SqlManager"] = dict(
     module=lazyllm.tools.SqlManager,
