@@ -173,7 +173,7 @@ class EmbeddingDeploy(LazyLLMDeployBase):
         else:
             raise RuntimeError(f'Not support model type: {self._model_type}.')
 
-class RerankerDeploy(LazyLLMDeployBase):
+class RerankerDeploy(EmbeddingDeploy):
     message_format = {
         'query': 'query',  # str,
         'documents': ['string'],

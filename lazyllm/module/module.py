@@ -27,7 +27,7 @@ from ..hook import LazyLLMHook
 from urllib.parse import urljoin
 
 from lazyllm.components.auto.auto_helper import get_model_name
-from lazyllm.components.utils.file_operate import image_to_base64
+from lazyllm.components.utils.file_operate import image_to_base64, audio_to_base64
 from lazyllm.common.utils import check_path
 
 # use _MetaBind:
@@ -402,7 +402,19 @@ class UrlModule(ModuleBase, UrlTemplate):
                 else:
                     data[self.keys_name_handle['image']] = files
             elif 'audio' in self.keys_name_handle and files:
-                data[self.keys_name_handle['audio']] = files
+                encoded_files = []
+                for file in files:
+                    try:
+                        file_path = check_path(file, exist=True, file=True)
+                        base64_str, mime = audio_to_base64(file_path)
+                        encoded_files.append(f"data:{mime};base64," + base64_str)
+                    except Exception as e:
+                        LOG.error(f"处理文件 {file} 时出错: {e}")
+                        continue
+                if encoded_files:
+                    data[self.keys_name_handle['audio']] = encoded_files
+                else:
+                    data[self.keys_name_handle['audio']] = files
             elif 'ocr_files' in self.keys_name_handle and files:
                 data[self.keys_name_handle['ocr_files']] = files
         else:

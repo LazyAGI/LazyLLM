@@ -1,10 +1,11 @@
 from typing import List, Dict, Type, Optional, Union, Any, overload
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
+from lazyllm.components.utils.file_operate import base64_to_audio
 from lazyllm.tools import IntentClassifier, SqlManager
 from lazyllm.tools.http_request.http_request import HttpRequest
 from lazyllm.common import compile_func
-from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list
+from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list, decode_query_with_filepaths
 from .node import Node
 from .node_meta_hook import NodeMetaHook
 import inspect
@@ -306,8 +307,10 @@ def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
 def _build_pipeline(nodes):
     if isinstance(nodes, list) and len(nodes) > 1:
         return pipeline([Engine().build_node(node).func for node in nodes])
-    else:
+    elif isinstance(nodes, list) and len(nodes) == 1:
         return Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
+    else:
+        return lazyllm.Identity()
 
 
 @NodeConstructor.register('Switch', subitems=['nodes:dict'])
@@ -734,7 +737,8 @@ def make_online_embedding(source: str, type: Optional[str] = None, embed_model_n
                           embed_url: Optional[str] = None, api_key: Optional[str] = None,
                           secret_key: Optional[str] = None):
     source = source.lower()
-    return lazyllm.OnlineEmbeddingModule(source, type, embed_model_name, embed_url, api_key, secret_key)
+    return lazyllm.OnlineEmbeddingModule(source=source, type=type, embed_model_name=embed_model_name,
+                                         embed_url=embed_url, api_key=api_key, secret_key=secret_key)
 
 
 class LLM(lazyllm.ModuleBase):
@@ -766,14 +770,9 @@ def make_llm(kw: dict):
 
 
 class STT(lazyllm.Module):
-    def __init__(self, base_model: Union[str, lazyllm.TrainableModule], deploy_method: str = "auto",
-                 url: Optional[str] = None):
+    def __init__(self, model: lazyllm.TrainableModule):
         super().__init__()
-        if isinstance(base_model, str):
-            self._m = lazyllm.TrainableModule(base_model)
-            setup_deploy_method(self._m, deploy_method, url)
-        else:
-            self._m = base_model.share()
+        self._m = model
 
     def forward(self, query: str):
         if '<lazyllm-query>' in query:
@@ -806,7 +805,20 @@ def make_stt(kw: dict):
 
 @NodeConstructor.register('LocalSTT')
 def make_local_stt(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
-    return STT(base_model, deploy_method, url)
+    model = lazyllm.TrainableModule(base_model)
+    setup_deploy_method(model, deploy_method, url)
+    return STT(model)
+
+class TTS(lazyllm.Module):
+    def __init__(self, model: lazyllm.TrainableModule):
+        super().__init__()
+        self._m = model
+
+    def forward(self, query: str):
+        r = self._m(query)
+        result = decode_query_with_filepaths(r)
+        sound_list = [base64_to_audio(sound) for sound in result["files"] if sound.startswith("data:")]
+        return sound_list
 
 @NodeConstructor.register('TTS')
 def make_tts(kw: dict):
@@ -817,8 +829,9 @@ def make_tts(kw: dict):
 
 @NodeConstructor.register('LocalTTS')
 def make_local_tts(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
-    m = lazyllm.TrainableModule(base_model)
-    return setup_deploy_method(m, deploy_method, url, type)
+    model = lazyllm.TrainableModule(base_model)
+    setup_deploy_method(model, deploy_method, url)
+    return TTS(model)
 
 @NodeConstructor.register('Embedding')
 def make_embedding(kw: dict):
@@ -840,24 +853,26 @@ def make_constant(value: Any):
 @NodeConstructor.register('SqlCall')
 def make_sql_call(sql_manager: Node, llm: Node, sql_examples: str = "", use_llm_for_sql_result: bool = True,
                   return_trace: bool = True):
-    return lazyllm.tools.SqlCall(llm, sql_manager, sql_examples, use_llm_for_sql_result, return_trace)
+    return lazyllm.tools.SqlCall(llm=llm, sql_manager=sql_manager, sql_examples=sql_examples,
+                                 use_llm_for_sql_result=use_llm_for_sql_result, return_trace=return_trace)
 
 @NodeConstructor.register('SqlManager')
 def make_sql_manager(db_type: str = None, user: str = None, password: str = None, host: str = None,
                      port: str = None, db_name: str = None, options_str: str = "", tables_info_dict: dict = None):
-    return lazyllm.tools.SqlManager(db_type, user, password, host, port, db_name, options_str=options_str,
-                                    tables_info_dict=tables_info_dict)
+    return lazyllm.tools.SqlManager(db_type=db_type, user=user, password=password, host=host, port=port,
+                                    db_name=db_name, options_str=options_str, tables_info_dict=tables_info_dict)
 
 @NodeConstructor.register('Retriever')
 def make_retriever(doc: Node, group_name: str, similarity: str = "cosine", similarity_cut_off: float = float("-inf"),
                    index: str = "default", topk: int = 6, embed_keys: list[str] = None, target: str = None,
                    output_format: str = None, join: bool = False):
-    return lazyllm.tools.rag.Retriever(doc, group_name, similarity, similarity_cut_off, index, topk, embed_keys, target,
-                                       output_format, join)
+    return lazyllm.tools.rag.Retriever(doc=doc, group_name=group_name, similarity=similarity,
+                                       similarity_cut_off=similarity_cut_off, index=index, topk=topk,
+                                       embed_keys=embed_keys, target=target, output_format=output_format, join=join)
 
 @NodeConstructor.register('HTTP')
 def make_http(method: str, url: str, api_key: str = '', headers: dict = {}, params: dict = {}, body: str = ''):
-    return HttpRequest(method, url, api_key, headers, params, body)
+    return HttpRequest(method=method, url=url, api_key=api_key, headers=headers, params=params, body=body)
 
 @NodeConstructor.register('SD')
 def make_sd(kw: dict):
