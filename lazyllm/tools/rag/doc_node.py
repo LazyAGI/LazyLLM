@@ -233,8 +233,9 @@ class DocNode:
 class QADocNode(DocNode):
     def __init__(self, query: str, answer: str, uid: Optional[str] = None, group: Optional[str] = None,
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
-                 metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
-        super().__init__(uid, query, group, embedding, parent, metadata, None, text=text)
+                 metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None,
+                 *, text: Optional[str] = None):
+        super().__init__(uid, query, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
         self._answer = answer.strip()
 
     def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:

@@ -11,6 +11,7 @@ from typing import Optional, List, Dict, Any, Union, Set
 
 from lazyllm import warp, pipeline, LOG, config
 from lazyllm.common import override
+from lazyllm.thirdparty import boto3
 from lazyllm.tools.rag.index_base import IndexBase
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.doc_node import (
@@ -55,6 +56,7 @@ class SenseCoreStore(DocStoreBase):
             self._global_metadata_desc = BUILDIN_GLOBAL_META_DESC
         self._group_embed_keys = group_embed_keys
         self._s3_config = kwargs.get("s3_config")
+        self._image_url_config = kwargs.get("image_url_config")
         super().__init__(kb_id=kb_id, uri=uri)
 
     @override
@@ -409,8 +411,27 @@ class SenseCoreStore(DocStoreBase):
                     s['content'] = s['display_content']
         return [self._deserialize_node(segment) for segment in segments]
 
+    def _multi_modal_process(self, query: str, images: List[str]):
+        urls = []
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=self._image_url_config["access_key"],
+            aws_secret_access_key=self._image_url_config["secret_access_key"],
+            endpoint_url=self._image_url_config["endpoint_url"]
+        )
+        for image in images:
+            query = query + "<image>\n"
+            url = s3.generate_presigned_url(
+                ClientMethod='get_object',
+                Params={'Bucket': self._image_url_config["bucket_name"],
+                        'Key': image},
+                ExpiresIn=3600
+            )
+            urls.append(url)
+        return query, urls
+
     @override
-    def query(
+    def query(  # noqa: C901
         self,
         query: str,
         group_name: str,
@@ -444,6 +465,11 @@ class SenseCoreStore(DocStoreBase):
             else:
                 LOG.error(f"SenseCore Store: no dataset_id provided, please check your filters: {filters}")
                 return []
+
+            images = kwargs.get("images", [])
+            if images:
+                query, images = self._multi_modal_process(query, images)
+
             nodes = []
             for embed_key in embed_keys:
                 payload = {
@@ -454,6 +480,7 @@ class SenseCoreStore(DocStoreBase):
                     "filters": filter_str,
                     "group": group_name,
                     "embedding_model": embed_key,
+                    "images": images
                 }
                 LOG.info(f"[Sensecore Store]: query request body: {payload}.")
                 response = requests.post(url, headers=headers, json=payload)

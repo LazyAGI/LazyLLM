@@ -471,12 +471,12 @@ class DocImpl:
 
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,
-                 filters: Optional[Dict[str, Union[str, int, List, Set]]] = None) -> List[DocNode]:
+                 filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
         self._lazy_init()
         if index is None or index == 'default':
             return self.store.query(query=query, group_name=group_name, similarity_name=similarity,
                                     similarity_cut_off=similarity_cut_off, topk=topk,
-                                    embed_keys=embed_keys, filters=filters, **similarity_kws)
+                                    embed_keys=embed_keys, filters=filters, **similarity_kws, **kwargs)
 
         index_instance = self.store.get_index(type=index)
         if not index_instance:
@@ -485,7 +485,7 @@ class DocImpl:
         try:
             return index_instance.query(query=query, group_name=group_name, similarity_name=similarity,
                                         similarity_cut_off=similarity_cut_off, topk=topk,
-                                        embed_keys=embed_keys, filters=filters, **similarity_kws)
+                                        embed_keys=embed_keys, filters=filters, **similarity_kws, **kwargs)
         except Exception as e:
             raise RuntimeError(f'index type `{index}` of store `{type(self.store)}` query failed: {e}')
 

@@ -25,11 +25,11 @@ BUILDIN_GLOBAL_META_DESC = {
     ),
     RAG_DOC_FILE_NAME: GlobalMetadataDesc(
         data_type=DataType.VARCHAR,
-        default_value=' ', max_size=128
+        default_value=' ', max_size=65535
     ),
     RAG_DOC_FILE_TYPE: GlobalMetadataDesc(
         data_type=DataType.VARCHAR,
-        default_value=' ', max_size=128
+        default_value=' ', max_size=65535
     ),
     RAG_DOC_FILE_SIZE: GlobalMetadataDesc(
         data_type=DataType.INT32,
