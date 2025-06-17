@@ -9,7 +9,7 @@ class LazyLLMDeployBase(ComponentBase):
 
     def __init__(self, *, launcher=launchers.remote()):
         super().__init__(launcher=launcher)
-        
+
     def kw_map_for_framework(self, kw, kw_map):
         return {kw_map[k]['new_key']: kw_map[k]['type_func'](v) for k, v in kw.items() if k in kw_map}
 

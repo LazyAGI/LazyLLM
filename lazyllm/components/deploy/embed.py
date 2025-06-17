@@ -166,8 +166,9 @@ class EmbeddingDeploy(LazyLLMDeployBase):
                     finetuned_model, sparse=self._sparse_embed),
                     launcher=self.launcher, log_path=self._log_path, cls='embedding', port=self._port)()
             else:
-                return lazyllm.deploy.RelayServer(func=LazyHuggingFaceEmbedding(
-                    finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding', port=self._port)()
+                return lazyllm.deploy.RelayServer(func=LazyHuggingFaceEmbedding(finetuned_model),
+                                                  launcher=self.launcher, log_path=self._log_path, 
+                                                  cls='embedding', port=self._port)()
         if self._model_type == 'reranker':
             return lazyllm.deploy.RelayServer(func=LazyHuggingFaceRerank(
                 finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding', port=self._port)()
