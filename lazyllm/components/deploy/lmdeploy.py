@@ -4,11 +4,13 @@ import random
 import importlib.util
 
 import lazyllm
-from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
+from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG, config
 from .base import LazyLLMDeployBase, verify_fastapi_func
 from ..utils import ModelManager
 from .utils import get_log_path, make_log_dir
 
+
+config.add('lmdeploy_eager_mode', bool, False, 'LMDEPLOY_EAGER_MODE')
 
 class LMDeploy(LazyLLMDeployBase):
     keys_name_handle = {
@@ -73,9 +75,8 @@ class LMDeploy(LazyLLMDeployBase):
                 self.kw['server-port'] = random.randint(30000, 40000)
             cmd = f"lmdeploy serve api_server {finetuned_model} "
 
-            if importlib.util.find_spec("torch_npu") is not None:
-                cmd += "--device ascend --eager-mode "
-
+            if importlib.util.find_spec("torch_npu") is not None: cmd += '--device ascend '
+            if config['lmdeploy_eager_mode']: cmd += '--eager-mode '
             cmd += self.kw.parse_kwargs()
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
