@@ -4,78 +4,45 @@ import lazyllm
 from lazyllm import LOG
 from lazyllm.thirdparty import transformers as tf, torch, sentence_transformers, numpy as np, FlagEmbedding as fe
 from .base import LazyLLMDeployBase
-from typing import Union, List, Dict, Any
+from typing import Union, List, Dict
+from abc import ABC, abstractmethod
 
 
-class _EmbeddingModuleMeta(type):
-    def __instancecheck__(self, __instance: Any) -> bool:
-        if isinstance(__instance, LazyHuggingFaceEmbedding):
-            return True
-        return super().__instancecheck__(__instance)
-
-    def __new__(mcs, name, bases, attrs):
-        cls = super().__new__(mcs, name, bases, attrs)
-        if name != 'LazyHuggingFaceEmbedding':
-            # register sub class
-            if not hasattr(cls, 'model_id'):
-                raise ValueError(f"Class {name} must define 'model_id' class variable")
-            LazyHuggingFaceEmbedding._models[cls.model_id] = cls
-        return cls
-
-class LazyHuggingFaceEmbedding(object, metaclass=_EmbeddingModuleMeta):
-    # Child-Class must set this key, it shoule be the same with last part of model path
-    model_id = "UNKNOWN"
-
+class AbstractEmbedding(ABC):
     def __init__(self, base_embed, source=None, init=False):
         from ..utils.downloader import ModelManager
         source = lazyllm.config['model_source'] if not source else source
-        self.base_embed = ModelManager(source).download(base_embed) or ''
-        self.embed = None
-        self.tokenizer = None
-        self.device = "cpu"
-        self.init_flag = lazyllm.once_flag()
+        self._base_embed = ModelManager(source).download(base_embed) or ''
+        self._embed = None
+        self._tokenizer = None
+        self._device = "cpu"
+        self._init = lazyllm.once_flag()
         if init:
-            lazyllm.call_once(self.init_flag, self.load_embed)
+            lazyllm.call_once(self._init, self.load_embed)
 
-    _models = {}
+    @abstractmethod
+    def load_embed(self) -> None:
+        pass
 
-    @classmethod
-    def create(cls, model_id: str, base_embed: str, source: str = None, init: bool = False):
-        """
-        create real instance by model_id
+    @abstractmethod
+    def __call__(self, data: Dict[str, Union[str, List[str]]]) -> str:
+        pass
 
-        Args:
-            model_id: model_id, it is usually the last segment of base_embed
-            base_embed: model path
-            source: model souce (huggingface, modelscope etc)
-            init: if set true, load the model when initiating
-
-        Returns:
-            LazyHuggingFaceEmbedding: instance
-
-        Raises:
-            KeyError: failed to find class definition for model_id
-        """
-        if model_id in cls._models:
-            return cls._models[model_id](base_embed, source=source, init=init)
-        elif model_id == LazyHuggingFaceEmbedding.model_id:
-            return LazyHuggingFaceEmbedding(base_embed, source=source, init=init)
-        else:
-            raise KeyError(f"Model ID '{model_id}' not found. Available models: {list(cls._models.keys())}")
+class LazyHuggingFaceDefaultEmbedding(AbstractEmbedding):
 
     def load_embed(self):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.tokenizer = tf.AutoTokenizer.from_pretrained(self.base_embed, trust_remote_code=True)
-        self.embed = tf.AutoModel.from_pretrained(self.base_embed, trust_remote_code=True).to(self.device)
-        self.embed.eval()
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._tokenizer = tf.AutoTokenizer.from_pretrained(self._base_embed, trust_remote_code=True)
+        self._embed = tf.AutoModel.from_pretrained(self._base_embed, trust_remote_code=True).to(self._device)
+        self._embed.eval()
 
     def __call__(self, data: Dict[str, Union[str, List[str]]]):
-        lazyllm.call_once(self.init_flag, self.load_embed)
+        lazyllm.call_once(self._init, self.load_embed)
         string, _ = data['text'], data['images']
-        encoded_input = self.tokenizer(string, padding=True, truncation=True, return_tensors='pt',
-                                       max_length=512, add_special_tokens=True).to(self.device)
+        encoded_input = self._tokenizer(string, padding=True, truncation=True, return_tensors='pt',
+                                        max_length=512, add_special_tokens=True).to(self._device)
         with torch.no_grad():
-            model_output = self.embed(**encoded_input)
+            model_output = self._embed(**encoded_input)
             sentence_embeddings = model_output[0][:, 0]
         res = torch.nn.functional.normalize(sentence_embeddings, p=2, dim=1).cpu().numpy().tolist()
         if type(string) is str:
@@ -83,15 +50,43 @@ class LazyHuggingFaceEmbedding(object, metaclass=_EmbeddingModuleMeta):
         else:
             return json.dumps(res)
 
+class HuggingFaceEmbedding:
+    _model_id_mapping = {}
+
     @classmethod
-    def rebuild(cls, base_embed, init, models):
-        model_id = base_embed.split('/')[-1]
-        LazyHuggingFaceEmbedding._models = models
-        return cls.create(model_id, base_embed, init=init)
+    def get_emb_cls(cls, model_name: str):
+        model_id = model_name.split('/')[-1]
+        return cls._model_id_mapping.get(model_id, LazyHuggingFaceDefaultEmbedding)
+
+    @classmethod
+    def register(cls, model_ids: List[str]):
+        def decorator(target_class):
+            for ele in model_ids:
+                cls._model_id_mapping[ele] = target_class
+            return target_class
+        return decorator
+
+    def __init__(self, base_embed, source=None, init=False):
+        self._base_embed = base_embed
+        self._source = source
+        self._init = init
+        self._embed_cls = self.__class__.get_emb_cls(base_embed)
+        self._embed = self._embed_cls(base_embed, source, init)
+
+    def load_embed(self):
+        self._embed.load_embed()
+
+    def __call__(self, *args, **kwargs):
+        return self._embed(*args, **kwargs)
+
+    @classmethod
+    def rebuild(cls, base_embed, source, init, model_id_mapping):
+        cls._model_id_mapping = model_id_mapping
+        return cls(base_embed, source, init)
 
     def __reduce__(self):
-        init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return LazyHuggingFaceEmbedding.rebuild, (self.base_embed, init, LazyHuggingFaceEmbedding._models)
+        init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self._init)
+        return HuggingFaceEmbedding.rebuild, (self._base_embed, self._source, init, self._model_id_mapping)
 
 
 class LazyFlagEmbedding(object):
@@ -180,6 +175,7 @@ class EmbeddingDeploy(LazyLLMDeployBase):
     default_headers = {'Content-Type': 'application/json'}
 
     def __init__(self, launcher=None, model_type='embed', log_path=None, embed_type='dense'):
+        super().__init__(launcher=launcher)
         self._launcher = launcher
         self._model_type = model_type
         self._log_path = log_path
@@ -201,9 +197,14 @@ class EmbeddingDeploy(LazyLLMDeployBase):
         self.default_headers = {'Content-Type': 'application/json'}
 
     def _update_cross_codal_message(self):
-        # Disable those var as they just cause error
-        self.keys_name_handle = {}
-        self.message_format = {}
+        self.message_format = {
+            'text': 'text',
+            'images': 'images',
+        }
+        self.keys_name_handle = {
+            'inputs': 'text',  # str,
+            'images': 'images'
+        }
         self.default_headers = {'Content-Type': 'application/json'}
 
     def __call__(self, finetuned_model=None, base_model=None):
@@ -220,12 +221,11 @@ class EmbeddingDeploy(LazyLLMDeployBase):
                     finetuned_model, sparse=self._sparse_embed),
                     launcher=self._launcher, log_path=self._log_path, cls='embedding')()
             else:
-                model_id = finetuned_model.split('/')[-1]
-                emb_obj = LazyHuggingFaceEmbedding.create(model_id, finetuned_model)
-                return lazyllm.deploy.RelayServer(func=emb_obj, launcher=self.launcher,
-                                                  log_path=self._log_path, cls='embedding')()
+                return lazyllm.deploy.RelayServer(func=HuggingFaceEmbedding(finetuned_model, source=None, init=False),
+                                                  launcher=self._launcher, log_path=self._log_path, cls='embedding')()
         if self._model_type == 'reranker':
             return lazyllm.deploy.RelayServer(func=LazyHuggingFaceRerank(
                 finetuned_model), launcher=self._launcher, log_path=self._log_path, cls='embedding')()
         else:
-            raise RuntimeError(f'Not support model type: {self._model_type}.')
+            return lazyllm.deploy.RelayServer(func=HuggingFaceEmbedding(finetuned_model, source=None, init=False),
+                                              launcher=self._launcher, log_path=self._log_path, cls='embedding')()
