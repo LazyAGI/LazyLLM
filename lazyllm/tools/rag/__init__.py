@@ -6,13 +6,12 @@ from .similarity import register_similarity
 from .doc_node import DocNode
 from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader, EpubReader,
                       MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader)
-from .dataReader import SimpleDirectoryReader
+from .dataReader import SimpleDirectoryReader, FileReader
 from .doc_manager import DocManager, DocListManager
 from .global_metadata import GlobalMetadataDesc as DocField
 from .data_type import DataType
 from .index_base import IndexBase
 from .store_base import StoreBase
-
 
 __all__ = [
     "Document",
@@ -46,4 +45,5 @@ __all__ = [
     'DataType',
     'IndexBase',
     'StoreBase',
+    "FileReader",
 ]
