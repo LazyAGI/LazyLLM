@@ -4,8 +4,10 @@ from urllib.parse import urlparse
 
 import lazyllm
 from lazyllm import LOG
+from lazyllm.components.utils.file_operate import base64_to_audio
 from ..utils.downloader import ModelManager
 from lazyllm.thirdparty import funasr
+from lazyllm.components.deploy.base import LazyLLMDeployBase
 
 
 def is_valid_url(url):
@@ -49,6 +51,12 @@ class SenseVoice(object):
                 string = string['inputs']
         assert isinstance(string, str)
         string = string.strip()
+        if string.startswith('data:'):
+            try:
+                string = base64_to_audio(string)
+            except Exception as e:
+                LOG.error(f"Error processing base64 encoding: {e}")
+                return "Error processing base64 encoding"
         if not string.endswith(('.mp3', '.wav')):
             return "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported."
         if not is_valid_path(string) and not is_valid_url(string):
@@ -73,7 +81,7 @@ class SenseVoice(object):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
         return SenseVoice.rebuild, (self.base_path, init)
 
-class SenseVoiceDeploy(object):
+class SenseVoiceDeploy(LazyLLMDeployBase):
     keys_name_handle = {
         'inputs': 'inputs',
         'audio': 'audio',

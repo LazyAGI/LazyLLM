@@ -4,7 +4,7 @@ import lazyllm
 from lazyllm.thirdparty import torch, ChatTTS
 from lazyllm.components.formatter import encode_query_with_filepaths
 from ..utils.downloader import ModelManager
-from .utils import sounds_to_files, TTSBase
+from .utils import sounds_to_base64, TTSBase
 
 
 class ChatTTSModule(object):
@@ -14,19 +14,16 @@ class ChatTTSModule(object):
         self.base_path = ModelManager(source).download(base_path) or ''
         self.model, self.spk = None, None
         self.init_flag = lazyllm.once_flag()
-        self.device = 'cpu'
         self.seed = 1024
         self.save_path = save_path or os.path.join(lazyllm.config['temp_dir'], 'chattts')
         if init:
             lazyllm.call_once(self.init_flag, self.load_tts)
 
     def load_tts(self):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = ChatTTS.Chat()
         self.model.load(compile=False,
                         source="custom",
-                        custom_path=self.base_path,
-                        device=self.device)
+                        custom_path=self.base_path)
         self.spk = self.set_spk(self.seed)
 
     def set_spk(self, seed):
@@ -57,8 +54,8 @@ class ChatTTSModule(object):
                                   params_refine_text=params_refine_text,
                                   params_infer_code=params_infer_code,
                                 )
-        file_path = sounds_to_files(speech, self.save_path)
-        return encode_query_with_filepaths(files=file_path)
+        base64_list = sounds_to_base64(speech, self.save_path)
+        return encode_query_with_filepaths(files=base64_list)
 
     @classmethod
     def rebuild(cls, base_path, init, save_path):
