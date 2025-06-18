@@ -4,10 +4,28 @@ import lazyllm
 from lazyllm import LOG
 from lazyllm.thirdparty import transformers as tf, torch, sentence_transformers, numpy as np, FlagEmbedding as fe
 from .base import LazyLLMDeployBase
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Any
 
 
-class LazyHuggingFaceEmbedding(object):
+class _EmbeddingModuleMeta(type):
+    def __instancecheck__(self, __instance: Any) -> bool:
+        if isinstance(__instance, LazyHuggingFaceEmbedding):
+            return True
+        return super().__instancecheck__(__instance)
+
+    def __new__(mcs, name, bases, attrs):
+        cls = super().__new__(mcs, name, bases, attrs)
+        if name != 'LazyHuggingFaceEmbedding':
+            # register sub class
+            if not hasattr(cls, 'model_id'):
+                raise ValueError(f"Class {name} must define 'model_id' class variable")
+            LazyHuggingFaceEmbedding._models[cls.model_id] = cls
+        return cls
+
+class LazyHuggingFaceEmbedding(object, metaclass=_EmbeddingModuleMeta):
+    # Child-Class must set this key, it shoule be the same with last part of model path
+    model_id = "UNKNOWN"
+
     def __init__(self, base_embed, source=None, init=False):
         from ..utils.downloader import ModelManager
         source = lazyllm.config['model_source'] if not source else source
@@ -19,10 +37,36 @@ class LazyHuggingFaceEmbedding(object):
         if init:
             lazyllm.call_once(self.init_flag, self.load_embed)
 
+    _models = {}
+
+    @classmethod
+    def create(cls, model_id: str, base_embed: str, source: str = None, init: bool = False):
+        """
+        create real instance by model_id
+
+        Args:
+            model_id: model_id, it is usually the last segment of base_embed
+            base_embed: model path
+            source: model souce (huggingface, modelscope etc)
+            init: if set true, load the model when initiating
+
+        Returns:
+            LazyHuggingFaceEmbedding: instance
+
+        Raises:
+            KeyError: failed to find class definition for model_id
+        """
+        if model_id in cls._models:
+            return cls._models[model_id](base_embed, source=source, init=init)
+        elif model_id == LazyHuggingFaceEmbedding.model_id:
+            return LazyHuggingFaceEmbedding(base_embed, source=source, init=init)
+        else:
+            raise KeyError(f"Model ID '{model_id}' not found. Available models: {list(cls._models.keys())}")
+
     def load_embed(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.tokenizer = tf.AutoTokenizer.from_pretrained(self.base_embed)
-        self.embed = tf.AutoModel.from_pretrained(self.base_embed).to(self.device)
+        self.tokenizer = tf.AutoTokenizer.from_pretrained(self.base_embed, trust_remote_code=True)
+        self.embed = tf.AutoModel.from_pretrained(self.base_embed, trust_remote_code=True).to(self.device)
         self.embed.eval()
 
     def __call__(self, data: Dict[str, Union[str, List[str]]]):
@@ -40,12 +84,15 @@ class LazyHuggingFaceEmbedding(object):
             return json.dumps(res)
 
     @classmethod
-    def rebuild(cls, base_embed, init):
-        return cls(base_embed, init=init)
+    def rebuild(cls, base_embed, init, models):
+        model_id = base_embed.split('/')[-1]
+        LazyHuggingFaceEmbedding._models = models
+        return cls.create(model_id, base_embed, init=init)
 
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return LazyHuggingFaceEmbedding.rebuild, (self.base_embed, init)
+        return LazyHuggingFaceEmbedding.rebuild, (self.base_embed, init, LazyHuggingFaceEmbedding._models)
+
 
 class LazyFlagEmbedding(object):
     def __init__(self, base_embed, sparse=False, source=None, init=False):
@@ -139,6 +186,8 @@ class EmbeddingDeploy(LazyLLMDeployBase):
         self._sparse_embed = True if embed_type == 'sparse' else False
         if self._model_type == "reranker":
             self._update_reranker_message()
+        elif self._model_type == "cross_modal_embed":
+            self._update_cross_codal_message()
 
     def _update_reranker_message(self):
         self.keys_name_handle = {
@@ -151,6 +200,12 @@ class EmbeddingDeploy(LazyLLMDeployBase):
         }
         self.default_headers = {'Content-Type': 'application/json'}
 
+    def _update_cross_codal_message(self):
+        # Disable those var as they just cause error
+        self.keys_name_handle = {}
+        self.message_format = {}
+        self.default_headers = {'Content-Type': 'application/json'}
+
     def __call__(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
@@ -159,14 +214,16 @@ class EmbeddingDeploy(LazyLLMDeployBase):
                 LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                             f"base_model({base_model}) will be used")
             finetuned_model = base_model
-        if self._model_type == 'embed':
+        if self._model_type == 'embed' or self._model_type == 'cross_modal_embed':
             if self._sparse_embed or lazyllm.config['default_embedding_engine'] == 'flagEmbedding':
                 return lazyllm.deploy.RelayServer(func=LazyFlagEmbedding(
                     finetuned_model, sparse=self._sparse_embed),
                     launcher=self.launcher, log_path=self._log_path, cls='embedding')()
             else:
-                return lazyllm.deploy.RelayServer(func=LazyHuggingFaceEmbedding(
-                    finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding')()
+                model_id = finetuned_model.split('/')[-1]
+                emb_obj = LazyHuggingFaceEmbedding.create(model_id, finetuned_model)
+                return lazyllm.deploy.RelayServer(func=emb_obj, launcher=self.launcher,
+                                                  log_path=self._log_path, cls='embedding')()
         if self._model_type == 'reranker':
             return lazyllm.deploy.RelayServer(func=LazyHuggingFaceRerank(
                 finetuned_model), launcher=self.launcher, log_path=self._log_path, cls='embedding')()
