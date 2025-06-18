@@ -229,3 +229,35 @@ class EmbeddingDeploy(LazyLLMDeployBase):
         else:
             return lazyllm.deploy.RelayServer(func=HuggingFaceEmbedding(finetuned_model, source=None, init=False),
                                               launcher=self._launcher, log_path=self._log_path, cls='embedding')()
+
+
+@HuggingFaceEmbedding.register(model_ids=["BGE-VL-v1.5-mmeb"])
+class BGEVLEmbedding(AbstractEmbedding):
+
+    def __init__(self, base_embed, source=None, init=False):
+        super().__init__(base_embed, source, init)
+
+    def load_embed(self):
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._embed = tf.AutoModel.from_pretrained(self._base_embed, trust_remote_code=True).to(self._device)
+        self._embed.set_processor(self._base_embed)
+        self._embed.eval()
+
+    def __call__(self, data: Dict[str, Union[str, List[str]]]):
+        lazyllm.call_once(self._init, self.load_embed)
+        DEFAULT_INSTRUCTION = "Retrieve the target image that best meets the combined criteria by " \
+            "using both the provided image and the image retrieval instructions: "
+        with torch.no_grad():
+            text, images = data['text'], data['images'][0] if isinstance(data['images'], list) else data['images']
+            # text="Make the background dark, as if the camera has taken the photo at night"
+            # images="./cir_query.png"
+
+            query_inputs = self._embed.data_process(
+                text=text,
+                images=images,
+                q_or_c="q",
+                task_instruction=DEFAULT_INSTRUCTION
+            )
+            query_embs = self._embed(**query_inputs, output_hidden_states=True)[:, -1, :]
+            res = torch.nn.functional.normalize(query_embs, dim=-1).cpu().numpy().tolist()
+            return json.dumps(res[0])
