@@ -13,6 +13,7 @@ class AbstractEmbedding(ABC):
         from ..utils.downloader import ModelManager
         source = lazyllm.config['model_source'] if not source else source
         self._base_embed = ModelManager(source).download(base_embed) or ''
+        self._source = source
         self._embed = None
         self._tokenizer = None
         self._device = "cpu"
@@ -27,6 +28,10 @@ class AbstractEmbedding(ABC):
     @abstractmethod
     def __call__(self, data: Dict[str, Union[str, List[str]]]) -> str:
         pass
+
+    def __reduce__(self):
+        init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self._init)
+        return self.__class__, (self._base_embed, self._source, init)
 
 class LazyHuggingFaceDefaultEmbedding(AbstractEmbedding):
 
@@ -55,39 +60,25 @@ class HuggingFaceEmbedding:
 
     @classmethod
     def get_emb_cls(cls, model_name: str):
-        model_id = model_name.split('/')[-1]
+        model_id = model_name.split('/')[-1].lower()
         return cls._model_id_mapping.get(model_id, LazyHuggingFaceDefaultEmbedding)
 
     @classmethod
     def register(cls, model_ids: List[str]):
         def decorator(target_class):
             for ele in model_ids:
-                cls._model_id_mapping[ele] = target_class
+                cls._model_id_mapping[ele.lower()] = target_class
             return target_class
         return decorator
 
     def __init__(self, base_embed, source=None, init=False):
-        self._base_embed = base_embed
-        self._source = source
-        self._init = init
-        self._embed_cls = self.__class__.get_emb_cls(base_embed)
-        self._embed = self._embed_cls(base_embed, source, init)
+        self._embed = self.__class__.get_emb_cls(base_embed)(base_embed, source, init)
 
     def load_embed(self):
         self._embed.load_embed()
 
     def __call__(self, *args, **kwargs):
         return self._embed(*args, **kwargs)
-
-    @classmethod
-    def rebuild(cls, base_embed, source, init, model_id_mapping):
-        cls._model_id_mapping = model_id_mapping
-        return cls(base_embed, source, init)
-
-    def __reduce__(self):
-        init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self._init)
-        return HuggingFaceEmbedding.rebuild, (self._base_embed, self._source, init, self._model_id_mapping)
-
 
 class LazyFlagEmbedding(object):
     def __init__(self, base_embed, sparse=False, source=None, init=False):
@@ -182,8 +173,6 @@ class EmbeddingDeploy(LazyLLMDeployBase):
         self._sparse_embed = True if embed_type == 'sparse' else False
         if self._model_type == "reranker":
             self._update_reranker_message()
-        elif self._model_type == "cross_modal_embed":
-            self._update_cross_codal_message()
 
     def _update_reranker_message(self):
         self.keys_name_handle = {
@@ -193,17 +182,6 @@ class EmbeddingDeploy(LazyLLMDeployBase):
             'query': 'who are you ?',
             'documents': ['string'],
             'top_n': 1,
-        }
-        self.default_headers = {'Content-Type': 'application/json'}
-
-    def _update_cross_codal_message(self):
-        self.message_format = {
-            'text': 'text',
-            'images': 'images',
-        }
-        self.keys_name_handle = {
-            'inputs': 'text',  # str,
-            'images': 'images'
         }
         self.default_headers = {'Content-Type': 'application/json'}
 
