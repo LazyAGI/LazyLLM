@@ -1,11 +1,12 @@
 import os
 import re
 import json
+import copy
 import uuid
 import time
 import requests
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from urllib.parse import urljoin
 from typing import Optional, List, Dict, Any, Union, Set
 
@@ -36,13 +37,13 @@ class Segment(BaseModel):
     content: Optional[str] = ""
     meta: str
     global_meta: str
-    excluded_embed_metadata_keys: Optional[List[str]] = []
-    excluded_llm_metadata_keys: Optional[List[str]] = []
+    excluded_embed_metadata_keys: Optional[List[str]] = Field(default_factory=list)
+    excluded_llm_metadata_keys: Optional[List[str]] = Field(default_factory=list)
     parent: Optional[str] = ""
-    children: Dict[str, Any] = {}
-    embedding_state: Optional[List[str]] = []
+    children: Dict[str, Any] = Field(default_factory=dict)
+    embedding_state: Optional[List[str]] = Field(default_factory=list)
     answer: Optional[str] = ""
-    image_keys: Optional[List[str]] = []
+    image_keys: Optional[List[str]] = Field(default_factory=list)
     number: Optional[int] = 0
 
 
@@ -125,13 +126,16 @@ class SenseCoreStore(DocStoreBase):
                             use_minio=self._s3_config["use_minio"],
                             endpoint_url=self._s3_config["endpoint_url"],
                         )
-                        segment.image_keys.append(obj_key)
                         content = content.replace(image_path, obj_key)
                 except FileNotFoundError:
                     LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
                 except Exception as e:
                     LOG.error(f"Error when uploading `{image_path}` {e!r}")
             node._content = json.loads(content)
+            # image extract
+            matches = IMAGE_PATTERN.findall(content)
+            for title, image_path in matches:
+                segment.image_keys.append(image_path)
 
             # upload content
             obj_key = f"lazyllm/lazyllm_root/{node._uid}.json"
@@ -220,16 +224,6 @@ class SenseCoreStore(DocStoreBase):
                 global_metadata=json.loads(segment["global_meta"]),
                 parent=segment["parent"],
             )
-            # get doc id by target file name
-            if len(node.metadata.get("target_file_name", "")):
-                # NOTE temp solution
-                kb_id = node.global_metadata.get("kb_id")
-                target_nodes = self.query(
-                    query="test query", group_name="block", topk=1, embed_keys=["bge_m3_dense"],
-                    filters={"kb_id": [kb_id], "file_name": node.metadata["target_file_name"]}
-                )
-                if len(target_nodes):
-                    node._global_metadata['docid'] = target_nodes[0].global_metadata.get('docid')
         # elif len(segment.get("image_keys", [])):
         #     node = ImageDocNode(
         #         image_path=segment["image_keys"][0],
@@ -278,13 +272,12 @@ class SenseCoreStore(DocStoreBase):
             desc = self._global_metadata_desc.get(name)
             if not desc:
                 raise ValueError(f'cannot find desc of field [{name}]')
-
             key = name
+            if isinstance(candidates, str):
+                candidates = [candidates]
             if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
                 candidates = list(candidates)
             if desc.data_type == DataType.ARRAY:
-                # https://github.com/milvus-io/milvus/discussions/35279
-                # `array_contains_any` requires milvus >= 2.4.3 and is not supported in local(aka lite) mode.
                 ret_str += f'array_contains_any({key}, {candidates}) and '
             else:
                 ret_str += f'{key} in {candidates} and '
@@ -296,11 +289,25 @@ class SenseCoreStore(DocStoreBase):
     @override
     def update_nodes(self, nodes: List[DocNode]):
         """ update nodes to the store """
-        if not nodes:
+        filtered_nodes = []
+        for node in nodes:
+            if isinstance(node, QADocNode):
+                kb_id = node.global_metadata.get("kb_id")
+                source_file = node.metadata["source_file_name"]
+                source_chunk = node.metadata["source_chunk"]
+                target_nodes = self.query(
+                    query=source_chunk, group_name="block", topk=1, embed_keys=["bge_m3_dense"],
+                    filters={"kb_id": [kb_id], "file_name": [source_file]}
+                )
+                if not len(target_nodes):
+                    LOG.warning(f"cannot find file for qa node: source_file {source_file}, chunk {source_chunk}")
+                    continue
+            filtered_nodes.append(node)
+        if not filtered_nodes:
             LOG.warning("no nodes to update")
             return
         cnt = 1
-        for node in nodes:
+        for node in filtered_nodes:
             node._metadata["store_num"] = cnt
             cnt += 1
 
@@ -308,7 +315,8 @@ class SenseCoreStore(DocStoreBase):
             insert_ppl.get_ids = warp(self._upload_nodes_and_insert).aslist
             insert_ppl.check_status = warp(self._check_insert_job_status)
 
-        batched_nodes = [nodes[i:i + INSERT_BATCH_SIZE] for i in range(0, len(nodes), INSERT_BATCH_SIZE)]
+        batched_nodes = [
+            filtered_nodes[i:i + INSERT_BATCH_SIZE] for i in range(0, len(filtered_nodes), INSERT_BATCH_SIZE)]
         insert_ppl(batched_nodes)
         return
 
@@ -487,11 +495,16 @@ class SenseCoreStore(DocStoreBase):
     ) -> List[DocNode]:
         """ search nodes from the store """
         try:
+            if not embed_keys:
+                raise ValueError("[Sensecore Store] Query: embed_keys must be provided")
             url = urljoin(self._uri, "v1/segments:hybrid")
             headers = {
                 "Accept": "application/json",
                 "Content-Type": "application/json",
             }
+            original_filters = copy.deepcopy(filters)
+            if group_name == 'qa':
+                filters = {"kb_id": filters.get("kb_id", [])}
             filter_str = self._create_filters_str(filters) if filters else None
             dataset_ids = []
             if filters:
@@ -534,7 +547,24 @@ class SenseCoreStore(DocStoreBase):
                 for s in segments:
                     if len(s.get('display_content', '')):
                         s['content'] = s['display_content']
-                nodes.extend([self._deserialize_node(node) for node in segments])
+                if group_name == 'qa':
+                    for segment in segments:
+                        node = self._deserialize_node(segment)
+                        source_file = node.metadata.get("source_file_name", "")
+                        if not source_file:
+                            continue
+                        source_chunk = node.metadata.get("source_chunk", "")
+                        original_filters["file_name"] = [source_file]
+                        target_nodes = self.query(
+                            query=source_chunk, group_name="block", topk=1, embed_keys=["bge_m3_dense"],
+                            filters=original_filters
+                        )
+                        if len(target_nodes):
+                            node._global_metadata.update(target_nodes[0]._global_metadata)
+                            node._metadata.update(target_nodes[0]._metadata)
+                            nodes.append(node)
+                else:
+                    nodes.extend([self._deserialize_node(node) for node in segments])
             return nodes
         except Exception as e:
             LOG.error(f"SenseCore Store: query task failed: {e}")
@@ -569,7 +599,7 @@ class SenseCoreStore(DocStoreBase):
         return
 
     @override
-    def activate_group(self, group_names: Union[str, List[str]]) -> bool:
+    def activate_group(self, group_names: Union[str, List[str]]):
         if isinstance(group_names, str): group_names = [group_names]
         active_groups = []
         for group_name in group_names:

@@ -259,7 +259,7 @@ class DocStoreBase(ABC):
         """ get all node groups for Document """
         return list(self._activated_groups)
 
-    def activate_group(self, group_names: Union[str, List[str]]) -> bool:
+    def activate_group(self, group_names: Union[str, List[str]]):
         if isinstance(group_names, str): group_names = [group_names]
         self._activated_groups.update(group_names)
 
