@@ -71,8 +71,8 @@ class HuggingFaceEmbedding:
             return target_class
         return decorator
 
-    def __init__(self, base_embed, source=None, init=False):
-        self._embed = self.__class__.get_emb_cls(base_embed)(base_embed, source, init)
+    def __init__(self, base_embed, source=None):
+        self._embed = self.__class__.get_emb_cls(base_embed)(base_embed, source)
 
     def load_embed(self):
         self._embed.load_embed()
@@ -199,14 +199,13 @@ class EmbeddingDeploy(LazyLLMDeployBase):
                     finetuned_model, sparse=self._sparse_embed),
                     launcher=self._launcher, log_path=self._log_path, cls='embedding')()
             else:
-                return lazyllm.deploy.RelayServer(func=HuggingFaceEmbedding(finetuned_model, source=None, init=False),
+                return lazyllm.deploy.RelayServer(func=HuggingFaceEmbedding(finetuned_model),
                                                   launcher=self._launcher, log_path=self._log_path, cls='embedding')()
         if self._model_type == 'reranker':
             return lazyllm.deploy.RelayServer(func=LazyHuggingFaceRerank(
                 finetuned_model), launcher=self._launcher, log_path=self._log_path, cls='embedding')()
         else:
-            return lazyllm.deploy.RelayServer(func=HuggingFaceEmbedding(finetuned_model, source=None, init=False),
-                                              launcher=self._launcher, log_path=self._log_path, cls='embedding')()
+            raise RuntimeError(f'Not support model type: {self._model_type}.')
 
 
 @HuggingFaceEmbedding.register(model_ids=["BGE-VL-v1.5-mmeb"])
@@ -226,9 +225,9 @@ class BGEVLEmbedding(AbstractEmbedding):
         DEFAULT_INSTRUCTION = "Retrieve the target image that best meets the combined criteria by " \
             "using both the provided image and the image retrieval instructions: "
         with torch.no_grad():
-            text, images = data['text'], data['images'][0] if isinstance(data['images'], list) else data['images']
             # text="Make the background dark, as if the camera has taken the photo at night"
             # images="./cir_query.png"
+            text, images = data['text'], data['images'][0] if isinstance(data['images'], list) else data['images']
 
             query_inputs = self._embed.data_process(
                 text=text,
