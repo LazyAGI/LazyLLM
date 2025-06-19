@@ -218,6 +218,8 @@ class BGEVLEmbedding(AbstractEmbedding):
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._embed = tf.AutoModel.from_pretrained(self._base_embed, trust_remote_code=True).to(self._device)
         self._embed.set_processor(self._base_embed)
+        self._embed.processor.patch_size = self._embed.config.vision_config.patch_size
+        self._embed.processor.vision_feature_select_strategy = self._embed.config.vision_feature_select_strategy
         self._embed.eval()
 
     def _call(self, data: Dict[str, Union[str, List[str]]]):
