@@ -28,7 +28,7 @@ class AbstractEmbedding(ABC):
 
     def __call__(self, data: Dict[str, Union[str, List[str]]]) -> str:
         lazyllm.call_once(self._init, self.load_embed)
-        self._call(data)
+        return self._call(data)
 
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self._init)
