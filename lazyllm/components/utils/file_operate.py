@@ -59,6 +59,21 @@ def image_to_base64(directory):
         return image_base64, mime
     except Exception as e:
         LOG.error(f"Error in base64 encode {directory}: {e}")
+        
+def base64_to_image(base64_str: str):
+    mime_type = base64_str.split(';')[0].split(':')[1]
+    base64_str = base64_str.split(',')[1]
+    suffix = None
+    for ext, mime in IMAGE_MIME_TYPE.items():
+        if mime == mime_type:
+            suffix = f'.{ext}'
+            break
+    if suffix is None:
+        raise ValueError(f"Unsupported image MIME type: {mime_type}")
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
+        temp_file.write(base64.b64decode(base64_str))
+        string = temp_file.name
+    return string
 
 def audio_to_base64(directory):
     try:
