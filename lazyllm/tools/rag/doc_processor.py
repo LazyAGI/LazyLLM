@@ -226,7 +226,7 @@ class DocumentProcessor():
                 self._task_queue = queue.Queue()
                 self._tasks = {}    # running tasks
                 self._pending_task_ids = set()  # pending tasks
-                self._add_executor = ThreadPoolExecutor(max_workers=8)
+                self._add_executor = ThreadPoolExecutor(max_workers=4)
                 self._add_futures = {}
                 self._delete_executor = ThreadPoolExecutor(max_workers=4)
                 self._update_executor = ThreadPoolExecutor(max_workers=4)
