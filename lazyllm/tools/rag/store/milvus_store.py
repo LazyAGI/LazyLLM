@@ -3,21 +3,22 @@ from urllib import parse
 from packaging import version
 from collections import defaultdict
 from typing import Dict, List, Optional, Union, Callable, Set
-from lazyllm.thirdparty import pymilvus
-from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.utils import parallel_do_embedding
-from lazyllm.tools.rag.index_base import IndexBase
+
 from .store_base import StoreBase
-from lazyllm.tools.rag.global_metadata import (
+from .map_store import MapStore
+from ..doc_node import DocNode
+from ..utils import parallel_do_embedding
+from ..index_base import IndexBase
+from ..global_metadata import (
     GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_FILE_NAME,
     RAG_DOC_FILE_TYPE, RAG_DOC_FILE_SIZE, RAG_DOC_CREATION_DATE,
     RAG_DOC_LAST_MODIFIED_DATE, RAG_DOC_LAST_ACCESSED_DATE
 )
-from lazyllm.tools.rag.data_type import DataType
+from ..data_type import DataType
+
+from lazyllm.thirdparty import pymilvus
 from lazyllm.common import override, obj2str, str2obj
 from lazyllm import LOG
-
-from .map_store import MapStore
 
 MILVUS_UPSERT_BATCH_SIZE = 500
 MILVUS_PAGINATION_OFFSET = 1000
@@ -419,6 +420,6 @@ class MilvusStore(StoreBase):
                 doc.embedding[k[len(self._embedding_key_prefix):]] = v
             elif k.startswith(self._global_metadata_key_prefix):
                 if doc.is_root_node:
-                    doc._global_metadata[k[len(self._global_metadata_key_prefix):]] = v
+                    doc.update_global_metadata({k[len(self._global_metadata_key_prefix):]: v})
 
         return doc

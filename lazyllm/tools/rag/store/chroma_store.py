@@ -1,15 +1,17 @@
 from typing import Any, Dict, List, Optional, Callable, Set, Union
-from lazyllm.thirdparty import chromadb
-from lazyllm import LOG
-from lazyllm.common import override, obj2str, str2obj
-from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.index_base import IndexBase
-from lazyllm.tools.rag.default_index import DefaultIndex
-from lazyllm.tools.rag.utils import _FileNodeIndex, sparse2normal
+
 from .store_base import StoreBase, LAZY_ROOT_NAME
 from .map_store import MapStore
 
-# ---------------------------------------------------------------------------- #
+from ..doc_node import DocNode
+from ..index_base import IndexBase
+from ..default_index import DefaultIndex
+from ..utils import _FileNodeIndex, sparse2normal
+
+from lazyllm import LOG
+from lazyllm.common import override, obj2str, str2obj
+from lazyllm.thirdparty import chromadb
+
 
 class ChromadbStore(StoreBase):
     def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable],

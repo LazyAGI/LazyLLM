@@ -270,23 +270,18 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self.activate_group(group)
 
     @DynamicDescriptor
-    def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
-                          trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
+    def create_node_group(self, name: str = None, display_name: str = None,
+                          group_type: NodeGroupType = NodeGroupType.CHUNK, *, transform: Callable,
+                          parent: str = LAZY_ROOT_NAME, trans_node: bool = None,
+                          num_workers: int = 0, **kwargs) -> None:
         if isinstance(self, type):
-            DocImpl.create_global_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
+            DocImpl.create_global_node_group(name, display_name=display_name, group_type=group_type,
+                                             transform=transform, parent=parent, trans_node=trans_node,
                                              num_workers=num_workers, **kwargs)
         else:
-            self._impl.create_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
+            self._impl.create_node_group(name, display_name=display_name, group_type=group_type,
+                                         transform=transform, parent=parent, trans_node=trans_node,
                                          num_workers=num_workers, **kwargs)
-
-    @DynamicDescriptor
-    def register_info_for_group(self, group_name: str, display_name: str, group_type: NodeGroupType) -> None:
-        if isinstance(self, type):
-            DocImpl._registered_node_group_info.update({group_name: {"name": display_name, "type": group_type}})
-        else:
-            group_infos = getattr(self._impl, 'node_groups')
-            assert group_name in group_infos, f"{group_name} is not created yet"
-            group_infos[group_name]["info"] = {"name": display_name, "type": group_type}
 
     @DynamicDescriptor
     def add_reader(self, pattern: str, func: Optional[Callable] = None):

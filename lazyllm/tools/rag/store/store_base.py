@@ -1,15 +1,16 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Union, Set
 
-from lazyllm import LOG
-from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.index_base import IndexBase
-from lazyllm.tools.rag.data_type import DataType
-from lazyllm.tools.rag.global_metadata import (
+from ..doc_node import DocNode
+from ..index_base import IndexBase
+from ..data_type import DataType
+from ..global_metadata import (
     GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_FILE_NAME,
     RAG_DOC_FILE_TYPE, RAG_DOC_FILE_SIZE, RAG_DOC_CREATION_DATE,
     RAG_DOC_LAST_MODIFIED_DATE, RAG_DOC_LAST_ACCESSED_DATE
 )
+
+from lazyllm import LOG
 
 LAZY_ROOT_NAME = "lazyllm_root"
 LAZY_IMAGE_GROUP = "image"

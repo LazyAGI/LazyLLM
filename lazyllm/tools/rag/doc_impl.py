@@ -77,20 +77,20 @@ class BuiltinGroups(object):
     class Struct:
         name: str
         display_name: str
-        type: NodeGroupType
+        group_type: NodeGroupType
         args: TransformArgs
         parent: str = LAZY_ROOT_NAME
         trans_node: bool = None
 
         def __str__(self): return self.name
 
-    CoarseChunk = Struct('CoarseChunk', NodeGroupType.CHUNK, '1024 Tokens Chunk',
+    CoarseChunk = Struct('CoarseChunk', '1024 Tokens Chunk', NodeGroupType.CHUNK,
                          TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=1024, chunk_overlap=100)))
-    MediumChunk = Struct('MediumChunk', NodeGroupType.CHUNK, '256 Tokens Chunk',
+    MediumChunk = Struct('MediumChunk', '256 Tokens Chunk', NodeGroupType.CHUNK,
                          TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
-    FineChunk = Struct('FineChunk', NodeGroupType.CHUNK, '128 Tokens Chunk',
+    FineChunk = Struct('FineChunk', '128 Tokens Chunk', NodeGroupType.CHUNK,
                        TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
-    ImgDesc = Struct('ImgDesc', NodeGroupType.OTHER, 'Image Desc',
+    ImgDesc = Struct('ImgDesc', 'Image Desc', NodeGroupType.OTHER,
                      lambda x: x._content, LAZY_IMAGE_GROUP, True)
 
 
@@ -98,10 +98,6 @@ class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
     _global_node_groups: Dict[str, Dict] = {}
     _registered_file_reader: Dict[str, Callable] = {}
-    _registered_node_group_info: Dict[str, str] = {
-        LAZY_ROOT_NAME: {"name": "Original Source", "type": NodeGroupType.ORIGINAL},
-        LAZY_IMAGE_GROUP: {"name": "Image Node", "type": NodeGroupType.OTHER}
-    }
 
     def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
@@ -113,8 +109,8 @@ class DocImpl:
         self._dlm, self._doc_files = dlm, doc_files
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {
-            LAZY_ROOT_NAME: dict(parent=None),
-            LAZY_IMAGE_GROUP: dict(parent=None)
+            LAZY_ROOT_NAME: dict(parent=None, display_name="Original Source", group_type=NodeGroupType.ORIGINAL),
+            LAZY_IMAGE_GROUP: dict(parent=None, display_name="Image Node", group_type=NodeGroupType.OTHER)
         }
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self._global_metadata_desc = global_metadata_desc
@@ -141,14 +137,6 @@ class DocImpl:
                 parent_group = self.node_groups[group]['parent']
                 if not parent_group or parent_group in self._activated_groups: break
                 self._activated_groups.add(group := parent_group)
-
-        register_infos = DocImpl._registered_node_group_info.copy()
-        register_infos.update(self._registered_node_group_info)
-        self._registered_node_group_info = register_infos
-
-        for group_name in self.node_groups.keys():
-            if group_name in self._registered_node_group_info:
-                self.node_groups[group_name]['info'] = self._registered_node_group_info[group_name]
 
     def _init_store(self):
         if self.store is None: self.store = {'type': 'map'}
@@ -278,9 +266,10 @@ class DocImpl:
         return store
 
     @staticmethod
-    def _create_node_group_impl(cls, group_name, name, transform: Union[str, Callable] = None,
-                                parent: str = LAZY_ROOT_NAME, *, trans_node: bool = None,
-                                num_workers: int = 0, **kwargs):
+    def _create_node_group_impl(cls, group_name, name, display_name: str = None,
+                                group_type: NodeGroupType = NodeGroupType.CHUNK,
+                                transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
+                                *, trans_node: bool = None, num_workers: int = 0, **kwargs):
         group_name, parent = str(group_name), str(parent)
         groups = getattr(cls, group_name)
 
@@ -310,34 +299,32 @@ class DocImpl:
                     'target parameter of Retriever may have strange anomalies. Please use it at your own risk.')
             else:
                 assert callable(t.f), f"transform should be callable, but get {t.f}"
-        groups[name] = dict(transform=transforms, parent=parent)
+        groups[name] = dict(transform=transforms, parent=parent, display_name=display_name or name,
+                            group_type=group_type)
 
     @classmethod
-    def _create_builtin_node_group(cls, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
+    def _create_builtin_node_group(cls, name, display_name: str = None, group_type: NodeGroupType = NodeGroupType.CHUNK,
+                                   transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
                                    *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
-        DocImpl._create_node_group_impl(cls, '_builtin_node_groups', name=name, transform=transform, parent=parent,
+        DocImpl._create_node_group_impl(cls, '_builtin_node_groups', name=name, display_name=display_name,
+                                        group_type=group_type, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, **kwargs)
 
     @classmethod
-    def create_global_node_group(cls, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
+    def create_global_node_group(cls, name, display_name: str = None, group_type: NodeGroupType = NodeGroupType.CHUNK,
+                                 transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
                                  *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
-        DocImpl._create_node_group_impl(cls, '_global_node_groups', name=name, transform=transform, parent=parent,
+        DocImpl._create_node_group_impl(cls, '_global_node_groups', name=name, display_name=display_name,
+                                        group_type=group_type, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, **kwargs)
 
-    def create_node_group(self, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
+    def create_node_group(self, name, display_name: str = None, group_type: NodeGroupType = NodeGroupType.CHUNK,
+                          transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
                           *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
         assert not self._lazy_init.flag, 'Cannot add node group after document started'
-        DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
+        DocImpl._create_node_group_impl(self, 'node_groups', name=name, display_name=display_name,
+                                        group_type=group_type, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, **kwargs)
-
-    @staticmethod
-    def _register_group_info_impl(cls, group_name: str, display_name: str, group_type: NodeGroupType):
-        group_infos = getattr(cls, '_registered_node_group_info')
-        group_infos[group_name] = (display_name, group_type)
-
-    @classmethod
-    def register_info_for_buildin_group(cls, name: str, display_name: str, type: NodeGroupType) -> None:
-        DocImpl._register_group_info_impl(cls, name, display_name, type)
 
     @classmethod
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
@@ -629,5 +616,5 @@ class DocImpl:
 for k, v in BuiltinGroups.__dict__.items():
     if not k.startswith('_') and isinstance(v, BuiltinGroups.Struct):
         assert k == v.name, 'builtin group name mismatch'
-        DocImpl._create_builtin_node_group(name=k, transform=v.args, parent=v.parent, trans_node=v.trans_node)
-        DocImpl.register_info_for_buildin_group(name=v.name, display_name=v.display_name, type=v.type)
+        DocImpl._create_builtin_node_group(name=k, display_name=v.display_name, group_type=v.group_type,
+                                           transform=v.args, parent=v.parent, trans_node=v.trans_node)

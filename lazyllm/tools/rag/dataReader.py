@@ -212,7 +212,7 @@ class SimpleDirectoryReader(ModuleBase):
                 kwargs = {'fs': fs} if fs and not is_default_fs(fs) else {}
                 docs = reader(input_file, **kwargs)
                 if isinstance(docs, DocNode): docs = [docs]
-                for doc in docs: doc._global_metadata = metadata
+                for doc in docs: doc.global_metadata = metadata
 
                 if config['rag_filename_as_id']:
                     for i, doc in enumerate(docs):

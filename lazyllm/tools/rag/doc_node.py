@@ -30,7 +30,10 @@ class DocNode:
         self._content: Optional[Union[str, List[Any]]] = content if content else text
         self._group: Optional[str] = group
         self._embedding: Optional[Dict[str, List[float]]] = embedding or {}
+        # metadata: the chunk's meta
         self._metadata: Dict[str, Any] = metadata or {}
+        # Global metadata: the file's global metadata (higher level)
+        self._global_metadata = global_metadata or {}
         # Metadata keys that are excluded from text for the embed model.
         self._excluded_embed_metadata_keys: List[str] = []
         # Metadata keys that are excluded from text for the LLM.
@@ -41,7 +44,6 @@ class DocNode:
         self._embedding_state = set()
         self.relevance_score = None
         self.similarity_score = None
-        self._global_metadata = global_metadata or {}
 
     @property
     def text(self) -> str:
@@ -80,6 +82,8 @@ class DocNode:
 
     @property
     def root_node(self) -> Optional["DocNode"]:
+        if not self.parent or isinstance(self.parent, str):
+            return self
         root = self.parent
         while root and root.parent:
             root = root.parent
@@ -91,32 +95,29 @@ class DocNode:
 
     @property
     def global_metadata(self) -> Dict[str, Any]:
-        if isinstance(self.parent, DocNode):
-            return {**self.root_node._global_metadata, **self._global_metadata}
-        else:
-            return self._global_metadata
+        return self.root_node._global_metadata
 
     @global_metadata.setter
     def global_metadata(self, global_metadata: Dict) -> None:
         self._global_metadata = global_metadata
 
+    def update_global_metadata(self, global_metadata: Dict) -> None:
+        self._global_metadata.update(global_metadata)
+
     @property
     def metadata(self) -> Dict:
-        if isinstance(self.parent, DocNode):
-            return {**self.root_node._metadata, **self._metadata}
-        else:
-            return self._metadata
+        return self._metadata
 
     @metadata.setter
     def metadata(self, metadata: Dict) -> None:
         self._metadata = metadata
 
+    def update_metadata(self, metadata: Dict) -> None:
+        self._metadata.update(metadata)
+
     @property
     def excluded_embed_metadata_keys(self) -> List:
-        if isinstance(self.parent, DocNode):
-            return list(set(self.root_node._excluded_embed_metadata_keys + self._excluded_embed_metadata_keys))
-        else:
-            return self._excluded_embed_metadata_keys
+        return list(set(self.root_node._excluded_embed_metadata_keys + self._excluded_embed_metadata_keys))
 
     @excluded_embed_metadata_keys.setter
     def excluded_embed_metadata_keys(self, excluded_embed_metadata_keys: List) -> None:
@@ -124,10 +125,7 @@ class DocNode:
 
     @property
     def excluded_llm_metadata_keys(self) -> List:
-        if isinstance(self.parent, DocNode):
-            return list(set(self.root_node._excluded_llm_metadata_keys + self._excluded_llm_metadata_keys))
-        else:
-            return self._excluded_llm_metadata_keys
+        return list(set(self.root_node._excluded_llm_metadata_keys + self._excluded_llm_metadata_keys))
 
     @excluded_llm_metadata_keys.setter
     def excluded_llm_metadata_keys(self, excluded_llm_metadata_keys: List) -> None:
@@ -135,10 +133,7 @@ class DocNode:
 
     @property
     def docpath(self) -> str:
-        if isinstance(self.parent, DocNode):
-            return self.root_node._global_metadata.get(RAG_DOC_PATH, '')
-        else:
-            return self.global_metadata.get(RAG_DOC_PATH, '')
+        return self.root_node._global_metadata.get(RAG_DOC_PATH, '')
 
     @docpath.setter
     def docpath(self, path):

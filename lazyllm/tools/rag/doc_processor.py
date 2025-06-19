@@ -120,9 +120,9 @@ class _Processor:
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
         nodes = transform.batch_forward(p_nodes, cur_name)
         # reparse need set global_metadata
-        global_meta = p_nodes[0]._global_metadata
+        global_meta = p_nodes[0].global_metadata
         for node in nodes:
-            node._global_metadata.update(global_meta)
+            node.update_global_metadata(global_meta)
 
         self._store.update_nodes(nodes)
 
@@ -372,16 +372,10 @@ class DocumentProcessor():
             infos = []
             for group_name in processor._store.activated_groups():
                 if group_name in processor._node_groups:
-                    if processor._node_groups[group_name].get('info', {}).get('type'):
-                        type = processor._node_groups[group_name].get('info', {}).get('type').value
-                        display_name = processor._node_groups[group_name].get('info', {}).get('name')
-                    else:
-                        type = "unknown"
-                        display_name = group_name
                     group_info = {
                         "name": group_name,
-                        "type": type,
-                        "display_name": display_name,
+                        "type": processor._node_groups[group_name].get('group_type'),
+                        "display_name": processor._node_groups[group_name].get('display_name'),
                     }
                     infos.append(group_info)
             LOG.info(f"Get group info for {algo_id} success with {infos}")

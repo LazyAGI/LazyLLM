@@ -1,11 +1,14 @@
 from typing import Dict, List, Optional, Callable, Union, Set
-from lazyllm.common import override
-from lazyllm.tools.rag.index_base import IndexBase
-from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.default_index import DefaultIndex
-from lazyllm.tools.rag.global_metadata import RAG_SYSTEM_META_KEYS, RAG_DOC_ID
-from lazyllm.tools.rag.utils import _FileNodeIndex
+
 from .store_base import StoreBase
+
+from ..index_base import IndexBase
+from ..doc_node import DocNode
+from ..default_index import DefaultIndex
+from ..global_metadata import RAG_SYSTEM_META_KEYS, RAG_DOC_ID
+from ..utils import _FileNodeIndex
+
+from lazyllm.common import override
 
 
 class MapStore(StoreBase):

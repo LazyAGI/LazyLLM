@@ -10,20 +10,17 @@ from pydantic import BaseModel, Field
 from urllib.parse import urljoin
 from typing import Optional, List, Dict, Any, Union, Set
 
+from .store_base import DocStoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC
+from .utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, create_file_path
+
+from ..index_base import IndexBase
+from ..data_type import DataType
+from ..doc_node import ImageDocNode, QADocNode, DocNode
+from ..global_metadata import (GlobalMetadataDesc, RAG_DOC_ID)
+
 from lazyllm import warp, pipeline, LOG, config
 from lazyllm.common import override
 from lazyllm.thirdparty import boto3
-from lazyllm.tools.rag.index_base import IndexBase
-from lazyllm.tools.rag.data_type import DataType
-from lazyllm.tools.rag.doc_node import (
-    ImageDocNode,
-    QADocNode,
-    DocNode
-)
-from lazyllm.tools.rag.global_metadata import (GlobalMetadataDesc, RAG_DOC_ID)
-
-from .store_base import DocStoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC
-from .utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, create_file_path
 
 INSERT_BATCH_SIZE = 3000
 IMAGE_PATTERN = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
@@ -560,8 +557,8 @@ class SenseCoreStore(DocStoreBase):
                             filters=original_filters
                         )
                         if len(target_nodes):
-                            node._global_metadata.update(target_nodes[0]._global_metadata)
-                            node._metadata.update(target_nodes[0]._metadata)
+                            node.update_global_metadata(target_nodes[0].global_metadata)
+                            node.update_metadata(target_nodes[0].metadata)
                             nodes.append(node)
                 else:
                     nodes.extend([self._deserialize_node(node) for node in segments])
@@ -588,13 +585,13 @@ class SenseCoreStore(DocStoreBase):
         """ update doc meta """
         # TODO 性能优化
         dataset_id = metadata.get("kb_id", None)
-        nodes = []
+        nodes: List[DocNode] = []
         for group in self.activated_groups():
             group_nodes = self.get_nodes(group_name=group, dataset_id=dataset_id, doc_ids=[doc_id])
             nodes.extend(group_nodes)
 
         for node in nodes:
-            node._global_metadata.update(metadata)
+            node.update_global_metadata(global_metadata=metadata)
         self.update_nodes(nodes)
         return
 
