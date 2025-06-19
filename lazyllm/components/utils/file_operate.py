@@ -59,7 +59,7 @@ def image_to_base64(directory):
         return image_base64, mime
     except Exception as e:
         LOG.error(f"Error in base64 encode {directory}: {e}")
-        
+
 def base64_to_image(base64_str: str):
     mime_type = base64_str.split(';')[0].split(':')[1]
     base64_str = base64_str.split(',')[1]
