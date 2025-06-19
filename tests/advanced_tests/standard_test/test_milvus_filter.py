@@ -79,6 +79,7 @@ class TestMilvusFilter(unittest.TestCase):
         self.rag_dir = os.path.join(self.root_dir, 'milvus_filter')
         os.makedirs(self.rag_dir, exist_ok=True)
         self.doc_dir = os.path.join(self.rag_dir, 'docs')
+        os.makedirs(self.doc_dir, exist_ok=True)
         self.store_dir = os.path.join(self.doc_dir, 'store')
         self.index_dir = os.path.join(self.doc_dir, 'index')
         os.makedirs(self.store_dir, exist_ok=True)
