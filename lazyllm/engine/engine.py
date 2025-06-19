@@ -733,12 +733,12 @@ def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optio
                                         api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
 
 @NodeConstructor.register('OnlineEmbedding')
-def make_online_embedding(source: str, type: Optional[str] = 'embed', embed_model_name: Optional[str] = None,
-                          embed_url: Optional[str] = None, api_key: Optional[str] = None,
+def make_online_embedding(source: str, type: Optional[str] = 'embed', base_model: Optional[str] = None,
+                          base_url: Optional[str] = None, api_key: Optional[str] = None,
                           secret_key: Optional[str] = None):
     source = source.lower()
-    return lazyllm.OnlineEmbeddingModule(source=source, type=type, embed_model_name=embed_model_name,
-                                         embed_url=embed_url, api_key=api_key, secret_key=secret_key)
+    return lazyllm.OnlineEmbeddingModule(source=source, type=type, embed_model_name=base_model,
+                                         embed_url=base_url, api_key=api_key, secret_key=secret_key)
 
 
 class LLM(lazyllm.ModuleBase):
