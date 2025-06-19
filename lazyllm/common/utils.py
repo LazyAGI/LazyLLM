@@ -6,8 +6,7 @@ import os
 from contextlib import contextmanager
 import cloudpickle
 import ast
-import msgpack
-import lzma
+import pickle
 import base64
 import argparse
 
@@ -100,18 +99,10 @@ def compile_func(func_code: str, global_env: Optional[Dict[str, Any]] = None) ->
     return local_dict.pop(fname)
 
 def obj2str(obj: Any) -> str:
-    packed = msgpack.packb(obj)
-    compressed = lzma.compress(packed)
-    encoded = base64.b64encode(compressed).decode('utf-8')
-    return encoded
+    return base64.b64encode(pickle.dumps(obj)).decode('utf-8')
 
 def str2obj(data: str) -> Any:
-    if not data:
-        return None
-    decoded = base64.b64decode(data.encode('utf-8'))
-    decompressed = lzma.decompress(decoded)
-    data_restored = msgpack.unpackb(decompressed, raw=False)
-    return data_restored
+    return None if data is None else pickle.loads(base64.b64decode(data.encode('utf-8')))
 
 def str2bool(v: str) -> bool:
     """ Boolean type converter """

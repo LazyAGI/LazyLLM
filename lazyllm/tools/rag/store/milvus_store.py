@@ -91,13 +91,7 @@ class MilvusStore(StoreBase):
         self._db_name = db_name
         self._client = pymilvus.MilvusClient(uri=self._uri)
 
-        if uri and parse.urlparse(uri).scheme.lower() not in [
-            "unix",
-            "http",
-            "https",
-            "tcp",
-            "grpc",
-        ]:
+        if uri and parse.urlparse(uri).scheme.lower() not in ["unix", "http", "https", "tcp", "grpc"]:
             self._type = 'local'
         else:
             self._type = 'remote'
