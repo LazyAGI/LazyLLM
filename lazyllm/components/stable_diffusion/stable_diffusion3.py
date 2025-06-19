@@ -214,7 +214,7 @@ class StableDiffusionDeploy(object):
     default_headers = {'Content-Type': 'application/json'}
 
     def __init__(self, launcher=None, log_path=None, port=None):
-        self.launcher = launcher
+        self._launcher = launcher
         self._log_path = log_path
         self._port = port
 
@@ -227,5 +227,5 @@ class StableDiffusionDeploy(object):
             LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                         f"base_model({base_model}) will be used")
             finetuned_model = base_model
-        return lazyllm.deploy.RelayServer(func=StableDiffusion3(finetuned_model), launcher=self.launcher,
+        return lazyllm.deploy.RelayServer(func=StableDiffusion3(finetuned_model), launcher=self._launcher,
                                           log_path=self._log_path, cls='stable_diffusion', port=self._port)()
