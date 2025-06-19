@@ -11,12 +11,9 @@ from abc import ABC, abstractmethod
 class AbstractEmbedding(ABC):
     def __init__(self, base_embed, source=None, init=False):
         from ..utils.downloader import ModelManager
-        source = lazyllm.config['model_source'] if not source else source
+        self._source = source or lazyllm.config['model_source']
         self._base_embed = ModelManager(source).download(base_embed) or ''
-        self._source = source
         self._embed = None
-        self._tokenizer = None
-        self._device = "cpu"
         self._init = lazyllm.once_flag()
         if init:
             lazyllm.call_once(self._init, self.load_embed)
@@ -26,8 +23,12 @@ class AbstractEmbedding(ABC):
         pass
 
     @abstractmethod
-    def __call__(self, data: Dict[str, Union[str, List[str]]]) -> str:
+    def _call(self, data: Dict[str, Union[str, List[str]]]) -> str:
         pass
+
+    def __call__(self, data: Dict[str, Union[str, List[str]]]) -> str:
+        lazyllm.call_once(self._init, self.load_embed)
+        self._call(data)
 
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self._init)
@@ -41,8 +42,7 @@ class LazyHuggingFaceDefaultEmbedding(AbstractEmbedding):
         self._embed = tf.AutoModel.from_pretrained(self._base_embed, trust_remote_code=True).to(self._device)
         self._embed.eval()
 
-    def __call__(self, data: Dict[str, Union[str, List[str]]]):
-        lazyllm.call_once(self._init, self.load_embed)
+    def _call(self, data: Dict[str, Union[str, List[str]]]):
         string, _ = data['text'], data['images']
         encoded_input = self._tokenizer(string, padding=True, truncation=True, return_tensors='pt',
                                         max_length=512, add_special_tokens=True).to(self._device)
@@ -220,8 +220,7 @@ class BGEVLEmbedding(AbstractEmbedding):
         self._embed.set_processor(self._base_embed)
         self._embed.eval()
 
-    def __call__(self, data: Dict[str, Union[str, List[str]]]):
-        lazyllm.call_once(self._init, self.load_embed)
+    def _call(self, data: Dict[str, Union[str, List[str]]]):
         DEFAULT_INSTRUCTION = "Retrieve the target image that best meets the combined criteria by " \
             "using both the provided image and the image retrieval instructions: "
         with torch.no_grad():
