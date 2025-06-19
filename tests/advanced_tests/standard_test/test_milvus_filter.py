@@ -77,6 +77,9 @@ class TestMilvusFilter(unittest.TestCase):
         query = "合同问题"
         nodes = retriever(query, filters={'department': ['dpt_123']})
         assert len(nodes) == 1 and nodes[0].global_metadata["department"] == "dpt_123"
+
+        nodes = retriever(query, filters={'department': 'dpt_123'})  # string instead of list
+        assert len(nodes) == 1 and nodes[0].global_metadata["department"] == "dpt_123"
         # in case of re-run with old failing staus that will trigger reparsing, call release to clean db
         doc._manager._dlm.release()
         doc.stop()
