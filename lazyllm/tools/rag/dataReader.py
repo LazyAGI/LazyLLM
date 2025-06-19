@@ -14,6 +14,7 @@ from typing import Dict, Optional, List, Callable, Type
 from pathlib import Path, PurePosixPath, PurePath
 from fsspec import AbstractFileSystem
 from lazyllm import ModuleBase, LOG, config
+from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list
 from .doc_node import DocNode
 from .readers import (ReaderBase, PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader,
                       EpubReader, MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
@@ -197,10 +198,11 @@ class SimpleDirectoryReader(ModuleBase):
     def load_file(input_file: Path, metadata_genf: Callable[[str], Dict], file_extractor: Dict[str, Callable],
                   encoding: str = "utf-8", pathm: PurePath = Path, fs: Optional[AbstractFileSystem] = None,
                   metadata: Optional[Dict] = None) -> List[DocNode]:
-        metadata: dict = metadata or {}
+        # metadata priority: user > reader > metadata_genf
+        user_metadata: Dict = metadata or {}
+        metadata_generated: Dict = metadata_genf(str(input_file)) if metadata_genf is not None else {}
         documents: List[DocNode] = []
 
-        if metadata_genf is not None: metadata.update(metadata_genf(str(input_file)))
         file_reader_patterns = list(file_extractor.keys())
 
         for pattern in file_reader_patterns:
@@ -212,21 +214,30 @@ class SimpleDirectoryReader(ModuleBase):
                 kwargs = {'fs': fs} if fs and not is_default_fs(fs) else {}
                 docs = reader(input_file, **kwargs)
                 if isinstance(docs, DocNode): docs = [docs]
-                for doc in docs: doc.global_metadata = metadata
-
+                for doc in docs:
+                    metadata = metadata_generated.copy()
+                    metadata.update(doc._global_metadata or {})
+                    metadata.update(user_metadata)
+                    doc._global_metadata = metadata
                 if config['rag_filename_as_id']:
                     for i, doc in enumerate(docs):
                         doc._uid = f"{input_file!s}_index_{i}"
                 documents.extend(docs)
                 break
         else:
+            if not config['use_fallback_reader']:
+                LOG.warning(f'no pattern found for {input_file}! If you want fallback to default Reader, '
+                            'set environment variable `LAZYLLM_USE_FALLBACK_READER=True`.')
+                return documents
             fs = fs or get_default_fs()
             with fs.open(input_file, encoding=encoding) as f:
-                data = f.read().decode(encoding)
-
-            doc = DocNode(text=data, global_metadata=metadata or {})
-            documents.append(doc)
-
+                try:
+                    data = f.read().decode(encoding)
+                    doc = DocNode(text=data, global_metadata=metadata or {})
+                    documents.append(doc)
+                except Exception:
+                    LOG.error(f'no pattern found for {input_file} and it is not encode by utf-8, will skip it!')
+                    pass
         return documents
 
     def _load_data(self, show_progress: bool = False, num_workers: Optional[int] = None,
@@ -265,3 +276,17 @@ class SimpleDirectoryReader(ModuleBase):
 
 
 config.add('rag_filename_as_id', bool, False, 'RAG_FILENAME_AS_ID')
+config.add('use_fallback_reader', bool, True, 'USE_FALLBACK_READER')
+
+
+class FileReader(object):
+
+    def __call__(self, input_files):
+        file_list = _lazyllm_get_file_list(input_files)
+        if isinstance(file_list, str) and file_list is not None:
+            file_list = [file_list]
+        if len(file_list) == 0:
+            return []
+        nodes = SimpleDirectoryReader(input_files=file_list)._load_data()
+        txt = [node.get_text() for node in nodes]
+        return "\n".join(txt)

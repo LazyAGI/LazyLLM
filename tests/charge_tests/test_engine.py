@@ -130,8 +130,8 @@ class TestEngine(unittest.TestCase):
         resources = [
             dict(id='00', kind='OnlineEmbedding', name='e0', args=dict(source='glm')),
             dict(id='01', kind='OnlineEmbedding', name='e1', args=dict(type='rerank')),
-            dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', embed='00', node_group=[
-                dict(name='sentence', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))]
+            dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', node_group=[
+                dict(name='sentence', embed='00', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))]
         nodes = [dict(id='1', kind='Retriever', name='ret1',
                       args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
                  dict(id='2', kind='Retriever', name='ret2',

@@ -9,9 +9,9 @@ class ComponentBase(object, metaclass=LazyLLMRegisterMetaClass):
         self._llm_name = None
         self.job = ReadOnlyWrapper()
         if isinstance(launcher, LazyLLMLaunchersBase):
-            self.launcher = launcher
+            self._launcher = launcher
         elif isinstance(launcher, type) and issubclass(launcher, LazyLLMLaunchersBase):
-            self.launcher = launcher()
+            self._launcher = launcher()
         else:
             raise RuntimeError('Invalid launcher given:', launcher)
 
@@ -26,10 +26,13 @@ class ComponentBase(object, metaclass=LazyLLMRegisterMetaClass):
     @name.setter
     def name(self, name): self._llm_name = name
 
+    @property
+    def launcher(self): return self._launcher
+
     def _get_job_with_cmd(self, *args, **kw):
         cmd = self.cmd(*args, **kw)
         cmd = cmd if isinstance(cmd, LazyLLMCMD) else LazyLLMCMD(cmd)
-        return self.launcher.makejob(cmd=cmd)
+        return self._launcher.makejob(cmd=cmd)
 
     def _overwrote(self, f):
         return getattr(self.__class__, f) is not getattr(__class__, f) or \
@@ -39,12 +42,12 @@ class ComponentBase(object, metaclass=LazyLLMRegisterMetaClass):
         if self._overwrote('apply'):
             assert not self._overwrote('cmd'), (
                 'Cannot overwrite \'cmd\' and \'apply\' in the same class')
-            assert isinstance(self.launcher, launchers.Empty), 'Please use EmptyLauncher instead.'
-            return self.launcher.launch(self.apply, *args, **kw)
+            assert isinstance(self._launcher, launchers.Empty), 'Please use EmptyLauncher instead.'
+            return self._launcher.launch(self.apply, *args, **kw)
         else:
             job = self._get_job_with_cmd(*args, **kw)
             self.job.set(job)
-            return self.launcher.launch(job)
+            return self._launcher.launch(job)
 
     def __repr__(self):
         return lazyllm.make_repr('lazyllm.llm.' + self.__class__._lazy_llm_group,

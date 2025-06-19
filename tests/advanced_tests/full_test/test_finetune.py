@@ -17,5 +17,5 @@ class TestFinetune(object):
     def test_auto_finetune(self):
         # test instantiation
         m = finetune.auto('internlm2-chat-7b', '', launcher=launchers.sco(ngpus=1))
-        assert isinstance(m.launcher, launchers.sco)
+        assert isinstance(m._launcher, launchers.sco)
         assert os.path.exists(m.base_model)
