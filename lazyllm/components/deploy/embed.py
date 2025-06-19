@@ -5,33 +5,49 @@ from lazyllm import LOG
 from lazyllm.thirdparty import transformers as tf, torch, sentence_transformers, numpy as np, FlagEmbedding as fe
 from .base import LazyLLMDeployBase
 from typing import Union, List, Dict
+from abc import ABC, abstractmethod
 
 
-class LazyHuggingFaceEmbedding(object):
+class AbstractEmbedding(ABC):
     def __init__(self, base_embed, source=None, init=False):
         from ..utils.downloader import ModelManager
-        source = lazyllm.config['model_source'] if not source else source
-        self.base_embed = ModelManager(source).download(base_embed) or ''
-        self.embed = None
-        self.tokenizer = None
-        self.device = "cpu"
-        self.init_flag = lazyllm.once_flag()
+        self._source = source or lazyllm.config['model_source']
+        self._base_embed = ModelManager(self._source).download(base_embed) or ''
+        self._embed = None
+        self._init = lazyllm.once_flag()
         if init:
-            lazyllm.call_once(self.init_flag, self.load_embed)
+            lazyllm.call_once(self._init, self.load_embed)
+
+    @abstractmethod
+    def load_embed(self) -> None:
+        pass
+
+    @abstractmethod
+    def _call(self, data: Dict[str, Union[str, List[str]]]) -> str:
+        pass
+
+    def __call__(self, data: Dict[str, Union[str, List[str]]]) -> str:
+        lazyllm.call_once(self._init, self.load_embed)
+        return self._call(data)
+
+    def __reduce__(self):
+        init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self._init)
+        return self.__class__, (self._base_embed, self._source, init)
+
+class LazyHuggingFaceDefaultEmbedding(AbstractEmbedding):
 
     def load_embed(self):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.tokenizer = tf.AutoTokenizer.from_pretrained(self.base_embed)
-        self.embed = tf.AutoModel.from_pretrained(self.base_embed, trust_remote_code=True).to(self.device)
-        self.embed.eval()
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._tokenizer = tf.AutoTokenizer.from_pretrained(self._base_embed, trust_remote_code=True)
+        self._embed = tf.AutoModel.from_pretrained(self._base_embed, trust_remote_code=True).to(self._device)
+        self._embed.eval()
 
-    def __call__(self, data: Dict[str, Union[str, List[str]]]):
-        lazyllm.call_once(self.init_flag, self.load_embed)
+    def _call(self, data: Dict[str, Union[str, List[str]]]):
         string, _ = data['text'], data['images']
-        encoded_input = self.tokenizer(string, padding=True, truncation=True, return_tensors='pt',
-                                       max_length=512, add_special_tokens=True).to(self.device)
+        encoded_input = self._tokenizer(string, padding=True, truncation=True, return_tensors='pt',
+                                        max_length=512, add_special_tokens=True).to(self._device)
         with torch.no_grad():
-            model_output = self.embed(**encoded_input)
+            model_output = self._embed(**encoded_input)
             sentence_embeddings = model_output[0][:, 0]
         res = torch.nn.functional.normalize(sentence_embeddings, p=2, dim=1).cpu().numpy().tolist()
         if type(string) is str:
@@ -39,13 +55,30 @@ class LazyHuggingFaceEmbedding(object):
         else:
             return json.dumps(res)
 
-    @classmethod
-    def rebuild(cls, base_embed, init):
-        return cls(base_embed, init=init)
+class HuggingFaceEmbedding:
+    _model_id_mapping = {}
 
-    def __reduce__(self):
-        init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return LazyHuggingFaceEmbedding.rebuild, (self.base_embed, init)
+    @classmethod
+    def get_emb_cls(cls, model_name: str):
+        model_id = model_name.split('/')[-1].lower()
+        return cls._model_id_mapping.get(model_id, LazyHuggingFaceDefaultEmbedding)
+
+    @classmethod
+    def register(cls, model_ids: List[str]):
+        def decorator(target_class):
+            for ele in model_ids:
+                cls._model_id_mapping[ele.lower()] = target_class
+            return target_class
+        return decorator
+
+    def __init__(self, base_embed, source=None):
+        self._embed = self.__class__.get_emb_cls(base_embed)(base_embed, source)
+
+    def load_embed(self):
+        self._embed.load_embed()
+
+    def __call__(self, *args, **kwargs):
+        return self._embed(*args, **kwargs)
 
 class LazyFlagEmbedding(object):
     def __init__(self, base_embed, sparse=False, source=None, init=False):
@@ -133,6 +166,7 @@ class EmbeddingDeploy(LazyLLMDeployBase):
     default_headers = {'Content-Type': 'application/json'}
 
     def __init__(self, launcher=None, model_type='embed', log_path=None, embed_type='dense', port=None):
+        super().__init__(launcher=launcher)
         self._launcher = launcher
         self._port = port
         self._model_type = model_type
@@ -160,13 +194,13 @@ class EmbeddingDeploy(LazyLLMDeployBase):
                 LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                             f"base_model({base_model}) will be used")
             finetuned_model = base_model
-        if self._model_type in ['embed', 'cross_modal_embed']:
+        if self._model_type == 'embed' or self._model_type == 'cross_modal_embed':
             if self._sparse_embed or lazyllm.config['default_embedding_engine'] == 'flagEmbedding':
                 return lazyllm.deploy.RelayServer(func=LazyFlagEmbedding(
                     finetuned_model, sparse=self._sparse_embed),
                     launcher=self._launcher, log_path=self._log_path, cls='embedding', port=self._port)()
             else:
-                return lazyllm.deploy.RelayServer(func=LazyHuggingFaceEmbedding(finetuned_model),
+                return lazyllm.deploy.RelayServer(func=HuggingFaceEmbedding(finetuned_model),
                                                   launcher=self._launcher, log_path=self._log_path,
                                                   cls='embedding', port=self._port)()
         if self._model_type == 'reranker':
@@ -174,3 +208,36 @@ class EmbeddingDeploy(LazyLLMDeployBase):
                 finetuned_model), launcher=self._launcher, log_path=self._log_path, cls='embedding', port=self._port)()
         else:
             raise RuntimeError(f'Not support model type: {self._model_type}.')
+
+
+@HuggingFaceEmbedding.register(model_ids=["BGE-VL-v1.5-mmeb"])
+class BGEVLEmbedding(AbstractEmbedding):
+
+    def __init__(self, base_embed, source=None, init=False):
+        super().__init__(base_embed, source, init)
+
+    def load_embed(self):
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._embed = tf.AutoModel.from_pretrained(self._base_embed, trust_remote_code=True).to(self._device)
+        self._embed.set_processor(self._base_embed)
+        self._embed.processor.patch_size = self._embed.config.vision_config.patch_size
+        self._embed.processor.vision_feature_select_strategy = self._embed.config.vision_feature_select_strategy
+        self._embed.eval()
+
+    def _call(self, data: Dict[str, Union[str, List[str]]]):
+        DEFAULT_INSTRUCTION = "Retrieve the target image that best meets the combined criteria by " \
+            "using both the provided image and the image retrieval instructions: "
+        with torch.no_grad():
+            # text="Make the background dark, as if the camera has taken the photo at night"
+            # images="./cir_query.png"
+            text, images = data['text'], data['images'][0] if isinstance(data['images'], list) else data['images']
+
+            query_inputs = self._embed.data_process(
+                text=text,
+                images=images,
+                q_or_c="q",
+                task_instruction=DEFAULT_INSTRUCTION
+            )
+            query_embs = self._embed(**query_inputs, output_hidden_states=True)[:, -1, :]
+            res = torch.nn.functional.normalize(query_embs, dim=-1).cpu().numpy().tolist()
+            return json.dumps(res[0])
