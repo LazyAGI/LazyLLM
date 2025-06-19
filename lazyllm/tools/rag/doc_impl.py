@@ -8,7 +8,7 @@ from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
-from .store import (MapStore, MilvusStore, ChromadbStore, SenseCoreStore, DocStoreBase, StoreBase,
+from .store import (MapStore, MilvusStore, ChromadbStore, SenseCoreStore, StoreBase,
                     LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)
 from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
@@ -373,10 +373,7 @@ class DocImpl:
                 # update status and need_reparse
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working, new_need_reparse=False)
-                if isinstance(self.store, DocStoreBase):
-                    self._delete_doc_from_store(doc_ids=ids)
-                else:
-                    self._delete_doc_from_store(input_files=filepaths)
+                self._delete_doc_from_store(doc_ids=ids)
                 self._add_doc_to_store(input_files=filepaths, ids=ids, metadatas=metadatas)
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.success)
@@ -388,10 +385,7 @@ class DocImpl:
             # Step 3: do doc-deleting
             ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
             if files:
-                if isinstance(self.store, DocStoreBase):
-                    self._delete_doc_from_store(doc_ids=ids)
-                else:
-                    self._delete_doc_from_store(input_files=files)
+                self._delete_doc_from_store(doc_ids=ids)
                 self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
 
             # Step 4: do doc-adding
@@ -429,11 +423,8 @@ class DocImpl:
         if not input_files: return
         self._processor.add_doc(input_files, ids, metadatas)
 
-    def _delete_doc_from_store(self, input_files: List[str] = None, doc_ids: List[str] = None) -> None:
-        if input_files:
-            self._processor.delete_doc(input_files=input_files)
-        elif doc_ids:
-            self._processor.delete_doc(doc_ids=doc_ids)
+    def _delete_doc_from_store(self, doc_ids: List[str] = None) -> None:
+        self._processor.delete_doc(doc_ids=doc_ids)
 
     def activate_group(self, group_name: str, embed_keys: List[str]):
         group_name = str(group_name)
