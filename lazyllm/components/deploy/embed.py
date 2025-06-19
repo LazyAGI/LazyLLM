@@ -12,7 +12,7 @@ class AbstractEmbedding(ABC):
     def __init__(self, base_embed, source=None, init=False):
         from ..utils.downloader import ModelManager
         self._source = source or lazyllm.config['model_source']
-        self._base_embed = ModelManager(source).download(base_embed) or ''
+        self._base_embed = ModelManager(self._source).download(base_embed) or ''
         self._embed = None
         self._init = lazyllm.once_flag()
         if init:
