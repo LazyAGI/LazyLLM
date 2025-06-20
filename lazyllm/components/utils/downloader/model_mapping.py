@@ -341,5 +341,5 @@ model_name_mapping = {
         "source": {},
         "download_by_other":True,
         "type": "ocr"
-    }
+    }    
 }

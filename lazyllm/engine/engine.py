@@ -1,10 +1,12 @@
 from typing import List, Tuple, Dict, Type, Optional, Union, Any, overload
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
+from lazyllm.components.utils.file_operate import base64_to_audio
 from lazyllm.tools import IntentClassifier, SqlManager
+from lazyllm.tools.http_request.http_request import HttpRequest
 from lazyllm.common import compile_func
-from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list
-from .node import all_nodes, Node
+from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list, decode_query_with_filepaths
+from .node import Node
 from .node_meta_hook import NodeMetaHook
 import inspect
 import functools
@@ -164,34 +166,8 @@ class NodeConstructor(object):
                 set(inspect.getfullargspec(createf).args)) else createf(node_args, **kw)
             self._process_hook(node, node.func)
             return node
-
-        node_msgs = all_nodes[node.kind]
-        init_args, build_args, other_args = dict(), dict(), dict()
-
-        def get_args(cls, key, value, builder_key=None):
-            node_args = node_msgs[cls][builder_key][key] if builder_key else node_msgs[cls][key]
-            if node_args.type == Node:
-                return Engine().build_node(value).func
-            return node_args.getattr_f(value) if node_args.getattr_f else value
-
-        for key, value in node_args.items():
-            if key in node_msgs['init_arguments']:
-                init_args[key] = get_args('init_arguments', key, value)
-            elif key in node_msgs['builder_argument']:
-                build_args[key] = get_args('builder_argument', key, value)
-            elif '.' in key:
-                builder_key, key = key.split('.')
-                if builder_key not in other_args: other_args[builder_key] = dict()
-                other_args[builder_key][key] = get_args('other_arguments', key, value, builder_key=builder_key)
-            else:
-                raise KeyError(f'Invalid key `{key}` found')
-
-        module = node_msgs['module'](**init_args)
-        for key, value in build_args.items():
-            module = getattr(module, key)(value, **other_args.get(key, dict()))
-        node.func = module
-        self._process_hook(node, module)
-        return node
+        else:
+            raise KeyError(f'Invalid node kind `{node.kind}` found')
 
     def _process_hook(self, node, module):
         if not node.enable_data_reflow:
@@ -333,8 +309,10 @@ def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
 def _build_pipeline(nodes):
     if isinstance(nodes, list) and len(nodes) > 1:
         return pipeline([Engine().build_node(node).func for node in nodes])
-    else:
+    elif isinstance(nodes, list) and len(nodes) == 1:
         return Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
+    else:
+        return lazyllm.Identity()
 
 
 @NodeConstructor.register('Switch', subitems=['nodes:dict'])
@@ -385,13 +363,9 @@ def make_local_llm(base_model: str, target_path: str = '', prompt: str = '', str
                    history: Optional[List[List[str]]] = None):
     if history and not (isinstance(history, list) and all(len(h) == 2 and isinstance(h, list) for h in history)):
         raise TypeError('history must be List[List[str, str]]')
-    deploy_method = getattr(lazyllm.deploy, deploy_method)
     m = lazyllm.TrainableModule(base_model, target_path, stream=stream, return_trace=return_trace)
     m.prompt(prompt, history=history)
-    if deploy_method is lazyllm.deploy.AutoDeploy:
-        m.deploy_method(deploy_method)
-    else:
-        m.deploy_method(deploy_method, url=url)
+    setup_deploy_method(m, deploy_method, url)
     return m
 
 
@@ -443,8 +417,13 @@ def make_retriever(doc: str, group_name: str, similarity: str = 'cosine', simila
 @NodeConstructor.register('Reranker')
 def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
                   output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
-    if type == 'ModuleReranker' and (node := Engine().build_node(arguments['model'])):
-        arguments['model'] = node.func
+    if type == 'ModuleReranker':
+        if node := Engine().build_node(arguments['model']):
+            arguments['model'] = node.func
+        else:
+            model = lazyllm.TrainableModule(arguments['model'])
+            setup_deploy_method(model, 'RerankerDeploy', arguments.get('url'))
+            arguments['model'] = model
     return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
 
 class JoinFormatter(lazyllm.components.FormatterBase):
@@ -695,10 +674,14 @@ def make_http_tool(method: Optional[str] = None,
 
 class VQA(lazyllm.Module):
     def __init__(self, base_model: Union[str, lazyllm.TrainableModule], file_resource_id: Optional[str],
-                 prompt: Optional[str] = None):
+                 prompt: Optional[str] = None, deploy_method: str = "auto", url: Optional[str] = None):
         super().__init__()
-        self.vqa = self._vqa = (lazyllm.TrainableModule(base_model).deploy_method(lazyllm.deploy.LMDeploy)
-                                if not isinstance(base_model, lazyllm.TrainableModule) else base_model)
+        if isinstance(base_model, str):
+            self._vqa = lazyllm.TrainableModule(base_model)
+            setup_deploy_method(self._vqa, deploy_method, url)
+        else:
+            self._vqa = base_model.share()
+        self.vqa = self._vqa
         if prompt: self._vqa.prompt(prompt=prompt)
         self._file_resource_id = file_resource_id
         if file_resource_id:
@@ -724,10 +707,17 @@ class VQA(lazyllm.Module):
     def stream(self, v: bool):
         self._vqa._stream = v
 
-
 @NodeConstructor.register('VQA')
-def make_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None):
-    return VQA(base_model, file_resource_id, prompt)
+def make_vqa(kw: dict):
+    type: str = kw.pop('type')
+    assert type in ('local', 'online'), f'Invalid type {type} given'
+    if type == 'local': return make_local_vqa(**kw)
+    else: raise ValueError(f'Not supported type {type} for VQA')
+
+@NodeConstructor.register('LocalVQA')
+def make_local_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None,
+                   deploy_method: str = "auto", url: Optional[str] = None):
+    return VQA(base_model, file_resource_id, prompt, deploy_method, url)
 
 
 @NodeConstructor.register('SharedLLM')
@@ -752,11 +742,20 @@ def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optio
                     api_key: Optional[str] = None, secret_key: Optional[str] = None,
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
                     history: Optional[List[List[str]]] = None):
-    if source and source.lower() == 'lazyllm':
+    source = source.lower()
+    if source == 'lazyllm':
         return make_shared_llm(base_model, False, prompt, token, stream, history=history)
     else:
         return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
                                         api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
+
+@NodeConstructor.register('OnlineEmbedding')
+def make_online_embedding(source: str, embed_type: Optional[str] = 'embed', base_model: Optional[str] = None,
+                          base_url: Optional[str] = None, api_key: Optional[str] = None,
+                          secret_key: Optional[str] = None):
+    source = source.lower()
+    return lazyllm.OnlineEmbeddingModule(source=source, type=embed_type, embed_model_name=base_model,
+                                         embed_url=base_url, api_key=api_key, secret_key=secret_key)
 
 
 class LLM(lazyllm.ModuleBase):
@@ -788,9 +787,9 @@ def make_llm(kw: dict):
 
 
 class STT(lazyllm.Module):
-    def __init__(self, base_model: Union[str, lazyllm.TrainableModule]):
+    def __init__(self, model: lazyllm.TrainableModule):
         super().__init__()
-        self._m = lazyllm.TrainableModule(base_model) if isinstance(base_model, str) else base_model.share()
+        self._m = model
 
     def forward(self, query: str):
         if '<lazyllm-query>' in query:
@@ -814,16 +813,95 @@ class STT(lazyllm.Module):
     def stream(self, v: bool):
         self._m._stream = v
 
-
 @NodeConstructor.register('STT')
-def make_stt(base_model: str):
-    return STT(base_model)
+def make_stt(kw: dict):
+    type: str = kw.pop('type')
+    assert type in ('local', 'online'), f'Invalid type {type} given'
+    if type == 'local': return make_local_stt(**kw)
+    else: raise ValueError(f'Not supported type {type} for STT')
 
+@NodeConstructor.register('LocalSTT')
+def make_local_stt(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+    model = lazyllm.TrainableModule(base_model)
+    setup_deploy_method(model, deploy_method, url)
+    return STT(model)
+
+class TTS(lazyllm.Module):
+    def __init__(self, model: lazyllm.TrainableModule):
+        super().__init__()
+        self._m = model
+
+    def forward(self, query: str):
+        r = self._m(query)
+        result = decode_query_with_filepaths(r)
+        sound_list = [base64_to_audio(sound) for sound in result["files"] if sound.startswith("data:")]
+        return sound_list
+
+@NodeConstructor.register('TTS')
+def make_tts(kw: dict):
+    type: str = kw.pop('type')
+    assert type in ('local', 'online'), f'Invalid type {type} given'
+    if type == 'local': return make_local_tts(**kw)
+    else: raise ValueError(f'Not supported type {type} for TTS')
+
+@NodeConstructor.register('LocalTTS')
+def make_local_tts(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+    model = lazyllm.TrainableModule(base_model)
+    setup_deploy_method(model, deploy_method, url)
+    return TTS(model)
+
+@NodeConstructor.register('Embedding')
+def make_embedding(kw: dict):
+    type: str = kw.pop('type')
+    assert type in ('local', 'online'), f'Invalid type {type} given'
+    if type == 'local': return make_local_embedding(**kw)
+    else: return make_online_embedding(**kw)
+
+@NodeConstructor.register('LocalEmbedding')
+def make_local_embedding(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+    m = lazyllm.TrainableModule(base_model)
+    return setup_deploy_method(m, deploy_method, url)
 
 @NodeConstructor.register('Constant')
 def make_constant(value: Any):
     return (lambda *args, **kw: value)
 
+
+@NodeConstructor.register('SqlCall')
+def make_sql_call(sql_manager: Node, llm: Node, sql_examples: str = "", use_llm_for_sql_result: bool = True,
+                  return_trace: bool = True):
+    return lazyllm.tools.SqlCall(llm=llm, sql_manager=sql_manager, sql_examples=sql_examples,
+                                 use_llm_for_sql_result=use_llm_for_sql_result, return_trace=return_trace)
+
+@NodeConstructor.register('SqlManager')
+def make_sql_manager(db_type: str = None, user: str = None, password: str = None, host: str = None,
+                     port: str = None, db_name: str = None, options_str: str = "", tables_info_dict: dict = None):
+    return lazyllm.tools.SqlManager(db_type=db_type, user=user, password=password, host=host, port=port,
+                                    db_name=db_name, options_str=options_str, tables_info_dict=tables_info_dict)
+
+@NodeConstructor.register('Retriever')
+def make_retriever(doc: Node, group_name: str, similarity: str = "cosine", similarity_cut_off: float = float("-inf"),
+                   index: str = "default", topk: int = 6, embed_keys: list[str] = None, target: str = None,
+                   output_format: str = None, join: bool = False):
+    return lazyllm.tools.rag.Retriever(doc=doc, group_name=group_name, similarity=similarity,
+                                       similarity_cut_off=similarity_cut_off, index=index, topk=topk,
+                                       embed_keys=embed_keys, target=target, output_format=output_format, join=join)
+
+@NodeConstructor.register('HTTP')
+def make_http(method: str, url: str, api_key: str = '', headers: dict = {}, params: dict = {}, body: str = ''):
+    return HttpRequest(method=method, url=url, api_key=api_key, headers=headers, params=params, body=body)
+
+@NodeConstructor.register('SD')
+def make_sd(kw: dict):
+    type: str = kw.pop('type')
+    assert type in ('local', 'online'), f'Invalid type {type} given'
+    if type == 'local': return make_local_sd(**kw)
+    else: raise ValueError(f'Not supported type {type} for SD')
+
+@NodeConstructor.register('LocalSD')
+def make_local_sd(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+    m = lazyllm.TrainableModule(base_model)
+    return setup_deploy_method(m, deploy_method, url)
 
 class FileResource(object):
     def __init__(self, id) -> None:
@@ -881,7 +959,49 @@ def make_qustion_rewrite(base_model: str, rewrite_prompt: str = "", formatter: s
     return lazyllm.tools.QustionRewrite(base_model, rewrite_prompt, formatter)
 
 
+@NodeConstructor.register("Reader")
+def make_simple_reader(file_resource_id: Optional[str] = None):
+    if file_resource_id:
+        def merge_input(input, extra_file: Union[str, List[str]]):
+            if isinstance(input, package):
+                input = input[0]
+            input = _lazyllm_get_file_list(input)
+            input = [input] if isinstance(input, str) else input
+            extra = [extra_file] if isinstance(extra_file, str) else extra_file
+            return input + extra
+        with pipeline() as ppl:
+            ppl.extra_file = Engine().build_node(file_resource_id).func
+            ppl.merge = lazyllm.bind(merge_input, ppl.input, lazyllm._0)
+            ppl.reader = lazyllm.tools.rag.FileReader()
+        return ppl
+    else:
+        return lazyllm.tools.rag.FileReader()
+
+
+@NodeConstructor.register("OCR")
+def make_ocr(model: Optional[str] = "PP-OCRv5_mobile"):
+    if model is None:
+        model = "PP-OCRv5_mobile"
+    assert model in ["PP-OCRv5_server", "PP-OCRv5_mobile", "PP-OCRv4_server", "PP-OCRv4_mobile"]
+    return lazyllm.TrainableModule(base_model=model).start()
+
+
 @NodeConstructor.register("CodeGenerator")
 def make_code_generator(base_model: str, prompt: str = ""):
     base_model = Engine().build_node(base_model).func
     return lazyllm.tools.CodeGenerator(base_model, prompt)
+
+def setup_deploy_method(model: lazyllm.TrainableModule, deploy_method: str, url: Optional[str] = None):
+    """设置模块的部署方法
+
+    Args:
+        module: 要设置部署方法的模块
+        deploy_method: 部署方法名称
+        url: 可选的部署URL
+    """
+    deploy_method = getattr(lazyllm.deploy, deploy_method)
+    if deploy_method is lazyllm.deploy.AutoDeploy:
+        model.deploy_method(deploy_method)
+    else:
+        model.deploy_method(deploy_method, url=url)
+    return model

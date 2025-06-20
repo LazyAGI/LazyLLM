@@ -10,7 +10,7 @@ import inspect
 import functools
 from datetime import datetime
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
-from typing import Dict, List, Any, Union, Optional, Tuple
+from typing import Callable, Dict, List, Any, Union, Optional, Tuple
 
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals, colored_text
@@ -26,6 +26,9 @@ from ..client import get_redis, redis_client
 from ..hook import LazyLLMHook
 from urllib.parse import urljoin
 
+from lazyllm.components.auto.auto_helper import get_model_name
+from lazyllm.components.utils.file_operate import image_to_base64, audio_to_base64
+from lazyllm.common.utils import check_path
 
 # use _MetaBind:
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
@@ -262,6 +265,29 @@ class ModuleBase(metaclass=_MetaBind):
                 action(submodule)
             submodule.for_each(filter, action)
 
+    def _encode_files(self, files, encode_func: Callable):
+        """
+        通用文件编码方法
+        
+        Args:
+            files: 文件列表
+            encode_func: 文件类型 ('image' 或 'audio')
+            
+        Returns:
+            encoded_files: 编码后的文件列表
+        """
+        encoded_files = []
+        for file in files:
+            try:
+                file_path = check_path(file, exist=True, file=True)
+                base64_str, mime = encode_func(file_path)
+                encoded_files.append(f"data:{mime};base64," + base64_str)
+            except Exception as e:
+                LOG.error(f"Error processing file {file}: {e}")
+                encoded_files.append(file)
+                continue
+        return encoded_files
+
 class UrlTemplate(object):
     def __init__(self, template_message=None, keys_name_handle=None, template_headers=None) -> None:
         self._set_template(template_message, keys_name_handle, template_headers)
@@ -385,9 +411,11 @@ class UrlModule(ModuleBase, UrlTemplate):
             assert 'inputs' in self.keys_name_handle
             data[self.keys_name_handle['inputs']] = __input
             if 'image' in self.keys_name_handle and files:
-                data[self.keys_name_handle['image']] = files
+                encoded_files = self._encode_files(files, image_to_base64)
+                data[self.keys_name_handle['image']] = encoded_files
             elif 'audio' in self.keys_name_handle and files:
-                data[self.keys_name_handle['audio']] = files
+                encoded_files = self._encode_files(files, audio_to_base64)
+                data[self.keys_name_handle['audio']] = encoded_files
             elif 'ocr_files' in self.keys_name_handle and files:
                 data[self.keys_name_handle['ocr_files']] = files
         else:
@@ -624,7 +652,11 @@ class _TrainableModuleImpl(ModuleBase):
         super().__init__()
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
-        self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model) or ''
+        type = ModelManager.get_model_type(get_model_name(base_model))
+        if type == "ocr":
+            self._base_model = base_model
+        else:
+            self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model) or ''
         if not self._base_model:
             LOG.warning(f"Cannot get a valid model from {base_model} by ModelManager.")
         self._target_path = os.path.join(lazyllm.config['train_target_root'], target_path)
@@ -714,7 +746,6 @@ class _TrainableModuleImpl(ModuleBase):
     @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
         if self._deploy is None: return None
-
         if self._deploy is lazyllm.deploy.AutoDeploy:
             self._deployer = self._deploy(base_model=self._base_model, **self._deploy_args)
             self._set_template(self._deployer)

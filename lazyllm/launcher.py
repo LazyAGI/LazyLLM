@@ -210,6 +210,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             self.path = launcher.http_path
             self.svc_type = launcher.svc_type
             self.gateway_retry = launcher.gateway_retry
+            self.on_gateway = launcher.on_gateway
             self.image = launcher.image
             self.resource_config = launcher.resource_config
 
@@ -659,16 +660,18 @@ class K8sLauncher(LazyLLMLaunchersBase):
         def _start(self, *, fixed=False):
             self._create_deployment(fixed=fixed)
             self._expose_deployment()
-            self._create_or_update_gateway()
-            self._create_httproute()
+            if self.on_gateway:
+                self._create_or_update_gateway()
+                self._create_httproute()
             self.jobid = self._get_jobid()
             self._launcher.all_processes[self._launcher._id].append((self.jobid, self))
             ret = self.wait()
             LOG.info(ret)
 
         def stop(self):
-            self._delete_or_update_gateway()
-            self._delete_httproute()
+            if self.on_gateway:
+                self._delete_or_update_gateway()
+                self._delete_httproute()
             self._delete_service()
             self._delete_deployment()
 
@@ -794,6 +797,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 return None
 
         def get_jobip(self):
+            if not self.on_gateway: return f"service-{self.deployment_name}"
             host = self._get_httproute_host()
             ip = self._get_gateway_ip()
             LOG.info(f"gateway ip: {ip}, hostname: {host}")
@@ -818,7 +822,27 @@ class K8sLauncher(LazyLLMLaunchersBase):
             LOG.warning(f"Timed out waiting for Deployment '{self.deployment_name}' to be ready.")
             return False
 
-        def wait_for_service_ready(self, timeout=300):
+        def _is_service_ready(self, timeout):
+            if self.on_gateway: return True
+            url = f"http://service-{self.deployment_name}:{self.deployment_port}{self.path}"
+            for i in range(self.gateway_retry):
+                try:
+                    response = requests.get(url, timeout=timeout)
+                    if response.status_code != 503:
+                        LOG.info(f"Kubernetes Service is ready at '{url}'")
+                        self.queue.put(f"Uvicorn running on {url}")
+                        return True
+                    else:
+                        LOG.info(f"Kubernetes Service at '{url}' returned status code {response.status_code}")
+                except requests.RequestException as e:
+                    LOG.error(f"Failed to access service at '{url}': {e}, retry: {i}/{self.gateway_retry}")
+                    # raise
+                time.sleep(timeout)
+
+            self.queue.put(f"ERROR: Kubernetes Service failed to start on '{url}'.")
+            return False
+
+        def _wait_for_service_ready(self, timeout=300):
             svc_instance = k8s.client.CoreV1Api()
             start_time = time.time()
             while time.time() - start_time < timeout:
@@ -858,6 +882,10 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     raise
             LOG.warning(f"Timed out waiting for Service 'service-{self.deployment_name}' to be ready.")
             return None
+
+        def wait_for_service_ready(self, timeout=300, interval=5):
+            _service_ready = self._wait_for_service_ready(timeout=timeout)
+            return _service_ready if _service_ready and self._is_service_ready(timeout=interval) else None
 
         def _is_gateway_ready(self, timeout):
             url = f"http://{self.get_jobip()}:{self.deployment_port}{self.path}"
@@ -974,11 +1002,11 @@ class K8sLauncher(LazyLLMLaunchersBase):
             if not service_ip:
                 raise TimeoutError("Kubernetes Service did not become ready in time.")
 
-            httproute_ready = self.wait_for_httproute()
+            httproute_ready = True if not self.on_gateway else self.wait_for_httproute()
             if not httproute_ready:
                 raise TimeoutError("Kubernetes Httproute did not become ready in time.")
 
-            gateway_ready = self.wait_for_gateway()
+            gateway_ready = True if not self.on_gateway else self.wait_for_gateway()
             if not gateway_ready:
                 raise TimeoutError("Kubernetes Gateway did not become ready in time.")
 
@@ -1002,7 +1030,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 return Status.Failed
 
     def __init__(self, kube_config_path=None, volume_configs=None, image=None, resource_config=None,
-                 namespace=None, gateway_name=None, gateway_class_name=None, host=None, path=None,
+                 namespace=None, on_gateway=None, gateway_name=None, gateway_class_name=None, host=None, path=None,
                  svc_type: Literal["LoadBalancer", "NodePort", "ClusterIP"] = None, retry=3,
                  sync=True, ngpus=None, **kwargs):
         super().__init__()
@@ -1018,6 +1046,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             else config_data.get('kube_config_path', "~/.kube/config")
         self.svc_type = svc_type if svc_type else config_data.get("svc_type", "LoadBalancer")
         self.namespace = namespace if namespace else config_data.get("namespace", "default")
+        self.on_gateway = on_gateway if on_gateway else config_data.get("on_gateway", False)
         self.gateway_name = gateway_name if gateway_name else config_data.get("gateway_name", "lazyllm-gateway")
         self.gateway_class_name = gateway_class_name if gateway_class_name \
             else config_data.get("gateway_class_name", "istio")
