@@ -356,11 +356,10 @@ class MilvusStore(StoreBase):
             if node.parent:
                 parent_uid = node.parent
                 parent_node = uid2node.get(parent_uid)
-                if parent_node:
-                    node.parent = parent_node
-                    parent_node.children[node._group].append(node)
-                else:
-                    node.parent = None
+                if not parent_node:
+                    raise ValueError(f'cannot find parent node [{parent_uid}]')
+                node.parent = parent_node
+                parent_node.children[node._group].append(node)
 
         store.update_nodes(list(uid2node.values()))
 

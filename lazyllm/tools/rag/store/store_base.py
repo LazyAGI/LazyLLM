@@ -16,38 +16,14 @@ LAZY_ROOT_NAME = "lazyllm_root"
 LAZY_IMAGE_GROUP = "image"
 EMBED_DEFAULT_KEY = '__default__'
 BUILDIN_GLOBAL_META_DESC = {
-    RAG_DOC_ID: GlobalMetadataDesc(
-        data_type=DataType.VARCHAR,
-        default_value=' ', max_size=512
-    ),
-    RAG_DOC_PATH: GlobalMetadataDesc(
-        data_type=DataType.VARCHAR,
-        default_value=' ', max_size=65535
-    ),
-    RAG_DOC_FILE_NAME: GlobalMetadataDesc(
-        data_type=DataType.VARCHAR,
-        default_value=' ', max_size=65535
-    ),
-    RAG_DOC_FILE_TYPE: GlobalMetadataDesc(
-        data_type=DataType.VARCHAR,
-        default_value=' ', max_size=65535
-    ),
-    RAG_DOC_FILE_SIZE: GlobalMetadataDesc(
-        data_type=DataType.INT32,
-        default_value=0
-    ),
-    RAG_DOC_CREATION_DATE: GlobalMetadataDesc(
-        data_type=DataType.VARCHAR,
-        default_value=' ', max_size=10
-    ),
-    RAG_DOC_LAST_MODIFIED_DATE: GlobalMetadataDesc(
-        data_type=DataType.VARCHAR,
-        default_value=' ', max_size=10
-    ),
-    RAG_DOC_LAST_ACCESSED_DATE: GlobalMetadataDesc(
-        data_type=DataType.VARCHAR,
-        default_value=' ', max_size=10
-    )
+    RAG_DOC_ID: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=512),
+    RAG_DOC_PATH: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=65535),
+    RAG_DOC_FILE_NAME: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=65535),
+    RAG_DOC_FILE_TYPE: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=65535),
+    RAG_DOC_FILE_SIZE: GlobalMetadataDesc(data_type=DataType.INT32, default_value=0),
+    RAG_DOC_CREATION_DATE: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=10),
+    RAG_DOC_LAST_MODIFIED_DATE: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=10),
+    RAG_DOC_LAST_ACCESSED_DATE: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=10)
 }
 
 
@@ -58,21 +34,13 @@ class StoreBase(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def remove_nodes(
-        self,
-        doc_ids: Optional[List[str]] = None,
-        uids: Optional[List[str]] = None
-    ) -> None:
+    def remove_nodes(self, doc_ids: Optional[List[str]] = None, uids: Optional[List[str]] = None) -> None:
         """ remove nodes from the store by doc_ids or uids """
         raise NotImplementedError
 
     @abstractmethod
-    def get_nodes(
-        self,
-        group_name: Optional[str] = None,
-        uids: Optional[List[str]] = None,
-        doc_ids: Optional[Set] = None
-    ) -> List[DocNode]:
+    def get_nodes(self, group_name: Optional[str] = None,
+                  uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None) -> List[DocNode]:
         """ get nodes from the store """
         raise NotImplementedError
 
@@ -134,11 +102,7 @@ class StoreBaseMixin:
         raise NotImplementedError
 
     @abstractmethod
-    def remove_nodes(
-        self,
-        doc_ids: Optional[List[str]] = None,
-        uids: Optional[List[str]] = None
-    ) -> None:
+    def remove_nodes(self, doc_ids: Optional[List[str]] = None, uids: Optional[List[str]] = None) -> None:
         """ remove nodes from the store by doc_ids or uids """
         raise NotImplementedError
 
@@ -182,13 +146,8 @@ class VectorStoreBase(StoreBaseMixin, ABC):
 
 
 class DocStoreBase(ABC):
-    def __init__(
-        self,
-        kb_id: str = "__default__",
-        segment_store: SegmentStoreBase = None,
-        vector_store: VectorStoreBase = None,
-        uri: str = "",
-    ):
+    def __init__(self, kb_id: str = "__default__", segment_store: SegmentStoreBase = None,
+                 vector_store: VectorStoreBase = None, uri: str = ""):
         # uri or (segment_store + vector_store)
         if uri:
             self._uri = uri
@@ -214,12 +173,8 @@ class DocStoreBase(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def remove_nodes(
-        self,
-        group_name: Optional[str] = None,
-        doc_ids: Optional[List[str]] = None,
-        uids: Optional[List[str]] = None
-    ) -> None:
+    def remove_nodes(self, group_name: Optional[str] = None, doc_ids: Optional[List[str]] = None,
+                     uids: Optional[List[str]] = None) -> None:
         """ remove nodes from the store by doc_ids or uids """
         raise NotImplementedError
 
@@ -229,14 +184,8 @@ class DocStoreBase(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def query(
-        self,
-        query: str,
-        group_name: str,
-        topk: int = 10,
-        embed_keys: Optional[List[str]] = None,
-        **kwargs
-    ) -> List[DocNode]:
+    def query(self, query: str, group_name: str, topk: int = 10, embed_keys: Optional[List[str]] = None,
+              **kwargs) -> List[DocNode]:
         """ search nodes from the store """
         raise NotImplementedError
 
