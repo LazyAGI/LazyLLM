@@ -137,7 +137,7 @@ class DocListManager(ABC):
     def _delete_nonexistent_docs_on_startup(self):
         ids = [row[0] for row in self.list_kb_group_files(details=True)
                if not Path(row[1]).exists()]
-        if ids: self._dlm.delete_files(ids)
+        if ids: self.delete_files(ids)
 
     def __new__(cls, *args, **kw):
         if cls is not DocListManager:
