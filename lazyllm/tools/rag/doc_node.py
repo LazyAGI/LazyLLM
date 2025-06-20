@@ -30,7 +30,10 @@ class DocNode:
         self._content: Optional[Union[str, List[Any]]] = content if content else text
         self._group: Optional[str] = group
         self._embedding: Optional[Dict[str, List[float]]] = embedding or {}
+        # metadata: the chunk's meta
         self._metadata: Dict[str, Any] = metadata or {}
+        # Global metadata: the file's global metadata (higher level)
+        self._global_metadata = global_metadata or {}
         # Metadata keys that are excluded from text for the embed model.
         self._excluded_embed_metadata_keys: List[str] = []
         # Metadata keys that are excluded from text for the LLM.
@@ -41,10 +44,6 @@ class DocNode:
         self._embedding_state = set()
         self.relevance_score = None
         self.similarity_score = None
-
-        if global_metadata and parent:
-            raise ValueError('only ROOT node can set global metadata.')
-        self._global_metadata = global_metadata or {}
 
     @property
     def text(self) -> str:
@@ -83,8 +82,10 @@ class DocNode:
 
     @property
     def root_node(self) -> Optional["DocNode"]:
+        if not self.parent or isinstance(self.parent, str):
+            return self
         root = self.parent
-        while root and root.parent:
+        while root and root.parent and not isinstance(root.parent, str):
             root = root.parent
         return root or self
 
@@ -98,17 +99,21 @@ class DocNode:
 
     @global_metadata.setter
     def global_metadata(self, global_metadata: Dict) -> None:
-        if self.parent:
-            raise ValueError("only root node can set global metadata.")
         self._global_metadata = global_metadata
+
+    def update_global_metadata(self, global_metadata: Dict) -> None:
+        self._global_metadata.update(global_metadata)
 
     @property
     def metadata(self) -> Dict:
-        return {**self.root_node._metadata, **self._metadata}
+        return self._metadata
 
     @metadata.setter
     def metadata(self, metadata: Dict) -> None:
         self._metadata = metadata
+
+    def update_metadata(self, metadata: Dict) -> None:
+        self._metadata.update(metadata)
 
     @property
     def excluded_embed_metadata_keys(self) -> List:
@@ -223,8 +228,9 @@ class DocNode:
 class QADocNode(DocNode):
     def __init__(self, query: str, answer: str, uid: Optional[str] = None, group: Optional[str] = None,
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
-                 metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
-        super().__init__(uid, query, group, embedding, parent, metadata, None, text=text)
+                 metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None,
+                 *, text: Optional[str] = None):
+        super().__init__(uid, query, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
         self._answer = answer.strip()
 
     def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
