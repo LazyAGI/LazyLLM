@@ -296,7 +296,7 @@ class DocImpl:
 
         # init files when `cloud` is False
         if not cloud and not self.store.is_group_active(LAZY_ROOT_NAME):
-            ids, pathes, metadatas = self._list_files()
+            ids, pathes, metadatas = self._list_files(upload_status=DocListManager.Status.success)
             self._processor.add_doc(pathes, ids, metadatas)
             if pathes and self._dlm:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
