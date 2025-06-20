@@ -11,6 +11,7 @@ import subprocess
 import socket
 import threading
 import requests
+import os
 
 HOOK_PORT = 33733
 HOOK_ROUTE = "mock_post"
@@ -700,6 +701,28 @@ class TestEngine(unittest.TestCase):
         engine.release_node(gid)
         assert '__start__' in engine._nodes and '__end__' in engine._nodes
 
+    def test_engine_reader(self):
+        resources = [dict(id='file-resource', kind='File', name='file', args=dict(id='file-resource'))]
+        nodes = [dict(id='1', kind='Reader', name='m1', args=dict()),
+                 dict(id='2', kind='Reader', name='m2', args=dict(file_resource_id='file-resource'))]
+        data_root_dir = os.getenv("LAZYLLM_DATA_PATH")
+        p = os.path.join(data_root_dir, "rag_master/default/__data/sources/道德经.txt")
+        engine = LightEngine()
+        gid = engine.start(nodes, [['__start__', '1'], ['1', '__end__']], resources)
+        data = engine.run(gid, p)
+        assert '道可道' in data
+
+        engine.reset()
+        gid = engine.start(nodes, [['__start__', '2'], ['2', '__end__']], resources)
+        data = engine.run(gid, p)
+        assert '道可道' in data
+
+        engine.reset()
+        gid = engine.start(nodes, [['__start__', '2'], ['2', '__end__']], resources)
+        file = os.path.join(data_root_dir, "rag_master/default/__data/sources/大学.txt")
+        data = engine.run(gid, p, _file_resources={'file-resource': file})
+        assert '道可道' in data
+        assert '大学之道' in data
 
 @pytest.mark.skip_on_win
 @pytest.mark.skip_on_mac
@@ -707,7 +730,8 @@ class TestEngineRAG(object):
 
     def test_rag(self):
         resources = [
-            dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', embed='00')),
+            dict(id='0', kind='Document', name='d1', args=dict(
+                dataset_path='rag_master', activated_groups=['CoarseChunk', '00'])),
             dict(id='00', kind='LocalEmbedding', name='e1', args=dict(base_model='bge-large-zh-v1.5'))]
         nodes = [dict(id='1', kind='Retriever', name='ret1',
                       args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
@@ -727,7 +751,7 @@ class TestEngineRAG(object):
 
         # test add doc_group
         resources[0] = dict(id='0', kind='Document', name='d1', args=dict(
-            dataset_path='rag_master', server=True, node_group=[
+            dataset_path='rag_master', server=True, activated_groups=['CoarseChunk', '00'], node_group=[
                 dict(name='sentence', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))
         nodes.extend([dict(id='2', kind='Retriever', name='ret2',
                            args=dict(doc='0', group_name='sentence', similarity='bm25', topk=3)),

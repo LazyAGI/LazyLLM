@@ -1,8 +1,9 @@
-from typing import List, Dict, Type, Optional, Union, Any, overload
+from typing import List, Tuple, Dict, Type, Optional, Union, Any, overload
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier, SqlManager
 from lazyllm.common import compile_func
+from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list
 from .node import all_nodes, Node
 from .node_meta_hook import NodeMetaHook
 import inspect
@@ -138,12 +139,13 @@ class NodeConstructor(object):
     builder_methods = dict()
 
     @classmethod
-    def register(cls, *names: Union[List[str], str], subitems: Optional[Union[str, List[str]]] = None):
+    def register(cls, *names: Union[List[str], str], subitems: Optional[Union[str, List[str]]] = None,
+                 need_id: bool = False):
         if len(names) == 1 and isinstance(names[0], (tuple, list)): names = names[0]
 
         def impl(f):
             for name in names:
-                cls.builder_methods[name] = (f, subitems)
+                cls.builder_methods[name] = (f, subitems, need_id)
             return f
         return impl
 
@@ -156,9 +158,10 @@ class NodeConstructor(object):
         node.enable_data_reflow = (node_args.pop('_lazyllm_enable_report', False)
                                    if isinstance(node_args, dict) else False)
         if node.kind in NodeConstructor.builder_methods:
-            createf, node.subitem_name = NodeConstructor.builder_methods[node.kind]
-            node.func = createf(**node_args) if isinstance(node_args, dict) and set(node_args.keys()).issubset(
-                set(inspect.getfullargspec(createf).args)) else createf(node_args)
+            createf, node.subitem_name, need_id = NodeConstructor.builder_methods[node.kind]
+            kw = {'_node_id': node.id} if need_id else {}
+            node.func = createf(**node_args, **kw) if isinstance(node_args, dict) and set(node_args.keys()).issubset(
+                set(inspect.getfullargspec(createf).args)) else createf(node_args, **kw)
             self._process_hook(node, node.func)
             return node
 
@@ -406,11 +409,15 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]],
     return ic
 
 
-@NodeConstructor.register('Document')
-def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False,
-                  server: bool = False, node_group: List = [], activated_groups: List[str] = []):
-    document = lazyllm.tools.rag.Document(
-        dataset_path, Engine().build_node(embed).func if embed else None, server=server, manager=create_ui)
+@NodeConstructor.register('Document', need_id=True)
+def make_document(dataset_path: str, _node_id: str, embed: Node = None, create_ui: bool = False, server: bool = False,
+                  node_group: List[Dict] = [], activated_groups: List[Tuple[str, Optional[List[Node]]]] = []):
+    groups = [[g, None] if isinstance(g, str) else g for g in activated_groups]
+    groups += [[g['name'], g.pop('embed', None)] for g in node_group]
+    groups = [[g, e] if (not e or isinstance(e, list)) else [g, [e]] for g, e in groups]
+    embed = {e: Engine().build_node(e).func for e in set(sum([g[1] for g in groups if g[1]], []))}
+    document = lazyllm.tools.rag.Document(dataset_path, embed or None, server=server, manager=create_ui, name=_node_id)
+
     for group in node_group:
         if group['transform'] == 'LLMParser':
             group['transform'] = 'llm'
@@ -419,8 +426,19 @@ def make_document(dataset_path: str, embed: Node = None, create_ui: bool = False
             group['transform'] = 'function'
             group['function'] = make_code(group['function'])
         document.create_node_group(**group)
-    document.activate_groups(activated_groups + [g['name'] for g in node_group])
+
+    [document.activate_group(g, e) for g, e in groups]
     return document
+
+
+@NodeConstructor.register('Retriever')
+def make_retriever(doc: str, group_name: str, similarity: str = 'cosine', similarity_cut_off: float = float("-inf"),
+                   index: str = 'default', topk: int = 6, target: str = None, output_format: str = None,
+                   join: bool = False):
+    return lazyllm.tools.Retriever(Engine().build_node(doc).func, group_name=group_name, similarity=similarity,
+                                   similarity_cut_off=similarity_cut_off, index=index, topk=topk, embed_keys=[],
+                                   target=target, output_format=output_format, join=join)
+
 
 @NodeConstructor.register('Reranker')
 def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
@@ -818,6 +836,36 @@ class FileResource(object):
 @NodeConstructor.register('File')
 def make_file(id: str):
     return FileResource(id)
+
+
+@NodeConstructor.register("Reader")
+def make_simple_reader(file_resource_id: Optional[str] = None):
+    if file_resource_id:
+        def merge_input(input, extra_file: Union[str, List[str]]):
+            if isinstance(input, package):
+                input = input[0]
+            input = _lazyllm_get_file_list(input)
+            input = [input] if isinstance(input, str) else input
+            if extra_file is not None:
+                extra = [extra_file] if isinstance(extra_file, str) else extra_file
+                return input + extra
+            else:
+                return input
+        with pipeline() as ppl:
+            ppl.extra_file = Engine().build_node(file_resource_id).func
+            ppl.merge = lazyllm.bind(merge_input, ppl.input, lazyllm._0)
+            ppl.reader = lazyllm.tools.rag.FileReader()
+        return ppl
+    else:
+        return lazyllm.tools.rag.FileReader()
+
+
+@NodeConstructor.register("OCR")
+def make_ocr(model: Optional[str] = "PP-OCRv5_mobile"):
+    if model is None:
+        model = "PP-OCRv5_mobile"
+    assert model in ["PP-OCRv5_server", "PP-OCRv5_mobile", "PP-OCRv4_server", "PP-OCRv4_mobile"]
+    return lazyllm.TrainableModule(base_model=model).start()
 
 
 @NodeConstructor.register("ParameterExtractor")

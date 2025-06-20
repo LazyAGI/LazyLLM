@@ -3,6 +3,7 @@ import lazyllm
 import pytest
 from lazyllm.tools.rag.readers import ReaderBase
 from lazyllm.tools.rag import SimpleDirectoryReader, DocNode, Document
+from lazyllm.tools.rag.dataReader import RAG_DOC_CREATION_DATE
 
 class YmlReader(ReaderBase):
     def _load_data(self, file, fs=None):
@@ -17,6 +18,13 @@ def processYml(file):
         data = f.read()
         node = DocNode(text=data)
         node._content = "Call the function processYml."
+        return [node]
+
+def processYmlWithMetadata(file):
+    with open(file, 'r') as f:
+        data = f.read()
+        node = DocNode(text=data, metadata=dict(m='m'), global_metadata={RAG_DOC_CREATION_DATE: '00-00'})
+        node._content = 'Call the function processYml.'
         return [node]
 
 class TestRagReader(object):
@@ -61,6 +69,14 @@ class TestRagReader(object):
         files = [os.path.join(self.datasets, "reader_test.yml")]
         docs = self.doc1._impl._reader.load_data(input_files=files)
         assert docs[0].text == "Call the function processYml."
+
+    def test_register_reader_metadata(self):
+        self.doc1.add_reader('**/*.yml', processYmlWithMetadata)
+        files = [os.path.join(self.datasets, 'reader_test.yml')]
+        docs = self.doc1._impl._reader.load_data(input_files=files)
+        assert docs[0].text == 'Call the function processYml.'
+        assert docs[0].metadata.get('m') == 'm'
+        assert docs[0].global_metadata.get(RAG_DOC_CREATION_DATE) == '00-00'
 
     def test_register_local_and_global_reader(self):
         files = [os.path.join(self.datasets, "reader_test.yml")]

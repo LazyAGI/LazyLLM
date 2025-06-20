@@ -219,7 +219,7 @@ class MilvusStore(StoreBase):
               query: str,
               group_name: str,
               similarity_name: Optional[str] = None,
-              similarity_cut_off: Optional[Union[float, Dict[str, float]]] = None,
+              similarity_cut_off: Optional[Union[float, Dict[str, float]]] = float('-inf'),
               topk: int = 10,
               embed_keys: Optional[List[str]] = None,
               filters: Optional[Dict[str, Union[List, set]]] = None,
