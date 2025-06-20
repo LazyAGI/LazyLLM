@@ -85,7 +85,7 @@ class DocNode:
         if not self.parent or isinstance(self.parent, str):
             return self
         root = self.parent
-        while root and root.parent:
+        while root and root.parent and not isinstance(root.parent, str):
             root = root.parent
         return root or self
 
