@@ -97,6 +97,7 @@ class TestMilvusFilter(unittest.TestCase):
                        store_conf=get_milvus_store_conf(self.doc_dir, 'law_kg'))
         retriever = Retriever(doc, group_name="sentences", topk=5, embed_keys=['dense'])
         doc.start()
+        time.sleep(5)
 
         doc_manager_url = doc._manager.url.rsplit('/', 1)[0]
         do_upload(doc_manager_url)
@@ -125,7 +126,7 @@ class TestMilvusFilter(unittest.TestCase):
 
         doc_manager_url = doc._manager.url.rsplit('/', 1)[0]
         do_upload(doc_manager_url)
-        time.sleep(25)
+        time.sleep(20)
         query = "合同问题"
 
         nodes = retriever(query, filters={'department': ['dpt_123']})
