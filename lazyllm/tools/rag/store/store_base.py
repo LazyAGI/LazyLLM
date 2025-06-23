@@ -60,7 +60,7 @@ class StoreBase(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
+    def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
         """ update doc meta """
         raise NotImplementedError
 

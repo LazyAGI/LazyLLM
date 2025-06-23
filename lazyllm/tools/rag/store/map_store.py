@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional, Callable, Union, Set
 
-from .store_base import StoreBase
+from .store_base import StoreBase, LAZY_ROOT_NAME
 
 from ..index_base import IndexBase
 from ..doc_node import DocNode
@@ -33,8 +33,8 @@ class MapStore(StoreBase):
             index.update(nodes)
 
     @override
-    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
-        doc_nodes: List[DocNode] = self._name2index['file_node_map'].query([filepath])
+    def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
+        doc_nodes: List[DocNode] = self.get_nodes(group_name=LAZY_ROOT_NAME, doc_ids=[doc_id])
         if not doc_nodes:
             return
         root_node = doc_nodes[0].root_node
@@ -86,9 +86,8 @@ class MapStore(StoreBase):
             if not doc_ids:
                 return [self._uid2node[uid] for uid in uids]
             else:
-                return [
-                    self._uid2node[uid] for uid in uids if self._uid2node[uid].metadata.get(RAG_DOC_ID) in doc_ids
-                ]
+                return [self._uid2node[uid] for uid in uids
+                        if self._uid2node[uid].global_metadata.get(RAG_DOC_ID) in doc_ids]
 
     @override
     def is_group_active(self, name: str) -> bool:

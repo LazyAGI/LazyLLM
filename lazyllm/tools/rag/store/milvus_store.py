@@ -205,8 +205,8 @@ class MilvusStore(StoreBase):
         self._map_store.update_nodes(nodes)
 
     @override
-    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
-        self._map_store.update_doc_meta(filepath, metadata)
+    def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
+        self._map_store.update_doc_meta(doc_id=doc_id, metadata=metadata)
 
     @override
     def remove_nodes(

@@ -81,13 +81,11 @@ class DocNode:
         self._children = v
 
     @property
-    def root_node(self) -> Optional["DocNode"]:
-        if not self.parent or isinstance(self.parent, str):
-            return self
-        root = self.parent
-        while root and root.parent and not isinstance(root.parent, str):
-            root = root.parent
-        return root or self
+    def root_node(self) -> "DocNode":
+        node = self
+        while isinstance(node.parent, DocNode):
+            node = node.parent
+        return node
 
     @property
     def is_root_node(self) -> bool:

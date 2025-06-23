@@ -362,7 +362,7 @@ class DocImpl:
             rows = self._dlm.fetch_docs_changed_meta(self._kb_group_name)
             for row in rows:
                 new_meta_dict = json.loads(row[1]) if row[1] else {}
-                self.store.update_doc_meta(row[0], new_meta_dict)
+                self._processor.update_doc_meta(doc_id=row[0], metadata=new_meta_dict)
 
             # Step 1: do doc-parsing, highest priority
             docs = self._dlm.get_docs_need_reparse(group=self._kb_group_name)
