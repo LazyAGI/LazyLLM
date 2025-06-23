@@ -283,7 +283,7 @@ class DocListManager(ABC):
         is_first_run = True
         while self._monitor_continue:
             # 1. Scan files in the directory, find added and deleted files
-            current_files = set(super().monitor_directory())
+            current_files = set(self.monitor_directory())
             to_be_added_files = current_files - previous_files - skip_files
             to_be_deleted_files = previous_files - current_files - skip_files
             failed_files = set()
