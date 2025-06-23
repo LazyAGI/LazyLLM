@@ -428,21 +428,27 @@ class SenseCoreStore(DocStoreBase):
             raise ValueError("group_name or uids must be provided")
         if doc_ids and len(doc_ids) > 1:
             raise ValueError("[Sensecore Store] - get_nodes: doc_ids must be a single value")
+        doc_id = doc_ids[0] if doc_ids else None
+        dataset_id = dataset_id or self._kb_id
 
-        url = urljoin(self._uri, "v1/segments:scroll")
+        if uids:
+            url = urljoin(self._uri, "v1/segments:scroll")
+        else:
+            url = urljoin(self._uri, f"v1/datasets/{dataset_id}/documents/{doc_id}/segments:search")
+
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
-        payload = {
-            "dataset_id": dataset_id or self._kb_id,
-        }
+        payload = {"dataset_id": dataset_id}
         if group_name:
-            payload['group'] = group_name
-        if doc_ids:
-            payload['document_id'] = doc_ids[0]
+            payload["group"] = group_name
+        if doc_id:
+            payload["document_id"] = doc_id
         if uids:
-            payload['segment_ids'] = uids
+            payload["segment_ids"] = uids
+        else:
+            payload["page_size"] = 100
         segments = []
         while True:
             response = requests.post(url, headers=headers, json=payload)
@@ -450,20 +456,22 @@ class SenseCoreStore(DocStoreBase):
                 LOG.warning(f"SenseCore Store: get node task failed: {response.text}")
                 break
             data = response.json()
-            if not len(data.get('segments', [])):
+            batch = data.get("segments", [])
+            if not batch:
                 break
-            segments.extend(data['segments'])
+            segments.extend(batch)
             next_page_token = data.get('next_page_token')
             if not next_page_token:
                 break
             payload['page_token'] = next_page_token
+
         if doc_ids:
             segments = [segment for segment in segments if segment['document_id'] in doc_ids]
         if display:
             for s in segments:
-                if len(s.get('display_content', '')):
-                    s['content'] = s['display_content']
-        return [self._deserialize_node(segment) for segment in segments]
+                if s.get("display_content"):
+                    s["content"] = s["display_content"]
+        return [self._deserialize_node(s) for s in segments]
 
     def _multi_modal_process(self, query: str, images: List[str]):
         urls = []
