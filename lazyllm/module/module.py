@@ -267,14 +267,14 @@ class ModuleBase(metaclass=_MetaBind):
 
     def _encode_files(self, files, encode_func: Callable):
         """
-        通用文件编码方法
-        
+        Generic file encoding method
+
         Args:
-            files: 文件列表
-            encode_func: 文件类型 ('image' 或 'audio')
-            
+            files: List of files
+            encode_func: File type ('image' or 'audio')
+
         Returns:
-            encoded_files: 编码后的文件列表
+            encoded_files: List of encoded files
         """
         encoded_files = []
         for file in files:

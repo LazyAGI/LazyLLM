@@ -259,13 +259,6 @@ model_name_mapping = {
         },
         "type": "vlm"
     },
-    "qwq-32b": {
-        "source": {
-            "huggingface": "Qwen/QWQ-32B",
-            "modelscope": "Qwen/QWQ-32B"
-        },
-        "type": "vlm"
-    },
     "musicgen-medium": {
         "source": {
             "huggingface": "facebook/musicgen-medium",

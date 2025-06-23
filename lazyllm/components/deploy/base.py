@@ -11,7 +11,15 @@ class LazyLLMDeployBase(ComponentBase):
         super().__init__(launcher=launcher)
 
     def kw_map_for_framework(self, kw, kw_map):
-        return {kw_map[k]['new_key']: kw_map[k]['type_func'](v) for k, v in kw.items() if k in kw_map}
+        result = {}
+        for k, v in kw.items():
+            if k in kw_map:
+                try:
+                    result[kw_map[k]['new_key']] = kw_map[k]['type_func'](v)
+                except TypeError as e:
+                    LOG.warning(f"Type conversion error for key '{k}': {e}, using original value")
+                    result[kw_map[k]['new_key']] = v
+        return result
 
 
 class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):

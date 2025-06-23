@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 
 import lazyllm
 from lazyllm import LOG
-from lazyllm.components.utils.file_operate import base64_to_audio
+from lazyllm.components.utils.file_operate import base64_to_audio, is_base64_with_mime
 from ..utils.downloader import ModelManager
 from lazyllm.thirdparty import funasr
 from lazyllm.components.deploy.base import LazyLLMDeployBase
@@ -51,7 +51,7 @@ class SenseVoice(object):
                 string = string['inputs']
         assert isinstance(string, str)
         string = string.strip()
-        if string.startswith('data:'):
+        if is_base64_with_mime(string):
             try:
                 string = base64_to_audio(string)
             except Exception as e:

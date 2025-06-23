@@ -1,7 +1,7 @@
 from typing import List, Tuple, Dict, Type, Optional, Union, Any, overload
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
-from lazyllm.components.utils.file_operate import base64_to_audio
+from lazyllm.components.utils.file_operate import base64_to_audio, is_base64_with_mime
 from lazyllm.tools import IntentClassifier, SqlManager
 from lazyllm.tools.http_request.http_request import HttpRequest
 from lazyllm.common import compile_func
@@ -834,7 +834,7 @@ class TTS(lazyllm.Module):
     def forward(self, query: str):
         r = self._m(query)
         result = decode_query_with_filepaths(r)
-        sound_list = [base64_to_audio(sound) for sound in result["files"] if sound.startswith("data:")]
+        sound_list = [base64_to_audio(sound) for sound in result["files"] if is_base64_with_mime(sound)]
         return sound_list
 
 @NodeConstructor.register('TTS')
@@ -879,14 +879,6 @@ def make_sql_manager(db_type: str = None, user: str = None, password: str = None
     return lazyllm.tools.SqlManager(db_type=db_type, user=user, password=password, host=host, port=port,
                                     db_name=db_name, options_str=options_str, tables_info_dict=tables_info_dict)
 
-@NodeConstructor.register('Retriever')
-def make_retriever(doc: Node, group_name: str, similarity: str = "cosine", similarity_cut_off: float = float("-inf"),
-                   index: str = "default", topk: int = 6, embed_keys: list[str] = None, target: str = None,
-                   output_format: str = None, join: bool = False):
-    return lazyllm.tools.rag.Retriever(doc=doc, group_name=group_name, similarity=similarity,
-                                       similarity_cut_off=similarity_cut_off, index=index, topk=topk,
-                                       embed_keys=embed_keys, target=target, output_format=output_format, join=join)
-
 @NodeConstructor.register('HTTP')
 def make_http(method: str, url: str, api_key: str = '', headers: dict = {}, params: dict = {}, body: str = ''):
     return HttpRequest(method=method, url=url, api_key=api_key, headers=headers, params=params, body=body)
@@ -914,7 +906,6 @@ class FileResource(object):
 @NodeConstructor.register('File')
 def make_file(id: str):
     return FileResource(id)
-
 
 @NodeConstructor.register("Reader")
 def make_simple_reader(file_resource_id: Optional[str] = None):
@@ -957,33 +948,6 @@ def make_parameter_extractor(base_model: str, param: list[str], type: list[str],
 def make_qustion_rewrite(base_model: str, rewrite_prompt: str = "", formatter: str = "str"):
     base_model = Engine().build_node(base_model).func
     return lazyllm.tools.QustionRewrite(base_model, rewrite_prompt, formatter)
-
-
-@NodeConstructor.register("Reader")
-def make_simple_reader(file_resource_id: Optional[str] = None):
-    if file_resource_id:
-        def merge_input(input, extra_file: Union[str, List[str]]):
-            if isinstance(input, package):
-                input = input[0]
-            input = _lazyllm_get_file_list(input)
-            input = [input] if isinstance(input, str) else input
-            extra = [extra_file] if isinstance(extra_file, str) else extra_file
-            return input + extra
-        with pipeline() as ppl:
-            ppl.extra_file = Engine().build_node(file_resource_id).func
-            ppl.merge = lazyllm.bind(merge_input, ppl.input, lazyllm._0)
-            ppl.reader = lazyllm.tools.rag.FileReader()
-        return ppl
-    else:
-        return lazyllm.tools.rag.FileReader()
-
-
-@NodeConstructor.register("OCR")
-def make_ocr(model: Optional[str] = "PP-OCRv5_mobile"):
-    if model is None:
-        model = "PP-OCRv5_mobile"
-    assert model in ["PP-OCRv5_server", "PP-OCRv5_mobile", "PP-OCRv4_server", "PP-OCRv4_mobile"]
-    return lazyllm.TrainableModule(base_model=model).start()
 
 
 @NodeConstructor.register("CodeGenerator")
