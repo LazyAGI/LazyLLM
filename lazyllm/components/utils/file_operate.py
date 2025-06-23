@@ -92,7 +92,6 @@ def image_to_base64(directory):
 def base64_to_image(base64_str: str):
     base64_data, mime_type = split_base64_with_mime(base64_str)
 
-    # 如果返回的是原始字符串，说明不是base64格式
     if mime_type is None:
         raise ValueError("Invalid base64 format")
 

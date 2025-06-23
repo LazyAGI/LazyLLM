@@ -956,12 +956,12 @@ def make_code_generator(base_model: str, prompt: str = ""):
     return lazyllm.tools.CodeGenerator(base_model, prompt)
 
 def setup_deploy_method(model: lazyllm.TrainableModule, deploy_method: str, url: Optional[str] = None):
-    """设置模块的部署方法
+    """Set the deployment method for the module
 
     Args:
-        module: 要设置部署方法的模块
-        deploy_method: 部署方法名称
-        url: 可选的部署URL
+        module: The module to set deployment method for
+        deploy_method: Name of the deployment method
+        url: Optional deployment URL
     """
     deploy_method = getattr(lazyllm.deploy, deploy_method)
     if deploy_method is lazyllm.deploy.AutoDeploy:
