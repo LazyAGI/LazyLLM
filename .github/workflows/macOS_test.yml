@@ -104,6 +104,12 @@ jobs:
         run: |
           pip install dist/lazyllm*.whl
 
+      - name: Restore pytest cache
+        uses: actions/cache/restore@v4
+        with:
+          path: tests/basic_tests/.pytest-cache
+          key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
       - name: basic_tests
         run : |
          git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git /tmp/lazyllm/data
@@ -111,10 +117,17 @@ jobs:
          pip install -r tests/requirements.txt
          pip install -r tests/requirements_mac.txt
          export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
-         python -m pytest -v -m "not skip_on_mac" --reruns=2 tests/basic_tests/
+         python -m pytest --lf --last-failed-no-failures=all -m "not skip_on_mac" -v --reruns=2 tests/basic_tests/
         timeout-minutes: 30
         env :
-         GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}       
+         GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}  
+
+      - name: Save pytest cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: tests/basic_tests/.pytest-cache
+          key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
   macos-charge_tests:
     if: |
@@ -193,12 +206,18 @@ jobs:
         run: |
           pip install dist/lazyllm*.whl
 
+      - name: Restore pytest cache
+        uses: actions/cache/restore@v4
+        with:
+          path: tests/charge_tests/.pytest-cache
+          key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
       - name: charge_tests
         run : |
          git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git /tmp/lazyllm/data
          pip install -r tests/requirements.txt
          export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
-         python -m pytest -m "not skip_on_mac" -v --reruns=2 tests/charge_tests
+         python -m pytest --lf --last-failed-no-failures=all -m "not skip_on_mac" -v --reruns=2 tests/charge_tests
         env :
          LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
          LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
@@ -212,3 +231,10 @@ jobs:
          LAZYLLM_PostgreSQL_URL: ${{ secrets.LAZYLLM_PostgreSQL_URL }}
          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         timeout-minutes: 25
+
+      - name: Save pytest cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: tests/charge_tests/.pytest-cache
+          key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}

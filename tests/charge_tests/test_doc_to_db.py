@@ -15,18 +15,9 @@ class DocToDbTester(unittest.TestCase):
         cls.pdf_root = os.path.join(data_root_dir, "rag_master/default/__data/pdfs")
 
     def test_doc_to_db_sop(self):
-        sql_manager = SqlManager(
-            "SQLite",
-            None,
-            None,
-            None,
-            None,
-            db_name=":memory:",
-        )
-        documents = lazyllm.Document(
-            dataset_path=self.pdf_root,
-            create_ui=False,
-        )
+        sql_manager = SqlManager("SQLite", None, None, None, None, db_name=":memory:")
+        documents = lazyllm.Document(dataset_path=self.pdf_root, create_ui=False)
+
         # Test-1: Use llm to extract schema
         schema_by_llm = documents.extract_db_schema(llm=self.llm, print_schema=True)
         assert schema_by_llm
