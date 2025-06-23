@@ -181,8 +181,8 @@ class MilvusStore(StoreBase):
         self._map_store = MapStore(node_groups=list(group_embed_keys.keys()), embed=embed)
         self._load_all_nodes_to(self._map_store)
 
-    def _check_connect(self):
-        if not pymilvus.connections.get_connection_addr(alias=self._client._using):
+    def _check_connection(self):
+        if not pymilvus.connections.has_connection(alias=self._client._using):
             LOG.info("Milvus Store: try to reconnect...")
             if self._type == 'local':
                 pymilvus.connections.connect(alias=self._client._using, uri=self._uri)
@@ -191,12 +191,12 @@ class MilvusStore(StoreBase):
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
-        self._check_connect()
         parallel_do_embedding(self._embed, [], nodes, self._group_embed_keys)
         group_embed_dict = defaultdict(list)
         for node in nodes:
             data = self._serialize_node_partial(node)
             group_embed_dict[node._group].append(data)
+        self._check_connection()
         for group_name, data in group_embed_dict.items():
             if not self._client.has_collection(group_name):
                 continue
@@ -214,7 +214,7 @@ class MilvusStore(StoreBase):
     @override
     def remove_nodes(self, group_name: Optional[str] = None, doc_ids: Optional[Set[str]] = None,
                      uids: Optional[List[str]] = None) -> None:
-        self._check_connect()
+        self._check_connection()
         if group_name:
             if self._client.has_collection(group_name):
                 if uids:
@@ -265,7 +265,6 @@ class MilvusStore(StoreBase):
               similarity_cut_off: Optional[Union[float, Dict[str, float]]] = float('-inf'),
               topk: int = 10, embed_keys: Optional[List[str]] = None,
               filters: Optional[Dict[str, Union[List, set]]] = None, **kwargs) -> List[DocNode]:
-        self._check_connect()
         if similarity_name is not None:
             raise ValueError('`similarity` MUST be None when Milvus backend is used.')
 
@@ -275,6 +274,7 @@ class MilvusStore(StoreBase):
         filter_str = self._construct_filter_expr(filters) if filters else ""
 
         uid_score = {}
+        self._check_connection()
         for key in embed_keys:
             embed_func = self._embed.get(key)
             query_embedding = embed_func(query)
