@@ -431,10 +431,10 @@ class SenseCoreStore(DocStoreBase):
         doc_id = doc_ids[0] if doc_ids else None
         dataset_id = dataset_id or self._kb_id
 
-        if uids:
-            url = urljoin(self._uri, "v1/segments:scroll")
-        else:
+        if doc_id and not uids:
             url = urljoin(self._uri, f"v1/datasets/{dataset_id}/documents/{doc_id}/segments:search")
+        else:
+            url = urljoin(self._uri, "v1/segments:scroll")
 
         headers = {
             "Accept": "application/json",
