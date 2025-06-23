@@ -47,7 +47,7 @@ def get_milvus_index_conf(rag_dir: str, kb_group_name: str = str(uuid.uuid4())):
             'smart_embedding_index': {
                 'backend': 'milvus',
                 'kwargs': {
-                    'uri': os.path.join('law_kg', "milvus.db"),
+                    'uri': os.path.join(milvus_db_dir, "milvus.db"),
                     'index_kwargs': {
                         'index_type': 'HNSW',
                         'metric_type': 'COSINE',
