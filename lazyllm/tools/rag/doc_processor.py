@@ -1,4 +1,3 @@
-from collections import defaultdict
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 from sqlalchemy import create_engine, Column, JSON, String, TIMESTAMP, Table, MetaData, inspect, delete, text
@@ -137,35 +136,12 @@ class _Processor:
     def update_doc_meta(self, doc_id: str, metadata: dict):
         self._store.update_doc_meta(doc_id=doc_id, metadata=metadata)
 
-    def delete_doc(self, input_files: List[str] = None, dataset_id: str = None, doc_ids: List[str] = None) -> None:
-        if input_files:
-            LOG.info(f"delete_files: {input_files}")
-            root_nodes = self._store.get_index(type='file_node_map').query(input_files)
-            LOG.info(f"delete_files: removing documents {input_files} and nodes {root_nodes}")
-            if len(root_nodes) == 0: return
-
-            uids_to_delete = defaultdict(list)
-            uids_to_delete[LAZY_ROOT_NAME] = [node._uid for node in root_nodes]
-
-            # Gather all nodes to be deleted including their children
-            def gather_children(node: DocNode):
-                for children_group, children_list in node.children.items():
-                    for child in children_list:
-                        uids_to_delete[children_group].append(child._uid)
-                        gather_children(child)
-
-            for node in root_nodes:
-                gather_children(node)
-
-            # Delete nodes in all groups
-            for group, node_uids in uids_to_delete.items():
-                self._store.remove_nodes(group, node_uids)
-                LOG.debug(f"Removed nodes from group {group} for node IDs: {node_uids}")
-        elif doc_ids:
-            LOG.info(f"delete_doc_ids: {doc_ids}")
+    def delete_doc(self, doc_ids: List[str] = None, dataset_id: str = None) -> None:
+        LOG.info(f"delete_doc_ids: {doc_ids}")
+        if dataset_id:
             self._store.remove_nodes(dataset_id=dataset_id, doc_ids=doc_ids)
         else:
-            raise ValueError("Please specify either input_files or doc_ids.")
+            self._store.remove_nodes(doc_ids=doc_ids)
 
 
 class FileInfo(BaseModel):

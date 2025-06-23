@@ -47,20 +47,18 @@ class MapStore(StoreBase):
         root_node.global_metadata.update(metadata)
 
     @override
-    def remove_nodes(
-        self,
-        group_name: Optional[str] = None,
-        doc_ids: Optional[Set[str]] = None,
-        uids: Optional[List[str]] = None
-    ) -> None:
+    def remove_nodes(self, group_name: Optional[str] = None, doc_ids: Optional[Set[str]] = None,
+                     uids: Optional[List[str]] = None) -> None:
         if uids:
             need_delete = uids
         elif doc_ids:
             doc_id_set = set(doc_ids)
-            need_delete = [
-                uid for uid, node in self._uid2node.items()
-                if node.metadata.get('docid') in doc_id_set
-            ]
+            if group_name:
+                need_delete = [uid for uid, node in self._uid2node.items()
+                               if node.global_metadata.get(RAG_DOC_ID) in doc_id_set and node._group == group_name]
+            else:
+                need_delete = [uid for uid, node in self._uid2node.items()
+                               if node.global_metadata.get(RAG_DOC_ID) in doc_id_set]
         else:
             return
 
@@ -73,12 +71,8 @@ class MapStore(StoreBase):
                 self._group2uids.get(node._group, set()).discard(uid)
 
     @override
-    def get_nodes(
-        self,
-        group_name: Optional[str] = None,
-        uids: Optional[List[str]] = None,
-        doc_ids: Optional[Set] = None,
-    ) -> List[DocNode]:
+    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
+                  doc_ids: Optional[Set] = None) -> List[DocNode]:
         if uids:
             return [self._uid2node[uid] for uid in uids]
         elif group_name:

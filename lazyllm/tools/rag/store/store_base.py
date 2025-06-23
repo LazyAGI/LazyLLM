@@ -34,7 +34,8 @@ class StoreBase(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def remove_nodes(self, doc_ids: Optional[List[str]] = None, uids: Optional[List[str]] = None) -> None:
+    def remove_nodes(self, group_name: Optional[str] = None, doc_ids: Optional[List[str]] = None,
+                     uids: Optional[List[str]] = None) -> None:
         """ remove nodes from the store by doc_ids or uids """
         raise NotImplementedError
 

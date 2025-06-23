@@ -212,12 +212,8 @@ class MilvusStore(StoreBase):
             self.update_nodes(nodes)
 
     @override
-    def remove_nodes(
-        self,
-        group_name: Optional[List[str]] = None,
-        uids: Optional[List[str]] = None,
-        doc_ids: Optional[List[str]] = None
-    ) -> None:
+    def remove_nodes(self, group_name: Optional[str] = None, doc_ids: Optional[Set[str]] = None,
+                     uids: Optional[List[str]] = None) -> None:
         self._check_connect()
         if group_name:
             if self._client.has_collection(group_name):
@@ -226,7 +222,6 @@ class MilvusStore(StoreBase):
                                         filter=f'{self._primary_key} in {uids}')
                 else:
                     self._client.drop_collection(collection_name=group_name)
-
             self._map_store.remove_nodes(uids=uids)
         elif doc_ids:
             for group in self._client.list_collections():
@@ -235,12 +230,8 @@ class MilvusStore(StoreBase):
         return
 
     @override
-    def get_nodes(
-        self,
-        group_name: Optional[str] = None,
-        uids: Optional[List[str]] = None,
-        doc_ids: Optional[Set] = None,
-    ) -> List[DocNode]:
+    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
+                  doc_ids: Optional[Set] = None) -> List[DocNode]:
         return self._map_store.get_nodes(group_name, uids, doc_ids)
 
     @override
@@ -270,15 +261,10 @@ class MilvusStore(StoreBase):
         return self._map_store.get_index(type)
 
     @override
-    def query(self,
-              query: str,
-              group_name: str,
-              similarity_name: Optional[str] = None,
+    def query(self, query: str, group_name: str, similarity_name: Optional[str] = None,
               similarity_cut_off: Optional[Union[float, Dict[str, float]]] = float('-inf'),
-              topk: int = 10,
-              embed_keys: Optional[List[str]] = None,
-              filters: Optional[Dict[str, Union[List, set]]] = None,
-              **kwargs) -> List[DocNode]:
+              topk: int = 10, embed_keys: Optional[List[str]] = None,
+              filters: Optional[Dict[str, Union[List, set]]] = None, **kwargs) -> List[DocNode]:
         self._check_connect()
         if similarity_name is not None:
             raise ValueError('`similarity` MUST be None when Milvus backend is used.')

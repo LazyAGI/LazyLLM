@@ -38,12 +38,21 @@ class ChromadbStore(StoreBase):
         self._save_nodes(nodes)
 
     @override
-    def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
-        if uids:
-            self._delete_group_nodes(group_name, uids)
-        else:
-            self._db_client.delete_collection(name=group_name)
-        return self._map_store.remove_nodes(uids=uids)
+    def remove_nodes(self, group_name: Optional[str] = None, doc_ids: Optional[Set[str]] = None,
+                     uids: Optional[List[str]] = None) -> None:
+        if group_name:
+            if uids:
+                self._delete_group_nodes(group_name, uids)
+                self._map_store.remove_nodes(uids=uids)
+            else:
+                self._db_client.delete_collection(name=group_name)
+                nodes = self._map_store.get_nodes(group_name=group_name)
+                uids = [node._uid for node in nodes]
+                self._map_store.remove_nodes(uids=uids)
+        elif doc_ids:
+            for group in self.activated_groups():
+                nodes = self._map_store.get_nodes(group_name=group, doc_ids=doc_ids)
+                self.remove_nodes(group_name=group, uids=[n._uid for n in nodes])
 
     @override
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
