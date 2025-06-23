@@ -98,7 +98,7 @@ class _Processor:
             self.add_doc(input_files=doc_paths, ids=doc_ids, metadatas=metadatas)
         else:
             p_nodes = self._store.get_nodes(
-                group_name=self._node_groups[group_name]['parent'], dataset_id=dataset_id
+                group_name=self._node_groups[group_name]['parent'], dataset_id=dataset_id, doc_ids=doc_ids
             )
             self._reparse_group_recursive(p_nodes=p_nodes, cur_name=group_name, doc_ids=doc_ids)
 

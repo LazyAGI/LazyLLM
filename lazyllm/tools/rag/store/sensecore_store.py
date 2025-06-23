@@ -415,7 +415,7 @@ class SenseCoreStore(DocStoreBase):
         return
 
     @override
-    def get_nodes(
+    def get_nodes(  # noqa: C901
         self,
         group_name: Optional[str] = None,
         dataset_id: Optional[str] = None,
@@ -426,6 +426,8 @@ class SenseCoreStore(DocStoreBase):
         """ get nodes from the store """
         if not (uids or group_name):
             raise ValueError("group_name or uids must be provided")
+        if doc_ids and len(doc_ids) > 1:
+            raise ValueError("[Sensecore Store] - get_nodes: doc_ids must be a single value")
 
         url = urljoin(self._uri, "v1/segments:scroll")
         headers = {
@@ -437,6 +439,8 @@ class SenseCoreStore(DocStoreBase):
         }
         if group_name:
             payload['group'] = group_name
+        if doc_ids:
+            payload['document_id'] = doc_ids[0]
         if uids:
             payload['segment_ids'] = uids
         segments = []
