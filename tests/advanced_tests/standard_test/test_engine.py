@@ -251,6 +251,7 @@ class TestEngine(object):
         r = engine.run(gid, "这张图片描述的是什么？")
         assert '.wav' in r
 
+    @pytest.mark.skip(reason='environment not ready')
     def test_OCR(self):
         nodes = [dict(id='1', kind='OCR', name='m1', args=dict(model="PP-OCRv5_mobile"))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]

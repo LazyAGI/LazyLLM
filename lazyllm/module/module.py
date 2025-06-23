@@ -26,7 +26,6 @@ from ..client import get_redis, redis_client
 from ..hook import LazyLLMHook
 from urllib.parse import urljoin
 
-from lazyllm.components.auto.auto_helper import get_model_name
 from lazyllm.components.utils.file_operate import image_to_base64, audio_to_base64
 from lazyllm.common.utils import check_path
 
@@ -652,11 +651,6 @@ class _TrainableModuleImpl(ModuleBase):
         super().__init__()
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
-        type = ModelManager.get_model_type(get_model_name(base_model))
-        if type == "ocr":
-            self._base_model = base_model
-        else:
-            self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model) or ''
         if not self._base_model:
             LOG.warning(f"Cannot get a valid model from {base_model} by ModelManager.")
         self._target_path = os.path.join(lazyllm.config['train_target_root'], target_path)
@@ -746,6 +740,7 @@ class _TrainableModuleImpl(ModuleBase):
     @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
         if self._deploy is None: return None
+
         if self._deploy is lazyllm.deploy.AutoDeploy:
             self._deployer = self._deploy(base_model=self._base_model, **self._deploy_args)
             self._set_template(self._deployer)

@@ -4,6 +4,7 @@ from lazyllm import LLMParser, TrainableModule
 from lazyllm.launcher import cleanup
 from lazyllm.tools.rag import DocNode
 
+
 class TestLLMParser(unittest.TestCase):
     @classmethod
     def setup_class(cls):
@@ -44,6 +45,7 @@ class TestLLMParser(unittest.TestCase):
         text, content = result[0].text, result[0].get_content()
         assert len(text) < len(content) and text in content
         assert 'query:' in content and 'answer' in content
+
 
 if __name__ == "__main__":
     unittest.main()

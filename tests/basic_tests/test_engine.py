@@ -12,6 +12,7 @@ import socket
 import threading
 import requests
 import os
+
 HOOK_PORT = 33733
 HOOK_ROUTE = "mock_post"
 fastapi_code = """
@@ -708,6 +709,11 @@ class TestEngine(unittest.TestCase):
         p = os.path.join(data_root_dir, "rag_master/default/__data/sources/道德经.txt")
         engine = LightEngine()
         gid = engine.start(nodes, [['__start__', '1'], ['1', '__end__']], resources)
+        data = engine.run(gid, p)
+        assert '道可道' in data
+
+        engine.reset()
+        gid = engine.start(nodes, [['__start__', '2'], ['2', '__end__']], resources)
         data = engine.run(gid, p)
         assert '道可道' in data
 

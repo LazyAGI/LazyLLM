@@ -5,7 +5,7 @@ from lazyllm.components.utils.file_operate import base64_to_audio, is_base64_wit
 from lazyllm.tools import IntentClassifier, SqlManager
 from lazyllm.tools.http_request.http_request import HttpRequest
 from lazyllm.common import compile_func
-from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list, decode_query_with_filepaths
+from lazyllm.components.formatter.formatterbase import decode_query_with_filepaths
 from .node import Node
 from .node_meta_hook import NodeMetaHook
 import inspect
@@ -673,15 +673,10 @@ def make_http_tool(method: Optional[str] = None,
 
 
 class VQA(lazyllm.Module):
-    def __init__(self, base_model: Union[str, lazyllm.TrainableModule], file_resource_id: Optional[str],
-                 prompt: Optional[str] = None, deploy_method: str = "auto", url: Optional[str] = None):
+    def __init__(self, base_model: lazyllm.TrainableModule, file_resource_id: Optional[str],
+                 prompt: Optional[str] = None):
         super().__init__()
-        if isinstance(base_model, str):
-            self._vqa = lazyllm.TrainableModule(base_model)
-            setup_deploy_method(self._vqa, deploy_method, url)
-        else:
-            self._vqa = base_model.share()
-        self.vqa = self._vqa
+        self.vqa = self._vqa = base_model.share()
         if prompt: self._vqa.prompt(prompt=prompt)
         self._file_resource_id = file_resource_id
         if file_resource_id:
@@ -717,7 +712,9 @@ def make_vqa(kw: dict):
 @NodeConstructor.register('LocalVQA')
 def make_local_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None,
                    deploy_method: str = "auto", url: Optional[str] = None):
-    return VQA(base_model, file_resource_id, prompt, deploy_method, url)
+    model = lazyllm.TrainableModule(base_model)
+    setup_deploy_method(model, deploy_method, url)
+    return VQA(model, file_resource_id, prompt)
 
 
 @NodeConstructor.register('SharedLLM')
@@ -906,35 +903,6 @@ class FileResource(object):
 @NodeConstructor.register('File')
 def make_file(id: str):
     return FileResource(id)
-
-@NodeConstructor.register("Reader")
-def make_simple_reader(file_resource_id: Optional[str] = None):
-    if file_resource_id:
-        def merge_input(input, extra_file: Union[str, List[str]]):
-            if isinstance(input, package):
-                input = input[0]
-            input = _lazyllm_get_file_list(input)
-            input = [input] if isinstance(input, str) else input
-            if extra_file is not None:
-                extra = [extra_file] if isinstance(extra_file, str) else extra_file
-                return input + extra
-            else:
-                return input
-        with pipeline() as ppl:
-            ppl.extra_file = Engine().build_node(file_resource_id).func
-            ppl.merge = lazyllm.bind(merge_input, ppl.input, lazyllm._0)
-            ppl.reader = lazyllm.tools.rag.FileReader()
-        return ppl
-    else:
-        return lazyllm.tools.rag.FileReader()
-
-
-@NodeConstructor.register("OCR")
-def make_ocr(model: Optional[str] = "PP-OCRv5_mobile"):
-    if model is None:
-        model = "PP-OCRv5_mobile"
-    assert model in ["PP-OCRv5_server", "PP-OCRv5_mobile", "PP-OCRv4_server", "PP-OCRv4_mobile"]
-    return lazyllm.TrainableModule(base_model=model).start()
 
 
 @NodeConstructor.register("ParameterExtractor")
