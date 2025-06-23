@@ -1,6 +1,5 @@
 from .store_base import (
     StoreBase,
-    DocStoreBase,
     SegmentStoreBase,
     VectorStoreBase,
     LAZY_IMAGE_GROUP,
@@ -14,7 +13,6 @@ from .milvus_store import MilvusStore
 
 __all__ = [
     'StoreBase',
-    'DocStoreBase',
     'SegmentStoreBase',
     'VectorStoreBase',
     'SenseCoreStore',

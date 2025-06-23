@@ -90,7 +90,7 @@ class MapStore(StoreBase):
 
     @override
     def all_groups(self) -> List[str]:
-        return list(self._group2docs.keys())
+        return list(self._group2uids.keys())
 
     @override
     def activate_group(self, group_names: Union[str, List[str]]) -> bool:

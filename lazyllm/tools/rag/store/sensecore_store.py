@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from urllib.parse import urljoin
 from typing import Optional, List, Dict, Any, Union, Set
 
-from .store_base import DocStoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC
+from .store_base import StoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC
 from .utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, create_file_path
 
 from ..index_base import IndexBase
@@ -44,10 +44,17 @@ class Segment(BaseModel):
     number: Optional[int] = 0
 
 
-class SenseCoreStore(DocStoreBase):
+class SenseCoreStore(StoreBase):
     def __init__(self, group_embed_keys: Dict[str, Set[str]],
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
                  kb_id: str = "__default__", uri: str = "", **kwargs):
+        self._uri = uri
+        if self._connect_store(uri):
+            LOG.info(f"Connected to doc store {self._uri}")
+        else:
+            raise ConnectionError(f"Failed to connect to doc store {self._uri}")
+        self._kb_id = kb_id
+
         if global_metadata_desc:
             self._global_metadata_desc = global_metadata_desc | BUILDIN_GLOBAL_META_DESC
         else:
@@ -55,7 +62,7 @@ class SenseCoreStore(DocStoreBase):
         self._group_embed_keys = group_embed_keys
         self._s3_config = kwargs.get("s3_config")
         self._image_url_config = kwargs.get("image_url_config")
-        super().__init__(kb_id=kb_id, uri=uri)
+        self._activated_groups = set()
 
     @override
     def _connect_store(self, uri: str) -> bool:
@@ -608,6 +615,11 @@ class SenseCoreStore(DocStoreBase):
         return
 
     @override
+    def all_groups(self) -> List[str]:
+        """ get all node groups for Document """
+        return list(self._activated_groups)
+
+    @override
     def activate_group(self, group_names: Union[str, List[str]]):
         if isinstance(group_names, str): group_names = [group_names]
         active_groups = []
@@ -617,6 +629,10 @@ class SenseCoreStore(DocStoreBase):
                 continue
             active_groups.append(group_name)
         self._activated_groups.update(active_groups)
+
+    @override
+    def activated_groups(self):
+        return list(self._activated_groups)
 
     @override
     def is_group_active(self, name: str) -> bool:
