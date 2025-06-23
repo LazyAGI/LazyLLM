@@ -207,6 +207,9 @@ class MilvusStore(StoreBase):
     @override
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
         self._map_store.update_doc_meta(doc_id=doc_id, metadata=metadata)
+        for group in self.activated_groups():
+            nodes = self.get_nodes(group_name=group, doc_ids=[doc_id])
+            self.update_nodes(nodes)
 
     @override
     def remove_nodes(
