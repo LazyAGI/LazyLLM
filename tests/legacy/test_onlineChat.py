@@ -1,6 +1,7 @@
 import unittest
 import lazyllm
 import json
+from lazyllm.tools.utils import FlowStreamer
 
 def get_current_weather(location, unit='fahrenheit'):
     """Get the current weather in a given location"""
@@ -12,7 +13,7 @@ def get_current_weather(location, unit='fahrenheit'):
         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
     else:
         return json.dumps({'location': location, 'temperature': 'unknown'})
-    
+
 def get_n_day_weather_forecast(location, num_days, unit='fahrenheit'):
     """Get the current weather in a given location"""
     if 'tokyo' in location.lower():
@@ -75,11 +76,26 @@ tools = [
     },
 ]
 
-prompter = lazyllm.ChatPrompter(instruction="Answer the following questions as best as you can. You have access to the following tools:\n", 
-                                extra_keys=["tools"], 
-                                show=True)
+prompter = lazyllm.ChatPrompter(
+    instruction="Answer the following questions as best as you can. You have access to the following tools:\n",
+    extra_keys=["tools"], show=True)
 
 class TestOnlineChatModule(unittest.TestCase):
+
+    def test_online_static_params(self):
+        MAX_TOKENS_SHROT = 20
+        m = lazyllm.OnlineChatModule(source="qwen", stream=True, static_params={"max_tokens": MAX_TOKENS_SHROT})
+        assert m.static_params.get("max_tokens", 0) == MAX_TOKENS_SHROT
+        m2 = m.share(copy_static_params=True)
+        assert m2.static_params.get("max_tokens", 0) == MAX_TOKENS_SHROT
+        assert len(m2("介绍一下水浒传中林冲的生平")) < 2 * MAX_TOKENS_SHROT
+
+    def test_online_flow_response(self):
+        with lazyllm.pipeline() as ppl:
+            ppl.llm = lazyllm.OnlineChatModule(source="qwen")
+        flow_streamer = FlowStreamer(ppl)
+        res = list(flow_streamer("简短介绍一下水浒传中林冲的生平"))
+        assert len(res) > 5
 
     def test_openai_stream_inference(self):
         m = lazyllm.OnlineChatModule(source="openai", base_url="https://gf.nekoapi.com/v1", stream=True)
@@ -93,7 +109,8 @@ class TestOnlineChatModule(unittest.TestCase):
                     break
                 r = json.loads(r)
                 lazyllm.LOG.info(r)
-                if "type" not in r["choices"][0] or ("type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
+                if "type" not in r["choices"][0] or ("type" in r["choices"][0]
+                                                     and r["choices"][0]["type"] != "tool_calls"):
                     delta = r["choices"][0]["delta"]
                     content += delta["content"]
                 print(f"response: {content}")
@@ -122,7 +139,8 @@ class TestOnlineChatModule(unittest.TestCase):
         self.assertTrue(isinstance(m, lazyllm.OnlineChatModule))
 
     def test_openai_function_call(self):
-        m = lazyllm.OnlineChatModule(source="openai", base_url="https://gf.nekoapi.com/v1", stream=False, prompter=prompter)
+        m = lazyllm.OnlineChatModule(source="openai", base_url="https://gf.nekoapi.com/v1",
+                                     stream=False, prompter=prompter)
 
         query = "What's the weather like today in Tokyo"
         history = []
@@ -170,7 +188,8 @@ class TestOnlineChatModule(unittest.TestCase):
                     break
                 r = json.loads(r)
                 lazyllm.LOG.info(r)
-                if "type" not in r["choices"][0] or ("type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
+                if "type" not in r["choices"][0] or ("type" in r["choices"][0]
+                                                     and r["choices"][0]["type"] != "tool_calls"):
                     delta = r["choices"][0]["delta"]
                     if "content" in delta:
                         content += delta["content"]
@@ -200,7 +219,8 @@ class TestOnlineChatModule(unittest.TestCase):
                     break
                 r = json.loads(r)
                 lazyllm.LOG.info(r)
-                if "type" not in r["choices"][0] or ("type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
+                if "type" not in r["choices"][0] or ("type" in r["choices"][0]
+                                                     and r["choices"][0]["type"] != "tool_calls"):
                     delta = r["choices"][0]["delta"]
                     content += delta["content"]
                 print(f"response: {content}")
@@ -273,7 +293,8 @@ class TestOnlineChatModule(unittest.TestCase):
                     break
                 r = json.loads(r)
                 lazyllm.LOG.info(r)
-                if "type" not in r["choices"][0] or ("type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
+                if "type" not in r["choices"][0] or ("type" in r["choices"][0]
+                                                     and r["choices"][0]["type"] != "tool_calls"):
                     delta = r["choices"][0]["delta"]
                     content += delta["content"]
                 print(f"response: {content}")
@@ -348,7 +369,8 @@ class TestOnlineChatModule(unittest.TestCase):
                     break
                 r = json.loads(r)
                 lazyllm.LOG.info(r)
-                if "type" not in r["choices"][0] or ("type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
+                if "type" not in r["choices"][0] or ("type" in r["choices"][0]
+                                                     and r["choices"][0]["type"] != "tool_calls"):
                     delta = r["choices"][0]["delta"]
                     content += delta["content"]
                 print(f"response: {content}")
