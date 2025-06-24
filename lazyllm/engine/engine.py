@@ -752,8 +752,12 @@ def make_online_embedding(source: str, embed_type: Optional[str] = 'embed', base
                           base_url: Optional[str] = None, api_key: Optional[str] = None,
                           secret_key: Optional[str] = None):
     source = source.lower()
-    return lazyllm.OnlineEmbeddingModule(source=source, type=embed_type, embed_model_name=base_model,
-                                         embed_url=base_url, api_key=api_key, secret_key=secret_key)
+    if source == 'sensenova':
+        return lazyllm.OnlineEmbeddingModule(source=source, type=embed_type, embed_model_name=base_model,
+                                             embed_url=base_url, api_key=api_key, secret_key=secret_key)
+    else:   
+        return lazyllm.OnlineEmbeddingModule(source=source, type=embed_type, embed_model_name=base_model,
+                                         embed_url=base_url, api_key=api_key)
 
 
 class LLM(lazyllm.ModuleBase):
@@ -771,8 +775,8 @@ class LLM(lazyllm.ModuleBase):
             assert len(args) == 1
         return self._m(*args, **kw)
 
-    def share(self, prompt: str, history: Optional[List[List[str]]] = None):
-        return LLM(self._m.share(prompt=prompt, history=history), self._keys)
+    def share(self, prompt: str, format: callable, history: Optional[List[List[str]]] = None):
+        return LLM(self._m.share(prompt=prompt, format=format, history=history), self._keys)
 
 
 @NodeConstructor.register('LLM')
