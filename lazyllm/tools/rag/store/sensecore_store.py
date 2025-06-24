@@ -72,32 +72,22 @@ class SenseCoreStore(StoreBase):
 
     def _check_s3(self):
         obj_key = "lazyllm/warmup.txt"
-        upload_data_to_s3(
-            "warmup",
-            bucket_name=self._s3_config["bucket_name"],
-            object_key=obj_key,
-            aws_access_key_id=self._s3_config["access_key"],
-            aws_secret_access_key=self._s3_config["secret_access_key"],
-            use_minio=self._s3_config["use_minio"],
-            endpoint_url=self._s3_config["endpoint_url"],
-        )
+        upload_data_to_s3("warmup", bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
+                          aws_access_key_id=self._s3_config["access_key"],
+                          ws_secret_access_key=self._s3_config["secret_access_key"],
+                          use_minio=self._s3_config["use_minio"], endpoint_url=self._s3_config["endpoint_url"])
         return
 
     def _serialize_node(self, node: DocNode) -> Dict:  # noqa: C901
         """ serialize node to dict """
-        segment = Segment(
-            segment_id=node._uid,
-            dataset_id=node.global_metadata.get("kb_id", None) or self._kb_id,
-            document_id=node.global_metadata.get(RAG_DOC_ID),
-            group=node._group,
-            meta=json.dumps(node._metadata, ensure_ascii=False),
-            excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
-            excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
-            global_meta=json.dumps(node.global_metadata, ensure_ascii=False),
-            children={group: {"ids": [n._uid for n in c_l]} for group, c_l in node.children.items()},
-            embedding_state=node._embedding_state,
-            number=node._metadata.get("store_num", 0)
-        )
+        segment = Segment(segment_id=node._uid, dataset_id=node.global_metadata.get("kb_id", None) or self._kb_id,
+                          document_id=node.global_metadata.get(RAG_DOC_ID), group=node._group,
+                          meta=json.dumps(node._metadata, ensure_ascii=False),
+                          excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
+                          excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
+                          global_meta=json.dumps(node.global_metadata, ensure_ascii=False),
+                          children={group: {"ids": [n._uid for n in c_l]} for group, c_l in node.children.items()},
+                          embedding_state=node._embedding_state, number=node._metadata.get("store_num", 0))
         if node.parent:
             if isinstance(node.parent, DocNode):
                 segment.parent = node.parent._uid
@@ -121,15 +111,11 @@ class SenseCoreStore(StoreBase):
                 file_path = create_file_path(path=image_path, prefix=prefix)
                 try:
                     with open(file_path, "rb") as f:
-                        upload_data_to_s3(
-                            f.read(),
-                            bucket_name=self._s3_config["bucket_name"],
-                            object_key=obj_key,
-                            aws_access_key_id=self._s3_config["access_key"],
-                            aws_secret_access_key=self._s3_config["secret_access_key"],
-                            use_minio=self._s3_config["use_minio"],
-                            endpoint_url=self._s3_config["endpoint_url"],
-                        )
+                        upload_data_to_s3(f.read(), bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
+                                          aws_access_key_id=self._s3_config["access_key"],
+                                          aws_secret_access_key=self._s3_config["secret_access_key"],
+                                          use_minio=self._s3_config["use_minio"],
+                                          endpoint_url=self._s3_config["endpoint_url"])
                         content = content.replace(image_path, obj_key)
                 except FileNotFoundError:
                     LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
@@ -143,15 +129,10 @@ class SenseCoreStore(StoreBase):
 
             # upload content
             obj_key = f"lazyllm/lazyllm_root/{node._uid}.json"
-            upload_data_to_s3(
-                content.encode('utf-8'),
-                bucket_name=self._s3_config["bucket_name"],
-                object_key=obj_key,
-                aws_access_key_id=self._s3_config["access_key"],
-                aws_secret_access_key=self._s3_config["secret_access_key"],
-                use_minio=self._s3_config["use_minio"],
-                endpoint_url=self._s3_config["endpoint_url"],
-            )
+            upload_data_to_s3(content.encode('utf-8'), bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
+                              aws_access_key_id=self._s3_config["access_key"],
+                              aws_secret_access_key=self._s3_config["secret_access_key"],
+                              use_minio=self._s3_config["use_minio"], endpoint_url=self._s3_config["endpoint_url"])
             segment.content = obj_key
         else:
             segment.content = node._content
@@ -167,15 +148,10 @@ class SenseCoreStore(StoreBase):
             image_file_name = os.path.basename(image_path)
             obj_key = f"lazyllm/images/{image_file_name}"
             with open(image_path, "rb") as f:
-                upload_data_to_s3(
-                    f.read(),
-                    bucket_name=self._s3_config["bucket_name"],
-                    object_key=obj_key,
-                    aws_access_key_id=self._s3_config["access_key"],
-                    aws_secret_access_key=self._s3_config["secret_access_key"],
-                    use_minio=self._s3_config["use_minio"],
-                    endpoint_url=self._s3_config["endpoint_url"],
-                )
+                upload_data_to_s3(f.read(), bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
+                                  aws_access_key_id=self._s3_config["access_key"],
+                                  aws_secret_access_key=self._s3_config["secret_access_key"],
+                                  use_minio=self._s3_config["use_minio"], endpoint_url=self._s3_config["endpoint_url"])
                 segment.image_keys = [obj_key]
         elif isinstance(node, QADocNode):
             answer = node._answer
@@ -193,15 +169,11 @@ class SenseCoreStore(StoreBase):
                 file_path = create_file_path(path=image_path, prefix=prefix)
                 try:
                     with open(file_path, "rb") as f:
-                        upload_data_to_s3(
-                            f.read(),
-                            bucket_name=self._s3_config["bucket_name"],
-                            object_key=obj_key,
-                            aws_access_key_id=self._s3_config["access_key"],
-                            aws_secret_access_key=self._s3_config["secret_access_key"],
-                            use_minio=self._s3_config["use_minio"],
-                            endpoint_url=self._s3_config["endpoint_url"],
-                        )
+                        upload_data_to_s3(f.read(), bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
+                                          aws_access_key_id=self._s3_config["access_key"],
+                                          aws_secret_access_key=self._s3_config["secret_access_key"],
+                                          use_minio=self._s3_config["use_minio"],
+                                          endpoint_url=self._s3_config["endpoint_url"])
                         answer = answer.replace(image_path, obj_key)
                 except FileNotFoundError:
                     LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
@@ -219,33 +191,13 @@ class SenseCoreStore(StoreBase):
     def _deserialize_node(self, segment: Dict) -> DocNode:
         """ deserialize node from dict """
         if len(segment.get("answer", "")):
-            node = QADocNode(
-                query=segment["content"],
-                answer=segment["answer"],
-                uid=segment["segment_id"],
-                group=segment["group"],
-                metadata=json.loads(segment["meta"]),
-                global_metadata=json.loads(segment["global_meta"]),
-                parent=segment["parent"],
-            )
-        # elif len(segment.get("image_keys", [])):
-        #     node = ImageDocNode(
-        #         image_path=segment["image_keys"][0],
-        #         uid=segment["segment_id"],
-        #         group=segment["group"],
-        #         metadata=json.loads(segment["meta"]),
-        #         global_metadata=json.loads(segment["global_meta"]),
-        #         parent=segment["parent"],
-        #     )
+            node = QADocNode(query=segment["content"], answer=segment["answer"], uid=segment["segment_id"],
+                             group=segment["group"], metadata=json.loads(segment["meta"]),
+                             global_metadata=json.loads(segment["global_meta"]), parent=segment["parent"])
         else:
-            node = DocNode(
-                uid=segment["segment_id"],
-                content=segment["content"],
-                group=segment["group"],
-                metadata=json.loads(segment["meta"]),
-                global_metadata=json.loads(segment["global_meta"]),
-                parent=segment["parent"],
-            )
+            node = DocNode(uid=segment["segment_id"], content=segment["content"], group=segment["group"],
+                           metadata=json.loads(segment["meta"]), global_metadata=json.loads(segment["global_meta"]),
+                           parent=segment["parent"])
         node.excluded_llm_metadata_keys = segment["excluded_embed_metadata_keys"]
         node.excluded_embed_metadata_keys = segment["excluded_llm_metadata_keys"]
         if segment["children"]:
@@ -253,18 +205,13 @@ class SenseCoreStore(StoreBase):
         else:
             children = {}
         node.children = children
-
         if node._group == LAZY_ROOT_NAME and node._content.startswith("lazyllm/lazyllm_root/"):
             obj_key = node._content
-            content = download_data_from_s3(
-                bucket_name=self._s3_config["bucket_name"],
-                object_key=obj_key,
-                aws_access_key_id=self._s3_config["access_key"],
-                aws_secret_access_key=self._s3_config["secret_access_key"],
-                use_minio=self._s3_config["use_minio"],
-                endpoint_url=self._s3_config["endpoint_url"],
-                encoding="utf-8"
-            )
+            content = download_data_from_s3(bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
+                                            aws_access_key_id=self._s3_config["access_key"],
+                                            aws_secret_access_key=self._s3_config["secret_access_key"],
+                                            use_minio=self._s3_config["use_minio"],
+                                            endpoint_url=self._s3_config["endpoint_url"], encoding="utf-8")
             node._content = json.loads(content)
         if segment.get("metadata", {}) is not None:
             node = node.with_sim_score(score=segment.get("metadata", {}).get("score", 0))
@@ -299,10 +246,8 @@ class SenseCoreStore(StoreBase):
                 kb_id = node.global_metadata.get("kb_id")
                 source_file = node.metadata["source_file_name"]
                 source_chunk = node.metadata["source_chunk"]
-                target_nodes = self.query(
-                    query=source_chunk, group_name="block", topk=1, embed_keys=["bge_m3_dense"],
-                    filters={"kb_id": [kb_id], "file_name": [source_file]}
-                )
+                target_nodes = self.query(query=source_chunk, group_name="block", topk=1, embed_keys=["bge_m3_dense"],
+                                          filters={"kb_id": [kb_id], "file_name": [source_file]})
                 if not len(target_nodes):
                     LOG.warning(f"cannot find file for qa node: source_file {source_file}, chunk {source_chunk}")
                     continue
@@ -339,26 +284,14 @@ class SenseCoreStore(StoreBase):
                 break
             obj_key = f"lazyllm/segments/{job_id}.jsonl"
 
-            upload_data_to_s3(
-                data=segments,
-                bucket_name=self._s3_config["bucket_name"],
-                object_key=obj_key,
-                aws_access_key_id=self._s3_config["access_key"],
-                aws_secret_access_key=self._s3_config["secret_access_key"],
-                use_minio=self._s3_config["use_minio"],
-                endpoint_url=self._s3_config["endpoint_url"],
-            )
+            upload_data_to_s3(data=segments, bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
+                              aws_access_key_id=self._s3_config["access_key"],
+                              aws_secret_access_key=self._s3_config["secret_access_key"],
+                              use_minio=self._s3_config["use_minio"], endpoint_url=self._s3_config["endpoint_url"])
             url = urljoin(self._uri, "v1/writerSegmentJob:submit")
             params = {"writer_segment_job_id": job_id}
-            headers = {
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            }
-            payload = {
-                "dataset_id": dataset_id or self._kb_id,
-                "file_key": obj_key,
-                "groups": groups
-            }
+            headers = {"Accept": "application/json", "Content-Type": "application/json"}
+            payload = {"dataset_id": dataset_id or self._kb_id, "file_key": obj_key, "groups": groups}
 
             response = requests.post(url, params=params, headers=headers, json=payload)
             response.raise_for_status()
@@ -371,9 +304,7 @@ class SenseCoreStore(StoreBase):
     def _check_insert_job_status(self, job_id: str) -> None:
         """ check if the insert task is finished """
         url = urljoin(self._uri, f"v1/writerSegmentJobs/{job_id}")
-        headers = {
-            "Accept": "application/json",
-        }
+        headers = {"Accept": "application/json"}
         for wait_time in fibonacci_backoff(max_retries=15):
             response = requests.get(url, headers=headers)
             response.raise_for_status()
@@ -388,30 +319,16 @@ class SenseCoreStore(StoreBase):
         raise Exception(f"Insert task {job_id} failed after seconds")
 
     @override
-    def remove_nodes(
-        self,
-        group_name: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        doc_ids: Optional[List[str]] = None,
-        uids: Optional[List[str]] = None
-    ) -> None:
+    def remove_nodes(self, group_name: Optional[str] = None, dataset_id: Optional[str] = None,
+                     doc_ids: Optional[List[str]] = None, uids: Optional[List[str]] = None) -> None:
         """ remove nodes from the store by doc_ids or uids """
         try:
             url = urljoin(self._uri, "v1/segments:bulkDelete")
-            headers = {
-                "Accept": "*/*",
-                "Content-Type": "application/json",
-            }
+            headers = {"Accept": "*/*", "Content-Type": "application/json"}
             if doc_ids:
-                payload = {
-                    "dataset_id": dataset_id or self._kb_id,
-                    "document_ids": doc_ids,
-                }
+                payload = {"dataset_id": dataset_id or self._kb_id, "document_ids": doc_ids}
             else:
-                payload = {
-                    "dataset_id": dataset_id or self._kb_id,
-                    "segment_ids": uids,
-                }
+                payload = {"dataset_id": dataset_id or self._kb_id, "segment_ids": uids}
             if group_name:
                 payload["group"] = group_name
             response = requests.post(url, headers=headers, json=payload)
@@ -438,10 +355,7 @@ class SenseCoreStore(StoreBase):
         else:
             url = urljoin(self._uri, "v1/segments:scroll")
 
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
         payload = {"dataset_id": dataset_id}
         if group_name:
             payload["group"] = group_name
@@ -477,46 +391,32 @@ class SenseCoreStore(StoreBase):
 
     def _multi_modal_process(self, query: str, images: List[str]):
         urls = []
-        s3 = boto3.client(
-            's3',
-            aws_access_key_id=self._image_url_config["access_key"],
-            aws_secret_access_key=self._image_url_config["secret_access_key"],
-            endpoint_url=self._image_url_config["endpoint_url"]
-        )
+        s3 = boto3.client('s3', aws_access_key_id=self._image_url_config["access_key"],
+                          aws_secret_access_key=self._image_url_config["secret_access_key"],
+                          endpoint_url=self._image_url_config["endpoint_url"])
         for image in images:
             query = query + "<image>\n"
-            url = s3.generate_presigned_url(
-                ClientMethod='get_object',
-                Params={'Bucket': self._image_url_config["bucket_name"],
-                        'Key': image},
-                ExpiresIn=3600
-            )
+            url = s3.generate_presigned_url(ClientMethod='get_object',
+                                            Params={'Bucket': self._image_url_config["bucket_name"], 'Key': image},
+                                            ExpiresIn=3600)
             urls.append(url)
         return query, urls
 
     @override
-    def query(  # noqa: C901
-        self,
-        query: str,
-        group_name: str,
-        topk: int = 10,
-        embed_keys: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
-        **kwargs
-    ) -> List[DocNode]:
+    def query(self, query: str, group_name: str, topk: int = 10, embed_keys: Optional[List[str]] = None,  # noqa: C901
+              filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
         """ search nodes from the store """
         try:
             if not embed_keys:
                 raise ValueError("[Sensecore Store] Query: embed_keys must be provided")
             url = urljoin(self._uri, "v1/segments:hybrid")
-            headers = {
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            }
+            headers = {"Accept": "application/json", "Content-Type": "application/json"}
+
             original_filters = copy.deepcopy(filters)
             if group_name == 'qa':
                 filters = {"kb_id": filters.get("kb_id", [])}
             filter_str = self._create_filters_str(filters) if filters else None
+
             dataset_ids = []
             if filters:
                 for name, candidates in filters.items():
@@ -541,16 +441,9 @@ class SenseCoreStore(StoreBase):
 
             nodes = []
             for embed_key in embed_keys:
-                payload = {
-                    "query": query,
-                    "hybrid_search_datasets": hybrid_search_datasets,
-                    "hybrid_search_type": 2,
-                    "top_k": topk,
-                    "filters": filter_str,
-                    "group": group_name,
-                    "embedding_model": embed_key,
-                    "images": images
-                }
+                payload = {"query": query, "hybrid_search_datasets": hybrid_search_datasets, "hybrid_search_type": 2,
+                           "top_k": topk, "filters": filter_str, "group": group_name, "embedding_model": embed_key,
+                           "images": images}
                 LOG.info(f"[Sensecore Store]: query request body: {payload}.")
                 response = requests.post(url, headers=headers, json=payload)
                 response.raise_for_status()
@@ -566,10 +459,8 @@ class SenseCoreStore(StoreBase):
                             continue
                         source_chunk = node.metadata.get("source_chunk", "")
                         original_filters["file_name"] = [source_file]
-                        target_nodes = self.query(
-                            query=source_chunk, group_name="block", topk=1, embed_keys=["bge_m3_dense"],
-                            filters=original_filters
-                        )
+                        target_nodes = self.query(query=source_chunk, group_name="block", topk=1,
+                                                  embed_keys=["bge_m3_dense"], filters=original_filters)
                         if len(target_nodes):
                             node.update_global_metadata(target_nodes[0].global_metadata)
                             node.update_metadata(target_nodes[0].metadata)
@@ -584,10 +475,8 @@ class SenseCoreStore(StoreBase):
     @override
     def register_index(self, type: str, index: IndexBase) -> None:
         """ register index to the store (for store that support hook only)"""
-        raise NotImplementedError(
-            "register_index is not supported for SenseCoreStore."
-            "Please use register_index for store that support hook"
-        )
+        raise NotImplementedError("register_index is not supported for SenseCoreStore."
+                                  "Please use register_index for store that support hook")
 
     @override
     def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
@@ -634,14 +523,9 @@ class SenseCoreStore(StoreBase):
         """ check if a group has nodes (active) """
         try:
             url = urljoin(self._uri, "/v1/segments:scroll")
-            headers = {
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            }
-            payload = {
-                "dataset_id": self._kb_id,
-                "group": name,
-            }
+            headers = {"Accept": "application/json", "Content-Type": "application/json"}
+            payload = {"dataset_id": self._kb_id, "group": name}
+
             response = requests.post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
@@ -649,5 +533,4 @@ class SenseCoreStore(StoreBase):
                 return True
         except Exception as e:
             LOG.error(f"is_group_active error for group {name}: {str(e)}")
-
         return False
