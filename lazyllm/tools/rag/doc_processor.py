@@ -39,6 +39,7 @@ class _Processor:
                     metadata.update({RAG_DOC_ID: doc_id, RAG_DOC_PATH: path})
             all_nodes = []
             root_nodes, image_nodes = self._reader.load_data(input_files, metadatas, split_image_nodes=True)
+            self._store.update_nodes(root_nodes)
             all_nodes.extend(root_nodes)
 
             def _create_nodes_recursive(p_nodes: List[DocNode], p_name: str):
