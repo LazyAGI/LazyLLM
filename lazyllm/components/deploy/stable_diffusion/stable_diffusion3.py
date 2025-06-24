@@ -7,10 +7,12 @@ from lazyllm.thirdparty import numpy as np
 from io import BytesIO
 
 import lazyllm
-from lazyllm import LOG
+from lazyllm import LOG, LazyLLMLaunchersBase
+from ..base import LazyLLMDeployBase
 from lazyllm.components.formatter import encode_query_with_filepaths
-from ..utils.downloader import ModelManager
-from ..utils.file_operate import delete_old_files
+from ...utils.downloader import ModelManager
+from ...utils.file_operate import delete_old_files
+from typing import Optional
 
 
 class StableDiffusion3(object):
@@ -208,14 +210,16 @@ def call_wan(model, prompt):
     return encode_query_with_filepaths(files=vid_path_list)
 
 
-class StableDiffusionDeploy(object):
+class StableDiffusionDeploy(LazyLLMDeployBase):
     message_format = None
     keys_name_handle = None
     default_headers = {'Content-Type': 'application/json'}
 
-    def __init__(self, launcher=None, log_path=None):
-        self._launcher = launcher
+    def __init__(self, launcher: Optional[LazyLLMLaunchersBase] = None,
+                 log_path: Optional[str] = None, trust_remote_code: bool = True):
+        super().__init__(launcher=launcher)
         self._log_path = log_path
+        self._trust_remote_code = trust_remote_code
 
     def __call__(self, finetuned_model=None, base_model=None):
         if not finetuned_model:

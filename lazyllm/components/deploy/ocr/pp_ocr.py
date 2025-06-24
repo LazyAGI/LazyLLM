@@ -2,6 +2,7 @@
 import lazyllm
 from typing import Optional
 import string
+from ..base import LazyLLMDeployBase
 
 punctuation = set(string.punctuation + "，。！？；：“”‘’（）【】《》…—～、")
 
@@ -74,7 +75,7 @@ class OCR(object):
         )
 
 
-class OCRDeploy(object):
+class OCRDeploy(LazyLLMDeployBase):
     keys_name_handle = {
         "inputs": "inputs",
         "ocr_files": "inputs",
@@ -82,9 +83,10 @@ class OCRDeploy(object):
     message_format = {"inputs": "/path/to/pdf"}
     default_headers = {"Content-Type": "application/json"}
 
-    def __init__(self, launcher=None, log_path=None):
-        self._launcher = launcher
+    def __init__(self, launcher=None, log_path=None, trust_remote_code=True):
+        super().__init__(launcher=launcher)
         self._log_path = log_path
+        self._trust_remote_code = trust_remote_code
 
     def __call__(self, finetuned_model=None, base_model=None):
         if not finetuned_model:

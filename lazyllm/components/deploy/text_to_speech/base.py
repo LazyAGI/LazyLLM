@@ -6,12 +6,16 @@ from .musicgen import MusicGenDeploy
 class TTSDeploy:
 
     def __new__(cls, name, **kwarg):
+        return cls.get_deploy_cls(name)(**kwarg)
+
+    @classmethod
+    def get_deploy_cls(cls, name):
         name = name.lower()
         if name == 'bark':
-            return BarkDeploy(**kwarg)
+            return BarkDeploy
         elif name in ('chattts', 'chattts-new'):
-            return ChatTTSDeploy(**kwarg)
+            return ChatTTSDeploy
         elif name.startswith('musicgen'):
-            return MusicGenDeploy(**kwarg)
+            return MusicGenDeploy
         else:
             raise RuntimeError(f"Not support model: {name}")

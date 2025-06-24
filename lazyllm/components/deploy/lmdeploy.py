@@ -38,7 +38,7 @@ class LMDeploy(LazyLLMDeployBase):
     }
     auto_map = {}
 
-    def __init__(self, launcher=launchers.remote(ngpus=1), log_path=None, **kw):
+    def __init__(self, launcher=launchers.remote(ngpus=1), trust_remote_code=True, log_path=None, **kw):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'server-name': '0.0.0.0',
@@ -48,6 +48,7 @@ class LMDeploy(LazyLLMDeployBase):
             "chat-template": None,
         })
         self.kw.check_and_update(kw)
+        self._trust_remote_code = trust_remote_code
         self.random_port = False if 'server-port' in kw and kw['server-port'] else True
         self.temp_folder = make_log_dir(log_path, 'lmdeploy') if log_path else None
 

@@ -1,9 +1,11 @@
 import os
 import uuid
 from lazyllm.thirdparty import scipy, numpy as np
-from ..utils.file_operate import delete_old_files
+from ...utils.file_operate import delete_old_files
 import lazyllm
-from lazyllm import LOG
+from lazyllm import LOG, LazyLLMLaunchersBase
+from typing import Optional
+from ..base import LazyLLMDeployBase
 
 
 def sound_to_file(sound: 'np.array', file_path: str, sample_rate: int = 24000) -> str:
@@ -24,11 +26,11 @@ def sounds_to_files(sounds: list, directory: str, sample_rate: int = 24000) -> l
     return path_list
 
 
-class TTSBase(object):
+class TTSBase(LazyLLMDeployBase):
     func = None
 
-    def __init__(self, launcher=None, log_path=None):
-        self._launcher = launcher
+    def __init__(self, launcher: LazyLLMLaunchersBase = None, log_path: Optional[str] = None):
+        super().__init__(launcher=launcher)
         self._log_path = log_path
 
     def __call__(self, finetuned_model=None, base_model=None):

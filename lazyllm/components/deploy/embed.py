@@ -1,10 +1,10 @@
 import os
 import json
 import lazyllm
-from lazyllm import LOG
+from lazyllm import LOG, LazyLLMLaunchersBase
 from lazyllm.thirdparty import transformers as tf, torch, sentence_transformers, numpy as np, FlagEmbedding as fe
 from .base import LazyLLMDeployBase
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Optional
 from abc import ABC, abstractmethod
 
 
@@ -165,12 +165,14 @@ class EmbeddingDeploy(LazyLLMDeployBase):
     }
     default_headers = {'Content-Type': 'application/json'}
 
-    def __init__(self, launcher=None, model_type='embed', log_path=None, embed_type='dense'):
+    def __init__(self, launcher: LazyLLMLaunchersBase = None, model_type: str = 'embed', log_path: Optional[str] = None,
+                 embed_type: Optional[str] = 'dense', trust_remote_code: bool = True):
         super().__init__(launcher=launcher)
         self._launcher = launcher
         self._model_type = model_type
         self._log_path = log_path
         self._sparse_embed = True if embed_type == 'sparse' else False
+        self._trust_remote_code = trust_remote_code
         if self._model_type == "reranker":
             self._update_reranker_message()
 

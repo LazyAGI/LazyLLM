@@ -7,6 +7,10 @@ from .infinity import Infinity
 from .ray import Distributed
 from .mindie import Mindie
 from .embed import EmbeddingDeploy
+from .stable_diffusion import StableDiffusionDeploy
+from .text_to_speech import TTSDeploy, BarkDeploy, ChatTTSDeploy, MusicGenDeploy
+from .speech_to_text import SenseVoiceDeploy
+from .ocr import OCRDeploy
 
 
 __all__ = [
@@ -20,4 +24,11 @@ __all__ = [
     'Infinity',
     'Distributed',
     'EmbeddingDeploy',
+    'StableDiffusionDeploy',
+    'TTSDeploy',
+    'BarkDeploy',
+    'ChatTTSDeploy',
+    'MusicGenDeploy',
+    'SenseVoiceDeploy',
+    'OCRDeploy',
 ]

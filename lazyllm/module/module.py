@@ -262,12 +262,13 @@ class ModuleBase(metaclass=_MetaBind):
                 action(submodule)
             submodule.for_each(filter, action)
 
-class UrlTemplate(object):
+
+class _UrlTemplate(object):
     def __init__(self, template_message=None, keys_name_handle=None, template_headers=None) -> None:
         self._set_template(template_message, keys_name_handle, template_headers)
 
     def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None):
-        if isinstance(template_message, UrlTemplate):
+        if isinstance(template_message, _UrlTemplate):
             assert keys_name_handle is None and template_headers is None
             self._url_template = template_message._url_template.copy()
         else:
@@ -291,18 +292,9 @@ class UrlTemplate(object):
     template_headers = property(lambda self: self._url_template['template_headers'])
 
 
-class UrlModule(ModuleBase, UrlTemplate):
-    def __init__(self, *, url='', stream=False, return_trace=False):
-        super().__init__(return_trace=return_trace)
+class _UrlHelper(object):
+    def __init__(self, url):
         self.__url = url
-        self._stream = stream
-        # Set for request by specific deploy:
-        UrlTemplate.__init__(self)
-        self._extract_result_func = lambda x, inputs: x
-        self._stream_parse_parameters = {}
-        self._stream_url_suffix = ''
-        __class__.prompt(self)
-        __class__.formatter(self)
 
     @property
     def _url(self):
@@ -319,9 +311,23 @@ class UrlModule(ModuleBase, UrlTemplate):
 
     def _set_url(self, url):
         if redis_client:
-            redis_client.set(self._module_id, url)
+            redis_client.set(self._url_id, url)
         LOG.debug(f'url: {url}')
         self.__url = url
+
+
+class UrlModule(ModuleBase, _UrlTemplate, _UrlHelper):
+    def __init__(self, *, url='', stream=False, return_trace=False):
+        super().__init__(return_trace=return_trace)
+        _UrlHelper.__init__(self, url)
+        _UrlTemplate.__init__(self)
+
+        self._stream = stream
+        self._extract_result_func = lambda x, inputs: x
+        self._stream_parse_parameters = {}
+        self._stream_url_suffix = ''
+        __class__.prompt(self)
+        __class__.formatter(self)
 
     def _estimate_token_usage(self, text):
         if not isinstance(text, str):
@@ -647,8 +653,13 @@ class _TrainableModuleImpl(ModuleBase):
         if len(set(args.keys()).intersection(set(disable))) > 0:
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
                              '{arg_cls}_args, please pass them from Module.__init__()')
+
         if not args.get('url'):
+            if arg_cls == 'deploy' and self._deploy is lazyllm.deploy.AutoDeploy:
+                self._deploy, args['launcher'], self._deploy_args = lazyllm.deploy.AutoDeploy.get_deployer(
+                    base_model=self._base_model, **args)
             args['launcher'] = args['launcher'].clone() if args.get('launcher') else launchers.remote(sync=False)
+            self._set_template(self._deploy)
             self._launchers['default'][arg_cls] = args['launcher']
         return args
 
@@ -714,13 +725,8 @@ class _TrainableModuleImpl(ModuleBase):
     @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
         if self._deploy is None: return None
-
-        if self._deploy is lazyllm.deploy.AutoDeploy:
-            self._deployer = self._deploy(base_model=self._base_model, **self._deploy_args)
-            self._set_template(self._deployer)
-        else:
-            kwargs = {'stream': self._stream} if self._deploy is lazyllm.deploy.dummy else {}
-            self._deployer = self._deploy(**kwargs, **self._deploy_args)
+        kwargs = {'stream': self._stream} if self._deploy is lazyllm.deploy.dummy else {}
+        self._deployer = self._deploy(**kwargs, **self._deploy_args)
 
         def before_deploy(*no_use_args):
             if hasattr(self, '_temp_finetuned_model_path') and self._temp_finetuned_model_path:
@@ -738,8 +744,8 @@ class _TrainableModuleImpl(ModuleBase):
                         lambda url: [f._set_url(url) for f in self._father])
 
     def _set_template(self, deployer):
-        template = UrlTemplate(copy.deepcopy(deployer.message_format), deployer.keys_name_handle,
-                               copy.deepcopy(deployer.default_headers))
+        template = _UrlTemplate(copy.deepcopy(deployer.message_format), deployer.keys_name_handle,
+                                copy.deepcopy(deployer.default_headers))
         stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
 
         for f in self._father:
@@ -755,15 +761,14 @@ class _TrainableModuleImpl(ModuleBase):
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_train_or_deploy_args('deploy', disable=['target_path'])
-        if self._deploy and self._deploy is not lazyllm.deploy.AutoDeploy:
-            self._set_template(self._deploy)
-            if url := self._deploy_args.get('url'):
-                assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
-                for f in self._father:
-                    f._set_url(url)
-                self._get_deploy_tasks.flag.set()
-            else:
-                self._deploy_args.pop('url', None)
+        self._set_template(self._deploy)
+        if url := self._deploy_args.get('url'):
+            assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
+            for f in self._father:
+                f._set_url(url)
+            self._get_deploy_tasks.flag.set()
+        else:
+            self._deploy_args.pop('url', None)
 
     def __del__(self):
         if hasattr(self, '_launchers'):

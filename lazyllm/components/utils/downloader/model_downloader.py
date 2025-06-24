@@ -18,11 +18,9 @@ lazyllm.config.add('data_path', str, '', 'DATA_PATH')
 
 
 class ModelManager():
-    def __init__(self, model_source=lazyllm.config['model_source'],
-                 token=lazyllm.config['model_source_token'],
-                 cache_dir=lazyllm.config['model_cache_dir'],
-                 model_path=lazyllm.config['model_path']):
-        self.model_source = model_source
+    def __init__(self, model_source, token=lazyllm.config['model_source_token'],
+                 cache_dir=lazyllm.config['model_cache_dir'], model_path=lazyllm.config['model_path']):
+        self.model_source = model_source or lazyllm.config['model_source'],
         self.token = token or None
         self.cache_dir = cache_dir
         self.model_paths = model_path.split(":") if len(model_path) > 0 else []
