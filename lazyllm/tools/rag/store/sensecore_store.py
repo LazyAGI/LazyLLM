@@ -74,7 +74,7 @@ class SenseCoreStore(StoreBase):
         obj_key = "lazyllm/warmup.txt"
         upload_data_to_s3("warmup", bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
                           aws_access_key_id=self._s3_config["access_key"],
-                          ws_secret_access_key=self._s3_config["secret_access_key"],
+                          aws_secret_access_key=self._s3_config["secret_access_key"],
                           use_minio=self._s3_config["use_minio"], endpoint_url=self._s3_config["endpoint_url"])
         return
 
@@ -385,7 +385,7 @@ class SenseCoreStore(StoreBase):
             segments = [segment for segment in segments if segment['document_id'] in doc_ids]
         if display:
             for s in segments:
-                if s.get("display_content"):
+                if len(s.get("display_content", '')):
                     s["content"] = s["display_content"]
         return [self._deserialize_node(s) for s in segments]
 

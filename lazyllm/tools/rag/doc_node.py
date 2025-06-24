@@ -77,7 +77,8 @@ class DocNode:
             return []
         if isinstance(uids, str):
             uids = [uids]
-        nodes = self._store.get_nodes(group_name=group_name, uids=uids, dataset_id=self._global_metadata.get("kb_id"))
+        nodes = self._store.get_nodes(group_name=group_name, uids=uids, dataset_id=self._global_metadata.get("kb_id"),
+                                      display=True)
         for n in nodes:
             n._store = self._store
             n._node_groups = self._node_groups
