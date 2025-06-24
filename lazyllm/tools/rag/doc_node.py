@@ -92,6 +92,12 @@ class DocNode:
 
     @property
     def children(self):
+        # lazy load children node
+        if self._children:
+            for group_name, c in self._children.items():
+                if len(c) and isinstance(c[0], str) and self._store:
+                    self._children[group_name] = self._store.get_nodes(group_name=group_name, uids=[c],
+                                                                       dataset_id=self._global_metadata.get('kb_id'))
         return self._children
 
     @children.setter
