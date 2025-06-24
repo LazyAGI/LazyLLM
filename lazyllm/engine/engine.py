@@ -775,7 +775,7 @@ class LLM(lazyllm.ModuleBase):
             assert len(args) == 1
         return self._m(*args, **kw)
 
-    def share(self, prompt: str, format: callable, history: Optional[List[List[str]]] = None):
+    def share(self, prompt: str, format: callable = None, history: Optional[List[List[str]]] = None):
         return LLM(self._m.share(prompt=prompt, format=format, history=history), self._keys)
 
 
