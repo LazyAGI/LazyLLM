@@ -389,7 +389,7 @@ class SenseCoreStore(StoreBase):
     def _apply_display(self, segments: List[dict]) -> List[dict]:
         out = []
         for s in segments:
-            if s.get('is_active', '').lower() != 'true':
+            if not s.get('is_active', True):
                 continue
             if s.get('display_content'):
                 s['content'] = s['display_content']
@@ -455,7 +455,7 @@ class SenseCoreStore(StoreBase):
                 response = requests.post(url, headers=headers, json=payload)
                 response.raise_for_status()
                 segments = response.json()['segments']
-                segments = [s for s in segments if s['is_active'].lower() == "true"]
+                segments = [s for s in segments if s['is_active']]
                 for s in segments:
                     if len(s.get('display_content', '')):
                         s['content'] = s['display_content']
