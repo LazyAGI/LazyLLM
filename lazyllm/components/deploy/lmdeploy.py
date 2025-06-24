@@ -37,6 +37,7 @@ class LMDeploy(LazyLLMDeployBase):
         "adapter_name": None
     }
     auto_map = {}
+    stream_parse_parameters = {"delimiter": b"\n"}
 
     def __init__(self, launcher=launchers.remote(ngpus=1), trust_remote_code=True, log_path=None, **kw):
         super().__init__(launcher=launcher)
@@ -95,11 +96,3 @@ class LMDeploy(LazyLLMDeployBase):
     @staticmethod
     def extract_result(x, inputs):
         return json.loads(x)['text']
-
-    @staticmethod
-    def stream_parse_parameters():
-        return {"delimiter": b"\n"}
-
-    @staticmethod
-    def stream_url_suffix():
-        return ''

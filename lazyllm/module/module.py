@@ -365,6 +365,7 @@ class UrlModule(ModuleBase, _UrlTemplate, _UrlHelper):
         stream_output = stream_output or self._stream
         url = self._url
 
+        LOG.error(f'here template: {self.template_message} \n ---- \n')
         if self.template_message:
             if isinstance(__input, package):
                 assert not lazyllm_files, 'Duplicate `files` argument provided by args and kwargs'
@@ -626,7 +627,7 @@ class ServerModule(UrlModule):
 class _TrainableModuleImpl(ModuleBase):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
 
-    def __init__(self, base_model='', target_path='', stream=False, train=None, finetune=None, deploy=None):
+    def __init__(self, base_model='', target_path='', stream=False, train=None, finetune=None, deploy=None, father=None):
         super().__init__()
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
@@ -635,14 +636,14 @@ class _TrainableModuleImpl(ModuleBase):
             LOG.warning(f"Cannot get a valid model from {base_model} by ModelManager.")
         self._target_path = os.path.join(lazyllm.config['train_target_root'], target_path)
         self._stream = stream
-        self._father = []
+        self._father = [father]
         self._launchers: Dict[str, Dict[str, Launcher]] = dict(default=dict(), manual=dict())
         self._delimiter = '-LazySplit-'
         self._deployer = None
         self._file_name = None
         self._specific_target_path = target_path or None
         self._train, self._finetune = train, finetune
-        self.deploy_method(deploy)
+        if deploy: self.deploy_method(deploy)
         self._prepare_deploy = lambda target_path, base_model: lazyllm.package(target_path, base_model)
 
     def _add_father(self, father):
@@ -659,7 +660,6 @@ class _TrainableModuleImpl(ModuleBase):
                 self._deploy, args['launcher'], self._deploy_args = lazyllm.deploy.AutoDeploy.get_deployer(
                     base_model=self._base_model, **args)
             args['launcher'] = args['launcher'].clone() if args.get('launcher') else launchers.remote(sync=False)
-            self._set_template(self._deploy)
             self._launchers['default'][arg_cls] = args['launcher']
         return args
 
@@ -714,12 +714,10 @@ class _TrainableModuleImpl(ModuleBase):
         if model_path in valid_paths:
             self._specific_target_path = model_path
         elif model_path in invalid_paths:
-            LOG.warning(f'Model Path: {model_path} in list, but the path is invalid. '
-                        'Base Model will be used to deploy.')
+            LOG.warning(f'Model Path: {model_path} in list, but the path is invalid. Base Model will be used to deploy.')
             self._specific_target_path = None
         else:
-            LOG.warning(f'Model Path: {model_path} not in list: {valid_paths}. '
-                        'Base Model will be used to deploy.')
+            LOG.warning(f'Model Path: {model_path} not in list: {valid_paths}. Base Model will be used to deploy.')
             self._specific_target_path = None
 
     @lazyllm.once_wrapper
@@ -750,14 +748,9 @@ class _TrainableModuleImpl(ModuleBase):
 
         for f in self._father:
             f._set_template(template, stop_words=stop_words)
-            if hasattr(deployer, 'extract_result'):
-                f._extract_result_func = deployer.extract_result
-
-            if hasattr(deployer, 'stream_parse_parameters'):
-                f._stream_parse_parameters = deployer.stream_parse_parameters()
-
-            if hasattr(deployer, 'stream_url_suffix'):
-                f._stream_url_suffix = deployer.stream_url_suffix()
+            f._extract_result_func = deployer.extract_result
+            f._stream_parse_parameters = deployer.stream_parse_parameters
+            f._stream_url_suffix = deployer.stream_url_suffix
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_train_or_deploy_args('deploy', disable=['target_path'])
@@ -801,8 +794,7 @@ class TrainableModule(UrlModule):
                  stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False):
         super().__init__(url=None, stream=stream, return_trace=return_trace)
         self._impl = _TrainableModuleImpl(base_model, target_path, stream,
-                                          None, lazyllm.finetune.auto, lazyllm.deploy.auto)
-        self._impl._add_father(self)
+                                          None, lazyllm.finetune.auto, lazyllm.deploy.auto, father=self)
         self.prompt()
         self._stream = stream
 

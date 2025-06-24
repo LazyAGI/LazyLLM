@@ -8,11 +8,23 @@ from packaging.version import parse
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG, LazyLLMLaunchersBase
 from .base import LazyLLMDeployBase, verify_fastapi_func
+from ...common import LazyLLMRegisterMetaClass
 from .utils import get_log_path, make_log_dir
 from .ray import reallocate_launcher, Distributed, sleep_moment
 
 
-class Vllm(LazyLLMDeployBase):
+class _VllmStreamParseParametersMeta(LazyLLMRegisterMetaClass):
+    def __getattribute__(cls, name):
+        if name == 'stream_parse_parameters':
+            if not hasattr(cls, '_stream_parse_parameters'):
+                vllm_version = parse(importlib.import_module('vllm').__version__)
+                cls._stream_parse_parameters = {"decode_unicode": False}
+                if vllm_version <= parse("0.5.0"): cls._stream_parse_parameters.update({"delimiter": b"\0"})
+            return cls._stream_parse_parameters
+        return super().__getattribute__(name)
+
+
+class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
     # keys_name_handle/default_headers/message_format will lose efficacy when openai_api is True
     keys_name_handle = {'inputs': 'prompt', 'stop': 'stop'}
     default_headers = {'Content-Type': 'application/json'}
@@ -26,7 +38,6 @@ class Vllm(LazyLLMDeployBase):
         'max_tokens': 4096
     }
     auto_map = {'tp': 'tensor-parallel-size'}
-    vllm_version = None
 
     # TODO(wangzhihong): change default value for `openai_api` argument to True
     def __init__(self, trust_remote_code: bool = True, launcher: LazyLLMLaunchersBase = launchers.remote(ngpus=1),
@@ -94,16 +105,3 @@ class Vllm(LazyLLMDeployBase):
     @staticmethod
     def extract_result(x, inputs):
         return json.loads(x)['text'][0]
-
-    @staticmethod
-    def stream_parse_parameters():
-        if Vllm.vllm_version is None:
-            Vllm.vllm_version = parse(importlib.import_module('vllm').__version__)
-        if Vllm.vllm_version <= parse("0.5.0"):
-            return {"decode_unicode": False, "delimiter": b"\0"}
-        else:
-            return {"decode_unicode": False}
-
-    @staticmethod
-    def stream_url_suffix():
-        return ''
