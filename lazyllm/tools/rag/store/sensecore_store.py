@@ -255,10 +255,12 @@ class SenseCoreStore(StoreBase):
         if not filtered_nodes:
             LOG.warning("no nodes to update")
             return
-        cnt = 1
+        group_cnt = {}
         for node in filtered_nodes:
-            node._metadata["store_num"] = cnt
-            cnt += 1
+            if node._group not in group_cnt:
+                group_cnt[node._group] = 1
+            node._metadata["store_num"] = group_cnt[node._group]
+            group_cnt[node._group] += 1
 
         with pipeline() as insert_ppl:
             insert_ppl.get_ids = warp(self._upload_nodes_and_insert).aslist
