@@ -380,14 +380,21 @@ class SenseCoreStore(StoreBase):
             if not next_page_token:
                 break
             payload['page_token'] = next_page_token
-
         if doc_ids:
             segments = [segment for segment in segments if segment['document_id'] in doc_ids]
         if display:
-            for s in segments:
-                if len(s.get("display_content", '')):
-                    s["content"] = s["display_content"]
+            segments = self._apply_display(segments)
         return [self._deserialize_node(s) for s in segments]
+
+    def _apply_display(self, segments: List[dict]) -> List[dict]:
+        out = []
+        for s in segments:
+            if s.get('is_active', '').lower() != 'true':
+                continue
+            if s.get('display_content'):
+                s['content'] = s['display_content']
+            out.append(s)
+        return out
 
     def _multi_modal_process(self, query: str, images: List[str]):
         urls = []
@@ -448,6 +455,7 @@ class SenseCoreStore(StoreBase):
                 response = requests.post(url, headers=headers, json=payload)
                 response.raise_for_status()
                 segments = response.json()['segments']
+                segments = [s for s in segments if s['is_active'].lower() == "true"]
                 for s in segments:
                     if len(s.get('display_content', '')):
                         s['content'] = s['display_content']
