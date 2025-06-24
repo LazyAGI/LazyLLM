@@ -2,7 +2,7 @@ import os
 import json
 import lazyllm
 from lazyllm import LOG
-from lazyllm.components.utils.file_operate import base64_to_image, is_base64_with_mime
+from lazyllm.components.utils.file_operate import base64_to_file, is_base64_with_mime
 from lazyllm.thirdparty import transformers as tf, torch, sentence_transformers, numpy as np, FlagEmbedding as fe
 from .base import LazyLLMDeployBase
 from typing import Union, List, Dict
@@ -83,7 +83,7 @@ class HuggingFaceEmbedding:
             for i, image in enumerate(args[0]['images']):
                 if is_base64_with_mime(image):
                     try:
-                        args[0]['images'][i] = base64_to_image(image)
+                        args[0]['images'][i] = base64_to_file(image)
                     except Exception as e:
                         LOG.error(f"Error converting base64 to image: {e}")
         return self._embed(*args, **kwargs)

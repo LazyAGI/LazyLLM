@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 
 import lazyllm
 from lazyllm import LOG
-from lazyllm.components.utils.file_operate import base64_to_audio, is_base64_with_mime
+from lazyllm.components.utils.file_operate import base64_to_file, is_base64_with_mime
 from ..utils.downloader import ModelManager
 from lazyllm.thirdparty import funasr
 from lazyllm.components.deploy.base import LazyLLMDeployBase
@@ -53,7 +53,7 @@ class SenseVoice(object):
         string = string.strip()
         if is_base64_with_mime(string):
             try:
-                string = base64_to_audio(string)
+                string = base64_to_file(string)
             except Exception as e:
                 LOG.error(f"Error processing base64 encoding: {e}")
                 return "Error processing base64 encoding"

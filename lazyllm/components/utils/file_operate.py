@@ -3,10 +3,13 @@ import base64
 import datetime
 import tempfile
 import re
+from pathlib import Path
+from typing import Optional, Tuple
 
 from lazyllm import LOG
 
-IMAGE_MIME_TYPE = {
+# MIME type mappings
+MIME_TYPE = {
     'jpg': 'image/jpeg',
     'jpeg': 'image/jpeg',
     'jfif': 'image/jpeg',
@@ -20,9 +23,7 @@ IMAGE_MIME_TYPE = {
     'tiff': 'image/tiff',
     'webp': 'image/webp',
     'ico': 'image/x-icon',
-    'icns': 'image/icns'
-}
-AUDIO_MIME_TYPE = {
+    'icns': 'image/icns',
     'mp3': 'audio/mpeg',
     'wav': 'audio/wav',
     'flac': 'audio/flac',
@@ -31,6 +32,13 @@ AUDIO_MIME_TYPE = {
     'm4a': 'audio/mp4',
     'wma': 'audio/x-ms-wma',
 }
+
+# Create reverse mapping for efficient MIME type to extension lookup
+MIME_TO_EXT = {v: k for k, v in MIME_TYPE.items()}
+
+# Filter MIME types by category
+IMAGE_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if v.startswith('image/')}
+AUDIO_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if v.startswith('audio/')}
 
 def delete_old_files(directory):
     now = datetime.datetime.now()
@@ -67,72 +75,75 @@ def split_base64_with_mime(input_str: str):
         input_str: String in format 'data:{mime_type};base64,{base64_str}'
 
     Returns:
-        tuple: (base64_str, mime_type) or (input_str, None)
+        Tuple of (base64_str, mime_type) or (input_str, None) if invalid format
     """
-    # Use regex to match all parts at once
     pattern = r'^data:([^;]+);base64,(.+)$'
-    match = re.match(pattern, input_str)
-
-    if match:
-        mime_type = match.group(1)
-        base64_str = match.group(2)
-        return base64_str, mime_type
+    if match := re.match(pattern, input_str):
+        return match.group(2), match.group(1)
     return input_str, None
 
-def image_to_base64(directory):
-    try:
-        with open(directory, 'rb') as f:
-            image_base64 = base64.b64encode(f.read()).decode('utf-8')
-            ext = directory.split(".")[-1]
-            mime = IMAGE_MIME_TYPE.get(ext)
-        return image_base64, mime
-    except Exception as e:
-        LOG.error(f"Error in base64 encode {directory}: {e}")
 
-def base64_to_image(base64_str: str):
+def file_to_base64(file_path: str, mime_types: dict) -> Optional[Tuple[str, Optional[str]]]:
+    """
+    Convert file to base64 string with MIME type
+
+    Args:
+        file_path: Path to the file
+        mime_types: Dictionary of supported MIME types
+
+    Returns:
+        Tuple of (base64_str, mime_type) or None if error
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            file_base64 = base64.b64encode(f.read()).decode('utf-8')
+            ext = Path(file_path).suffix.lstrip('.')
+            mime = mime_types.get(ext)
+            return file_base64, mime
+    except Exception as e:
+        LOG.error(f"Error encoding file {file_path} to base64: {e}")
+        return None
+
+
+def image_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
+    """Convert image file to base64 string with MIME type"""
+    return file_to_base64(file_path, IMAGE_MIME_TYPE)
+
+
+def audio_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
+    """Convert audio file to base64 string with MIME type"""
+    return file_to_base64(file_path, AUDIO_MIME_TYPE)
+
+
+def base64_to_file(base64_str: str, target_dir: Optional[str] = None) -> str:
+    """
+    Convert base64 string to file
+
+    Args:
+        base64_str: Base64 data URL string
+        target_dir: Optional target directory
+
+    Returns:
+        Path to the created file
+
+    Raises:
+        ValueError: If base64 format is invalid or MIME type is unsupported
+    """
     base64_data, mime_type = split_base64_with_mime(base64_str)
 
     if mime_type is None:
         raise ValueError("Invalid base64 format")
 
-    suffix = None
-    for ext, mime in IMAGE_MIME_TYPE.items():
-        if mime == mime_type:
-            suffix = f'.{ext}'
-            break
-    if suffix is None:
-        raise ValueError(f"Unsupported image MIME type: {mime_type}")
+    if suffix := MIME_TO_EXT.get(mime_type):
+        suffix = f'.{suffix}'
+    else:
+        raise ValueError(f"Unsupported MIME type: {mime_type}")
+    
+    target_dir = target_dir if os.path.isdir(target_dir) else None
 
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
-        temp_file.write(base64.b64decode(base64_data))
-        string = temp_file.name
-    return string
+    file_path = tempfile.NamedTemporaryFile(prefix="base64_to_file_", suffix=suffix, dir=target_dir, delete=False).name
 
-def audio_to_base64(directory):
-    try:
-        with open(directory, 'rb') as f:
-            audio_base64 = base64.b64encode(f.read()).decode('utf-8')
-            ext = directory.split(".")[-1]
-            mime = AUDIO_MIME_TYPE.get(ext)
-        return audio_base64, mime
-    except Exception as e:
-        LOG.error(f"Error in base64 encode {directory}: {e}")
+    with open(file_path, 'wb') as f:
+        f.write(base64.b64decode(base64_data))
 
-def base64_to_audio(base64_str: str):
-    base64_data, mime_type = split_base64_with_mime(base64_str)
-
-    if mime_type is None:
-        raise ValueError("Invalid base64 format")
-
-    suffix = None
-    for ext, mime in AUDIO_MIME_TYPE.items():
-        if mime == mime_type:
-            suffix = f'.{ext}'
-            break
-    if suffix is None:
-        raise ValueError(f"Unsupported audio MIME type: {mime_type}")
-
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
-        temp_file.write(base64.b64decode(base64_data))
-        string = temp_file.name
-    return string
+    return file_path
