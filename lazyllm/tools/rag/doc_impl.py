@@ -442,6 +442,9 @@ class DocImpl:
                 parent = self.node_groups[parent]['parent']
                 if parent in self._activated_groups: break
                 self.store.activate_group(parent)
+                self._activated_groups.add(parent)
+            # BUG: when using reparse here, nodes created from recurse method will not be set children correctly
+            # (For parent nodes has been upserted before creating child nodes)
             self._processor.reparse(group_name)
 
     def active_node_groups(self):
