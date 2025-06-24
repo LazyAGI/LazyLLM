@@ -49,20 +49,20 @@ class SenseCoreStore(StoreBase):
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
                  kb_id: str = "__default__", uri: str = "", **kwargs):
         self._uri = uri
-        if self._connect_store(uri):
-            LOG.info(f"Connected to doc store {self._uri}")
-        else:
-            raise ConnectionError(f"Failed to connect to doc store {self._uri}")
         self._kb_id = kb_id
-
-        if global_metadata_desc:
-            self._global_metadata_desc = global_metadata_desc | BUILDIN_GLOBAL_META_DESC
-        else:
-            self._global_metadata_desc = BUILDIN_GLOBAL_META_DESC
         self._group_embed_keys = group_embed_keys
         self._s3_config = kwargs.get("s3_config")
         self._image_url_config = kwargs.get("image_url_config")
         self._activated_groups = set()
+        if global_metadata_desc:
+            self._global_metadata_desc = global_metadata_desc | BUILDIN_GLOBAL_META_DESC
+        else:
+            self._global_metadata_desc = BUILDIN_GLOBAL_META_DESC
+
+        if self._connect_store(uri):
+            LOG.info(f"Connected to doc store {self._uri}")
+        else:
+            raise ConnectionError(f"Failed to connect to doc store {self._uri}")
 
     @override
     def _connect_store(self, uri: str) -> bool:
@@ -422,14 +422,9 @@ class SenseCoreStore(StoreBase):
         return
 
     @override
-    def get_nodes(  # noqa: C901
-        self,
-        group_name: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        uids: Optional[List[str]] = None,
-        doc_ids: Optional[Set] = None,
-        display: bool = False
-    ) -> List[DocNode]:
+    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,  # noqa: C901
+                  doc_ids: Optional[Set] = None, dataset_id: Optional[str] = None,
+                  display: bool = False) -> List[DocNode]:
         """ get nodes from the store """
         if not (uids or group_name):
             raise ValueError("group_name or uids must be provided")

@@ -451,21 +451,26 @@ class DocImpl:
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,
                  filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
         self._lazy_init()
+        nodes: List[DocNode] = []
         if index is None or index == 'default':
-            return self.store.query(query=query, group_name=group_name, similarity_name=similarity,
-                                    similarity_cut_off=similarity_cut_off, topk=topk,
-                                    embed_keys=embed_keys, filters=filters, **similarity_kws, **kwargs)
+            nodes.extend(self.store.query(query=query, group_name=group_name, similarity_name=similarity,
+                                          similarity_cut_off=similarity_cut_off, topk=topk, embed_keys=embed_keys,
+                                          filters=filters, **similarity_kws, **kwargs))
+        else:
+            index_instance = self.store.get_index(type=index)
+            if not index_instance:
+                raise NotImplementedError(f"index type '{index}' is not supported currently.")
 
-        index_instance = self.store.get_index(type=index)
-        if not index_instance:
-            raise NotImplementedError(f"index type '{index}' is not supported currently.")
-
-        try:
-            return index_instance.query(query=query, group_name=group_name, similarity_name=similarity,
-                                        similarity_cut_off=similarity_cut_off, topk=topk,
-                                        embed_keys=embed_keys, filters=filters, **similarity_kws, **kwargs)
-        except Exception as e:
-            raise RuntimeError(f'index type `{index}` of store `{type(self.store)}` query failed: {e}')
+            try:
+                nodes.extend(index_instance.query(query=query, group_name=group_name, similarity_name=similarity,
+                                                  similarity_cut_off=similarity_cut_off, topk=topk,
+                                                  embed_keys=embed_keys, filters=filters, **similarity_kws, **kwargs))
+            except Exception as e:
+                raise RuntimeError(f'index type `{index}` of store `{type(self.store)}` query failed: {e}')
+        for n in nodes:
+            n._store = self.store
+            n._node_groups = self.node_groups
+        return nodes
 
     def find(self, nodes: List[DocNode], group: str) -> List[DocNode]:
         if len(nodes) == 0: return nodes
@@ -477,6 +482,10 @@ class DocImpl:
                 cnt += 1
                 name = self.node_groups[name]['parent']
             return cnt
+
+        for n in nodes:
+            n._store = self.store
+            n._node_groups = self.node_groups
 
         # 1. find lowest common ancestor
         left, right = nodes[0]._group, group
@@ -498,34 +507,16 @@ class DocImpl:
         return nodes
 
     def find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
+        def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
+            if node.parent:
+                if node.parent._group == group:
+                    visited.add(node.parent)
+                else:
+                    recurse_parents(node.parent, visited)
+
         result = set()
-        if isinstance(nodes[0].parent, DocNode):
-            def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
-                if node.parent:
-                    if node.parent._group == group:
-                        visited.add(node.parent)
-                    else:
-                        recurse_parents(node.parent, visited)
-            for node in nodes:
-                recurse_parents(node, result)
-        else:
-            cur_group = nodes[0]._group
-            cur_nodes = nodes
-            while cur_group != group and cur_nodes[0].parent:
-                name = self.node_groups[cur_group]['parent']
-                parent_uids = set()
-                for node in cur_nodes:
-                    parent_uids.add(node.parent)
-                dataset_id = cur_nodes[0].global_metadata.get("kb_id", None)
-                LOG.info(f"Store get_nodes: {name} {dataset_id}, {parent_uids}")
-                parents = self.store.get_nodes(group_name=name, dataset_id=dataset_id,
-                                               uids=list(parent_uids), display=True)
-                if not parents:
-                    break
-                cur_group = parents[0]._group
-                cur_nodes = parents
-            if cur_group == group:
-                result = cur_nodes
+        for node in nodes:
+            recurse_parents(node, result)
         if not result:
             LOG.warning(
                 f"We can not find any nodes for group `{group}`, please check your input"
@@ -534,65 +525,39 @@ class DocImpl:
         return list(result)
 
     def find_children(self, nodes: List[DocNode], group: str) -> List[DocNode]:  # noqa:C901
-        result = set()
+        def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
+            if group in node.children:
+                visited.update(node.children[group])
+                return True
 
-        for _, children in nodes[0].children.items():
-            if isinstance(children[0], DocNode):
-                is_memory_tree = True
-            else:
-                is_memory_tree = False
-            break
+            found_in_any_child = False
 
-        if is_memory_tree:
-            def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
-                if group in node.children:
-                    visited.update(node.children[group])
-                    return True
-
-                found = False
-                for children_list in node.children.values():
-                    for child in children_list:
-                        if recurse_children(child, visited):
-                            found = True
-                return found
-
-            for node in nodes:
-                if group in node.children:
-                    result.update(node.children[group])
-                else:
-                    recurse_children(node, result)
-
-        else:
-            cur_group = nodes[0]._group
-            cur_nodes = nodes
-
-            while cur_group != group:
-                next_group = None
-                for g, v in self.node_groups.items():
-                    if v.get("parent") == cur_group:
-                        next_group = g
+            for children_list in node.children.values():
+                for child in children_list:
+                    if recurse_children(child, visited):
+                        found_in_any_child = True
+                    else:
                         break
 
-                if not next_group:
-                    LOG.warning(f"No child group found under group {cur_group}")
-                    break
+            return found_in_any_child
 
-                if next_group == group:
-                    parent_uids = [n._uid for n in cur_nodes]
-                    dataset_id = cur_nodes[0].global_metadata.get("kb_id", None)
-                    children = self.store.get_nodes(group_name=group, dataset_id=dataset_id,
-                                                    uids=parent_uids, display=True)
-                    result.update(children)
+        result = set()
+
+        for node in nodes:
+            if group in node.children:
+                result.update(node.children[group])
+            else:
+                if not recurse_children(node, result):
+                    LOG.warning(
+                        f"Node {node} and its children do not contain any nodes with the group `{group}`. "
+                        "Skipping further search in this branch."
+                    )
                     break
-                else:
-                    parent_uids = [n._uid for n in cur_nodes]
-                    dataset_id = cur_nodes[0].global_metadata.get("kb_id", None)
-                    cur_nodes = self.store.get_nodes(group_name=next_group, dataset_id=dataset_id,
-                                                     uids=parent_uids, display=True)
-                    cur_group = next_group
 
         if not result:
-            LOG.warning(f"We cannot find any nodes for group `{group}`, please check your input.")
+            LOG.warning(
+                f"We cannot find any nodes for group `{group}`, please check your input."
+            )
 
         LOG.debug(f"Found children nodes for {group}: {result}")
         return list(result)

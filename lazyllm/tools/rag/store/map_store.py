@@ -72,7 +72,7 @@ class MapStore(StoreBase):
 
     @override
     def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
-                  doc_ids: Optional[Set] = None) -> List[DocNode]:
+                  doc_ids: Optional[Set] = None, **kwargs) -> List[DocNode]:
         if uids:
             return [self._uid2node[uid] for uid in uids]
         elif group_name:

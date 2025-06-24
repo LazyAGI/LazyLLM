@@ -64,8 +64,8 @@ class StoreBaseMixin:
 
 class StoreBase(StoreBaseMixin, ABC):
     @abstractmethod
-    def get_nodes(self, group_name: Optional[str] = None,
-                  uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None) -> List[DocNode]:
+    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
+                  doc_ids: Optional[Set] = None, **kwargs) -> List[DocNode]:
         """ get nodes from the store """
         raise NotImplementedError
 

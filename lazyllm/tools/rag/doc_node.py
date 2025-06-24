@@ -10,6 +10,9 @@ import threading
 import time
 import copy
 
+_pickle_blacklist = {'_store', '_node_groups'}
+
+
 class MetadataMode(str, Enum):
     ALL = auto()
     EMBED = auto()
@@ -21,7 +24,8 @@ class MetadataMode(str, Enum):
 class DocNode:
     def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = None,
                  group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
-                 parent: Optional["DocNode"] = None, metadata: Optional[Dict[str, Any]] = None,
+                 parent: Optional[Union[str, "DocNode"]] = None, store=None,
+                 node_groups: Optional[Dict[str, Dict]] = None, metadata: Optional[Dict[str, Any]] = None,
                  global_metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
         if text and content:
             raise ValueError('`text` and `content` cannot be set at the same time.')
@@ -38,8 +42,12 @@ class DocNode:
         self._excluded_embed_metadata_keys: List[str] = []
         # Metadata keys that are excluded from text for the LLM.
         self._excluded_llm_metadata_keys: List[str] = []
-        self._parent: Optional["DocNode"] = parent
+        # NOTE: node in parent and chiildren should be id when stored in db (use store to recover)
+        # parent: 'uid', children: {'group_name': [uid1, uid2, ...], ...}
+        self._parent: Optional[Union[str, "DocNode"]] = parent
         self._children: Dict[str, List["DocNode"]] = defaultdict(list)
+        self._store = store
+        self._node_groups: Dict[str, Dict] = node_groups or {}
         self._lock = threading.Lock()
         self._embedding_state = set()
         self.relevance_score = None
@@ -66,7 +74,17 @@ class DocNode:
 
     @property
     def parent(self):
-        return self._parent
+        # lazy load parent node
+        if isinstance(self._parent, str) and self._store:
+            parent_group = self._node_groups[self._group]['parent']
+            nodes = self._store.get_nodes(group_name=parent_group, uids=[self._parent],
+                                          dataset_id=self._global_metadata.get('kb_id'))
+            if nodes:
+                self._parent = nodes[0]
+        if isinstance(self._parent, DocNode):
+            return self._parent
+        else:
+            return None
 
     @parent.setter
     def parent(self, v: Optional["DocNode"]):
@@ -162,6 +180,12 @@ class DocNode:
 
     def __hash__(self):
         return hash(self._uid)
+
+    def __getstate__(self):
+        st = self.__dict__.copy()
+        for attr in _pickle_blacklist:
+            st[attr] = None
+        return st
 
     def has_missing_embedding(self, embed_keys: Union[str, List[str]]) -> List[str]:
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
