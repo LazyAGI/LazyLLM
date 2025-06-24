@@ -72,32 +72,36 @@ class DocNode:
     def embedding(self, v: Optional[Dict[str, List[float]]]):
         self._embedding = v
 
+    def _load_from_store(self, group_name: str, uids: Union[str, List[str]]) -> List["DocNode"]:
+        if not self._store or not uids:
+            return []
+        if isinstance(uids, str):
+            uids = [uids]
+        nodes = self._store.get_nodes(group_name=group_name, uids=uids, dataset_id=self._global_metadata.get("kb_id"))
+        for n in nodes:
+            n._store = self._store
+            n._node_groups = self._node_groups
+        return nodes
+
     @property
-    def parent(self):
-        # lazy load parent node
-        if isinstance(self._parent, str) and self._store:
-            parent_group = self._node_groups[self._group]['parent']
-            nodes = self._store.get_nodes(group_name=parent_group, uids=[self._parent],
-                                          dataset_id=self._global_metadata.get('kb_id'))
-            if nodes:
-                self._parent = nodes[0]
-        if isinstance(self._parent, DocNode):
-            return self._parent
-        else:
-            return None
+    def parent(self) -> Optional["DocNode"]:
+        if self._parent and isinstance(self._parent, str) and self._node_groups:
+            parent_group = self._node_groups[self._group]["parent"]
+            loaded = self._load_from_store(parent_group, self._parent)
+            self._parent = loaded[0] if loaded else None
+        return self._parent
 
     @parent.setter
     def parent(self, v: Optional["DocNode"]):
         self._parent = v
 
     @property
-    def children(self):
-        # lazy load children node
-        if self._children:
-            for group_name, c in self._children.items():
-                if len(c) and isinstance(c[0], str) and self._store:
-                    self._children[group_name] = self._store.get_nodes(group_name=group_name, uids=[c],
-                                                                       dataset_id=self._global_metadata.get('kb_id'))
+    def children(self) -> Dict[str, List["DocNode"]]:
+        for grp, uids in list(self._children.items()):
+            if uids and isinstance(uids[0], str):
+                self._children[grp] = self._load_from_store(grp, uids)
+                for child in self._children[grp]:
+                    child.parent = self
         return self._children
 
     @children.setter
