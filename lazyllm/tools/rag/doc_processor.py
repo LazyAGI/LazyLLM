@@ -236,11 +236,9 @@ class DocumentProcessor():
             return self._inspectors[url]
 
         def _get_url_from_db_info(self, db_info: DBInfo):
-            return (
-                f"mysql+pymysql://{db_info.user}:{db_info.password}"
-                f"@{db_info.host}:{db_info.port}/{db_info.db_name}"
-                "?charset=utf8mb4"
-            )
+            return (f"mysql+pymysql://{db_info.user}:{db_info.password}"
+                    f"@{db_info.host}:{db_info.port}/{db_info.db_name}"
+                    "?charset=utf8mb4")
 
         def create_table(self, db_info: DBInfo):
             if db_info.db_type == "mysql":
@@ -253,17 +251,14 @@ class DocumentProcessor():
 
                     if not inspector.has_table(tbl, schema=schema):
                         metadata = MetaData()
-                        table = Table(
-                            tbl, metadata,
-                            Column('document_id', String(255), primary_key=True),
-                            Column('file_name', String(255), nullable=False),
-                            Column('file_path', String(255), nullable=False),
-                            Column('description', String(255), nullable=True),
-                            Column('creater', String(255), nullable=False),
-                            Column('dataset_id', String(255), nullable=False),
-                            Column('tags', JSON, nullable=True),
-                            Column('created_at', TIMESTAMP, server_default=text("CURRENT_TIMESTAMP")),
-                        )
+                        table = Table(tbl, metadata, Column('document_id', String(255), primary_key=True),
+                                      Column('file_name', String(255), nullable=False),
+                                      Column('file_path', String(255), nullable=False),
+                                      Column('description', String(255), nullable=True),
+                                      Column('creater', String(255), nullable=False),
+                                      Column('dataset_id', String(255), nullable=False),
+                                      Column('tags', JSON, nullable=True),
+                                      Column('created_at', TIMESTAMP, server_default=text("CURRENT_TIMESTAMP")))
                         metadata.create_all(engine, tables=[table])
                         LOG.info(f"Created table `{tbl}` in `{schema}`")
                 except Exception as e:
@@ -298,16 +293,11 @@ class DocumentProcessor():
                     if not document_id or not file_path:
                         raise ValueError(f"Invalid file_info: {file_info}")
 
-                    raw_infos = {
-                        "document_id": document_id,
-                        "file_name": os.path.basename(file_path),
-                        "file_path": file_path,
-                        "description": file_info["metadata"].get("description", None),
-                        "creater": file_info["metadata"].get("creater", None),
-                        "dataset_id": file_info["metadata"].get("kb_id", None),
-                        "tags": file_info["metadata"].get("tags", []) or [],
-                    }
-
+                    raw_infos = {"document_id": document_id, "file_name": os.path.basename(file_path),
+                                 "file_path": file_path, "description": file_info["metadata"].get("description", None),
+                                 "creater": file_info["metadata"].get("creater", None),
+                                 "dataset_id": file_info["metadata"].get("kb_id", None),
+                                 "tags": file_info["metadata"].get("tags", []) or []}
                     infos = {}
                     for k, v in raw_infos.items():
                         if v is None:
@@ -321,10 +311,7 @@ class DocumentProcessor():
                         infos["document_id"] = document_id
 
                     stmt = mysql_insert(table).values(**infos)
-                    update_dict = {
-                        k: stmt.inserted[k]
-                        for k in infos if k != 'document_id'
-                    }
+                    update_dict = {k: stmt.inserted[k] for k in infos if k != 'document_id'}
                     upsert_stmt = stmt.on_duplicate_key_update(**update_dict)
                     conn.execute(upsert_stmt)
 
@@ -348,11 +335,8 @@ class DocumentProcessor():
             infos = []
             for group_name in processor._store.activated_groups():
                 if group_name in processor._node_groups:
-                    group_info = {
-                        "name": group_name,
-                        "type": processor._node_groups[group_name].get('group_type'),
-                        "display_name": processor._node_groups[group_name].get('display_name'),
-                    }
+                    group_info = {"name": group_name, "type": processor._node_groups[group_name].get('group_type'),
+                                  "display_name": processor._node_groups[group_name].get('display_name')}
                     infos.append(group_info)
             LOG.info(f"Get group info for {algo_id} success with {infos}")
             return BaseResponse(code=200, msg='success', data=infos)
@@ -373,11 +357,7 @@ class DocumentProcessor():
                 for file_info in file_infos:
                     file_info.file_path = create_file_path(path=file_info.file_path, prefix=self._path_prefix)
 
-            params = {
-                "file_infos": file_infos,
-                "db_info": db_info,
-                "feedback_url": feedback_url
-            }
+            params = {"file_infos": file_infos, "db_info": db_info, "feedback_url": feedback_url}
             if ENABLE_DB:
                 self.create_table(db_info=db_info)
 
@@ -403,11 +383,8 @@ class DocumentProcessor():
                     cancelled = old_fut.cancel()
                     LOG.info(f"Canceled previous update for {doc_id}: {cancelled}")
 
-                new_fut = self._update_executor.submit(
-                    self._processors[algo_id].update_doc_meta,
-                    doc_id=doc_id,
-                    metadata=metadata
-                )
+                new_fut = self._update_executor.submit(self._processors[algo_id].update_doc_meta, doc_id=doc_id,
+                                                       metadata=metadata)
 
                 self._update_futures[doc_id] = new_fut
 
@@ -453,23 +430,16 @@ class DocumentProcessor():
                         self._tasks.pop(task_id, None)
                 else:
                     status = 0
-            return BaseResponse(
-                code=200,
-                msg="success" if status else "failed",
-                data={"task_id": task_id, "status": status}
-            )
+            return BaseResponse(code=200, msg="success" if status else "failed",
+                                data={"task_id": task_id, "status": status})
 
         def _send_status_message(self, task_id: str, callback_path: str, success: bool,
                                  error_code: str = "", error_msg: str = ""):
             if self._feedback_url:
                 try:
                     full_url = self._feedback_url + callback_path
-                    payload = {
-                        "task_id": task_id,
-                        "status": 1 if success else 0,
-                        "error_code": error_code,
-                        "error_msg": error_msg,
-                    }
+                    payload = {"task_id": task_id, "status": 1 if success else 0, "error_code": error_code,
+                               "error_msg": error_msg}
                     headers = {"Content-Type": "application/json"}
                     res = None
                     for wait_time in fibonacci_backoff(max_retries=3):
@@ -518,22 +488,14 @@ class DocumentProcessor():
                         metadatas.append(file_info.metadata)
 
                 if input_files:
-                    future = self._add_executor.submit(
-                        self._processors[algo_id].add_doc,
-                        input_files=input_files,
-                        ids=ids,
-                        metadatas=metadatas
-                    )
+                    future = self._add_executor.submit(self._processors[algo_id].add_doc, input_files=input_files,
+                                                       ids=ids, metadatas=metadatas)
                     if ENABLE_DB:
                         future.add_done_callback(lambda fut: self.operate_db(db_info, 'upsert', file_infos=file_infos))
                 elif reparse_group:
-                    future = self._add_executor.submit(
-                        self._processors[algo_id].reparse,
-                        group_name=reparse_group,
-                        doc_ids=reparse_doc_ids,
-                        doc_paths=reparse_files,
-                        metadatas=reparse_metadatas
-                    )
+                    future = self._add_executor.submit(self._processors[algo_id].reparse, group_name=reparse_group,
+                                                       doc_ids=reparse_doc_ids, doc_paths=reparse_files,
+                                                       metadatas=reparse_metadatas)
                 else:
                     LOG.error(
                         f"Task-{task_id}: add task error, no input files {input_files} or reparse group {reparse_group}"
@@ -573,21 +535,11 @@ class DocumentProcessor():
                             task_need_pop.append(task_id)
                             ex = future.exception()
                             if callback_path and not ex:
-                                self._send_status_message(
-                                    task_id=task_id,
-                                    callback_path=callback_path,
-                                    success=True,
-                                    error_code="",
-                                    error_msg=""
-                                )
+                                self._send_status_message(task_id=task_id, callback_path=callback_path, success=True,
+                                                          error_code="", error_msg="")
                             elif callback_path and ex:
-                                self._send_status_message(
-                                    task_id=task_id,
-                                    callback_path=callback_path,
-                                    success=False,
-                                    error_code=type(ex).__name__,
-                                    error_msg=str(ex)
-                                )
+                                self._send_status_message(task_id=task_id, callback_path=callback_path, success=False,
+                                                          error_code=type(ex).__name__, error_msg=str(ex))
                                 LOG.error(f"task {task_id} failed: {str(ex)}")
                             elif ex:
                                 LOG.error(f"task {task_id} failed: {str(ex)}")
