@@ -138,7 +138,7 @@ def base64_to_file(base64_str: str, target_dir: Optional[str] = None) -> str:
         suffix = f'.{suffix}'
     else:
         raise ValueError(f"Unsupported MIME type: {mime_type}")
-    
+
     target_dir = target_dir if os.path.isdir(target_dir) else None
 
     file_path = tempfile.NamedTemporaryFile(prefix="base64_to_file_", suffix=suffix, dir=target_dir, delete=False).name

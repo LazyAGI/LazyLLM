@@ -484,11 +484,11 @@ def make_tools_for_llm(tools: List[str]):
     return lazyllm.tools.ToolManager(_get_tools(tools))
 
 @NodeConstructor.register('FunctionCall', subitems=['tools'])
-def make_fc(llm: str, tools: List[str], algorithm: Optional[str] = None):
+def make_fc(base_model: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
-    return f(Engine().build_node(llm).func, _get_tools(tools))
+    return f(Engine().build_node(base_model).func._m, _get_tools(tools))
 
 class AuthenticationFailedError(Exception):
     def __init__(self, message="Authentication failed for the given user and tool."):
@@ -755,9 +755,9 @@ def make_online_embedding(source: str, embed_type: Optional[str] = 'embed', base
     if source == 'sensenova':
         return lazyllm.OnlineEmbeddingModule(source=source, type=embed_type, embed_model_name=base_model,
                                              embed_url=base_url, api_key=api_key, secret_key=secret_key)
-    else:   
+    else:
         return lazyllm.OnlineEmbeddingModule(source=source, type=embed_type, embed_model_name=base_model,
-                                         embed_url=base_url, api_key=api_key)
+                                             embed_url=base_url, api_key=api_key)
 
 
 class LLM(lazyllm.ModuleBase):
@@ -876,8 +876,9 @@ def make_constant(value: Any):
 
 
 @NodeConstructor.register('SqlCall')
-def make_sql_call(sql_manager: Node, llm: Node, sql_examples: str = "", use_llm_for_sql_result: bool = True,
+def make_sql_call(sql_manager: Node, base_model: str, sql_examples: str = "", use_llm_for_sql_result: bool = True,
                   return_trace: bool = True):
+    llm = Engine().build_node(base_model).func
     return lazyllm.tools.SqlCall(llm=llm, sql_manager=sql_manager, sql_examples=sql_examples,
                                  use_llm_for_sql_result=use_llm_for_sql_result, return_trace=return_trace)
 
