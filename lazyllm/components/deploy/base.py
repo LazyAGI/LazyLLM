@@ -1,24 +1,32 @@
 import time
+from dataclasses import dataclass
+from typing import Callable, Any, Dict
 from ..core import ComponentBase
 import lazyllm
 from lazyllm import launchers, flows, LOG
 import random
 
 
+@dataclass
+class KwMapItem:
+    new_key: str
+    type_func: Callable[[Any], Any]
+    
 class LazyLLMDeployBase(ComponentBase):
 
     def __init__(self, *, launcher=launchers.remote()):
         super().__init__(launcher=launcher)
 
-    def kw_map_for_framework(self, kw, kw_map):
+    def kw_map_for_framework(self, kw: Dict[str, Any], kw_map: Dict[str, KwMapItem]) -> Dict[str, Any]:
         result = {}
         for k, v in kw.items():
-            if k in kw_map:
+            kw_item = kw_map.get(k)
+            if kw_item:
                 try:
-                    result[kw_map[k]['new_key']] = kw_map[k]['type_func'](v)
-                except TypeError as e:
+                    result[kw_item.new_key] = kw_item.type_func(v)
+                except (TypeError, ValueError) as e:
                     LOG.warning(f"Type conversion error for key '{k}': {e}, using original value")
-                    result[kw_map[k]['new_key']] = v
+                    result[kw_item.new_key] = v
         return result
 
 

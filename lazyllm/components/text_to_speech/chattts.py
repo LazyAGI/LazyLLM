@@ -4,7 +4,7 @@ import lazyllm
 from lazyllm.thirdparty import torch, ChatTTS
 from lazyllm.components.formatter import encode_query_with_filepaths
 from ..utils.downloader import ModelManager
-from .utils import sounds_to_base64, TTSBase
+from .utils import sounds_to_base64_list, TTSBase
 
 
 class ChatTTSModule(object):
@@ -54,7 +54,7 @@ class ChatTTSModule(object):
                                   params_refine_text=params_refine_text,
                                   params_infer_code=params_infer_code,
                                 )
-        base64_list = sounds_to_base64(speech, self.save_path)
+        base64_list = sounds_to_base64_list(speech)
         return encode_query_with_filepaths(files=base64_list)
 
     @classmethod

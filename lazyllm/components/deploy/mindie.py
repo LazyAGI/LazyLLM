@@ -5,7 +5,7 @@ import shutil
 
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
-from .base import LazyLLMDeployBase, verify_func_factory
+from .base import LazyLLMDeployBase, verify_func_factory, KwMapItem
 from .utils import get_log_path, make_log_dir
 
 lazyllm.config.add('mindie_home', str, '', 'MINDIE_HOME')
@@ -27,12 +27,12 @@ class Mindie(LazyLLMDeployBase):
         'top_p': 0.95
     }
     kw_map = {
-        'port': {'new_key': 'port', 'type_func': int},
-        'host': {'new_key': 'host', 'type_func': str},
-        'tp': {'new_key': 'world_size', 'type_func': int},
-        'max_input_token_len': {'new_key': 'maxInputTokenLen', 'type_func': int},
-        'max_prefill_tokens': {'new_key': 'maxPrefillTokens', 'type_func': int},
-        'max_seq_len': {'new_key': 'maxSeqLen', 'type_func': int},
+        'port': KwMapItem('port', int),
+        'host': KwMapItem('host', str),
+        'tp': KwMapItem('world_size', int),
+        'max_input_token_len': KwMapItem('maxInputTokenLen', int),
+        'max_prefill_tokens': KwMapItem('maxPrefillTokens', int),
+        'max_seq_len': KwMapItem('maxSeqLen', int),
     }
 
     def __init__(self, trust_remote_code=True, launcher=launchers.remote(), log_path=None, **kw):

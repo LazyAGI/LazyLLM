@@ -8,7 +8,6 @@ from typing import Optional, Tuple
 
 from lazyllm import LOG
 
-# MIME type mappings
 MIME_TYPE = {
     'jpg': 'image/jpeg',
     'jpeg': 'image/jpeg',
@@ -36,7 +35,6 @@ MIME_TYPE = {
 # Create reverse mapping for efficient MIME type to extension lookup
 MIME_TO_EXT = {v: k for k, v in MIME_TYPE.items()}
 
-# Filter MIME types by category
 IMAGE_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if v.startswith('image/')}
 AUDIO_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if v.startswith('audio/')}
 
@@ -63,7 +61,8 @@ def delete_old_files(directory):
                 LOG.error(f"Error deleting directory {dir_path}: {e}")
 
 def is_base64_with_mime(input_str: str):
-    if isinstance(input_str, str) and input_str.startswith('data:') and ';base64,' in input_str:
+    pattern = r'^data:([^;]+);base64,(.+)$'
+    if isinstance(input_str, str) and re.match(pattern, input_str):
         return True
     return False
 
@@ -106,12 +105,10 @@ def file_to_base64(file_path: str, mime_types: dict) -> Optional[Tuple[str, Opti
 
 
 def image_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
-    """Convert image file to base64 string with MIME type"""
     return file_to_base64(file_path, IMAGE_MIME_TYPE)
 
 
 def audio_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
-    """Convert audio file to base64 string with MIME type"""
     return file_to_base64(file_path, AUDIO_MIME_TYPE)
 
 

@@ -1,5 +1,7 @@
 import os
 import uuid
+import base64
+from io import BytesIO
 from lazyllm.components.deploy.base import LazyLLMDeployBase
 from lazyllm.thirdparty import scipy, numpy as np
 from ..utils.file_operate import audio_to_base64, delete_old_files
@@ -24,17 +26,19 @@ def sounds_to_files(sounds: list, directory: str, sample_rate: int = 24000) -> l
         path_list.append(file_path)
     return path_list
 
-def sounds_to_base64(sounds: list, directory: str, sample_rate: int = 24000) -> list:
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    delete_old_files(directory)
-    unique_id = uuid.uuid4()
+def sound_to_base64(sound: 'np.array', mime_type: str = 'audio/wav', sample_rate: int = 24000) -> str:
+    scaled_audio = np.int16(sound / np.max(np.abs(sound)) * 32767)
+    buffer = BytesIO()
+    scipy.io.wavfile.write(buffer, sample_rate, scaled_audio)
+    buffer.seek(0)
+    base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+    return f"data:{mime_type};base64,{base64_str}"
+
+def sounds_to_base64_list(sounds: list, mime_type: str = 'audio/wav', sample_rate: int = 24000) -> list:
     base64_list = []
-    for i, sound in enumerate(sounds):
-        file_path = os.path.join(directory, f'sound_{unique_id}_{i}.wav')
-        sound_to_file(sound, file_path, sample_rate)
-        base64_str, mime = audio_to_base64(file_path)
-        base64_list.append(f"data:{mime};base64," + base64_str)
+    for sound in sounds:
+        base64_str = sound_to_base64(sound, mime_type, sample_rate)
+        base64_list.append(base64_str)
     return base64_list
 
 class TTSBase(LazyLLMDeployBase):

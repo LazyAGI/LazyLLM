@@ -51,12 +51,11 @@ class SenseVoice(object):
                 string = string['inputs']
         assert isinstance(string, str)
         string = string.strip()
-        if is_base64_with_mime(string):
-            try:
-                string = base64_to_file(string)
-            except Exception as e:
-                LOG.error(f"Error processing base64 encoding: {e}")
-                return "Error processing base64 encoding"
+        try:
+            string = base64_to_file(string) if is_base64_with_mime(string) else string
+        except Exception as e:
+            LOG.error(f"Error processing base64 encoding: {e}")
+            return "Error processing base64 encoding"
         if not string.endswith(('.mp3', '.wav')):
             return "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported."
         if not is_valid_path(string) and not is_valid_url(string):

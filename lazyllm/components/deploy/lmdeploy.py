@@ -5,7 +5,7 @@ import importlib.util
 
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
-from .base import LazyLLMDeployBase, verify_fastapi_func
+from .base import LazyLLMDeployBase, verify_fastapi_func, KwMapItem
 from ..utils import ModelManager
 from .utils import get_log_path, make_log_dir
 
@@ -36,11 +36,11 @@ class LMDeploy(LazyLLMDeployBase):
     }
     auto_map = {}
     kw_map = {
-        'port': {'new_key': 'server-port', 'type_func': int},
-        'host': {'new_key': 'server-name', 'type_func': str},
-        'tp': {'new_key': 'tp', 'type_func': int},
-        'max_batch_size': {'new_key': 'max-batch-size', 'type_func': int},
-        'chat_template': {'new_key': 'chat-template', 'type_func': str},
+        'port': KwMapItem('server-port', int),
+        'host': KwMapItem('server-name', str),
+        'tp': KwMapItem('tp', int),
+        'max_batch_size': KwMapItem('max-batch-size', int),
+        'chat_template': KwMapItem('chat-template', str),
     }
 
     def __init__(self, launcher=launchers.remote(ngpus=1), log_path=None, **kw):

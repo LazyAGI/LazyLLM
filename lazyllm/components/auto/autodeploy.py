@@ -53,11 +53,11 @@ class AutoDeploy(LazyLLMDeployBase):
             launcher = launchers.remote(ngpus = ngpus)
             
         avaliable_framework = []
-        for framework in ['vllm', 'lightllm', 'mindie']:
-            if check_requirements(requirements.get(framework.lower(), framework.lower())) or check_cmd(cmds.get(framework.lower(), framework.lower())):
+        for framework in ['vllm', 'lightllm', 'lmdeploy', 'mindie']:
+            if check_requirements(requirements.get(framework, framework)) or check_cmd(cmds.get(framework, framework)):
                 avaliable_framework.append(framework)
         if len(avaliable_framework) == 1:
-            deploy_cls = getattr(deploy, avaliable_framework[0].lower())
+            deploy_cls = getattr(deploy, avaliable_framework[0])
             return deploy_cls(trust_remote_code=trust_remote_code, launcher=launcher, log_path=log_path, **kw)
         
         candidates = get_configer().query_deploy(lazyllm.config['gpu_type'], launcher.ngpus,
