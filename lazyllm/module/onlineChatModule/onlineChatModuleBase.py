@@ -335,11 +335,6 @@ class OnlineChatModuleBase(ModuleBase):
             for k in globals["usage"][par_muduleid]:
                 globals["usage"][par_muduleid][k] += usage[k]
 
-    def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None):
-        self.template_message = template_message
-        self.keys_name_handle = keys_name_handle
-        self.template_headers = template_headers
-
     def _upload_train_file(self, train_file) -> str:
         raise NotImplementedError(f"{self._model_series} not implemented _upload_train_file method in subclass")
 
