@@ -373,7 +373,6 @@ class UrlModule(ModuleBase, _UrlHelper):
         stream_output = stream_output or self._stream
         url = self._url
 
-        LOG.error(f'here template: {self.template_message} \n ---- \n')
         if self.template_message:
             if isinstance(__input, package):
                 assert not lazyllm_files, 'Duplicate `files` argument provided by args and kwargs'
