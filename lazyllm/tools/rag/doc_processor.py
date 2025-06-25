@@ -118,12 +118,14 @@ class _Processor:
         if not removed_flag:
             raise Exception(f"Failed to remove nodes for docs {doc_ids} group {cur_name} from store")
 
+        for p_n in p_nodes:
+            p_n.children.pop(cur_name, None)
         t = self._node_groups[cur_name]['transform']
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
         nodes = transform.batch_forward(p_nodes, cur_name)
         LOG.info(f"[Reparse] Get {len(p_nodes)} parent nodes"
                  f"updating {len(nodes)} nodes for docs {doc_ids} group {cur_name}")
-        self._store.update_nodes(nodes)
+        self._store.update_nodes(p_nodes + nodes)
 
         for group_name in self._store.activated_groups():
             group = self._node_groups.get(group_name)
