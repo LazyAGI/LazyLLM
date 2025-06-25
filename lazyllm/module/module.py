@@ -296,29 +296,29 @@ class _UrlHelper(object):
         url: Optional[str] = None
 
     def __init__(self, url):
-        self.__url = url if isinstance(url, _UrlHelper._Wrapper) else _UrlHelper._Wrapper(url=url)
+        self._url_wrapper = url if isinstance(url, _UrlHelper._Wrapper) else _UrlHelper._Wrapper(url=url)
 
     _url_id = property(lambda self: self._module_id)
 
     @property
     def _url(self):
-        if not self.__url.url:
+        if not self._url_wrapper.url:
             if redis_client:
                 try:
-                    while not self.__url.url:
-                        self.__url.url = get_redis(self._url_id)
-                        if self.__url.url: break
+                    while not self._url_wrapper.url:
+                        self._url_wrapper.url = get_redis(self._url_id)
+                        if self._url_wrapper.url: break
                         time.sleep(lazyllm.config["redis_recheck_delay"])
                 except Exception as e:
                     LOG.error(f"Error accessing Redis: {e}")
                     raise
-        return self.__url.url
+        return self._url_wrapper.url
 
     def _set_url(self, url):
         if redis_client:
             redis_client.set(self._url_id, url)
         LOG.debug(f'url: {url}')
-        self.__url.url = url
+        self._url_wrapper.url = url
 
 
 class UrlModule(ModuleBase, _UrlHelper):
@@ -570,9 +570,10 @@ def light_reduce(cls):
     return cls
 
 @light_reduce
-class _ServerModuleImpl(ModuleBase):
-    def __init__(self, m=None, pre=None, post=None, launcher=None, port=None, pythonpath=None):
+class _ServerModuleImpl(ModuleBase, _UrlHelper):
+    def __init__(self, m=None, pre=None, post=None, launcher=None, port=None, pythonpath=None, url_wrapper=None):
         super().__init__()
+        _UrlHelper.__init__(self, url=url_wrapper)
         self._m = ActionModule(m) if isinstance(m, FlowBase) else m
         self._pre_func, self._post_func = pre, post
         self._launcher = launcher.clone() if launcher else launchers.remote(sync=False)
@@ -601,7 +602,7 @@ class ServerModule(UrlModule):
         assert stream is False or return_trace is False, 'Module with stream output has no trace'
         assert (post is None) or (stream is False), 'Stream cannot be true when post-action exists'
         super().__init__(url=None, stream=stream, return_trace=return_trace)
-        self._impl = _ServerModuleImpl(m, pre, post, launcher, port, pythonpath)
+        self._impl = _ServerModuleImpl(m, pre, post, launcher, port, pythonpath, self._url_wrapper)
 
     _url_id = property(lambda self: self._impl._module_id)
 
@@ -646,7 +647,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         self._specific_target_path = target_path or None
         self._train, self._finetune = train, finetune
         self._template = template
-        _UrlHelper.__init__(url=url_wrapper)
+        _UrlHelper.__init__(self, url=url_wrapper)
         if deploy: self.deploy_method(deploy)
         self._prepare_deploy = lambda target_path, base_model: lazyllm.package(target_path, base_model)
 
@@ -787,7 +788,7 @@ class TrainableModule(UrlModule):
                  stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False):
         super().__init__(url=None, stream=stream, return_trace=return_trace)
         self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
-                                          lazyllm.deploy.auto, self._template)
+                                          lazyllm.deploy.auto, self._template, self._url_wrapper)
         self.prompt()
         self._stream = stream
 
