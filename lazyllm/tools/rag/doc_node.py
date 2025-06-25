@@ -45,6 +45,7 @@ class DocNode:
         # NOTE: node in parent should be id when stored in db (use store to recover): parent: 'uid'
         self._parent: Optional[Union[str, "DocNode"]] = parent
         self._children: Dict[str, List["DocNode"]] = defaultdict(list)
+        self._children_loaded = False
         self._store = store
         self._node_groups: Dict[str, Dict] = node_groups or {}
         self._lock = threading.Lock()
@@ -97,17 +98,18 @@ class DocNode:
 
     @property
     def children(self) -> Dict[str, List["DocNode"]]:
-        if not len(self._children) and self._store and self._node_groups:
+        if not self._children_loaded and self._store and self._node_groups:
+            self._children_loaded = True
             dataset_id = self._global_metadata.get("kb_id")
             doc_id = self._global_metadata.get("docid")
             c_groups = [grp for grp in self._node_groups.keys() if self._node_groups[grp]['parent'] == self._group]
             for grp in c_groups:
-                c_nodes = self._store.get_nodes(group_name=grp, dataset_id=dataset_id, doc_ids=[doc_id])
-                for n in c_nodes:
-                    if n._parent == self._uid:
-                        self._children[grp] = n
-                        n._store = self._store
-                        n._node_groups = self._node_groups
+                nodes = self._store.get_nodes(group_name=grp, dataset_id=dataset_id, doc_ids=[doc_id])
+                c_nodes = [n for n in nodes if n._parent == self._uid]
+                self._children[grp] = c_nodes
+                for n in self._children[grp]:
+                    n._store = self._store
+                    n._node_groups = self._node_groups
         return self._children
 
     @children.setter
