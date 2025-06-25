@@ -57,13 +57,13 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
         if source is None and "api_key" in kwargs and kwargs["api_key"]:
             raise ValueError("No source is given but an api_key is provided.")
 
+        if "type" in params:
+            params.pop("type")
         if kwargs.get("type", "embed") == "embed":
             if source is None:
                 source = OnlineEmbeddingModule._check_available_source(OnlineEmbeddingModule.EMBED_MODELS)
             return OnlineEmbeddingModule.EMBED_MODELS[source](**params)
         elif kwargs.get("type") == "rerank":
-            if "type" in params:
-                params.pop("type")
             if source is None:
                 source = OnlineEmbeddingModule._check_available_source(OnlineEmbeddingModule.RERANK_MODELS)
             return OnlineEmbeddingModule.RERANK_MODELS[source](**params)

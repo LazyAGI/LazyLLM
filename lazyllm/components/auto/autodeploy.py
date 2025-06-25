@@ -5,12 +5,16 @@ from lazyllm import launchers, deploy, LOG
 from ..deploy.base import LazyLLMDeployBase
 from .configure import get_configer
 from .dependencies.requirements import requirements
-from .auto_helper import model_map, get_model_name, check_requirements
+from .dependencies.cmds import cmds
+from .auto_helper import model_map, get_model_name, check_requirements, check_cmd
 from lazyllm.components.stable_diffusion.stable_diffusion3 import StableDiffusionDeploy
 from lazyllm.components.speech_to_text.sense_voice import SenseVoiceDeploy
 from lazyllm.components.text_to_speech.base import TTSDeploy
 from lazyllm.components.ocr.pp_ocr import OCRDeploy
 from ..utils.downloader import ModelManager
+
+lazyllm.config.add('gpu_memory_capacity', int, 80, 'GPU_MEMORY_CAPACITY')
+
 class AutoDeploy(LazyLLMDeployBase):
     message_format = {}
     keys_name_handle = None
@@ -20,6 +24,7 @@ class AutoDeploy(LazyLLMDeployBase):
                 launcher=None, stream=False, type=None, log_path=None, **kw):
         base_model = ModelManager(source).download(base_model) or ''
         model_name = get_model_name(base_model)
+        gpu_memory_capacity = lazyllm.config['gpu_memory_capacity']
         if not type:
             type = ModelManager.get_model_type(model_name)
 
@@ -27,15 +32,15 @@ class AutoDeploy(LazyLLMDeployBase):
             if lazyllm.config['default_embedding_engine'] in ('transformers', 'flagEmbedding') \
                 or kw.get('embed_type')=='sparse' or not check_requirements('infinity_emb'):
                 return deploy.Embedding((launcher or launchers.remote(ngpus=1)), model_type=type,
-                                       log_path=log_path, embed_type=kw.get('embed_type', 'dense'))
+                                       log_path=log_path, embed_type=kw.get('embed_type', 'dense'), port=kw.get('port'))
             else:
-                return deploy.Infinity((launcher or launchers.remote(ngpus=1)), model_type=type, log_path=log_path)
+                return deploy.Infinity((launcher or launchers.remote(ngpus=1)), model_type=type, log_path=log_path, **kw)
         elif type == 'sd':
-            return StableDiffusionDeploy((launcher or launchers.remote(ngpus=1)), log_path=log_path)
+            return StableDiffusionDeploy((launcher or launchers.remote(ngpus=1)), log_path=log_path, port=kw.get('port'))
         elif type == 'stt':
-            return SenseVoiceDeploy((launcher or launchers.remote(ngpus=1)), log_path=log_path)
+            return SenseVoiceDeploy((launcher or launchers.remote(ngpus=1)), log_path=log_path, port=kw.get('port'))
         elif type == 'tts':
-            return TTSDeploy(model_name, log_path=log_path, launcher=(launcher or launchers.remote(ngpus=1)))
+            return TTSDeploy(model_name, log_path=log_path, launcher=(launcher or launchers.remote(ngpus=1)), port=kw.get('port'))
         elif type == 'vlm':
             return deploy.LMDeploy((launcher or launchers.remote(ngpus=1)), log_path=log_path, **kw)
         elif type == 'ocr':
@@ -44,8 +49,17 @@ class AutoDeploy(LazyLLMDeployBase):
         if not launcher:
             size = (size * 2) if 'awq' not in model_name.lower() else (size / 1.5)
             # TODO(wangzhihong): support config for gpu memory
-            ngpus = (1 << (math.ceil(size * 2 / 80) - 1).bit_length())
+            ngpus = (1 << (math.ceil(size * 2 / gpu_memory_capacity) - 1).bit_length())
             launcher = launchers.remote(ngpus = ngpus)
+            
+        avaliable_framework = []
+        for framework in ['vllm', 'lightllm', 'lmdeploy', 'mindie']:
+            if check_requirements(requirements.get(framework, framework)) or check_cmd(cmds.get(framework, framework)):
+                avaliable_framework.append(framework)
+        if len(avaliable_framework) == 1:
+            deploy_cls = getattr(deploy, avaliable_framework[0])
+            return deploy_cls(trust_remote_code=trust_remote_code, launcher=launcher, log_path=log_path, **kw)
+        
         candidates = get_configer().query_deploy(lazyllm.config['gpu_type'], launcher.ngpus,
                                                  map_name, max_token_num)
 

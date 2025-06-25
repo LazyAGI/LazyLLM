@@ -4,8 +4,10 @@ from urllib.parse import urlparse
 
 import lazyllm
 from lazyllm import LOG
+from lazyllm.components.utils.file_operate import base64_to_file, is_base64_with_mime
 from ..utils.downloader import ModelManager
 from lazyllm.thirdparty import funasr
+from lazyllm.components.deploy.base import LazyLLMDeployBase
 
 
 def is_valid_url(url):
@@ -49,6 +51,11 @@ class SenseVoice(object):
                 string = string['inputs']
         assert isinstance(string, str)
         string = string.strip()
+        try:
+            string = base64_to_file(string) if is_base64_with_mime(string) else string
+        except Exception as e:
+            LOG.error(f"Error processing base64 encoding: {e}")
+            return "Error processing base64 encoding"
         if not string.endswith(('.mp3', '.wav')):
             return "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported."
         if not is_valid_path(string) and not is_valid_url(string):
@@ -73,7 +80,7 @@ class SenseVoice(object):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
         return SenseVoice.rebuild, (self.base_path, init)
 
-class SenseVoiceDeploy(object):
+class SenseVoiceDeploy(LazyLLMDeployBase):
     keys_name_handle = {
         'inputs': 'inputs',
         'audio': 'audio',
@@ -84,9 +91,10 @@ class SenseVoiceDeploy(object):
     }
     default_headers = {'Content-Type': 'application/json'}
 
-    def __init__(self, launcher=None, log_path=None):
+    def __init__(self, launcher=None, log_path=None, port=None):
         self._launcher = launcher
         self._log_path = log_path
+        self._port = port
 
     def __call__(self, finetuned_model=None, base_model=None):
         if not finetuned_model:
@@ -98,4 +106,4 @@ class SenseVoiceDeploy(object):
                         f"base_model({base_model}) will be used")
             finetuned_model = base_model
         return lazyllm.deploy.RelayServer(func=SenseVoice(finetuned_model), launcher=self._launcher,
-                                          log_path=self._log_path, cls='sensevoice')()
+                                          log_path=self._log_path, cls='sensevoice', port=self._port)()

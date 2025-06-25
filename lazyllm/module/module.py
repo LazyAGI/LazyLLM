@@ -10,7 +10,7 @@ import inspect
 import functools
 from datetime import datetime
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
-from typing import Dict, List, Any, Union, Optional, Tuple
+from typing import Callable, Dict, List, Any, Union, Optional, Tuple
 
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals, colored_text
@@ -26,6 +26,8 @@ from ..client import get_redis, redis_client
 from ..hook import LazyLLMHook
 from urllib.parse import urljoin
 
+from lazyllm.components.utils.file_operate import image_to_base64, audio_to_base64
+from lazyllm.common.utils import check_path
 
 # use _MetaBind:
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
@@ -262,6 +264,29 @@ class ModuleBase(metaclass=_MetaBind):
                 action(submodule)
             submodule.for_each(filter, action)
 
+    def _encode_files(self, files, encode_func: Callable):
+        """
+        Generic file encoding method
+
+        Args:
+            files: List of files
+            encode_func: File type ('image' or 'audio')
+
+        Returns:
+            encoded_files: List of encoded files
+        """
+        encoded_files = []
+        for file in files:
+            try:
+                file_path = check_path(file, exist=True, file=True)
+                base64_str, mime = encode_func(file_path)
+                encoded_files.append(f"data:{mime};base64," + base64_str)
+            except Exception as e:
+                LOG.error(f"Error processing file {file}: {e}")
+                encoded_files.append(file)
+                continue
+        return encoded_files
+
 class UrlTemplate(object):
     def __init__(self, template_message=None, keys_name_handle=None, template_headers=None) -> None:
         self._set_template(template_message, keys_name_handle, template_headers)
@@ -385,9 +410,11 @@ class UrlModule(ModuleBase, UrlTemplate):
             assert 'inputs' in self.keys_name_handle
             data[self.keys_name_handle['inputs']] = __input
             if 'image' in self.keys_name_handle and files:
-                data[self.keys_name_handle['image']] = files
+                encoded_files = self._encode_files(files, image_to_base64)
+                data[self.keys_name_handle['image']] = encoded_files
             elif 'audio' in self.keys_name_handle and files:
-                data[self.keys_name_handle['audio']] = files
+                encoded_files = self._encode_files(files, audio_to_base64)
+                data[self.keys_name_handle['audio']] = encoded_files
             elif 'ocr_files' in self.keys_name_handle and files:
                 data[self.keys_name_handle['ocr_files']] = files
         else:
