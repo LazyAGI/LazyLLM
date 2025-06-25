@@ -3,7 +3,8 @@ from typing import Dict, List, Optional, Any
 from sqlalchemy import create_engine, Column, JSON, String, TIMESTAMP, Table, MetaData, inspect, delete, text
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.engine import Engine
-from lazyllm import LOG, ServerModule, FastapiApp as app, ThreadPoolExecutor, config
+import lazyllm
+from lazyllm import LOG, ServerModule, UrlModule, FastapiApp as app, ThreadPoolExecutor, config
 
 from .store import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from .store.utils import fibonacci_backoff, create_file_path
@@ -219,6 +220,13 @@ class DocumentProcessor():
                 LOG.warning(f'Duplicated algo key {name} for processor!')
                 return
             self._processors[name] = _Processor(store, reader, node_groups)
+            LOG.info(f'Processor {name} registered!')
+
+        def drop_algorithm(self, name: str, clean_db: bool = False) -> None:
+            if name not in self._processors:
+                LOG.warning(f'Processor {name} not found!')
+                return
+            self._processors.pop(name)
 
         def _get_engine(self, url) -> Engine:
             if url not in self._engines:
@@ -544,13 +552,32 @@ class DocumentProcessor():
                         LOG.info(f"task {task_id} done")
                     time.sleep(5)
 
-    def __init__(self, server: bool = True, port: int = None):
-        self._impl = DocumentProcessor.Impl(server=server)
-        if server: self._impl = ServerModule(self._impl, port=port)
+        def __call__(self, func_name: str, *args, **kwargs):
+            return getattr(self, func_name)(*args, **kwargs)
 
-    def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase,
-                           node_groups: Dict[str, Dict], force_refresh: bool = False):
-        if isinstance(self._impl, ServerModule):
-            self._impl._call('register_algorithm', name, store, reader, node_groups, force_refresh)
+    def __init__(self, server: bool = True, port: int = None, url: str = None):
+        if not url:
+            self._impl = DocumentProcessor.Impl(server=server)
+            if server:
+                self._impl = ServerModule(self._impl, port=port)
+                self._impl.start()
         else:
-            self._impl.register_algorithm(name, store, reader, node_groups, force_refresh)
+            self._impl = UrlModule(url=url)
+
+    def _dispatch(self, method: str, *args, **kwargs):
+        impl = self._impl
+        if isinstance(impl, ServerModule):
+            impl._call(method, *args, **kwargs)
+        elif isinstance(impl, UrlModule):
+            dumped_args = lazyllm.dump_obj((method, *args))
+            dumped_kwargs = lazyllm.dump_obj(kwargs)
+            return impl("__call__", dumped_args, dumped_kwargs)
+        else:
+            getattr(impl, method)(*args, **kwargs)
+
+    def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict],
+                           force_refresh: bool = False, **kwargs):
+        self._dispatch("register_algorithm", name, store, reader, node_groups, force_refresh, **kwargs)
+
+    def drop_algorithm(self, name: str, clean_db: bool = False) -> None:
+        return self._dispatch("drop_algorithm", name, clean_db)
