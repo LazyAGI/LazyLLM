@@ -35,9 +35,10 @@ class MagicPDFReader:
         """
         解析 PDF 并返回结构化文档节点。
         """
+        if isinstance(file, str):
+            file = Path(file)
         elements = self._parse_pdf_elements(file)
         docs: List[DocNode] = self._callback(elements, file, extra_info)
-        LOG.info(f"Successfully parsed {file.name}")
         return docs
 
     def _parse_pdf_elements(self, pdf_path: Path) -> List[dict]:
