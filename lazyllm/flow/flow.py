@@ -18,6 +18,7 @@ from collections import deque
 import uuid
 from ..hook import LazyLLMHook
 import asyncio
+import time
 
 
 class _FuncWrap(object):
@@ -670,3 +671,24 @@ class Graph(LazyLLMFlowsBase):
                     futures[node.name] = future
 
         return futures[Graph.end_node_name].result()
+
+
+class FlowIteratorWrapper:
+    def __init__(self, flow: LazyLLMFlowsBase, interval: float = 0.01):
+        self.flow = flow
+        self.sleep_interval = interval
+
+    def __call__(self, *args, **kwargs):
+        lazyllm.globals._init_sid()
+        if lazyllm.FileSystemQueue().size() > 0:
+            lazyllm.FileSystemQueue().clear()
+        pool = lazyllm.ThreadPoolExecutor(max_workers=1)
+        func_future = pool.submit(self.flow, *args, **kwargs)
+        while True:
+            if value := lazyllm.FileSystemQueue().dequeue():
+                yield ''.join(value)
+            elif func_future.done():
+                break
+            time.sleep(self.sleep_interval)
+        if lazyllm.FileSystemQueue().size() > 0:
+            lazyllm.FileSystemQueue().clear()

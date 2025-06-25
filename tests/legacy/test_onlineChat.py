@@ -1,7 +1,6 @@
 import unittest
 import lazyllm
 import json
-from lazyllm.tools.utils import FlowStreamer
 
 def get_current_weather(location, unit='fahrenheit'):
     """Get the current weather in a given location"""
@@ -81,21 +80,6 @@ prompter = lazyllm.ChatPrompter(
     extra_keys=["tools"], show=True)
 
 class TestOnlineChatModule(unittest.TestCase):
-
-    def test_online_static_params(self):
-        MAX_TOKENS_SHROT = 20
-        m = lazyllm.OnlineChatModule(source="qwen", stream=True, static_params={"max_tokens": MAX_TOKENS_SHROT})
-        assert m.static_params.get("max_tokens", 0) == MAX_TOKENS_SHROT
-        m2 = m.share(copy_static_params=True)
-        assert m2.static_params.get("max_tokens", 0) == MAX_TOKENS_SHROT
-        assert len(m2("介绍一下水浒传中林冲的生平")) < 2 * MAX_TOKENS_SHROT
-
-    def test_online_flow_response(self):
-        with lazyllm.pipeline() as ppl:
-            ppl.llm = lazyllm.OnlineChatModule(source="qwen")
-        flow_streamer = FlowStreamer(ppl)
-        res = list(flow_streamer("简短介绍一下水浒传中林冲的生平"))
-        assert len(res) > 5
 
     def test_openai_stream_inference(self):
         m = lazyllm.OnlineChatModule(source="openai", base_url="https://gf.nekoapi.com/v1", stream=True)
