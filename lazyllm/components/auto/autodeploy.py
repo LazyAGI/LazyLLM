@@ -18,10 +18,22 @@ from typing import Optional
 
 @functools.lru_cache
 def check_cmd(framework):
-    return bool(shutil.which(framework))
+    framework_mapping = dict(mindie='mindieservice_daemon')
+    return bool(shutil.which(framework_mapping.get(framework, framework)))
 
 
 class AutoDeploy(LazyLLMDeployBase):
+
+    @staticmethod
+    def _get_embed_deployer(launcher, type, kw):
+        launcher = launcher or launchers.remote(ngpus=1)
+        kw['model_type'] = type
+        if lazyllm.config['default_embedding_engine'].lower() in ('transformers', 'flagembedding') \
+            or kw.get('embed_type')=='sparse' or not check_requirements('infinity_emb'):
+            return deploy.Rerank if type == 'reranker' else deploy.Embedding, launcher, kw
+        else:
+            return deploy.InfinityRerank if type == 'reranker' else deploy.Infinity, launcher, kw
+
     @classmethod
     def get_deployer(cls, base_model: str, source: Optional[str] = None, trust_remote_code: bool = True,
                      launcher: Optional[LazyLLMLaunchersBase] = None, type: Optional[str] = None,
@@ -33,12 +45,7 @@ class AutoDeploy(LazyLLMDeployBase):
             type = ModelManager.get_model_type(model_name)
 
         if type in ('embed', 'cross_modal_embed', 'reranker'):
-            if lazyllm.config['default_embedding_engine'].lower() in ('transformers', 'flagembedding') \
-                or kw.get('embed_type')=='sparse' or not check_requirements('infinity_emb'):
-                return (deploy.Embedding, launcher or launchers.remote(ngpus=1), dict(
-                    model_type=type, log_path=log_path, embed_type=kw.get('embed_type', 'dense')))
-            else:
-                return deploy.Infinity, launcher or launchers.remote(ngpus=1), dict(model_type=type, **kw)
+            return AutoDeploy._get_embed_deployer(launcher, type, kw)
         elif type == 'sd':
             return StableDiffusionDeploy, launcher or launchers.remote(ngpus=1), kw
         elif type == 'stt':

@@ -29,8 +29,8 @@ class ModelManager():
         else:
             self.hub_downloader = ModelscopeDownloader(token=self.token)
             if self.model_source != 'modelscope':
-                lazyllm.LOG.warning("Only support Huggingface and Modelscope currently. "
-                                    f"Unsupported model source: {self.model_source}. Forcing use of Modelscope.")
+                lazyllm.LOG.error("Only support Huggingface and Modelscope currently. "
+                                  f"Unsupported model source: {self.model_source}. Forcing use of Modelscope.")
 
     @staticmethod
     @functools.lru_cache
@@ -63,6 +63,7 @@ class ModelManager():
     @functools.lru_cache
     def get_model_prompt_keys(model) -> dict:
         model_name = __class__.get_model_name(model)
+        __class__._try_add_mapping(model_name)
         if model_name and "prompt_keys" in model_name_mapping[model_name.lower()]:
             return model_name_mapping[model_name.lower()]["prompt_keys"]
         else:
@@ -77,13 +78,14 @@ class ModelManager():
                     return True
         return False
 
-    def _try_add_mapping(self, model):
+    @staticmethod
+    def _try_add_mapping(model):
         model_base = os.path.basename(model)
         model = model_base.lower()
         if model in model_name_mapping.keys():
             return
         matched_model_prefix = next((key for key in model_provider if model.startswith(key)), None)
-        if matched_model_prefix and self.model_source in model_provider[matched_model_prefix]:
+        if matched_model_prefix:
             matching_keys = [key for key in model_groups.keys() if key in model]
             if matching_keys:
                 matched_groups = max(matching_keys, key=len)
@@ -105,7 +107,7 @@ class ModelManager():
         if model_at_path: return model_at_path
 
         if self.model_source == '' or self.model_source not in ('huggingface', 'modelscope'):
-            print("[WARNING] model automatic downloads only support Huggingface and Modelscope currently.")
+            lazyllm.LOG.error("model automatic downloads only support Huggingface and Modelscope currently.")
             return model
 
         if model.lower() in model_name_mapping.keys() and \

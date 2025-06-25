@@ -29,23 +29,7 @@ class Infinity(LazyLLMDeployBase):
         kw.pop('stream', '')
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] else True
-        if self._model_type == "reranker":
-            self._update_reranker_message()
         self.temp_folder = make_log_dir(log_path, 'lmdeploy') if log_path else None
-
-    def _update_reranker_message(self):
-        self.keys_name_handle = {
-            'inputs': 'query',
-        }
-        self.message_format = {
-            'query': 'who are you ?',
-            'documents': ['string'],
-            'return_documents': False,
-            'raw_scores': False,
-            'top_n': 1,
-            'model': 'default/not-specified',
-        }
-        self.default_headers = {'Content-Type': 'application/json'}
 
     def cmd(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
@@ -107,3 +91,9 @@ class Infinity(LazyLLMDeployBase):
             return json.dumps(res_list)
         elif object_type == 'rerank':
             return [(x['index'], x['relevance_score']) for x in res_object['results']]
+
+class InfinityRerank(Infinity):
+    keys_name_handle = {'inputs': 'query'}
+    message_format = {'query': 'who are you ?', 'documents': ['string'], 'return_documents': False,
+                      'raw_scores': False, 'top_n': 1, 'model': 'default/not-specified'}
+    default_headers = {'Content-Type': 'application/json'}

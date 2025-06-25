@@ -83,17 +83,14 @@ class OCRDeploy(LazyLLMDeployBase):
     message_format = {"inputs": "/path/to/pdf"}
     default_headers = {"Content-Type": "application/json"}
 
-    def __init__(self, launcher=None, log_path=None, trust_remote_code=True):
+    def __init__(self, launcher=None, log_path=None, trust_remote_code=True, port=None):
         super().__init__(launcher=launcher)
         self._log_path = log_path
         self._trust_remote_code = trust_remote_code
+        self._port = port
 
     def __call__(self, finetuned_model=None, base_model=None):
         if not finetuned_model:
             finetuned_model = base_model
         return lazyllm.deploy.RelayServer(
-            func=OCR(finetuned_model),
-            launcher=self._launcher,
-            log_path=self._log_path,
-            cls="ocr",
-        )()
+            port=self._port, func=OCR(finetuned_model), launcher=self._launcher, log_path=self._log_path, cls="ocr")()
