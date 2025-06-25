@@ -2,6 +2,7 @@
 import lazyllm
 import math
 import shutil
+import functools
 import re
 from lazyllm import launchers, deploy, LazyLLMLaunchersBase, config
 from ..deploy.base import LazyLLMDeployBase
@@ -15,11 +16,12 @@ from ..utils.downloader import ModelManager
 from typing import Optional
 
 
-class AutoDeploy(LazyLLMDeployBase):
-    message_format = {}
-    keys_name_handle = None
-    default_headers = {'Content-Type': 'application/json'}
+@functools.lru_cache
+def check_cmd(framework):
+    return bool(shutil.which(framework))
 
+
+class AutoDeploy(LazyLLMDeployBase):
     @classmethod
     def get_deployer(cls, base_model: str, source: Optional[str] = None, trust_remote_code: bool = True,
                      launcher: Optional[LazyLLMLaunchersBase] = None, type: Optional[str] = None,
@@ -56,10 +58,10 @@ class AutoDeploy(LazyLLMDeployBase):
             launcher = launchers.remote(ngpus = ngpus)
 
         for deploy_cls in ['vllm', 'lightllm', 'lmdeploy', 'mindie']:
-            if shutil.which('lightllm') or check_requirements(requirements.get(deploy_cls)):
+            if check_cmd(deploy_cls) or check_requirements(requirements.get(deploy_cls)):
                 deploy_cls = getattr(deploy, deploy_cls)
                 return deploy_cls, launcher, kw
-        raise RuntimeError('No valid deploy framework found!')
+        return deploy.auto, launcher, kw
 
     def __new__(cls, base_model, source=lazyllm.config['model_source'], trust_remote_code=True,
                 launcher=None, type=None, log_path=None, **kw):

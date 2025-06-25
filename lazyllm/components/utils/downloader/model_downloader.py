@@ -20,7 +20,7 @@ lazyllm.config.add('data_path', str, '', 'DATA_PATH')
 class ModelManager():
     def __init__(self, model_source, token=lazyllm.config['model_source_token'],
                  cache_dir=lazyllm.config['model_cache_dir'], model_path=lazyllm.config['model_path']):
-        self.model_source = model_source or lazyllm.config['model_source'],
+        self.model_source = model_source or lazyllm.config['model_source']
         self.token = token or None
         self.cache_dir = cache_dir
         self.model_paths = model_path.split(":") if len(model_path) > 0 else []
@@ -32,8 +32,9 @@ class ModelManager():
                 lazyllm.LOG.warning("Only support Huggingface and Modelscope currently. "
                                     f"Unsupported model source: {self.model_source}. Forcing use of Modelscope.")
 
-    @classmethod
-    def get_model_type(cls, model) -> str:
+    @staticmethod
+    @functools.lru_cache
+    def get_model_type(model) -> str:
         assert isinstance(model, str) and len(model) > 0, "model name should be a non-empty string"
         for name, info in model_name_mapping.items():
             if 'type' not in info: continue
@@ -46,8 +47,9 @@ class ModelManager():
                 return info['type']
         return 'llm'
 
-    @classmethod
-    def get_model_name(cls, model) -> str:
+    @staticmethod
+    @functools.lru_cache
+    def get_model_name(model) -> str:
         search_string = os.path.basename(model)
         for model_name, sources in model_name_mapping.items():
             if model_name.lower() == search_string.lower() or any(
@@ -57,16 +59,17 @@ class ModelManager():
                 return model_name
         return ""
 
-    @classmethod
-    def get_model_prompt_keys(cls, model) -> dict:
-        model_name = cls.get_model_name(model)
+    @staticmethod
+    @functools.lru_cache
+    def get_model_prompt_keys(model) -> dict:
+        model_name = __class__.get_model_name(model)
         if model_name and "prompt_keys" in model_name_mapping[model_name.lower()]:
             return model_name_mapping[model_name.lower()]["prompt_keys"]
         else:
             return dict()
 
-    @classmethod
-    def validate_model_path(cls, model_path):
+    @staticmethod
+    def validate_model_path(model_path):
         extensions = {'.pt', '.bin', '.safetensors'}
         for _, _, files in os.walk(model_path):
             for file in files:

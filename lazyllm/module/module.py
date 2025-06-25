@@ -270,7 +270,7 @@ class _UrlTemplateStruct(object):
 
     def update(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
                extract_result=None, stream_parse_parameters=None, stream_url_suffix=None):
-        self.template_message, self.keys_name_handle = template_message, keys_name_handle
+        self.template_message, self.keys_name_handle = copy.deepcopy(template_message), keys_name_handle
         self.template_headers = template_headers or copy.deepcopy(lazyllm.deploy.RelayServer.default_headers)
 
         if self.keys_name_handle and 'stop' in self.keys_name_handle and stop_words and self.template_message:
@@ -724,6 +724,8 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
         if self._deploy is None: return None
+        if self._deploy is lazyllm.deploy.AutoDeploy:
+            raise RuntimeError('No appropriate inference framework was selected, specify it with `.deploy_method()`.')
         kwargs = {'stream': self._stream} if self._deploy is lazyllm.deploy.dummy else {}
         self._deployer = self._deploy(**kwargs, **self._deploy_args)
 
@@ -745,8 +747,8 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         self._deploy_args = self._get_train_or_deploy_args('deploy', disable=['target_path'])
         stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
 
-        self._template.update(copy.deepcopy(self._deploy.message_format), self._deploy.keys_name_handle,
-                              copy.deepcopy(self._deploy.default_headers), extract_result=self._deploy.extract_result,
+        self._template.update(self._deploy.message_format, self._deploy.keys_name_handle,
+                              self._deploy.default_headers, extract_result=self._deploy.extract_result,
                               stream_parse_parameters=self._deploy.stream_parse_parameters,
                               stream_url_suffix=self._deploy.stream_url_suffix, stop_words=stop_words)
 
