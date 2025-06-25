@@ -42,8 +42,7 @@ class DocNode:
         self._excluded_embed_metadata_keys: List[str] = []
         # Metadata keys that are excluded from text for the LLM.
         self._excluded_llm_metadata_keys: List[str] = []
-        # NOTE: node in parent and chiildren should be id when stored in db (use store to recover)
-        # parent: 'uid', children: {'group_name': [uid1, uid2, ...], ...}
+        # NOTE: node in parent should be id when stored in db (use store to recover): parent: 'uid'
         self._parent: Optional[Union[str, "DocNode"]] = parent
         self._children: Dict[str, List["DocNode"]] = defaultdict(list)
         self._store = store
@@ -98,11 +97,17 @@ class DocNode:
 
     @property
     def children(self) -> Dict[str, List["DocNode"]]:
-        for grp, uids in list(self._children.items()):
-            if uids and isinstance(uids[0], str):
-                self._children[grp] = self._load_from_store(grp, uids)
-                for child in self._children[grp]:
-                    child.parent = self
+        if not len(self._children) and self._store and self._node_groups:
+            dataset_id = self._global_metadata.get("kb_id")
+            doc_id = self._global_metadata.get("docid")
+            c_groups = [grp for grp in self._node_groups.keys() if self._node_groups[grp]['parent'] == self._group]
+            for grp in c_groups:
+                c_nodes = self._store.get_nodes(group_name=grp, dataset_id=dataset_id, doc_ids=[doc_id])
+                for n in c_nodes:
+                    if n._parent == self._uid:
+                        self._children[grp] = n
+                        n._store = self._store
+                        n._node_groups = self._node_groups
         return self._children
 
     @children.setter

@@ -27,7 +27,7 @@ class _Processor:
     def __init__(self, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict], server: bool = False):
         self._store, self._reader, self._node_groups = store, reader, node_groups
 
-    def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,  # noqa: C901
+    def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,
                 metadatas: Optional[List[Dict[str, Any]]] = None):
         try:
             if not input_files: return
@@ -37,37 +37,35 @@ class _Processor:
             else:
                 for path, doc_id, metadata in zip(input_files, ids, metadatas):
                     metadata.update({RAG_DOC_ID: doc_id, RAG_DOC_PATH: path})
-            all_nodes = []
             root_nodes, image_nodes = self._reader.load_data(input_files, metadatas, split_image_nodes=True)
             self._store.update_nodes(root_nodes)
-            all_nodes.extend(root_nodes)
-
-            def _create_nodes_recursive(p_nodes: List[DocNode], p_name: str):
-                for group_name in self._store.activated_groups():
-                    group = self._node_groups.get(group_name)
-                    if group is None:
-                        raise ValueError(f"Node group '{group_name}' does not exist. Please check the group name "
-                                         "or add a new one through `create_node_group`.")
-                    if group['parent'] == p_name:
-                        nodes = self._create_nodes_impl(p_nodes, group_name)
-                        if nodes:
-                            all_nodes.extend(nodes)
-                            _create_nodes_recursive(nodes, group_name)
-
-            _create_nodes_recursive(root_nodes, LAZY_ROOT_NAME)
+            self._create_nodes_recursive(root_nodes, LAZY_ROOT_NAME)
             if image_nodes:
-                all_nodes.extend(image_nodes)
-                _create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)
-            self._store.update_nodes(all_nodes)
+                self._store.update_nodes(image_nodes)
+                self._create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)
             LOG.info("Add documents done!")
         except Exception as e:
             LOG.error(f"Add documents failed: {e}")
             raise e
 
+    def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):
+        for group_name in self._store.activated_groups():
+            group = self._node_groups.get(group_name)
+            if group is None:
+                raise ValueError(f"Node group '{group_name}' does not exist. Please check the group name "
+                                 "or add a new one through `create_node_group`.")
+
+            if group['parent'] == p_name:
+                nodes = self._create_nodes_impl(p_nodes, group_name)
+                if nodes: self._create_nodes_recursive(nodes, group_name)
+
     def _create_nodes_impl(self, p_nodes, group_name):
+        # NOTE transform.batch_forward will set children for p_nodes, but when calling
+        # transform.batch_forward, p_nodes has been upsert in the store.
         t = self._node_groups[group_name]['transform']
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
         nodes = transform.batch_forward(p_nodes, group_name)
+        self._store.update_nodes(nodes)
         return nodes
 
     def _get_or_create_nodes(self, group_name, ids: Optional[List[str]] = None):
@@ -75,7 +73,6 @@ class _Processor:
         if not nodes and group_name not in (LAZY_IMAGE_GROUP, LAZY_ROOT_NAME):
             p_nodes = self._get_or_create_nodes(self._node_groups[group_name]['parent'], ids)
             nodes = self._create_nodes_impl(p_nodes, group_name)
-            self._store.update_nodes(nodes)
         return nodes
 
     def reparse(self, group_name: str, ids: Optional[List[str]] = None, doc_ids: Optional[List[str]] = None, **kwargs):
@@ -118,14 +115,11 @@ class _Processor:
         if not removed_flag:
             raise Exception(f"Failed to remove nodes for docs {doc_ids} group {cur_name} from store")
 
-        for p_n in p_nodes:
-            p_n.children.pop(cur_name, None)
         t = self._node_groups[cur_name]['transform']
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
         nodes = transform.batch_forward(p_nodes, cur_name)
-        LOG.info(f"[Reparse] Get {len(p_nodes)} parent nodes"
-                 f"updating {len(nodes)} nodes for docs {doc_ids} group {cur_name}")
-        self._store.update_nodes(p_nodes + nodes)
+        # reparse need set global_metadata
+        self._store.update_nodes(nodes)
 
         for group_name in self._store.activated_groups():
             group = self._node_groups.get(group_name)
