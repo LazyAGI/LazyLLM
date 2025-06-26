@@ -647,7 +647,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         self._train, self._finetune = train, finetune
         self._template = template
         _UrlHelper.__init__(self, url=url_wrapper)
-        if deploy: self.deploy_method(deploy)
+        if base_model and deploy: self.deploy_method(deploy)
         self._prepare_deploy = lambda target_path, base_model: lazyllm.package(target_path, base_model)
 
     def _get_train_or_deploy_args(self, arg_cls: str, disable: List[str] = []):
