@@ -175,7 +175,7 @@ class EmbeddingDeploy(LazyLLMDeployBase):
         self._trust_remote_code = trust_remote_code
         self._port = port
 
-    def __call__(self, finetuned_model=None, base_model=None):
+    def _get_model_path(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(finetuned_model)):
@@ -183,19 +183,17 @@ class EmbeddingDeploy(LazyLLMDeployBase):
                 LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                             f"base_model({base_model}) will be used")
             finetuned_model = base_model
-        if self._model_type == 'embed' or self._model_type == 'cross_modal_embed':
-            if self._sparse_embed or lazyllm.config['default_embedding_engine'] == 'flagEmbedding':
-                return lazyllm.deploy.RelayServer(port=self._port, func=LazyFlagEmbedding(
-                    finetuned_model, sparse=self._sparse_embed),
-                    launcher=self._launcher, log_path=self._log_path, cls='embedding')()
-            else:
-                return lazyllm.deploy.RelayServer(port=self._port, func=HuggingFaceEmbedding(finetuned_model),
-                                                  launcher=self._launcher, log_path=self._log_path, cls='embedding')()
-        if self._model_type == 'reranker':
-            return lazyllm.deploy.RelayServer(port=self._port, func=LazyHuggingFaceRerank(
-                finetuned_model), launcher=self._launcher, log_path=self._log_path, cls='embedding')()
+        return finetuned_model
+
+    def __call__(self, finetuned_model=None, base_model=None):
+        finetuned_model = self._get_model_path(finetuned_model, base_model)
+        if self._sparse_embed or lazyllm.config['default_embedding_engine'] == 'flagEmbedding':
+            return lazyllm.deploy.RelayServer(port=self._port, func=LazyFlagEmbedding(
+                finetuned_model, sparse=self._sparse_embed),
+                launcher=self._launcher, log_path=self._log_path, cls='embedding')()
         else:
-            raise RuntimeError(f'Not support model type: {self._model_type}.')
+            return lazyllm.deploy.RelayServer(port=self._port, func=HuggingFaceEmbedding(finetuned_model),
+                                              launcher=self._launcher, log_path=self._log_path, cls='embedding')()
 
 
 @HuggingFaceEmbedding.register(model_ids=["BGE-VL-v1.5-mmeb"])
@@ -235,3 +233,8 @@ class RerankDeploy(EmbeddingDeploy):
     message_format = {'query': 'query', 'documents': ['string'], 'top_n': 1}
     keys_name_handle = {'inputs': 'query', 'documents': 'documents', 'top_n': 'top_n'}
     default_headers = {'Content-Type': 'application/json'}
+
+    def __call__(self, finetuned_model=None, base_model=None):
+        finetuned_model = self._get_model_path(finetuned_model, base_model)
+        return lazyllm.deploy.RelayServer(port=self._port, func=LazyHuggingFaceRerank(
+            finetuned_model), launcher=self._launcher, log_path=self._log_path, cls='embedding')()

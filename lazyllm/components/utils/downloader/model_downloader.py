@@ -35,7 +35,7 @@ class ModelManager():
     @staticmethod
     @functools.lru_cache
     def get_model_type(model) -> str:
-        assert isinstance(model, str) and len(model) > 0, "model name should be a non-empty string"
+        assert isinstance(model, str) and len(model) > 0, f'model name should be a non-empty string, get {model}'
         for name, info in model_name_mapping.items():
             if 'type' not in info: continue
 
@@ -180,7 +180,7 @@ class ModelManager():
         # Use `BaseException` to capture `KeyboardInterrupt` and normal `Exceptioin`.
         except BaseException as e:
             lazyllm.LOG.warning(f"Download encountered an error: {e}")
-            if not self.token:
+            if not self.token and 'Permission denied' not in str(e):
                 lazyllm.LOG.warning('Token is empty, which may prevent private models from being downloaded, '
                                     'as indicated by "the model does not exist." Please set the token with the '
                                     'environment variable LAZYLLM_MODEL_SOURCE_TOKEN to download private models.')

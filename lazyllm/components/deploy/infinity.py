@@ -17,6 +17,7 @@ class Infinity(LazyLLMDeployBase):
         'input': 'who are you ?',
     }
     default_headers = {'Content-Type': 'application/json'}
+    target_name = 'embeddings'
 
     def __init__(self, launcher=launchers.remote(ngpus=1), model_type='embed', log_path=None, **kw):
         super().__init__(launcher=launcher)
@@ -64,14 +65,10 @@ class Infinity(LazyLLMDeployBase):
     def geturl(self, job=None):
         if job is None:
             job = self.job
-        if self._model_type == "reranker":
-            target_name = 'rerank'
-        else:
-            target_name = 'embeddings'
         if lazyllm.config['mode'] == lazyllm.Mode.Display:
-            return f'http://<ip>:<port>/{target_name}'
+            return f'http://<ip>:<port>/{self.target_name}'
         else:
-            return f'http://{job.get_jobip()}:{self.kw["port"]}/{target_name}'
+            return f'http://{job.get_jobip()}:{self.kw["port"]}/{self.target_name}'
 
     @staticmethod
     def extract_result(x, inputs):
@@ -97,3 +94,4 @@ class InfinityRerank(Infinity):
     message_format = {'query': 'who are you ?', 'documents': ['string'], 'return_documents': False,
                       'raw_scores': False, 'top_n': 1, 'model': 'default/not-specified'}
     default_headers = {'Content-Type': 'application/json'}
+    target_name = 'rerank'
