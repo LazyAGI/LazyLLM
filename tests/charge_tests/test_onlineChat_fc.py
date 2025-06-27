@@ -1,4 +1,3 @@
-import os
 import pytest
 import lazyllm
 from lazyllm import ReactAgent, PlanAndSolveAgent, ReWOOAgent
@@ -115,16 +114,6 @@ models = ["kimi", "glm", "qwen", "sensenova"]
 rewooquery = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
 
 class TestOnlineChatFunctionCall(object):
-    def setup_class(self):
-        self.https_proxy_bak = os.environ.get("https_proxy", '')
-        self.http_proxy_bak = os.environ.get("http_proxy", '')
-        os.environ['https_proxy'] = lazyllm.config['https_proxy']
-        os.environ['http_proxy'] = lazyllm.config['https_proxy']
-
-    def teardown_class(self):
-        os.environ['https_proxy'] = self.https_proxy_bak
-        os.environ['http_proxy'] = self.http_proxy_bak
-
     @pytest.mark.parametrize("exe_onlinechat_chat",
                              [{'source': 'sensenova', 'model': 'SenseChat-Turbo', 'query': squery}],
                              indirect=True)

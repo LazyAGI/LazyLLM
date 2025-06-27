@@ -7,7 +7,6 @@ from abc import ABC, abstractmethod
 
 import lazyllm
 from .model_mapping import model_name_mapping, model_provider, model_groups
-from lazyllm.common.common import EnvVarContextManager
 
 lazyllm.config.add('model_source', str, 'modelscope', 'MODEL_SOURCE')
 lazyllm.config.add('model_cache_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'model'),
@@ -260,27 +259,10 @@ class HubDownloader(ABC):
 
 class HuggingfaceDownloader(HubDownloader):
 
-    def _envs_manager(func):
-
-        @functools.wraps(func)
-        def wrapper(self, *args, **kwargs):
-            env_vars = {'https_proxy': lazyllm.config['https_proxy'] or os.environ.get("https_proxy", None),
-                        'http_proxy': lazyllm.config['http_proxy'] or os.environ.get("http_proxy", None)}
-            with EnvVarContextManager(env_vars):
-                if not os.environ.get("https_proxy", None):
-                    lazyllm.LOG.warning('If there is no download response or if downloads repeatedly fail over an '
-                                        'extended period, please set the `LAZYLLM_HTTPS_PROXY` environment variable '
-                                        'to configure a proxy. Do not directly set the `https_proxy` and `http_proxy` '
-                                        'environment variables in your environment, as doing so may disrupt model '
-                                        'deployment and result in deployment failures.')
-                return func(self, *args, **kwargs)
-        return wrapper
-
     def _build_hub_api(self, token):
         from huggingface_hub import HfApi
         return HfApi(token=token)
 
-    @_envs_manager
     def _verify_hub_token(self, token):
         from huggingface_hub import HfApi
         api = HfApi()
@@ -291,7 +273,6 @@ class HuggingfaceDownloader(HubDownloader):
             if token: lazyllm.LOG.warning(f'Huggingface token {token} verified failed')
             return False
 
-    @_envs_manager
     def verify_model_id(self, model_id):
         try:
             self._api.model_info(model_id)
@@ -300,7 +281,6 @@ class HuggingfaceDownloader(HubDownloader):
             lazyllm.LOG.warning('Verify failed: ', e)
             return False
 
-    @_envs_manager
     def _do_download(self, model_id, model_dir):
         from huggingface_hub import snapshot_download
         # refer to https://huggingface.co/docs/huggingface_hub/v0.23.1/en/package_reference/file_download
@@ -311,7 +291,6 @@ class HuggingfaceDownloader(HubDownloader):
         lazyllm.LOG.info(f"model downloaded at {downloaded_path}")
         return downloaded_path
 
-    @_envs_manager
     def _get_repo_files(self, model_id):
         assert self._api
         orgin_info = self._api.list_repo_tree(model_id, expand=True, recursive=True)
