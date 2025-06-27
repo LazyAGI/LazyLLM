@@ -198,10 +198,11 @@ class SimpleDirectoryReader(ModuleBase):
     def load_file(input_file: Path, metadata_genf: Callable[[str], Dict], file_extractor: Dict[str, Callable],
                   encoding: str = "utf-8", pathm: PurePath = Path, fs: Optional[AbstractFileSystem] = None,
                   metadata: Optional[Dict] = None) -> List[DocNode]:
-        metadata: dict = metadata or {}
+        # metadata priority: user > reader > metadata_genf
+        user_metadata: Dict = metadata or {}
+        metadata_generated: Dict = metadata_genf(str(input_file)) if metadata_genf is not None else {}
         documents: List[DocNode] = []
 
-        if metadata_genf is not None: metadata.update(metadata_genf(str(input_file)))
         file_reader_patterns = list(file_extractor.keys())
 
         for pattern in file_reader_patterns:
@@ -213,8 +214,11 @@ class SimpleDirectoryReader(ModuleBase):
                 kwargs = {'fs': fs} if fs and not is_default_fs(fs) else {}
                 docs = reader(input_file, **kwargs)
                 if isinstance(docs, DocNode): docs = [docs]
-                for doc in docs: doc._global_metadata = metadata
-
+                for doc in docs:
+                    metadata = metadata_generated.copy()
+                    metadata.update(doc._global_metadata or {})
+                    metadata.update(user_metadata)
+                    doc._global_metadata = metadata
                 if config['rag_filename_as_id']:
                     for i, doc in enumerate(docs):
                         doc._uid = f"{input_file!s}_index_{i}"

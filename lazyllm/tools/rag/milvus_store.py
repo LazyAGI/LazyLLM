@@ -306,7 +306,9 @@ class MilvusStore(StoreBase):
                 raise ValueError(f'cannot find desc of field [{name}]')
 
             key = self._gen_field_key(name)
-            if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
+            if isinstance(candidates, str):
+                candidates = [candidates]
+            elif (not isinstance(candidates, list)) and (not isinstance(candidates, set)):
                 candidates = list(candidates)
             if desc.data_type == DataType.ARRAY:
                 # https://github.com/milvus-io/milvus/discussions/35279
