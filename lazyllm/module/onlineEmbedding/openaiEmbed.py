@@ -2,6 +2,7 @@ import lazyllm
 from .onlineEmbeddingModuleBase import OnlineEmbeddingModuleBase
 
 class OpenAIEmbedding(OnlineEmbeddingModuleBase):
+    NO_PROXY = True
 
     def __init__(self,
                  embed_url: str = "https://api.openai.com/v1/embeddings",
