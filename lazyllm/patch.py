@@ -19,7 +19,7 @@ def patch_request_func(fname):
         if _is_ip_address_url(url):
             try:
                 kw = kwargs.copy()
-                kw['proxies'] = kw.get('proxies', {'http': None, 'https': None})
+                kw['proxies'] = kw.get('proxies') or {'http': None, 'https': None}
                 return _old_func(url, **kw)
             except Exception:
                 if kwargs.get('proxies'): raise
