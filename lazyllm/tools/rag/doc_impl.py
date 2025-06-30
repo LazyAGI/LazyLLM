@@ -2,7 +2,6 @@ import json
 import ast
 from enum import Enum
 from functools import wraps
-from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
 from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
@@ -13,7 +12,7 @@ from .store import (MapStore, MilvusStore, ChromadbStore, SenseCoreStore, StoreB
 from .smart_embedding_index import SmartEmbeddingIndex
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import DocListManager, gen_docid, is_sparse
+from .utils import DocListManager, is_sparse
 from .global_metadata import GlobalMetadataDesc
 from .data_type import DataType
 from .doc_processor import _Processor, DocumentProcessor
@@ -172,7 +171,7 @@ class DocImpl:
 
         # init files when `cloud` is False
         if not cloud and not self.store.is_group_active(LAZY_ROOT_NAME):
-            ids, pathes, metadatas = self._delete_nonexistent_docs_on_startup(*self._list_files())
+            ids, pathes, metadatas = self._list_files(upload_status=DocListManager.Status.success)
             self._processor.add_doc(pathes, ids, metadatas)
             if pathes and self._dlm:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
@@ -184,27 +183,6 @@ class DocImpl:
             self._daemon.daemon = True
             self._daemon.start()
             self._init_monitor_event.wait()
-
-    def _delete_nonexistent_docs_on_startup(self, ids, paths, metadatas):
-        if not self._dlm: return ids, paths, metadatas
-        path_existing = [Path(path).exists() for path in paths]
-        paths_need_delete = [paths[idx] for idx, exist in enumerate(path_existing) if not exist]
-        rt_metadatas = [meta for meta, exist in zip(metadatas, path_existing) if exist] if metadatas else None
-        rt_ids = [ids[idx] for idx, exist in enumerate(path_existing) if exist] if ids else None
-        rt_paths = [path for path, exist in zip(paths, path_existing) if exist]
-
-        if ids:
-            ids_need_delete = [ids[idx] for idx, exist in enumerate(path_existing) if not exist]
-        else:
-            ids_need_delete = [gen_docid(path) for path in paths_need_delete]
-        if ids_need_delete:
-            if self._dlm is None:
-                # if not using dlm, delete store directly;
-                self._delete_doc_from_store(paths_need_delete)
-            else:
-                LOG.warning(f"Found {len(paths_need_delete)} docs that are not in store: {paths_need_delete}")
-                self._dlm.delete_files(ids_need_delete)
-        return rt_ids, rt_paths, rt_metadatas
 
     def _resolve_index_pending_registrations(self):
         for index_type, index_cls, index_args, index_kwargs in self._index_pending_registrations:

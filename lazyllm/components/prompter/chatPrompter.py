@@ -15,4 +15,4 @@ class ChatPrompter(LazyLLMPrompterBase):
                           instruction_template)
 
     @property
-    def _split(self): return self._soa if self._soa else None
+    def _split(self): return f'{self._soa}\n' if self._soa else None

@@ -22,6 +22,7 @@ from ..module import ModuleBase, Pipeline
 class OnlineChatModuleBase(ModuleBase):
     TRAINABLE_MODEL_LIST = []
     VLM_MODEL_LIST = []
+    NO_PROXY = True
 
     def __init__(self,
                  model_series: str,
@@ -30,7 +31,6 @@ class OnlineChatModuleBase(ModuleBase):
                  model_name: str,
                  stream: Union[bool, Dict[str, str]],
                  return_trace: bool = False,
-                 vlm_models: List[str] = None,
                  **kwargs):
         super().__init__(return_trace=return_trace)
         self._model_series = model_series
@@ -300,7 +300,8 @@ class OnlineChatModuleBase(ModuleBase):
                 query_files = self._format_input_with_files(content)
                 data["messages"][idx]["content"] = query_files
 
-        with requests.post(self._url, json=data, headers=self._headers, stream=stream_output) as r:
+        proxies = {'http': None, 'https': None} if self.NO_PROXY else None
+        with requests.post(self._url, json=data, headers=self._headers, stream=stream_output, proxies=proxies) as r:
             if r.status_code != 200:  # request error
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
                     if stream_output else requests.RequestException(r.text)
@@ -338,11 +339,6 @@ class OnlineChatModuleBase(ModuleBase):
         else:
             for k in globals["usage"][par_muduleid]:
                 globals["usage"][par_muduleid][k] += usage[k]
-
-    def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None):
-        self.template_message = template_message
-        self.keys_name_handle = keys_name_handle
-        self.template_headers = template_headers
 
     def _upload_train_file(self, train_file) -> str:
         raise NotImplementedError(f"{self._model_series} not implemented _upload_train_file method in subclass")

@@ -12,21 +12,11 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ["chatglm3-6b", "chatglm_12b", "chatglm_32b", "chatglm_66b", "chatglm_130b"]
     MODEL_NAME = "glm-4"
 
-    def __init__(self,
-                 base_url: str = "https://open.bigmodel.cn/api/paas/v4/",
-                 model: str = None,
-                 api_key: str = None,
-                 stream: str = True,
-                 return_trace: bool = False,
-                 **kwargs):
-        OnlineChatModuleBase.__init__(self,
-                                      model_series="GLM",
-                                      api_key=api_key or lazyllm.config['glm_api_key'],
-                                      base_url=base_url,
+    def __init__(self, base_url: str = "https://open.bigmodel.cn/api/paas/v4/", model: str = None,
+                 api_key: str = None, stream: str = True, return_trace: bool = False, **kwargs):
+        OnlineChatModuleBase.__init__(self, model_series="GLM", api_key=api_key or lazyllm.config['glm_api_key'],
                                       model_name=model or lazyllm.config['glm_model_name'] or GLMModule.MODEL_NAME,
-                                      stream=stream,
-                                      return_trace=return_trace,
-                                      **kwargs)
+                                      base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self.default_train_data = {
             "model": None,

@@ -30,6 +30,8 @@ class Lightllm(LazyLLMDeployBase):
         }
     }
     auto_map = {'tp': 'tp'}
+    stream_url_suffix = '_stream'
+    stream_parse_parameters = {"delimiter": b"\n\n"}
 
     def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None, **kw):
         super().__init__(launcher=launcher)
@@ -92,11 +94,3 @@ class Lightllm(LazyLLMDeployBase):
         except Exception as e:
             LOG.warning(f'JSONDecodeError on load {x}')
             raise e
-
-    @staticmethod
-    def stream_parse_parameters():
-        return {"delimiter": b"\n\n"}
-
-    @staticmethod
-    def stream_url_suffix():
-        return "_stream"

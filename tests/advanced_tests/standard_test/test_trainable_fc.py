@@ -1,4 +1,3 @@
-import os
 import json
 import pytest
 import random
@@ -104,11 +103,6 @@ def WikipediaWorker(input: str):
     Args:
         input (str): search query.
     """
-    https_proxy_bak = os.environ.get("https_proxy", '')
-    http_proxy_bak = os.environ.get("http_proxy", '')
-    os.environ['https_proxy'] = lazyllm.config['https_proxy']
-    os.environ['http_proxy'] = lazyllm.config['https_proxy']
-    print(f"wikipedia input: {input}")
     try:
         evidence = wikipedia.page(input).content
         evidence = evidence.split("\n\n")[0]
@@ -116,9 +110,6 @@ def WikipediaWorker(input: str):
         evidence = f"Could not find [{input}]. Similar: {wikipedia.search(input)}"
     except wikipedia.DisambiguationError:
         evidence = f"Could not find [{input}]. Similar: {wikipedia.search(input)}"
-    print(f"wikipedia output: {evidence}")
-    os.environ['https_proxy'] = https_proxy_bak
-    os.environ['http_proxy'] = http_proxy_bak
     return evidence
 
 @fc_register("tool")

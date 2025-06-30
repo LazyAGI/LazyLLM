@@ -27,9 +27,6 @@ lazyllm.config.add("doubao_api_key", str, "", "DOUBAO_API_KEY")
 lazyllm.config.add("doubao_model_name", str, "", "DOUBAO_MODEL_NAME")
 # deepseek api key
 lazyllm.config.add("deepseek_api_key", str, "", "DEEPSEEK_API_KEY")
-# https proxy
-lazyllm.config.add("http_proxy", str, "", "HTTP_PROXY")
-lazyllm.config.add("https_proxy", str, "", "HTTPS_PROXY")
 
 __all__ = [
     'register',

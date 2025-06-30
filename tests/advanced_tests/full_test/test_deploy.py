@@ -94,11 +94,10 @@ class TestDeploy(object):
 
     def test_deploy_auto(self):
         m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.AutoDeploy)
-        assert m._deploy_type == lazyllm.deploy.AutoDeploy
+        assert m._deploy_type != lazyllm.deploy.AutoDeploy
         m.evalset(self.inputs)
         m.update_server()
         m.eval()
-        assert m._deploy_type != lazyllm.deploy.AutoDeploy
         assert len(m.eval_result) == len(self.inputs)
 
     def test_deploy_auto_without_calling_method(self):
