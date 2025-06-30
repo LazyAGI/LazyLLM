@@ -1,5 +1,5 @@
 from .flow import (LazyLLMFlowsBase, FlowBase, barrier, Pipeline, Parallel, Diverter,
-                   Loop, Switch, IFS, Warp, Graph, save_pipeline_result, FlowIteratorWrapper)
+                   Loop, Switch, IFS, Warp, Graph, save_pipeline_result)
 
 pipeline = Pipeline
 parallel = Parallel
@@ -14,7 +14,6 @@ graph = Graph
 __all__ = [
     'LazyLLMFlowsBase',
     'FlowBase',
-    'FlowIteratorWrapper',
 
     'barrier',
     'pipeline',

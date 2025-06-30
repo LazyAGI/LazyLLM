@@ -6,6 +6,7 @@ from ..doc_node import DocNode
 class RRFFusion(ModuleBase):
 
     def __init__(self, top_k: int = 1) -> None:
+        super().__init__()
         self.top_k = top_k
 
     def _is_nested_docnode_sequence(self, obj):

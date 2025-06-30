@@ -12,7 +12,7 @@ import threading
 import traceback
 import sys
 import os
-from typing import Union, Tuple, List, Any, Optional, Callable
+from typing import Union, Tuple, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
@@ -348,7 +348,6 @@ class Parallel(LazyLLMFlowsBase):
         LIST = 3
         SUM = 4
         JOIN = 5
-        RUN = 6
 
     def __init__(self, *args, _scatter: bool = False, _concurrent: Union[bool, int] = True,
                  auto_capture: bool = False, **kw):
@@ -383,9 +382,6 @@ class Parallel(LazyLLMFlowsBase):
     def join(self, string=''):
         assert isinstance(string, str), 'argument of join shoule be str'
         return Parallel._set_status(self, type=Parallel.PostProcessType.JOIN, args=string)
-
-    def run(self, func: Callable[[Any], Any]):
-        return Parallel._set_status(self, type=Parallel.PostProcessType.RUN, args=func)
 
     @classmethod
     def sequential(cls, *args, **kw):
@@ -432,8 +428,6 @@ class Parallel(LazyLLMFlowsBase):
             output = ''.join([str(i) for i in output]) if isinstance(output[0], str) else sum(output, type(output[0])())
         elif self._post_process_type == Parallel.PostProcessType.JOIN:
             output = self._post_process_args.join([str(i) for i in output])
-        elif self._post_process_type == Parallel.PostProcessType.RUN:
-            output = self._post_process_args(output)
         return output
 
 

@@ -61,7 +61,9 @@ class TestFlow(object):
                 nodes[i].similarity_score = 1.0 / (i + 1)
             return nodes
 
-        ppl = parallel(retrieve_a, retrieve_b).run(func=RRFFusion(top_k=10))
+        with pipeline() as ppl:
+            ppl.prl = parallel(retrieve_a, retrieve_b).aslist
+            ppl.rrf = RRFFusion(top_k=10)
         res = ppl()
         new_id_sorts = [ele._uid for ele in res]
         assert new_id_sorts == ["101", "198", "175", "203", "150", "110", "250"]
