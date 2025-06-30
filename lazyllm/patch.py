@@ -12,17 +12,20 @@ def _is_ip_address_url(url: str) -> bool:
     except ValueError:
         return False
 
-# patch requests
-_old_request = requests.request
+def patch_request_func(fname):
+    _old_func = getattr(requests, fname)
 
-def new_request(method, url, **kwargs):
-    if _is_ip_address_url(url):
-        try:
-            kw = kwargs.copy()
-            kw['proxies'] = kw.get('proxies', {'http': None, 'https': None})
-            return _old_request(method, url, **kw)
-        except Exception:
-            if kwargs.get('proxies'): raise
-    return _old_request(method, url, **kwargs)
+    def new_func(url, **kwargs):
+        if _is_ip_address_url(url):
+            try:
+                kw = kwargs.copy()
+                kw['proxies'] = kw.get('proxies', {'http': None, 'https': None})
+                return _old_func(url, **kw)
+            except Exception:
+                if kwargs.get('proxies'): raise
+        return _old_func(url, **kwargs)
 
-requests.request = new_request
+    setattr(requests, fname, new_func)
+
+for fname in ['get', 'post', 'delete', 'put', 'patch', 'head']:
+    patch_request_func(fname)
