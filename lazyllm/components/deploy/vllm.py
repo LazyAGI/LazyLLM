@@ -45,7 +45,8 @@ class Vllm(LazyLLMDeployBase):
             'host': '0.0.0.0',
             'max-num-seqs': 256,
             'pipeline-parallel-size': 1,
-            'max-num-batched-tokens': 64000,
+            'max-model-len': 64000,  # remove max-num-batched-tokens, as it shoulde be calculated by this key
+            'limit-mm-per-prompt': 'image=1',
         })
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)

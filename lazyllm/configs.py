@@ -106,4 +106,5 @@ config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBU
                 ).add('train_target_root', str, os.path.join(os.getcwd(), 'save_ckpt'), 'TRAIN_TARGET_ROOT'
                 ).add('infer_log_root', str, os.path.join(os.getcwd(), 'infer_log'), 'INFER_LOG_ROOT'
                 ).add('temp_dir', str, os.path.join(os.getcwd(), '.temp'), 'TEMP_DIR'
+                ).add('thread_pool_worker_num', int, 16, 'THREAD_POOL_WORKER_NUM'
                 )

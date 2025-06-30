@@ -4,6 +4,8 @@ from lazyllm import barrier, bind
 import time
 import pytest
 import random
+from lazyllm.tools.rag import DocNode
+from lazyllm.tools.rag.rank_fusion.reciprocal_rank_fusion import RRFFusion
 
 def add_one(x): return x + 1
 def xy2z(x, y, z=0): return x + y + 2 * z
@@ -41,6 +43,28 @@ class TestFlow(object):
     def test_parallel(self):
         fl = parallel(add_one, add_one)(1)
         assert fl == (2, 2)
+
+    def test_parallle_rrf(self):
+        # this example can be found here : https://docs.zilliz.com/docs/reranking-rrf
+        def build_nodes(id_list: list[str]):
+            return [DocNode(str_id, text=str_id) for str_id in id_list]
+
+        def retrieve_a():
+            nodes = build_nodes(["101", "203", "150", "198", "175"])
+            for i in range(0, len(nodes)):
+                nodes[i].similarity_score = 100 / (i + 1)
+            return nodes
+
+        def retrieve_b():
+            nodes = build_nodes(["198", "101", "110", "175", "250"])
+            for i in range(0, len(nodes)):
+                nodes[i].similarity_score = 1.0 / (i + 1)
+            return nodes
+
+        ppl = parallel(retrieve_a, retrieve_b).run(func=RRFFusion(top_k=10))
+        res = ppl()
+        new_id_sorts = [ele._uid for ele in res]
+        assert new_id_sorts == ["101", "198", "175", "203", "150", "110", "250"]
 
     def test_parallel_sequential(self):
         fl = parallel.sequential(add_one, add_one)(1)

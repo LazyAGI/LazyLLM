@@ -131,6 +131,12 @@ class TestExamples(object):
         assert type(res) is str
         assert len(res) >= 16
 
+        # test pipeline wrapped into iterator
+        from lazyllm import FlowIteratorWrapper
+        flow_iterator = FlowIteratorWrapper(ppl, interval=0.01)
+        res_list = flow_iterator(query)
+        assert isinstance(res_list, list) and len(res_list) > 1
+
         # test rag warpped in web
         web, client = self.warp_into_web(rag)
         chat_history = [[query, None]]
