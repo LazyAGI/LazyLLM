@@ -3,16 +3,17 @@ import os
 import lazyllm
 from lazyllm.thirdparty import transformers
 from lazyllm.components.formatter import encode_query_with_filepaths
-from ..utils.downloader import ModelManager
+from ...utils.downloader import ModelManager
 from .utils import sounds_to_files, TTSBase
 
 class MusicGen(object):
 
-    def __init__(self, base_path, source=None, save_path=None, init=False):
+    def __init__(self, base_path, source=None, save_path=None, init=False, trust_remote_code=True):
         source = lazyllm.config['model_source'] if not source else source
         self.base_path = ModelManager(source).download(base_path) or ''
         self.model = None
         self.init_flag = lazyllm.once_flag()
+        self._trust_remote_code = trust_remote_code
         self.save_path = save_path or os.path.join(lazyllm.config['temp_dir'], 'musicgen')
         if init:
             lazyllm.call_once(self.init_flag, self.load_tts)

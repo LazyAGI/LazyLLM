@@ -91,7 +91,7 @@ class TestModule:
         assert tm1.eval_result == [res_template.format(x) for x in inputs]
         tm2.evalset(inputs)
         tm2.eval()
-        assert tm2.eval_result == ["\n, and parameters is {'do_sample': False, 'temperature': 0.1}"] * 2
+        assert tm2.eval_result == [", and parameters is {'do_sample': False, 'temperature': 0.1}"] * 2
 
         tm3 = tm1.share()
         # tm1 and tm3 use same: EmptyPrompter

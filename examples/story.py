@@ -54,7 +54,9 @@ Receive as follows:
 writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "describe": {describe}}'}
 
 with pipeline() as ppl:
-    ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
+    # TODO: Each model can be configured with its own inference framework priority.
+    ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').deploy_method(
+        lazyllm.deploy.lightllm).formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
     ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output("outline_writer"))  # noqa: E501
 

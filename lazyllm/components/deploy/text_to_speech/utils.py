@@ -1,9 +1,11 @@
 import os
 import uuid
 from lazyllm.thirdparty import scipy, numpy as np
-from ..utils.file_operate import delete_old_files
+from ...utils.file_operate import delete_old_files
 import lazyllm
-from lazyllm import LOG
+from lazyllm import LOG, LazyLLMLaunchersBase
+from typing import Optional
+from ..base import LazyLLMDeployBase
 
 
 def sound_to_file(sound: 'np.array', file_path: str, sample_rate: int = 24000) -> str:
@@ -24,12 +26,14 @@ def sounds_to_files(sounds: list, directory: str, sample_rate: int = 24000) -> l
     return path_list
 
 
-class TTSBase(object):
+class TTSBase(LazyLLMDeployBase):
     func = None
 
-    def __init__(self, launcher=None, log_path=None):
-        self._launcher = launcher
+    def __init__(self, launcher: LazyLLMLaunchersBase = None,
+                 log_path: Optional[str] = None, port: Optional[int] = None):
+        super().__init__(launcher=launcher)
         self._log_path = log_path
+        self._port = port
 
     def __call__(self, finetuned_model=None, base_model=None):
         if not finetuned_model:
@@ -40,5 +44,5 @@ class TTSBase(object):
             LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                         f"base_model({base_model}) will be used")
             finetuned_model = base_model
-        return lazyllm.deploy.RelayServer(func=self.__class__.func(finetuned_model), launcher=self._launcher,
-                                          log_path=self._log_path, cls='tts')()
+        return lazyllm.deploy.RelayServer(port=self._port, func=self.__class__.func(finetuned_model),
+                                          launcher=self._launcher, log_path=self._log_path, cls='tts')()
