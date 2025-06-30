@@ -10,9 +10,6 @@ from lazyllm import LOG
 import requests
 
 class MagicPDFReader:
-    """
-    PDF 文档解析器，支持文本、图片、表格的解析，返回结构化文档节点。
-    """
 
     def __init__(self, magic_url, callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None):
         self._magic_url = magic_url
@@ -32,9 +29,6 @@ class MagicPDFReader:
             return []
 
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None, **kwargs) -> List[DocNode]:
-        """
-        解析 PDF 并返回结构化文档节点。
-        """
         if isinstance(file, str):
             file = Path(file)
         elements = self._parse_pdf_elements(file)
@@ -42,9 +36,6 @@ class MagicPDFReader:
         return docs
 
     def _parse_pdf_elements(self, pdf_path: Path) -> List[dict]:
-        """
-        解析 PDF 并返回文档元素（文本、表格、图片等）列表。
-        """
         payload = {"files": [str(pdf_path)], "reserve_image": True}
         try:
             response = requests.post(self._magic_url, json=payload)
@@ -54,14 +45,11 @@ class MagicPDFReader:
                 LOG.info(f"[MagicPDFReader] No elements found in PDF: {pdf_path}")
                 return []
         except requests.exceptions.RequestException as e:
-            LOG.error(f"[MagicPDFReader] POST 请求失败: {e}")
+            LOG.error(f"[MagicPDFReader] POST failed: {e}")
             return []
         return self._extract_content_blocks(res[0])
 
     def _extract_content_blocks(self, content_list) -> List[dict]:  # noqa: C901
-        """
-        处理解析结果，提取文本、表格、图片等内容。
-        """
         blocks = []
         cur_title = ""
         cur_level = -1
@@ -116,9 +104,6 @@ class MagicPDFReader:
         return blocks
 
     def _clean_content(self, content) -> str:
-        """
-        清理文本内容，处理编码问题并进行 Unicode 归一化。
-        """
         if isinstance(content, str):
             content = content.encode("utf-8", "replace").decode("utf-8")
             return unicodedata.normalize("NFKC", content)
@@ -127,9 +112,6 @@ class MagicPDFReader:
         return content
 
     def _html_table_to_markdown(self, html_table) -> str:  # noqa: C901
-        """
-        将 HTML 表格转换为 Markdown 格式。
-        """
         try:
             soup = BeautifulSoup(html_table.strip(), 'html.parser')
             table = soup.find('table')

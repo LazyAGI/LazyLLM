@@ -21,8 +21,7 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                     'sensenova': SenseNovaEmbedding,
                     'glm': GLMEmbedding,
                     'qwen': QwenEmbedding,
-                    'doubao': DoubaoEmbedding,
-                    'doubao-mm': DoubaoMultimodalEmbedding}
+                    'doubao': DoubaoEmbedding}
     RERANK_MODELS = {'qwen': QwenReranking,
                      'glm': GLMReranking}
 
@@ -61,6 +60,11 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
         if kwargs.get("type", "embed") == "embed":
             if source is None:
                 source = OnlineEmbeddingModule._check_available_source(OnlineEmbeddingModule.EMBED_MODELS)
+            if source == "doubao":
+                if embed_model_name.startswith("doubao-embedding-vision"):
+                    return DoubaoMultimodalEmbedding(**params)
+                else:
+                    return DoubaoEmbedding(**params)
             return OnlineEmbeddingModule.EMBED_MODELS[source](**params)
         elif kwargs.get("type") == "rerank":
             if "type" in params:
