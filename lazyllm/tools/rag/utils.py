@@ -470,7 +470,7 @@ class SqliteDocListManager(DocListManager):
         conds = [KBGroupDocuments.group_name == group, KBGroupDocuments.new_meta.isnot(None)]
         with self._db_lock, self._Session() as session:
             rows = (
-                session.query(KBDocument.path, KBGroupDocuments.new_meta)
+                session.query(KBDocument.doc_id, KBGroupDocuments.new_meta)
                 .join(KBGroupDocuments, KBDocument.doc_id == KBGroupDocuments.doc_id)
                 .filter(*conds).all()
             )

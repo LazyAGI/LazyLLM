@@ -1,15 +1,17 @@
 from typing import Any, Dict, List, Optional, Callable, Set, Union
-from lazyllm.thirdparty import chromadb
-from lazyllm import LOG
-from lazyllm.common import override, obj2str, str2obj
+
 from .store_base import StoreBase, LAZY_ROOT_NAME
-from .doc_node import DocNode
-from .index_base import IndexBase
-from .utils import _FileNodeIndex, sparse2normal
-from .default_index import DefaultIndex
 from .map_store import MapStore
 
-# ---------------------------------------------------------------------------- #
+from ..doc_node import DocNode
+from ..index_base import IndexBase
+from ..default_index import DefaultIndex
+from ..utils import _FileNodeIndex, sparse2normal
+
+from lazyllm import LOG
+from lazyllm.common import override, obj2str, str2obj
+from lazyllm.thirdparty import chromadb
+
 
 class ChromadbStore(StoreBase):
     def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable],
@@ -36,20 +38,33 @@ class ChromadbStore(StoreBase):
         self._save_nodes(nodes)
 
     @override
-    def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
-        if uids:
-            self._delete_group_nodes(group_name, uids)
-        else:
-            self._db_client.delete_collection(name=group_name)
-        return self._map_store.remove_nodes(group_name, uids)
+    def remove_nodes(self, group_name: Optional[str] = None, doc_ids: Optional[Set[str]] = None,
+                     uids: Optional[List[str]] = None) -> None:
+        if group_name:
+            if uids:
+                self._delete_group_nodes(group_name, uids)
+                self._map_store.remove_nodes(uids=uids)
+            else:
+                self._db_client.delete_collection(name=group_name)
+                nodes = self._map_store.get_nodes(group_name=group_name)
+                uids = [node._uid for node in nodes]
+                self._map_store.remove_nodes(uids=uids)
+        elif doc_ids:
+            for group in self.activated_groups():
+                nodes = self._map_store.get_nodes(group_name=group, doc_ids=doc_ids)
+                self.remove_nodes(group_name=group, uids=[n._uid for n in nodes])
 
     @override
-    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
-        self._map_store.update_doc_meta(filepath, metadata)
+    def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
+        self._map_store.update_doc_meta(doc_id=doc_id, metadata=metadata)
+        for group in self.activated_groups():
+            nodes = self.get_nodes(group_name=group, doc_ids=[doc_id])
+            self._save_nodes(nodes)
 
     @override
-    def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
-        return self._map_store.get_nodes(group_name, uids)
+    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
+                  doc_ids: Optional[Set] = None, **kwargs) -> List[DocNode]:
+        return self._map_store.get_nodes(group_name, uids, doc_ids, **kwargs)
 
     @override
     def activate_group(self, group_names: Union[str, List[str]]) -> bool:

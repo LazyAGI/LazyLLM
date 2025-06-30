@@ -1,7 +1,8 @@
 from typing import List, Optional, Dict
-from .doc_node import DocNode, ImageDocNode
-from .store_base import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from lazyllm import LOG
+
+from .doc_node import DocNode, ImageDocNode
+from .store import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from .dataReader import SimpleDirectoryReader
 
 class DirectoryReader:
@@ -31,5 +32,6 @@ class DirectoryReader:
             LOG.warning(
                 f"No nodes load from path {input_files}, please check your data path."
             )
+            raise ValueError(f"No nodes load from path {input_files}, please check your data path or file.")
         LOG.info("DirectoryReader loads data done!")
         return (nodes, image_nodes) if split_image_nodes else nodes

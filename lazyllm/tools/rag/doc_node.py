@@ -10,6 +10,9 @@ import threading
 import time
 import copy
 
+_pickle_blacklist = {'_store', '_node_groups'}
+
+
 class MetadataMode(str, Enum):
     ALL = auto()
     EMBED = auto()
@@ -21,7 +24,8 @@ class MetadataMode(str, Enum):
 class DocNode:
     def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = None,
                  group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
-                 parent: Optional["DocNode"] = None, metadata: Optional[Dict[str, Any]] = None,
+                 parent: Optional[Union[str, "DocNode"]] = None, store=None,
+                 node_groups: Optional[Dict[str, Dict]] = None, metadata: Optional[Dict[str, Any]] = None,
                  global_metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
         if text and content:
             raise ValueError('`text` and `content` cannot be set at the same time.')
@@ -30,21 +34,24 @@ class DocNode:
         self._content: Optional[Union[str, List[Any]]] = content if content else text
         self._group: Optional[str] = group
         self._embedding: Optional[Dict[str, List[float]]] = embedding or {}
+        # metadata: the chunk's meta
         self._metadata: Dict[str, Any] = metadata or {}
+        # Global metadata: the file's global metadata (higher level)
+        self._global_metadata = global_metadata or {}
         # Metadata keys that are excluded from text for the embed model.
         self._excluded_embed_metadata_keys: List[str] = []
         # Metadata keys that are excluded from text for the LLM.
         self._excluded_llm_metadata_keys: List[str] = []
-        self._parent: Optional["DocNode"] = parent
+        # NOTE: node in parent should be id when stored in db (use store to recover): parent: 'uid'
+        self._parent: Optional[Union[str, "DocNode"]] = parent
         self._children: Dict[str, List["DocNode"]] = defaultdict(list)
+        self._children_loaded = False
+        self._store = store
+        self._node_groups: Dict[str, Dict] = node_groups or {}
         self._lock = threading.Lock()
         self._embedding_state = set()
         self.relevance_score = None
         self.similarity_score = None
-
-        if global_metadata and parent:
-            raise ValueError('only ROOT node can set global metadata.')
-        self._global_metadata = global_metadata or {}
 
     @property
     def text(self) -> str:
@@ -65,8 +72,24 @@ class DocNode:
     def embedding(self, v: Optional[Dict[str, List[float]]]):
         self._embedding = v
 
+    def _load_from_store(self, group_name: str, uids: Union[str, List[str]]) -> List["DocNode"]:
+        if not self._store or not uids:
+            return []
+        if isinstance(uids, str):
+            uids = [uids]
+        nodes = self._store.get_nodes(group_name=group_name, uids=uids, dataset_id=self._global_metadata.get("kb_id"),
+                                      display=True)
+        for n in nodes:
+            n._store = self._store
+            n._node_groups = self._node_groups
+        return nodes
+
     @property
-    def parent(self):
+    def parent(self) -> Optional["DocNode"]:
+        if self._parent and isinstance(self._parent, str) and self._node_groups:
+            parent_group = self._node_groups[self._group]["parent"]
+            loaded = self._load_from_store(parent_group, self._parent)
+            self._parent = loaded[0] if loaded else None
         return self._parent
 
     @parent.setter
@@ -74,7 +97,19 @@ class DocNode:
         self._parent = v
 
     @property
-    def children(self):
+    def children(self) -> Dict[str, List["DocNode"]]:
+        if not self._children_loaded and self._store and self._node_groups:
+            self._children_loaded = True
+            dataset_id = self._global_metadata.get("kb_id")
+            doc_id = self._global_metadata.get("docid")
+            c_groups = [grp for grp in self._node_groups.keys() if self._node_groups[grp]['parent'] == self._group]
+            for grp in c_groups:
+                nodes = self._store.get_nodes(group_name=grp, dataset_id=dataset_id, doc_ids=[doc_id])
+                c_nodes = [n for n in nodes if n._parent == self._uid]
+                self._children[grp] = c_nodes
+                for n in self._children[grp]:
+                    n._store = self._store
+                    n._node_groups = self._node_groups
         return self._children
 
     @children.setter
@@ -82,11 +117,11 @@ class DocNode:
         self._children = v
 
     @property
-    def root_node(self) -> Optional["DocNode"]:
-        root = self.parent
-        while root and root.parent:
-            root = root.parent
-        return root or self
+    def root_node(self) -> "DocNode":
+        node = self
+        while isinstance(node.parent, DocNode):
+            node = node.parent
+        return node
 
     @property
     def is_root_node(self) -> bool:
@@ -98,17 +133,21 @@ class DocNode:
 
     @global_metadata.setter
     def global_metadata(self, global_metadata: Dict) -> None:
-        if self.parent:
-            raise ValueError("only root node can set global metadata.")
         self._global_metadata = global_metadata
+
+    def update_global_metadata(self, global_metadata: Dict) -> None:
+        self._global_metadata.update(global_metadata)
 
     @property
     def metadata(self) -> Dict:
-        return {**self.root_node._metadata, **self._metadata}
+        return self._metadata
 
     @metadata.setter
     def metadata(self, metadata: Dict) -> None:
         self._metadata = metadata
+
+    def update_metadata(self, metadata: Dict) -> None:
+        self._metadata.update(metadata)
 
     @property
     def excluded_embed_metadata_keys(self) -> List:
@@ -159,6 +198,12 @@ class DocNode:
 
     def __hash__(self):
         return hash(self._uid)
+
+    def __getstate__(self):
+        st = self.__dict__.copy()
+        for attr in _pickle_blacklist:
+            st[attr] = None
+        return st
 
     def has_missing_embedding(self, embed_keys: Union[str, List[str]]) -> List[str]:
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
@@ -223,8 +268,9 @@ class DocNode:
 class QADocNode(DocNode):
     def __init__(self, query: str, answer: str, uid: Optional[str] = None, group: Optional[str] = None,
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional["DocNode"] = None,
-                 metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
-        super().__init__(uid, query, group, embedding, parent, metadata, None, text=text)
+                 metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None,
+                 *, text: Optional[str] = None):
+        super().__init__(uid, query, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
         self._answer = answer.strip()
 
     def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
