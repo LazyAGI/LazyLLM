@@ -263,6 +263,20 @@ class TestEngine(object):
 
         r = engine.run(gid, "这张图片描述的是什么？")
         assert '.wav' in r
+        
+    def test_engine_tts_with_target_dir(self):
+        engine = LightEngine()
+        temp_dir = os.path.join(lazyllm.config['data_path'], 'tts_temp')
+        nodes = [dict(id='1', kind='TTS', name='tts', 
+                        args=dict(base_model='ChatTTS-new', type='local', target_dir=temp_dir))]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+        gid = engine.start(nodes, edges)
+        
+        r = engine.run(gid, '测试TTS输出到指定目录')
+        assert '.wav' in r
+        
+        if os.path.exists(r):
+            assert os.path.dirname(r) == temp_dir
 
     @pytest.mark.skip(reason='environment not ready')
     def test_OCR(self):

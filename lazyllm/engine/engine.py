@@ -842,7 +842,7 @@ def make_local_stt(base_model: str, deploy_method: str = "auto", url: Optional[s
     return STT(model)
 
 class TTS(lazyllm.Module):
-    def __init__(self, model: lazyllm.TrainableModule, target_dir: str = ''):
+    def __init__(self, model: lazyllm.TrainableModule, target_dir: Optional[str] = None):
         super().__init__()
         self._m = model
         if target_dir:

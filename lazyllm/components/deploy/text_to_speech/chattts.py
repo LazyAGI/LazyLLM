@@ -1,26 +1,15 @@
-import os
-
-import lazyllm
 from lazyllm.thirdparty import torch, ChatTTS
-from lazyllm.components.formatter import encode_query_with_filepaths
-from .utils import sounds_to_base64_list, TTSBase
-from ...utils.downloader import ModelManager
+from .utils import TTSBase
+from .base import TTSInfer
 
 
-class ChatTTSModule(object):
+class ChatTTSModule(TTSInfer):
 
     def __init__(self, base_path, source=None, save_path=None, init=False, trust_remote_code=True):
-        source = lazyllm.config['model_source'] if not source else source
-        self.base_path = ModelManager(source).download(base_path) or ''
-        self.model, self.spk = None, None
-        self.init_flag = lazyllm.once_flag()
         self.seed = 1024
-        self.save_path = save_path or os.path.join(lazyllm.config['temp_dir'], 'chattts')
-        self._trust_remote_code = trust_remote_code
-        if init:
-            lazyllm.call_once(self.init_flag, self.load_tts)
+        super().__init__(base_path, source, save_path, init, trust_remote_code, 'chattts')
 
-    def load_tts(self):
+    def load_model(self):
         self.model = ChatTTS.Chat()
         self.model.load(compile=False,
                         source="custom",
@@ -33,8 +22,7 @@ class ChatTTSModule(object):
         rand_spk = self.model.sample_random_speaker()
         return rand_spk
 
-    def __call__(self, string):
-        lazyllm.call_once(self.init_flag, self.load_tts)
+    def _infer(self, string):
         if isinstance(string, str):
             query = string
             params_refine_text = ChatTTS.Chat.RefineTextParams()
@@ -55,16 +43,7 @@ class ChatTTSModule(object):
                                   params_refine_text=params_refine_text,
                                   params_infer_code=params_infer_code,
                                 )
-        base64_list = sounds_to_base64_list(speech)
-        return encode_query_with_filepaths(files=base64_list)
-
-    @classmethod
-    def rebuild(cls, base_path, init, save_path):
-        return cls(base_path, init=init, save_path=save_path)
-
-    def __reduce__(self):
-        init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return ChatTTSModule.rebuild, (self.base_path, init, self.save_path)
+        return speech, self.sample_rate
 
 class ChatTTSDeploy(TTSBase):
     keys_name_handle = {

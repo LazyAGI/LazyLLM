@@ -40,7 +40,7 @@ class SenseVoice(object):
             trust_remote_code=False,
             vad_model="fsmn-vad",
             vad_kwargs={"max_single_segment_time": 30000},
-            device="cuda:0",
+            # device="cuda:0",
         )
 
     def __call__(self, string):
@@ -56,7 +56,7 @@ class SenseVoice(object):
             string = base64_to_file(string) if is_base64_with_mime(string) else string
         except Exception as e:
             LOG.error(f"Error processing base64 encoding: {e}")
-            return "Error processing base64 encoding"
+            return f"Error processing base64 encoding {e}"
         if not string.endswith(('.mp3', '.wav')):
             return "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported."
         if not is_valid_path(string) and not is_valid_url(string):
