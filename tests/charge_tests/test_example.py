@@ -132,9 +132,9 @@ class TestExamples(object):
         assert len(res) >= 16
 
         # test pipeline wrapped into iterator
-        from lazyllm import FlowIteratorWrapper
-        flow_iterator = FlowIteratorWrapper(ppl, interval=0.01)
-        res_list = flow_iterator(query)
+        from lazyllm.tools.common import StreamCallHelper
+        flow_iterator = StreamCallHelper(ppl, interval=0.01)
+        res_list = list(flow_iterator(query))
         assert isinstance(res_list, list) and len(res_list) > 1
 
         # test rag warpped in web

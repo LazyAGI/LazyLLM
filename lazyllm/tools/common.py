@@ -16,7 +16,7 @@ class StreamCallHelper:
         need_continue = True
         str_total = ""
         while need_continue:
-            if func_future.done:
+            if func_future.done():
                 need_continue = False
             if value := lazyllm.FileSystemQueue().dequeue():
                 str_streaming = ''.join(value)
