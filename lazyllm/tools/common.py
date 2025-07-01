@@ -11,18 +11,23 @@ class StreamCallHelper:
 
     def __call__(self, *args, **kwargs):
         lazyllm.globals._init_sid()
-        if lazyllm.FileSystemQueue().size() > 0:
-            lazyllm.FileSystemQueue().clear()
+        lazyllm.FileSystemQueue().clear()
         func_future = g_thread_pool.submit(self._impl, *args, **kwargs)
         need_continue = True
+        str_total = ""
         while need_continue:
             if func_future.done:
                 need_continue = False
             if value := lazyllm.FileSystemQueue().dequeue():
-                yield ''.join(value)
+                str_streaming = ''.join(value)
+                str_total += str_streaming
+                yield str_streaming
             else:
                 time.sleep(self._sleep_interval)
         result = func_future.result()
-        yield result
-        if lazyllm.FileSystemQueue().size() > 0:
-            lazyllm.FileSystemQueue().clear()
+        if isinstance(result, str):
+            if not str_total.endswith(result):
+                yield result
+        else:
+            yield str(result)
+        lazyllm.FileSystemQueue().clear()
