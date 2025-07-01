@@ -5,7 +5,7 @@ import shutil
 
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
-from .base import LazyLLMDeployBase, verify_func_factory, KwMapItem
+from .base import LazyLLMDeployBase, verify_func_factory
 from .utils import get_log_path, make_log_dir
 
 lazyllm.config.add('mindie_home', str, '', 'MINDIE_HOME')
@@ -27,12 +27,12 @@ class Mindie(LazyLLMDeployBase):
         'top_p': 0.95
     }
     kw_map = {
-        'port': KwMapItem('port', int),
-        'host': KwMapItem('host', str),
-        'tp': KwMapItem('world_size', int),
-        'max_input_token_len': KwMapItem('maxInputTokenLen', int),
-        'max_prefill_tokens': KwMapItem('maxPrefillTokens', int),
-        'max_seq_len': KwMapItem('maxSeqLen', int),
+        'port': ('port', int),
+        'host': ('host', str),
+        'tp': ('world_size', int),
+        'max_input_token_len': ('maxInputTokenLen', int),
+        'max_prefill_tokens': ('maxPrefillTokens', int),
+        'max_seq_len': ('maxSeqLen', int)
     }
 
     def __init__(self, trust_remote_code=True, launcher=launchers.remote(), log_path=None, **kw):
@@ -53,9 +53,8 @@ class Mindie(LazyLLMDeployBase):
             'maxPrefillTokens': 8192,
         })
         self.trust_remote_code = trust_remote_code
-        kw = self.kw_map_for_framework(kw, self.kw_map)
-        kw['npuDeviceIds'] = [[i for i in range(kw['worldSize'])]]
         self.kw.check_and_update(kw)
+        self.kw['npuDeviceIds'] = [[i for i in range(self.kw.get('worldSize', 1))]]
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
         self.temp_folder = make_log_dir(log_path, 'mindie') if log_path else None
 

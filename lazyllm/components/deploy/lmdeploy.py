@@ -55,7 +55,6 @@ class LMDeploy(LazyLLMDeployBase):
             "max-batch-size": 128,
             "chat-template": None,
         })
-        kw = self.kw_map_for_framework(kw, self.kw_map)
         self.kw.check_and_update(kw)
         self._trust_remote_code = trust_remote_code
         self.random_port = False if 'server-port' in kw and kw['server-port'] else True

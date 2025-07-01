@@ -648,6 +648,19 @@ class ServerModule(UrlModule):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
                                  stream=self._stream, return_trace=self._return_trace)
 
+def kw_map_for_framework(kw: Dict[str, Any], kw_map: Dict[str, Tuple[str, Callable[[Any], Any]]]) -> Dict[str, Any]:
+        result = {}
+        for k, v in kw.items():
+            kw_item = kw_map.get(k)
+            if kw_item:
+                try:
+                    result[kw_item[0]] = kw_item[1](v)
+                except (TypeError, ValueError) as e:
+                    LOG.warning(f"Type conversion error for key '{k}': {e}, using original value")
+                    result[kw_item[0]] = v
+            else:
+                result[k] = v
+        return result
 @light_reduce
 class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
@@ -768,6 +781,10 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_train_or_deploy_args('deploy', disable=['target_path'])
+        
+        if hasattr(self._deploy, 'kw_map') and self._deploy.kw_map:
+            self._deploy_args = kw_map_for_framework(self._deploy_args, self._deploy.kw_map)
+        
         stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
 
         self._template.update(self._deploy.message_format, self._deploy.keys_name_handle,
