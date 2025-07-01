@@ -276,6 +276,8 @@ class ModuleBase(metaclass=_MetaBind):
             encoded_files: List of encoded files
         """
         encoded_files = []
+        if not isinstance(files, list):
+            files = [files]
         for file in files:
             try:
                 file_path = check_path(file, exist=True, file=True)

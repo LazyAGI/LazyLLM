@@ -319,8 +319,8 @@ def _build_pipeline(nodes):
 @NodeConstructor.register('Switch', subitems=['nodes:dict'])
 def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
     with switch(judge_on_full_input=judge_on_full_input) as sw:
-        for cond, nodes in nodes.items():
-            sw.case[cond::_build_pipeline(nodes)]
+        for cond, cond_nodes in nodes.items():
+            sw.case[cond::_build_pipeline(cond_nodes)]
     return sw
 
 
@@ -734,6 +734,24 @@ def make_shared_llm(llm: str, local: bool = True, prompt: Optional[str] = None, 
     if stream is not None: r.stream = stream
     return r
 
+@NodeConstructor.register('SharedModel')
+def make_shared_model(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
+                    stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
+                    history: Optional[List[List[str]]] = None, cls: str = "llm"):
+    if file_resource_id: assert cls == 'vqa', 'file_resource_id is only supported in VQA'
+    if local:
+        model = Engine().build_node(llm).func
+        if isinstance(model, VQA):
+            model = model._vqa
+    else:
+        assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
+        model = Engine().get_infra_handle(token, llm)
+    if stream is not None: model.stream = stream
+    if cls == "vqa": return VQA(model, file_resource_id).share(prompt=prompt, history=history)
+    elif cls == "tts": return TTS(model)
+    elif cls == "stt": return STT(model)
+    else: return model.share(prompt=prompt, history=history)
+
 
 @NodeConstructor.register('OnlineLLM')
 def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optional[str] = None,
@@ -841,8 +859,8 @@ class TTS(lazyllm.Module):
         r = self._m(query)
         result = decode_query_with_filepaths(r)
         sound_list = [base64_to_file(sound, target_dir=self._target_dir)
-                      for sound in result["files"] if is_base64_with_mime(sound)]
-        return sound_list
+                      if is_base64_with_mime(sound) else sound for sound in result["files"]]
+        return sound_list[0] if len(sound_list) > 0 else query
 
 @NodeConstructor.register('TTS')
 def make_tts(kw: dict):

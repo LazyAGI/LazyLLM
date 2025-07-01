@@ -94,7 +94,7 @@ class TestEngine(unittest.TestCase):
 
     def test_engine_subgraph(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
-        nodes = [dict(id='1', kind='SharedLLM', name='s1', args=dict(llm='0', prompt=None))]
+        nodes = [dict(id='1', kind='SharedModel', name='s1', args=dict(llm='0', prompt=None, cls='llm'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
 
         nodes = [dict(id='2', kind='SubGraph', name='s1', args=dict(nodes=nodes, edges=edges))]
@@ -553,7 +553,7 @@ class TestEngine(unittest.TestCase):
 
     def test_engine_stop_and_restart(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
-        nodes = [dict(id='1', kind='SharedLLM', name='s1', args=dict(llm='0', prompt=None))]
+        nodes = [dict(id='1', kind='SharedModel', name='s1', args=dict(llm='0', prompt=None, cls='llm'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
 
         engine = LightEngine()
@@ -666,7 +666,7 @@ class TestEngine(unittest.TestCase):
 
     def test_engine_status(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
-        llm_node = dict(id='1', kind='SharedLLM', name='s1', args=dict(llm='0', prompt=None))
+        llm_node = dict(id='1', kind='SharedModel', name='s1', args=dict(llm='0', prompt=None, cls='llm'))
 
         plus1 = dict(id='2', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
         double = dict(id='3', kind='Code', name='m2', args=dict(code='def test(x: int):\n    return 2 * x\n'))
@@ -679,7 +679,7 @@ class TestEngine(unittest.TestCase):
             stop_condition='def cond(x): return x > 8', nodes=[double]))
 
         switch = dict(id='8', kind='Switch', name='sw1', args=dict(judge_on_full_input=True, nodes={
-            1: [plus1, subgraph], 2: ifs, 3: loop, 5: [ifs]}))
+            1: [plus1, subgraph], 2: [ifs], 3: [loop], 5: [ifs]}))
 
         warp = dict(id='9', kind='Warp', name='w1', args=dict(nodes=[switch, plus1]))
         join = dict(id='10', kind='JoinFormatter', name='join', args=dict(type='join', symbol=', '))
@@ -687,7 +687,7 @@ class TestEngine(unittest.TestCase):
         engine = LightEngine()
         gid = engine.start(nodes, [], resources)
 
-        assert '6, 4, 13, 26' in engine.run(gid, 1, 2, 3, 5)
+        assert '6, 3, 13, 26' in engine.run(gid, 1, 2, 3, 5)
         assert engine.status(gid) == {'9': {'8': {'2': 'running',
                                                   '5': {'3': 'running', '2': 'running'},
                                                   '6': {'2': 'running', '4': 'running'},
