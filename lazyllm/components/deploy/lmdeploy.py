@@ -36,7 +36,6 @@ class LMDeploy(LazyLLMDeployBase):
         "cancel": False,
         "adapter_name": None
     }
-    auto_map = {}
     kw_map = {
         'port': ('server-port', int),
         'host': ('server-name', str),

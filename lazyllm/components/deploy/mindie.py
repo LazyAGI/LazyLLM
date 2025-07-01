@@ -26,7 +26,7 @@ class Mindie(LazyLLMDeployBase):
         'temperature': 0.5,
         'top_p': 0.95
     }
-    kw_map = {
+    auto_map = {
         'port': ('port', int),
         'host': ('host', str),
         'tp': ('world_size', int),

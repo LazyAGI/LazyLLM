@@ -767,14 +767,9 @@ def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optio
 
 @NodeConstructor.register('OnlineEmbedding')
 def make_online_embedding(source: str, embed_type: Optional[str] = 'embed', base_model: Optional[str] = None,
-                          base_url: Optional[str] = None, api_key: Optional[str] = None,
-                          secret_key: Optional[str] = None):
+                          base_url: Optional[str] = None, api_key: Optional[str] = None):
     source = source.lower()
-    if source == 'sensenova':
-        return lazyllm.OnlineEmbeddingModule(source=source, type=embed_type, embed_model_name=base_model,
-                                             embed_url=base_url, api_key=api_key, secret_key=secret_key)
-    else:
-        return lazyllm.OnlineEmbeddingModule(source=source, type=embed_type, embed_model_name=base_model,
+    return lazyllm.OnlineEmbeddingModule(source=source, type=embed_type, embed_model_name=base_model,
                                              embed_url=base_url, api_key=api_key)
 
 

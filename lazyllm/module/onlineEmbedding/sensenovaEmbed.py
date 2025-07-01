@@ -14,6 +14,9 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase):
                  api_key: str = None,
                  secret_key: str = None):
         jwt_api_key = None
+        if secret_key is None and api_key is not None:
+            assert ":" in api_key, "secret_key is None, the api_key should be in the format of 'api_key:secret_key'"
+            api_key, secret_key = api_key.split(':')
         if api_key and secret_key:
             jwt_api_key = SenseNovaEmbedding.encode_jwt_token(api_key, secret_key)
         super().__init__("SENSENOVA",
