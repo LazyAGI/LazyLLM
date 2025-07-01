@@ -3,6 +3,7 @@ import requests
 from ..module import ModuleBase
 
 class OnlineEmbeddingModuleBase(ModuleBase):
+    NO_PROXY = True
 
     def __init__(self,
                  model_series: str,
@@ -33,7 +34,8 @@ class OnlineEmbeddingModuleBase(ModuleBase):
 
     def forward(self, input: Union[List, str], **kwargs) -> List[float]:
         data = self._encapsulated_data(input, **kwargs)
-        with requests.post(self._embed_url, json=data, headers=self._headers) as r:
+        proxies = {'http': None, 'https': None} if self.NO_PROXY else None
+        with requests.post(self._embed_url, json=data, headers=self._headers, proxies=proxies) as r:
             if r.status_code == 200:
                 return self._parse_response(r.json())
             else:

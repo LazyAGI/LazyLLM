@@ -15,7 +15,7 @@ class AlpacaPrompter(LazyLLMPrompterBase):
                                 "\n\n" + LazyLLMPrompterBase._get_extro_key_template(extra_keys))
         self._init_prompt("{system}\n{instruction}\n{tools}\n{user}### Response:\n",
                           instruction_template,
-                          "### Response:")
+                          "### Response:\n")
 
     def _check_values(self, instruction, input, history, tools):
         assert not history, f"Chat history is not supported in {__class__}."

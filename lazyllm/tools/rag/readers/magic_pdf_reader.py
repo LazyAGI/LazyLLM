@@ -11,8 +11,10 @@ import requests
 
 class MagicPDFReader:
 
-    def __init__(self, magic_url, callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None):
+    def __init__(self, magic_url, callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
+                 upload_mode: bool = False):
         self._magic_url = magic_url
+        self._upload_mode = upload_mode
         if callback is not None:
             self._callback = callback
         else:
@@ -31,7 +33,10 @@ class MagicPDFReader:
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None, **kwargs) -> List[DocNode]:
         if isinstance(file, str):
             file = Path(file)
-        elements = self._parse_pdf_elements(file)
+        if self._upload_mode:
+            elements = self._upload_parse_pdf_elements(file)
+        else:
+            elements = self._parse_pdf_elements(file)
         docs: List[DocNode] = self._callback(elements, file, extra_info)
         return docs
 
@@ -44,6 +49,21 @@ class MagicPDFReader:
             if not isinstance(res, list) or not res:
                 LOG.info(f"[MagicPDFReader] No elements found in PDF: {pdf_path}")
                 return []
+        except requests.exceptions.RequestException as e:
+            LOG.error(f"[MagicPDFReader] POST failed: {e}")
+            return []
+        return self._extract_content_blocks(res[0])
+
+    def _upload_parse_pdf_elements(self, pdf_path: Path) -> List[dict]:
+        try:
+            with open(pdf_path, "rb") as f:
+                files = {'file': (os.path.basename(pdf_path), f)}
+                response = requests.post(self._magic_url, files=files)
+                response.raise_for_status()
+                res = response.json()
+                if not isinstance(res, list) or not res:
+                    LOG.info(f"[MagicPDFReader] No elements found in PDF: {pdf_path}")
+                    return []
         except requests.exceptions.RequestException as e:
             LOG.error(f"[MagicPDFReader] POST failed: {e}")
             return []
@@ -174,5 +194,5 @@ class MagicPDFReader:
             return markdown
 
         except Exception as e:
-            print(f"Error parsing table: {e}")
+            LOG.error(f"Error parsing table: {e}")
             return ''

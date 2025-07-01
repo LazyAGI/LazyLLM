@@ -6,17 +6,27 @@ import importlib
 from packaging.version import parse
 
 import lazyllm
-from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
+from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG, LazyLLMLaunchersBase
 from .base import LazyLLMDeployBase, verify_fastapi_func
+from ...common import LazyLLMRegisterMetaClass
 from .utils import get_log_path, make_log_dir
 from .ray import reallocate_launcher, Distributed, sleep_moment
 
 
-class Vllm(LazyLLMDeployBase):
-    keys_name_handle = {
-        'inputs': 'prompt',
-        'stop': 'stop'
-    }
+class _VllmStreamParseParametersMeta(LazyLLMRegisterMetaClass):
+    def __getattribute__(cls, name):
+        if name == 'stream_parse_parameters':
+            if not hasattr(cls, '_stream_parse_parameters'):
+                vllm_version = parse(importlib.import_module('vllm').__version__)
+                cls._stream_parse_parameters = {"decode_unicode": False}
+                if vllm_version <= parse("0.5.0"): cls._stream_parse_parameters.update({"delimiter": b"\0"})
+            return cls._stream_parse_parameters
+        return super().__getattribute__(name)
+
+
+class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
+    # keys_name_handle/default_headers/message_format will lose efficacy when openai_api is True
+    keys_name_handle = {'inputs': 'prompt', 'stop': 'stop'}
     default_headers = {'Content-Type': 'application/json'}
     message_format = {
         'prompt': 'Who are you ?',
@@ -28,9 +38,10 @@ class Vllm(LazyLLMDeployBase):
         'max_tokens': 4096
     }
     auto_map = {'tp': 'tensor-parallel-size'}
-    vllm_version = None
 
-    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None, **kw):
+    # TODO(wangzhihong): change default value for `openai_api` argument to True
+    def __init__(self, trust_remote_code: bool = True, launcher: LazyLLMLaunchersBase = launchers.remote(ngpus=1),
+                 log_path: str = None, openai_api: bool = False, **kw):
         self.launcher_list, launcher = reallocate_launcher(launcher)
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
@@ -48,6 +59,7 @@ class Vllm(LazyLLMDeployBase):
             'max-model-len': 64000,  # remove max-num-batched-tokens, as it shoulde be calculated by this key
             'limit-mm-per-prompt': 'image=1',
         })
+        self._vllm_cmd = 'vllm.entrypoints.openai.api_server' if openai_api else 'vllm.entrypoints.api_server'
         self.trust_remote_code = trust_remote_code
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
@@ -74,7 +86,7 @@ class Vllm(LazyLLMDeployBase):
             cmd = ''
             if self.launcher_list:
                 cmd += f"ray start --address='{master_ip}' && "
-            cmd += f'{sys.executable} -m vllm.entrypoints.api_server --model {finetuned_model} '
+            cmd += f'{sys.executable} -m {self._vllm_cmd} --model {finetuned_model} '
             cmd += self.kw.parse_kwargs()
             if self.trust_remote_code:
                 cmd += ' --trust-remote-code '
@@ -94,16 +106,3 @@ class Vllm(LazyLLMDeployBase):
     @staticmethod
     def extract_result(x, inputs):
         return json.loads(x)['text'][0]
-
-    @staticmethod
-    def stream_parse_parameters():
-        if Vllm.vllm_version is None:
-            Vllm.vllm_version = parse(importlib.import_module('vllm').__version__)
-        if Vllm.vllm_version <= parse("0.5.0"):
-            return {"decode_unicode": False, "delimiter": b"\0"}
-        else:
-            return {"decode_unicode": False}
-
-    @staticmethod
-    def stream_url_suffix():
-        return ''

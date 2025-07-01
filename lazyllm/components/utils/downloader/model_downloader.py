@@ -7,7 +7,6 @@ from abc import ABC, abstractmethod
 
 import lazyllm
 from .model_mapping import model_name_mapping, model_provider, model_groups
-from lazyllm.common.common import EnvVarContextManager
 
 lazyllm.config.add('model_source', str, 'modelscope', 'MODEL_SOURCE')
 lazyllm.config.add('model_cache_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'model'),
@@ -18,11 +17,9 @@ lazyllm.config.add('data_path', str, '', 'DATA_PATH')
 
 
 class ModelManager():
-    def __init__(self, model_source=lazyllm.config['model_source'],
-                 token=lazyllm.config['model_source_token'],
-                 cache_dir=lazyllm.config['model_cache_dir'],
-                 model_path=lazyllm.config['model_path']):
-        self.model_source = model_source
+    def __init__(self, model_source, token=lazyllm.config['model_source_token'],
+                 cache_dir=lazyllm.config['model_cache_dir'], model_path=lazyllm.config['model_path']):
+        self.model_source = model_source or lazyllm.config['model_source']
         self.token = token or None
         self.cache_dir = cache_dir
         self.model_paths = model_path.split(":") if len(model_path) > 0 else []
@@ -31,12 +28,13 @@ class ModelManager():
         else:
             self.hub_downloader = ModelscopeDownloader(token=self.token)
             if self.model_source != 'modelscope':
-                lazyllm.LOG.warning("Only support Huggingface and Modelscope currently. "
-                                    f"Unsupported model source: {self.model_source}. Forcing use of Modelscope.")
+                lazyllm.LOG.error("Only support Huggingface and Modelscope currently. "
+                                  f"Unsupported model source: {self.model_source}. Forcing use of Modelscope.")
 
-    @classmethod
-    def get_model_type(cls, model) -> str:
-        assert isinstance(model, str) and len(model) > 0, "model name should be a non-empty string"
+    @staticmethod
+    @functools.lru_cache
+    def get_model_type(model) -> str:
+        assert isinstance(model, str) and len(model) > 0, f'model name should be a non-empty string, get {model}'
         for name, info in model_name_mapping.items():
             if 'type' not in info: continue
 
@@ -48,8 +46,9 @@ class ModelManager():
                 return info['type']
         return 'llm'
 
-    @classmethod
-    def get_model_name(cls, model) -> str:
+    @staticmethod
+    @functools.lru_cache
+    def get_model_name(model) -> str:
         search_string = os.path.basename(model)
         for model_name, sources in model_name_mapping.items():
             if model_name.lower() == search_string.lower() or any(
@@ -59,16 +58,18 @@ class ModelManager():
                 return model_name
         return ""
 
-    @classmethod
-    def get_model_prompt_keys(cls, model) -> dict:
-        model_name = cls.get_model_name(model)
+    @staticmethod
+    @functools.lru_cache
+    def get_model_prompt_keys(model) -> dict:
+        model_name = __class__.get_model_name(model)
+        __class__._try_add_mapping(model_name)
         if model_name and "prompt_keys" in model_name_mapping[model_name.lower()]:
             return model_name_mapping[model_name.lower()]["prompt_keys"]
         else:
             return dict()
 
-    @classmethod
-    def validate_model_path(cls, model_path):
+    @staticmethod
+    def validate_model_path(model_path):
         extensions = {'.pt', '.bin', '.safetensors'}
         for _, _, files in os.walk(model_path):
             for file in files:
@@ -76,13 +77,14 @@ class ModelManager():
                     return True
         return False
 
-    def _try_add_mapping(self, model):
+    @staticmethod
+    def _try_add_mapping(model):
         model_base = os.path.basename(model)
         model = model_base.lower()
         if model in model_name_mapping.keys():
             return
         matched_model_prefix = next((key for key in model_provider if model.startswith(key)), None)
-        if matched_model_prefix and self.model_source in model_provider[matched_model_prefix]:
+        if matched_model_prefix:
             matching_keys = [key for key in model_groups.keys() if key in model]
             if matching_keys:
                 matched_groups = max(matching_keys, key=len)
@@ -104,7 +106,7 @@ class ModelManager():
         if model_at_path: return model_at_path
 
         if self.model_source == '' or self.model_source not in ('huggingface', 'modelscope'):
-            print("[WARNING] model automatic downloads only support Huggingface and Modelscope currently.")
+            lazyllm.LOG.error("model automatic downloads only support Huggingface and Modelscope currently.")
             return model
 
         if model.lower() in model_name_mapping.keys() and \
@@ -177,7 +179,7 @@ class ModelManager():
         # Use `BaseException` to capture `KeyboardInterrupt` and normal `Exceptioin`.
         except BaseException as e:
             lazyllm.LOG.warning(f"Download encountered an error: {e}")
-            if not self.token:
+            if not self.token and 'Permission denied' not in str(e):
                 lazyllm.LOG.warning('Token is empty, which may prevent private models from being downloaded, '
                                     'as indicated by "the model does not exist." Please set the token with the '
                                     'environment variable LAZYLLM_MODEL_SOURCE_TOKEN to download private models.')
@@ -257,27 +259,10 @@ class HubDownloader(ABC):
 
 class HuggingfaceDownloader(HubDownloader):
 
-    def _envs_manager(func):
-
-        @functools.wraps(func)
-        def wrapper(self, *args, **kwargs):
-            env_vars = {'https_proxy': lazyllm.config['https_proxy'] or os.environ.get("https_proxy", None),
-                        'http_proxy': lazyllm.config['http_proxy'] or os.environ.get("http_proxy", None)}
-            with EnvVarContextManager(env_vars):
-                if not os.environ.get("https_proxy", None):
-                    lazyllm.LOG.warning('If there is no download response or if downloads repeatedly fail over an '
-                                        'extended period, please set the `LAZYLLM_HTTPS_PROXY` environment variable '
-                                        'to configure a proxy. Do not directly set the `https_proxy` and `http_proxy` '
-                                        'environment variables in your environment, as doing so may disrupt model '
-                                        'deployment and result in deployment failures.')
-                return func(self, *args, **kwargs)
-        return wrapper
-
     def _build_hub_api(self, token):
         from huggingface_hub import HfApi
         return HfApi(token=token)
 
-    @_envs_manager
     def _verify_hub_token(self, token):
         from huggingface_hub import HfApi
         api = HfApi()
@@ -288,7 +273,6 @@ class HuggingfaceDownloader(HubDownloader):
             if token: lazyllm.LOG.warning(f'Huggingface token {token} verified failed')
             return False
 
-    @_envs_manager
     def verify_model_id(self, model_id):
         try:
             self._api.model_info(model_id)
@@ -297,7 +281,6 @@ class HuggingfaceDownloader(HubDownloader):
             lazyllm.LOG.warning('Verify failed: ', e)
             return False
 
-    @_envs_manager
     def _do_download(self, model_id, model_dir):
         from huggingface_hub import snapshot_download
         # refer to https://huggingface.co/docs/huggingface_hub/v0.23.1/en/package_reference/file_download
@@ -308,7 +291,6 @@ class HuggingfaceDownloader(HubDownloader):
         lazyllm.LOG.info(f"model downloaded at {downloaded_path}")
         return downloaded_path
 
-    @_envs_manager
     def _get_repo_files(self, model_id):
         assert self._api
         orgin_info = self._api.list_repo_tree(model_id, expand=True, recursive=True)

@@ -128,7 +128,3 @@ class Mindie(LazyLLMDeployBase):
     @staticmethod
     def extract_result(x, inputs):
         return json.loads(x)['text'][0]
-
-    @staticmethod
-    def stream_url_suffix():
-        return ''

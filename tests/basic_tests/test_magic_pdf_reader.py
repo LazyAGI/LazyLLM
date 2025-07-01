@@ -47,6 +47,7 @@ class TestMagicPDFReader(unittest.TestCase):
         mock_post.return_value = mock_response
 
         result = magic_reader("./demo.pdf")
+        print(result)
         self.assertTrue(result[0].text.startswith("铁路信号设计规范"))
 
     @patch("lazyllm.tools.rag.readers.magic_pdf_reader.requests.post")
