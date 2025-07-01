@@ -32,3 +32,4 @@ olefile
 openpyxl
 python-pptx
 tenacity
+beautifulsoup4
