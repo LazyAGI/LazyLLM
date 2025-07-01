@@ -4,7 +4,7 @@ import lazyllm
 from lazyllm.thirdparty import torch
 from lazyllm.thirdparty import transformers as tf
 from lazyllm.components.formatter import encode_query_with_filepaths
-from ..utils.downloader import ModelManager
+from ...utils.downloader import ModelManager
 import importlib.util
 from .utils import sounds_to_files, TTSBase
 

@@ -1,11 +1,11 @@
 import os
 import json
 import lazyllm
-from lazyllm import LOG
 from lazyllm.components.utils.file_operate import base64_to_file, is_base64_with_mime
+from lazyllm import LOG, LazyLLMLaunchersBase
 from lazyllm.thirdparty import transformers as tf, torch, sentence_transformers, numpy as np, FlagEmbedding as fe
 from .base import LazyLLMDeployBase
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Optional
 from abc import ABC, abstractmethod
 
 
@@ -170,28 +170,18 @@ class EmbeddingDeploy(LazyLLMDeployBase):
     }
     default_headers = {'Content-Type': 'application/json'}
 
-    def __init__(self, launcher=None, model_type='embed', log_path=None, embed_type='dense', port=None):
+    def __init__(self, launcher: LazyLLMLaunchersBase = None, model_type: str = 'embed', log_path: Optional[str] = None,
+                 embed_type: Optional[str] = 'dense', trust_remote_code: bool = True, port: Optional[int] = None):
         super().__init__(launcher=launcher)
         self._launcher = launcher
         self._port = port
         self._model_type = model_type
         self._log_path = log_path
         self._sparse_embed = True if embed_type == 'sparse' else False
-        if self._model_type == "reranker":
-            self._update_reranker_message()
+        self._trust_remote_code = trust_remote_code
+        self._port = port
 
-    def _update_reranker_message(self):
-        self.keys_name_handle = {
-            'inputs': 'query',
-        }
-        self.message_format = {
-            'query': 'who are you ?',
-            'documents': ['string'],
-            'top_n': 1,
-        }
-        self.default_headers = {'Content-Type': 'application/json'}
-
-    def __call__(self, finetuned_model=None, base_model=None):
+    def _get_model_path(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(finetuned_model)):
@@ -199,20 +189,17 @@ class EmbeddingDeploy(LazyLLMDeployBase):
                 LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                             f"base_model({base_model}) will be used")
             finetuned_model = base_model
-        if self._model_type == 'embed' or self._model_type == 'cross_modal_embed':
-            if self._sparse_embed or lazyllm.config['default_embedding_engine'] == 'flagEmbedding':
-                return lazyllm.deploy.RelayServer(func=LazyFlagEmbedding(
-                    finetuned_model, sparse=self._sparse_embed),
-                    launcher=self._launcher, log_path=self._log_path, cls='embedding', port=self._port)()
-            else:
-                return lazyllm.deploy.RelayServer(func=HuggingFaceEmbedding(finetuned_model),
-                                                  launcher=self._launcher, log_path=self._log_path,
-                                                  cls='embedding', port=self._port)()
-        if self._model_type == 'reranker':
-            return lazyllm.deploy.RelayServer(func=LazyHuggingFaceRerank(
-                finetuned_model), launcher=self._launcher, log_path=self._log_path, cls='embedding', port=self._port)()
+        return finetuned_model
+
+    def __call__(self, finetuned_model=None, base_model=None):
+        finetuned_model = self._get_model_path(finetuned_model, base_model)
+        if self._sparse_embed or lazyllm.config['default_embedding_engine'] == 'flagEmbedding':
+            return lazyllm.deploy.RelayServer(port=self._port, func=LazyFlagEmbedding(
+                finetuned_model, sparse=self._sparse_embed),
+                launcher=self._launcher, log_path=self._log_path, cls='embedding')()
         else:
-            raise RuntimeError(f'Not support model type: {self._model_type}.')
+            return lazyllm.deploy.RelayServer(port=self._port, func=HuggingFaceEmbedding(finetuned_model),
+                                              launcher=self._launcher, log_path=self._log_path, cls='embedding')()
 
 
 @HuggingFaceEmbedding.register(model_ids=["BGE-VL-v1.5-mmeb"])
@@ -247,15 +234,13 @@ class BGEVLEmbedding(AbstractEmbedding):
             res = torch.nn.functional.normalize(query_embs, dim=-1).cpu().numpy().tolist()
             return json.dumps(res[0])
 
-class RerankerDeploy(EmbeddingDeploy):
-    message_format = {
-        'query': 'query',  # str,
-        'documents': ['string'],
-        'top_n': 1,
-    }
-    keys_name_handle = {
-        'inputs': 'query',
-        'documents': 'documents',
-        'top_n': 'top_n',
-    }
+
+class RerankDeploy(EmbeddingDeploy):
+    message_format = {'query': 'query', 'documents': ['string'], 'top_n': 1}
+    keys_name_handle = {'inputs': 'query', 'documents': 'documents', 'top_n': 'top_n'}
     default_headers = {'Content-Type': 'application/json'}
+
+    def __call__(self, finetuned_model=None, base_model=None):
+        finetuned_model = self._get_model_path(finetuned_model, base_model)
+        return lazyllm.deploy.RelayServer(port=self._port, func=LazyHuggingFaceRerank(
+            finetuned_model), launcher=self._launcher, log_path=self._log_path, cls='embedding')()

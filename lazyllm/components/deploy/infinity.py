@@ -17,6 +17,7 @@ class Infinity(LazyLLMDeployBase):
         'input': 'who are you ?',
     }
     default_headers = {'Content-Type': 'application/json'}
+    target_name = 'embeddings'
 
     def __init__(self, launcher=launchers.remote(ngpus=1), model_type='embed', log_path=None, **kw):
         super().__init__(launcher=launcher)
@@ -29,23 +30,7 @@ class Infinity(LazyLLMDeployBase):
         kw.pop('stream', '')
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] else True
-        if self._model_type == "reranker":
-            self._update_reranker_message()
         self.temp_folder = make_log_dir(log_path, 'lmdeploy') if log_path else None
-
-    def _update_reranker_message(self):
-        self.keys_name_handle = {
-            'inputs': 'query',
-        }
-        self.message_format = {
-            'query': 'who are you ?',
-            'documents': ['string'],
-            'return_documents': False,
-            'raw_scores': False,
-            'top_n': 1,
-            'model': 'default/not-specified',
-        }
-        self.default_headers = {'Content-Type': 'application/json'}
 
     def cmd(self, finetuned_model=None, base_model=None):
         if not os.path.exists(finetuned_model) or \
@@ -80,14 +65,10 @@ class Infinity(LazyLLMDeployBase):
     def geturl(self, job=None):
         if job is None:
             job = self.job
-        if self._model_type == "reranker":
-            target_name = 'rerank'
-        else:
-            target_name = 'embeddings'
         if lazyllm.config['mode'] == lazyllm.Mode.Display:
-            return f'http://<ip>:<port>/{target_name}'
+            return f'http://<ip>:<port>/{self.target_name}'
         else:
-            return f'http://{job.get_jobip()}:{self.kw["port"]}/{target_name}'
+            return f'http://{job.get_jobip()}:{self.kw["port"]}/{self.target_name}'
 
     @staticmethod
     def extract_result(x, inputs):
@@ -107,3 +88,10 @@ class Infinity(LazyLLMDeployBase):
             return json.dumps(res_list)
         elif object_type == 'rerank':
             return [(x['index'], x['relevance_score']) for x in res_object['results']]
+
+class InfinityRerank(Infinity):
+    keys_name_handle = {'inputs': 'query'}
+    message_format = {'query': 'who are you ?', 'documents': ['string'], 'return_documents': False,
+                      'raw_scores': False, 'top_n': 1, 'model': 'default/not-specified'}
+    default_headers = {'Content-Type': 'application/json'}
+    target_name = 'rerank'

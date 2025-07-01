@@ -36,6 +36,7 @@ def check_cmd(framework):
 
 @functools.lru_cache
 def check_requirements(requirements):
+    if requirements is None: return False
     packages = [line.strip() for line in requirements.split('\n') if line.strip()]
 
     not_installed = []

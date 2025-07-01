@@ -16,14 +16,9 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ["nova-ptc-s-v2"]
     VLM_MODEL_LIST = ['SenseNova-V6-Turbo', 'SenseChat-Vision']
 
-    def __init__(self,
-                 base_url: str = "https://api.sensenova.cn/v1/llm/",
-                 model: str = "SenseChat-5",
-                 api_key: str = None,
-                 secret_key: str = None,
-                 stream: bool = True,
-                 return_trace: bool = False,
-                 **kwargs):
+    def __init__(self, base_url: str = "https://api.sensenova.cn/v1/llm/", model: str = "SenseChat-5",
+                 api_key: str = None, secret_key: str = None, stream: bool = True,
+                 return_trace: bool = False, **kwargs):
         jwt_api_key = None
         self._is_only_api_key = False
         if (api_key and secret_key) or (lazyllm.config['sensenova_api_key'] and lazyllm.config['sensenova_secret_key']):
@@ -38,14 +33,8 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
         else:
             raise ValueError("Either configure both api_key and secret_key, or only configure api_key. "
                              "Other configurations are not supported.")
-        OnlineChatModuleBase.__init__(self,
-                                      model_series="SENSENOVA",
-                                      api_key=jwt_api_key,
-                                      base_url=base_url,
-                                      model_name=model,
-                                      stream=stream,
-                                      return_trace=return_trace,
-                                      **kwargs)
+        OnlineChatModuleBase.__init__(self, model_series="SENSENOVA", api_key=jwt_api_key, base_url=base_url,
+                                      model_name=model, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
         self._vlm_force_format_input_with_files = True

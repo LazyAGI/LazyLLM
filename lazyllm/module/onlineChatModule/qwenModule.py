@@ -16,21 +16,11 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ["qwen-turbo", "qwen-7b-chat", "qwen-72b-chat"]
     MODEL_NAME = "qwen-plus"
 
-    def __init__(self,
-                 base_url: str = "https://dashscope.aliyuncs.com/",
-                 model: str = None,
-                 api_key: str = None,
-                 stream: bool = True,
-                 return_trace: bool = False,
-                 **kwargs):
-        OnlineChatModuleBase.__init__(self,
-                                      model_series="QWEN",
-                                      api_key=api_key or lazyllm.config['qwen_api_key'],
-                                      base_url=base_url,
+    def __init__(self, base_url: str = "https://dashscope.aliyuncs.com/", model: str = None,
+                 api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
+        OnlineChatModuleBase.__init__(self, model_series="QWEN", api_key=api_key or lazyllm.config['qwen_api_key'],
                                       model_name=model or lazyllm.config['qwen_model_name'] or QwenModule.MODEL_NAME,
-                                      stream=stream,
-                                      return_trace=return_trace,
-                                      **kwargs)
+                                      base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = dict()
         if stream:

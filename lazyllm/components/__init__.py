@@ -9,10 +9,10 @@ from .validate import LazyLLMValidateBase
 from .auto import AutoDeploy, AutoFinetune
 from .utils import ModelManager
 from .formatter import FormatterBase, EmptyFormatter, JsonFormatter, FileFormatter
-from .stable_diffusion import StableDiffusionDeploy
-from .text_to_speech import TTSDeploy, BarkDeploy, ChatTTSDeploy, MusicGenDeploy
-from .speech_to_text import SenseVoiceDeploy
-from .ocr import OCRDeploy
+from .deploy import (StableDiffusionDeploy, TTSDeploy, BarkDeploy, ChatTTSDeploy,
+                     MusicGenDeploy, SenseVoiceDeploy, OCRDeploy)
+
+
 __all__ = [
     "register",
     "Prompter",

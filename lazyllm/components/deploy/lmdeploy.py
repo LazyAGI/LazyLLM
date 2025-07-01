@@ -4,11 +4,13 @@ import random
 import importlib.util
 
 import lazyllm
-from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
-from .base import LazyLLMDeployBase, verify_fastapi_func, KwMapItem
+from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG, config
+from .base import LazyLLMDeployBase, verify_fastapi_func
 from ..utils import ModelManager
 from .utils import get_log_path, make_log_dir
 
+
+config.add('lmdeploy_eager_mode', bool, False, 'LMDEPLOY_EAGER_MODE')
 
 class LMDeploy(LazyLLMDeployBase):
     keys_name_handle = {
@@ -36,14 +38,15 @@ class LMDeploy(LazyLLMDeployBase):
     }
     auto_map = {}
     kw_map = {
-        'port': KwMapItem('server-port', int),
-        'host': KwMapItem('server-name', str),
-        'tp': KwMapItem('tp', int),
-        'max_batch_size': KwMapItem('max-batch-size', int),
-        'chat_template': KwMapItem('chat-template', str),
+        'port': ('server-port', int),
+        'host': ('server-name', str),
+        'tp': ('tp', int),
+        'max_batch_size': ('max-batch-size', int),
+        'chat_template': ('chat-template', str),
     }
+    stream_parse_parameters = {"delimiter": b"\n"}
 
-    def __init__(self, launcher=launchers.remote(ngpus=1), log_path=None, **kw):
+    def __init__(self, launcher=launchers.remote(ngpus=1), trust_remote_code=True, log_path=None, **kw):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'server-name': '0.0.0.0',
@@ -54,6 +57,7 @@ class LMDeploy(LazyLLMDeployBase):
         })
         kw = self.kw_map_for_framework(kw, self.kw_map)
         self.kw.check_and_update(kw)
+        self._trust_remote_code = trust_remote_code
         self.random_port = False if 'server-port' in kw and kw['server-port'] else True
         self.temp_folder = make_log_dir(log_path, 'lmdeploy') if log_path else None
 
@@ -81,9 +85,8 @@ class LMDeploy(LazyLLMDeployBase):
                 self.kw['server-port'] = random.randint(30000, 40000)
             cmd = f"lmdeploy serve api_server {finetuned_model} "
 
-            if importlib.util.find_spec("torch_npu") is not None:
-                cmd += "--device ascend --eager-mode "
-
+            if importlib.util.find_spec("torch_npu") is not None: cmd += '--device ascend '
+            if config['lmdeploy_eager_mode']: cmd += '--eager-mode '
             cmd += self.kw.parse_kwargs()
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
@@ -101,11 +104,3 @@ class LMDeploy(LazyLLMDeployBase):
     @staticmethod
     def extract_result(x, inputs):
         return json.loads(x)['text']
-
-    @staticmethod
-    def stream_parse_parameters():
-        return {"delimiter": b"\n"}
-
-    @staticmethod
-    def stream_url_suffix():
-        return ''

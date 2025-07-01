@@ -3,19 +3,20 @@ import os
 import lazyllm
 from lazyllm.thirdparty import torch, ChatTTS
 from lazyllm.components.formatter import encode_query_with_filepaths
-from ..utils.downloader import ModelManager
 from .utils import sounds_to_base64_list, TTSBase
+from ...utils.downloader import ModelManager
 
 
 class ChatTTSModule(object):
 
-    def __init__(self, base_path, source=None, save_path=None, init=False):
+    def __init__(self, base_path, source=None, save_path=None, init=False, trust_remote_code=True):
         source = lazyllm.config['model_source'] if not source else source
         self.base_path = ModelManager(source).download(base_path) or ''
         self.model, self.spk = None, None
         self.init_flag = lazyllm.once_flag()
         self.seed = 1024
         self.save_path = save_path or os.path.join(lazyllm.config['temp_dir'], 'chattts')
+        self._trust_remote_code = trust_remote_code
         if init:
             lazyllm.call_once(self.init_flag, self.load_tts)
 

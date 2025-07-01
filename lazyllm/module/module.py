@@ -11,6 +11,7 @@ import functools
 from datetime import datetime
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
 from typing import Callable, Dict, List, Any, Union, Optional, Tuple
+from dataclasses import dataclass
 
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals, colored_text
@@ -153,8 +154,6 @@ class ModuleBase(metaclass=_MetaBind):
         self._module_id = mid if mid else str(uuid.uuid4().hex)
         return self
 
-    _url_id = property(lambda self: self._module_id)
-
     @property
     def name(self):
         return self._module_name
@@ -212,15 +211,6 @@ class ModuleBase(metaclass=_MetaBind):
                 if 'server' in mode: deploy_tasks.absorb(top._get_deploy_tasks())
                 if 'eval' in mode: eval_tasks.absorb(top._get_eval_tasks())
                 post_process_tasks.absorb(top._get_post_process_tasks())
-
-        if proxy := os.getenv('http_proxy', None):
-            os.environ['LAZYLLM_HTTP_PROXY'] = proxy
-            lazyllm.config.refresh('LAZYLLM_HTTP_PROXY')
-            del os.environ['http_proxy']
-        if proxy := os.getenv('https_proxy', None):
-            os.environ['LAZYLLM_HTTPS_PROXY'] = proxy
-            lazyllm.config.refresh('LAZYLLM_HTTPS_PROXY')
-            del os.environ['https_proxy']
 
         if 'train' in mode and len(train_tasks) > 0:
             Parallel(*train_tasks).set_sync(True)()
@@ -293,14 +283,17 @@ class UrlTemplate(object):
     def __init__(self, template_message=None, keys_name_handle=None, template_headers=None) -> None:
         self._set_template(template_message, keys_name_handle, template_headers)
 
-    def _set_template(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None):
-        if isinstance(template_message, UrlTemplate):
-            assert keys_name_handle is None and template_headers is None
-            self._url_template = template_message._url_template.copy()
-        else:
-            if template_headers is None: template_headers = {'Content-Type': 'application/json'}
-            self._url_template = dict(template_message=template_message, keys_name_handle=keys_name_handle,
-                                      template_headers=template_headers)
+class _UrlTemplateStruct(object):
+    def __init__(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
+                 extract_result=None, stream_parse_parameters=None, stream_url_suffix=None):
+        self.update(template_message, keys_name_handle, template_headers, stop_words,
+                    extract_result, stream_parse_parameters, stream_url_suffix)
+
+    def update(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
+               extract_result=None, stream_parse_parameters=None, stream_url_suffix=None):
+        self.template_message, self.keys_name_handle = copy.deepcopy(template_message), keys_name_handle
+        self.template_headers = template_headers or copy.deepcopy(lazyllm.deploy.RelayServer.default_headers)
+
         if self.keys_name_handle and 'stop' in self.keys_name_handle and stop_words and self.template_message:
             if self.keys_name_handle['stop'] in self.template_message:
                 self.template_message[self.keys_name_handle['stop']] = stop_words
@@ -313,42 +306,57 @@ class UrlTemplate(object):
                 else:
                     raise RuntimeError('No stop symbol found in template_message')
 
-    template_message = property(lambda self: self._url_template['template_message'])
-    keys_name_handle = property(lambda self: self._url_template['keys_name_handle'])
-    template_headers = property(lambda self: self._url_template['template_headers'])
+        self.extract_result_func = extract_result or (lambda x, inputs: x)
+        self.stream_parse_parameters = stream_parse_parameters or {}
+        self.stream_url_suffix = stream_url_suffix or ''
 
 
-class UrlModule(ModuleBase, UrlTemplate):
-    def __init__(self, *, url='', stream=False, return_trace=False):
-        super().__init__(return_trace=return_trace)
-        self.__url = url
-        self._stream = stream
-        # Set for request by specific deploy:
-        UrlTemplate.__init__(self)
-        self._extract_result_func = lambda x, inputs: x
-        self._stream_parse_parameters = {}
-        self._stream_url_suffix = ''
-        __class__.prompt(self)
-        __class__.formatter(self)
+class _UrlHelper(object):
+    @dataclass
+    class _Wrapper:
+        url: Optional[str] = None
+
+    def __init__(self, url):
+        self._url_wrapper = url if isinstance(url, _UrlHelper._Wrapper) else _UrlHelper._Wrapper(url=url)
+
+    _url_id = property(lambda self: self._module_id)
 
     @property
     def _url(self):
-        if redis_client:
-            try:
-                while not self.__url:
-                    self.__url = get_redis(self._url_id)
-                    if self.__url: break
-                    time.sleep(lazyllm.config["redis_recheck_delay"])
-            except Exception as e:
-                LOG.error(f"Error accessing Redis: {e}")
-                raise
-        return self.__url
+        if not self._url_wrapper.url:
+            if redis_client:
+                try:
+                    while not self._url_wrapper.url:
+                        self._url_wrapper.url = get_redis(self._url_id)
+                        if self._url_wrapper.url: break
+                        time.sleep(lazyllm.config["redis_recheck_delay"])
+                except Exception as e:
+                    LOG.error(f"Error accessing Redis: {e}")
+                    raise
+        return self._url_wrapper.url
 
     def _set_url(self, url):
         if redis_client:
-            redis_client.set(self._module_id, url)
+            redis_client.set(self._url_id, url)
         LOG.debug(f'url: {url}')
-        self.__url = url
+        self._url_wrapper.url = url
+
+
+class UrlModule(ModuleBase, _UrlHelper):
+    def __init__(self, *, url='', stream=False, return_trace=False):
+        super().__init__(return_trace=return_trace)
+        _UrlHelper.__init__(self, url)
+        self._template = _UrlTemplateStruct()
+        self._stream = stream
+        __class__.prompt(self)
+        __class__.formatter(self)
+
+    template_message = property(lambda self: self._template.template_message)
+    keys_name_handle = property(lambda self: self._template.keys_name_handle)
+    template_headers = property(lambda self: self._template.template_headers)
+    extract_result_func = property(lambda self: self._template.extract_result_func)
+    stream_parse_parameters = property(lambda self: self._template.stream_parse_parameters)
+    stream_url_suffix = property(lambda self: self._template.stream_url_suffix)
 
     def _estimate_token_usage(self, text):
         if not isinstance(text, str):
@@ -424,15 +432,15 @@ class UrlModule(ModuleBase, UrlTemplate):
             data = __input
 
         if stream_output:
-            if self._stream_url_suffix and not url.endswith(self._stream_url_suffix):
-                url += self._stream_url_suffix
+            if self.stream_url_suffix and not url.endswith(self.stream_url_suffix):
+                url += self.stream_url_suffix
             if "stream" in data: data['stream'] = stream_output
 
             if isinstance(stream_output, dict):
                 prefix, prefix_color = stream_output.get('prefix', ''), stream_output.get('prefix_color', '')
                 if prefix: FileSystemQueue().enqueue(lazyllm.colored_text(prefix, prefix_color))
 
-        parse_parameters = self._stream_parse_parameters if stream_output else {"delimiter": b"<|lazyllm_delimiter|>"}
+        parse_parameters = self.stream_parse_parameters if stream_output else {"delimiter": b"<|lazyllm_delimiter|>"}
 
         token = getattr(self, "_tool_start_token", '')
         cache = ""
@@ -441,7 +449,7 @@ class UrlModule(ModuleBase, UrlTemplate):
             data["modality"] = kw["modality"]
 
         # context bug with httpx, so we use requests
-        with requests.post(url, json=data, stream=True, headers=headers) as r:
+        with requests.post(url, json=data, stream=True, headers=headers, proxies={'http': None, 'https': None}) as r:
             if r.status_code == 200:
                 messages = ''
                 for line in r.iter_lines(**parse_parameters):
@@ -450,7 +458,7 @@ class UrlModule(ModuleBase, UrlTemplate):
                         line = pickle.loads(codecs.decode(line, "base64"))
                     except Exception:
                         line = line.decode('utf-8')
-                    chunk = self._prompt.get_response(self._extract_result_func(line, data))
+                    chunk = self._prompt.get_response(self.extract_result_func(line, data))
                     if isinstance(chunk, str):
                         if chunk.startswith(messages): chunk = chunk[len(messages):]
                         messages += chunk
@@ -584,13 +592,13 @@ def light_reduce(cls):
     return cls
 
 @light_reduce
-class _ServerModuleImpl(ModuleBase):
-    def __init__(self, m=None, pre=None, post=None, launcher=None, port=None, pythonpath=None, *, father=None):
+class _ServerModuleImpl(ModuleBase, _UrlHelper):
+    def __init__(self, m=None, pre=None, post=None, launcher=None, port=None, pythonpath=None, url_wrapper=None):
         super().__init__()
+        _UrlHelper.__init__(self, url=url_wrapper)
         self._m = ActionModule(m) if isinstance(m, FlowBase) else m
         self._pre_func, self._post_func = pre, post
         self._launcher = launcher.clone() if launcher else launchers.remote(sync=False)
-        self._set_url_f = father._set_url if father else None
         self._port = port
         self._pythonpath = pythonpath
 
@@ -600,7 +608,7 @@ class _ServerModuleImpl(ModuleBase):
         return Pipeline(
             lazyllm.deploy.RelayServer(func=self._m, pre_func=self._pre_func, port=self._port,
                                        pythonpath=self._pythonpath, post_func=self._post_func, launcher=self._launcher),
-            self._set_url_f)
+            self._set_url)
 
     def stop(self):
         self._launcher.cleanup()
@@ -616,12 +624,7 @@ class ServerModule(UrlModule):
         assert stream is False or return_trace is False, 'Module with stream output has no trace'
         assert (post is None) or (stream is False), 'Stream cannot be true when post-action exists'
         super().__init__(url=None, stream=stream, return_trace=return_trace)
-        self._set_template(
-            copy.deepcopy(lazyllm.deploy.RelayServer.message_format),
-            lazyllm.deploy.RelayServer.keys_name_handle,
-            copy.deepcopy(lazyllm.deploy.RelayServer.default_headers),
-        )
-        self._impl = _ServerModuleImpl(m, pre, post, launcher, port, pythonpath, father=self)
+        self._impl = _ServerModuleImpl(m, pre, post, launcher, port, pythonpath, self._url_wrapper)
 
     _url_id = property(lambda self: self._impl._module_id)
 
@@ -646,10 +649,11 @@ class ServerModule(UrlModule):
                                  stream=self._stream, return_trace=self._return_trace)
 
 @light_reduce
-class _TrainableModuleImpl(ModuleBase):
+class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
 
-    def __init__(self, base_model='', target_path='', stream=False, train=None, finetune=None, deploy=None):
+    def __init__(self, base_model='', target_path='', stream=False, train=None, finetune=None, deploy=None,
+                 template: _UrlTemplateStruct = None, url_wrapper: _UrlHelper._Wrapper = None):
         super().__init__()
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
@@ -658,25 +662,27 @@ class _TrainableModuleImpl(ModuleBase):
             LOG.warning(f"Cannot get a valid model from {base_model} by ModelManager.")
         self._target_path = os.path.join(lazyllm.config['train_target_root'], target_path)
         self._stream = stream
-        self._father = []
         self._launchers: Dict[str, Dict[str, Launcher]] = dict(default=dict(), manual=dict())
         self._delimiter = '-LazySplit-'
         self._deployer = None
         self._file_name = None
         self._specific_target_path = target_path or None
         self._train, self._finetune = train, finetune
-        self.deploy_method(deploy)
+        self._template = template
+        _UrlHelper.__init__(self, url=url_wrapper)
+        if base_model and deploy: self.deploy_method(deploy)
         self._prepare_deploy = lambda target_path, base_model: lazyllm.package(target_path, base_model)
-
-    def _add_father(self, father):
-        if father not in self._father: self._father.append(father)
 
     def _get_train_or_deploy_args(self, arg_cls: str, disable: List[str] = []):
         args = getattr(self, f'_{arg_cls}_args', dict()).copy()
         if len(set(args.keys()).intersection(set(disable))) > 0:
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
                              '{arg_cls}_args, please pass them from Module.__init__()')
+
         if not args.get('url'):
+            if arg_cls == 'deploy' and self._deploy is lazyllm.deploy.AutoDeploy:
+                self._deploy, args['launcher'], self._deploy_args = lazyllm.deploy.AutoDeploy.get_deployer(
+                    base_model=self._base_model, **args)
             args['launcher'] = args['launcher'].clone() if args.get('launcher') else launchers.remote(sync=False)
             self._launchers['default'][arg_cls] = args['launcher']
         return args
@@ -732,24 +738,19 @@ class _TrainableModuleImpl(ModuleBase):
         if model_path in valid_paths:
             self._specific_target_path = model_path
         elif model_path in invalid_paths:
-            LOG.warning(f'Model Path: {model_path} in list, but the path is invalid. '
-                        'Base Model will be used to deploy.')
+            LOG.warning(f'Model Path: {model_path} in list, but the path is invalid. Base Model will be used to deploy.')
             self._specific_target_path = None
         else:
-            LOG.warning(f'Model Path: {model_path} not in list: {valid_paths}. '
-                        'Base Model will be used to deploy.')
+            LOG.warning(f'Model Path: {model_path} not in list: {valid_paths}. Base Model will be used to deploy.')
             self._specific_target_path = None
 
     @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
         if self._deploy is None: return None
-
         if self._deploy is lazyllm.deploy.AutoDeploy:
-            self._deployer = self._deploy(base_model=self._base_model, **self._deploy_args)
-            self._set_template(self._deployer)
-        else:
-            kwargs = {'stream': self._stream} if self._deploy is lazyllm.deploy.dummy else {}
-            self._deployer = self._deploy(**kwargs, **self._deploy_args)
+            raise RuntimeError('No appropriate inference framework was selected, specify it with `.deploy_method()`.')
+        kwargs = {'stream': self._stream} if self._deploy is lazyllm.deploy.dummy else {}
+        self._deployer = self._deploy(**kwargs, **self._deploy_args)
 
         def before_deploy(*no_use_args):
             if hasattr(self, '_temp_finetuned_model_path') and self._temp_finetuned_model_path:
@@ -763,36 +764,22 @@ class _TrainableModuleImpl(ModuleBase):
         if hasattr(self._deployer, '_prepare_deploy'):
             self._prepare_deploy = self._deployer._prepare_deploy
 
-        return Pipeline(before_deploy, self._prepare_deploy, self._deployer,
-                        lambda url: [f._set_url(url) for f in self._father])
-
-    def _set_template(self, deployer):
-        template = UrlTemplate(copy.deepcopy(deployer.message_format), deployer.keys_name_handle,
-                               copy.deepcopy(deployer.default_headers))
-        stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
-
-        for f in self._father:
-            f._set_template(template, stop_words=stop_words)
-            if hasattr(deployer, 'extract_result'):
-                f._extract_result_func = deployer.extract_result
-
-            if hasattr(deployer, 'stream_parse_parameters'):
-                f._stream_parse_parameters = deployer.stream_parse_parameters()
-
-            if hasattr(deployer, 'stream_url_suffix'):
-                f._stream_url_suffix = deployer.stream_url_suffix()
+        return Pipeline(before_deploy, self._prepare_deploy, self._deployer, self._set_url)
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_train_or_deploy_args('deploy', disable=['target_path'])
-        if self._deploy and self._deploy is not lazyllm.deploy.AutoDeploy:
-            self._set_template(self._deploy)
-            if url := self._deploy_args.get('url'):
-                assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
-                for f in self._father:
-                    f._set_url(url)
-                self._get_deploy_tasks.flag.set()
-            else:
-                self._deploy_args.pop('url', None)
+        stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
+
+        self._template.update(self._deploy.message_format, self._deploy.keys_name_handle,
+                              self._deploy.default_headers, extract_result=self._deploy.extract_result,
+                              stream_parse_parameters=self._deploy.stream_parse_parameters,
+                              stream_url_suffix=self._deploy.stream_url_suffix, stop_words=stop_words)
+
+        if url := self._deploy_args.get('url'):
+            assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
+            self._set_url(url)
+            self._get_deploy_tasks.flag.set()
+        self._deploy_args.pop('url', None)
 
     def __del__(self):
         if hasattr(self, '_launchers'):
@@ -824,9 +811,8 @@ class TrainableModule(UrlModule):
     def __init__(self, base_model: Option = '', target_path='', *,
                  stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False):
         super().__init__(url=None, stream=stream, return_trace=return_trace)
-        self._impl = _TrainableModuleImpl(base_model, target_path, stream,
-                                          None, lazyllm.finetune.auto, lazyllm.deploy.auto)
-        self._impl._add_father(self)
+        self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
+                                          lazyllm.deploy.auto, self._template, self._url_wrapper)
         self.prompt()
         self._stream = stream
 
@@ -1036,7 +1022,6 @@ class TrainableModule(UrlModule):
         if prompt is not None: new.prompt(prompt, history=history)
         if format is not None: new.formatter(format)
         if stream is not None: new.stream = stream
-        new._impl._add_father(new)
         return new
 
 

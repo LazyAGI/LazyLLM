@@ -13,6 +13,15 @@ class KwMapItem:
     type_func: Callable[[Any], Any]
     
 class LazyLLMDeployBase(ComponentBase):
+    keys_name_handle = None
+    message_format = None
+    default_headers = {'Content-Type': 'application/json'}
+    stream_url_suffix = ''
+    stream_parse_parameters = {}
+
+    @staticmethod
+    def extract_result(output, inputs):
+        return output
 
     def __init__(self, *, launcher=launchers.remote()):
         super().__init__(launcher=launcher)
@@ -32,7 +41,6 @@ class LazyLLMDeployBase(ComponentBase):
 
 class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
     keys_name_handle = {'inputs': 'inputs'}
-    default_headers = {'Content-Type': 'application/json'}
     message_format = {
         'inputs': '',
         'parameters': {
