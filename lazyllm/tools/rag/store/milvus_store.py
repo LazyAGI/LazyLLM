@@ -96,6 +96,16 @@ class MilvusStore(StoreBase):
         else:
             self._type = 'remote'
             try:
+                try:
+                    default_embedding_keys = next(
+                        keys for keys in self._group_embed_keys.values() if keys
+                    )
+                except StopIteration:
+                    raise ValueError('embedding keys are required for milvus standalone')
+                for group, keys in self._group_embed_keys.items():
+                    if not keys:
+                        self._group_embed_keys[group] = default_embedding_keys
+
                 if self._db_name:
                     existing_dbs = self._client.list_databases()
                     if self._db_name not in existing_dbs:
@@ -198,8 +208,6 @@ class MilvusStore(StoreBase):
             group_embed_dict[node._group].append(data)
         self._check_connection()
         for group_name, data in group_embed_dict.items():
-            if not self._client.has_collection(group_name):
-                continue
             for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
                 self._client.upsert(collection_name=group_name, data=data[i:i + MILVUS_UPSERT_BATCH_SIZE])
         self._map_store.update_nodes(nodes)
@@ -409,6 +417,5 @@ class MilvusStore(StoreBase):
                 doc.embedding[k[len(self._embedding_key_prefix):]] = v
             elif k.startswith(self._global_metadata_key_prefix):
                 if doc.is_root_node:
-                    doc.update_global_metadata({k[len(self._global_metadata_key_prefix):]: v})
-
+                    doc.global_metadata.update({k[len(self._global_metadata_key_prefix):]: v})
         return doc

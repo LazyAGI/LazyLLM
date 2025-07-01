@@ -1,5 +1,7 @@
+import re
+
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict, Union, Set
+from typing import Optional, List, Union, Set
 
 from ..doc_node import DocNode
 from ..index_base import IndexBase
@@ -23,7 +25,8 @@ BUILDIN_GLOBAL_META_DESC = {
     RAG_DOC_LAST_MODIFIED_DATE: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=10),
     RAG_DOC_LAST_ACCESSED_DATE: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=10)
 }
-
+INSERT_BATCH_SIZE = 3000
+IMAGE_PATTERN = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
 
 class StoreBaseMixin:
     @abstractmethod
@@ -38,11 +41,6 @@ class StoreBaseMixin:
         raise NotImplementedError
 
     @abstractmethod
-    def query(self, *args, **kwargs) -> List[DocNode]:
-        """ search nodes from the store """
-        raise NotImplementedError
-
-    @abstractmethod
     def register_index(self, type: str, index: IndexBase) -> None:
         """ register index to the store (for store that support hook only)"""
         raise NotImplementedError
@@ -50,11 +48,6 @@ class StoreBaseMixin:
     @abstractmethod
     def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
         """ get registered index from the store """
-        raise NotImplementedError
-
-    @abstractmethod
-    def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
-        """ update doc meta """
         raise NotImplementedError
 
     @abstractmethod
@@ -67,6 +60,16 @@ class StoreBase(StoreBaseMixin, ABC):
     def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
                   doc_ids: Optional[Set] = None, **kwargs) -> List[DocNode]:
         """ get nodes from the store """
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
+        """ update doc meta """
+        raise NotImplementedError
+
+    @abstractmethod
+    def query(self, *args, **kwargs) -> List[DocNode]:
+        """ search nodes from the store """
         raise NotImplementedError
 
     @abstractmethod
@@ -98,32 +101,3 @@ class StoreBase(StoreBaseMixin, ABC):
             raise TypeError(f"Invalid type {type(group_names)} for group_names, expected list of str")
         for group_name in group_names:
             self.remove_nodes(group_name, None)
-
-
-class SegmentStoreBase(StoreBaseMixin, ABC):
-    @abstractmethod
-    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None) -> List[DocNode]:
-        """ get nodes from the store """
-        # NOTE vector db不一定需要get nodes
-        raise NotImplementedError
-
-    @abstractmethod
-    def _serialize_node(self, node: DocNode):
-        """ serialize node to a dict that can be stored in vector store """
-        raise NotImplementedError
-
-    @abstractmethod
-    def _deserialize_node(self, segment: Dict) -> DocNode:
-        raise NotImplementedError
-
-
-class VectorStoreBase(StoreBaseMixin, ABC):
-    @abstractmethod
-    def _serialize_node(self, node: DocNode):
-        """ serialize node to a dict that can be stored in vector store """
-        raise NotImplementedError
-
-    @abstractmethod
-    def query(self, *args, **kwargs) -> List[DocNode]:
-        """ search nodes from the store """
-        raise NotImplementedError

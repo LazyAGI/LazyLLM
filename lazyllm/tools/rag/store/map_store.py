@@ -54,8 +54,8 @@ class MapStore(StoreBase):
         elif doc_ids:
             doc_id_set = set(doc_ids)
             if group_name:
-                need_delete = [uid for uid, node in self._uid2node.items()
-                               if node.global_metadata.get(RAG_DOC_ID) in doc_id_set and node._group == group_name]
+                candidates = self._group2uids.get(group_name, [])
+                need_delete = [uid for uid, node in candidates if node.global_metadata.get(RAG_DOC_ID) in doc_id_set]
             else:
                 need_delete = [uid for uid, node in self._uid2node.items()
                                if node.global_metadata.get(RAG_DOC_ID) in doc_id_set]

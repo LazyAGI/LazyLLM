@@ -12,7 +12,7 @@ from .transform import (AdaptiveTransform, make_transform,)
 from .readers import ReaderBase
 from .doc_node import DocNode
 from .utils import gen_docid, BaseResponse
-from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
+from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_KB_ID
 import queue
 import threading
 import time
@@ -33,11 +33,12 @@ class _Processor:
         try:
             if not input_files: return
             if not ids: ids = [gen_docid(path) for path in input_files]
-            if not metadatas:
-                metadatas = [{RAG_DOC_ID: doc_id, RAG_DOC_PATH: path} for doc_id, path in zip(ids, input_files)]
-            else:
-                for path, doc_id, metadata in zip(input_files, ids, metadatas):
-                    metadata.update({RAG_DOC_ID: doc_id, RAG_DOC_PATH: path})
+            if metadatas is None:
+                metadatas = [{} for _ in input_files]
+
+            for metadata, doc_id, path in zip(metadatas, ids, input_files):
+                metadata.setdefault(RAG_DOC_ID, doc_id)
+                metadata.setdefault(RAG_DOC_PATH, path)
             root_nodes, image_nodes = self._reader.load_data(input_files, metadatas, split_image_nodes=True)
             self._store.update_nodes(root_nodes)
             self._create_nodes_recursive(root_nodes, LAZY_ROOT_NAME)
@@ -83,7 +84,7 @@ class _Processor:
             self._get_or_create_nodes(group_name, ids)
 
     def _reparse_docs(self, group_name: str, doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict]):
-        dataset_id = metadatas[0].get("kb_id", None)
+        dataset_id = metadatas[0].get(RAG_DOC_KB_ID, None)
         if group_name == "all":
             self._store.remove_nodes(dataset_id=dataset_id, doc_ids=doc_ids)
             removed_flag = False
@@ -103,7 +104,7 @@ class _Processor:
             self._reparse_group_recursive(p_nodes=p_nodes, cur_name=group_name, doc_ids=doc_ids)
 
     def _reparse_group_recursive(self, p_nodes: List[DocNode], cur_name: str, doc_ids: List[str]):
-        dataset_id = p_nodes[0].global_metadata.get("kb_id", None)
+        dataset_id = p_nodes[0].global_metadata.get(RAG_DOC_KB_ID, None)
         self._store.remove_nodes(group_name=cur_name, dataset_id=dataset_id, doc_ids=doc_ids)
 
         removed_flag = False
@@ -300,7 +301,7 @@ class DocumentProcessor():
                     raw_infos = {"document_id": document_id, "file_name": os.path.basename(file_path),
                                  "file_path": file_path, "description": file_info["metadata"].get("description", None),
                                  "creater": file_info["metadata"].get("creater", None),
-                                 "dataset_id": file_info["metadata"].get("kb_id", None),
+                                 "dataset_id": file_info["metadata"].get(RAG_DOC_KB_ID, None),
                                  "tags": file_info["metadata"].get("tags", []) or []}
                     infos = {}
                     for k, v in raw_infos.items():

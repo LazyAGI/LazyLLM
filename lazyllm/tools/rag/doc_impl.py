@@ -43,9 +43,7 @@ def embed_wrapper(func: Optional[Callable[..., Any]]) -> Optional[Callable[..., 
                 except Exception as e:
                     LOG.error(f"Both json.loads and ast.literal_eval failed. Error: {e}")
                     raise  # Re-raise the original or a new error
-        elif isinstance(result, list):  # Explicitly check if it's already a list
-            return result
-        elif isinstance(result, dict):
+        elif isinstance(result, Union[list, dict]):  # Explicitly check if it's already a list
             return result
         else:
             # Handle unexpected types by raising an error
@@ -140,15 +138,13 @@ class DocImpl:
     def _init_store(self):
         if self.store is None: self.store = {'type': 'map'}
         embed_dims, embed_datatypes = {}, {}
-        # NOTE Temp skip embedding in this way
-        if self.store.get("type", "map") != "sensecore":
-            for k, e in self.embed.items():
-                embedding = e('a')
-                if is_sparse(embedding):
-                    embed_datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
-                else:
-                    embed_dims[k] = len(embedding)
-                    embed_datatypes[k] = DataType.FLOAT_VECTOR
+        for k, e in self.embed.items():
+            embedding = e('a')
+            if is_sparse(embedding):
+                embed_datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
+            else:
+                embed_dims[k] = len(embedding)
+                embed_datatypes[k] = DataType.FLOAT_VECTOR
 
         if isinstance(self.store, Dict):
             self.store = self._create_store(store_conf=self.store, embed_dims=embed_dims,
@@ -432,20 +428,19 @@ class DocImpl:
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,
                  filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
         self._lazy_init()
-        nodes: List[DocNode] = []
         if index is None or index == 'default':
-            nodes.extend(self.store.query(query=query, group_name=group_name, similarity_name=similarity,
-                                          similarity_cut_off=similarity_cut_off, topk=topk, embed_keys=embed_keys,
-                                          filters=filters, **similarity_kws, **kwargs))
+            nodes = self.store.query(query=query, group_name=group_name, similarity_name=similarity,
+                                     similarity_cut_off=similarity_cut_off, topk=topk, embed_keys=embed_keys,
+                                     filters=filters, **similarity_kws, **kwargs)
         else:
             index_instance = self.store.get_index(type=index)
             if not index_instance:
                 raise NotImplementedError(f"index type '{index}' is not supported currently.")
 
             try:
-                nodes.extend(index_instance.query(query=query, group_name=group_name, similarity_name=similarity,
-                                                  similarity_cut_off=similarity_cut_off, topk=topk,
-                                                  embed_keys=embed_keys, filters=filters, **similarity_kws, **kwargs))
+                nodes = index_instance.query(query=query, group_name=group_name, similarity_name=similarity,
+                                             similarity_cut_off=similarity_cut_off, topk=topk,
+                                             embed_keys=embed_keys, filters=filters, **similarity_kws, **kwargs)
             except Exception as e:
                 raise RuntimeError(f'index type `{index}` of store `{type(self.store)}` query failed: {e}')
         for n in nodes:

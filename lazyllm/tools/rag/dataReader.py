@@ -199,14 +199,15 @@ class SimpleDirectoryReader(ModuleBase):
                   encoding: str = "utf-8", pathm: PurePath = Path, fs: Optional[AbstractFileSystem] = None,
                   metadata: Optional[Dict] = None) -> List[DocNode]:
         # metadata priority: user > reader > metadata_genf
-        user_metadata = metadata or {}
-        metadata_generated = metadata_genf(str(input_file)) if metadata_genf else {}
+        user_metadata: Dict = metadata or {}
+        metadata_generated: Dict = metadata_genf(str(input_file)) if metadata_genf else {}
         documents: List[DocNode] = []
 
         filename_lower = str(input_file).lower()
 
         for pattern, extractor in file_extractor.items():
             pt_lower = str(pathm(pattern)).lower()
+            match_pattern = pt_lower if pt_lower.endswith("*") else os.path.join(str(pathm.cwd()).lower(), pt_lower)
             if pt_lower.startswith("*"):
                 match_pattern = pt_lower
             else:
@@ -217,14 +218,12 @@ class SimpleDirectoryReader(ModuleBase):
                 reader = extractor() if isinstance(extractor, type) else extractor
                 kwargs = {'fs': fs} if fs and not is_default_fs(fs) else {}
                 docs = reader(input_file, **kwargs)
-                if isinstance(docs, DocNode):
-                    docs = [docs]
-
+                if isinstance(docs, DocNode): docs = [docs]
                 for doc in docs:
-                    md = metadata_generated.copy()
-                    md.update(doc._global_metadata or {})
-                    md.update(user_metadata)
-                    doc._global_metadata = md
+                    metadata = metadata_generated.copy()
+                    metadata.update(doc._global_metadata or {})
+                    metadata.update(user_metadata)
+                    doc._global_metadata = metadata
 
                 if config['rag_filename_as_id']:
                     for i, doc in enumerate(docs):

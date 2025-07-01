@@ -4,7 +4,7 @@ from collections import defaultdict
 from PIL import Image
 from lazyllm import config, reset_on_pickle
 from lazyllm.components.utils.file_operate import image_to_base64
-from .global_metadata import RAG_DOC_PATH
+from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_KB_ID
 import uuid
 import threading
 import time
@@ -77,8 +77,8 @@ class DocNode:
             return []
         if isinstance(uids, str):
             uids = [uids]
-        nodes = self._store.get_nodes(group_name=group_name, uids=uids, dataset_id=self._global_metadata.get("kb_id"),
-                                      display=True)
+        nodes = self._store.get_nodes(group_name=group_name, uids=uids,
+                                      dataset_id=self._global_metadata.get(RAG_DOC_KB_ID), display=True)
         for n in nodes:
             n._store = self._store
             n._node_groups = self._node_groups
@@ -100,8 +100,8 @@ class DocNode:
     def children(self) -> Dict[str, List["DocNode"]]:
         if not self._children_loaded and self._store and self._node_groups:
             self._children_loaded = True
-            dataset_id = self._global_metadata.get("kb_id")
-            doc_id = self._global_metadata.get("docid")
+            dataset_id = self._global_metadata.get(RAG_DOC_KB_ID)
+            doc_id = self._global_metadata.get(RAG_DOC_ID)
             c_groups = [grp for grp in self._node_groups.keys() if self._node_groups[grp]['parent'] == self._group]
             for grp in c_groups:
                 nodes = self._store.get_nodes(group_name=grp, dataset_id=dataset_id, doc_ids=[doc_id])
@@ -135,9 +135,6 @@ class DocNode:
     def global_metadata(self, global_metadata: Dict) -> None:
         self._global_metadata = global_metadata
 
-    def update_global_metadata(self, global_metadata: Dict) -> None:
-        self._global_metadata.update(global_metadata)
-
     @property
     def metadata(self) -> Dict:
         return self._metadata
@@ -145,9 +142,6 @@ class DocNode:
     @metadata.setter
     def metadata(self, metadata: Dict) -> None:
         self._metadata = metadata
-
-    def update_metadata(self, metadata: Dict) -> None:
-        self._metadata.update(metadata)
 
     @property
     def excluded_embed_metadata_keys(self) -> List:

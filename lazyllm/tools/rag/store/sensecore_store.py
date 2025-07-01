@@ -1,5 +1,4 @@
 import os
-import re
 import json
 import copy
 import uuid
@@ -10,20 +9,17 @@ from pydantic import BaseModel, Field
 from urllib.parse import urljoin
 from typing import Optional, List, Dict, Any, Union, Set
 
-from .store_base import StoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC
+from .store_base import StoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC, IMAGE_PATTERN, INSERT_BATCH_SIZE
 from .utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, create_file_path
 
 from ..index_base import IndexBase
 from ..data_type import DataType
 from ..doc_node import ImageDocNode, QADocNode, DocNode
-from ..global_metadata import (GlobalMetadataDesc, RAG_DOC_ID)
+from ..global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_KB_ID
 
 from lazyllm import warp, pipeline, LOG, config
 from lazyllm.common import override
 from lazyllm.thirdparty import boto3
-
-INSERT_BATCH_SIZE = 3000
-IMAGE_PATTERN = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
 
 
 class Segment(BaseModel):
@@ -80,7 +76,7 @@ class SenseCoreStore(StoreBase):
 
     def _serialize_node(self, node: DocNode) -> Dict:  # noqa: C901
         """ serialize node to dict """
-        segment = Segment(segment_id=node._uid, dataset_id=node.global_metadata.get("kb_id", None) or self._kb_id,
+        segment = Segment(segment_id=node._uid, dataset_id=node.global_metadata.get(RAG_DOC_KB_ID, None) or self._kb_id,
                           document_id=node.global_metadata.get(RAG_DOC_ID), group=node._group,
                           meta=json.dumps(node._metadata, ensure_ascii=False),
                           excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
@@ -243,7 +239,7 @@ class SenseCoreStore(StoreBase):
         filtered_nodes = []
         for node in nodes:
             if isinstance(node, QADocNode):
-                kb_id = node.global_metadata.get("kb_id")
+                kb_id = node.global_metadata.get(RAG_DOC_KB_ID)
                 source_file = node.metadata["source_file_name"]
                 source_chunk = node.metadata["source_chunk"]
                 target_nodes = self.query(query=source_chunk, group_name="block", topk=1, embed_keys=["bge_m3_dense"],
@@ -434,6 +430,8 @@ class SenseCoreStore(StoreBase):
                         raise ValueError(f'cannot find desc of field [{name}]')
                     key = name
                     if key == "kb_id":
+                        if isinstance(candidates, str):
+                            candidates = [candidates]
                         if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
                             candidates = list(candidates)
                         dataset_ids = candidates
@@ -472,8 +470,8 @@ class SenseCoreStore(StoreBase):
                         target_nodes = self.query(query=source_chunk, group_name="block", topk=1,
                                                   embed_keys=["bge_m3_dense"], filters=original_filters)
                         if len(target_nodes):
-                            node.update_global_metadata(target_nodes[0].global_metadata)
-                            node.update_metadata(target_nodes[0].metadata)
+                            node.global_metadata.update(target_nodes[0].global_metadata)
+                            node.metadata.update(target_nodes[0].metadata)
                             nodes.append(node)
                 else:
                     nodes.extend([self._deserialize_node(node) for node in segments])
@@ -497,14 +495,14 @@ class SenseCoreStore(StoreBase):
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
         """ update doc meta """
         # TODO 性能优化
-        dataset_id = metadata.get("kb_id", None)
+        dataset_id = metadata.get(RAG_DOC_KB_ID, None)
         nodes: List[DocNode] = []
         for group in self.activated_groups():
             group_nodes = self.get_nodes(group_name=group, dataset_id=dataset_id, doc_ids=[doc_id])
             nodes.extend(group_nodes)
 
         for node in nodes:
-            node.update_global_metadata(global_metadata=metadata)
+            node.global_metadata.update(metadata)
         self.update_nodes(nodes)
         return
 
