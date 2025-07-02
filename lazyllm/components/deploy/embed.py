@@ -80,7 +80,8 @@ class HuggingFaceEmbedding:
 
     def __call__(self, *args, **kwargs):
         try:
-            args[0]['images'] = [base64_to_file(image) if is_base64_with_mime(image) else image for image in args[0]['images']]
+            args[0]['images'] = [base64_to_file(image) if is_base64_with_mime(image) else image
+                                 for image in args[0]['images']]
         except Exception as e:
             LOG.error(f"Error converting base64 to image: {e}")
         return self._embed(*args, **kwargs)

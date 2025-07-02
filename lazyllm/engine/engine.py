@@ -487,7 +487,7 @@ def make_fc(base_model: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
-    return f(Engine().build_node(base_model).func._m, _get_tools(tools))
+    return f(Engine().build_node(base_model).func, _get_tools(tools))
 
 class AuthenticationFailedError(Exception):
     def __init__(self, message="Authentication failed for the given user and tool."):
@@ -702,6 +702,10 @@ class VQA(lazyllm.Module):
     def stream(self, v: bool):
         self._vqa._stream = v
 
+    @property
+    def func(self):
+        return self._vqa
+
 @NodeConstructor.register('VQA')
 def make_vqa(kw: dict):
     type: str = kw.pop('type')
@@ -735,13 +739,11 @@ def make_shared_llm(llm: str, local: bool = True, prompt: Optional[str] = None, 
 
 @NodeConstructor.register('SharedModel')
 def make_shared_model(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
-                    stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
-                    history: Optional[List[List[str]]] = None, cls: str = "llm"):
+                      stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
+                      history: Optional[List[List[str]]] = None, cls: str = "llm"):
     if file_resource_id: assert cls == 'vqa', 'file_resource_id is only supported in VQA'
     if local:
         model = Engine().build_node(llm).func
-        if isinstance(model, VQA):
-            model = model._vqa
     else:
         assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
         model = Engine().get_infra_handle(token, llm)
@@ -769,7 +771,7 @@ def make_online_embedding(source: str, embed_type: Optional[str] = 'embed', base
                           base_url: Optional[str] = None, api_key: Optional[str] = None):
     source = source.lower()
     return lazyllm.OnlineEmbeddingModule(source=source, type=embed_type, embed_model_name=base_model,
-                                             embed_url=base_url, api_key=api_key)
+                                         embed_url=base_url, api_key=api_key)
 
 
 class LLM(lazyllm.ModuleBase):
@@ -789,6 +791,10 @@ class LLM(lazyllm.ModuleBase):
 
     def share(self, prompt: str, format: callable = None, history: Optional[List[List[str]]] = None):
         return LLM(self._m.share(prompt=prompt, format=format, history=history), self._keys)
+
+    @property
+    def func(self):
+        return self._m
 
 
 @NodeConstructor.register('LLM')
@@ -827,6 +833,10 @@ class STT(lazyllm.Module):
     def stream(self, v: bool):
         self._m._stream = v
 
+    @property
+    def func(self):
+        return self._m
+
 @NodeConstructor.register('STT')
 def make_stt(kw: dict):
     type: str = kw.pop('type')
@@ -852,8 +862,11 @@ class TTS(lazyllm.Module):
         sound_list = result["files"]
         if self._target_dir and sound_list:
             sound_list = move_files_to_target_dir(sound_list, self._target_dir)
-            
         return sound_list[0] if len(sound_list) > 0 else query
+
+    @property
+    def func(self):
+        return self._m
 
 @NodeConstructor.register('TTS')
 def make_tts(kw: dict):

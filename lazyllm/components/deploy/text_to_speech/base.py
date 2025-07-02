@@ -17,21 +17,21 @@ class TTSInfer(object):
         self.sample_rate = 24000
         if init:
             lazyllm.call_once(self.init_flag, self.load_model)
-    
+
     @abstractmethod
     def load_model(self):
         pass
-    
+
     def __call__(self, string):
         lazyllm.call_once(self.init_flag, self.load_model)
         speech, sample_rate = self._infer(string)
         base64_list = sounds_to_base64_list(speech, sample_rate=sample_rate)
         return encode_query_with_filepaths(files=base64_list)
-    
+
     @abstractmethod
     def _infer(self, string):
         pass
-    
+
     @classmethod
     def rebuild(cls, base_path, init, save_path):
         return cls(base_path, init=init, save_path=save_path)

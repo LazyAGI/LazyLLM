@@ -16,7 +16,8 @@ from dataclasses import dataclass
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals, colored_text
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
-from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths, encode_query_with_filepaths
+from ..components.formatter import (FormatterBase, EmptyFormatter, decode_query_with_filepaths,
+                                    encode_query_with_filepaths)
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
@@ -649,18 +650,18 @@ class ServerModule(UrlModule):
                                  stream=self._stream, return_trace=self._return_trace)
 
 def map_kw_for_framework(kw: Dict[str, Any], kw_map: Dict[str, Tuple[str, Callable[[Any], Any]]]) -> Dict[str, Any]:
-        result = {}
-        for k, v in kw.items():
-            kw_item = kw_map.get(k)
-            if kw_item:
-                try:
-                    result[kw_item[0]] = kw_item[1](v)
-                except (TypeError, ValueError) as e:
-                    LOG.warning(f"Type conversion error for key '{k}': {e}, using original value")
-                    result[kw_item[0]] = v
-            else:
-                result[k] = v
-        return result
+    result = {}
+    for k, v in kw.items():
+        kw_item = kw_map.get(k)
+        if kw_item:
+            try:
+                result[kw_item[0]] = kw_item[1](v)
+            except (TypeError, ValueError) as e:
+                LOG.warning(f"Type conversion error for key '{k}': {e}, using original value")
+                result[kw_item[0]] = v
+        else:
+            result[k] = v
+    return result
 @light_reduce
 class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
@@ -781,10 +782,10 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_train_or_deploy_args('deploy', disable=['target_path'])
-        
+
         if hasattr(self._deploy, 'kw_map') and self._deploy.kw_map:
             self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.kw_map)
-        
+
         stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
 
         self._template.update(self._deploy.message_format, self._deploy.keys_name_handle,
@@ -1000,7 +1001,7 @@ class TrainableModule(UrlModule):
             content = output
 
         return content, tool_calls
-    
+
     def _decode_base64_to_file(self, content: str) -> str:
         decontent = decode_query_with_filepaths(content)
         files = [base64_to_file(file_content) if is_base64_with_mime(file_content) else file_content

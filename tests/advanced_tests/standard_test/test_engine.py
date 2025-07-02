@@ -51,7 +51,8 @@ class TestEngine(object):
 
         resources = [dict(id='llm', kind='LLM', name='base', args=dict(base_model='internlm2-chat-7b', type='local')),
                      dict(id='file-resource', kind='File', name='file', args=dict(id='file-resource')),
-                     dict(id='vqa', kind='VQA', name='vqa', args=dict(base_model='Mini-InternVL-Chat-2B-V1-5', type='local')),
+                     dict(id='vqa', kind='VQA', name='vqa',
+                          args=dict(base_model='Mini-InternVL-Chat-2B-V1-5', type='local')),
                      dict(id='web', kind='web', name='web', args=dict(port=None, title='多模态聊天机器人', audio=True))]
 
         nodes1 = [
@@ -228,19 +229,19 @@ class TestEngine(object):
         assert isinstance(r, lazyllm.TrainableModule) and r._impl._get_deploy_tasks.flag
         assert '你好' in r('请重复下面一句话：你好')
 
-        nodes = [dict(id='0', kind='SharedModel', name='vqa', 
+        nodes = [dict(id='0', kind='SharedModel', name='vqa',
                       args=dict(llm=jobid, local=False, token=token, stream=True, cls='vqa'))]
         gid = engine.start(nodes)
 
         r = engine.run(gid, "这张图片描述的是什么？", _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
         assert '鸡' in r or 'chicken' in r
-        
+
     def test_engine_shared_vqa(self):
         engine = LightEngine()
-        resources = [dict(id='vqa', kind='VQA', name='vqa', 
+        resources = [dict(id='vqa', kind='VQA', name='vqa',
                           args=dict(base_model='Mini-InternVL-Chat-2B-V1-5', type='local'))]
 
-        nodes = [dict(id='0', kind='SharedModel', name='vqa', 
+        nodes = [dict(id='0', kind='SharedModel', name='vqa',
                       args=dict(llm='vqa', local=True, cls='vqa'))]
         gid = engine.start(nodes, resources=resources)
 
@@ -263,20 +264,19 @@ class TestEngine(object):
 
         r = engine.run(gid, "这张图片描述的是什么？")
         assert '.wav' in r
-        
+
     def test_engine_tts_with_target_dir(self):
         engine = LightEngine()
         temp_dir = os.path.join(lazyllm.config['data_path'], 'tts_temp')
-        nodes = [dict(id='1', kind='TTS', name='tts', 
-                        args=dict(base_model='ChatTTS-new', type='local', target_dir=temp_dir))]
+        nodes = [dict(id='1', kind='TTS', name='tts',
+                      args=dict(base_model='ChatTTS-new', type='local', target_dir=temp_dir))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
         gid = engine.start(nodes, edges)
-        
+
         r = engine.run(gid, '测试TTS输出到指定目录')
         assert '.wav' in r
-        
-        if os.path.exists(r):
-            assert os.path.dirname(r) == temp_dir
+        assert os.path.exists(r)
+        assert os.path.dirname(r) == temp_dir
 
     @pytest.mark.skip(reason='environment not ready')
     def test_OCR(self):

@@ -98,7 +98,7 @@ class TestEngine(unittest.TestCase):
                  args=dict(code=add_tool_code)),
         ]
         nodes = [dict(id="1", kind="FunctionCall", name="fc",
-                      args=dict(llm='0', tools=['1001', '1002', '1003', '1004']))]
+                      args=dict(base_model='0', tools=['1001', '1002', '1003', '1004']))]
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
@@ -106,14 +106,14 @@ class TestEngine(unittest.TestCase):
         assert '22' in engine.run(gid, "What will the temperature be in degrees Celsius in Paris tomorrow?")
 
         nodes = [dict(id="2", kind="FunctionCall", name="re",
-                      args=dict(llm='0', tools=['1003', '1004'], algorithm='React'))]
+                      args=dict(base_model='0', tools=['1003', '1004'], algorithm='React'))]
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
         assert '5440' in engine.run(gid, "Calculate 20*(45+23)*4, step by step.")
 
         nodes = [dict(id="3", kind="FunctionCall", name="re",
-                      args=dict(llm='0', tools=['1003', '1004'], algorithm='PlanAndSolve'))]
+                      args=dict(base_model='0', tools=['1003', '1004'], algorithm='PlanAndSolve'))]
         edges = [dict(iid="__start__", oid="3"), dict(iid="3", oid="__end__")]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
@@ -217,7 +217,7 @@ class TestEngine(unittest.TestCase):
         ]
         # `tools` in `args` is a list of ids in `resources`
         nodes = [dict(id="1", kind="FunctionCall", name="fc",
-                      args=dict(llm='0', tools=['3', '2']))]
+                      args=dict(base_model='0', tools=['3', '2']))]
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
         # TODO handle duplicated node id

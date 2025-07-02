@@ -2,7 +2,6 @@ import os
 import uuid
 import base64
 from io import BytesIO
-from lazyllm.components.deploy.base import LazyLLMDeployBase
 from lazyllm.thirdparty import scipy, numpy as np
 from ...utils.file_operate import delete_old_files
 import lazyllm
