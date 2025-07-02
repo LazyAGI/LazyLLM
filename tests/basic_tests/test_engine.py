@@ -380,6 +380,10 @@ class TestEngine(unittest.TestCase):
         gid = engine.start(nodes, edges)
         assert engine.run(gid, [0, 1, 2, 3, 4, 5]) == [1, 2]
 
+        edges = [dict(iid='__start__', oid='1', formatter='{a,c,d}'), dict(iid='1', oid='__end__', formatter='[a,c]')]
+        gid = engine.start(nodes, edges)
+        assert engine.run(gid, dict(a=1, b=2, c=3, d=4)) == [1, 3]
+
     def test_engine_edge_formatter_start(self):
         nodes = [dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int): return x')),
                  dict(id='2', kind='Code', name='m2', args=dict(code='def test(x: int): return 2 * x')),
