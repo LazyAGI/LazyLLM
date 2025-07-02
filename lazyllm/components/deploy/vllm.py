@@ -38,6 +38,7 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
         'max_tokens': 4096
     }
     auto_map = {'tp': 'tensor-parallel-size'}
+    optional_keys = set(["max-model-len"])
 
     # TODO(wangzhihong): change default value for `openai_api` argument to True
     def __init__(self, trust_remote_code: bool = True, launcher: LazyLLMLaunchersBase = launchers.remote(ngpus=1),
@@ -61,7 +62,8 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
         })
         self._vllm_cmd = 'vllm.entrypoints.openai.api_server' if openai_api else 'vllm.entrypoints.api_server'
         self.trust_remote_code = trust_remote_code
-        self.kw.check_and_update(kw, need_check=False)
+        self.kw.update(**{key: kw[key] for key in self.optional_keys if key in kw})
+        self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
         self.temp_folder = make_log_dir(log_path, 'vllm') if log_path else None
         if self.launcher_list:
