@@ -47,7 +47,8 @@ def embed_wrapper(func: Optional[Callable[..., Any]]) -> Optional[Callable[..., 
                 except Exception as e:
                     LOG.error(f"Both json.loads and ast.literal_eval failed. Error: {e}")
                     raise  # Re-raise the original or a new error
-        elif isinstance(result, list):  # Explicitly check if it's already a list
+        # Explicitly check if it's already a list for dense embedding or dict for sparse embedding
+        elif isinstance(result, (list, dict)):
             return result
         else:
             # Handle unexpected types by raising an error
