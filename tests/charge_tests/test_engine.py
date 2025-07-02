@@ -189,7 +189,7 @@ class TestEngine(unittest.TestCase):
                 id="2",
                 kind="SqlCall",
                 name="sql_call",
-                args=dict(sql_manager="0", llm="1", sql_examples="", _lazyllm_enable_report=True),
+                args=dict(sql_manager="0", base_model="1", sql_examples="", _lazyllm_enable_report=True),
             )
         ]
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]

@@ -28,7 +28,6 @@ def compare_versions(version1, version2):
     else:
         return 0
 
-
 @functools.lru_cache
 def check_requirements(requirements):
     if requirements is None: return False
