@@ -58,7 +58,6 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
             'max-num-seqs': 256,
             'pipeline-parallel-size': 1,
             'max-num-batched-tokens': 64000,
-            'limit-mm-per-prompt': 'image=1',
         })
         self._vllm_cmd = 'vllm.entrypoints.openai.api_server' if openai_api else 'vllm.entrypoints.api_server'
         self.trust_remote_code = trust_remote_code
