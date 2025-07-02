@@ -56,12 +56,12 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
             'host': '0.0.0.0',
             'max-num-seqs': 256,
             'pipeline-parallel-size': 1,
-            'max-model-len': 64000,  # remove max-num-batched-tokens, as it shoulde be calculated by this key
+            'max-num-batched-tokens': 64000,
             'limit-mm-per-prompt': 'image=1',
         })
         self._vllm_cmd = 'vllm.entrypoints.openai.api_server' if openai_api else 'vllm.entrypoints.api_server'
         self.trust_remote_code = trust_remote_code
-        self.kw.check_and_update(kw)
+        self.kw.check_and_update(kw, need_check=False)
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
         self.temp_folder = make_log_dir(log_path, 'vllm') if log_path else None
         if self.launcher_list:

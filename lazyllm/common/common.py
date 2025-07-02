@@ -34,8 +34,9 @@ class ArgsDict(dict):
     def __init__(self, *args, **kwargs):
         super(ArgsDict, self).__init__(*args, **kwargs)
 
-    def check_and_update(self, kw):
-        assert set(kw.keys()).issubset(set(self)), f'unexpected keys: {set(kw.keys()) - set(self)}'
+    def check_and_update(self, kw, need_check=True):
+        if need_check:
+            assert set(kw.keys()).issubset(set(self)), f'unexpected keys: {set(kw.keys()) - set(self)}'
         self.update(kw)
 
     def parse_kwargs(self):
