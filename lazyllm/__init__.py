@@ -18,12 +18,14 @@ from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, Funct
                     FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
                     LLMParser)
 from .docs import add_doc
+from . import patch
 
 config.done()
 
 
 del LazyLLMRegisterMetaClass  # noqa F821
 del _get_base_cls_from_registry  # noqa F821
+del patch
 
 
 __all__ = [
