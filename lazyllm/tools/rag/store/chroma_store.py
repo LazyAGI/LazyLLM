@@ -46,7 +46,7 @@ class ChromadbStore(StoreBase):
             group2uids[node._group].append(node._uid)
         for group, uids in group2uids.items():
             self._delete_group_nodes(group, uids)
-            self._map_store.remove_nodes(uids=uids)
+            self._map_store.remove_nodes(doc_ids=doc_ids, uids=uids)
 
     @override
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
@@ -91,7 +91,7 @@ class ChromadbStore(StoreBase):
         return self._name2index.get(type)
 
     @override
-    def clear_cache(self, group_names: Optional[List[str]]):
+    def clear_cache(self, group_names: Optional[List[str]] = None):
         if group_names is None:
             for group_name in self.activated_groups():
                 self._db_client.delete_collection(name=group_name)

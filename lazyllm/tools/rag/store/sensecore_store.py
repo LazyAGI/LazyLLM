@@ -544,6 +544,6 @@ class SenseCoreStore(StoreBase):
         return False
 
     @override
-    def clear_cache(self, group_names: Optional[List[str]]) -> None:
+    def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
         """ clear cache for a group """
         raise NotImplementedError("clear_cache is not supported for SenseCoreStore.")

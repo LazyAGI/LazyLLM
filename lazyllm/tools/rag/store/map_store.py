@@ -14,7 +14,7 @@ from lazyllm.common import override
 class MapStore(StoreBase):
     def __init__(self, node_groups: Union[List[str], Set[str]], embed: Dict[str, Callable], **kwargs):
         self._uid2node: Dict[str, DocNode] = {}
-        self._group2uids: Dict[str, Set[str]] = defaultdict(set)
+        self._group2uids: Dict[str, Set[str]] = {group: set() for group in node_groups}
         self._docid2uids: Dict[str, Set[str]] = defaultdict(set)
         self._group_doc_uids: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
         self._name2index = {
@@ -80,7 +80,7 @@ class MapStore(StoreBase):
     def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
                   doc_ids: Optional[Set] = None, **kwargs) -> List[DocNode]:
         if uids:
-            return [self._uid2node[uid] for uid in uids]
+            return [self._uid2node[uid] for uid in uids if uid in self._uid2node]
         elif doc_ids and group_name:
             uids = [uid for doc_id in doc_ids
                     for uid in self._group_doc_uids.get(group_name, {}).get(doc_id, ())]
@@ -90,7 +90,7 @@ class MapStore(StoreBase):
             uids = [uid for doc_id in doc_ids for uid in self._docid2uids.get(doc_id, ())]
         else:
             return []
-        return [self._uid2node[uid] for uid in uids]
+        return [self._uid2node[uid] for uid in uids if uid in self._uid2node]
 
     @override
     def is_group_active(self, name: str) -> bool:
@@ -125,12 +125,13 @@ class MapStore(StoreBase):
         return self._name2index.get(type)
 
     @override
-    def clear_cache(self, group_names: Optional[List[str]]) -> None:
+    def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
         if group_names is None:
             self._docid2uids.clear()
-            self._group2uids.clear()
             self._group_doc_uids.clear()
             self._uid2node.clear()
+            for group in self._group2uids.keys():
+                self._group2uids[group].clear()
             return
         elif isinstance(group_names, str):
             group_names = [group_names]

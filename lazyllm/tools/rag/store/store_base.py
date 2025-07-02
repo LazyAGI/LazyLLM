@@ -51,7 +51,7 @@ class StoreBaseMixin:
         raise NotImplementedError
 
     @abstractmethod
-    def clear_cache(self, group_names: Optional[List[str]]) -> None:
+    def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
         raise NotImplementedError
 
 

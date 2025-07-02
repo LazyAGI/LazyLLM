@@ -128,7 +128,7 @@ class MilvusStore(StoreBase):
 
         collections = self._client.list_collections()
         for group, embed_keys in group_embed_keys.items():
-            if group in collections or (self._type == 'remote' and not embed_keys):
+            if group in collections:
                 continue
 
             field_list = []
@@ -231,7 +231,7 @@ class MilvusStore(StoreBase):
             if self._client.has_collection(group):
                 self._client.delete(collection_name=group,
                                     filter=f'{self._primary_key} in {uids}')
-                self._map_store.remove_nodes(uids=uids)
+                self._map_store.remove_nodes(doc_ids=doc_ids, uids=uids)
         return
 
     @override
@@ -266,7 +266,7 @@ class MilvusStore(StoreBase):
         return self._map_store.get_index(type)
 
     @override
-    def clear_cache(self, group_names: Optional[List[str]]):
+    def clear_cache(self, group_names: Optional[List[str]] = None):
         if group_names is None:
             for group_name in self.activated_groups():
                 if self._client.has_collection(group_name):
@@ -316,7 +316,7 @@ class MilvusStore(StoreBase):
                 uid_score[result['id']] = result['distance'] if result['id'] not in uid_score \
                     else max(uid_score[result['id']], result['distance'])
         uids = list(uid_score.keys())
-        nodes = self._map_store.get_nodes(group_name, uids)
+        nodes = self._map_store.get_nodes(uids=uids)
         return [node.with_sim_score(uid_score[node._uid]) for node in nodes]
 
     # ----- internal helper functions ----- #
