@@ -220,21 +220,18 @@ class MilvusStore(StoreBase):
             self.update_nodes(nodes)
 
     @override
-    def remove_nodes(self, group_name: Optional[str] = None, doc_ids: Optional[Set[str]] = None,
+    def remove_nodes(self, doc_ids: List[str] = None, group_name: Optional[str] = None,
                      uids: Optional[List[str]] = None) -> None:
         self._check_connection()
-        if group_name:
-            if self._client.has_collection(group_name):
-                if uids:
-                    self._client.delete(collection_name=group_name,
-                                        filter=f'{self._primary_key} in {uids}')
-                else:
-                    self._client.drop_collection(collection_name=group_name)
-            self._map_store.remove_nodes(uids=uids)
-        elif doc_ids:
-            for group in self._client.list_collections():
-                nodes = self._map_store.get_nodes(group_name=group, doc_ids=doc_ids)
-                self.remove_nodes(group_name=group, uids=[n._uid for n in nodes])
+        nodes = self._map_store.get_nodes(group_name=group_name, doc_ids=doc_ids, uids=uids)
+        group2uids = defaultdict(list)
+        for node in nodes:
+            group2uids[node._group].append(node._uid)
+        for group, uids in group2uids.items():
+            if self._client.has_collection(group):
+                self._client.delete(collection_name=group,
+                                    filter=f'{self._primary_key} in {uids}')
+                self._map_store.remove_nodes(uids=uids)
         return
 
     @override
@@ -267,6 +264,24 @@ class MilvusStore(StoreBase):
         if type is None:
             type = 'default'
         return self._map_store.get_index(type)
+
+    @override
+    def clear_cache(self, group_names: Optional[List[str]]):
+        if group_names is None:
+            for group_name in self.activated_groups():
+                if self._client.has_collection(group_name):
+                    self._client.drop_collection(collection_name=group_name)
+            self._map_store.clear_cache()
+        elif isinstance(group_names, str):
+            group_names = [group_names]
+        elif isinstance(group_names, (tuple, list, set)):
+            group_names = list(group_names)
+        else:
+            raise TypeError(f"Invalid type {type(group_names)} for group_names, expected list of str")
+        for group_name in group_names:
+            if self._client.has_collection(group_name):
+                self._client.drop_collection(collection_name=group_name)
+        self._map_store.clear_cache(group_names)
 
     @override
     def query(self, query: str, group_name: str, similarity_name: Optional[str] = None,

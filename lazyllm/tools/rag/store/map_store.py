@@ -51,17 +51,15 @@ class MapStore(StoreBase):
         root_node.global_metadata.update(metadata)
 
     @override
-    def remove_nodes(self, group_name: Optional[str] = None, doc_ids: Optional[Set[str]] = None,
+    def remove_nodes(self, doc_ids: List[str], group_name: Optional[str] = None,
                      uids: Optional[List[str]] = None) -> None:
         if uids:
             need_delete = uids
-        elif doc_ids and group_name:
+        elif group_name:
             need_delete = [uid for doc_id in doc_ids
                            for uid in self._group_doc_uids.get(group_name, {}).get(doc_id, ())]
-        elif doc_ids:
-            need_delete = [uid for doc_id in doc_ids for uid in self._docid2uids.get(doc_id, ())]
         else:
-            return
+            need_delete = [uid for doc_id in doc_ids for uid in self._docid2uids.get(doc_id, ())]
 
         for index in self._name2index.values():
             index.remove(need_delete)
@@ -72,9 +70,11 @@ class MapStore(StoreBase):
                 continue
             group = node._group
             doc_id = node.global_metadata.get(RAG_DOC_ID)
-            self._group2uids[group].discard(uid)
-            self._docid2uids[doc_id].discard(uid)
-            self._group_doc_index[group][doc_id].discard(uid)
+            self._group2uids.get(group, set()).discard(uid)
+            self._docid2uids.get(doc_id, set()).discard(uid)
+            self._group_doc_uids.get(group, {}).get(doc_id, set()).discard(uid)
+            if group in self._group_doc_uids and not self._group_doc_uids[group]:
+                self._group_doc_uids.pop(group)
 
     @override
     def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
@@ -127,7 +127,11 @@ class MapStore(StoreBase):
     @override
     def clear_cache(self, group_names: Optional[List[str]]) -> None:
         if group_names is None:
-            group_names = self.all_groups()
+            self._docid2uids.clear()
+            self._group2uids.clear()
+            self._group_doc_uids.clear()
+            self._uid2node.clear()
+            return
         elif isinstance(group_names, str):
             group_names = [group_names]
         elif isinstance(group_names, (tuple, list, set)):
@@ -135,5 +139,5 @@ class MapStore(StoreBase):
         else:
             raise TypeError(f"Invalid type {type(group_names)} for group_names, expected list of str")
         for group_name in group_names:
-            uids = list(self._group2uids.get(group_name, ()))
-            self.remove_nodes(uids=uids)
+            uids = self._group2uids.get(group_name, set())
+            self.remove_nodes(doc_ids=[], uids=uids)

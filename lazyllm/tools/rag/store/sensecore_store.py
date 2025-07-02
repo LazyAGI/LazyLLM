@@ -542,3 +542,8 @@ class SenseCoreStore(StoreBase):
         except Exception as e:
             LOG.error(f"is_group_active error for group {name}: {str(e)}")
         return False
+
+    @override
+    def clear_cache(self, group_names: Optional[List[str]]) -> None:
+        """ clear cache for a group """
+        raise NotImplementedError("clear_cache is not supported for SenseCoreStore.")

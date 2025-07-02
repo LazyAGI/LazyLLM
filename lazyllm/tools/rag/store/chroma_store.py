@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Callable, Set, Union
 
 from .store_base import StoreBase, LAZY_ROOT_NAME
@@ -37,21 +38,15 @@ class ChromadbStore(StoreBase):
         self._save_nodes(nodes)
 
     @override
-    def remove_nodes(self, group_name: Optional[str] = None, doc_ids: Optional[Set[str]] = None,
+    def remove_nodes(self, doc_ids: List[str], group_name: Optional[str] = None,
                      uids: Optional[List[str]] = None) -> None:
-        if group_name:
-            if uids:
-                self._delete_group_nodes(group_name, uids)
-                self._map_store.remove_nodes(uids=uids)
-            else:
-                self._db_client.delete_collection(name=group_name)
-                nodes = self._map_store.get_nodes(group_name=group_name)
-                uids = [node._uid for node in nodes]
-                self._map_store.remove_nodes(uids=uids)
-        elif doc_ids:
-            for group in self.activated_groups():
-                nodes = self._map_store.get_nodes(group_name=group, doc_ids=doc_ids)
-                self.remove_nodes(group_name=group, uids=[n._uid for n in nodes])
+        nodes = self._map_store.get_nodes(group_name=group_name, doc_ids=doc_ids, uids=uids)
+        group2uids = defaultdict(list)
+        for node in nodes:
+            group2uids[node._group].append(node._uid)
+        for group, uids in group2uids.items():
+            self._delete_group_nodes(group, uids)
+            self._map_store.remove_nodes(uids=uids)
 
     @override
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
@@ -94,6 +89,23 @@ class ChromadbStore(StoreBase):
         if type is None:
             type = 'default'
         return self._name2index.get(type)
+
+    @override
+    def clear_cache(self, group_names: Optional[List[str]]):
+        if group_names is None:
+            for group_name in self.activated_groups():
+                self._db_client.delete_collection(name=group_name)
+            self._collections.clear()
+            self._map_store.clear_cache()
+        elif isinstance(group_names, str):
+            group_names = [group_names]
+        elif isinstance(group_names, (tuple, list, set)):
+            group_names = list(group_names)
+        else:
+            raise TypeError(f"Invalid type {type(group_names)} for group_names, expected list of str")
+        for group_name in group_names:
+            self._db_client.delete_collection(name=group_name)
+        self._map_store.clear_cache(group_names)
 
     def _load_store(self, embed_dims: Dict[str, int]) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:

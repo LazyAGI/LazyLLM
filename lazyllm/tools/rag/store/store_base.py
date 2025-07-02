@@ -35,7 +35,7 @@ class StoreBaseMixin:
         raise NotImplementedError
 
     @abstractmethod
-    def remove_nodes(self, group_name: Optional[str] = None, doc_ids: Optional[List[str]] = None,
+    def remove_nodes(self, doc_ids: List[str], group_name: Optional[str] = None,
                      uids: Optional[List[str]] = None) -> None:
         """ remove nodes from the store by doc_ids or uids """
         raise NotImplementedError
@@ -51,7 +51,7 @@ class StoreBaseMixin:
         raise NotImplementedError
 
     @abstractmethod
-    def clear_cache(self, group_names: Optional[List[str]]) -> bool:
+    def clear_cache(self, group_names: Optional[List[str]]) -> None:
         raise NotImplementedError
 
 
@@ -89,15 +89,3 @@ class StoreBase(StoreBaseMixin, ABC):
     def is_group_active(self, name: str) -> bool:
         """ check if a group has nodes (active) """
         raise NotImplementedError
-
-    def clear_cache(self, group_names: Optional[List[str]]) -> None:
-        if group_names is None:
-            group_names = self.all_groups()
-        elif isinstance(group_names, str):
-            group_names = [group_names]
-        elif isinstance(group_names, (tuple, list, set)):
-            group_names = list(group_names)
-        else:
-            raise TypeError(f"Invalid type {type(group_names)} for group_names, expected list of str")
-        for group_name in group_names:
-            self.remove_nodes(group_name, None)
