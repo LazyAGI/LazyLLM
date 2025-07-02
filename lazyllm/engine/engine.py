@@ -309,10 +309,10 @@ def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
 def _build_pipeline(nodes):
     if isinstance(nodes, list) and len(nodes) > 1:
         return pipeline([Engine().build_node(node).func for node in nodes])
-    elif isinstance(nodes, list) and len(nodes) == 1:
-        return Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
-    else:
+    elif isinstance(nodes, list) and len(nodes) == 0:
         return lazyllm.Identity()
+    else:
+        return Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
 
 
 @NodeConstructor.register('Switch', subitems=['nodes:dict'])

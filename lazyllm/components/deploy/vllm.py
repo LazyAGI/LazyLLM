@@ -37,7 +37,7 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
         'top_p': 0.8,
         'max_tokens': 4096
     }
-    kw_map = {'tp': ('tensor-parallel-size', int)}
+    auto_map = {'tp': 'tensor-parallel-size'}
 
     # TODO(wangzhihong): change default value for `openai_api` argument to True
     def __init__(self, trust_remote_code: bool = True, launcher: LazyLLMLaunchersBase = launchers.remote(ngpus=1),

@@ -10,7 +10,7 @@ import inspect
 import functools
 from datetime import datetime
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
-from typing import Callable, Dict, List, Any, Union, Optional, Tuple
+from typing import Dict, List, Any, Union, Optional, Tuple
 from dataclasses import dataclass
 
 import lazyllm
@@ -27,9 +27,9 @@ import uuid
 from ..client import get_redis, redis_client
 from ..hook import LazyLLMHook
 from urllib.parse import urljoin
+from .utils import encode_files, map_kw_for_framework
 
 from lazyllm.components.utils.file_operate import image_to_base64, audio_to_base64, base64_to_file, is_base64_with_mime
-from lazyllm.common.utils import check_path
 
 # use _MetaBind:
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
@@ -255,35 +255,6 @@ class ModuleBase(metaclass=_MetaBind):
                 action(submodule)
             submodule.for_each(filter, action)
 
-    def _encode_files(self, files, encode_func: Callable):
-        """
-        Generic file encoding method
-
-        Args:
-            files: List of files
-            encode_func: File type ('image' or 'audio')
-
-        Returns:
-            encoded_files: List of encoded files
-        """
-        encoded_files = []
-        if not isinstance(files, list):
-            files = [files]
-        for file in files:
-            try:
-                file_path = check_path(file, exist=True, file=True)
-                base64_str, mime = encode_func(file_path)
-                encoded_files.append(f"data:{mime};base64," + base64_str)
-            except Exception as e:
-                LOG.error(f"Error processing file {file}: {e}")
-                encoded_files.append(file)
-                continue
-        return encoded_files
-
-class UrlTemplate(object):
-    def __init__(self, template_message=None, keys_name_handle=None, template_headers=None) -> None:
-        self._set_template(template_message, keys_name_handle, template_headers)
-
 class _UrlTemplateStruct(object):
     def __init__(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
                  extract_result=None, stream_parse_parameters=None, stream_url_suffix=None):
@@ -421,10 +392,10 @@ class UrlModule(ModuleBase, _UrlHelper):
             assert 'inputs' in self.keys_name_handle
             data[self.keys_name_handle['inputs']] = __input
             if 'image' in self.keys_name_handle and files:
-                encoded_files = self._encode_files(files, image_to_base64)
+                encoded_files = encode_files(files, image_to_base64)
                 data[self.keys_name_handle['image']] = encoded_files
             elif 'audio' in self.keys_name_handle and files:
-                encoded_files = self._encode_files(files, audio_to_base64)
+                encoded_files = encode_files(files, audio_to_base64)
                 data[self.keys_name_handle['audio']] = encoded_files
             elif 'ocr_files' in self.keys_name_handle and files:
                 data[self.keys_name_handle['ocr_files']] = files
@@ -649,19 +620,6 @@ class ServerModule(UrlModule):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
                                  stream=self._stream, return_trace=self._return_trace)
 
-def map_kw_for_framework(kw: Dict[str, Any], kw_map: Dict[str, Tuple[str, Callable[[Any], Any]]]) -> Dict[str, Any]:
-    result = {}
-    for k, v in kw.items():
-        kw_item = kw_map.get(k)
-        if kw_item:
-            try:
-                result[kw_item[0]] = kw_item[1](v)
-            except (TypeError, ValueError) as e:
-                LOG.warning(f"Type conversion error for key '{k}': {e}, using original value")
-                result[kw_item[0]] = v
-        else:
-            result[k] = v
-    return result
 @light_reduce
 class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
@@ -783,8 +741,8 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_train_or_deploy_args('deploy', disable=['target_path'])
 
-        if hasattr(self._deploy, 'kw_map') and self._deploy.kw_map:
-            self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.kw_map)
+        if hasattr(self._deploy, 'auto_map') and self._deploy.auto_map:
+            self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.auto_map)
 
         stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
 
@@ -1004,6 +962,8 @@ class TrainableModule(UrlModule):
 
     def _decode_base64_to_file(self, content: str) -> str:
         decontent = decode_query_with_filepaths(content)
+        if isinstance(decontent, str):
+            return decontent
         files = [base64_to_file(file_content) if is_base64_with_mime(file_content) else file_content
                  for file_content in decontent["files"]]
         return encode_query_with_filepaths(query=decontent["query"], files=files)

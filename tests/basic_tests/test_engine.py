@@ -679,7 +679,7 @@ class TestEngine(unittest.TestCase):
             stop_condition='def cond(x): return x > 8', nodes=[double]))
 
         switch = dict(id='8', kind='Switch', name='sw1', args=dict(judge_on_full_input=True, nodes={
-            1: [plus1, subgraph], 2: [ifs], 3: [loop], 5: [ifs]}))
+            1: [plus1, subgraph], 2: ifs, 3: loop, 5: [ifs]}))
 
         warp = dict(id='9', kind='Warp', name='w1', args=dict(nodes=[switch, plus1]))
         join = dict(id='10', kind='JoinFormatter', name='join', args=dict(type='join', symbol=', '))
@@ -687,7 +687,7 @@ class TestEngine(unittest.TestCase):
         engine = LightEngine()
         gid = engine.start(nodes, [], resources)
 
-        assert '6, 3, 13, 26' in engine.run(gid, 1, 2, 3, 5)
+        assert '6, 4, 13, 26' in engine.run(gid, 1, 2, 3, 5)
         assert engine.status(gid) == {'9': {'8': {'2': 'running',
                                                   '5': {'3': 'running', '2': 'running'},
                                                   '6': {'2': 'running', '4': 'running'},

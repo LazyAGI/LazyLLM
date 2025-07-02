@@ -267,7 +267,7 @@ class TestEngine(object):
 
     def test_engine_tts_with_target_dir(self):
         engine = LightEngine()
-        temp_dir = os.path.join(lazyllm.config['data_path'], 'tts_temp')
+        temp_dir = os.path.join(lazyllm.config['temp_dir'], 'tts_temp')
         nodes = [dict(id='1', kind='TTS', name='tts',
                       args=dict(base_model='ChatTTS-new', type='local', target_dir=temp_dir))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]

@@ -36,12 +36,11 @@ class LMDeploy(LazyLLMDeployBase):
         "cancel": False,
         "adapter_name": None
     }
-    kw_map = {
-        'port': ('server-port', int),
-        'host': ('server-name', str),
-        'tp': ('tp', int),
-        'max_batch_size': ('max-batch-size', int),
-        'chat_template': ('chat-template', str),
+    auto_map = {
+        'port': 'server-port',
+        'host': 'server-name',
+        'max_batch_size': 'max-batch-size',
+        'chat_template': 'chat-template',
     }
     stream_parse_parameters = {"delimiter": b"\n"}
 
