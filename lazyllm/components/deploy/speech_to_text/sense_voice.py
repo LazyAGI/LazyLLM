@@ -21,6 +21,8 @@ def is_valid_url(url):
 def is_valid_path(path):
     return os.path.isfile(path)
 
+supported_formats = ('.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg', '.wma')
+
 class SenseVoice(object):
     def __init__(self, base_path, source=None, init=False):
         source = lazyllm.config['model_source'] if not source else source
@@ -57,8 +59,8 @@ class SenseVoice(object):
         except Exception as e:
             LOG.error(f"Error processing base64 encoding: {e}")
             return f"Error processing base64 encoding {e}"
-        if not string.endswith(('.mp3', '.wav')):
-            return "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported."
+        if not string.endswith(supported_formats):
+            return f"Only {', '.join(supported_formats)} formats in the form of file paths or URLs are supported."
         if not is_valid_path(string) and not is_valid_url(string):
             return f"This {string} is not a valid URL or file path. Please check."
         res = self.model.generate(

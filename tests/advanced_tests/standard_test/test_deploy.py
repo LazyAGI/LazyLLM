@@ -1,5 +1,7 @@
 import os
 import json
+import subprocess
+import tempfile
 import time
 import pytest
 import httpx
@@ -173,7 +175,29 @@ class TestDeploy(object):
         assert type(res) is str
         assert '但愿人长久' in res
         res = client_send('hi')[0][-1][-1]
-        assert "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported." == res
+        assert "formats in the form of file paths or URLs are supported." in res
+        
+        audio_formats = [
+            '.wav', '.flac', '.m4a', '.aac', '.ogg', '.wma'
+        ]
+        for format_ext in audio_formats: 
+            with tempfile.NamedTemporaryFile(suffix=format_ext, delete=False) as tmp_file:
+                temp_audio_path = tmp_file.name
+            
+                cmd = [
+                    'ffmpeg', '-i', audio_path, 
+                    '-y',
+                    temp_audio_path
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                assert result.returncode == 0 and os.path.exists(temp_audio_path)
+                res = m(temp_audio_path)
+                assert '但愿人长久' in res
+            if os.path.exists(temp_audio_path):
+                os.unlink(temp_audio_path)
+        
 
     def test_stt_bind(self):
         audio_path = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')
