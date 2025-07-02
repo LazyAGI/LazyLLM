@@ -255,7 +255,7 @@ class TestEngine(object):
         engine.infer_client.wait_ready(token, jobid)
         r = engine.get_infra_handle(token, jobid)
         assert isinstance(r, lazyllm.TrainableModule) and r._impl._get_deploy_tasks.flag
-        assert 'audio/wav' in r('你好啊，很高兴认识你。')
+        assert '.wav' in r('你好啊，很高兴认识你。')
 
         nodes = [dict(id='0', kind='SharedModel', name='chattts', args=dict(
             llm=jobid, local=False, token=token, stream=False, cls='tts'))]

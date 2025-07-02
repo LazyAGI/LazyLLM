@@ -1,14 +1,13 @@
-import os
 from typing import List, Tuple, Dict, Type, Optional, Union, Any, overload
 import lazyllm
 from lazyllm import graph, switch, pipeline, package
-from lazyllm.components.utils.file_operate import base64_to_file, is_base64_with_mime
 from lazyllm.tools import IntentClassifier, SqlManager
 from lazyllm.tools.http_request.http_request import HttpRequest
 from lazyllm.common import compile_func
 from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list, decode_query_with_filepaths
 from .node import Node
 from .node_meta_hook import NodeMetaHook
+from .utils import move_files_to_target_dir
 import inspect
 import functools
 from itertools import repeat
@@ -845,16 +844,15 @@ class TTS(lazyllm.Module):
     def __init__(self, model: lazyllm.TrainableModule, target_dir: Optional[str] = None):
         super().__init__()
         self._m = model
-        if target_dir:
-            target_dir = os.path.abspath(target_dir)
-            os.makedirs(target_dir, exist_ok=True)
         self._target_dir = target_dir
 
     def forward(self, query: str):
         r = self._m(query)
         result = decode_query_with_filepaths(r)
-        sound_list = [base64_to_file(sound, target_dir=self._target_dir)
-                      if is_base64_with_mime(sound) else sound for sound in result["files"]]
+        sound_list = result["files"]
+        if self._target_dir and sound_list:
+            sound_list = move_files_to_target_dir(sound_list, self._target_dir)
+            
         return sound_list[0] if len(sound_list) > 0 else query
 
 @NodeConstructor.register('TTS')

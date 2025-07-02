@@ -142,5 +142,6 @@ def base64_to_file(base64_str: str, target_dir: Optional[str] = None) -> str:
 
     with open(file_path, 'wb') as f:
         f.write(base64.b64decode(base64_data))
-
+    
+    os.chmod(file_path, 0o644)
     return file_path

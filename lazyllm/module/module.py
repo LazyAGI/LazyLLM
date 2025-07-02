@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals, colored_text
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
-from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
+from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths, encode_query_with_filepaths
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
@@ -27,7 +27,7 @@ from ..client import get_redis, redis_client
 from ..hook import LazyLLMHook
 from urllib.parse import urljoin
 
-from lazyllm.components.utils.file_operate import image_to_base64, audio_to_base64
+from lazyllm.components.utils.file_operate import image_to_base64, audio_to_base64, base64_to_file, is_base64_with_mime
 from lazyllm.common.utils import check_path
 
 # use _MetaBind:
@@ -1000,6 +1000,12 @@ class TrainableModule(UrlModule):
             content = output
 
         return content, tool_calls
+    
+    def _decode_base64_to_file(self, content: str) -> str:
+        decontent = decode_query_with_filepaths(content)
+        files = [base64_to_file(file_content) if is_base64_with_mime(file_content) else file_content
+                 for file_content in decontent["files"]]
+        return encode_query_with_filepaths(query=decontent["query"], files=files)
 
     def _build_response(self, content: str, tool_calls: List[Dict[str, str]]) -> str:
         tc = [{'id': str(uuid.uuid4().hex), 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
@@ -1020,6 +1026,7 @@ class TrainableModule(UrlModule):
                information, and then processed according to the rules.
         """
         content, tool_calls = self._extract_tool_calls(output)
+        content = self._decode_base64_to_file(content)
         return self._build_response(content, tool_calls)
 
     def __repr__(self):
