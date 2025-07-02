@@ -6,7 +6,7 @@ from .map_store import MapStore
 from ..doc_node import DocNode
 from ..index_base import IndexBase
 from ..default_index import DefaultIndex
-from ..utils import _FileNodeIndex, sparse2normal
+from ..utils import sparse2normal
 
 from lazyllm import LOG
 from lazyllm.common import override, obj2str, str2obj
@@ -29,7 +29,6 @@ class ChromadbStore(StoreBase):
 
         self._name2index = {
             'default': DefaultIndex(embed, self._map_store),
-            'file_node_map': _FileNodeIndex(),
         }
 
     @override

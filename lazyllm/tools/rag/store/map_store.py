@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Dict, List, Optional, Callable, Union, Set
 
 from .store_base import StoreBase, LAZY_ROOT_NAME
@@ -6,28 +7,31 @@ from ..index_base import IndexBase
 from ..doc_node import DocNode
 from ..default_index import DefaultIndex
 from ..global_metadata import RAG_SYSTEM_META_KEYS, RAG_DOC_ID
-from ..utils import _FileNodeIndex
 
 from lazyllm.common import override
 
 
 class MapStore(StoreBase):
     def __init__(self, node_groups: Union[List[str], Set[str]], embed: Dict[str, Callable], **kwargs):
-        self._group2uids: Dict[str, Set[str]] = {
-            group: set() for group in node_groups
-        }
         self._uid2node: Dict[str, DocNode] = {}
+        self._group2uids: Dict[str, Set[str]] = defaultdict(set)
+        self._docid2uids: Dict[str, Set[str]] = defaultdict(set)
+        self._group_doc_uids: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
         self._name2index = {
             'default': DefaultIndex(embed, self),
-            'file_node_map': _FileNodeIndex(),
         }
         self._activated_groups = set()
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
         for node in nodes:
+            group = node._group
+            doc_id = node.global_metadata.get(RAG_DOC_ID)
+            uid = node._uid
+            self._group2uids[group].add(uid)
+            self._docid2uids[doc_id].add(uid)
+            self._group_doc_uids[group][doc_id].add(uid)
             self._uid2node[node._uid] = node
-            self._group2uids[node._group].add(node._uid)
 
         for index in self._name2index.values():
             index.update(nodes)
@@ -51,14 +55,11 @@ class MapStore(StoreBase):
                      uids: Optional[List[str]] = None) -> None:
         if uids:
             need_delete = uids
+        elif doc_ids and group_name:
+            need_delete = [uid for doc_id in doc_ids
+                           for uid in self._group_doc_uids.get(group_name, {}).get(doc_id, ())]
         elif doc_ids:
-            doc_id_set = set(doc_ids)
-            if group_name:
-                candidates = self._group2uids.get(group_name, [])
-                need_delete = [uid for uid, node in candidates if node.global_metadata.get(RAG_DOC_ID) in doc_id_set]
-            else:
-                need_delete = [uid for uid, node in self._uid2node.items()
-                               if node.global_metadata.get(RAG_DOC_ID) in doc_id_set]
+            need_delete = [uid for doc_id in doc_ids for uid in self._docid2uids.get(doc_id, ())]
         else:
             return
 
@@ -67,21 +68,29 @@ class MapStore(StoreBase):
 
         for uid in need_delete:
             node = self._uid2node.pop(uid, None)
-            if node:
-                self._group2uids.get(node._group, set()).discard(uid)
+            if not node:
+                continue
+            group = node._group
+            doc_id = node.global_metadata.get(RAG_DOC_ID)
+            self._group2uids[group].discard(uid)
+            self._docid2uids[doc_id].discard(uid)
+            self._group_doc_index[group][doc_id].discard(uid)
 
     @override
     def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
                   doc_ids: Optional[Set] = None, **kwargs) -> List[DocNode]:
         if uids:
             return [self._uid2node[uid] for uid in uids]
+        elif doc_ids and group_name:
+            uids = [uid for doc_id in doc_ids
+                    for uid in self._group_doc_uids.get(group_name, {}).get(doc_id, ())]
         elif group_name:
             uids = self._group2uids.get(group_name, set())
-            if not doc_ids:
-                return [self._uid2node[uid] for uid in uids]
-            else:
-                return [self._uid2node[uid] for uid in uids
-                        if self._uid2node[uid].global_metadata.get(RAG_DOC_ID) in doc_ids]
+        elif doc_ids:
+            uids = [uid for doc_id in doc_ids for uid in self._docid2uids.get(doc_id, ())]
+        else:
+            return []
+        return [self._uid2node[uid] for uid in uids]
 
     @override
     def is_group_active(self, name: str) -> bool:
@@ -126,5 +135,5 @@ class MapStore(StoreBase):
         else:
             raise TypeError(f"Invalid type {type(group_names)} for group_names, expected list of str")
         for group_name in group_names:
-            uids = list(self._group2uids.get(group_name))
+            uids = list(self._group2uids.get(group_name, ()))
             self.remove_nodes(uids=uids)
