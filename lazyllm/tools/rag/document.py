@@ -265,18 +265,17 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self.activate_group(group)
 
     @DynamicDescriptor
-    def create_node_group(self, name: str = None, display_name: str = None,
-                          group_type: NodeGroupType = NodeGroupType.CHUNK, *, transform: Callable,
-                          parent: str = LAZY_ROOT_NAME, trans_node: bool = None,
-                          num_workers: int = 0, **kwargs) -> None:
+    def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
+                          trans_node: bool = None, num_workers: int = 0, display_name: str = None,
+                          group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
         if isinstance(self, type):
-            DocImpl.create_global_node_group(name, display_name=display_name, group_type=group_type,
-                                             transform=transform, parent=parent, trans_node=trans_node,
-                                             num_workers=num_workers, **kwargs)
+            DocImpl.create_global_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
+                                             num_workers=num_workers, display_name=display_name,
+                                             group_type=group_type, **kwargs)
         else:
-            self._impl.create_node_group(name, display_name=display_name, group_type=group_type,
-                                         transform=transform, parent=parent, trans_node=trans_node,
-                                         num_workers=num_workers, **kwargs)
+            self._impl.create_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
+                                         num_workers=num_workers, display_name=display_name, group_type=group_type,
+                                         **kwargs)
 
     @DynamicDescriptor
     def add_reader(self, pattern: str, func: Optional[Callable] = None):

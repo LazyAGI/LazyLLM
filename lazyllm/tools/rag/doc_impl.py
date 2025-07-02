@@ -240,10 +240,10 @@ class DocImpl:
         return store
 
     @staticmethod
-    def _create_node_group_impl(cls, group_name, name, display_name: str = None,
-                                group_type: NodeGroupType = NodeGroupType.CHUNK,
-                                transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
-                                *, trans_node: bool = None, num_workers: int = 0, **kwargs):
+    def _create_node_group_impl(cls, group_name, name, transform: Union[str, Callable] = None,
+                                parent: str = LAZY_ROOT_NAME, *, trans_node: bool = None,
+                                num_workers: int = 0, display_name: str = None,
+                                group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs):
         group_name, parent = str(group_name), str(parent)
         groups = getattr(cls, group_name)
 
@@ -277,28 +277,28 @@ class DocImpl:
                             group_type=group_type)
 
     @classmethod
-    def _create_builtin_node_group(cls, name, display_name: str = None, group_type: NodeGroupType = NodeGroupType.CHUNK,
-                                   transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
-                                   *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
-        DocImpl._create_node_group_impl(cls, '_builtin_node_groups', name=name, display_name=display_name,
-                                        group_type=group_type, transform=transform, parent=parent,
-                                        trans_node=trans_node, num_workers=num_workers, **kwargs)
+    def _create_builtin_node_group(cls, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
+                                   *, trans_node: bool = None, num_workers: int = 0, display_name: str = None,
+                                   group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
+        DocImpl._create_node_group_impl(cls, '_builtin_node_groups', name=name, transform=transform, parent=parent,
+                                        trans_node=trans_node, num_workers=num_workers, display_name=display_name,
+                                        group_type=group_type, **kwargs)
 
     @classmethod
-    def create_global_node_group(cls, name, display_name: str = None, group_type: NodeGroupType = NodeGroupType.CHUNK,
-                                 transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
-                                 *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
-        DocImpl._create_node_group_impl(cls, '_global_node_groups', name=name, display_name=display_name,
-                                        group_type=group_type, transform=transform, parent=parent,
-                                        trans_node=trans_node, num_workers=num_workers, **kwargs)
+    def create_global_node_group(cls, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME, *,
+                                 trans_node: bool = None, num_workers: int = 0, display_name: str = None,
+                                 group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
+        DocImpl._create_node_group_impl(cls, '_global_node_groups', name=name, transform=transform, parent=parent,
+                                        trans_node=trans_node, num_workers=num_workers, display_name=display_name,
+                                        group_type=group_type, **kwargs)
 
-    def create_node_group(self, name, display_name: str = None, group_type: NodeGroupType = NodeGroupType.CHUNK,
-                          transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
-                          *, trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
+    def create_node_group(self, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME, *,
+                          trans_node: bool = None, num_workers: int = 0, display_name: str = None,
+                          group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
         assert not self._lazy_init.flag, 'Cannot add node group after document started'
-        DocImpl._create_node_group_impl(self, 'node_groups', name=name, display_name=display_name,
-                                        group_type=group_type, transform=transform, parent=parent,
-                                        trans_node=trans_node, num_workers=num_workers, **kwargs)
+        DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
+                                        trans_node=trans_node, num_workers=num_workers, display_name=display_name,
+                                        group_type=group_type, **kwargs)
 
     @classmethod
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
