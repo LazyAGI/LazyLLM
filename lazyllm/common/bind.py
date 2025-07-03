@@ -50,11 +50,14 @@ class Placeholder(object):
     def __repr__(self):
         return f'placeholder._{self.idx}'
 
+    def __reduce__(self) -> tuple[Any, ...]:
+        return Placeholder.__new__, (Placeholder, self.idx)
+
 for i in range(10):
     vars()[f'_{i}'] = Placeholder(i)
 
 def _setattr(self, key, v):
-    raise RuntimeError('Cannot set attr for Placeholder')
+    raise RuntimeError(f'Cannot set attr for Placeholder, you want to set {key}={v}')
 setattr(Placeholder, '__setattr__', _setattr)
 
 

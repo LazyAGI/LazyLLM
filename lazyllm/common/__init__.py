@@ -6,11 +6,11 @@ from .common import once_flag, call_once, once_wrapper, singleton, reset_on_pick
 from .text import Color, colored_text
 from .option import Option, OptionIter
 from .threading import Thread, ThreadPoolExecutor
-from .multiprocessing import SpawnProcess, ForkProcess
+from .multiprocessing import SpawnProcess, ForkProcess, ProcessPoolExecutor
 from .logger import LOG
 from .deprecated import deprecated
 from .globals import globals, LazyLlmResponse, LazyLlmRequest, encode_request, decode_request
-from .bind import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9
+from .bind import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, Placeholder
 from .queue import FileSystemQueue
 from .utils import compile_func, obj2str, str2obj, str2bool, dump_obj, load_obj
 
@@ -63,6 +63,7 @@ __all__ = [
     # multiprocessing
     'ForkProcess',
     'SpawnProcess',
+    'ProcessPoolExecutor',
 
     # threading
     'Thread',
@@ -72,6 +73,7 @@ __all__ = [
     'bind', 'root',
     '_0', '_1', '_2', '_3', '_4',
     '_5', '_6', '_7', '_8', '_9',
+    'Placeholder',
 
     # call_once
     'once_flag',

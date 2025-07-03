@@ -17,7 +17,6 @@ import concurrent.futures
 from collections import deque
 import uuid
 from ..hook import LazyLLMHook
-import asyncio
 
 
 class _FuncWrap(object):
@@ -316,7 +315,9 @@ def save_pipeline_result(flag: bool = True):
 
 
 _barr = threading.local()
-def barrier(args): _barr.impl.wait(); return args
+def barrier(args):
+    if _barr.impl: _barr.impl.wait()
+    return args
 
 
 def _split_input(input: Union[Tuple, List], flag: Optional[Union[int, List]] = None):
@@ -336,10 +337,28 @@ def _split_input(input: Union[Tuple, List], flag: Optional[Union[int, List]] = N
     raise TypeError(f'invalid flag type {type(flag)} given')
 
 
+config.add('parallel_multiprocessing', bool, False, 'PARALLEL_MULTIPROCESSING')
+
+
 #        /> module11 -> ... -> module1N -> out1 \
 #  input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #        \> module31 -> ... -> module3N -> out3 /
 class Parallel(LazyLLMFlowsBase):
+
+    @staticmethod
+    def _worker(func, barrier, global_data, *args, **kw):
+        # When multiple threads or processes use the same pipeline, all threads share the same pipeline ID,
+        # making it impossible to distinguish between them based on the pipeline ID when saving intermediate
+        # results. To address this, we assign a new session ID to each thread to store the intermediate
+        # results of each pipeline. Note that when running in parallel, the execution order of modules is not
+        # guaranteed, so TODO(wangzhihong) streaming output via FileSystemQueue is not possible.
+        lazyllm.globals._init_sid()
+        lazyllm.globals._update(global_data)
+        lazyllm.globals['bind_args'] = lazyllm.globals['bind_args'].copy()
+        _barr.impl = barrier
+        r = func(*args, **kw)
+        lazyllm.globals.clear()
+        return r
 
     class PostProcessType(Enum):
         NONE = 0
@@ -350,21 +369,12 @@ class Parallel(LazyLLMFlowsBase):
         JOIN = 5
 
     def __init__(self, *args, _scatter: bool = False, _concurrent: Union[bool, int] = True,
-                 auto_capture: bool = False, **kw):
+                 multiprocessing: bool = False, auto_capture: bool = False, **kw):
         super().__init__(*args, **kw, auto_capture=auto_capture)
         self._post_process_type = Parallel.PostProcessType.NONE
         self._post_process_args = None
-
-        in_async_env = False
-        try:
-            in_async_env = asyncio.get_event_loop().is_running()
-        except RuntimeError:
-            pass
-        if in_async_env:
-            self._concurrent = 0
-        else:
-            self._concurrent = _concurrent if not isinstance(_concurrent, bool) else 5 if _concurrent else 0
-
+        self._multiprocessing = multiprocessing or config['parallel_multiprocessing']
+        self._concurrent = 0 if not _concurrent else 5 if isinstance(_concurrent, bool) else _concurrent
         self._scatter = _scatter
 
     @staticmethod
@@ -399,20 +409,27 @@ class Parallel(LazyLLMFlowsBase):
             inputs = __input
 
         if self._concurrent:
-            def impl(func, barrier, global_data, *args, **kw):
-                lazyllm.globals._init_sid()
-                lazyllm.globals._update(global_data)
-                lazyllm.globals['bind_args'] = lazyllm.globals['bind_args'].copy()
-                _barr.impl = barrier
-                r = func(*args, **kw)
-                lazyllm.globals.clear()
-                return r
+            if self._multiprocessing:
+                barrier, executor = None, lazyllm.ProcessPoolExecutor
+            else:
+                barrier, executor = threading.Barrier(len(items)), concurrent.futures.ThreadPoolExecutor
 
-            loop, barrier = asyncio.new_event_loop(), threading.Barrier(len(items))
-            with concurrent.futures.ThreadPoolExecutor(max_workers=self._concurrent) as executor:
-                return package(loop.run_until_complete(asyncio.gather(*[loop.run_in_executor(executor, partial(
-                    impl, self.invoke, barrier, lazyllm.globals._data, it, inp, **kw))
-                    for it, inp in zip(items, inputs)])))
+            with executor(max_workers=self._concurrent) as e:
+                futures = [e.submit(partial(self._worker, self.invoke, barrier, lazyllm.globals._data, it, inp, **kw))
+                           for it, inp in zip(items, inputs)]
+                if (not_done := concurrent.futures.wait(futures).not_done):
+                    error_msgs = []
+                    for future in not_done:
+                        if (exc := future.exception()) is not None:
+                            if (tb := getattr(future, "_traceback", None)):
+                                tb_str = ''.join(traceback.format_exception(type(exc), exc, tb))
+                            else:
+                                tb_str = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                            error_msgs.append(f"Future: {future}\n{tb_str}")
+                        else:
+                            error_msgs.append(f"Future: {future} not complete without exception。")
+                    raise RuntimeError('Parallel execute failed!\n' + '\n'.join(error_msgs))
+                return package([future.result() for future in futures])
         else:
             return package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
 
