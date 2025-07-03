@@ -172,9 +172,10 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         return ret
 
-register = lazyllm.Register(ModuleTool, ["apply"])
+register = lazyllm.Register(ModuleTool, ["apply"], default_group='tool')
 if "tool" not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group("tool")
+
 
 class ToolManager(ModuleBase):
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False):
