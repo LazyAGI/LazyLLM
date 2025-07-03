@@ -5,7 +5,7 @@ from .openaiEmbed import OpenAIEmbedding
 from .glmEmbed import GLMEmbedding, GLMReranking
 from .sensenovaEmbed import SenseNovaEmbedding
 from .qwenEmbed import QwenEmbedding, QwenReranking
-from .doubaoEmbed import DoubaoEmbedding
+from .doubaoEmbed import DoubaoEmbedding, DoubaoMultimodalEmbedding
 from .onlineEmbeddingModuleBase import OnlineEmbeddingModuleBase
 
 class __EmbedModuleMeta(type):
@@ -62,6 +62,11 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
         if kwargs.get("type", "embed") == "embed":
             if source is None:
                 source = OnlineEmbeddingModule._check_available_source(OnlineEmbeddingModule.EMBED_MODELS)
+            if source == "doubao":
+                if embed_model_name.startswith("doubao-embedding-vision"):
+                    return DoubaoMultimodalEmbedding(**params)
+                else:
+                    return DoubaoEmbedding(**params)
             return OnlineEmbeddingModule.EMBED_MODELS[source](**params)
         elif kwargs.get("type") == "rerank":
             if source is None:

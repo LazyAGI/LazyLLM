@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union
 import requests
 from ..module import ModuleBase
 
@@ -32,8 +32,8 @@ class OnlineEmbeddingModuleBase(ModuleBase):
             "Authorization": f"Bearer {self._api_key}"
         }
 
-    def forward(self, text: str, **kwargs) -> List[float]:
-        data = self._encapsulated_data(text, **kwargs)
+    def forward(self, input: Union[List, str], **kwargs) -> List[float]:
+        data = self._encapsulated_data(input, **kwargs)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         with requests.post(self._embed_url, json=data, headers=self._headers, proxies=proxies) as r:
             if r.status_code == 200:
@@ -41,9 +41,9 @@ class OnlineEmbeddingModuleBase(ModuleBase):
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
-    def _encapsulated_data(self, text: str, **kwargs) -> Dict[str, str]:
+    def _encapsulated_data(self, input: Union[List, str], **kwargs) -> Dict[str, str]:
         json_data = {
-            "input": text,
+            "input": input,
             "model": self._embed_model_name
         }
         if len(kwargs) > 0:

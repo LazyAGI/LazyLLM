@@ -4,7 +4,7 @@ import lazyllm
 import re
 from .bind import _MetaBind
 from ..configs import config
-from itertools import product
+from typing import Optional
 
 # Special Dict for lazy programmer. Suppose we have a LazyDict as follows：
 #    >>> ld = LazyDict(name='ld', ALd=int)
@@ -22,11 +22,12 @@ from itertools import product
 class LazyDict(dict):
     def __init__(self, name='', base=None, *args, **kw):
         super(__class__, self).__init__(*args, **kw)
-        self._default = None
+        self._default: Optional[str] = None
         self.name = name.capitalize()
         self.base = base
 
     def __setitem__(self, key, value):
+        key = key.lower()
         assert key != 'default', 'LazyDict do not support key: default'
         if '.' in key:
             grp, key = key.rsplit('.', 1)
@@ -34,32 +35,29 @@ class LazyDict(dict):
         return super().__setitem__(key, value)
 
     def __getitem__(self, key):
+        key = key.lower()
         if '.' in key:
             grp, key = key.split('.', 1)
             return self[grp][key]
         return super().__getitem__(key)
-    
-    def generate_keys(self, key: str):
-        key_variants = [key, key.upper(), key[0].upper() + key[1:], key.capitalize()]
-        name_variants = ["", self.name, self.name.lower()]
-        return [k + n for k, n in product(key_variants, name_variants)]
 
     # default -> self.default
     # key -> Key, keyName, KeyName
     # if self.name ends with 's' or 'es', ignor it
-    def _match(self, key):
-        key = self._default if key == 'default' else key
-        keys = self.generate_keys(key)
-        if key.endswith(self.name.lower()):
-            keys += self.generate_keys(key[:-len(self.name)])
+    def _match(self, key: str):
+        key = key.lower()
+        if key == 'default':
+            assert self._default or len(self) > 0, 'No default key set'
+            key = self._default or list(self.keys())[0]
+        keys = [key, f'{key}{self.name}', f'{key}{self.name.lower()}']
         if self.name.endswith('s'):
             n = 2 if self.name.endswith('es') else 1
-            keys.extend([f'{key}{self.name[:-n]}', f'{key[0].upper()}{key[1:]}{self.name[:-n]}'])
+            keys.extend([f'{key}{self.name[:-n]}', f'{key}{self.name[:-n].lower()}'])
 
         for k in set(keys):
             if k in self.keys():
                 return k
-        raise AttributeError(f'Attr {key} not found in {self}')
+        raise AttributeError(f'Attr {key} not found in `{self.name}: {self}`, conditates: {keys}')
 
     def __getattr__(self, key):
         return self[self._match(key)]
@@ -69,11 +67,11 @@ class LazyDict(dict):
 
     def __call__(self, *args, **kwargs):
         assert self._default is not None or len(self.keys()) == 1
-        return self.default if self._default else self[list(self.keys())[0]](*args, **kwargs)
+        return (self.default if self._default else self[list(self.keys())[0]])(*args, **kwargs)
 
-    def set_default(self, key):
+    def set_default(self, key: str):
         assert isinstance(key, str), 'default key must be str'
-        self._default = key
+        self._default = key.lower()
 
 
 group_template = '''\
@@ -129,13 +127,14 @@ def bind_to_instance(func):
     return wrapper
 
 class Register(object):
-    def __init__(self, base, fnames, template=reg_template):
+    def __init__(self, base, fnames, template: str = reg_template, default_group: Optional[str] = None):
         self.basecls = base
         self.fnames = [fnames] if isinstance(fnames, str) else fnames
         self.template = template
+        self._default_group = default_group
         assert len(self.fnames) > 0, 'At least one function should be given for overwrite.'
 
-    def __call__(self, cls, *, rewrite_func=None):
+    def _wrap(self, cls, *, rewrite_func=None):
         cls = cls.__name__ if isinstance(cls, type) else cls
         cls = re.match('(LazyLLM)(.*)(Base)', cls.split('.')[-1])[2] \
             if (cls.startswith('LazyLLM') and cls.endswith('Base')) else cls
@@ -165,6 +164,12 @@ class Register(object):
             setattr(f, rewrite_func, bind_to_instance(func))
             return func
         return impl
+
+    def __call__(self, f, *, rewrite_func=None):
+        if not isinstance(f, (str, type)):
+            assert self._default_group, 'default_group is not set, please set it by your register decorator'
+            return self._wrap(self._default_group)(f)
+        return self._wrap(f, rewrite_func=rewrite_func)
 
     def __getattr__(self, name):
         if name not in self.fnames:
