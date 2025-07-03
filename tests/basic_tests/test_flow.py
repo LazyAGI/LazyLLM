@@ -14,6 +14,7 @@ def t1(x): return 2 * x
 def t2(x): return 3 * x
 def t3(x): return x
 
+
 class TestFlow(object):
 
     def test_pipeline(self):
@@ -109,6 +110,7 @@ class TestFlow(object):
 
         assert lp(1) == 11
 
+    @pytest.mark.skipif(lazyllm.config['parallel_multiprocessing'], reason='barrier is not allowed in multiprocessing')
     def test_barrier(self):
         res = []
 
