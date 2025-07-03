@@ -35,7 +35,7 @@ class TablesInfo(pydantic.BaseModel):
     tables: list[TableInfo]
 
 class SqlManager(DBManager):
-    DB_TYPE_SUPPORTED = set(["postgresql", "mysql", "mssql", "sqlite"])
+    DB_TYPE_SUPPORTED = set(["postgresql", "mysql", "mssql", "sqlite", "mysql+pymysql"])
     DB_DRIVER_MAP = {"mysql": "pymysql"}
     PYTYPE_TO_SQL_MAP = {
         "integer": sqlalchemy.Integer,

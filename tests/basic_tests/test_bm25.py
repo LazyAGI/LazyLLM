@@ -60,7 +60,3 @@ class TestBM25Chinese(unittest.TestCase):
         self.assertIn(self.nodes[0], [result[0] for result in results])
         self.assertIn(self.nodes[2], [result[0] for result in results])
         self.assertIn(self.nodes[3], [result[0] for result in results])
-
-
-if __name__ == "__main__":
-    unittest.main()

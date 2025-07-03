@@ -32,6 +32,7 @@ olefile
 openpyxl
 python-pptx
 tenacity
+beautifulsoup4
 appdirs
 loralib
 flake8>=7.0.0
@@ -83,7 +84,8 @@ openai-whisper
 qwen-vl-utils
 accelerate==1.6.0
 lmdeploy==0.8.0
+boto3
+botocore
 ftfy==6.3.1
 imageio==2.37.0
 imageio-ffmpeg==0.6.0
-

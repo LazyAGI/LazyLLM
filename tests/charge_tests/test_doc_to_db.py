@@ -54,6 +54,3 @@ class DocToDbTester(unittest.TestCase):
         str_result = sql_manager.execute_query(f"select * from {documents._doc_to_db_processor.doc_table_name}")
         print(f"str_result: {str_result}")
         assert "reading_report_p1" in str_result
-
-if __name__ == "__main__":
-    unittest.main()

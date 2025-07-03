@@ -15,6 +15,7 @@ from .sql_call import SqlCall
 from .tools.http_tool import HttpTool
 from .mcp.client import MCPClient
 from .actors import ParameterExtractor, QustionRewrite, CodeGenerator
+from .common import StreamCallHelper
 
 __all__ = [
     "Document",
@@ -42,4 +43,5 @@ __all__ = [
     "ParameterExtractor",
     "QustionRewrite",
     "CodeGenerator",
+    "StreamCallHelper",
 ]

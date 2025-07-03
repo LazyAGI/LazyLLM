@@ -1,20 +1,28 @@
 import copy
+from urllib import parse
+from packaging import version
 from collections import defaultdict
 from typing import Dict, List, Optional, Union, Callable, Set
-from lazyllm.thirdparty import pymilvus
-from .doc_node import DocNode
-from .map_store import MapStore
-from .utils import parallel_do_embedding
-from .index_base import IndexBase
+
 from .store_base import StoreBase
-from .global_metadata import (GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_FILE_NAME,
-                              RAG_DOC_FILE_TYPE, RAG_DOC_FILE_SIZE, RAG_DOC_CREATION_DATE,
-                              RAG_DOC_LAST_MODIFIED_DATE, RAG_DOC_LAST_ACCESSED_DATE)
-from .data_type import DataType
+from .map_store import MapStore
+from ..doc_node import DocNode
+from ..utils import parallel_do_embedding
+from ..index_base import IndexBase
+from ..global_metadata import (
+    GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_FILE_NAME,
+    RAG_DOC_FILE_TYPE, RAG_DOC_FILE_SIZE, RAG_DOC_CREATION_DATE,
+    RAG_DOC_LAST_MODIFIED_DATE, RAG_DOC_LAST_ACCESSED_DATE
+)
+from ..data_type import DataType
+
+from lazyllm.thirdparty import pymilvus
 from lazyllm.common import override, obj2str, str2obj
+from lazyllm import LOG
 
 MILVUS_UPSERT_BATCH_SIZE = 500
 MILVUS_PAGINATION_OFFSET = 1000
+
 
 class MilvusStore(StoreBase):
     # we define these variables as members so that pymilvus is not imported until MilvusStore is instantiated.
@@ -52,7 +60,7 @@ class MilvusStore(StoreBase):
             RAG_DOC_FILE_NAME: GlobalMetadataDesc(data_type=DataType.VARCHAR,
                                                   default_value=' ', max_size=128),
             RAG_DOC_FILE_TYPE: GlobalMetadataDesc(data_type=DataType.VARCHAR,
-                                                  default_value=' ', max_size=64),
+                                                  default_value=' ', max_size=128),
             RAG_DOC_FILE_SIZE: GlobalMetadataDesc(data_type=DataType.INT32,
                                                   default_value=0),
             RAG_DOC_CREATION_DATE: GlobalMetadataDesc(data_type=DataType.VARCHAR,
@@ -74,12 +82,37 @@ class MilvusStore(StoreBase):
     def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable], # noqa C901
                  embed_dims: Dict[str, int], embed_datatypes: Dict[str, DataType],
                  global_metadata_desc: Dict[str, GlobalMetadataDesc],
-                 uri: str, index_kwargs: Optional[Union[Dict, List]] = None):
+                 uri: str, index_kwargs: Optional[Union[Dict, List]] = None, db_name: Optional[str] = 'lazyllm'):
         self._def_constants()
 
         self._group_embed_keys = group_embed_keys
         self._embed = embed
-        self._client = pymilvus.MilvusClient(uri=uri)
+        self._uri = uri
+        self._db_name = db_name
+        self._client = pymilvus.MilvusClient(uri=self._uri)
+
+        if uri and parse.urlparse(uri).scheme.lower() not in ["unix", "http", "https", "tcp", "grpc"]:
+            self._type = 'local'
+        else:
+            self._type = 'remote'
+            try:
+                try:
+                    default_embedding_keys = next(
+                        keys for keys in self._group_embed_keys.values() if keys
+                    )
+                except StopIteration:
+                    raise ValueError('embedding keys are required for milvus standalone')
+                for group, keys in self._group_embed_keys.items():
+                    if not keys:
+                        self._group_embed_keys[group] = default_embedding_keys
+
+                if self._db_name:
+                    existing_dbs = self._client.list_databases()
+                    if self._db_name not in existing_dbs:
+                        self._client.create_database(self._db_name)
+                    self._client.using_database(self._db_name)
+            except Exception as e:
+                LOG.error(f'milvus-standalone database error {e}')
 
         if embed_dims is None:
             embed_dims = {}
@@ -134,7 +167,7 @@ class MilvusStore(StoreBase):
             if self._global_metadata_desc:
                 for key, desc in self._global_metadata_desc.items():
                     if desc.data_type == DataType.ARRAY:
-                        if not desc.element_type:
+                        if desc.element_type is None:
                             raise ValueError(f'Milvus field [{key}]: `element_type` is required when '
                                              '`data_type` is ARRAY.')
                         field_args = {
@@ -154,9 +187,17 @@ class MilvusStore(StoreBase):
 
             schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_field=False)
             self._client.create_collection(collection_name=group, schema=schema, index_params=index_params)
-        valid_group_names = set(self._client.list_collections()) | set(group_embed_keys.keys())
-        self._map_store = MapStore(list(valid_group_names), embed=embed)
+
+        self._map_store = MapStore(node_groups=list(group_embed_keys.keys()), embed=embed)
         self._load_all_nodes_to(self._map_store)
+
+    def _check_connection(self):
+        if not pymilvus.connections.has_connection(alias=self._client._using):
+            LOG.info("Milvus Store: try to reconnect...")
+            if self._type == 'local':
+                pymilvus.connections.connect(alias=self._client._using, uri=self._uri)
+            else:
+                pymilvus.connections.connect(alias=self._client._using, db_name=self._db_name, uri=self._uri)
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
@@ -165,28 +206,38 @@ class MilvusStore(StoreBase):
         for node in nodes:
             data = self._serialize_node_partial(node)
             group_embed_dict[node._group].append(data)
+        self._check_connection()
         for group_name, data in group_embed_dict.items():
             for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
                 self._client.upsert(collection_name=group_name, data=data[i:i + MILVUS_UPSERT_BATCH_SIZE])
         self._map_store.update_nodes(nodes)
 
     @override
-    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
-        self._map_store.update_doc_meta(filepath, metadata)
+    def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
+        self._map_store.update_doc_meta(doc_id=doc_id, metadata=metadata)
+        for group in self.activated_groups():
+            nodes = self.get_nodes(group_name=group, doc_ids=[doc_id])
+            self.update_nodes(nodes)
 
     @override
-    def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
-        if uids:
-            self._client.delete(collection_name=group_name,
-                                filter=f'{self._primary_key} in {uids}')
-        else:
-            self._client.drop_collection(collection_name=group_name)
-
-        self._map_store.remove_nodes(group_name, uids)
+    def remove_nodes(self, doc_ids: List[str] = None, group_name: Optional[str] = None,
+                     uids: Optional[List[str]] = None) -> None:
+        self._check_connection()
+        nodes = self._map_store.get_nodes(group_name=group_name, doc_ids=doc_ids, uids=uids)
+        group2uids = defaultdict(list)
+        for node in nodes:
+            group2uids[node._group].append(node._uid)
+        for group, uids in group2uids.items():
+            if self._client.has_collection(group):
+                self._client.delete(collection_name=group,
+                                    filter=f'{self._primary_key} in {uids}')
+                self._map_store.remove_nodes(doc_ids=doc_ids, uids=uids)
+        return
 
     @override
-    def get_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> List[DocNode]:
-        return self._map_store.get_nodes(group_name, uids)
+    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
+                  doc_ids: Optional[Set] = None, **kwargs) -> List[DocNode]:
+        return self._map_store.get_nodes(group_name, uids, doc_ids, **kwargs)
 
     @override
     def activate_group(self, group_names: Union[str, List[str]]) -> bool:
@@ -215,15 +266,28 @@ class MilvusStore(StoreBase):
         return self._map_store.get_index(type)
 
     @override
-    def query(self,
-              query: str,
-              group_name: str,
-              similarity_name: Optional[str] = None,
+    def clear_cache(self, group_names: Optional[List[str]] = None):
+        if group_names is None:
+            for group_name in self.activated_groups():
+                if self._client.has_collection(group_name):
+                    self._client.drop_collection(collection_name=group_name)
+            self._map_store.clear_cache()
+        elif isinstance(group_names, str):
+            group_names = [group_names]
+        elif isinstance(group_names, (tuple, list, set)):
+            group_names = list(group_names)
+        else:
+            raise TypeError(f"Invalid type {type(group_names)} for group_names, expected list of str")
+        for group_name in group_names:
+            if self._client.has_collection(group_name):
+                self._client.drop_collection(collection_name=group_name)
+        self._map_store.clear_cache(group_names)
+
+    @override
+    def query(self, query: str, group_name: str, similarity_name: Optional[str] = None,
               similarity_cut_off: Optional[Union[float, Dict[str, float]]] = float('-inf'),
-              topk: int = 10,
-              embed_keys: Optional[List[str]] = None,
-              filters: Optional[Dict[str, Union[List, set]]] = None,
-              **kwargs) -> List[DocNode]:
+              topk: int = 10, embed_keys: Optional[List[str]] = None,
+              filters: Optional[Dict[str, Union[List, set]]] = None, **kwargs) -> List[DocNode]:
         if similarity_name is not None:
             raise ValueError('`similarity` MUST be None when Milvus backend is used.')
 
@@ -233,12 +297,14 @@ class MilvusStore(StoreBase):
         filter_str = self._construct_filter_expr(filters) if filters else ""
 
         uid_score = {}
+        self._check_connection()
         for key in embed_keys:
             embed_func = self._embed.get(key)
             query_embedding = embed_func(query)
-            results = self._client.search(collection_name=group_name, data=[query_embedding],
-                                          limit=topk, anns_field=self._gen_embedding_key(key),
-                                          filter=filter_str)
+            results = self._client.search(
+                collection_name=group_name, data=[query_embedding], limit=topk,
+                anns_field=self._gen_embedding_key(key), filter=filter_str
+            )
             # we have only one `data` for search() so there is only one result in `results`
             if len(results) != 1:
                 raise ValueError(f'number of results [{len(results)}] != expected [1]')
@@ -250,7 +316,7 @@ class MilvusStore(StoreBase):
                 uid_score[result['id']] = result['distance'] if result['id'] not in uid_score \
                     else max(uid_score[result['id']], result['distance'])
         uids = list(uid_score.keys())
-        nodes = self._map_store.get_nodes(group_name, uids)
+        nodes = self._map_store.get_nodes(uids=uids)
         return [node.with_sim_score(uid_score[node._uid]) for node in nodes]
 
     # ----- internal helper functions ----- #
@@ -263,26 +329,35 @@ class MilvusStore(StoreBase):
 
     def _load_all_nodes_to(self, store: StoreBase) -> None:
         uid2node = {}
-        for group_name in self._client.list_collections():
-            collection_desc = self._client.describe_collection(collection_name=group_name)
-            field_names = [field.get("name") for field in collection_desc.get('fields', [])]
-
-            iterator = self._client.query_iterator(
-                collection_name=group_name,
-                batch_size=MILVUS_PAGINATION_OFFSET,
-                filter=f'{self._primary_key} != ""',
-                output_fields=field_names
+        current_version = version.parse(pymilvus.__version__)
+        use_iterator = current_version >= version.parse("2.4.11")
+        LOG.info(f'the current pymilvus version is {pymilvus.__version__}, use_iterator is {use_iterator}')
+        if not use_iterator:
+            LOG.warning(
+                'pymilvus version is lower than 2.4.11, '
+                'we recommend to upgrade pymilvus to 2.4.11 to support larger data size'
             )
 
-            results = []
-            while True:
-                result = iterator.next()
-
-                if not result:
-                    iterator.close()
-                    break
-                results += result
-
+        for group_name in self._client.list_collections():
+            if use_iterator:
+                collection_desc = self._client.describe_collection(collection_name=group_name)
+                field_names = [field.get("name") for field in collection_desc.get('fields', [])]
+                iterator = self._client.query_iterator(
+                    collection_name=group_name,
+                    batch_size=MILVUS_PAGINATION_OFFSET,
+                    filter=f'{self._primary_key} != ""',
+                    output_fields=field_names
+                )
+                results = []
+                while True:
+                    result = iterator.next()
+                    if not result:
+                        iterator.close()
+                        break
+                    results += result
+            else:
+                results = self._client.query(collection_name=group_name,
+                                filter=f'{self._primary_key} != ""')    # noqa: E128
             for result in results:
                 node = self._deserialize_node_partial(result)
                 node._group = group_name
@@ -293,6 +368,8 @@ class MilvusStore(StoreBase):
             if node.parent:
                 parent_uid = node.parent
                 parent_node = uid2node.get(parent_uid)
+                if not parent_node:
+                    raise ValueError(f'cannot find parent node [{parent_uid}]')
                 node.parent = parent_node
                 parent_node.children[node._group].append(node)
 
@@ -355,6 +432,5 @@ class MilvusStore(StoreBase):
                 doc.embedding[k[len(self._embedding_key_prefix):]] = v
             elif k.startswith(self._global_metadata_key_prefix):
                 if doc.is_root_node:
-                    doc._global_metadata[k[len(self._global_metadata_key_prefix):]] = v
-
+                    doc.global_metadata.update({k[len(self._global_metadata_key_prefix):]: v})
         return doc

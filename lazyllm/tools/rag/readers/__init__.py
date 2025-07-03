@@ -10,6 +10,7 @@ from .markdownReader import MarkdownReader
 from .mboxreader import MboxReader
 from .pandasReader import PandasCSVReader, PandasExcelReader
 from .videoAudioReader import VideoAudioReader
+from .magic_pdf_reader import MagicPDFReader
 
 __all__ = [
     "ReaderBase",
@@ -27,4 +28,5 @@ __all__ = [
     "PandasCSVReader",
     "PandasExcelReader",
     "VideoAudioReader",
+    "MagicPDFReader",
 ]

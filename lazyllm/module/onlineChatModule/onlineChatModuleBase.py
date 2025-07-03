@@ -5,7 +5,7 @@ import os
 import requests
 import re
 import random
-from typing import Tuple, List, Dict, Union, Any, Optional
+from typing import Tuple, List, Dict, Union, Any, Optional, TypedDict
 from urllib.parse import urljoin
 import time
 
@@ -17,6 +17,14 @@ from lazyllm.components.formatter import (FormatterBase, EmptyFormatter,
 from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from lazyllm.components.utils.file_operate import delete_old_files, image_to_base64
 from ..module import ModuleBase, Pipeline
+
+
+class StaticParams(TypedDict, total=False):
+    temperature: float
+    top_p: float
+    top_k: int
+    max_tokens: int
+    frequency_penalty: float  # Note some online api use "repetition_penalty"
 
 
 class OnlineChatModuleBase(ModuleBase):
@@ -31,10 +39,13 @@ class OnlineChatModuleBase(ModuleBase):
                  model_name: str,
                  stream: Union[bool, Dict[str, str]],
                  return_trace: bool = False,
+                 vlm_models: List[str] = None,
+                 skip_auth: bool = False,
+                 static_params: StaticParams = {},
                  **kwargs):
         super().__init__(return_trace=return_trace)
         self._model_series = model_series
-        if not api_key:
+        if skip_auth and not api_key:
             raise ValueError("api_key is required")
         self._api_key = api_key
         self._base_url = base_url
@@ -50,6 +61,7 @@ class OnlineChatModuleBase(ModuleBase):
         self._field_extractor()
         self._model_optional_params = {}
         self._vlm_force_format_input_with_files = False
+        self._static_params = static_params
 
     @property
     def series(self):
@@ -67,6 +79,16 @@ class OnlineChatModuleBase(ModuleBase):
     def stream(self, v: Union[bool, Dict[str, str]]):
         self._stream = v
 
+    @property
+    def static_params(self) -> StaticParams:
+        return self._static_params
+
+    @static_params.setter
+    def static_params(self, value: StaticParams):
+        if not isinstance(value, dict):
+            raise TypeError("static_params must be a dict (TypedDict)")
+        self._static_params = value
+
     def prompt(self, prompt=None, history: List[List[str]] = None):
         if prompt is None:
             self._prompt = ChatPrompter(history=history)
@@ -81,13 +103,15 @@ class OnlineChatModuleBase(ModuleBase):
         return self
 
     def share(self, prompt: PrompterBase = None, format: FormatterBase = None, stream: Optional[bool] = None,
-              history: List[List[str]] = None):
+              history: List[List[str]] = None, copy_static_params: bool = False):
         new = copy.copy(self)
         new._hooks = set()
         new._set_mid()
         if prompt is not None: new.prompt(prompt, history=history)
         if format is not None: new.formatter(format)
         if stream is not None: new.stream = stream
+        if copy_static_params:
+            new._static_params = copy.deepcopy(self._static_params)
         return new
 
     def _get_system_prompt(self):
@@ -96,7 +120,7 @@ class OnlineChatModuleBase(ModuleBase):
     def _set_headers(self):
         self._headers = {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + self._api_key
+            **({'Authorization': 'Bearer ' + self._api_key} if self._api_key else {})
         }
 
     def _set_chat_url(self):
@@ -104,7 +128,7 @@ class OnlineChatModuleBase(ModuleBase):
 
     def _get_models_list(self):
         url = urljoin(self._base_url, 'models')
-        headers = {'Authorization': 'Bearer ' + self._api_key}
+        headers = {'Authorization': 'Bearer ' + self._api_key} if self._api_key else None
         with requests.get(url, headers=headers) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
@@ -155,14 +179,18 @@ class OnlineChatModuleBase(ModuleBase):
             if stream_output:
                 color = stream_output.get('color') if isinstance(stream_output, dict) else None
                 for item in message.get("choices", []):
-                    delta = item.get("delta", {})
+                    delta = {}
+                    if "message" in item:
+                        delta = item["message"]
+                    elif "delta" in item:
+                        delta = item["delta"]
                     reasoning_content = delta.get("reasoning_content", '')
                     if reasoning_content:
                         content = reasoning_content
                         FileSystemQueue().get_instance("think").enqueue(lazyllm.colored_text(content, color))
                     else:
                         content = delta.get("content", '')
-                        if content and "tool_calls" not in delta:
+                        if content and ("tool_calls" not in delta or not delta['tool_calls']):
                             FileSystemQueue().enqueue(lazyllm.colored_text(content, color))
             lazyllm.LOG.debug(f"message: {message}")
             return message
@@ -173,7 +201,7 @@ class OnlineChatModuleBase(ModuleBase):
         if "choices" in data and isinstance(data["choices"], list):
             item = data['choices'][0]
             outputs = item.get("message", item.get("delta", {}))
-            if 'reasoning_content' in outputs and 'content' in outputs:
+            if 'reasoning_content' in outputs and outputs["reasoning_content"] and 'content' in outputs:
                 outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
             return outputs
         else:
@@ -281,6 +309,8 @@ class OnlineChatModuleBase(ModuleBase):
 
         data["model"] = self._model_name
         data["stream"] = bool(stream_output)
+        data.update(self._static_params)
+
         if len(kw) > 0:
             data.update(kw)
 
@@ -348,7 +378,7 @@ class OnlineChatModuleBase(ModuleBase):
     def _query_finetuned_jobs(self) -> dict:
         raise NotImplementedError(f"{self._model_series} not implemented _query_finetuned_jobs method in subclass")
 
-    def _get_finetuned_model_names(self) -> (List[str], List[str]):
+    def _get_finetuned_model_names(self) -> Tuple[List[str], List[str]]:
         raise NotImplementedError(f"{self._model_series} not implemented _get_finetuned_model_names method in subclass")
 
     def set_train_tasks(self, train_file, **kw):
