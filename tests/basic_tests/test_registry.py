@@ -5,6 +5,7 @@ from lazyllm.tools import fc_register
 
 def orig_func(self):
     pass
+
 class TestRegistry:
 
     def test_compoments_register(self):
