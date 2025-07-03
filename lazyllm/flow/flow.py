@@ -346,7 +346,7 @@ config.add('parallel_multiprocessing', bool, False, 'PARALLEL_MULTIPROCESSING')
 class Parallel(LazyLLMFlowsBase):
 
     @staticmethod
-    def impl(func, barrier, global_data, *args, **kw):
+    def _worker(func, barrier, global_data, *args, **kw):
         # When multiple threads or processes use the same pipeline, all threads share the same pipeline ID,
         # making it impossible to distinguish between them based on the pipeline ID when saving intermediate
         # results. To address this, we assign a new session ID to each thread to store the intermediate
@@ -415,7 +415,7 @@ class Parallel(LazyLLMFlowsBase):
                 barrier, executor = threading.Barrier(len(items)), concurrent.futures.ThreadPoolExecutor
 
             with executor(max_workers=self._concurrent) as e:
-                futures = [e.submit(partial(Parallel.impl, self.invoke, barrier, lazyllm.globals._data, it, inp, **kw))
+                futures = [e.submit(partial(self._worker, self.invoke, barrier, lazyllm.globals._data, it, inp, **kw))
                            for it, inp in zip(items, inputs)]
                 if (not_done := concurrent.futures.wait(futures).not_done):
                     error_msgs = []
