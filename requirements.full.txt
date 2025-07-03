@@ -32,6 +32,7 @@ olefile
 openpyxl
 python-pptx
 tenacity
+beautifulsoup4
 appdirs
 loralib
 flake8>=7.0.0

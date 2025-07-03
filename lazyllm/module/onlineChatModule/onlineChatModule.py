@@ -52,6 +52,11 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
 
         params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace, **kwargs)
 
+        if kwargs.get("skip_auth", False):
+            source = source or "openai"
+            if not base_url:
+                raise KeyError("base_url must be set for local serving.")
+
         if source is None:
             if "api_key" in kwargs and kwargs["api_key"]:
                 raise ValueError("No source is given but an api_key is provided.")
