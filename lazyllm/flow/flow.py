@@ -429,7 +429,7 @@ class Parallel(LazyLLMFlowsBase):
                         else:
                             error_msgs.append(f"Future: {future} not complete without exception。")
                     raise RuntimeError('Parallel execute failed!\n' + '\n'.join(error_msgs))
-                return package(*[future.result() for future in futures])
+                return package([future.result() for future in futures])
         else:
             return package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
 

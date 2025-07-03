@@ -43,6 +43,12 @@ class TestFlow(object):
         fl = parallel(add_one, add_one)(1)
         assert fl == (2, 2)
 
+    def test_parallel_single_output(self):
+        p1 = parallel(add_one)
+        p2 = parallel(add_one)
+        p = parallel(p1, p2).sum
+        assert p(1) == (2, 2)  # not 4, because p1 & p2 returns [2]
+
     def test_parallel_sequential(self):
         fl = parallel.sequential(add_one, add_one)(1)
         assert fl == (2, 2)
