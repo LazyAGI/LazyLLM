@@ -676,6 +676,7 @@ class VQA(lazyllm.Module):
     def __init__(self, base_model: lazyllm.TrainableModule, file_resource_id: Optional[str],
                  prompt: Optional[str] = None):
         super().__init__()
+        if isinstance(base_model, VQA): base_model = base_model._vqa
         self.vqa = self._vqa = base_model.share()
         if prompt: self._vqa.prompt(prompt=prompt)
         self._file_resource_id = file_resource_id

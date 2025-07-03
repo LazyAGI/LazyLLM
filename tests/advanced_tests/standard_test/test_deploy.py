@@ -9,7 +9,7 @@ import random
 from gradio_client import Client
 
 import lazyllm
-from lazyllm import deploy, globals
+from lazyllm import deploy, globals, config
 from lazyllm.launcher import cleanup
 from lazyllm.components.formatter import encode_query_with_filepaths, decode_query_with_filepaths
 from lazyllm.components.utils.file_operate import image_to_base64
@@ -180,8 +180,10 @@ class TestDeploy(object):
         audio_formats = [
             '.wav', '.flac', '.m4a', '.aac', '.ogg', '.wma'
         ]
+        dir = os.path.join(config['home'], 'temp')
+        os.makedirs(dir, exist_ok=True)
         for format_ext in audio_formats:
-            with tempfile.NamedTemporaryFile(suffix=format_ext, delete=False) as tmp_file:
+            with tempfile.NamedTemporaryFile(suffix=format_ext, delete=False, dir=dir) as tmp_file:
                 temp_audio_path = tmp_file.name
 
                 cmd = [
