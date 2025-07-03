@@ -1,15 +1,18 @@
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Callable, Set, Union
-from lazyllm.thirdparty import chromadb
-from lazyllm import LOG
-from lazyllm.common import override, obj2str, str2obj
+
 from .store_base import StoreBase, LAZY_ROOT_NAME
-from .doc_node import DocNode
-from .index_base import IndexBase
-from .utils import _FileNodeIndex, sparse2normal
-from .default_index import DefaultIndex
 from .map_store import MapStore
 
-# ---------------------------------------------------------------------------- #
+from ..doc_node import DocNode
+from ..index_base import IndexBase
+from ..default_index import DefaultIndex
+from ..utils import sparse2normal
+
+from lazyllm import LOG
+from lazyllm.common import override, obj2str, str2obj
+from lazyllm.thirdparty import chromadb
+
 
 class ChromadbStore(StoreBase):
     def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable],
@@ -27,7 +30,6 @@ class ChromadbStore(StoreBase):
 
         self._name2index = {
             'default': DefaultIndex(embed, self._map_store),
-            'file_node_map': _FileNodeIndex(),
         }
 
     @override
@@ -36,20 +38,27 @@ class ChromadbStore(StoreBase):
         self._save_nodes(nodes)
 
     @override
-    def remove_nodes(self, group_name: str, uids: Optional[List[str]] = None) -> None:
-        if uids:
-            self._delete_group_nodes(group_name, uids)
-        else:
-            self._db_client.delete_collection(name=group_name)
-        return self._map_store.remove_nodes(group_name, uids)
+    def remove_nodes(self, doc_ids: List[str], group_name: Optional[str] = None,
+                     uids: Optional[List[str]] = None) -> None:
+        nodes = self._map_store.get_nodes(group_name=group_name, doc_ids=doc_ids, uids=uids)
+        group2uids = defaultdict(list)
+        for node in nodes:
+            group2uids[node._group].append(node._uid)
+        for group, uids in group2uids.items():
+            self._delete_group_nodes(group, uids)
+            self._map_store.remove_nodes(doc_ids=doc_ids, uids=uids)
 
     @override
-    def update_doc_meta(self, filepath: str, metadata: dict) -> None:
-        self._map_store.update_doc_meta(filepath, metadata)
+    def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
+        self._map_store.update_doc_meta(doc_id=doc_id, metadata=metadata)
+        for group in self.activated_groups():
+            nodes = self.get_nodes(group_name=group, doc_ids=[doc_id])
+            self._save_nodes(nodes)
 
     @override
-    def get_nodes(self, group_name: str, uids: List[str] = None) -> List[DocNode]:
-        return self._map_store.get_nodes(group_name, uids)
+    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
+                  doc_ids: Optional[Set] = None, **kwargs) -> List[DocNode]:
+        return self._map_store.get_nodes(group_name, uids, doc_ids, **kwargs)
 
     @override
     def activate_group(self, group_names: Union[str, List[str]]) -> bool:
@@ -80,6 +89,23 @@ class ChromadbStore(StoreBase):
         if type is None:
             type = 'default'
         return self._name2index.get(type)
+
+    @override
+    def clear_cache(self, group_names: Optional[List[str]] = None):
+        if group_names is None:
+            for group_name in self.activated_groups():
+                self._db_client.delete_collection(name=group_name)
+            self._collections.clear()
+            self._map_store.clear_cache()
+        elif isinstance(group_names, str):
+            group_names = [group_names]
+        elif isinstance(group_names, (tuple, list, set)):
+            group_names = list(group_names)
+        else:
+            raise TypeError(f"Invalid type {type(group_names)} for group_names, expected list of str")
+        for group_name in group_names:
+            self._db_client.delete_collection(name=group_name)
+        self._map_store.clear_cache(group_names)
 
     def _load_store(self, embed_dims: Dict[str, int]) -> None:
         if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:

@@ -179,14 +179,18 @@ class OnlineChatModuleBase(ModuleBase):
             if stream_output:
                 color = stream_output.get('color') if isinstance(stream_output, dict) else None
                 for item in message.get("choices", []):
-                    delta = item.get("delta", {})
+                    delta = {}
+                    if "message" in item:
+                        delta = item["message"]
+                    elif "delta" in item:
+                        delta = item["delta"]
                     reasoning_content = delta.get("reasoning_content", '')
                     if reasoning_content:
                         content = reasoning_content
                         FileSystemQueue().get_instance("think").enqueue(lazyllm.colored_text(content, color))
                     else:
                         content = delta.get("content", '')
-                        if content and "tool_calls" not in delta:
+                        if content and ("tool_calls" not in delta or not delta['tool_calls']):
                             FileSystemQueue().enqueue(lazyllm.colored_text(content, color))
             lazyllm.LOG.debug(f"message: {message}")
             return message
@@ -197,7 +201,7 @@ class OnlineChatModuleBase(ModuleBase):
         if "choices" in data and isinstance(data["choices"], list):
             item = data['choices'][0]
             outputs = item.get("message", item.get("delta", {}))
-            if 'reasoning_content' in outputs and 'content' in outputs:
+            if 'reasoning_content' in outputs and outputs["reasoning_content"] and 'content' in outputs:
                 outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
             return outputs
         else:

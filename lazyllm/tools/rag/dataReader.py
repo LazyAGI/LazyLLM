@@ -200,17 +200,22 @@ class SimpleDirectoryReader(ModuleBase):
                   metadata: Optional[Dict] = None) -> List[DocNode]:
         # metadata priority: user > reader > metadata_genf
         user_metadata: Dict = metadata or {}
-        metadata_generated: Dict = metadata_genf(str(input_file)) if metadata_genf is not None else {}
+        metadata_generated: Dict = metadata_genf(str(input_file)) if metadata_genf else {}
         documents: List[DocNode] = []
 
-        file_reader_patterns = list(file_extractor.keys())
+        filename_lower = str(input_file).lower()
 
-        for pattern in file_reader_patterns:
-            pt = str(pathm(pattern))
-            match_pattern = pt if pt.startswith("*") else os.path.join(str(pathm.cwd()), pt)
-            if fnmatch.fnmatch(input_file, match_pattern):
-                reader = file_extractor[pattern]
-                reader = reader() if isinstance(reader, type) else reader
+        for pattern, extractor in file_extractor.items():
+            pt_lower = str(pathm(pattern)).lower()
+            match_pattern = pt_lower if pt_lower.endswith("*") else os.path.join(str(pathm.cwd()).lower(), pt_lower)
+            if pt_lower.startswith("*"):
+                match_pattern = pt_lower
+            else:
+                base = str(pathm.cwd()).lower()
+                match_pattern = os.path.join(base, pt_lower)
+
+            if fnmatch.fnmatch(filename_lower, match_pattern):
+                reader = extractor() if isinstance(extractor, type) else extractor
                 kwargs = {'fs': fs} if fs and not is_default_fs(fs) else {}
                 docs = reader(input_file, **kwargs)
                 if isinstance(docs, DocNode): docs = [docs]
@@ -219,6 +224,7 @@ class SimpleDirectoryReader(ModuleBase):
                     metadata.update(doc._global_metadata or {})
                     metadata.update(user_metadata)
                     doc._global_metadata = metadata
+
                 if config['rag_filename_as_id']:
                     for i, doc in enumerate(docs):
                         doc._uid = f"{input_file!s}_index_{i}"
@@ -226,18 +232,17 @@ class SimpleDirectoryReader(ModuleBase):
                 break
         else:
             if not config['use_fallback_reader']:
-                LOG.warning(f'no pattern found for {input_file}! If you want fallback to default Reader, '
-                            'set environment variable `LAZYLLM_USE_FALLBACK_READER=True`.')
+                LOG.warning(f'no pattern found for {input_file}! '
+                            'If you want fallback to default Reader, set `LAZYLLM_USE_FALLBACK_READER=True`.')
                 return documents
             fs = fs or get_default_fs()
             with fs.open(input_file, encoding=encoding) as f:
                 try:
                     data = f.read().decode(encoding)
-                    doc = DocNode(text=data, global_metadata=metadata or {})
+                    doc = DocNode(text=data, global_metadata=user_metadata)
                     documents.append(doc)
                 except Exception:
-                    LOG.error(f'no pattern found for {input_file} and it is not encode by utf-8, will skip it!')
-                    pass
+                    LOG.error(f'no pattern found for {input_file} and it is not utf-8, skip it!')
         return documents
 
     def _load_data(self, show_progress: bool = False, num_workers: Optional[int] = None,

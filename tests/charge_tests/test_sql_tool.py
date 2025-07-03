@@ -93,7 +93,3 @@ class TestSqlManager(unittest.TestCase):
 
             str_results = sql_call("删除员工信息表")
             self.assertIn("DROP TABLE", str_results.upper())
-
-
-if __name__ == "__main__":
-    unittest.main()
