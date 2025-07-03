@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, Column, JSON, String, TIMESTAMP, Table, Me
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.engine import Engine
 import lazyllm
-from lazyllm import LOG, ServerModule, UrlModule, FastapiApp as app, ThreadPoolExecutor, config
+from lazyllm import LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app, ThreadPoolExecutor, config
 
 from .store import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from .store.utils import fibonacci_backoff, create_file_path
@@ -185,7 +185,7 @@ class CancelDocRequest(BaseModel):
     task_id: str
 
 
-class DocumentProcessor():
+class DocumentProcessor(ModuleBase):
 
     class Impl():
         def __init__(self, server: bool):
@@ -557,11 +557,11 @@ class DocumentProcessor():
             return getattr(self, func_name)(*args, **kwargs)
 
     def __init__(self, server: bool = True, port: int = None, url: str = None):
+        super().__init__()
         if not url:
             self._impl = DocumentProcessor.Impl(server=server)
             if server:
                 self._impl = ServerModule(self._impl, port=port)
-                self._impl.start()
         else:
             self._impl = UrlModule(url=url)
 
