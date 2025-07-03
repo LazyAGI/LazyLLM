@@ -1,7 +1,7 @@
 import lazyllm
 from lazyllm.tools.rag.doc_impl import DocImpl
 from lazyllm.tools.rag.transform import SentenceSplitter
-from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
+from lazyllm.tools.rag.store import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH, RAG_DOC_ID
 from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform, TempDocRetriever
@@ -313,6 +313,3 @@ class TestDocumentServer(unittest.TestCase):
     def tearDown(self):
         # Must clean up the server as all uploaded files will be deleted as they are in tmp dir
         self.dlm.release()
-
-if __name__ == "__main__":
-    unittest.main()

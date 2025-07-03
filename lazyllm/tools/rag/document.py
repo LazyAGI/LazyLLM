@@ -8,11 +8,11 @@ from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
 from lazyllm.common.bind import _MetaBind
 
 from .doc_manager import DocManager
-from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor
+from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files
+from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .index_base import IndexBase
-from .store_base import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .utils import DocListManager
 from .global_metadata import GlobalMetadataDesc as DocField
 from .web import DocWebModule
@@ -34,7 +34,7 @@ class _MetaDocument(_MetaBind):
 class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     class _Manager(ModuleBase):
         def __init__(self, dataset_path: Optional[str], embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
-                     manager: Union[bool, str] = False, server: bool = False, name: Optional[str] = None,
+                     manager: Union[bool, str] = False, server: Union[bool, int] = False, name: Optional[str] = None,
                      launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
                      doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None):
@@ -61,7 +61,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
             if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
-            if server: self._kbs = ServerModule(self._kbs)
+            if server: self._kbs = ServerModule(self._kbs, port=(None if isinstance(server, bool) else int(server)))
             self._global_metadata_desc = doc_fields
 
         @property
@@ -120,7 +120,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     def __init__(self, dataset_path: Optional[str] = None, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                  create_ui: bool = False, manager: Union[bool, str, "Document._Manager", DocumentProcessor] = False,
-                 server: bool = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
+                 server: Union[bool, int] = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
                  store_conf: Optional[Dict] = None):
         super().__init__()
@@ -150,6 +150,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         else:
             if isinstance(manager, DocumentProcessor):
                 processor, cloud = manager, True
+                processor._impl.start()
                 manager = False
                 assert name, '`Name` of Document is necessary when using cloud service'
                 assert store_conf['type'] != 'map', 'Cloud manager is not supported when using map store'
@@ -265,13 +266,16 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
-                          trans_node: bool = None, num_workers: int = 0, **kwargs) -> None:
+                          trans_node: bool = None, num_workers: int = 0, display_name: str = None,
+                          group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
         if isinstance(self, type):
             DocImpl.create_global_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
-                                             num_workers=num_workers, **kwargs)
+                                             num_workers=num_workers, display_name=display_name,
+                                             group_type=group_type, **kwargs)
         else:
             self._impl.create_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
-                                         num_workers=num_workers, **kwargs)
+                                         num_workers=num_workers, display_name=display_name, group_type=group_type,
+                                         **kwargs)
 
     @DynamicDescriptor
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
@@ -297,18 +301,10 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         return self._manager(self._curr_group, func_name, *args, **kw)
 
     def find_parent(self, target) -> Callable:
-        # TODO: Currently, when a DocNode is returned from the server, it will carry all parent nodes and child nodes.
-        # So the query of parent and child nodes can be performed locally, and there is no need to search the
-        # document service through the server for the time being. When this item is optimized, the code will become:
-        # return functools.partial(self._forward, 'find_parent', group=target)
-        return functools.partial(DocImpl.find_parent, group=target)
+        return functools.partial(self._forward, 'find_parent', group=target)
 
     def find_children(self, target) -> Callable:
-        # TODO: Currently, when a DocNode is returned from the server, it will carry all parent nodes and child nodes.
-        # So the query of parent and child nodes can be performed locally, and there is no need to search the
-        # document service through the server for the time being. When this item is optimized, the code will become:
-        # return functools.partial(self._forward, 'find_children', group=target)
-        return functools.partial(DocImpl.find_children, group=target)
+        return functools.partial(self._forward, 'find_children', group=target)
 
     def find(self, target) -> Callable:
         return functools.partial(self._forward, 'find', group=target)
@@ -333,8 +329,10 @@ class UrlDocument(ModuleBase):
         self._manager = lazyllm.UrlModule(url=url)
         self._curr_group = name
 
-    def _forward(self, func_name: str, *args, **kw):
-        return self._manager(self._curr_group, func_name, *args, **kw)
+    def _forward(self, func_name: str, *args, **kwargs):
+        args = (self._curr_group, func_name, *args)
+        args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
+        return self._manager("__call__", args, kwargs)
 
     def find(self, target) -> Callable:
         return functools.partial(self._forward, 'find', group=target)

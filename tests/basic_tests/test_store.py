@@ -4,13 +4,10 @@ import pytest
 import tempfile
 import unittest
 from unittest.mock import MagicMock
-from lazyllm.tools.rag.store_base import LAZY_ROOT_NAME
-from lazyllm.tools.rag.map_store import MapStore
-from lazyllm.tools.rag.chroma_store import ChromadbStore
-from lazyllm.tools.rag.milvus_store import MilvusStore
+from lazyllm.tools.rag.store import MapStore, ChromadbStore, MilvusStore, LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.data_type import DataType
-from lazyllm.tools.rag.global_metadata import GlobalMetadataDesc
+from lazyllm.tools.rag.global_metadata import GlobalMetadataDesc, RAG_DOC_ID
 
 
 def clear_directory(directory_path):
@@ -73,7 +70,7 @@ class TestChromadbStore(unittest.TestCase):
         self.store.update_nodes([node1, node2])
         collection = self.store._collections["group1"]
         self.assertEqual(collection.peek(collection.count())["ids"], ["1", "2"])
-        self.store.remove_nodes("group1", "1")
+        self.store.remove_nodes([node1.global_metadata.get(RAG_DOC_ID)], "group1", ["1"])
         self.assertEqual(collection.peek(collection.count())["ids"], ["2"])
 
     def test_load_store(self):
@@ -83,14 +80,16 @@ class TestChromadbStore(unittest.TestCase):
         self.store.update_nodes([node1, node2])
 
         # Reset store and load from "persistent" storage
-        self.store._map_store._group2docs = {group: {} for group in self.node_groups}
+        self.store._map_store.clear_cache()
         self.store._load_store(self.embed_dims)
 
         nodes = self.store.get_nodes("group1")
         self.assertEqual(len(nodes), 2)
-        self.assertEqual(nodes[0]._uid, "1")
-        self.assertEqual(nodes[1]._uid, "2")
-        self.assertEqual(nodes[1].parent._uid, "1")
+        n1 = self.store.get_nodes("group1", ["1"])[0]
+        self.assertEqual(n1._uid, "1")
+        n2 = self.store.get_nodes("group1", ["2"])[0]
+        self.assertEqual(n2._uid, "2")
+        self.assertEqual(n2.parent._uid, "1")
 
     def test_insert_dict_as_sparse_embedding(self):
         node1 = DocNode(uid="1", text="text1", group="group1", embedding={'default': {1: 10, 2: 20}})
@@ -143,9 +142,11 @@ class TestMapStore(unittest.TestCase):
         self.store.update_nodes([self.node1, self.node2])
         nodes = self.store.get_nodes("group1")
         self.assertEqual(len(nodes), 2)
-        self.assertEqual(nodes[0]._uid, "1")
-        self.assertEqual(nodes[1]._uid, "2")
-        self.assertEqual(nodes[1].parent._uid, "1")
+        n1 = self.store.get_nodes("group1", ["1"])[0]
+        self.assertEqual(n1._uid, "1")
+        n2 = self.store.get_nodes("group1", ["2"])[0]
+        self.assertEqual(n2._uid, "2")
+        self.assertEqual(n2.parent._uid, "1")
 
     def test_get_group_nodes(self):
         self.store.update_nodes([self.node1, self.node2])
@@ -162,13 +163,13 @@ class TestMapStore(unittest.TestCase):
 
         n1 = self.store.get_nodes("group1", ["1"])[0]
         assert n1.text == self.node1.text
-        self.store.remove_nodes("group1", ["1"])
+        self.store.remove_nodes([self.node1.global_metadata.get(RAG_DOC_ID)], uids=["1"])
         n1 = self.store.get_nodes("group1", ["1"])
         assert not n1
 
         n2 = self.store.get_nodes("group1", ["2"])[0]
         assert n2.text == self.node2.text
-        self.store.remove_nodes("group1", ["2"])
+        self.store.remove_nodes([self.node2.global_metadata.get(RAG_DOC_ID)], uids=["2"])
         n2 = self.store.get_nodes("group1", ["2"])
         assert not n2
 
@@ -263,7 +264,7 @@ class TestMilvusStoreWithNormalEmbedding(unittest.TestCase):
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0]._uid, self.node2._uid)
 
-        self.store.remove_nodes("group1", [self.node2._uid])
+        self.store.remove_nodes([self.node2.global_metadata.get(RAG_DOC_ID)], "group1", [self.node2._uid])
         ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0]._uid, self.node1._uid)

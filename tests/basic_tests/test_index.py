@@ -1,10 +1,11 @@
 import time
 import unittest
 from unittest.mock import MagicMock
-from lazyllm.tools.rag.map_store import MapStore
-from lazyllm.tools.rag import DocNode, IndexBase, StoreBase, Document
+from lazyllm.tools.rag.store import MapStore
+from lazyllm.tools.rag import DocNode, IndexBase, Document
 from lazyllm.tools.rag.default_index import DefaultIndex
 from lazyllm.tools.rag.similarity import register_similarity, registered_similarities
+from lazyllm.tools.rag.store import StoreBase
 from lazyllm.tools.rag.utils import parallel_do_embedding, generic_process_filters
 from typing import List, Optional, Dict
 from lazyllm.common import override
@@ -155,6 +156,3 @@ class TestIndex(unittest.TestCase):
         for node in nodes:
             nums2.append(node.text.casefold().count(query.casefold()))
         assert all(query.casefold() in node.text.casefold() for node in nodes) and nums2 == sorted(nums2, reverse=True)
-
-if __name__ == "__main__":
-    unittest.main()

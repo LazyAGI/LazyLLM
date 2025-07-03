@@ -191,7 +191,3 @@ class TestMongoDBManager(unittest.TestCase):
         self.assertIn("CA", str_results)
         self.assertIn("NY", str_results)
         print(f"str_results:\n{str_results}")
-
-
-if __name__ == "__main__":
-    unittest.main()
