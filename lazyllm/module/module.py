@@ -985,7 +985,7 @@ class TrainableModule(UrlModule):
                information, and then processed according to the rules.
         """
         content, tool_calls = self._extract_tool_calls(output)
-        if content.startswith(LAZYLLM_QUERY_PREFIX):
+        if isinstance(content, str) and content.startswith(LAZYLLM_QUERY_PREFIX):
             content = self._decode_base64_to_file(content)
         return self._build_response(content, tool_calls)
 
