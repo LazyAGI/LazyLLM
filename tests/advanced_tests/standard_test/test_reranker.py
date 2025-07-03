@@ -72,7 +72,3 @@ class TestReranker(unittest.TestCase):
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].get_text(), custom_doc.get_text())
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -136,7 +136,3 @@ class TestMilvusFilter(unittest.TestCase):
 
         doc._manager._dlm.release()
         doc.stop()
-
-
-if __name__ == "__main__":
-    unittest.main()

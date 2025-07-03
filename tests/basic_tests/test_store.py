@@ -394,7 +394,3 @@ class TestMilvusStoreWithSparseEmbedding(unittest.TestCase):
         ret = self.store.query(query='test', group_name='group1', embed_keys=['vec2'], topk=1)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0]._uid, self.node1._uid)
-
-
-if __name__ == "__main__":
-    unittest.main()

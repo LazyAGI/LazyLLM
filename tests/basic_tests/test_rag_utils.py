@@ -77,7 +77,3 @@ class TestFileNodeIndex(unittest.TestCase):
         ret = self.index.query([self.node1.global_metadata[RAG_DOC_PATH]])
         assert len(ret) == 1
         assert ret[0] is self.node1
-
-
-if __name__ == "__main__":
-    unittest.main()

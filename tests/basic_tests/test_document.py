@@ -313,6 +313,3 @@ class TestDocumentServer(unittest.TestCase):
     def tearDown(self):
         # Must clean up the server as all uploaded files will be deleted as they are in tmp dir
         self.dlm.release()
-
-if __name__ == "__main__":
-    unittest.main()

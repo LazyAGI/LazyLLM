@@ -156,6 +156,3 @@ class TestIndex(unittest.TestCase):
         for node in nodes:
             nums2.append(node.text.casefold().count(query.casefold()))
         assert all(query.casefold() in node.text.casefold() for node in nodes) and nums2 == sorted(nums2, reverse=True)
-
-if __name__ == "__main__":
-    unittest.main()

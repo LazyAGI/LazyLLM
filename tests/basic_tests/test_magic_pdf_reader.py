@@ -63,7 +63,3 @@ class TestMagicPDFReader(unittest.TestCase):
 
         result = magic_reader("./demo.pdf")
         self.assertTrue(result[0].text.startswith("page"))
-
-
-if __name__ == "__main__":
-    unittest.main()
