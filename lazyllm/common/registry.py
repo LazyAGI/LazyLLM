@@ -4,6 +4,7 @@ import lazyllm
 import re
 from .bind import _MetaBind
 from ..configs import config
+from itertools import product
 
 # Special Dict for lazy programmer. Suppose we have a LazyDict as follows：
 #    >>> ld = LazyDict(name='ld', ALd=int)
@@ -37,22 +38,20 @@ class LazyDict(dict):
             grp, key = key.split('.', 1)
             return self[grp][key]
         return super().__getitem__(key)
+    
+    def generate_keys(self, key: str):
+        key_variants = [key, key.upper(), key[0].upper() + key[1:], key.capitalize()]
+        name_variants = ["", self.name, self.name.lower()]
+        return [k + n for k, n in product(key_variants, name_variants)]
 
     # default -> self.default
     # key -> Key, keyName, KeyName
     # if self.name ends with 's' or 'es', ignor it
     def _match(self, key):
         key = self._default if key == 'default' else key
+        keys = self.generate_keys(key)
         if key.endswith(self.name.lower()):
-            key = key[:-len(self.name)]
-        keys = [key,
-                f'{key.upper()}{self.name}',
-                f'{key.upper()}{self.name.lower()}',
-                f'{key[0].upper()}{key[1:]}',
-                f'{key}{self.name}',
-                f'{key[0].upper()}{key[1:]}{self.name}',
-                f'{key}{self.name.lower()}',
-                f'{key[0].upper()}{key[1:]}{self.name.lower()}']
+            keys += self.generate_keys(key[:-len(self.name)])
         if self.name.endswith('s'):
             n = 2 if self.name.endswith('es') else 1
             keys.extend([f'{key}{self.name[:-n]}', f'{key[0].upper()}{key[1:]}{self.name[:-n]}'])

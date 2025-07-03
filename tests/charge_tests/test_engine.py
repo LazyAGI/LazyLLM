@@ -129,7 +129,7 @@ class TestEngine(unittest.TestCase):
                   "已知国学篇章：{context_str}\n")
         resources = [
             dict(id='00', kind='OnlineEmbedding', name='e0', args=dict(source='glm')),
-            dict(id='01', kind='OnlineEmbedding', name='e1', args=dict(type='rerank')),
+            dict(id='01', kind='OnlineEmbedding', name='e1', args=dict(embed_type='rerank')),
             dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', node_group=[
                 dict(name='sentence', embed='00', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))]
         nodes = [dict(id='1', kind='Retriever', name='ret1',

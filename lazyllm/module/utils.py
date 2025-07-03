@@ -220,6 +220,8 @@ def map_kw_for_framework(
                 result[kw_item] = v
             elif callable(kw_item):
                 result[k] = kw_item(v)
+            elif kw_item is None:
+                result[k] = v
             else:
                 raise ValueError(f"Invalid kw_map item: {kw_item}")
         except (TypeError, ValueError) as e:

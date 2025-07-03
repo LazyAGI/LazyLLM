@@ -962,8 +962,6 @@ class TrainableModule(UrlModule):
 
     def _decode_base64_to_file(self, content: str) -> str:
         decontent = decode_query_with_filepaths(content)
-        if isinstance(decontent, str):
-            return decontent
         files = [base64_to_file(file_content) if is_base64_with_mime(file_content) else file_content
                  for file_content in decontent["files"]]
         return encode_query_with_filepaths(query=decontent["query"], files=files)
@@ -987,7 +985,8 @@ class TrainableModule(UrlModule):
                information, and then processed according to the rules.
         """
         content, tool_calls = self._extract_tool_calls(output)
-        content = self._decode_base64_to_file(content)
+        if content.startswith(LAZYLLM_QUERY_PREFIX):
+            content = self._decode_base64_to_file(content)
         return self._build_response(content, tool_calls)
 
     def __repr__(self):

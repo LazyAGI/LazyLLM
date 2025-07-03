@@ -417,12 +417,12 @@ def make_retriever(doc: str, group_name: str, similarity: str = 'cosine', simila
 @NodeConstructor.register('Reranker')
 def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
                   output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
-    if type == 'ModuleReranker':
+    if type == 'ModuleReranker' and not isinstance(arguments['model'], lazyllm.TrainableModule):
         if node := Engine().build_node(arguments['model']):
             arguments['model'] = node.func
         else:
             model = lazyllm.TrainableModule(arguments['model'])
-            setup_deploy_method(model, 'RerankerDeploy', arguments.get('url'))
+            setup_deploy_method(model, arguments.get('deploy_method', 'RerankDeploy'), arguments.get('url'))
             arguments['model'] = model
     return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
 
@@ -755,11 +755,11 @@ def make_shared_model(llm: str, local: bool = True, prompt: Optional[str] = None
 
 
 @NodeConstructor.register('OnlineLLM')
-def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optional[str] = None,
+def make_online_llm(source: str = None, base_model: Optional[str] = None, prompt: Optional[str] = None,
                     api_key: Optional[str] = None, secret_key: Optional[str] = None,
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
                     history: Optional[List[List[str]]] = None):
-    source = source.lower()
+    if source: source = source.lower()
     if source == 'lazyllm':
         return make_shared_llm(base_model, False, prompt, token, stream, history=history)
     else:
@@ -767,9 +767,9 @@ def make_online_llm(source: str, base_model: Optional[str] = None, prompt: Optio
                                         api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
 
 @NodeConstructor.register('OnlineEmbedding')
-def make_online_embedding(source: str, embed_type: Optional[str] = 'embed', base_model: Optional[str] = None,
+def make_online_embedding(source: str = None, embed_type: Optional[str] = 'embed', base_model: Optional[str] = None,
                           base_url: Optional[str] = None, api_key: Optional[str] = None):
-    source = source.lower()
+    if source: source = source.lower()
     return lazyllm.OnlineEmbeddingModule(source=source, type=embed_type, embed_model_name=base_model,
                                          embed_url=base_url, api_key=api_key)
 
