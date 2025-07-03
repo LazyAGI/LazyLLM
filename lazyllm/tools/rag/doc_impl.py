@@ -420,7 +420,7 @@ class DocImpl:
                 self._activated_groups.add(parent)
             # BUG: when using reparse here, nodes created from recurse method will not be set children correctly
             # (For parent nodes has been upserted before creating child nodes)
-            self._processor.reparse(group_name)
+            if not self.store.is_group_active(group_name): self._processor.reparse(group_name)
 
     def active_node_groups(self):
         return {k: v for k, v in self._activated_embeddings.items() if k in self._activated_groups}
@@ -447,6 +447,7 @@ class DocImpl:
         for n in nodes:
             n._store = self.store
             n._node_groups = self.node_groups
+            n._children_loaded = False
         return nodes
 
     def find(self, nodes: List[DocNode], group: str) -> List[DocNode]:

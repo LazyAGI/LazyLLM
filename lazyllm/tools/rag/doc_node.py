@@ -78,7 +78,7 @@ class DocNode:
         if isinstance(uids, str):
             uids = [uids]
         nodes = self._store.get_nodes(group_name=group_name, uids=uids,
-                                      dataset_id=self._global_metadata.get(RAG_DOC_KB_ID), display=True)
+                                      dataset_id=self.global_metadata.get(RAG_DOC_KB_ID), display=True)
         for n in nodes:
             n._store = self._store
             n._node_groups = self._node_groups
@@ -100,12 +100,14 @@ class DocNode:
     def children(self) -> Dict[str, List["DocNode"]]:
         if not self._children_loaded and self._store and self._node_groups:
             self._children_loaded = True
-            dataset_id = self._global_metadata.get(RAG_DOC_KB_ID)
-            doc_id = self._global_metadata.get(RAG_DOC_ID)
+            dataset_id = self.global_metadata.get(RAG_DOC_KB_ID)
+            doc_id = self.global_metadata.get(RAG_DOC_ID)
             c_groups = [grp for grp in self._node_groups.keys() if self._node_groups[grp]['parent'] == self._group]
             for grp in c_groups:
+                if not self._store.is_group_active(grp):
+                    continue
                 nodes = self._store.get_nodes(group_name=grp, dataset_id=dataset_id, doc_ids=[doc_id])
-                c_nodes = [n for n in nodes if n._parent == self._uid]
+                c_nodes = [n for n in nodes if n._parent in {self, self._uid}]
                 self._children[grp] = c_nodes
                 for n in self._children[grp]:
                     n._store = self._store
@@ -161,12 +163,12 @@ class DocNode:
 
     @property
     def docpath(self) -> str:
-        return self.root_node._global_metadata.get(RAG_DOC_PATH, '')
+        return self.root_node.global_metadata.get(RAG_DOC_PATH, '')
 
     @docpath.setter
     def docpath(self, path):
         assert not self.parent, 'Only root node can set docpath'
-        self._global_metadata[RAG_DOC_PATH] = str(path)
+        self.global_metadata[RAG_DOC_PATH] = str(path)
 
     def get_children_str(self) -> str:
         return str(
