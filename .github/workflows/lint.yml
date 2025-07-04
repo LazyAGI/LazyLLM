@@ -81,6 +81,21 @@ jobs:
         working-directory: /tmp
         run: python -c "import lazyllm"
 
+      - name: Check print
+        shell: bash
+        run: |
+          count=$(grep -RIn --binary-files=without-match --include="*.py" --exclude-dir="__pycache__" 'print(' lazyllm \
+            | grep -v '^\s*#' \
+            | grep -v '# noqa print' \
+            | wc -l)
+
+          if [ "$count" -gt 0 ]; then
+            echo "❌ Lint failed: found $count print(...) statements in the codebase."
+            exit 1
+          else
+            echo "✅ Lint passed: no print(...) statements found."
+          fi
+
   Check_requirements:
     runs-on: ubuntu-latest
     if: |
