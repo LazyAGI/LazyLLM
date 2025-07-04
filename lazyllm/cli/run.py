@@ -3,6 +3,7 @@ import argparse
 import json
 
 import lazyllm
+import logging
 
 from lazyllm import pipeline, parallel, bind, SentenceSplitter, Document, Retriever, Reranker
 from lazyllm.engine.lightengine import LightEngine
@@ -47,7 +48,7 @@ def graph(json_file):
         if query == 'quit':
             break
         res = engine.run(eid, query)
-        print(f'answer: {res}')
+        print(f'answer: {res}')  # noqa print
 
 def training_service():
     train_server = TrainServer()
@@ -65,9 +66,9 @@ def infer_service():
 
 def run(commands):
     if not commands:
-        print('Usage:\n  lazyllm run graph.json\n  lazyllm run chatbot\n  '
-              'lazyllm run rag\n  lazyllm run training_service\n  '
-              'lazyllm run infer_service\n')
+        logging.error('Usage:\n  lazyllm run graph.json\n  lazyllm run chatbot\n  '
+                      'lazyllm run rag\n  lazyllm run training_service\n  '
+                      'lazyllm run infer_service\n')
 
     parser = argparse.ArgumentParser(description='lazyllm deploy command')
     parser.add_argument('command', type=str, help='command')
@@ -97,5 +98,5 @@ def run(commands):
     elif args.command == 'infer_service':
         infer_service()
     else:
-        print('lazyllm run is not ready yet.')
+        logging.error('lazyllm run is not ready yet.')
         sys.exit(0)

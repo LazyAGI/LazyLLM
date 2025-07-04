@@ -160,7 +160,6 @@ class TestGenerateEmptyCSV(unittest.TestCase):
 
         head = [rule.name for rule in rules]
         size = generate('sample_finetune_empty.csv', head, itertools.islice(body, 1000000))
-        print(f"GENERATE {size} cases")
 
 
 if __name__ == '__main__':
