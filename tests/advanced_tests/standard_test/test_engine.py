@@ -10,7 +10,7 @@ class TestEngine(object):
     # This test requires 4 GPUs and takes about 4 minutes to execute, skip this test to save time.
     def _test_vqa(self):
         resource = [dict(id='0', kind='web', name='web', args=dict(port=None, title='多模态聊天机器人', history=[], audio=True))]
-        node = [dict(id='1', kind='VQA', name='vqa', args=dict(base_model='Mini-InternVL-Chat-2B-V1-5'))]
+        node = [dict(id='1', kind='VQA', name='vqa', args=dict(base_model='Mini-InternVL-Chat-2B-V1-5', type='local'))]
         edge = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
         engine.start(node, edge, resource)
@@ -49,15 +49,16 @@ class TestEngine(object):
         musician_prompt = 'Now you are a master of music composition prompts, capable of converting any Chinese content entered by the user into English music composition prompts. In this task, you need to convert any input content into English music composition prompts, and you can enrich and expand the prompt content.'  # noqa E501
         translator_prompt = 'Now you are a master of translation prompts, capable of converting any Chinese content entered by the user into English translation prompts. In this task, you need to convert any input content into English translation prompts, and you can enrich and expand the prompt content.'  # noqa E501
 
-        resources = [dict(id='llm', kind='LocalLLM', name='base', args=dict(base_model='internlm2-chat-7b')),
+        resources = [dict(id='llm', kind='LLM', name='base', args=dict(base_model='internlm2-chat-7b', type='local')),
                      dict(id='file-resource', kind='File', name='file', args=dict(id='file-resource')),
-                     dict(id='vqa', kind='VQA', name='vqa', args=dict(base_model='Mini-InternVL-Chat-2B-V1-5')),
+                     dict(id='vqa', kind='VQA', name='vqa',
+                          args=dict(base_model='Mini-InternVL-Chat-2B-V1-5', type='local')),
                      dict(id='web', kind='web', name='web', args=dict(port=None, title='多模态聊天机器人', audio=True))]
 
         nodes1 = [
-            dict(id='2', kind='SharedLLM', name='draw_prompt', args=dict(llm='llm', prompt=painter_prompt)),
-            dict(id='3', kind='SD', name='sd', args=dict(base_model='stable-diffusion-3-medium')),
-            dict(id='5', kind='SharedLLM', name='vqa1', args=dict(llm='vqa')),
+            dict(id='2', kind='SharedModel', name='draw_prompt', args=dict(llm='llm', prompt=painter_prompt, cls='llm')),
+            dict(id='3', kind='SD', name='sd', args=dict(base_model='stable-diffusion-3-medium', type='local')),
+            dict(id='5', kind='SharedModel', name='vqa1', args=dict(llm='vqa', cls='vqa')),
             dict(id='6', kind='JoinFormatter', name='merge_sd_vqa2', args=dict(type='file')),
         ]
         edges1 = [
@@ -65,18 +66,18 @@ class TestEngine(object):
             dict(constant='描述图片', oid="5"), dict(iid="3", oid="5"), dict(iid="3", oid="6"), dict(iid="5", oid="6"),
         ]
 
-        nodes = [dict(id='7', kind='STT', name='stt', args=dict(base_model='SenseVoiceSmall')),
+        nodes = [dict(id='7', kind='STT', name='stt', args=dict(base_model='SenseVoiceSmall', type='local')),
                  dict(id='8', kind='Intention', name='intent', args=dict(base_model='llm', nodes={
                      'Drawing': dict(id='9', kind='SubGraph', name='draw_vqa', args=dict(nodes=nodes1, edges=edges1)),
-                     'Translate': dict(id='10', kind='SharedLLM', name='translate_prompt',
-                                       args=dict(llm='llm', prompt=translator_prompt)),
-                     'Generate Music': [dict(id='11', kind='SharedLLM', name='translate',
-                                             args=dict(llm='llm', prompt=musician_prompt)),
+                     'Translate': dict(id='10', kind='SharedModel', name='translate_prompt',
+                                       args=dict(llm='llm', prompt=translator_prompt, cls='llm')),
+                     'Generate Music': [dict(id='11', kind='SharedModel', name='translate',
+                                             args=dict(llm='llm', prompt=musician_prompt, cls='stt')),
                                         dict(id='12', kind='TTS', name='music',
-                                             args=dict(base_model='musicgen-small'))],
-                     'Image Question Answering': dict(id='13', kind='SharedLLM', name='vqa2',
-                                                      args=dict(llm='vqa', file_resource_id='file-resource')),
-                     'Chat': dict(id='14', kind='SharedLLM', name='chat', args=dict(llm='llm'))}))]
+                                             args=dict(base_model='musicgen-small', type='local'))],
+                     'Image Question Answering': dict(id='13', kind='SharedModel', name='vqa2',
+                                                      args=dict(llm='vqa', file_resource_id='file-resource', cls='vqa')),
+                     'Chat': dict(id='14', kind='SharedModel', name='chat', args=dict(llm='llm', cls='llm'))}))]
         edges = [dict(iid="__start__", oid="7"), dict(iid="7", oid="8"), dict(iid="8", oid="__end__")]
 
         engine = LightEngine()
@@ -109,15 +110,15 @@ class TestEngine(object):
         builtin_history = [['水的沸点是多少？', '您好，我的答案是：水的沸点在标准大气压下是100摄氏度。'],
                            ['世界上最大的动物是什么？', '您好，我的答案是：蓝鲸是世界上最大的动物。'],
                            ['人一天需要喝多少水？', '您好，我的答案是：一般建议每天喝8杯水，大约2升。']]
-        nodes = [dict(id='1', kind='SharedLLM', name='m1', args=dict(llm='0', stream=True, prompt=dict(
+        nodes = [dict(id='1', kind='SharedModel', name='m1', args=dict(llm='0', stream=True, prompt=dict(
                       system='请将我的问题翻译成中文。请注意，请直接输出翻译后的问题，不要反问和发挥',
-                      user='问题: {query} \n, 翻译:'))),
-                 dict(id='2', kind='SharedLLM', name='m2',
+                      user='问题: {query} \n, 翻译:'), cls='llm')),
+                 dict(id='2', kind='SharedModel', name='m2',
                       args=dict(llm='0', stream=True,
-                                prompt=dict(system='请参考历史对话，回答问题，并保持格式不变。', user='{query}'))),
+                                prompt=dict(system='请参考历史对话，回答问题，并保持格式不变。', user='{query}'), cls='llm')),
                  dict(id='3', kind='JoinFormatter', name='join', args=dict(type='to_dict', names=['query', 'answer'])),
-                 dict(id='4', kind='SharedLLM', stream=False, name='m3',
-                      args=dict(llm='0', history=builtin_history,
+                 dict(id='4', kind='SharedModel', stream=False, name='m3',
+                      args=dict(llm='0', history=builtin_history, cls='llm',
                                 prompt=dict(system='你是一个问答机器人，会根据用户的问题作出回答。',
                                             user=('请结合历史对话和本轮的问题，总结我们的全部对话，无论是否相关。'
                                                   '本轮情况如下:\n {query}, 回答: {answer}'))))]
@@ -205,8 +206,8 @@ class TestEngine(object):
         assert isinstance(r, lazyllm.TrainableModule) and r._impl._get_deploy_tasks.flag
         assert '你好' in r('请重复下面一句话：你好')
 
-        nodes = [dict(id='0', kind='SharedLLM', name='m1', args=dict(
-            llm=jobid, local=False, token=token, stream=True, prompt=dict(
+        nodes = [dict(id='0', kind='SharedModel', name='m1', args=dict(
+            llm=jobid, local=False, token=token, stream=True, cls='llm', prompt=dict(
                 system='请根据输入帮我计算，不要反问和发挥', user='输入: {query} \n, 答案:')))]
         gid = engine.start(nodes)
         assert '2' in engine.run(gid, '1 + 1 = ?')
@@ -228,8 +229,21 @@ class TestEngine(object):
         assert isinstance(r, lazyllm.TrainableModule) and r._impl._get_deploy_tasks.flag
         assert '你好' in r('请重复下面一句话：你好')
 
-        nodes = [dict(id='0', kind='SharedLLM', name='vqa', args=dict(llm=jobid, local=False, token=token, stream=True))]
+        nodes = [dict(id='0', kind='SharedModel', name='vqa',
+                      args=dict(llm=jobid, local=False, token=token, stream=True, cls='vqa'))]
         gid = engine.start(nodes)
+
+        r = engine.run(gid, "这张图片描述的是什么？", _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
+        assert '鸡' in r or 'chicken' in r
+
+    def test_engine_shared_vqa(self):
+        engine = LightEngine()
+        resources = [dict(id='vqa', kind='VQA', name='vqa',
+                          args=dict(base_model='Mini-InternVL-Chat-2B-V1-5', type='local'))]
+
+        nodes = [dict(id='0', kind='SharedModel', name='vqa',
+                      args=dict(llm='vqa', local=True, cls='vqa'))]
+        gid = engine.start(nodes, resources=resources)
 
         r = engine.run(gid, "这张图片描述的是什么？", _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
         assert '鸡' in r or 'chicken' in r
@@ -244,12 +258,25 @@ class TestEngine(object):
         assert isinstance(r, lazyllm.TrainableModule) and r._impl._get_deploy_tasks.flag
         assert '.wav' in r('你好啊，很高兴认识你。')
 
-        nodes = [dict(id='0', kind='SharedLLM', name='chattts', args=dict(
-            llm=jobid, local=False, token=token, stream=False))]
+        nodes = [dict(id='0', kind='SharedModel', name='chattts', args=dict(
+            llm=jobid, local=False, token=token, stream=False, cls='tts'))]
         gid = engine.start(nodes)
 
         r = engine.run(gid, "这张图片描述的是什么？")
         assert '.wav' in r
+
+    def test_engine_tts_with_target_dir(self):
+        engine = LightEngine()
+        temp_dir = os.path.join(lazyllm.config['temp_dir'], 'tts_temp')
+        nodes = [dict(id='1', kind='TTS', name='tts',
+                      args=dict(base_model='ChatTTS-new', type='local', target_dir=temp_dir))]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
+        gid = engine.start(nodes, edges)
+
+        r = engine.run(gid, '测试TTS输出到指定目录')
+        assert '.wav' in r
+        assert os.path.exists(r)
+        assert os.path.dirname(r) == temp_dir
 
     @pytest.mark.skip(reason='environment not ready')
     def test_OCR(self):

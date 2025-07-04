@@ -16,7 +16,8 @@ from dataclasses import dataclass
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals, colored_text
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
-from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
+from ..components.formatter import (FormatterBase, EmptyFormatter, decode_query_with_filepaths,
+                                    encode_query_with_filepaths)
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.utils import ModelManager
 from ..flow import FlowBase, Pipeline, Parallel
@@ -26,7 +27,9 @@ import uuid
 from ..client import get_redis, redis_client
 from ..hook import LazyLLMHook
 from urllib.parse import urljoin
+from .utils import encode_files, map_kw_for_framework
 
+from lazyllm.components.utils.file_operate import image_to_base64, audio_to_base64, base64_to_file, is_base64_with_mime
 
 # use _MetaBind:
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
@@ -252,7 +255,6 @@ class ModuleBase(metaclass=_MetaBind):
                 action(submodule)
             submodule.for_each(filter, action)
 
-
 class _UrlTemplateStruct(object):
     def __init__(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
                  extract_result=None, stream_parse_parameters=None, stream_url_suffix=None):
@@ -390,9 +392,11 @@ class UrlModule(ModuleBase, _UrlHelper):
             assert 'inputs' in self.keys_name_handle
             data[self.keys_name_handle['inputs']] = __input
             if 'image' in self.keys_name_handle and files:
-                data[self.keys_name_handle['image']] = files
+                encoded_files = encode_files(files, image_to_base64)
+                data[self.keys_name_handle['image']] = encoded_files
             elif 'audio' in self.keys_name_handle and files:
-                data[self.keys_name_handle['audio']] = files
+                encoded_files = encode_files(files, audio_to_base64)
+                data[self.keys_name_handle['audio']] = encoded_files
             elif 'ocr_files' in self.keys_name_handle and files:
                 data[self.keys_name_handle['ocr_files']] = files
         else:
@@ -736,6 +740,10 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
 
     def _deploy_setter_hook(self):
         self._deploy_args = self._get_train_or_deploy_args('deploy', disable=['target_path'])
+
+        if hasattr(self._deploy, 'auto_map') and self._deploy.auto_map:
+            self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.auto_map)
+
         stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
 
         self._template.update(self._deploy.message_format, self._deploy.keys_name_handle,
@@ -952,6 +960,12 @@ class TrainableModule(UrlModule):
 
         return content, tool_calls
 
+    def _decode_base64_to_file(self, content: str) -> str:
+        decontent = decode_query_with_filepaths(content)
+        files = [base64_to_file(file_content) if is_base64_with_mime(file_content) else file_content
+                 for file_content in decontent["files"]]
+        return encode_query_with_filepaths(query=decontent["query"], files=files)
+
     def _build_response(self, content: str, tool_calls: List[Dict[str, str]]) -> str:
         tc = [{'id': str(uuid.uuid4().hex), 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
         if content and tc:
@@ -971,6 +985,8 @@ class TrainableModule(UrlModule):
                information, and then processed according to the rules.
         """
         content, tool_calls = self._extract_tool_calls(output)
+        if isinstance(content, str) and content.startswith(LAZYLLM_QUERY_PREFIX):
+            content = self._decode_base64_to_file(content)
         return self._build_response(content, tool_calls)
 
     def __repr__(self):

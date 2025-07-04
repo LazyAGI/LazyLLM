@@ -2,10 +2,13 @@ import os
 import json
 from datetime import datetime
 from dataclasses import dataclass, asdict
+from typing import Callable, Dict, Union, Tuple, Any
 
 import lazyllm
+from lazyllm import LOG
 from lazyllm.thirdparty import datasets
 from ..components.utils.file_operate import delete_old_files
+from lazyllm.common.utils import check_path
 
 @dataclass
 class TrainConfig:
@@ -174,3 +177,54 @@ def openai2alpaca(data) -> list:
             alpaca_item["history"] = history
         res.append(alpaca_item)
     return res
+
+def encode_files(files, encode_func: Callable):
+    """
+    Generic file encoding method
+
+    Args:
+        files: List of files
+        encode_func: File type ('image' or 'audio')
+
+    Returns:
+        encoded_files: List of encoded files
+    """
+    encoded_files = []
+    if not isinstance(files, list):
+        files = [files]
+    for file in files:
+        try:
+            file_path = check_path(file, exist=True, file=True)
+            base64_str, mime = encode_func(file_path)
+            encoded_files.append(f"data:{mime};base64," + base64_str)
+        except Exception as e:
+            LOG.error(f"Error processing file {file}: {e}")
+            encoded_files.append(file)
+            continue
+    return encoded_files
+
+def map_kw_for_framework(
+    kw: Dict[str, Any],
+    kw_map: Dict[str, Union[Tuple[str, Callable], str, Callable]]
+) -> Dict[str, Any]:
+    result = {}
+    for k, v in kw.items():
+        kw_item = kw_map.get(k)
+        try:
+            if isinstance(kw_item, tuple) and len(kw_item) == 2:
+                new_key, transform_func = kw_item
+                assert isinstance(new_key, str) and callable(transform_func), \
+                    f"Invalid kw_map item: {kw_item}"
+                result[new_key] = transform_func(v)
+            elif isinstance(kw_item, str):
+                result[kw_item] = v
+            elif callable(kw_item):
+                result[k] = kw_item(v)
+            elif kw_item is None:
+                result[k] = v
+            else:
+                raise ValueError(f"Invalid kw_map item: {kw_item}")
+        except (TypeError, ValueError) as e:
+            LOG.warning(f"Type conversion error for key '{k}': {e}, using original value")
+            result[k] = v
+    return result

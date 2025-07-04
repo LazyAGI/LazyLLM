@@ -94,7 +94,7 @@ class TestEngine(unittest.TestCase):
 
     def test_engine_subgraph(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
-        nodes = [dict(id='1', kind='SharedLLM', name='s1', args=dict(llm='0', prompt=None))]
+        nodes = [dict(id='1', kind='SharedModel', name='s1', args=dict(llm='0', prompt=None, cls='llm'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
 
         nodes = [dict(id='2', kind='SubGraph', name='s1', args=dict(nodes=nodes, edges=edges))]
@@ -557,7 +557,7 @@ class TestEngine(unittest.TestCase):
 
     def test_engine_stop_and_restart(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
-        nodes = [dict(id='1', kind='SharedLLM', name='s1', args=dict(llm='0', prompt=None))]
+        nodes = [dict(id='1', kind='SharedModel', name='s1', args=dict(llm='0', prompt=None, cls='llm'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
 
         engine = LightEngine()
@@ -670,7 +670,7 @@ class TestEngine(unittest.TestCase):
 
     def test_engine_status(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
-        llm_node = dict(id='1', kind='SharedLLM', name='s1', args=dict(llm='0', prompt=None))
+        llm_node = dict(id='1', kind='SharedModel', name='s1', args=dict(llm='0', prompt=None, cls='llm'))
 
         plus1 = dict(id='2', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
         double = dict(id='3', kind='Code', name='m2', args=dict(code='def test(x: int):\n    return 2 * x\n'))
