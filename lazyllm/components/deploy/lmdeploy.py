@@ -36,7 +36,12 @@ class LMDeploy(LazyLLMDeployBase):
         "cancel": False,
         "adapter_name": None
     }
-    auto_map = {}
+    auto_map = {
+        'port': 'server-port',
+        'host': 'server-name',
+        'max_batch_size': 'max-batch-size',
+        'chat_template': 'chat-template',
+    }
     stream_parse_parameters = {"delimiter": b"\n"}
 
     def __init__(self, launcher=launchers.remote(ngpus=1), trust_remote_code=True, log_path=None, **kw):

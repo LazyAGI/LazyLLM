@@ -141,3 +141,20 @@ class TestDeploy(object):
         # set model_name and key
         chat = lazyllm.AutoModel('internlm2-chat-7b')
         assert isinstance(chat, lazyllm.TrainableModule)
+
+    def test_deploy_method_kw_mapping(self):
+        # Test LMDeploy deployment framework
+        module = lazyllm.TrainableModule(self.model_path)
+
+        # Use deploy_method to set deployment framework and parameters
+        module.deploy_method(deploy.LMDeploy, port=9090, tp=1, max_batch_size=256)
+        module.update_server()
+
+        # Verify parameter mapping is correct
+        deploy_args = module._impl._deploy_args
+
+        # Check mapped parameters
+        assert deploy_args.get('server-port') == 9090, f"Expected server-port=9090, got {deploy_args.get('server-port')}"
+        assert deploy_args.get('tp') == 1, f"Expected tp=1, got {deploy_args.get('tp')}"
+        assert deploy_args.get('max-batch-size') == 256, \
+            f"Expected max-batch-size=256, got {deploy_args.get('max-batch-size')}"

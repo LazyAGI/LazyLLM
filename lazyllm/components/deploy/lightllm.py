@@ -29,7 +29,7 @@ class Lightllm(LazyLLMDeployBase):
             "stop_sequences": None,
         }
     }
-    auto_map = {'tp': 'tp'}
+    auto_map = {}
     stream_url_suffix = '_stream'
     stream_parse_parameters = {"delimiter": b"\n\n"}
 

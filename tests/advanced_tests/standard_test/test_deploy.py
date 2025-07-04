@@ -173,7 +173,19 @@ class TestDeploy(object):
         assert type(res) is str
         assert '但愿人长久' in res
         res = client_send('hi')[0][-1][-1]
-        assert "Only '.mp3' and '.wav' formats in the form of file paths or URLs are supported." == res
+        assert "formats in the form of file paths or URLs are supported." in res
+
+        audio_format_test_files = [
+            os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.aac'),
+            os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.flac'),
+            os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.m4a'),
+            os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.ogg'),
+            os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.wav'),
+            os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.wma')
+        ]
+        for audio_format_test_file in audio_format_test_files:
+            res = m(audio_format_test_file)
+            assert '但愿人长久' in res
 
     def test_stt_bind(self):
         audio_path = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')
