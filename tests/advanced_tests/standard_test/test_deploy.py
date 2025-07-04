@@ -1,7 +1,5 @@
 import os
 import json
-import subprocess
-import tempfile
 import time
 import pytest
 import httpx
@@ -9,7 +7,7 @@ import random
 from gradio_client import Client
 
 import lazyllm
-from lazyllm import deploy, globals, config
+from lazyllm import deploy, globals
 from lazyllm.launcher import cleanup
 from lazyllm.components.formatter import encode_query_with_filepaths, decode_query_with_filepaths
 from lazyllm.components.utils.file_operate import image_to_base64
@@ -177,27 +175,17 @@ class TestDeploy(object):
         res = client_send('hi')[0][-1][-1]
         assert "formats in the form of file paths or URLs are supported." in res
 
-        audio_formats = [
-            '.wav', '.flac', '.m4a', '.aac', '.ogg', '.wma'
+        audio_format_test_files = [
+            os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.aac'),
+            os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.flac'),
+            os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.m4a'),
+            os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.ogg'),
+            os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.wav'),
+            os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.wma')
         ]
-        dir = os.path.join(config['home'], 'temp')
-        os.makedirs(dir, exist_ok=True)
-        for format_ext in audio_formats:
-            with tempfile.NamedTemporaryFile(suffix=format_ext, delete=False, dir=dir) as tmp_file:
-                temp_audio_path = tmp_file.name
-
-                cmd = [
-                    'ffmpeg', '-i', audio_path,
-                    '-y',
-                    temp_audio_path
-                ]
-
-                result = subprocess.run(cmd, capture_output=True, text=True)
-                assert result.returncode == 0 and os.path.exists(temp_audio_path)
-                res = m(temp_audio_path)
-                assert '但愿人长久' in res
-            if os.path.exists(temp_audio_path):
-                os.unlink(temp_audio_path)
+        for audio_format_test_file in audio_format_test_files:
+            res = m(audio_format_test_file)
+            assert '但愿人长久' in res
 
     def test_stt_bind(self):
         audio_path = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')

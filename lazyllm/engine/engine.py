@@ -4,7 +4,11 @@ from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier, SqlManager
 from lazyllm.tools.http_request.http_request import HttpRequest
 from lazyllm.common import compile_func
-from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list, decode_query_with_filepaths
+from lazyllm.components.formatter.formatterbase import (
+    LAZYLLM_QUERY_PREFIX,
+    _lazyllm_get_file_list,
+    decode_query_with_filepaths,
+)
 from .node import Node
 from .node_meta_hook import NodeMetaHook
 from .utils import move_files_to_target_dir
@@ -810,7 +814,7 @@ def make_llm(kw: dict):
 class STT(lazyllm.Module):
     def __init__(self, model: lazyllm.TrainableModule):
         super().__init__()
-        self._m = model
+        self._m = model if not isinstance(model, STT) else model._m
 
     def forward(self, query: str):
         if '<lazyllm-query>' in query:
@@ -854,15 +858,17 @@ def make_local_stt(base_model: str, deploy_method: str = "auto", url: Optional[s
 class TTS(lazyllm.Module):
     def __init__(self, model: lazyllm.TrainableModule, target_dir: Optional[str] = None):
         super().__init__()
-        self._m = model
+        self._m = model if not isinstance(model, TTS) else model._m
         self._target_dir = target_dir
 
     def forward(self, query: str):
         r = self._m(query)
-        result = decode_query_with_filepaths(r)
-        sound_list = result["files"]
-        if self._target_dir and sound_list:
-            sound_list = move_files_to_target_dir(sound_list, self._target_dir)
+        sound_list = []
+        if isinstance(r, str) and r.startswith(LAZYLLM_QUERY_PREFIX):
+            result = decode_query_with_filepaths(r)
+            sound_list = result["files"]
+            if self._target_dir and sound_list:
+                sound_list = move_files_to_target_dir(sound_list, self._target_dir)
         return sound_list[0] if len(sound_list) > 0 else query
 
     @property
@@ -904,6 +910,7 @@ def make_constant(value: Any):
 def make_sql_call(sql_manager: Node, base_model: str, sql_examples: str = "", use_llm_for_sql_result: bool = True,
                   return_trace: bool = True):
     llm = Engine().build_node(base_model).func
+    sql_manager = Engine().build_node(sql_manager).func
     return lazyllm.tools.SqlCall(llm=llm, sql_manager=sql_manager, sql_examples=sql_examples,
                                  use_llm_for_sql_result=use_llm_for_sql_result, return_trace=return_trace)
 
