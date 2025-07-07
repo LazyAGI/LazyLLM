@@ -99,9 +99,9 @@ class _Log:
         return records
 
     def __getattr__(self, attr):
-        def impl(*args, join: str = '\n', depth: int = 0):
+        def impl(*args, join: str = '\n', depth: int = 0, **kw):
             s = str(args[0]) if len(args) == 1 else join.join([str(a) for a in args])
-            getattr(self._logger.opt(depth=depth + 1), attr)(s)
+            getattr(self._logger.opt(depth=depth + 1, **kw), attr)(s)
 
         return impl if attr in self.__dynamic_attrs__ else getattr(self._logger, attr)
 

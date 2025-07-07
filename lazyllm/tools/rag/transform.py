@@ -208,8 +208,7 @@ class SentenceSplitter(NodeTransform):
                 f'Metadata length ({metadata_size}) is close to chunk size '
                 f'({self.chunk_size}). Resulting chunks are less than 50 tokens. '
                 'Consider increasing the chunk size or decreasing the size of '
-                'your metadata to avoid this.',
-                flush=True,
+                'your metadata to avoid this.'
             )
 
         splits = self._split(text, effective_chunk_size)

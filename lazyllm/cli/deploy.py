@@ -85,6 +85,6 @@ def deploy(commands):
             t.wait()
         else:
             lazyllm.LOG.success(f'LazyLLM TrainableModule launched successfully:\n  URL: {t._url}\n  '
-                                f'Framework: {t._deploy_type.__name__}', flush=True)
+                                f'Framework: {t._deploy_type.__name__}')
             while True:
                 time.sleep(10)

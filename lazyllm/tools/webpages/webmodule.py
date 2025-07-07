@@ -407,7 +407,7 @@ class WebModule(ModuleBase):
 
         self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True)
         LOG.success('LazyLLM webmodule launched successfully: Running on: '
-                    f'{self.broadcast_url}, local URL: {self.url}', flush=True)
+                    f'{self.broadcast_url}, local URL: {self.url}')
 
     def _update(self, *, mode=None, recursive=True):
         super(__class__, self)._update(mode=mode, recursive=recursive)
