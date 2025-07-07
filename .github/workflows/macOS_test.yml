@@ -45,8 +45,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: 'LazyLLM-Env'
+          submodules: false
           fetch-depth: 0
+      
+      - name: Init specific submodule
+        run: |
+          git submodule init LazyLLM-Env
+          git submodule update LazyLLM-Env
 
       - name: Fetch PR source branch
         if: github.event_name == 'pull_request_target'
@@ -155,8 +160,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: 'LazyLLM-Env'
+          submodules: false
           fetch-depth: 0
+
+      - name: Init specific submodule
+        run: |
+          git submodule init LazyLLM-Env
+          git submodule update LazyLLM-Env
 
       - name: Merge PR branch into main
         if: github.event_name == 'pull_request_target'
