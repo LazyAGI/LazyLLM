@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: 'LazyLLM-Env'
           fetch-depth: 0
 
       - name: Set up python
@@ -89,7 +89,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: 'LazyLLM-Env'
           fetch-depth: 0
 
       - name: Set up python

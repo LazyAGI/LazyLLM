@@ -45,7 +45,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: 'LazyLLM-Env'
           fetch-depth: 0
 
       - name: Fetch PR source branch
@@ -155,7 +155,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: 'LazyLLM-Env'
           fetch-depth: 0
 
       - name: Merge PR branch into main
