@@ -1,7 +1,10 @@
 import multiprocessing
 from contextlib import contextmanager
+from concurrent.futures import ProcessPoolExecutor as PPE
+import functools
 import time
 import atexit
+from .utils import load_obj, dump_obj
 
 @contextmanager
 def _ctx(method='spawn'):
@@ -38,3 +41,12 @@ class ForkProcess(multiprocessing.Process):
     def start(self):
         with _ctx('fork'):
             return super().start()
+
+
+def _worker(f):
+    return load_obj(f)()
+
+class ProcessPoolExecutor(PPE):
+    def submit(self, fn, /, *args, **kwargs):
+        f = dump_obj(functools.partial(fn, *args, **kwargs))
+        return super(__class__, self).submit(_worker, f)

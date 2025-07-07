@@ -97,6 +97,8 @@ openai-whisper = {version = "*", optional = true}
 qwen-vl-utils = {version = "^0.0.11", optional = true}
 accelerate = {version = "==1.6.0", optional = true}
 lmdeploy = {version = "==0.8.0", optional = true}
+boto3 = {version = "^1.39.3", optional = true}
+botocore = {version = "^1.39.3", optional = true}
 ftfy = {version = "==6.3.1", optional = true}
 imageio = {version = "==2.37.0", optional = true}
 imageio-ffmpeg = {version = "==0.6.0", optional = true}
@@ -193,6 +195,8 @@ full = [
     "openai-whisper",
     "qwen-vl-utils",
     "accelerate",
+    "boto3",
+    "botocore",
     "ftfy",
     "imageio",
     "imageio-ffmpeg"
@@ -315,7 +319,9 @@ rag-advanced = [
     "redisvl",
     "sentence-transformers",
     "torch",
-    "transformers"
+    "transformers",
+    "boto3",
+    "botocore"
 ]
 agent-advanced = [
     "ctranslate2",

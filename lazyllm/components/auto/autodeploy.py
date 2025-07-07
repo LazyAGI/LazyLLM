@@ -10,7 +10,7 @@ from .dependencies.requirements import requirements
 from .auto_helper import get_model_name, check_requirements
 from ..deploy.stable_diffusion.stable_diffusion3 import StableDiffusionDeploy
 from ..deploy.speech_to_text.sense_voice import SenseVoiceDeploy
-from ..deploy.text_to_speech.base import TTSDeploy
+from ..deploy.text_to_speech import TTSDeploy
 from ..deploy.ocr.pp_ocr import OCRDeploy
 from ..utils.downloader import ModelManager
 from typing import Optional

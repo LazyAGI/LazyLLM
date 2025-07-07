@@ -14,6 +14,7 @@ def t1(x): return 2 * x
 def t2(x): return 3 * x
 def t3(x): return x
 
+
 class TestFlow(object):
 
     def test_pipeline(self):
@@ -41,6 +42,12 @@ class TestFlow(object):
     def test_parallel(self):
         fl = parallel(add_one, add_one)(1)
         assert fl == (2, 2)
+
+    def test_parallel_single_output(self):
+        p1 = parallel(add_one)
+        p2 = parallel(add_one)
+        p = parallel(p1, p2).sum
+        assert p(1) == (2, 2)  # not 4, because p1 & p2 returns [2]
 
     def test_parallel_sequential(self):
         fl = parallel.sequential(add_one, add_one)(1)
@@ -109,6 +116,7 @@ class TestFlow(object):
 
         assert lp(1) == 11
 
+    @pytest.mark.skipif(lazyllm.config['parallel_multiprocessing'], reason='barrier is not allowed in multiprocessing')
     def test_barrier(self):
         res = []
 

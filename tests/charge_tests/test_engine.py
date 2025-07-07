@@ -98,7 +98,7 @@ class TestEngine(unittest.TestCase):
                  args=dict(code=add_tool_code)),
         ]
         nodes = [dict(id="1", kind="FunctionCall", name="fc",
-                      args=dict(llm='0', tools=['1001', '1002', '1003', '1004']))]
+                      args=dict(base_model='0', tools=['1001', '1002', '1003', '1004']))]
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
@@ -106,14 +106,14 @@ class TestEngine(unittest.TestCase):
         assert '22' in engine.run(gid, "What will the temperature be in degrees Celsius in Paris tomorrow?")
 
         nodes = [dict(id="2", kind="FunctionCall", name="re",
-                      args=dict(llm='0', tools=['1003', '1004'], algorithm='React'))]
+                      args=dict(base_model='0', tools=['1003', '1004'], algorithm='React'))]
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
         assert '5440' in engine.run(gid, "Calculate 20*(45+23)*4, step by step.")
 
         nodes = [dict(id="3", kind="FunctionCall", name="re",
-                      args=dict(llm='0', tools=['1003', '1004'], algorithm='PlanAndSolve'))]
+                      args=dict(base_model='0', tools=['1003', '1004'], algorithm='PlanAndSolve'))]
         edges = [dict(iid="__start__", oid="3"), dict(iid="3", oid="__end__")]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
@@ -129,7 +129,7 @@ class TestEngine(unittest.TestCase):
                   "已知国学篇章：{context_str}\n")
         resources = [
             dict(id='00', kind='OnlineEmbedding', name='e0', args=dict(source='glm')),
-            dict(id='01', kind='OnlineEmbedding', name='e1', args=dict(type='rerank')),
+            dict(id='01', kind='OnlineEmbedding', name='e1', args=dict(embed_type='rerank')),
             dict(id='0', kind='Document', name='d1', args=dict(dataset_path='rag_master', node_group=[
                 dict(name='sentence', embed='00', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))]
         nodes = [dict(id='1', kind='Retriever', name='ret1',
@@ -189,7 +189,7 @@ class TestEngine(unittest.TestCase):
                 id="2",
                 kind="SqlCall",
                 name="sql_call",
-                args=dict(sql_manager="0", llm="1", sql_examples="", _lazyllm_enable_report=True),
+                args=dict(sql_manager="0", base_model="1", sql_examples="", _lazyllm_enable_report=True),
             )
         ]
         edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
@@ -217,7 +217,7 @@ class TestEngine(unittest.TestCase):
         ]
         # `tools` in `args` is a list of ids in `resources`
         nodes = [dict(id="1", kind="FunctionCall", name="fc",
-                      args=dict(llm='0', tools=['3', '2']))]
+                      args=dict(base_model='0', tools=['3', '2']))]
         edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
         engine = LightEngine()
         # TODO handle duplicated node id
