@@ -6,9 +6,9 @@ lint-flake8:
 lint-print:
 	@matches=$$(grep -RIn --binary-files=without-match --include="*.py" --exclude-dir="__pycache__" --exclude="finetune.py" --exclude-dir="docs" 'print(' lazyllm \
 		| grep -v '^\s*#' \
-		| grep -v '# noqa print'); \
-	count=$$(echo "$$matches" | wc -l); \
-	if [ "$$count" -gt 0 ]; then \
+		| grep -v '# noqa print' || true); \
+	if [ -n "$$matches" ]; then \
+		count=$$(echo "$$matches" | wc -l); \
 		echo "❌ Lint failed: found $$count print(...) statements in the codebase:"; \
 		echo "$$matches"; \
 		exit 1; \
