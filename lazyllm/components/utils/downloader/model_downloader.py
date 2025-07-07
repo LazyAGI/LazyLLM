@@ -157,7 +157,7 @@ class ModelManager():
         for model_path in self.model_paths:
             if len(model_path) == 0: continue
             if model_path[0] != os.sep:
-                print(f"[WARNING] skipping path {model_path} as only absolute paths is accepted.")
+                lazyllm.LOG.warning(f"skipping path {model_path} as only absolute paths is accepted.")
                 continue
             for model_dir in model_dirs:
                 full_model_dir = os.path.join(model_path, model_dir)
@@ -222,7 +222,7 @@ class HubDownloader(ABC):
                 try:
                     call_back(n, total)
                 except Exception as e:
-                    print(f"Error in callback: {e}")
+                    lazyllm.LOG.error(f"Error in callback: {e}")
             time.sleep(1)
 
     def _get_current_files_size(self, model_dir):
