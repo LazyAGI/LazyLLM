@@ -174,6 +174,8 @@ class MilvusStore(StoreBase):
                             'element_type': self._type2milvus[desc.element_type],
                             'max_capacity': desc.max_size,
                         }
+                        if desc.element_type == DataType.VARCHAR:
+                            field_args['max_length'] = 65535
                     elif desc.data_type == DataType.VARCHAR:
                         field_args = {
                             'max_length': desc.max_size,
