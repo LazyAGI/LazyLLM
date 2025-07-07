@@ -34,13 +34,12 @@ lazyllm.config.add("log_file_mode", str, "merge", "LOG_FILE_MODE")
 class _Log:
     _stderr_initialized = False
     _once_flags: Dict = {}
+    __dynamic_attrs__ = ['debug', 'info', 'warning', 'error', 'success', 'critical']
 
     def __init__(self):
         self._name = lazyllm.config["log_name"]
         self._pid = getpid()
-        self._log_dir_path = check_path(
-            lazyllm.config["log_dir"], exist=False, file=False
-        )
+        self._log_dir_path = check_path(lazyllm.config["log_dir"], exist=False, file=False)
 
         if getenv("LOGURU_AUTOINIT", "true").lower() in ("1", "true") and stderr:
             try:
@@ -53,17 +52,9 @@ class _Log:
             self.stderr: bool = bool(stderr)
             self._stderr_i = logger.add(
                 stderr,
-                level=(
-                    lazyllm.config["log_level"]
-                    if not lazyllm.config["debug"]
-                    else "DEBUG"
-                ),
-                format=lazyllm.config["log_format"],
-                filter=lambda record: (
-                    record["extra"].get("name") == self._name and self.stderr
-                ),
-                colorize=True,
-            )
+                level=lazyllm.config["log_level"] if not lazyllm.config["debug"] else "DEBUG",
+                format=lazyllm.config["log_format"], colorize=True,
+                filter=lambda record: (record["extra"].get("name") == self._name and self.stderr))
             _Log._stderr_initialized = True
 
         self._logger = logger.bind(name=self._name, process=self._pid)
@@ -74,11 +65,8 @@ class _Log:
         if context not in self._once_flags:
             self._once_flags[context] = once_flag()
         # opt depth for printing correct stack depth information
-        call_once(
-            self._once_flags[context],
-            getattr(self.opt(depth=2, record=True).bind(name=self._name), level),
-            message,
-        )
+        call_once(self._once_flags[context],
+                  getattr(self.opt(depth=2, record=True).bind(name=self._name), level), message)
 
     def read(self, limit: int = 10, level: str = "error"):
         names = listdir(self._log_dir_path)
@@ -111,9 +99,11 @@ class _Log:
         return records
 
     def __getattr__(self, attr):
-        if attr not in self.__dict__:
-            return getattr(self._logger, attr)
-        return getattr(self, attr)
+        def impl(*args, join: str = '\n', depth: int = 0, **kw):
+            s = str(args[0]) if len(args) == 1 else join.join([str(a) for a in args])
+            getattr(self._logger.opt(depth=depth + 1, **kw), attr)(s)
+
+        return impl if attr in self.__dynamic_attrs__ else getattr(self._logger, attr)
 
     def close(self):
         logger.remove()
@@ -121,6 +111,8 @@ class _Log:
     def __reduce__(self):
         return (self.__class__, ())
 
+    def __dir__(self):
+        return super().__dir__() + self.__dynamic_attrs__
 
 LOG = _Log()
 
