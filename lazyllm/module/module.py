@@ -340,9 +340,10 @@ class UrlModule(ModuleBase, _UrlHelper):
         url = url or self._url
         data = __input
         stream_output = stream_output or self._stream
-        if stream_output and isinstance(stream_output, dict):
-            prefix, prefix_color = stream_output.get('prefix', ''), stream_output.get('prefix_color', '')
-            if prefix: FileSystemQueue().enqueue(lazyllm.colored_text(prefix, prefix_color))
+
+        # 处理流式输出前缀
+        if stream_output and isinstance(stream_output, dict) and (prefix := stream_output.get('prefix')):
+            FileSystemQueue().enqueue(lazyllm.colored_text(prefix, stream_output.get('prefix_color', '')))
 
         parse_parameters = self.stream_parse_parameters if stream_output else {"delimiter": b"<|lazyllm_delimiter|>"}
         token = getattr(self, "_tool_start_token", '')
@@ -350,42 +351,42 @@ class UrlModule(ModuleBase, _UrlHelper):
 
         # context bug with httpx, so we use requests
         with requests.post(url, json=data, stream=True, headers=headers, proxies={'http': None, 'https': None}) as r:
-            if r.status_code == 200:
-                messages = ''
-                for line in r.iter_lines(**parse_parameters):
-                    if not line: continue
-                    try:
-                        line = pickle.loads(codecs.decode(line, "base64"))
-                    except Exception:
-                        line = line.decode('utf-8')
-                    chunk = self._prompt.get_response(self.extract_result_func(line, data))
-                    if isinstance(chunk, str):
-                        if chunk.startswith(messages): chunk = chunk[len(messages):]
-                        messages += chunk
-                    else:
-                        messages = chunk
-
-                    if not stream_output: continue
-                    color = stream_output.get('color') if isinstance(stream_output, dict) else None
-                    if not cache:
-                        if token.startswith(chunk.lstrip('\n') if not token.startswith('\n') else chunk) \
-                           or token in chunk: cache = chunk
-                        else: FileSystemQueue().enqueue(colored_text(chunk, color))
-                    elif token in cache:
-                        stream_output = False
-                        if not cache.startswith(token):
-                            FileSystemQueue().enqueue(colored_text(cache.split(token)[0], color))
-                    else:
-                        cache += chunk
-                        if not (token.startswith(cache.lstrip('\n') if not token.startswith('\n') else cache)
-                                or token in cache):
-                            FileSystemQueue().enqueue(colored_text(cache, color))
-                            cache = ""
-                if isinstance(stream_output, dict):
-                    suffix, suffix_color = stream_output.get('suffix', ''), stream_output.get('suffix_color', '')
-                    if suffix: FileSystemQueue().enqueue(lazyllm.colored_text(suffix, suffix_color))
-            else:
+            if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+            messages = ''
+            for line in r.iter_lines(**parse_parameters):
+                if not line: continue
+                try:
+                    line = pickle.loads(codecs.decode(line, "base64"))
+                except Exception:
+                    line = line.decode('utf-8')
+                chunk = self._prompt.get_response(self.extract_result_func(line, data))
+
+                if isinstance(chunk, str):
+                    if chunk.startswith(messages): chunk = chunk[len(messages):]
+                    messages += chunk
+                else:
+                    messages = chunk
+
+                if not stream_output: continue
+                color = stream_output.get('color') if isinstance(stream_output, dict) else None
+                if not cache:
+                    if token.startswith(chunk.lstrip('\n') if not token.startswith('\n') else chunk) \
+                        or token in chunk: cache = chunk
+                    else: FileSystemQueue().enqueue(colored_text(chunk, color))
+                elif token in cache:
+                    stream_output = False
+                    if not cache.startswith(token):
+                        FileSystemQueue().enqueue(colored_text(cache.split(token)[0], color))
+                else:
+                    cache += chunk
+                    if not (token.startswith(cache.lstrip('\n') if not token.startswith('\n') else cache)
+                            or token in cache):
+                        FileSystemQueue().enqueue(colored_text(cache, color))
+                        cache = ""
+            if isinstance(stream_output, dict):
+                suffix, suffix_color = stream_output.get('suffix', ''), stream_output.get('suffix_color', '')
+                if suffix: FileSystemQueue().enqueue(lazyllm.colored_text(suffix, suffix_color))
             temp_output = self._extract_and_format(messages)
             if record_hook: record_hook(temp_output)
             return self._formatter(temp_output)
@@ -532,7 +533,7 @@ class ServerModule(UrlModule):
             'Session-ID': encode_request(globals._sid)
         }
         data = encode_request((__input, kw))
-        return super().forward(data, headers=headers, **kw)
+        return super().forward(data, headers=headers)
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
