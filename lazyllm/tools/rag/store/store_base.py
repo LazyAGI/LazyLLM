@@ -2,6 +2,7 @@ import re
 
 from abc import ABC, abstractmethod
 from typing import Optional, List, Union, Set
+from lazyllm import LazyLLMRegisterMetaClass
 
 from ..doc_node import DocNode
 from ..index_base import IndexBase
@@ -27,6 +28,7 @@ BUILDIN_GLOBAL_META_DESC = {
 }
 INSERT_BATCH_SIZE = 3000
 IMAGE_PATTERN = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
+
 
 class StoreBaseMixin:
     @abstractmethod
@@ -54,8 +56,32 @@ class StoreBaseMixin:
     def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
         raise NotImplementedError
 
+class StoreBase(ABC):
+    @abstractmethod
+    def update_nodes(self, nodes: List[DocNode]) -> None:
+        """ update nodes to the store """
+        raise NotImplementedError
 
-class StoreBase(StoreBaseMixin, ABC):
+    @abstractmethod
+    def remove_nodes(self, doc_ids: List[str], group_name: Optional[str] = None,
+                     uids: Optional[List[str]] = None) -> None:
+        """ remove nodes from the store by doc_ids or uids """
+        raise NotImplementedError
+
+    @abstractmethod
+    def register_index(self, type: str, index: IndexBase) -> None:
+        """ register index to the store (for store that support hook only)"""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
+        """ get registered index from the store """
+        raise NotImplementedError
+
+    @abstractmethod
+    def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
+        raise NotImplementedError
+
     @abstractmethod
     def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
                   doc_ids: Optional[Set] = None, **kwargs) -> List[DocNode]:
@@ -88,4 +114,85 @@ class StoreBase(StoreBaseMixin, ABC):
     @abstractmethod
     def is_group_active(self, name: str) -> bool:
         """ check if a group has nodes (active) """
+        raise NotImplementedError
+
+
+class LazyLLMStoreBase(metaclass=LazyLLMRegisterMetaClass):
+    @abstractmethod
+    def lazy_init(self, *args, **kwargs):
+        """ lazy init """
+        raise NotImplementedError
+
+    @abstractmethod
+    def upsert(self, data: List[dict]) -> bool:
+        """ upsert data to the store """
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete(self, filter: dict, **kwargs) -> bool:
+        """ delete data from the store """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get(self, filter: dict, **kwargs) -> List[dict]:
+        """ get data from the store """
+        raise NotImplementedError
+
+    @abstractmethod
+    def search(self, query: str, **kwargs) -> List[dict]:
+        """ search data from the store """
+        raise NotImplementedError
+
+
+class SegmentStoreBase(StoreBaseMixin, ABC):
+    @abstractmethod
+    def lazy_init(self, *args, **kwargs):
+        """ lazy init """
+        raise NotImplementedError
+
+    @abstractmethod
+    def upsert(self, data: List[dict]) -> bool:
+        """ upsert data to the store """
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete(self, filter: dict, **kwargs) -> bool:
+        """ delete data from the store """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get(self, filter: dict, **kwargs) -> List[dict]:
+        """ get data from the store """
+        raise NotImplementedError
+
+    @abstractmethod
+    def search(self, query: str, **kwargs) -> List[dict]:
+        """ search data from the store """
+        raise NotImplementedError
+
+
+class VectorStoreBase(StoreBaseMixin, ABC):
+    @abstractmethod
+    def lazy_init(self, *args, **kwargs):
+        """ lazy init """
+        raise NotImplementedError
+
+    @abstractmethod
+    def upsert(self, data: List[dict]) -> bool:
+        """ upsert data to the store """
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete(self, filter: dict, **kwargs) -> bool:
+        """ delete data from the store """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get(self, filter: dict, **kwargs) -> List[dict]:
+        """ get data from the store """
+        raise NotImplementedError
+
+    @abstractmethod
+    def search(self, query: str, **kwargs) -> List[dict]:
+        """ search data from the store """
         raise NotImplementedError
