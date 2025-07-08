@@ -1,20 +1,20 @@
 import functools
 import json5 as json
 from datetime import datetime
-from typing import Optional, Dict, List, Any, Union
+from typing import Optional, Dict, List, Any, Union, Tuple
 import os
 import copy
 import uuid
 import re
 
 import lazyllm
-from lazyllm import globals, LOG, launchers, Option
+from lazyllm import globals, LOG, launchers, Option, package
 from ...components.formatter import decode_query_with_filepaths, encode_query_with_filepaths
-from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
+from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ...components.utils import ModelManager
-from ...components.utils.file_operate import base64_to_file, is_base64_with_mime
+from ...components.utils.file_operate import base64_to_file, is_base64_with_mime, image_to_base64, audio_to_base64
 from ...launcher import LazyLLMLaunchersBase as Launcher
-from ..utils import map_kw_for_framework
+from ..utils import map_kw_for_framework, encode_files
 from ...flow import Pipeline
 from ..module import ModuleBase, _UrlHelper, _UrlTemplateStruct, light_reduce, UrlModule
 
@@ -426,3 +426,60 @@ class TrainableModule(UrlModule):
         else:
             for k in globals["usage"][par_muduleid]:
                 globals["usage"][par_muduleid][k] += usage[k]
+
+    def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),
+                *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
+        if self.template_message:
+            if isinstance(__input, package):
+                assert not lazyllm_files, 'Duplicate `files` argument provided by args and kwargs'
+                __input, lazyllm_files = __input
+            if isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
+                assert not lazyllm_files, 'Argument `files` is already provided by query'
+                deinput = decode_query_with_filepaths(__input)
+                __input, files = deinput['query'], deinput['files']
+            else:
+                files = _lazyllm_get_file_list(lazyllm_files) if lazyllm_files else []
+
+        text_input_for_token_usage = __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
+
+        if self.template_message:
+            data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
+            assert 'inputs' in self.keys_name_handle
+            data[self.keys_name_handle['inputs']] = __input
+            if 'image' in self.keys_name_handle and files:
+                encoded_files = encode_files(files, image_to_base64)
+                data[self.keys_name_handle['image']] = encoded_files
+            elif 'audio' in self.keys_name_handle and files:
+                encoded_files = encode_files(files, audio_to_base64)
+                data[self.keys_name_handle['audio']] = encoded_files
+            elif 'ocr_files' in self.keys_name_handle and files:
+                data[self.keys_name_handle['ocr_files']] = files
+
+        url = self._url
+        if stream_output:
+            if self.stream_url_suffix and not url.endswith(self.stream_url_suffix):
+                url += self.stream_url_suffix
+            if "stream" in data: data['stream'] = stream_output
+
+        if kw.get("modality"):
+            data["modality"] = kw["modality"]
+
+        return super().forward(__input, stream_output=stream_output, url=url,
+                               record_hook=functools.partial(self._record_usage, text_input_for_token_usage), **kw)
+
+    def _modify_parameters(self, paras, kw):
+        for key, value in paras.items():
+            if key == self.keys_name_handle['inputs']:
+                continue
+            elif isinstance(value, dict):
+                if key in kw:
+                    assert set(kw[key].keys()).issubset(set(value.keys()))
+                    value.update(kw.pop(key))
+                for k in value.keys():
+                    if k in kw: value[k] = kw.pop(k)
+            else:
+                if key in kw: paras[key] = kw.pop(key)
+        return paras
+
+    def set_default_parameters(self, **kw):
+        self._modify_parameters(self.template_message, kw)

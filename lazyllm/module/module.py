@@ -7,23 +7,20 @@ import pickle
 import codecs
 import inspect
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
-from typing import Dict, List, Union, Optional, Tuple
+from typing import Dict, List, Union, Optional, Tuple, Callable
 from dataclasses import dataclass
 
 import lazyllm
 from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals, colored_text
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
-from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
-from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
+from ..components.formatter import FormatterBase, EmptyFormatter
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
 from ..client import get_redis, redis_client
 from ..hook import LazyLLMHook
 from urllib.parse import urljoin
-from .utils import encode_files
 
-from lazyllm.components.utils.file_operate import image_to_base64, audio_to_base64
 
 # use _MetaBind:
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
@@ -285,7 +282,7 @@ class _UrlHelper(object):
     _url_id = property(lambda self: self._module_id)
 
     @property
-    def _url(self):
+    def _url(self) -> str:
         if not self._url_wrapper.url:
             if redis_client:
                 try:
@@ -336,65 +333,20 @@ class UrlModule(ModuleBase, _UrlHelper):
     # Cannot modify or add any attrubute of self
     # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
     # deploy parameters keys are in **kw
-    def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa C901
-                *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
-        assert self._url is not None, f'Please start {self.__class__} first'
+    def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), *,  # noqa C901
+                url: Optional[str] = None, stream_output: Optional[Union[bool, Dict]] = None,
+                headers: Optional[dict] = None, record_hook: Optional[Callable] = None):
+        headers = headers or {'Content-Type': 'application/json'}
+        url = url or self._url
+        data = __input
         stream_output = stream_output or self._stream
-        url = self._url
-
-        if self.template_message:
-            if isinstance(__input, package):
-                assert not lazyllm_files, 'Duplicate `files` argument provided by args and kwargs'
-                __input, lazyllm_files = __input
-            if isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
-                assert not lazyllm_files, 'Argument `files` is already provided by query'
-                deinput = decode_query_with_filepaths(__input)
-                __input, files = deinput['query'], deinput['files']
-            else:
-                files = _lazyllm_get_file_list(lazyllm_files) if lazyllm_files else []
-
-        query = __input
-        __input = self._prompt.generate_prompt(query, llm_chat_history, tools)
-        headers = {'Content-Type': 'application/json'}
-        text_input_for_token_usage = __input
-
-        if isinstance(self, ServerModule):
-            assert llm_chat_history is None and tools is None
-            headers['Global-Parameters'] = encode_request(globals._pickle_data)
-            headers['Session-ID'] = encode_request(globals._sid)
-            data = encode_request((__input, kw))
-        elif self.template_message:
-            data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
-            assert 'inputs' in self.keys_name_handle
-            data[self.keys_name_handle['inputs']] = __input
-            if 'image' in self.keys_name_handle and files:
-                encoded_files = encode_files(files, image_to_base64)
-                data[self.keys_name_handle['image']] = encoded_files
-            elif 'audio' in self.keys_name_handle and files:
-                encoded_files = encode_files(files, audio_to_base64)
-                data[self.keys_name_handle['audio']] = encoded_files
-            elif 'ocr_files' in self.keys_name_handle and files:
-                data[self.keys_name_handle['ocr_files']] = files
-        else:
-            if len(kw) != 0: raise NotImplementedError(f'kwargs ({kw}) are not allowed in UrlModule')
-            data = __input
-
-        if stream_output:
-            if self.stream_url_suffix and not url.endswith(self.stream_url_suffix):
-                url += self.stream_url_suffix
-            if "stream" in data: data['stream'] = stream_output
-
-            if isinstance(stream_output, dict):
-                prefix, prefix_color = stream_output.get('prefix', ''), stream_output.get('prefix_color', '')
-                if prefix: FileSystemQueue().enqueue(lazyllm.colored_text(prefix, prefix_color))
+        if stream_output and isinstance(stream_output, dict):
+            prefix, prefix_color = stream_output.get('prefix', ''), stream_output.get('prefix_color', '')
+            if prefix: FileSystemQueue().enqueue(lazyllm.colored_text(prefix, prefix_color))
 
         parse_parameters = self.stream_parse_parameters if stream_output else {"delimiter": b"<|lazyllm_delimiter|>"}
-
         token = getattr(self, "_tool_start_token", '')
         cache = ""
-
-        if kw.get("modality"):
-            data["modality"] = kw["modality"]
 
         # context bug with httpx, so we use requests
         with requests.post(url, json=data, stream=True, headers=headers, proxies={'http': None, 'https': None}) as r:
@@ -435,10 +387,8 @@ class UrlModule(ModuleBase, _UrlHelper):
             else:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
             temp_output = self._extract_and_format(messages)
-            self._record_usage(text_input_for_token_usage, temp_output)
+            if record_hook: record_hook(temp_output)
             return self._formatter(temp_output)
-
-    def _record_usage(self, text_input_for_token_usage: str, temp_output: str): pass
 
     def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
         if prompt is None:
@@ -463,24 +413,8 @@ class UrlModule(ModuleBase, _UrlHelper):
             raise TypeError("format must be a FormatterBase")
         return self
 
-    def _modify_parameters(self, paras, kw):
-        for key, value in paras.items():
-            if key == self.keys_name_handle['inputs']:
-                continue
-            elif isinstance(value, dict):
-                if key in kw:
-                    assert set(kw[key].keys()).issubset(set(value.keys()))
-                    value.update(kw.pop(key))
-                for k in value.keys():
-                    if k in kw: value[k] = kw.pop(k)
-            else:
-                if key in kw: paras[key] = kw.pop(key)
-        return paras
-
-    def set_default_parameters(self, **kw):
-        self._modify_parameters(self.template_message, kw)
-
     def __call__(self, *args, **kw):
+        assert self._url is not None, f'Please start {self.__class__} first'
         if len(args) > 1:
             return super(__class__, self).__call__(package(args), **kw)
         return super(__class__, self).__call__(*args, **kw)
@@ -590,6 +524,15 @@ class ServerModule(UrlModule):
         url = urljoin(self._url.rsplit("/", 1)[0], '_call')
         r = requests.post(url, json=(fname, args, kwargs), headers={'Content-Type': 'application/json'})
         return pickle.loads(codecs.decode(r.content, "base64"))
+
+    def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), **kw):
+        headers = {
+            'Content-Type': 'application/json',
+            'Global-Parameters': encode_request(globals._pickle_data),
+            'Session-ID': encode_request(globals._sid)
+        }
+        data = encode_request((__input, kw))
+        return super().forward(data, headers=headers, **kw)
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
