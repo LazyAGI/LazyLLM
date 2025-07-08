@@ -464,8 +464,8 @@ class TrainableModule(UrlModule):
         if kw.get("modality"):
             data["modality"] = kw["modality"]
 
-        return super().forward(__input, stream_output=stream_output, url=url,
-                               record_hook=functools.partial(self._record_usage, text_input_for_token_usage), **kw)
+        return super().forward(data, stream_output=stream_output, url=url,
+                               record_hook=functools.partial(self._record_usage, text_input_for_token_usage))
 
     def _modify_parameters(self, paras, kw):
         for key, value in paras.items():
