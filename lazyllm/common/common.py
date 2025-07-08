@@ -31,15 +31,19 @@ class FlatList(list):
 
 
 class ArgsDict(dict):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, with_line=True, **kwargs):
         super(ArgsDict, self).__init__(*args, **kwargs)
+        self._with_line = with_line
 
     def check_and_update(self, kw):
         assert set(kw.keys()).issubset(set(self)), f'unexpected keys: {set(kw.keys()) - set(self)}'
         self.update(kw)
 
     def parse_kwargs(self):
-        string = ' '.join(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"' for k, v in self.items())
+        if self._with_line:
+            string = ' '.join(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"' for k, v in self.items())
+        else:
+            string = ' '.join(f'{k}={v}' if type(v) is not str else f'{k}=\"{v}\"' for k, v in self.items())
         return string
 
 class CaseInsensitiveDict(dict):
