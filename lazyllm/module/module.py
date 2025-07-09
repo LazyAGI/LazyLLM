@@ -20,6 +20,7 @@ import uuid
 from ..client import get_redis, redis_client
 from ..hook import LazyLLMHook
 from urllib.parse import urljoin
+from contextlib import contextmanager
 
 
 # use _MetaBind:
@@ -357,6 +358,16 @@ class UrlModule(ModuleBase, _UrlHelper):
             raise TypeError("format must be a FormatterBase")
         return self
 
+    def forward(self, *args, **kw): raise NotImplementedError
+
+    @contextmanager
+    def stream_output(self, stream_output: Optional[Union[bool, Dict]] = None):
+        if stream_output and isinstance(stream_output, dict) and (prefix := stream_output.get('prefix')):
+            self._stream_output(prefix, stream_output.get('prefix_color'))
+        yield
+        if isinstance(stream_output, dict) and (suffix := stream_output.get('suffix')):
+            self._stream_output(suffix, stream_output.get('suffix_color'))
+
     def __call__(self, *args, **kw):
         assert self._url is not None, f'Please start {self.__class__} first'
         if len(args) > 1:
@@ -477,9 +488,6 @@ class ServerModule(UrlModule):
         }
         data = encode_request((__input, kw))
 
-        if self._stream and isinstance(self._stream, dict) and (prefix := self._stream.get('prefix')):
-            self._stream_output(prefix, self._stream.get('prefix_color'))
-
         # context bug with httpx, so we use requests
         with requests.post(self._url, json=data, stream=True, headers=headers,
                            proxies={'http': None, 'https': None}) as r:
@@ -487,17 +495,15 @@ class ServerModule(UrlModule):
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
             messages = ''
-            for line in r.iter_lines():
-                line = pickle.loads(codecs.decode(line, "base64"))
-                if self._stream:
-                    self._stream_output(str(line), self._stream.get('color') if isinstance(self._stream, dict) else None)
-                messages += str(line)
+            with self.stream_output(self._stream):
+                for line in r.iter_lines():
+                    line = pickle.loads(codecs.decode(line, "base64"))
+                    if self._stream:
+                        self._stream_output(str(line), getattr(self._stream, 'get', lambda x: None)('color'))
+                    messages += str(line)
 
-            if isinstance(self._stream, dict) and (suffix := self._stream.get('suffix')):
-                self._stream_output(suffix, self._stream.get('suffix_color'))
-
-            temp_output = self._extract_and_format(messages)
-            return self._formatter(temp_output)
+                temp_output = self._extract_and_format(messages)
+                return self._formatter(temp_output)
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,

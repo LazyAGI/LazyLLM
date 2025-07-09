@@ -7,6 +7,8 @@ import copy
 import uuid
 import re
 import requests
+import pickle
+import codecs
 
 import lazyllm
 from lazyllm import globals, LOG, launchers, Option, package
@@ -465,20 +467,15 @@ class TrainableModule(UrlModule):
         if kw.get("modality"):
             data["modality"] = kw["modality"]
 
-        return self._forward_impl(data, stream_output=stream_output, url=url, text_input=text_input_for_token_usage)
+        with self.stream_output((stream_output := (stream_output or self._stream))):
+            return self._forward_impl(data, stream_output=stream_output, url=url, text_input=text_input_for_token_usage)
 
     def _maybe_has_fc(self, token: str, chunk: str) -> bool:
         return token and (token.startswith(chunk if token.startswith('\n') else chunk.lstrip('\n')) or token in chunk)
 
     def _forward_impl(self, data: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), *,
-                      url: Optional[str] = None, stream_output: Optional[Union[bool, Dict]] = None,
-                      text_input: Optional[str] = None):
+                      url: str, stream_output: Optional[Union[bool, Dict]] = None, text_input: Optional[str] = None):
         headers = self.template_headers or {'Content-Type': 'application/json'}
-        stream_output = stream_output or self._stream
-
-        if stream_output and isinstance(stream_output, dict) and (prefix := stream_output.get('prefix')):
-            self._stream_output(prefix, stream_output.get('prefix_color'))
-
         parse_parameters = self.stream_parse_parameters if stream_output else {"delimiter": b"<|lazyllm_delimiter|>"}
 
         # context bug with httpx, so we use requests
@@ -492,7 +489,10 @@ class TrainableModule(UrlModule):
 
             for line in r.iter_lines(**parse_parameters):
                 if not line: continue
-                chunk = self._prompt.get_response(self.extract_result_func(line.decode('utf-8'), data))
+                try: line = pickle.loads(codecs.decode(line, "base64"))  # for service deployed by RelayServer
+                except Exception: line = line.decode('utf-8')
+
+                chunk = self._prompt.get_response(self.extract_result_func(line, data))
                 chunk = chunk[len(messages):] if isinstance(chunk, str) and chunk.startswith(messages) else chunk
                 messages = chunk if not isinstance(chunk, str) else messages + chunk
 
@@ -504,9 +504,6 @@ class TrainableModule(UrlModule):
                 else:
                     cache += chunk
                     if not self._maybe_has_fc(token, cache): cache = self._stream_output(cache, color)
-
-            if isinstance(stream_output, dict) and (suffix := stream_output.get('suffix')):
-                self._stream_output(suffix, stream_output.get('suffix_color'))
 
             temp_output = self._extract_and_format(messages)
             if text_input: self._record_usage(text_input, temp_output)
