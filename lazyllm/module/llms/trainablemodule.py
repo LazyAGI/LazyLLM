@@ -6,6 +6,7 @@ import os
 import copy
 import uuid
 import re
+import requests
 
 import lazyllm
 from lazyllm import globals, LOG, launchers, Option, package
@@ -464,8 +465,52 @@ class TrainableModule(UrlModule):
         if kw.get("modality"):
             data["modality"] = kw["modality"]
 
-        return super().forward(data, stream_output=stream_output, url=url,
-                               record_hook=functools.partial(self._record_usage, text_input_for_token_usage))
+        return self._forward_impl(data, stream_output=stream_output, url=url, text_input=text_input_for_token_usage)
+
+    def _maybe_has_fc(self, token: str, chunk: str) -> bool:
+        return token and (token.startswith(chunk if token.startswith('\n') else chunk.lstrip('\n')) or token in chunk)
+
+    def _forward_impl(self, data: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), *,
+                      url: Optional[str] = None, stream_output: Optional[Union[bool, Dict]] = None,
+                      text_input: Optional[str] = None):
+        headers = self.template_headers or {'Content-Type': 'application/json'}
+        stream_output = stream_output or self._stream
+
+        if stream_output and isinstance(stream_output, dict) and (prefix := stream_output.get('prefix')):
+            self._stream_output(prefix, stream_output.get('prefix_color'))
+
+        parse_parameters = self.stream_parse_parameters if stream_output else {"delimiter": b"<|lazyllm_delimiter|>"}
+
+        # context bug with httpx, so we use requests
+        with requests.post(url, json=data, stream=True, headers=headers, proxies={'http': None, 'https': None}) as r:
+            if r.status_code != 200:
+                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+
+            messages, cache = '', ''
+            token = getattr(self, "_tool_start_token", '')
+            color = stream_output.get('color') if isinstance(stream_output, dict) else None
+
+            for line in r.iter_lines(**parse_parameters):
+                if not line: continue
+                chunk = self._prompt.get_response(self.extract_result_func(line.decode('utf-8'), data))
+                chunk = chunk[len(messages):] if isinstance(chunk, str) and chunk.startswith(messages) else chunk
+                messages = chunk if not isinstance(chunk, str) else messages + chunk
+
+                if not stream_output: continue
+                if not cache: cache = chunk if self._maybe_has_fc(token, chunk) else self._stream_output(chunk, color)
+                elif token in cache:
+                    stream_output = False
+                    if not cache.startswith(token): self._stream_output(cache.split(token)[0], color)
+                else:
+                    cache += chunk
+                    if not self._maybe_has_fc(token, cache): cache = self._stream_output(cache, color)
+
+            if isinstance(stream_output, dict) and (suffix := stream_output.get('suffix')):
+                self._stream_output(suffix, stream_output.get('suffix_color'))
+
+            temp_output = self._extract_and_format(messages)
+            if text_input: self._record_usage(text_input, temp_output)
+            return self._formatter(temp_output)
 
     def _modify_parameters(self, paras, kw):
         for key, value in paras.items():

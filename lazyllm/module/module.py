@@ -7,7 +7,7 @@ import pickle
 import codecs
 import inspect
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
-from typing import Dict, List, Union, Optional, Tuple, Callable
+from typing import Dict, List, Union, Optional, Tuple
 from dataclasses import dataclass
 
 import lazyllm
@@ -330,67 +330,6 @@ class UrlModule(ModuleBase, _UrlHelper):
         non_ascii_char_count = len(non_ascii_chars)
         return int(ascii_ch_count / 3.0 + non_ascii_char_count + 1)
 
-    # Cannot modify or add any attrubute of self
-    # prompt keys (excluding history) are in __input (ATTENTION: dict, not kwargs)
-    # deploy parameters keys are in **kw
-    def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), *,  # noqa C901
-                url: Optional[str] = None, stream_output: Optional[Union[bool, Dict]] = None,
-                headers: Optional[dict] = None, record_hook: Optional[Callable] = None):
-        headers = headers or {'Content-Type': 'application/json'}
-        url = url or self._url
-        data = __input
-        stream_output = stream_output or self._stream
-
-        # 处理流式输出前缀
-        if stream_output and isinstance(stream_output, dict) and (prefix := stream_output.get('prefix')):
-            FileSystemQueue().enqueue(lazyllm.colored_text(prefix, stream_output.get('prefix_color', '')))
-
-        parse_parameters = self.stream_parse_parameters if stream_output else {"delimiter": b"<|lazyllm_delimiter|>"}
-        token = getattr(self, "_tool_start_token", '')
-        cache = ""
-
-        # context bug with httpx, so we use requests
-        with requests.post(url, json=data, stream=True, headers=headers, proxies={'http': None, 'https': None}) as r:
-            if r.status_code != 200:
-                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
-            messages = ''
-            for line in r.iter_lines(**parse_parameters):
-                if not line: continue
-                try:
-                    line = pickle.loads(codecs.decode(line, "base64"))
-                except Exception:
-                    line = line.decode('utf-8')
-                chunk = self._prompt.get_response(self.extract_result_func(line, data))
-
-                if isinstance(chunk, str):
-                    if chunk.startswith(messages): chunk = chunk[len(messages):]
-                    messages += chunk
-                else:
-                    messages = chunk
-
-                if not stream_output: continue
-                color = stream_output.get('color') if isinstance(stream_output, dict) else None
-                if not cache:
-                    if token.startswith(chunk.lstrip('\n') if not token.startswith('\n') else chunk) \
-                        or token in chunk: cache = chunk
-                    else: FileSystemQueue().enqueue(colored_text(chunk, color))
-                elif token in cache:
-                    stream_output = False
-                    if not cache.startswith(token):
-                        FileSystemQueue().enqueue(colored_text(cache.split(token)[0], color))
-                else:
-                    cache += chunk
-                    if not (token.startswith(cache.lstrip('\n') if not token.startswith('\n') else cache)
-                            or token in cache):
-                        FileSystemQueue().enqueue(colored_text(cache, color))
-                        cache = ""
-            if isinstance(stream_output, dict):
-                suffix, suffix_color = stream_output.get('suffix', ''), stream_output.get('suffix_color', '')
-                if suffix: FileSystemQueue().enqueue(lazyllm.colored_text(suffix, suffix_color))
-            temp_output = self._extract_and_format(messages)
-            if record_hook: record_hook(temp_output)
-            return self._formatter(temp_output)
-
     def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
         if prompt is None:
             assert not history, 'history is not supported in EmptyPrompter'
@@ -404,6 +343,10 @@ class UrlModule(ModuleBase, _UrlHelper):
 
     def _extract_and_format(self, output: str) -> str:
         return output
+
+    def _stream_output(self, text: str, color: Optional[str] = None):
+        FileSystemQueue().enqueue(colored_text(text, color))
+        return ''
 
     def formatter(self, format: FormatterBase = None):
         if isinstance(format, FormatterBase) or callable(format):
@@ -533,7 +476,28 @@ class ServerModule(UrlModule):
             'Session-ID': encode_request(globals._sid)
         }
         data = encode_request((__input, kw))
-        return super().forward(data, headers=headers)
+
+        if self._stream and isinstance(self._stream, dict) and (prefix := self._stream.get('prefix')):
+            self._stream_output(prefix, self._stream.get('prefix_color'))
+
+        # context bug with httpx, so we use requests
+        with requests.post(self._url, json=data, stream=True, headers=headers,
+                           proxies={'http': None, 'https': None}) as r:
+            if r.status_code != 200:
+                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+
+            messages = ''
+            for line in r.iter_lines():
+                line = pickle.loads(codecs.decode(line, "base64"))
+                if self._stream:
+                    self._stream_output(str(line), self._stream.get('color') if isinstance(self._stream, dict) else None)
+                messages += str(line)
+
+            if isinstance(self._stream, dict) and (suffix := self._stream.get('suffix')):
+                self._stream_output(suffix, self._stream.get('suffix_color'))
+
+            temp_output = self._extract_and_format(messages)
+            return self._formatter(temp_output)
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
