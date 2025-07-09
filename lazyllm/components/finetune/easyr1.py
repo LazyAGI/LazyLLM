@@ -1,10 +1,12 @@
 import os
 import copy
+import json
+import shutil
 import random
 from datetime import datetime
 
 import lazyllm
-from lazyllm import launchers, ArgsDict, thirdparty
+from lazyllm import launchers, ArgsDict, thirdparty, LOG
 from .base import LazyLLMFinetuneBase
 
 
@@ -12,6 +14,7 @@ class EasyR1Finetune(LazyLLMFinetuneBase):
     defatult_kw = ArgsDict({
         'data.max_prompt_length': 2048,
         'data.max_response_length': 2048,
+        'data.rollout_batch_size': 128,
         'data.val_batch_size': 1024,
         'data.format_prompt': None,
         'worker.actor.global_batch_size': 128,
@@ -24,13 +27,14 @@ class EasyR1Finetune(LazyLLMFinetuneBase):
         'trainer.n_gpus_per_node': 1,
         'trainer.save_freq': 5,
         'trainer.save_checkpoint_path': None,
+        'trainer.save_model_only': False,
     }, with_line=False)
 
     def __init__(self,
                  base_model,
                  target_path,
                  merge_path=None,
-                 launcher=launchers.remote(ngpus=1),
+                 launcher=launchers.remote(ngpus=1, sync=True),
                  **kw
                  ):
         if not merge_path:
@@ -47,7 +51,7 @@ class EasyR1Finetune(LazyLLMFinetuneBase):
         self.kw.check_and_update(kw)
 
     def cmd(self, trainset, valset=None) -> str:
-        # thirdparty.check_packages(['verl', 'trl'])
+        thirdparty.check_packages(['verl', 'trl'])
         if not os.path.exists(trainset):
             defatult_path = os.path.join(lazyllm.config['data_path'], trainset)
             if os.path.exists(defatult_path):
@@ -82,3 +86,32 @@ class EasyR1Finetune(LazyLLMFinetuneBase):
         cmd += f' 2>&1 | tee {self.log_file_path}'
 
         return cmd
+
+    def __call__(self, *args, **kw):
+        save_path = super().__call__(*args, **kw)
+        ckpt_tracker_file = os.path.join(save_path, 'checkpoint_tracker.json')
+        if not os.path.exists(ckpt_tracker_file):
+            return 'Trianing failed, checkpoint_tracker.json not found.'
+        with open(ckpt_tracker_file, 'r') as f:
+            json_data = json.load(f)
+        actor_path = json_data.get('last_actor_path', None)
+        if not actor_path or not os.path.exists(actor_path):
+            return 'Training failed, last_actor_path not found in checkpoint_tracker.json.'
+        self.move_files(actor_path, save_path)
+        return save_path
+
+    def move_files(self, pathA, pathB):
+        for filename in os.listdir(pathA):
+            if filename.endswith('.pt'):
+                src = os.path.join(pathA, filename)
+                dst = os.path.join(pathB, filename)
+                shutil.move(src, dst)
+                LOG.info(f"Moved: {src} -> {dst}")
+
+        huggingface_path = os.path.join(pathA, 'huggingface')
+        if os.path.exists(huggingface_path) and os.path.isdir(huggingface_path):
+            for filename in os.listdir(huggingface_path):
+                src = os.path.join(huggingface_path, filename)
+                dst = os.path.join(pathB, filename)
+                shutil.move(src, dst)
+                LOG.info(f"Moved: {src} -> {dst}")
