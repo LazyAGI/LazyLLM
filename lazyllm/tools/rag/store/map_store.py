@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Dict, List, Optional, Callable, Union, Set
 
-from .store_base import LazyLLMStoreBase, LAZY_ROOT_NAME
+from .store_base import LazyLLMStoreBase, LAZY_ROOT_NAME, StoreCapability
 
 from ..index_base import IndexBase
 from ..doc_node import DocNode
@@ -11,7 +11,8 @@ from ..global_metadata import RAG_SYSTEM_META_KEYS, RAG_DOC_ID
 from lazyllm.common import override
 
 
-class MapStore(LazyLLMStoreBase):
+class MapStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
+
     def __init__(self, node_groups: Union[List[str], Set[str]], embed: Dict[str, Callable], **kwargs):
         self._uid2node: Dict[str, DocNode] = {}
         self._group2uids: Dict[str, Set[str]] = {group: set() for group in node_groups}

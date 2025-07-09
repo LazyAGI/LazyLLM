@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from enum import IntFlag, auto
 from typing import Optional, List, Union, Set
 from lazyllm import LazyLLMRegisterMetaClass, once_wrapper
+from pydantic import BaseModel, Field
 
 from ..doc_node import DocNode
 from ..index_base import IndexBase
@@ -31,11 +32,38 @@ INSERT_BATCH_SIZE = 3000
 IMAGE_PATTERN = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
 
 
+class SegmentType(IntFlag):
+    TEXT = auto()
+    IMAGE = auto()
+    HYBRID = auto()
+    TABLE = auto()
+    CODE = auto()
+    QA = auto()
+
+
+class Segment(BaseModel):
+    uid: str
+    doc_id: str
+    group: str
+    content: str
+    type: SegmentType = SegmentType.TEXT
+    meta: str   # json string
+    global_meta: str   # json string
+    number: Optional[int] = 0
+    kb_id: Optional[str] = "__default__"
+    excluded_embed_metadata_keys: Optional[List[str]] = Field(default_factory=list)
+    excluded_llm_metadata_keys: Optional[List[str]] = Field(default_factory=list)
+    parent: Optional[str] = None    # uid of parent node
+    answer: Optional[str] = None
+    image_keys: Optional[List[str]] = Field(default_factory=list)
+
+
 class StoreCapability(IntFlag):
     SEGMENT = auto()
     VECTOR = auto()
     BOTH = SEGMENT | VECTOR
     ALL = SEGMENT | VECTOR | auto()
+
 
 class StoreBase(ABC):
     @abstractmethod
@@ -101,9 +129,9 @@ class StoreBase(ABC):
 class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaClass):
     capability: StoreCapability
 
-    def __init__(self, *, capability: StoreCapability, **kwargs):
-        self.capability = capability
-        super().__init__(**kwargs)
+    def __init_subclass__(cls, *, capability: StoreCapability, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.capability = capability
 
     @once_wrapper(reset_on_pickle=True)
     @abstractmethod
