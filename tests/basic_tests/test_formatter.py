@@ -72,7 +72,7 @@ class TestFormatter(object):
                                                        '["path/to/file", "path/to/file"]}')
         assert filef(encode_output, normal_output, normal_output) == ('<lazyllm-query>{"query": "ahahihi", '
                                                                       '"files": ["path/to/file"]}')
-        
+
     def test_json_formatter_from_string(self):
         jsf = formatter.JsonFormatter
         origin = [dict(a=[1, 2], b=[2, 3], c=[3, 4], d=[4, 5], e=[5, 6], f=[6, 7]),
@@ -95,12 +95,14 @@ class TestFormatter(object):
         assert jsf('[:][a, c, e][1:]')(origin) == [[[2], [4], [6]], [[20], [40], [60]]]
         assert jsf('[:][e, c, a][1]')(origin) == [[6, 4, 2], [60, 40, 20]]
 
-        assert jsf('[:]')("[1,2,3]") == [1,2,3]
-        assert jsf('[:]')("[{\"age\":23,\"name\":\"张三\"},{\"age\":24,\"name\":\"李四\"},{\"age\":25,\"name\":\"王五\"}]") ==  [{'age': 23, 'name': '张三'}, {'age': 24, 'name': '李四'}, {'age': 25, 'name': '王五'}]
-        assert jsf('[:]')("[[\"张三\",22],[\"李四\",24],[\"王五\",30],[\"陈六\",33]]") == [['张三', 22], ['李四', 24], ['王五', 30], ['陈六', 33]]
-        assert jsf('[birthday][year]')("{\"birthday\":{\"year\":2024,\"month\":10},\"name\":\"张三\",\"age\": 23}") == 2024
-        assert jsf('[0:2][age,name]')("[{\"age\":23,\"name\":\"张三\"},{\"age\":24,\"name\":\"李四\"},{\"age\":25,\"name\":\"王五\"}]") == [[23, '张三'], [24, '李四']]
-
+        assert jsf('[:]')('[1,2,3]') == [1, 2, 3]
+        assert (jsf('[:]')('[{"age":23,"name":"张三"},{"age":24,"name":"李四"},{"age":25,"name":"王五"}]'
+                           ) == [{'age': 23, 'name': '张三'}, {'age': 24, 'name': '李四'}, {'age': 25, 'name': '王五'}])
+        assert (jsf('[:]')('[["张三",22],["李四",24],["王五",30],["陈六",33]]'
+                           ) == [['张三', 22], ['李四', 24], ['王五', 30], ['陈六', 33]])
+        assert jsf('[birthday][year]')('{"birthday":{"year":2024,"month":10},"name":"张三","age": 23}') == 2024
+        assert (jsf('[0:2][age,name]')('[{"age":23,"name":"张三"},{"age":24,"name":"李四"},'
+                                       '{"age":25,"name":"王五"}]') == [[23, '张三'], [24, '李四']])
 
         for tp in [list, tuple, lazyllm.package]:
             origin = tp([1, 2, 3, 4, 5, 6, 7, 8])
@@ -118,4 +120,3 @@ class TestFormatter(object):
         assert jsf('{a}')(origin) == dict(a=1)
         assert jsf('{a, b, c}')(origin) == dict(a=1, b=2, c=3)
         assert jsf('{:}')(origin) == origin
-        
