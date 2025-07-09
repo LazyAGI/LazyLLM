@@ -8,6 +8,7 @@ import copy
 import threading
 import types
 from ..configs import config
+from urllib.parse import urlparse
 
 try:
     from typing import final
@@ -437,3 +438,13 @@ class EnvVarContextManager:
                 os.environ[var] = self.original_values[var]
             else:
                 del os.environ[var]
+
+def is_valid_url(url):
+    try:
+        result = urlparse(url)
+        return all([result.scheme, result.netloc])
+    except ValueError:
+        return False
+
+def is_valid_path(path):
+    return os.path.isfile(path)

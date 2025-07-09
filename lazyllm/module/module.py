@@ -7,11 +7,12 @@ import pickle
 import codecs
 import inspect
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
-from typing import Dict, List, Union, Optional, Tuple
+from typing import Callable, Dict, List, Union, Optional, Tuple
 from dataclasses import dataclass
 
 import lazyllm
-from lazyllm import FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals, colored_text
+from lazyllm import (FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals,
+                     colored_text, is_valid_url, LazyLLMLaunchersBase)
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.formatter import FormatterBase, EmptyFormatter
 from ..flow import FlowBase, Pipeline, Parallel
@@ -304,6 +305,12 @@ class _UrlHelper(object):
 
 
 class UrlModule(ModuleBase, _UrlHelper):
+
+    def __new__(cls, *args, **kw):
+        if cls is not UrlModule:
+            return super().__new__(cls)
+        return ServerModule(*args, **kw)
+
     def __init__(self, *, url='', stream=False, return_trace=False):
         super().__init__(return_trace=return_trace)
         _UrlHelper.__init__(self, url)
@@ -455,12 +462,21 @@ class _ServerModuleImpl(ModuleBase, _UrlHelper):
 
 
 class ServerModule(UrlModule):
-    def __init__(self, m, pre=None, post=None, stream=False, return_trace=False,
-                 port=None, pythonpath=None, launcher=None):
+    def __init__(self, m: Optional[Union[str, ModuleBase]] = None, pre: Optional[Callable] = None,
+                 post: Optional[Callable] = None, stream: Union[bool, Dict] = False,
+                 return_trace: bool = False, port: Optional[int] = None, pythonpath: Optional[str] = None,
+                 launcher: Optional[LazyLLMLaunchersBase] = None, url: Optional[str] = None):
         assert stream is False or return_trace is False, 'Module with stream output has no trace'
         assert (post is None) or (stream is False), 'Stream cannot be true when post-action exists'
-        super().__init__(url=None, stream=stream, return_trace=return_trace)
+        if isinstance(m, str):
+            assert url is None, 'url should be None when m is a url'
+            url, m = m, None
+        if url:
+            assert is_valid_url(url), f'Invalid url: {url}'
+            assert m is None, 'm should be None when url is provided'
+        super().__init__(url=url, stream=stream, return_trace=return_trace)
         self._impl = _ServerModuleImpl(m, pre, post, launcher, port, pythonpath, self._url_wrapper)
+        if url: self._impl._get_deploy_tasks.flag.set()
 
     _url_id = property(lambda self: self._impl._module_id)
 
