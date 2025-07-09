@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 from urllib.parse import urljoin
 from typing import Optional, List, Dict, Any, Union, Set
 
-from .store_base import StoreBase, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC, IMAGE_PATTERN, INSERT_BATCH_SIZE
+from ..store_base import (LazyLLMStoreBase, StoreCapability, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC,
+                          IMAGE_PATTERN, INSERT_BATCH_SIZE)
 from .utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, create_file_path
 
 from ..index_base import IndexBase
@@ -40,7 +41,7 @@ class Segment(BaseModel):
     number: Optional[int] = 0
 
 
-class SenseCoreStore(StoreBase):
+class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
     def __init__(self, group_embed_keys: Dict[str, Set[str]],
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
                  kb_id: str = "__default__", uri: str = "", **kwargs):
