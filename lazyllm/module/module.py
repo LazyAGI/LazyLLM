@@ -1,11 +1,11 @@
 import os
 import re
-import copy
 import time
 import requests
 import pickle
 import codecs
 import inspect
+import traceback
 from lazyllm import ThreadPoolExecutor, FileSystemQueue
 from typing import Callable, Dict, List, Union, Optional, Tuple
 from dataclasses import dataclass
@@ -109,7 +109,7 @@ class ModuleBase(metaclass=_MetaBind):
             raise RuntimeError(
                 f"\nAn error occured in {self.__class__} with name {self.name}.\n"
                 f"Args:\n{args}\nKwargs\n{kw}\nError messages:\n{e}\n"
-            )
+                f"Original traceback:\n{''.join(traceback.format_tb(e.__traceback__))}")
         for hook_obj in hook_objs[::-1]:
             hook_obj.post_hook(r)
         for hook_obj in hook_objs:
@@ -245,33 +245,6 @@ class ModuleBase(metaclass=_MetaBind):
                 action(submodule)
             submodule.for_each(filter, action)
 
-class _UrlTemplateStruct(object):
-    def __init__(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
-                 extract_result=None, stream_parse_parameters=None, stream_url_suffix=None):
-        self.update(template_message, keys_name_handle, template_headers, stop_words,
-                    extract_result, stream_parse_parameters, stream_url_suffix)
-
-    def update(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
-               extract_result=None, stream_parse_parameters=None, stream_url_suffix=None):
-        self.template_message, self.keys_name_handle = copy.deepcopy(template_message), keys_name_handle
-        self.template_headers = template_headers or copy.deepcopy(lazyllm.deploy.RelayServer.default_headers)
-
-        if self.keys_name_handle and 'stop' in self.keys_name_handle and stop_words and self.template_message:
-            if self.keys_name_handle['stop'] in self.template_message:
-                self.template_message[self.keys_name_handle['stop']] = stop_words
-            else:
-                # stop in sub dict:
-                for _, v in self.template_message.items():
-                    if isinstance(v, dict) and self.keys_name_handle['stop'] in v:
-                        v[self.keys_name_handle['stop']] = stop_words
-                        break
-                else:
-                    raise RuntimeError('No stop symbol found in template_message')
-
-        self.extract_result_func = extract_result or (lambda x, inputs: x)
-        self.stream_parse_parameters = stream_parse_parameters or {}
-        self.stream_url_suffix = stream_url_suffix or ''
-
 
 class _UrlHelper(object):
     @dataclass
@@ -314,17 +287,9 @@ class UrlModule(ModuleBase, _UrlHelper):
     def __init__(self, *, url='', stream=False, return_trace=False):
         super().__init__(return_trace=return_trace)
         _UrlHelper.__init__(self, url)
-        self._template = _UrlTemplateStruct()
         self._stream = stream
         __class__.prompt(self)
         __class__.formatter(self)
-
-    template_message = property(lambda self: self._template.template_message)
-    keys_name_handle = property(lambda self: self._template.keys_name_handle)
-    template_headers = property(lambda self: self._template.template_headers)
-    extract_result_func = property(lambda self: self._template.extract_result_func)
-    stream_parse_parameters = property(lambda self: self._template.stream_parse_parameters)
-    stream_url_suffix = property(lambda self: self._template.stream_url_suffix)
 
     def _estimate_token_usage(self, text):
         if not isinstance(text, str):
@@ -348,6 +313,12 @@ class UrlModule(ModuleBase, _UrlHelper):
         elif isinstance(prompt, (str, dict)):
             self._prompt = ChatPrompter(prompt, history=history)
         return self
+
+    def _decode_line(self, line: bytes):
+        try:
+            return pickle.loads(codecs.decode(line, "base64"))
+        except Exception:
+            return line.decode('utf-8')
 
     def _extract_and_format(self, output: str) -> str:
         return output
@@ -406,7 +377,7 @@ class ActionModule(ModuleBase):
                 self.action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: submodule.append(x))
                 return submodule
         except Exception as e:
-            raise RuntimeError(str(e))
+            raise RuntimeError(f"{str(e)}\nOriginal traceback:\n{''.join(traceback.format_tb(e.__traceback__))}")
         return super().submodules
 
     def __repr__(self):
@@ -512,11 +483,11 @@ class ServerModule(UrlModule):
 
             messages = ''
             with self.stream_output(self._stream):
-                for line in r.iter_lines():
-                    line = pickle.loads(codecs.decode(line, "base64"))
+                for line in r.iter_lines(delimiter=b"<|lazyllm_delimiter|>"):
+                    line = self._decode_line(line)
                     if self._stream:
                         self._stream_output(str(line), getattr(self._stream, 'get', lambda x: None)('color'))
-                    messages += str(line)
+                    messages = (messages + str(line)) if self._stream else line
 
                 temp_output = self._extract_and_format(messages)
                 return self._formatter(temp_output)

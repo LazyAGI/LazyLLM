@@ -7,8 +7,6 @@ import copy
 import uuid
 import re
 import requests
-import pickle
-import codecs
 
 import lazyllm
 from lazyllm import globals, LOG, launchers, Option, package
@@ -19,7 +17,35 @@ from ...components.utils.file_operate import base64_to_file, is_base64_with_mime
 from ...launcher import LazyLLMLaunchersBase as Launcher
 from ..utils import map_kw_for_framework, encode_files
 from ...flow import Pipeline
-from ..module import ModuleBase, _UrlHelper, _UrlTemplateStruct, light_reduce, UrlModule
+from ..module import ModuleBase, _UrlHelper, light_reduce, UrlModule
+
+
+class _UrlTemplateStruct(object):
+    def __init__(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
+                 extract_result=None, stream_parse_parameters=None, stream_url_suffix=None):
+        self.update(template_message, keys_name_handle, template_headers, stop_words,
+                    extract_result, stream_parse_parameters, stream_url_suffix)
+
+    def update(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
+               extract_result=None, stream_parse_parameters=None, stream_url_suffix=None):
+        self.template_message, self.keys_name_handle = copy.deepcopy(template_message), keys_name_handle
+        self.template_headers = template_headers or copy.deepcopy(lazyllm.deploy.RelayServer.default_headers)
+
+        if self.keys_name_handle and 'stop' in self.keys_name_handle and stop_words and self.template_message:
+            if self.keys_name_handle['stop'] in self.template_message:
+                self.template_message[self.keys_name_handle['stop']] = stop_words
+            else:
+                # stop in sub dict:
+                for _, v in self.template_message.items():
+                    if isinstance(v, dict) and self.keys_name_handle['stop'] in v:
+                        v[self.keys_name_handle['stop']] = stop_words
+                        break
+                else:
+                    raise RuntimeError('No stop symbol found in template_message')
+
+        self.extract_result_func = extract_result or (lambda x, inputs: x)
+        self.stream_parse_parameters = stream_parse_parameters or {}
+        self.stream_url_suffix = stream_url_suffix or ''
 
 
 @light_reduce
@@ -183,16 +209,25 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     def _set_file_name(self, name):
         self._file_name = name
 
+
 class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
 
     def __init__(self, base_model: Option = '', target_path='', *,
                  stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False):
         super().__init__(url=None, stream=stream, return_trace=return_trace)
+        self._template = _UrlTemplateStruct()
         self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
                                           lazyllm.deploy.auto, self._template, self._url_wrapper)
         self.prompt()
         self._stream = stream
+
+    template_message = property(lambda self: self._template.template_message)
+    keys_name_handle = property(lambda self: self._template.keys_name_handle)
+    template_headers = property(lambda self: self._template.template_headers)
+    extract_result_func = property(lambda self: self._template.extract_result_func)
+    stream_parse_parameters = property(lambda self: self._template.stream_parse_parameters)
+    stream_url_suffix = property(lambda self: self._template.stream_url_suffix)
 
     base_model = property(lambda self: self._impl._base_model)
     target_path = property(lambda self: self._impl._target_path)
@@ -449,14 +484,13 @@ class TrainableModule(UrlModule):
             data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
             assert 'inputs' in self.keys_name_handle
             data[self.keys_name_handle['inputs']] = __input
-            if 'image' in self.keys_name_handle and files:
-                encoded_files = encode_files(files, image_to_base64)
-                data[self.keys_name_handle['image']] = encoded_files
-            elif 'audio' in self.keys_name_handle and files:
-                encoded_files = encode_files(files, audio_to_base64)
-                data[self.keys_name_handle['audio']] = encoded_files
-            elif 'ocr_files' in self.keys_name_handle and files:
-                data[self.keys_name_handle['ocr_files']] = files
+            if files:
+                for key, encoder in [('image', image_to_base64), ('audio', audio_to_base64), ('ocr_files', None)]:
+                    if key in self.keys_name_handle:
+                        data[self.keys_name_handle[key]] = encode_files(files, encoder) if encoder else files
+                        break
+        else:
+            data = __input
 
         url = self._url
         if stream_output:
@@ -489,8 +523,7 @@ class TrainableModule(UrlModule):
 
             for line in r.iter_lines(**parse_parameters):
                 if not line: continue
-                try: line = pickle.loads(codecs.decode(line, "base64"))  # for service deployed by RelayServer
-                except Exception: line = line.decode('utf-8')
+                line = self._decode_line(line)
 
                 chunk = self._prompt.get_response(self.extract_result_func(line, data))
                 chunk = chunk[len(messages):] if isinstance(chunk, str) and chunk.startswith(messages) else chunk
