@@ -1,9 +1,10 @@
 import os
 import copy
 import json
-import shutil
 import random
+import subprocess
 from datetime import datetime
+from subprocess import CalledProcessError
 
 import lazyllm
 from lazyllm import launchers, ArgsDict, thirdparty, LOG
@@ -91,27 +92,35 @@ class EasyR1Finetune(LazyLLMFinetuneBase):
         save_path = super().__call__(*args, **kw)
         ckpt_tracker_file = os.path.join(save_path, 'checkpoint_tracker.json')
         if not os.path.exists(ckpt_tracker_file):
-            return 'Trianing failed, checkpoint_tracker.json not found.'
+            not_found_msg = 'Training failed, checkpoint_tracker.json not found.'
+            LOG.error(not_found_msg)
+            return not_found_msg
         with open(ckpt_tracker_file, 'r') as f:
             json_data = json.load(f)
         actor_path = json_data.get('last_actor_path', None)
         if not actor_path or not os.path.exists(actor_path):
-            return 'Training failed, last_actor_path not found in checkpoint_tracker.json.'
-        self.move_files(actor_path, save_path)
-        return save_path
+            not_found_msg = 'Training failed, last_actor_path not found in checkpoint_tracker.json.'
+            LOG.error(not_found_msg)
+            return not_found_msg
 
-    def move_files(self, pathA, pathB):
-        for filename in os.listdir(pathA):
-            if filename.endswith('.pt'):
-                src = os.path.join(pathA, filename)
-                dst = os.path.join(pathB, filename)
-                shutil.move(src, dst)
-                LOG.info(f"Moved: {src} -> {dst}")
+        self.merge_ckpt(actor_path)
+        huggingface_path = os.path.join(actor_path, 'huggingface')
+        return huggingface_path
 
-        huggingface_path = os.path.join(pathA, 'huggingface')
-        if os.path.exists(huggingface_path) and os.path.isdir(huggingface_path):
-            for filename in os.listdir(huggingface_path):
-                src = os.path.join(huggingface_path, filename)
-                dst = os.path.join(pathB, filename)
-                shutil.move(src, dst)
-                LOG.info(f"Moved: {src} -> {dst}")
+    def merge_ckpt(self, path):
+        try:
+            script_path = f"{self._folder_path}/easy_r1/model_merger.py"
+            subprocess.run(
+                ["python", script_path, "--local_dir", path],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+        except CalledProcessError as e:
+            LOG.error(f"Command failed with return code {e.returncode}: {e.stderr}")
+            return False
+        except Exception as e:
+            LOG.error(f"Error merging checkpoints: {e}")
+            return False
+        return True
