@@ -1,25 +1,13 @@
 import os
 import importlib.util
-from urllib.parse import urlparse
 
 import lazyllm
 from lazyllm.components.utils.file_operate import base64_to_file, is_base64_with_mime
-from lazyllm import LOG, LazyLLMLaunchersBase
+from lazyllm import LOG, LazyLLMLaunchersBase, is_valid_url, is_valid_path
 from ..base import LazyLLMDeployBase
 from ...utils.downloader import ModelManager
 from lazyllm.thirdparty import funasr
 from typing import Optional
-
-
-def is_valid_url(url):
-    try:
-        result = urlparse(url)
-        return all([result.scheme, result.netloc])
-    except ValueError:
-        return False
-
-def is_valid_path(path):
-    return os.path.isfile(path)
 
 supported_formats = ('.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg', '.wma')
 
