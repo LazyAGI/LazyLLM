@@ -333,7 +333,8 @@ class DocImpl:
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
 
-    def _add_doc_to_store_with_status(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]]):
+    def _add_doc_to_store_with_status(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]],
+                                      cond_status_list: Optional[List[str]] = None):
         success_ids, failed_ids = [], []
         for filepath, doc_id, metadata in zip(input_files, ids or repeat(None), metadatas or repeat(None)):
             try:
@@ -346,10 +347,10 @@ class DocImpl:
 
         if success_ids:
             self._dlm.update_kb_group(cond_file_ids=success_ids, cond_group=self._kb_group_name,
-                                      new_status=DocListManager.Status.success)
+                                      cond_status_list=cond_status_list, new_status=DocListManager.Status.success)
         if failed_ids:
             self._dlm.update_kb_group(cond_file_ids=failed_ids, cond_group=self._kb_group_name,
-                                      new_status=DocListManager.Status.failed)
+                                      cond_status_list=cond_status_list, new_status=DocListManager.Status.failed)
 
     def worker(self):
         is_first_run = True
@@ -388,7 +389,8 @@ class DocImpl:
             if files:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working)
-                self._add_doc_to_store_with_status(files, ids, metadatas)
+                self._add_doc_to_store_with_status(files, ids, metadatas,
+                                                   cond_status_list=[DocListManager.Status.working])
 
             if is_first_run:
                 self._init_monitor_event.set()
