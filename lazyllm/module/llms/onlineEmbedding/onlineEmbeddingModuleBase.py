@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Union
 import requests
-from ..module import ModuleBase
+from ...module import ModuleBase
 
 class OnlineEmbeddingModuleBase(ModuleBase):
     NO_PROXY = True

@@ -1,3 +1,6 @@
+from typing import Optional
+
+
 class Color(object):
     red: str = "\033[31m"
     green: str = "\033[32m"
@@ -7,7 +10,7 @@ class Color(object):
     cyan: str = "\033[36m"
     reset: str = "\033[0m"
 
-def colored_text(text, color):
+def colored_text(text: str, color: Optional[str] = None):
     if not color: return text
-    color = color if color.startswith("\033") else Color.get(color, Color.reset)
+    color = color if color.startswith("\033") else getattr(Color, color, Color.reset)
     return f'{color}{text}{Color.reset}'
