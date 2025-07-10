@@ -500,7 +500,7 @@ A: 小猪在草坪上奔跑。
 """))
 
 class LLMParser(NodeTransform):
-    def __init__(self, llm: TrainableModule, language: str, task_type: str, num_workers: int = 0):
+    def __init__(self, llm: TrainableModule, language: str, task_type: str, num_workers: int = 30):
         super(__class__, self).__init__(num_workers=num_workers)
         assert language in ['en', 'zh'], f'Not supported language {language}'
         assert task_type in ['summary', 'keywords', 'qa', 'qa_img'], f'Not supported task_type {task_type}'
@@ -509,7 +509,7 @@ class LLMParser(NodeTransform):
             prompt = dict(system=templates[language][task_type], user='{input}')
         else:
             prompt = dict(system=templates[language][task_type], user='#input:\n{input}\n#output:\n')
-        self._llm = llm.share(prompt=AlpacaPrompter(prompt)).formatter(self._format)
+        self._llm = llm.share(prompt=AlpacaPrompter(prompt), stream=False, format=self._format)
         self._task_type = task_type
 
     def transform(self, node: DocNode, **kwargs) -> List[str]:
