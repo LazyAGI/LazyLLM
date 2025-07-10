@@ -19,6 +19,7 @@ from .doc_processor import _Processor, DocumentProcessor
 from dataclasses import dataclass
 import threading
 import time
+from itertools import repeat
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
@@ -334,9 +335,9 @@ class DocImpl:
 
     def _add_doc_to_store_with_status(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]]):
         success_ids, failed_ids = [], []
-        for filepath, doc_id, metadata in zip(input_files, ids, metadatas):
+        for filepath, doc_id, metadata in zip(input_files, ids or repeat(None), metadatas or repeat(None)):
             try:
-                self._add_doc_to_store(input_files=[filepath], ids=[doc_id],
+                self._add_doc_to_store(input_files=[filepath], ids=[doc_id] if doc_id is not None else None,
                                        metadatas=[metadata] if metadata is not None else None)
                 success_ids.append(doc_id)
             except Exception as e:
