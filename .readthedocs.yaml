@@ -11,13 +11,7 @@ build:
       - cp -r docs/assets docs/zh
       - cp -r docs/assets docs/en
       - python docs/add_docstrings.py
-      - bash: |
-          for dir in Tutorial/rag/notebook/chapter*/*_{videos,images}; do
-            [ -e "$dir" ] || continue
-            name=$(basename "$dir")
-            target=$(realpath "$dir")
-            ln -sfn "$target" "docs/zh/Tutorial/$name"
-          done
+      - for dir in Tutorial/rag/notebook/chapter*/*_{videos,images}; do [ -e "$dir" ] || continue; name=$(basename "$dir"); target=$(realpath "$dir"); ln -sfn "$target" "docs/zh/Tutorial/$name"; done
       - python docs/ipynb2md.py
       - python docs/gen_mkdocs_yaml.py
 
