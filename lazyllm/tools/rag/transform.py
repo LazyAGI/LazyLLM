@@ -123,7 +123,8 @@ def make_transform(t: Union[TransformArgs, Dict[str, Any]], group_name: Optional
 
 
 class AdaptiveTransform(NodeTransform):
-    def __init__(self, transforms: Union[List[TransformArgs], TransformArgs], num_workers: int = 0):
+    def __init__(self, transforms: Union[List[Union[TransformArgs, Dict]], Union[TransformArgs, Dict]],
+                 num_workers: int = 0):
         super().__init__(num_workers=num_workers)
         if not isinstance(transforms, (tuple, list)): transforms = [transforms]
         self._transformers = [(t.get('pattern'), make_transform(t)) for t in transforms]
