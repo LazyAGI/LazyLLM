@@ -13,7 +13,7 @@ build:
       - python docs/add_docstrings.py
       - ls -alh Tutorial
       - for dir in Tutorial/rag/notebook/chapter*/*_{videos,images}; do [ -e "$dir" ] || continue; name=$(basename "$dir"); target=$(realpath "$dir"); ln -sfn "$target" "docs/zh/Tutorial/$name"; done
-      - python docs/ipynb2md.py
+      - python docs/ipynb2md.py 2>&1 | tee -a build.log
       - ls -alh docs/zh/Tutorial
       - python docs/gen_mkdocs_yaml.py
 
@@ -24,3 +24,5 @@ python:
 mkdocs:
   configuration: mkdocs.yml
 
+git:
+  submodules: true
