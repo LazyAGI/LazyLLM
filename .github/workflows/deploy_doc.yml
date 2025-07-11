@@ -25,6 +25,8 @@ jobs:
         run: |
           git submodule init LazyLLM-Env
           git submodule update LazyLLM-Env
+          git submodule init Tutorial
+          git submodule update Tutorial
 
       - name: Set up python
         uses: actions/setup-python@v5
