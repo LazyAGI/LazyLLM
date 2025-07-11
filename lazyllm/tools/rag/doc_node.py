@@ -4,7 +4,7 @@ from collections import defaultdict
 from PIL import Image
 from lazyllm import config, reset_on_pickle
 from lazyllm.components.utils.file_operate import image_to_base64
-from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_KB_ID
+from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 import uuid
 import threading
 import time
@@ -78,7 +78,7 @@ class DocNode:
         if isinstance(uids, str):
             uids = [uids]
         nodes = self._store.get_nodes(group_name=group_name, uids=uids,
-                                      dataset_id=self.global_metadata.get(RAG_DOC_KB_ID), display=True)
+                                      dataset_id=self.global_metadata.get(RAG_KB_ID), display=True)
         for n in nodes:
             n._store = self._store
             n._node_groups = self._node_groups
@@ -100,7 +100,7 @@ class DocNode:
     def children(self) -> Dict[str, List["DocNode"]]:
         if not self._children_loaded and self._store and self._node_groups:
             self._children_loaded = True
-            dataset_id = self.global_metadata.get(RAG_DOC_KB_ID)
+            dataset_id = self.global_metadata.get(RAG_KB_ID)
             doc_id = self.global_metadata.get(RAG_DOC_ID)
             c_groups = [grp for grp in self._node_groups.keys() if self._node_groups[grp]['parent'] == self._group]
             for grp in c_groups:
@@ -268,6 +268,10 @@ class QADocNode(DocNode):
                  *, text: Optional[str] = None):
         super().__init__(uid, query, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
         self._answer = answer.strip()
+
+    @property
+    def answer(self) -> str:
+        return self._answer
 
     def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
         if metadata_mode == MetadataMode.LLM:

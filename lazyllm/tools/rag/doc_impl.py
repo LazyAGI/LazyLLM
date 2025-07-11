@@ -118,7 +118,7 @@ class DocImpl:
         self._activated_embeddings = {LAZY_ROOT_NAME: set(), LAZY_IMAGE_GROUP: set()}  # {group_name: {em1, em2, ...}}
         self._index_pending_registrations = []
         self._processor = processor
-        self._algo_name = algo_name
+        self._algo_name = algo_name or "__default__"
 
     def _init_node_groups(self):
         node_groups = DocImpl._builtin_node_groups.copy()

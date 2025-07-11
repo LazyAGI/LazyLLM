@@ -12,7 +12,7 @@ from .transform import (AdaptiveTransform, make_transform,)
 from .readers import ReaderBase
 from .doc_node import DocNode
 from .utils import gen_docid, BaseResponse
-from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_KB_ID
+from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 import queue
 import threading
 import time
@@ -84,7 +84,7 @@ class _Processor:
             self._get_or_create_nodes(group_name, ids)
 
     def _reparse_docs(self, group_name: str, doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict]):
-        dataset_id = metadatas[0].get(RAG_DOC_KB_ID, None)
+        dataset_id = metadatas[0].get(RAG_KB_ID, None)
         if group_name == "all":
             self._store.remove_nodes(dataset_id=dataset_id, doc_ids=doc_ids)
             removed_flag = False
@@ -104,7 +104,7 @@ class _Processor:
             self._reparse_group_recursive(p_nodes=p_nodes, cur_name=group_name, doc_ids=doc_ids)
 
     def _reparse_group_recursive(self, p_nodes: List[DocNode], cur_name: str, doc_ids: List[str]):
-        dataset_id = p_nodes[0].global_metadata.get(RAG_DOC_KB_ID, None)
+        dataset_id = p_nodes[0].global_metadata.get(RAG_KB_ID, None)
         self._store.remove_nodes(group_name=cur_name, dataset_id=dataset_id, doc_ids=doc_ids)
 
         removed_flag = False
@@ -301,7 +301,7 @@ class DocumentProcessor(ModuleBase):
                     raw_infos = {"document_id": document_id, "file_name": os.path.basename(file_path),
                                  "file_path": file_path, "description": file_info["metadata"].get("description", None),
                                  "creater": file_info["metadata"].get("creater", None),
-                                 "dataset_id": file_info["metadata"].get(RAG_DOC_KB_ID, None),
+                                 "dataset_id": file_info["metadata"].get(RAG_KB_ID, None),
                                  "tags": file_info["metadata"].get("tags", []) or []}
                     infos = {}
                     for k, v in raw_infos.items():

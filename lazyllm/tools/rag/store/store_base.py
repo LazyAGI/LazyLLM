@@ -2,7 +2,7 @@ import re
 
 from abc import ABC, abstractmethod
 from enum import IntFlag, auto
-from typing import Optional, List, Union, Set
+from typing import Optional, List, Union, Set, Dict
 from lazyllm import LazyLLMRegisterMetaClass, once_wrapper
 from pydantic import BaseModel, Field
 
@@ -46,9 +46,10 @@ class Segment(BaseModel):
     doc_id: str
     group: str
     content: str
-    type: SegmentType = SegmentType.TEXT
     meta: str   # json string
     global_meta: str   # json string
+    embedding: Optional[Dict[str, List[float]]] = Field(default_factory=dict)
+    type: Optional[SegmentType] = SegmentType.TEXT
     number: Optional[int] = 0
     kb_id: Optional[str] = "__default__"
     excluded_embed_metadata_keys: Optional[List[str]] = Field(default_factory=list)
@@ -140,21 +141,22 @@ class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaClass):
         raise NotImplementedError
 
     @abstractmethod
-    def upsert(self, data: List[dict]) -> bool:
+    def upsert(self, collection_name: str, data: List[dict]) -> bool:
         """ upsert data to the store """
         raise NotImplementedError
 
     @abstractmethod
-    def delete(self, filter: dict, **kwargs) -> bool:
+    def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
         """ delete data from the store """
         raise NotImplementedError
 
     @abstractmethod
-    def get(self, filter: dict, **kwargs) -> List[dict]:
+    def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:
         """ get data from the store """
         raise NotImplementedError
 
     @abstractmethod
-    def search(self, query: str, **kwargs) -> List[dict]:
-        """ search data from the store """
+    def search(self, collection_name: str, query: str, topk: int,
+               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[dict]:
+        """ search data from the store, search result: [{"uid": str, "score": float}] """
         raise NotImplementedError
