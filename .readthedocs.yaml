@@ -25,4 +25,6 @@ mkdocs:
   configuration: mkdocs.yml
 
 git:
-  submodules: true
+  submodules:
+    include: true
+    recursive: true
