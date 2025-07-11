@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import copy
+from copy import copy as lite_copy
 from dataclasses import dataclass, field
 import requests
 import os
@@ -102,8 +102,10 @@ class NodeTransform(ABC):
     def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
         raise NotImplementedError('Not implemented')
 
-    def with_name(self, name: Optional[str]) -> 'NodeTransform':
-        if name is not None: self._name = name
+    def with_name(self, name: Optional[str], *, copy: bool = True) -> 'NodeTransform':
+        if name is not None:
+            if copy: return lite_copy(self).with_name(name, copy=False)
+            self._name = name
         return self
 
     def __call__(self, node: DocNode, **kwargs: Any) -> List[DocNode]:
@@ -117,9 +119,9 @@ def make_transform(t: Union[TransformArgs, Dict[str, Any]], group_name: Optional
     if isinstance(t, dict): t = TransformArgs.from_dict(t)
     transform, trans_node, num_workers = t['f'], t['trans_node'], t['num_workers']
     num_workers = dict(num_workers=num_workers) if num_workers > 0 else dict()
-    return (transform(**t['kwargs'], **num_workers).with_name(group_name) if isinstance(transform, type)
-            else copy.copy(transform).with_name(group_name) if isinstance(transform, NodeTransform)
-            else FuncNodeTransform(transform, trans_node=trans_node, **num_workers).with_name(group_name))
+    return (transform(**t['kwargs'], **num_workers).with_name(group_name, copy=False) if isinstance(transform, type)
+            else transform.with_name(group_name) if isinstance(transform, NodeTransform)
+            else FuncNodeTransform(transform, trans_node=trans_node, **num_workers).with_name(group_name, copy=False))
 
 
 class AdaptiveTransform(NodeTransform):
