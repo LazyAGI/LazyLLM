@@ -13,6 +13,8 @@ build:
       - python docs/add_docstrings.py
       - for dir in Tutorial/rag/notebook/chapter*/*_{videos,images}; do [ -e "$dir" ] || continue; name=$(basename "$dir"); target=$(realpath "$dir"); ln -sfn "$target" "docs/zh/Tutorial/$name"; done
       - python docs/ipynb2md.py
+      - ls -alh docs/zh/Tutorial
+      - ls -alh docs/en/Tutorial
       - python docs/gen_mkdocs_yaml.py
 
 python:
