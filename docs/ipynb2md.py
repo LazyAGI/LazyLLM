@@ -45,6 +45,9 @@ def convert_ipynb_to_md(ipynb_path: str, output_dir: str):
     with open(md_path, "w", encoding="utf-8") as f:
         f.write("\n\n".join(md_lines))
 
+    abs_md_path = md_path.resolve()
+    print(f"Generated Markdown file at: {abs_md_path}")
+    
     # Try to get relative path for logging; fallback to filename if error occurs
     try:
         relative_md_path = md_path.relative_to(Path.cwd())
