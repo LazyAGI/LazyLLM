@@ -32,6 +32,27 @@ nav:
   - Flow: API Reference/flow.md
   - Module: API Reference/module.md
   - Tools: API Reference/tools.md
+- Tutorials:
+  - Overview: Tutorial/index.md
+  - Lesson 1: Tutorial/1.md
+  - Lesson 2: Tutorial/2.md
+  - Lesson 3: Tutorial/3.md
+  - Lesson 4: Tutorial/4.md
+  - Lesson 5: Tutorial/5.md
+  - Lesson 6: Tutorial/6.md
+  - Lesson 7: Tutorial/7.md
+  - Lesson 8: Tutorial/8.md
+  - Lesson 9: Tutorial/9.md
+  - Lesson 10: Tutorial/10.md
+  - Lesson 11: Tutorial/11.md
+  - Lesson 12: Tutorial/12.md
+  - Lesson 13: Tutorial/13.md
+  - Lesson 14: Tutorial/14.md
+  - Lesson 15: Tutorial/15.md
+  - Lesson 16: Tutorial/16.md
+  - Lesson 17: Tutorial/17.md
+  - Lesson 18: Tutorial/18.md
+  - Lesson 19: Tutorial/19.md
 theme:
   language: en
   name: material
