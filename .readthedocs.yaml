@@ -1,5 +1,8 @@
 version: 2
 
+git:
+  submodules: true
+
 build:
   os: "ubuntu-22.04"
   tools:
@@ -23,8 +26,3 @@ python:
 
 mkdocs:
   configuration: mkdocs.yml
-
-git:
-  submodules:
-    include: true
-    recursive: true
