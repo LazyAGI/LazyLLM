@@ -65,7 +65,7 @@ class _Processor:
         # NOTE transform.batch_forward will set children for p_nodes, but when calling
         # transform.batch_forward, p_nodes has been upsert in the store.
         t = self._node_groups[group_name]['transform']
-        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
+        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, group_name)
         nodes = transform.batch_forward(p_nodes, group_name)
         self._store.update_nodes(nodes)
         return nodes
@@ -118,7 +118,7 @@ class _Processor:
             raise Exception(f"Failed to remove nodes for docs {doc_ids} group {cur_name} from store")
 
         t = self._node_groups[cur_name]['transform']
-        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
+        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, cur_name)
         nodes = transform.batch_forward(p_nodes, cur_name)
         # reparse need set global_metadata
         self._store.update_nodes(nodes)
