@@ -61,7 +61,7 @@ def convert_ipynb_to_md(ipynb_path: str, output_dir: str):
 if __name__ == "__main__":
     # Batch convert all notebooks matching the pattern
     input_files = glob.glob("Tutorial/rag/notebook/chapter*/*.ipynb", recursive=True)
-    output_dir =  os.path.join(script_dir, "docs/zh/Tutorial")
+    output_dir =  os.path.join(script_dir, "Tutorial")
 
     for ipynb_file in input_files:
         print("$",ipynb_file)
