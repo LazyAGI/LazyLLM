@@ -46,9 +46,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
           fetch-depth: 0
-          
+
+      - name: Init specific submodule
+        run: |
+          git submodule init LazyLLM-Env
+          git submodule update LazyLLM-Env
+
       - name: Fetch PR source branch
         shell: bash
         if: github.event_name == 'pull_request_target'
@@ -170,8 +175,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
           fetch-depth: 0
+
+      - name: Init specific submodule
+        run: |
+          git submodule init LazyLLM-Env
+          git submodule update LazyLLM-Env
 
       - name: Merge PR branch into main
         shell: bash
@@ -241,7 +251,11 @@ jobs:
          git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git D:/a/LazyLLM/data
          pip install -r tests/requirements.txt
          export LAZYLLM_DATA_PATH=D:/a/LazyLLM/data
-         python -m pytest --lf --last-failed-no-failures=all -m "not skip_on_win" -v --reruns=2 tests/charge_tests
+         if [ -f tests/charge_tests/.pytest-cache/v/cache/lastfailed ]; then
+           python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_win" -v --reruns=2 tests/charge_tests
+         else
+           python -m pytest -m "not skip_on_win" -v --reruns=2 tests/charge_tests
+         fi
         env :
          LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
          LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}

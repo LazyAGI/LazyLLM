@@ -16,7 +16,7 @@ from lazyllm.components.formatter import (FormatterBase, EmptyFormatter,
                                           encode_query_with_filepaths, decode_query_with_filepaths)
 from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from lazyllm.components.utils.file_operate import delete_old_files, image_to_base64
-from ..module import ModuleBase, Pipeline
+from ...module import ModuleBase, Pipeline
 
 
 class StaticParams(TypedDict, total=False):

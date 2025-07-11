@@ -113,6 +113,7 @@ agentQuery = "What is 20+(2*4)? Calculate step by step "
 models = ["kimi", "glm", "qwen", "sensenova"]
 rewooquery = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
 
+@pytest.mark.skip_on_linux
 class TestOnlineChatFunctionCall(object):
     @pytest.mark.parametrize("exe_onlinechat_chat",
                              [{'source': 'sensenova', 'model': 'SenseChat-Turbo', 'query': squery}],

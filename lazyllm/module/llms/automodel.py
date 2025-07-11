@@ -1,6 +1,6 @@
 import lazyllm
 from lazyllm import LOG
-from .module import TrainableModule
+from .trainablemodule import TrainableModule
 from .onlineChatModule import OnlineChatModule
 
 class AutoModel:

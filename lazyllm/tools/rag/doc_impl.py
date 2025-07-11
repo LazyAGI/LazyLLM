@@ -19,6 +19,7 @@ from .doc_processor import _Processor, DocumentProcessor
 from dataclasses import dataclass
 import threading
 import time
+from itertools import repeat
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
@@ -241,9 +242,9 @@ class DocImpl:
         return store
 
     @staticmethod
-    def _create_node_group_impl(cls, group_name, name, transform: Union[str, Callable] = None,
-                                parent: str = LAZY_ROOT_NAME, *, trans_node: bool = None,
-                                num_workers: int = 0, display_name: str = None,
+    def _create_node_group_impl(cls, group_name, name, transform: Union[str, Callable],
+                                parent: str = LAZY_ROOT_NAME, *, trans_node: Optional[bool] = None,
+                                num_workers: int = 0, display_name: Optional[str] = None,
                                 group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs):
         group_name, parent = str(group_name), str(parent)
         groups = getattr(cls, group_name)
@@ -278,23 +279,25 @@ class DocImpl:
                             group_type=group_type)
 
     @classmethod
-    def _create_builtin_node_group(cls, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME,
-                                   *, trans_node: bool = None, num_workers: int = 0, display_name: str = None,
-                                   group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
+    def _create_builtin_node_group(cls, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME,
+                                   *, trans_node: Optional[bool] = None, num_workers: int = 0,
+                                   display_name: Optional[str] = None, group_type: NodeGroupType = NodeGroupType.CHUNK,
+                                   **kwargs) -> None:
         DocImpl._create_node_group_impl(cls, '_builtin_node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
                                         group_type=group_type, **kwargs)
 
     @classmethod
-    def create_global_node_group(cls, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME, *,
-                                 trans_node: bool = None, num_workers: int = 0, display_name: str = None,
+    def create_global_node_group(cls, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME, *,
+                                 trans_node: Optional[bool] = None, num_workers: int = 0,
+                                 display_name: Optional[str] = None,
                                  group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
         DocImpl._create_node_group_impl(cls, '_global_node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
                                         group_type=group_type, **kwargs)
 
-    def create_node_group(self, name, transform: Union[str, Callable] = None, parent: str = LAZY_ROOT_NAME, *,
-                          trans_node: bool = None, num_workers: int = 0, display_name: str = None,
+    def create_node_group(self, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME, *,
+                          trans_node: Optional[bool] = None, num_workers: int = 0, display_name: Optional[str] = None,
                           group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
         assert not self._lazy_init.flag, 'Cannot add node group after document started'
         DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
@@ -330,6 +333,25 @@ class DocImpl:
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
 
+    def _add_doc_to_store_with_status(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]],
+                                      cond_status_list: Optional[List[str]] = None):
+        success_ids, failed_ids = [], []
+        for filepath, doc_id, metadata in zip(input_files, ids or repeat(None), metadatas or repeat(None)):
+            try:
+                self._add_doc_to_store(input_files=[filepath], ids=[doc_id] if doc_id is not None else None,
+                                       metadatas=[metadata] if metadata is not None else None)
+                success_ids.append(doc_id)
+            except Exception as e:
+                LOG.error(f"Error adding document {doc_id} ({filepath}) to store: {e}")
+                failed_ids.append(doc_id)
+
+        if success_ids:
+            self._dlm.update_kb_group(cond_file_ids=success_ids, cond_group=self._kb_group_name,
+                                      cond_status_list=cond_status_list, new_status=DocListManager.Status.success)
+        if failed_ids:
+            self._dlm.update_kb_group(cond_file_ids=failed_ids, cond_group=self._kb_group_name,
+                                      cond_status_list=cond_status_list, new_status=DocListManager.Status.failed)
+
     def worker(self):
         is_first_run = True
         while True:
@@ -349,9 +371,7 @@ class DocImpl:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working, new_need_reparse=False)
                 self._delete_doc_from_store(doc_ids=ids)
-                self._add_doc_to_store(input_files=filepaths, ids=ids, metadatas=metadatas)
-                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
-                                          new_status=DocListManager.Status.success)
+                self._add_doc_to_store_with_status(filepaths, ids, metadatas)
 
             # Step 2: After doc is deleted from related kb_group, delete doc from db
             if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
@@ -369,11 +389,9 @@ class DocImpl:
             if files:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working)
-                self._add_doc_to_store(input_files=files, ids=ids, metadatas=metadatas)
-                # change working to success while leaving other status unchanged
-                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
-                                          cond_status_list=[DocListManager.Status.working],
-                                          new_status=DocListManager.Status.success)
+                self._add_doc_to_store_with_status(files, ids, metadatas,
+                                                   cond_status_list=[DocListManager.Status.working])
+
             if is_first_run:
                 self._init_monitor_event.set()
             is_first_run = False

@@ -14,14 +14,14 @@ class JsonFormatter(JsonLikeFormatter):
                 in_string = not in_string
 
             if not in_string:
-                if char == '{':
+                if char in '{[':
                     if brace_level == 0:
                         current_json = ""
                     brace_level += 1
-                elif char == '}':
+                elif char in '}]':
                     brace_level -= 1
 
-            if brace_level > 0 or (brace_level == 0 and char == '}'):
+            if brace_level > 0 or (brace_level == 0 and char in '}]'):
                 current_json += char
 
             if brace_level == 0 and current_json:

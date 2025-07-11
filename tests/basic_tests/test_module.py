@@ -36,6 +36,18 @@ class TestModule:
         m2.update()
         assert m2.eval_result == ['1 after', 'hi after']
 
+        m3 = lazyllm.ServerModule(url=m1._url)
+        assert m3._url == m1._url
+        m3.evalset([1, 'hi'])
+        m3.update()
+        assert m3.eval_result == ['1 after', 'hi after']
+
+        m4 = lazyllm.ServerModule(m3._url)
+        assert m4._url == m1._url
+        m4.evalset([1, 'hi'])
+        m4.update()
+        assert m4.eval_result == ['1 after', 'hi after']
+
     def test_ServerModule(self):
         server_module = lazyllm.ServerModule(lambda x: x.upper())
         server_module.start()

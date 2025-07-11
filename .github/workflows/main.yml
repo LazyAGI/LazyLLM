@@ -102,7 +102,7 @@ jobs:
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
-          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/basic_tests/
+          python -m pytest --lf --last-failed-no-failures=all -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/basic_tests/
 
   AdvancedStandardTests:
     runs-on: tps_sco_nv
@@ -121,7 +121,11 @@ jobs:
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
-          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/standard_test/
+          if [ -f tests/advanced_tests/standard_test/.pytest-cache/v/cache/lastfailed ]; then
+            python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/standard_test/
+          else
+            python -m pytest -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/standard_test/
+          fi
 
   AdvancedFullTests:
     runs-on: tps_sco_nv
@@ -138,7 +142,11 @@ jobs:
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
-          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/full_test/
+          if [ -f tests/advanced_tests/full_test/.pytest-cache/v/cache/lastfailed ]; then
+            python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/full_test/
+          else
+            python -m pytest -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/full_test/
+          fi
 
   ChargeTests:
     runs-on: tps_sco_nv
@@ -154,7 +162,11 @@ jobs:
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
-          python -m pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
+          if [ -f tests/charge_tests/.pytest-cache/v/cache/lastfailed ]; then
+            python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
+          else
+            python -m pytest -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
+          fi
 
   Coverage_linux:
     runs-on: ubuntu-latest
