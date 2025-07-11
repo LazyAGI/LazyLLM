@@ -11,7 +11,7 @@ from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeploy
 
 from .module import (ModuleBase, ModuleBase as Module, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
-                     OnlineChatModule, OnlineEmbeddingModule, AutoModel)
+                     OnlineChatModule, OnlineEmbeddingModule, AutoModel, OnlineMultiModule)
 from .client import redis_client
 from .hook import LazyLLMHook
 from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
@@ -60,6 +60,7 @@ __all__ = [
     'module_register',
     'OnlineChatModule',
     'OnlineEmbeddingModule',
+    'OnlineMultiModule',
     'AutoModel',
 
     # client

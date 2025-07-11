@@ -10,6 +10,7 @@ from .engine import Engine, Node, ServerGraph, SharedHttpTool
 from lazyllm.tools.train_service.serve import TrainServer
 from lazyllm.tools.train_service.client import LocalTrainClient, OnlineTrainClient
 from lazyllm.tools.infer_service import InferClient, InferServer
+from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 
 
 @contextmanager
@@ -411,4 +412,8 @@ class LightEngine(Engine):
         result = self.build_node(id).func(*args, **kw)
         lazyllm.globals['lazyllm_files'] = {}
         lazyllm.globals['chat_history'] = {}
-        return result
+        if isinstance(result, str) and result.startswith(LAZYLLM_QUERY_PREFIX):
+            decoded_result = lazyllm.formatter.file(formatter='decode')(result)
+            return decoded_result["query"] or decoded_result["files"][0]
+        else:
+            return result

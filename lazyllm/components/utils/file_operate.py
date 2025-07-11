@@ -4,9 +4,15 @@ import datetime
 import tempfile
 import re
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 from lazyllm import LOG
+
+try:
+    import magic
+    MAGIC_AVAILABLE = True
+except ImportError:
+    MAGIC_AVAILABLE = False
 
 MIME_TYPE = {
     'jpg': 'image/jpeg',
@@ -30,6 +36,14 @@ MIME_TYPE = {
     'ogg': 'audio/ogg',
     'm4a': 'audio/mp4',
     'wma': 'audio/x-ms-wma',
+    'mp4': 'video/mp4',
+    'avi': 'video/avi',
+    'mov': 'video/mov',
+    'pdf': 'application/pdf',
+    'txt': 'text/plain',
+    'html': 'text/html',
+    'json': 'application/json',
+    'xml': 'application/xml'
 }
 
 # Create reverse mapping for efficient MIME type to extension lookup
@@ -112,12 +126,12 @@ def audio_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
     return file_to_base64(file_path, AUDIO_MIME_TYPE)
 
 
-def base64_to_file(base64_str: str, target_dir: Optional[str] = None) -> str:
+def base64_to_file(base64_str: Union[str, list[str]], target_dir: Optional[str] = None) -> Union[str, list[str]]:
     """
     Convert base64 string to file
 
     Args:
-        base64_str: Base64 data URL string
+        base64_str: Base64 data URL string or list of base64 strings
         target_dir: Optional target directory
 
     Returns:
@@ -126,6 +140,8 @@ def base64_to_file(base64_str: str, target_dir: Optional[str] = None) -> str:
     Raises:
         ValueError: If base64 format is invalid or MIME type is unsupported
     """
+    if isinstance(base64_str, list):
+        return [base64_to_file(item, target_dir) for item in base64_str]
     base64_data, mime_type = split_base64_with_mime(base64_str)
 
     if mime_type is None:
@@ -145,3 +161,39 @@ def base64_to_file(base64_str: str, target_dir: Optional[str] = None) -> str:
 
     os.chmod(file_path, 0o644)
     return file_path
+
+def infer_file_extension(data: bytes) -> str:
+    if MAGIC_AVAILABLE:
+        try:
+            file_type = magic.from_buffer(data, mime=True)
+            return MIME_TO_EXT.get(file_type, '.bin')
+        except Exception:
+            LOG.warning("Magic detection failed, using simple magic detection")
+    return simple_magic_detection(data)
+
+def simple_magic_detection(data: bytes) -> str:
+    if len(data) < 4: return '.bin'
+    if data.startswith(b'\x89PNG\r\n\x1a\n'): return '.png'
+    if data.startswith(b'\xff\xd8'): return '.jpg'
+    if data.startswith((b'GIF87a', b'GIF89a')): return '.gif'
+    if data.startswith(b'RIFF') and len(data) >= 12 and data[8:12] == b'WAVE': return '.wav'
+    if (data.startswith(b'ID3') or data.startswith(b'\xff\xfb') or data.startswith(b'\xff\xf3')): return '.mp3'
+    if data.startswith(b'RIFF') and len(data) >= 12 and data[8:12] == b'WEBP': return '.webp'
+    return '.bin'
+
+def bytes_to_file(bytes_str: Union[bytes, list[bytes]], target_dir: Optional[str] = None) -> Union[str, list[str]]:
+    """
+    Convert byte string to file
+    """
+    assert isinstance(bytes_str, (bytes, list)), "bytes_str must be a bytes or list of bytes"
+    if isinstance(bytes_str, list):
+        return [bytes_to_file(item, target_dir) for item in bytes_str]
+    elif isinstance(bytes_str, bytes):
+        output_dir = target_dir if target_dir and os.path.isdir(target_dir) else None
+        file_extension = infer_file_extension(bytes_str)
+        temp_file = tempfile.NamedTemporaryFile(mode='wb', suffix=file_extension, delete=False, dir=output_dir)
+        temp_file.write(bytes_str)
+        temp_file.close()
+
+        os.chmod(temp_file.name, 0o644)
+        return temp_file.name

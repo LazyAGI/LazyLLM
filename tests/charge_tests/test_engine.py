@@ -312,3 +312,13 @@ class TestEngine(unittest.TestCase):
         res = engine.run(gid, "帮我写一个函数，计算两数之和")
         compiled = lazyllm.common.utils.compile_func(res)
         assert compiled(2, 3) == 5
+
+    def test_online_multi_module(self):
+        nodes = [
+            dict(id="1", kind="TTS", name="m1", args=dict(source='qwen', type='online')),
+            dict(id="2", kind="STT", name="m2", args=dict(source='glm', type='online')),
+            dict(id="3", kind="SD", name="m3", args=dict(source='qwen', type='online', target_dir='./test_online_mm'))]
+        engine = LightEngine()
+        gid = engine.start(nodes, [['__start__', '1'], ['1', '2'], ['2', '3'], ['3', '__end__']])
+        res = engine.run(gid, "画一只动漫风格的懒懒猫")
+        assert '.png' in res
