@@ -1,8 +1,5 @@
 version: 2
 
-git:
-  submodules: true
-
 build:
   os: "ubuntu-22.04"
   tools:
@@ -11,6 +8,7 @@ build:
     pre_build:
       - pip install -r requirements.txt
       - pip install -r docs/requirements.txt
+      - git submodule update --init --recursive
       - cp -r docs/assets docs/zh
       - cp -r docs/assets docs/en
       - python docs/add_docstrings.py
