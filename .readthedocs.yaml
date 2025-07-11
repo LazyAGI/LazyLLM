@@ -12,10 +12,8 @@ build:
       - cp -r docs/assets docs/zh
       - cp -r docs/assets docs/en
       - python docs/add_docstrings.py
-      - ls -alh Tutorial
       - python docs/link_assets.py
       - python docs/ipynb2md.py 2>&1 | tee -a build.log
-      - ls -alh docs/zh/Tutorial
       - python docs/gen_mkdocs_yaml.py
 
 python:
