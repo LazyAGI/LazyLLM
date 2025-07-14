@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from copy import copy as lite_copy
 from dataclasses import dataclass, field
 import requests
 import os
@@ -22,7 +23,7 @@ class TransformArgs():
     trans_node: Optional[bool] = None
     num_workers: int = 0
     kwargs: Dict = field(default_factory=dict)
-    pattern: Optional[str] = None
+    pattern: Optional[Union[str, Callable[[str], bool]]] = None
 
     @staticmethod
     def from_dict(d):
@@ -73,6 +74,7 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
 class NodeTransform(ABC):
     def __init__(self, num_workers: int = 0):
         self._number_workers = num_workers
+        self._name = None
 
     def batch_forward(
         self, documents: Union[DocNode, List[DocNode]], node_group: str, **kwargs
@@ -100,6 +102,12 @@ class NodeTransform(ABC):
     def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
         raise NotImplementedError('Not implemented')
 
+    def with_name(self, name: Optional[str], *, copy: bool = True) -> 'NodeTransform':
+        if name is not None:
+            if copy: return lite_copy(self).with_name(name, copy=False)
+            self._name = name
+        return self
+
     def __call__(self, node: DocNode, **kwargs: Any) -> List[DocNode]:
         # Parent and child should not be set here.
         results = self.transform(node, **kwargs)
@@ -107,29 +115,30 @@ class NodeTransform(ABC):
         return [DocNode(text=chunk) if isinstance(chunk, str) else chunk for chunk in results if chunk]
 
 
-def make_transform(t):
+def make_transform(t: Union[TransformArgs, Dict[str, Any]], group_name: Optional[str] = None) -> NodeTransform:
     if isinstance(t, dict): t = TransformArgs.from_dict(t)
     transform, trans_node, num_workers = t['f'], t['trans_node'], t['num_workers']
     num_workers = dict(num_workers=num_workers) if num_workers > 0 else dict()
-    return (transform(**t['kwargs'], **num_workers)
-            if isinstance(transform, type)
-            else transform if isinstance(transform, NodeTransform)
-            else FuncNodeTransform(transform, trans_node=trans_node, **num_workers))
+    return (transform(**t['kwargs'], **num_workers).with_name(group_name, copy=False) if isinstance(transform, type)
+            else transform.with_name(group_name) if isinstance(transform, NodeTransform)
+            else FuncNodeTransform(transform, trans_node=trans_node, **num_workers).with_name(group_name, copy=False))
 
 
 class AdaptiveTransform(NodeTransform):
-    def __init__(self, transforms: Union[List[TransformArgs], TransformArgs]):
-        super().__init__(num_workers=0)
+    def __init__(self, transforms: Union[List[Union[TransformArgs, Dict]], Union[TransformArgs, Dict]],
+                 num_workers: int = 0):
+        super().__init__(num_workers=num_workers)
         if not isinstance(transforms, (tuple, list)): transforms = [transforms]
         self._transformers = [(t.get('pattern'), make_transform(t)) for t in transforms]
 
     def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
+        if not isinstance(document, DocNode): LOG.warning(f'Invalud document type {type(document)} got')
         for pt, transform in self._transformers:
-            if pt and not pt.startswith('*'): pt = os.path.join(str(os.cwd()), pt)
-            if not isinstance(document, DocNode):
-                LOG.warning(f'Invalud document type {type(document)} got')
-            if not pt or fnmatch.fnmatch(document.docpath, pt):
+            if pt and isinstance(pt, str) and not pt.startswith('*'): pt = os.path.join(str(os.cwd()), pt)
+            if not pt or (callable(pt) and pt(document.docpath)) or (
+                    isinstance(pt, str) and fnmatch.fnmatch(document.docpath, pt)):
                 return transform(document, **kwargs)
+        LOG.warning(f'No transform found for document {document.docpath} with group name `{self._name}`')
         return []
 
 

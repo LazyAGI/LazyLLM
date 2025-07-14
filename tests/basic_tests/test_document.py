@@ -132,7 +132,8 @@ class TestDocument(unittest.TestCase):
             TransformArgs(f=SentenceSplitter, pattern='*.txt', kwargs=dict(chunk_size=512, chunk_overlap=50)),
             dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25))])
         Document.create_node_group('AdaptiveChunk2', transform=AdaptiveTransform([
-            dict(f=SentenceSplitter, pattern='*.txt', kwargs=dict(chunk_size=512, chunk_overlap=50)),
+            dict(f=SentenceSplitter, pattern=(lambda x: x.endswith('.txt')),
+                 kwargs=dict(chunk_size=512, chunk_overlap=50)),
             TransformArgs(f=SentenceSplitter, pattern=None, kwargs=dict(chunk_size=256, chunk_overlap=25))]))
         doc = Document('rag_master')
         doc._impl._lazy_init()

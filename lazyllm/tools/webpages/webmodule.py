@@ -10,7 +10,7 @@ from lazyllm.thirdparty import gradio as gr, PIL
 import time
 import re
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Optional, Any, Dict
 
 import lazyllm
 from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule
@@ -34,10 +34,12 @@ class WebModule(ModuleBase):
         Refresh = 1
         Appendix = 2
 
-    def __init__(self, m, *, components=dict(), title='对话演示终端', port=None,
-                 history=[], text_mode=None, trace_mode=None, audio=False, stream=False,
-                 files_target=None, static_paths: Union[str, Path, List[str | Path]] = None,
-                 encode_files=False) -> None:
+    def __init__(self, m: Any, *, components: Dict[Any, Any] = dict(), title: str = '对话演示终端',
+                 port: Optional[Union[int, range, tuple, list]] = None, history: List[Any] = [],
+                 text_mode: Optional[Mode] = None, trace_mode: Optional[Mode] = None, audio: bool = False,
+                 stream: bool = False, files_target: Optional[Union[Any, List[Any]]] = None,
+                 static_paths: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
+                 encode_files: bool = False, share: bool = False) -> None:
         super().__init__()
         # Set the static directory of gradio so that gradio can access local resources in the directory
         if isinstance(static_paths, (str, Path)):
@@ -66,6 +68,7 @@ class WebModule(ModuleBase):
         self.stream = stream
         self.files_target = files_target if isinstance(files_target, list) or files_target is None else [files_target]
         self.encode_files = encode_files
+        self.share = share
         self.demo = self.init_web(components)
         self.url = None
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -405,7 +408,7 @@ class WebModule(ModuleBase):
         self.url = f'http://127.0.0.1:{port}'
         self.broadcast_url = f'http://0.0.0.0:{port}'
 
-        self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True)
+        self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True, share=self.share)
         LOG.success('LazyLLM webmodule launched successfully: Running on: '
                     f'{self.broadcast_url}, local URL: {self.url}')
 
