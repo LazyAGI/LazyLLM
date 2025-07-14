@@ -95,19 +95,14 @@ class ModelManager():
 
     def download(self, model='', call_back=None):
         assert isinstance(model, str), "model name should be a string."
-        if model.lower() in model_name_mapping.keys() and 'download_by_other' in model_name_mapping[model.lower()]:
-            if model_name_mapping[model.lower()]['download_by_other'] is True:
-                return model
-        self._try_add_mapping(model)
-        # Dummy or local model.
         if len(model) == 0 or model[0] in (os.sep, '.', '~') or os.path.isabs(model): return model
-
-        model_at_path = self._model_exists_at_path(model)
-        if model_at_path: return model_at_path
-
+        if (model_at_path := self._model_exists_at_path(model)): return model_at_path
         if self.model_source == '' or self.model_source not in ('huggingface', 'modelscope'):
             lazyllm.LOG.error("model automatic downloads only support Huggingface and Modelscope currently.")
             return model
+
+        self._try_add_mapping(model)
+        if model_name_mapping.get(model.lower(), {}).get('download_by_other'): return model
 
         if model.lower() in model_name_mapping.keys() and \
                 self.model_source in model_name_mapping[model.lower()]['source'].keys():
