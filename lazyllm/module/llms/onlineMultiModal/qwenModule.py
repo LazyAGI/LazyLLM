@@ -12,7 +12,7 @@ from lazyllm.components.utils.file_operate import bytes_to_file
 
 from .onlineMultiModalBase import OnlineMultiModalBase
 
-class QwenBaseModule(OnlineMultiModalBase):
+class QwenModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
                  base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
@@ -23,13 +23,13 @@ class QwenBaseModule(OnlineMultiModalBase):
         dashscope.base_http_api_url = base_url
         dashscope.base_websocket_api_url = base_websocket_url
 
-class QwenSTTModule(QwenBaseModule):
+class QwenSTTModule(QwenModule):
     MODEL_NAME = "paraformer-v2"
 
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
-        QwenBaseModule.__init__(self, api_key=api_key,
-                                model_name=model or lazyllm.config['qwen_stt_model_name'] or QwenSTTModule.MODEL_NAME,
-                                return_trace=return_trace, **kwargs)
+        QwenModule.__init__(self, api_key=api_key,
+                            model_name=model or lazyllm.config['qwen_stt_model_name'] or QwenSTTModule.MODEL_NAME,
+                            return_trace=return_trace, **kwargs)
 
     def _forward(self, files: List[str] = [], **kwargs):
         assert any(file.startswith('http') for file in files), "QwenSTTModule only supports http file urls"
@@ -46,13 +46,13 @@ class QwenSTTModule(QwenBaseModule):
             lazyllm.LOG.error(f"failed to transcribe: {transcribe_response.output}")
             raise Exception(f"failed to transcribe: {transcribe_response.output.message}")
 
-class QwenTextToImageModule(QwenBaseModule):
+class QwenTextToImageModule(QwenModule):
     MODEL_NAME = "wanx2.1-t2i-turbo"
 
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
-        QwenBaseModule.__init__(self, api_key=api_key,
-                                model_name=model or lazyllm.config['qwen_text2image_model_name']
-                                or QwenTextToImageModule.MODEL_NAME, return_trace=return_trace, **kwargs)
+        QwenModule.__init__(self, api_key=api_key,
+                            model_name=model or lazyllm.config['qwen_text2image_model_name']
+                            or QwenTextToImageModule.MODEL_NAME, return_trace=return_trace, **kwargs)
         self._format_output_files = bytes_to_file
 
     def _forward(self, input: str = None, negative_prompt: str = None, n: int = 1, prompt_extend: bool = True,
@@ -105,7 +105,7 @@ def synthesize_v2(input: str, model_name: str = None, voice: str = None):
         lazyllm.LOG.error(f"failed to synthesize: {synthesizer.last_response}")
         raise Exception(f"failed to synthesize: {synthesizer.last_response['header']['error_message']}")
 
-class QwenTTSModule(QwenBaseModule):
+class QwenTTSModule(QwenModule):
     MODEL_NAME = "cosyvoice-v2"
     SYNTHESIZERS = {
         "cosyvoice-v2": (synthesize_v2, 'longxiaochun_v2'),
@@ -117,9 +117,9 @@ class QwenTTSModule(QwenBaseModule):
 
     def __init__(self, model: str = None, voice: str = None, api_key: str = None,
                  return_trace: bool = False, **kwargs):
-        QwenBaseModule.__init__(self, api_key=api_key,
-                                model_name=model or lazyllm.config['qwen_tts_model_name'] or QwenTTSModule.MODEL_NAME,
-                                return_trace=return_trace, **kwargs)
+        QwenModule.__init__(self, api_key=api_key,
+                            model_name=model or lazyllm.config['qwen_tts_model_name'] or QwenTTSModule.MODEL_NAME,
+                            return_trace=return_trace, **kwargs)
         if self._model_name not in self.SYNTHESIZERS:
             raise ValueError(f"unsupported model: {self._model_name}. "
                              f"supported models: {QwenTTSModule.SYNTHESIZERS.keys()}")
