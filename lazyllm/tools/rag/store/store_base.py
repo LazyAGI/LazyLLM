@@ -18,6 +18,7 @@ from ..global_metadata import (
 LAZY_ROOT_NAME = "lazyllm_root"
 LAZY_IMAGE_GROUP = "image"
 EMBED_DEFAULT_KEY = '__default__'
+DEFAULT_KB_ID = "default"
 BUILDIN_GLOBAL_META_DESC = {
     RAG_DOC_ID: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=512),
     RAG_DOC_PATH: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=65535),

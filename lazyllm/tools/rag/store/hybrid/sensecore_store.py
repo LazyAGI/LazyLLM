@@ -16,7 +16,7 @@ from .utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, 
 from ..index_base import IndexBase
 from ..data_type import DataType
 from ..doc_node import ImageDocNode, QADocNode, DocNode
-from ..global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_KB_ID
+from ..global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
 
 from lazyllm import warp, pipeline, LOG, config
 from lazyllm.common import override
@@ -77,7 +77,7 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
 
     def _serialize_node(self, node: DocNode) -> Dict:  # noqa: C901
         """ serialize node to dict """
-        segment = Segment(segment_id=node._uid, dataset_id=node.global_metadata.get(RAG_DOC_KB_ID, None) or self._kb_id,
+        segment = Segment(segment_id=node._uid, dataset_id=node.global_metadata.get(RAG_KB_ID, None) or self._kb_id,
                           document_id=node.global_metadata.get(RAG_DOC_ID), group=node._group,
                           meta=json.dumps(node._metadata, ensure_ascii=False),
                           excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
@@ -240,7 +240,7 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
         filtered_nodes = []
         for node in nodes:
             if isinstance(node, QADocNode):
-                kb_id = node.global_metadata.get(RAG_DOC_KB_ID)
+                kb_id = node.global_metadata.get(RAG_KB_ID)
                 source_file = node.metadata["source_file_name"]
                 source_chunk = node.metadata["source_chunk"]
                 target_nodes = self.query(query=source_chunk, group_name="block", topk=1, embed_keys=["bge_m3_dense"],
@@ -496,7 +496,7 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
         """ update doc meta """
         # TODO 性能优化
-        dataset_id = metadata.get(RAG_DOC_KB_ID, None)
+        dataset_id = metadata.get(RAG_KB_ID, None)
         nodes: List[DocNode] = []
         for group in self.activated_groups():
             group_nodes = self.get_nodes(group_name=group, dataset_id=dataset_id, doc_ids=[doc_id])

@@ -5,7 +5,7 @@ from lazyllm import LOG
 
 from .store_base import (
     LazyLLMStoreBase, StoreCapability, SegmentType, Segment, INSERT_BATCH_SIZE,
-    BUILDIN_GLOBAL_META_DESC)
+    BUILDIN_GLOBAL_META_DESC, DEFAULT_KB_ID)
 from .hybrid_store import HybridStore
 from .chroma_store import ChromadbStore
 from .milvus_store import MilvusStore
@@ -20,7 +20,6 @@ from ..global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
 from ..similarity import registered_similarities
 
 EMBED_PREFIX = "embed"
-DEFAULT_KB_ID = "__default__"
 
 
 class DocumentStore(object):
@@ -40,7 +39,7 @@ class DocumentStore(object):
             self._global_metadata_desc = BUILDIN_GLOBAL_META_DESC
         self._activated_groups = set()
         self._indices = {}
-        if isinstance(self._impl, MapStore): self._indices["default"] = DefaultIndex(embed, self._impl)
+        if isinstance(self._impl, MapStore): self._indices["default"] = DefaultIndex(embed, self)
 
     def _validate_params(self, store_config: Optional[Dict] = None, segment_store: Optional[LazyLLMStoreBase] = None,
                          vector_store: Optional[LazyLLMStoreBase] = None) -> bool:
@@ -122,6 +121,9 @@ class DocumentStore(object):
                     continue
                 for i in range(0, len(segments), INSERT_BATCH_SIZE):
                     self._impl.upsert(self._gen_collection_name(group), segments[i:i + INSERT_BATCH_SIZE])
+            # update indices
+            for index in self._indices.values():
+                index.update(nodes)
         except Exception as e:
             LOG.error(f"[DocumentStore - {self._algo_name}] Failed to update nodes: {e}")
             raise
@@ -136,9 +138,7 @@ class DocumentStore(object):
             if uids:
                 criteria = {"uid": uids}
             else:
-                criteria = {"doc_id": doc_ids}
-            if kb_id:
-                criteria["kb_id"] = kb_id
+                criteria = {"doc_id": doc_ids, "kb_id": kb_id or DEFAULT_KB_ID}
             if not group:
                 groups = self._activated_groups
             else:
@@ -148,6 +148,9 @@ class DocumentStore(object):
                     LOG.warning(f"[DocumentStore - {self._algo_name}] Group {group} is not active, skip")
                     continue
                 self._impl.delete(self._gen_collection_name(group), criteria)
+            # update indices
+            for index in self._indices.values():
+                index.remove(uids, group)
         except Exception as e:
             LOG.error(f"[DocumentStore - {self._algo_name}] Failed to remove nodes: {e}")
             raise
@@ -172,9 +175,7 @@ class DocumentStore(object):
             if uids:
                 criteria = {"uid": uids}
             else:
-                criteria = {"doc_id": doc_ids}
-            if kb_id:
-                criteria["kb_id"] = kb_id
+                criteria = {"doc_id": doc_ids, "kb_id": kb_id or DEFAULT_KB_ID}
             if not group:
                 groups = self._activated_groups
             else:
@@ -196,17 +197,24 @@ class DocumentStore(object):
         if not segments:
             LOG.warning(f"[DocumentStore] No segments found for doc_id: {doc_id} in dataset: {kb_id}")
             return
+        group_segments = defaultdict(list)
         for segment in segments:
             global_meta = json.loads(segment["global_meta"])
             global_meta.update(metadata)
             segment["global_meta"] = json.dumps(global_meta, ensure_ascii=False)
-        self._impl.upsert(self._gen_collection_name(kb_id), segments)
+            group_segments[segment.get("group")].append(segment)
+        for group, segments in group_segments.items():
+            self._impl.upsert(self._gen_collection_name(group), segments)
         return
 
     def query(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
               topk: Optional[int] = 10, embed_keys: Optional[List[str]] = None,
               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
         self._validate_query_params(group_name, similarity, embed_keys)
+        # temporary, when search in map store, use default index
+        if isinstance(self._impl, MapStore):
+            return self.get_index("default").query(query, group_name, similarity, similarity_cut_off,
+                                                   topk, embed_keys, filters, **kwargs)
         nodes = []
         uid_score = {}
         if embed_keys:
@@ -337,4 +345,4 @@ class DocumentStore(object):
         return f"{EMBED_PREFIX}_{key}".lower()
 
     def _gen_collection_name(self, group: str) -> str:
-        return f"col_{self._algo_name}_{group}".upper()
+        return f"col_{self._algo_name}_{group}".lower()
