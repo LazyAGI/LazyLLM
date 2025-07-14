@@ -1,8 +1,13 @@
 import os
 import glob
 import shutil
+import logging
 from pathlib import Path
 from itertools import chain
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
 
 
 def link_assets():
@@ -37,9 +42,9 @@ def link_assets():
                 elif link_path.is_dir():
                     shutil.rmtree(link_path)
             os.symlink(target, link_path)
-            print(f"✅ Linked {link_path} → {target}")
+            logger.info(f"Created symlink: {link_path} → {target}")
         except Exception as e:
-            print(f"❌ Failed to link {link_path} → {target}: {e}")
+            logger.error(f"Failed to create symlink: {link_path} → {target}\nReason: {e}")
 
 
 if __name__ == "__main__":
