@@ -1,15 +1,15 @@
-from lazyllm.module.onlineMultiModule.onlineMultiModuleBase import OnlineMultiModuleBase
 from volcenginesdkarkruntime import Ark
 import requests
 from typing import Union, Dict
 import lazyllm
 from lazyllm.components.utils.file_operate import bytes_to_file
+from .onlineMultiModalBase import OnlineMultiModalBase
 
-class DoubaoModule(OnlineMultiModuleBase):
+class DoubaoModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None, base_url='https://ark.cn-beijing.volces.com/api/v3',
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModuleBase.__init__(self, model_series="DOUBAO", model_name=model_name,
-                                       return_trace=return_trace, **kwargs)
+        OnlineMultiModalBase.__init__(self, model_series="DOUBAO", model_name=model_name,
+                                      return_trace=return_trace, **kwargs)
         self._client = Ark(
             base_url=base_url,
             api_key=api_key or lazyllm.config['doubao_api_key'],

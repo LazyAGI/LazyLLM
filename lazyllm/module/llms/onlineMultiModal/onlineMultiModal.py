@@ -1,19 +1,39 @@
 import lazyllm
 from typing import Any, Dict
 from .qwenModule import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
-from .onlineMultiModuleBase import OnlineMultiModuleBase
+from .onlineMultiModalBase import OnlineMultiModalBase
 from .doubaoModule import DoubaoTextToImageModule
 from .openaiModule import OpenAISTTModule
 from .glmModule import GLMSTTModule
 
-class _OnlineMultiModuleMeta(type):
+
+class _OnlineMultiModalMeta(type):
+    """Metaclass for OnlineMultiModal to support isinstance checks"""
     def __instancecheck__(self, __instance: Any) -> bool:
-        if isinstance(__instance, OnlineMultiModuleBase):
+        if isinstance(__instance, OnlineMultiModalBase):
             return True
         return super().__instancecheck__(__instance)
 
 
-class OnlineMultiModule(metaclass=_OnlineMultiModuleMeta):
+class OnlineMultiModal(metaclass=_OnlineMultiModalMeta):
+    """
+    Factory class for creating online multimodal models.
+
+    Supports various multimodal functions including:
+    - Speech-to-Text (STT)
+    - Text-to-Speech (TTS)
+    - Text-to-Image generation
+
+    Example:
+        # Create an online STT
+        stt = OnlineMultiModal(source='qwen', function='stt')
+
+        # Create an online TTS
+        tts = OnlineMultiModal(source='qwen', function='tts')
+
+        # Create an online text-to-image
+        img_gen = OnlineMultiModal(source='qwen', function='text2image')
+    """
     STT_MODELS = {
         'qwen': QwenSTTModule,
         'openai': OpenAISTTModule,
@@ -30,13 +50,13 @@ class OnlineMultiModule(metaclass=_OnlineMultiModuleMeta):
                                 model: str,
                                 return_trace: bool,
                                 **kwargs) -> Dict[str, Any]:
+        """Encapsulate parameters for module initialization"""
         params = {"return_trace": return_trace}
         if base_url is not None:
             params['base_url'] = base_url
         if model is not None:
             params['model'] = model
         params.update(kwargs)
-
         return params
 
     def __new__(self,
@@ -46,11 +66,29 @@ class OnlineMultiModule(metaclass=_OnlineMultiModuleMeta):
                 return_trace: bool = False,
                 function: str = "stt",
                 **kwargs):
-        # 定义功能到模型映射
+        """
+        Create a new OnlineMultiModal instance.
+
+        Args:
+            model: Model name to use
+            source: Model provider (e.g., 'qwen', 'openai', 'glm')
+            base_url: Base URL for the model API
+            return_trace: Whether to return trace information
+            function: Function type ('stt', 'tts', 'text2image')
+            **kwargs: Additional parameters for the specific module
+
+        Returns:
+            Instance of the appropriate module class
+
+        Raises:
+            ValueError: If function is not supported
+            KeyError: If no API key is configured
+        """
+        # Define function to model mapping
         FUNCTION_MODEL_MAP = {
-            "stt": OnlineMultiModule.STT_MODELS,
-            "tts": OnlineMultiModule.TTS_MODELS,
-            "text2image": OnlineMultiModule.TEXT2IMAGE_MODELS,
+            "stt": OnlineMultiModal.STT_MODELS,
+            "tts": OnlineMultiModal.TTS_MODELS,
+            "text2image": OnlineMultiModal.TEXT2IMAGE_MODELS,
         }
 
         if function not in FUNCTION_MODEL_MAP:
@@ -58,9 +96,10 @@ class OnlineMultiModule(metaclass=_OnlineMultiModuleMeta):
 
         available_model = FUNCTION_MODEL_MAP[function]
 
-        if model in available_model and source is None: source, model = model, source
+        if model in available_model and source is None:
+            source, model = model, source
 
-        params = OnlineMultiModule._encapsulate_parameters(base_url, model, return_trace, **kwargs)
+        params = OnlineMultiModal._encapsulate_parameters(base_url, model, return_trace, **kwargs)
 
         if kwargs.get("skip_auth", False):
             source = source or "openai"
@@ -71,7 +110,8 @@ class OnlineMultiModule(metaclass=_OnlineMultiModuleMeta):
             if "api_key" in kwargs and kwargs["api_key"]:
                 raise ValueError("No source is given but an api_key is provided.")
             for source in available_model:
-                if lazyllm.config[f'{source}_api_key']: break
+                if lazyllm.config[f'{source}_api_key']:
+                    break
             else:
                 raise KeyError(f"No api_key is configured for any of the models {available_model}.")
 

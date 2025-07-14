@@ -317,8 +317,10 @@ class TestEngine(unittest.TestCase):
         nodes = [
             dict(id="1", kind="TTS", name="m1", args=dict(source='qwen', type='online')),
             dict(id="2", kind="STT", name="m2", args=dict(source='glm', type='online')),
-            dict(id="3", kind="SD", name="m3", args=dict(source='qwen', type='online', target_dir='./test_online_mm'))]
+            dict(id="3", kind="SD", name="m3", args=dict(source='qwen', type='online', target_dir='./test_online_mm')),
+            dict(id="4", kind="VQA", name="m4", args=dict(source='qwen', base_model='qwen-vl-plus', type='online'))
+        ]
         engine = LightEngine()
-        gid = engine.start(nodes, [['__start__', '1'], ['1', '2'], ['2', '3'], ['3', '__end__']])
+        gid = engine.start(nodes, [['__start__', '1'], ['1', '2'], ['2', '3'], ['3', '4'], ['4', '__end__']])
         res = engine.run(gid, "画一只动漫风格的懒懒猫")
-        assert '.png' in res
+        assert 'cat' in res or '猫' in res

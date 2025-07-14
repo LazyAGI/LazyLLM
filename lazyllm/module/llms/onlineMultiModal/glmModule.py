@@ -1,15 +1,15 @@
 import lazyllm
 from zhipuai import ZhipuAI
-from lazyllm.module.onlineMultiModule.onlineMultiModuleBase import OnlineMultiModuleBase
 from typing import List
 import os
+from .onlineMultiModalBase import OnlineMultiModalBase
 
-class GLMModule(OnlineMultiModuleBase):
+class GLMModule(OnlineMultiModalBase):
     def __init__(self, model_series: str, model_name: str, api_key: str = None,
                  base_url: str = 'https://open.bigmodel.cn/api/paas/v4', return_trace: bool = False,
                  **kwargs):
-        OnlineMultiModuleBase.__init__(self, model_series=model_series, model_name=model_name,
-                                       return_trace=return_trace, **kwargs)
+        OnlineMultiModalBase.__init__(self, model_series=model_series, model_name=model_name,
+                                      return_trace=return_trace, **kwargs)
         self._client = ZhipuAI(api_key=api_key or lazyllm.config['glm_api_key'], base_url=base_url)
 
 class GLMSTTModule(GLMModule):

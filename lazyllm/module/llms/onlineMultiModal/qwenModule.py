@@ -10,15 +10,15 @@ import dashscope
 from typing import List
 from lazyllm.components.utils.file_operate import bytes_to_file
 
-from .onlineMultiModuleBase import OnlineMultiModuleBase
+from .onlineMultiModalBase import OnlineMultiModalBase
 
-class QwenBaseModule(OnlineMultiModuleBase):
+class QwenBaseModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
                  base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModuleBase.__init__(self, model_series="QWEN",
-                                       model_name=model_name, return_trace=return_trace, **kwargs)
+        OnlineMultiModalBase.__init__(self, model_series="QWEN",
+                                      model_name=model_name, return_trace=return_trace, **kwargs)
         dashscope.api_key = api_key or lazyllm.config['qwen_api_key']
         dashscope.base_http_api_url = base_url
         dashscope.base_websocket_api_url = base_websocket_url

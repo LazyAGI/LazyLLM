@@ -1,17 +1,17 @@
 from openai import OpenAI
 from typing import List
 import lazyllm
-from lazyllm.module.onlineMultiModule.onlineMultiModuleBase import OnlineMultiModuleBase
+from .onlineMultiModalBase import OnlineMultiModalBase
 from lazyllm.components.utils.file_operate import base64_to_file
 import os
 from pathlib import Path
 
-class OpenAIModule(OnlineMultiModuleBase):
+class OpenAIModule(OnlineMultiModalBase):
     def __init__(self, model_series: str, model_name: str = None, api_key: str = None,
                  base_url: str = 'https://api.openai.com/v1', base_websocket_url: str = None,
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModuleBase.__init__(self, model_series=model_series, model_name=model_name,
-                                       return_trace=return_trace, **kwargs)
+        OnlineMultiModalBase.__init__(self, model_series=model_series, model_name=model_name,
+                                      return_trace=return_trace, **kwargs)
         self._client = OpenAI(api_key=api_key or lazyllm.config['openai_api_key'], base_url=base_url,
                               websocket_base_url=base_websocket_url)
 
