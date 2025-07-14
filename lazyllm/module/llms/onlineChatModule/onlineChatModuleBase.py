@@ -10,7 +10,7 @@ from urllib.parse import urljoin
 import time
 
 import lazyllm
-from lazyllm import globals, FileSystemQueue
+from lazyllm import globals
 from lazyllm.components.prompter import PrompterBase, ChatPrompter
 from lazyllm.components.formatter import (FormatterBase, EmptyFormatter,
                                           encode_query_with_filepaths, decode_query_with_filepaths)
@@ -154,7 +154,7 @@ class OnlineChatModuleBase(ModuleBase):
 
         return self
 
-    def _field_extractor(self, key: Union[str, List[str]] = None):
+    def _field_extractor(self, key: Optional[Union[str, List[str]]] = None):
         if key is None:
             self._extractor_fields = ["{content}" + globals['tool_delimiter'] + "{tool_calls|index}"]
         elif isinstance(key, str):
@@ -163,7 +163,6 @@ class OnlineChatModuleBase(ModuleBase):
             self._extractor_fields = key
         else:
             raise TypeError(f"Unsupported type: {type(key)}")
-
         return self
 
     def _convert_msg_format(self, msg: Dict[str, Any]):
@@ -174,24 +173,15 @@ class OnlineChatModuleBase(ModuleBase):
             pattern = re.compile(r"^data:\s*")
             msg = re.sub(pattern, "", msg.decode('utf-8'))
         try:
-            chunk = json.loads(msg)
-            message = self._convert_msg_format(chunk)
-            if stream_output:
-                color = stream_output.get('color') if isinstance(stream_output, dict) else None
-                for item in message.get("choices", []):
-                    delta = {}
-                    if "message" in item:
-                        delta = item["message"]
-                    elif "delta" in item:
-                        delta = item["delta"]
-                    reasoning_content = delta.get("reasoning_content", '')
-                    if reasoning_content:
-                        content = reasoning_content
-                        FileSystemQueue().get_instance("think").enqueue(lazyllm.colored_text(content, color))
-                    else:
-                        content = delta.get("content", '')
-                        if content and ("tool_calls" not in delta or not delta['tool_calls']):
-                            FileSystemQueue().enqueue(lazyllm.colored_text(content, color))
+            message = self._convert_msg_format(json.loads(msg))
+            if not stream_output: return message
+            color = stream_output.get('color') if isinstance(stream_output, dict) else None
+            for item in message.get("choices", []):
+                delta = item.get('message', item.get('delta', {}))
+                if (reasoning_content := delta.get("reasoning_content", '')):
+                    self._stream_output(reasoning_content, color, cls='think')
+                elif (content := delta.get("content", '')) and not delta.get('tool_calls'):
+                    self._stream_output(content, color)
             lazyllm.LOG.debug(f"message: {message}")
             return message
         except Exception:
@@ -332,14 +322,9 @@ class OnlineChatModuleBase(ModuleBase):
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
                     if stream_output else requests.RequestException(r.text)
 
-            if isinstance(stream_output, dict):
-                prefix, prefix_color = stream_output.get('prefix', ''), stream_output.get('prefix_color', '')
-                if prefix: FileSystemQueue().enqueue(lazyllm.colored_text(prefix, prefix_color))
-            msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()
-                            if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]),))
-            if isinstance(stream_output, dict):
-                suffix, suffix_color = stream_output.get('suffix', ''), stream_output.get('suffix_color', '')
-                if suffix: FileSystemQueue().enqueue(lazyllm.colored_text(suffix, suffix_color))
+            with self.stream_output(stream_output):
+                msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()
+                                if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]),))
 
             usage = {"prompt_tokens": -1, "completion_tokens": -1}
             if len(msg_json) > 0 and "usage" in msg_json[-1] and isinstance(msg_json[-1]["usage"], dict):
