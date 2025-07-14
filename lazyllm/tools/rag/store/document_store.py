@@ -3,9 +3,8 @@ from collections import defaultdict
 from typing import Optional, List, Union, Set, Dict, Callable
 from lazyllm import LOG
 
-from .store_base import (
-    LazyLLMStoreBase, StoreCapability, SegmentType, Segment, INSERT_BATCH_SIZE,
-    BUILDIN_GLOBAL_META_DESC, DEFAULT_KB_ID)
+from .store_base import (LazyLLMStoreBase, StoreCapability, SegmentType, Segment, INSERT_BATCH_SIZE,
+                         BUILDIN_GLOBAL_META_DESC, DEFAULT_KB_ID, EMBED_PREFIX)
 from .hybrid_store import HybridStore
 from .chroma_store import ChromadbStore
 from .milvus_store import MilvusStore
@@ -18,8 +17,6 @@ from ..doc_node import DocNode, QADocNode, ImageDocNode
 from ..index_base import IndexBase
 from ..global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
 from ..similarity import registered_similarities
-
-EMBED_PREFIX = "embed"
 
 
 class DocumentStore(object):
@@ -222,7 +219,7 @@ class DocumentStore(object):
             for embed_key in embed_keys:
                 query_embedding = self._embed.get(embed_key)(query)
                 search_res = self._impl.search(self._gen_collection_name(group_name), query_embedding,
-                                               topk, filters, embed_key=embed_key)
+                                               topk, filters, embed_key=self._gen_embed_key(embed_key))
                 if search_res:
                     sim_cut_off = similarity_cut_off if isinstance(similarity_cut_off, float)\
                         else similarity_cut_off[embed_key]
@@ -339,6 +336,8 @@ class DocumentStore(object):
                            global_metadata=json.loads(data["global_meta"]))
         node.excluded_embed_metadata_keys = data["excluded_embed_metadata_keys"]
         node.excluded_llm_metadata_keys = data["excluded_llm_metadata_keys"]
+        if "embedding" in data:
+            node.embedding = {k[len(EMBED_PREFIX):]: v for k, v in data.get("embedding", {}).items()}
         return node
 
     def _gen_embed_key(self, key: str) -> str:
