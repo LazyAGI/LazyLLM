@@ -8,7 +8,7 @@ from lazyllm import LOG
 from lazyllm.thirdparty import pymilvus
 from lazyllm.common import override
 
-from ..store_base import LazyLLMStoreBase, BUILDIN_GLOBAL_META_DESC, StoreCapability
+from ..store_base import LazyLLMStoreBase, BUILDIN_GLOBAL_META_DESC, StoreCapability, EMBED_PREFIX
 
 from ..utils import parallel_do_embedding
 from ..data_type import DataType
@@ -25,7 +25,7 @@ TYPE2MILVUS = {
     DataType.INT32: pymilvus.DataType.INT32,
     DataType.SPARSE_FLOAT_VECTOR: pymilvus.DataType.SPARSE_FLOAT_VECTOR,
 }
-builtin_keys = {
+BUILTIN_KEYS = {
     'uid': {'dtype': pymilvus.DataType.VARCHAR, 'max_length': 256, 'is_primary': True}
 }
 
@@ -82,63 +82,49 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
         data_embeddings = data[0].get("embedding", {})
         if not data_embeddings: return
         if not self._client.has_collection(collection_name):
-            embed_configs = {}
+            embed_kwargs = {}
             for embed_key, embedding in data_embeddings.items():
-                embed_configs[embed_key] = self._create_col(collection_name, embed_key)
-        else:
-            embed_configs = self._client.describe_collection(collection_name).fields[0].name
+                k = embed_key[len(EMBED_PREFIX):]
+                assert self._embed_datatypes.get(k), \
+                    f'cannot find embedding params for embed [{k}]'
+                if k not in embed_kwargs: embed_kwargs[k] = {"dtype": TYPE2MILVUS[self._embed_datatypes[k]]}
+                if self._embed_dims.get(k): embed_kwargs[k]["dim"] = self._embed_dims[k]
+            self._create_collection(collection_name, embed_kwargs)
+
         self._check_connection()
 
         self._client.upsert(collection_name=collection_name, data=data)
         return True
 
-    def _create_col(self, col_name: str, embed_key: str):  # noqa: C901
+    def _get_constant_field_schema(self) -> List[pymilvus.FieldSchema]:
+        """ get constant field schema for collection """
         field_list = []
-        # set bulid in fields
-        for key, info in builtin_keys.items():
-            field_list.append(pymilvus.FieldSchema(name=key, **info))
-
-        # set vector field (support dense/sparse vector)
-        embed_type = self._embed_datatypes.get(embed_key)
-        if not embed_type:
-            raise ValueError(f'cannot find embedding datatype for embed [{embed_key}]')
-        embed_kwargs = {}
-        embed_dim = self._embed_dims.get(embed_key)
-        if embed_dim:
-            embed_kwargs['dim'] = embed_dim
-        field_list.append(pymilvus.FieldSchema(name='vector', dtype=TYPE2MILVUS[embed_type], **embed_kwargs))
-
-        # set scalar field for filter query
-        for key, desc in self._global_metadata_desc.items():
+        for k, kws in BUILTIN_KEYS.items():
+            field_list.append(pymilvus.FieldSchema(name=k, **kws))
+        for k, desc in self._global_metadata_desc.items():
             if desc.data_type == DataType.ARRAY:
                 if not desc.element_type:
-                    raise ValueError(f'Milvus field [{key}]: `element_type` is required when `data_type` is ARRAY.')
+                    raise ValueError(f'Milvus field [{k}]: `element_type` is required when `data_type` is ARRAY.')
                 field_args = {'element_type': TYPE2MILVUS[desc.element_type], 'max_capacity': desc.max_size}
+                if desc.element_type == DataType.VARCHAR: field_args['max_length'] = 65535
             elif desc.data_type == DataType.VARCHAR:
                 field_args = {'max_length': desc.max_size}
             else:
                 field_args = {}
-            field_list.append(pymilvus.FieldSchema(name=self._gen_field_key(key), dtype=TYPE2MILVUS[desc.data_type],
+            field_list.append(pymilvus.FieldSchema(name=k, dtype=TYPE2MILVUS[desc.data_type],
                                                    default_value=desc.default_value, **field_args))
+        return field_list
 
-        schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_field=False)
-
-        # set index params for vector field
+    def _create_collection(self, collection_name: str, embed_kwargs: Dict[str, Dict]):  # noqa: C901
+        field_list = self._get_constant_field_schema()
         index_params = self._client.prepare_index_params()
-        if isinstance(self._index_kwargs, list):
-            for item in self._index_kwargs:
-                item_key = item.get('embed_key', None)
-                if not item_key:
-                    raise ValueError(f'cannot find `embed_key` in `index_kwargs` of `{embed_key}`')
-                if item_key == embed_key:
-                    index_kwarg = item.copy()
-                    index_kwarg.pop('embed_key', None)
-                    index_params.add_index(field_name='vector', **index_kwarg)
-                    break
-        elif isinstance(self._index_kwargs, dict):
-            index_params.add_index(field_name='vector', **self._index_kwargs)
-
-        self._client.create_collection(collection_name=col_name, schema=schema, index_params=index_params)
+        for k, kws in embed_kwargs.items():
+            field_list.append(pymilvus.FieldSchema(name=k, **kws))
+            index_params.add_index(field_name=k, **kws)
+            if isinstance(self._index_kwargs, dict):
+                index_params.add_index(field_name=k, **self._index_kwargs)
+        schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_field=False)
+        self._client.create_collection(collection_name=collection_name, schema=schema, index_params=index_params)
 
     def _gen_field_key(self, k: str) -> str:
         return self._global_metadata_key_prefix + k
