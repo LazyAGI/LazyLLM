@@ -286,7 +286,8 @@ class OnlineChatModuleBase(ModuleBase):
         else:
             raise TypeError(f"The elements in list {src} are of inconsistent types.")
 
-    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):  # noqa C901
+    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
+                tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):
         """LLM inference interface"""
         stream_output = stream_output or self._stream
         if lazyllm_files:
