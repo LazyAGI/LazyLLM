@@ -222,7 +222,7 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
         else:
             filter_str = ""
             for key, vaule in criteria.items():
-                if not len(filter_str):
+                if len(filter_str) > 0:
                     filter_str += ' AND '
                 if isinstance(vaule, list):
                     filter_str += f'{key} in {vaule}'

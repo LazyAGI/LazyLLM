@@ -121,8 +121,8 @@ class DocNode:
     @property
     def root_node(self) -> "DocNode":
         node = self
-        while isinstance(node.parent, DocNode):
-            node = node.parent
+        while isinstance(node._parent, DocNode):
+            node = node._parent
         return node
 
     @property

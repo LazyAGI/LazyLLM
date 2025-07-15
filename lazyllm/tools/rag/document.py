@@ -122,7 +122,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                  create_ui: bool = False, manager: Union[bool, str, "Document._Manager", DocumentProcessor] = False,
                  server: Union[bool, int] = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
-                 store_conf: Optional[Dict] = None):
+                 store_conf: Optional[Dict] = None, description: str = "default algorithm"):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')

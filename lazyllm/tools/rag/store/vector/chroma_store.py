@@ -1,36 +1,41 @@
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Callable, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
-from .store_base import StoreBase, LAZY_ROOT_NAME
-from .map_store import MapStore
+from .store_base import LazyLLMStoreBase, LAZY_ROOT_NAME
 
 from ..doc_node import DocNode
 from ..index_base import IndexBase
-from ..default_index import DefaultIndex
 from ..utils import sparse2normal
+from ..data_type import DataType, GlobalMetadataDesc
 
 from lazyllm import LOG
 from lazyllm.common import override, obj2str, str2obj
 from lazyllm.thirdparty import chromadb
 
 
-class ChromadbStore(StoreBase):
-    def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable],
-                 embed_dims: Dict[str, int], dir: str, **kwargs) -> None:
-        self._db_client = chromadb.PersistentClient(path=dir)
-        LOG.success(f"Initialzed chromadb in path: {dir}")
-        node_groups = list(group_embed_keys.keys())
-        self._collections: Dict[str, chromadb.api.models.Collection.Collection] = {
-            group: self._db_client.get_or_create_collection(group)
-            for group in node_groups
-        }
+class ChromadbStore(LazyLLMStoreBase):
+    def __init__(self, dir: Optional[str] = None, host: Optional[str] = None, port: Optional[int] = None,
+                 index_kwargs: Optional[Union[Dict, List]] = None, client_kwargs: Optional[Dict] = {},
+                 embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
+                 global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs) -> None:
+        assert dir or (host and port), "dir or (host and port) must be provided"
+        self._index_kwargs = index_kwargs
+        self._client_kwargs = client_kwargs
+        self._dir = dir
+        self._host = host
+        self._port = port
+        self._embed_dims = embed_dims
+        self._embed_datatypes = embed_datatypes
+        self._global_metadata_desc = global_metadata_desc
 
-        self._map_store = MapStore(node_groups=node_groups, embed=embed)
-        self._load_store(embed_dims)
-
-        self._name2index = {
-            'default': DefaultIndex(embed, self._map_store),
-        }
+    @override
+    def lazy_init(self):
+        if self._dir:
+            self._client = chromadb.PersistentClient(path=self._dir, **self._client_kwargs)
+            LOG.success(f"Initialzed chromadb in path: {self._dir}")
+        else:
+            self._client = chromadb.HttpClient(host=self._host, port=self._port, **self._client_kwargs)
+            LOG.success(f"Initialzed chromadb in host: {self._host}, port: {self._port}")
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
