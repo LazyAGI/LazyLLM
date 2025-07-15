@@ -19,6 +19,9 @@ class ChromadbStore(LazyLLMStoreBase):
                  embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
                  global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs) -> None:
         assert dir or (host and port), "dir or (host and port) must be provided"
+        for embed_key, datatype in embed_datatypes.items():
+            if datatype == DataType.SPARSE_FLOAT_VECTOR:
+                raise ValueError("[Chromadb Store] Sparse float vector is not supported for chromadb")
         self._index_kwargs = index_kwargs
         self._client_kwargs = client_kwargs
         self._dir = dir
