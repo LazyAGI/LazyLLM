@@ -12,7 +12,7 @@ class GlobalMetadataDesc:
 # ---------------------------------------------------------------------------- #
 # RAG system metadata keys
 RAG_KB_ID = 'kb_id'
-RAG_DOC_ID = 'docid'
+RAG_DOC_ID = 'doc_id'
 RAG_DOC_PATH = 'lazyllm_doc_path'
 RAG_DOC_FILE_NAME = 'file_name'
 RAG_DOC_FILE_TYPE = 'file_type'

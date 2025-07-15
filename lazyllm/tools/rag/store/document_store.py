@@ -135,7 +135,7 @@ class DocumentStore(object):
             if uids:
                 criteria = {"uid": uids}
             else:
-                criteria = {"doc_id": doc_ids, "kb_id": kb_id or DEFAULT_KB_ID}
+                criteria = {RAG_DOC_ID: doc_ids, RAG_KB_ID: kb_id or DEFAULT_KB_ID}
             if not group:
                 groups = self._activated_groups
             else:
@@ -172,7 +172,7 @@ class DocumentStore(object):
             if uids:
                 criteria = {"uid": uids}
             else:
-                criteria = {"doc_id": doc_ids, "kb_id": kb_id or DEFAULT_KB_ID}
+                criteria = {RAG_DOC_ID: doc_ids, RAG_KB_ID: kb_id or DEFAULT_KB_ID}
             if not group:
                 groups = self._activated_groups
             else:

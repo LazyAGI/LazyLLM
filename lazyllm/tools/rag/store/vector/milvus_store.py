@@ -1,6 +1,8 @@
 """ Milvus Vector Store (For Vector Store Only)"""
 import copy
+import json
 
+from packaging import version
 from urllib import parse
 from typing import Dict, List, Union, Optional, Set
 
@@ -8,13 +10,10 @@ from lazyllm import LOG
 from lazyllm.thirdparty import pymilvus
 from lazyllm.common import override
 
-from ..store_base import LazyLLMStoreBase, BUILDIN_GLOBAL_META_DESC, StoreCapability, EMBED_PREFIX
-
-from ..utils import parallel_do_embedding
+from ..store_base import (LazyLLMStoreBase, BUILDIN_GLOBAL_META_DESC, StoreCapability,
+                          GLOBAL_META_KEY_PREFIX, EMBED_PREFIX)
 from ..data_type import DataType
-from ..doc_node import DocNode
-from ..index_base import IndexBase
-from ..global_metadata import GlobalMetadataDesc, RAG_DOC_ID
+from ..global_metadata import GlobalMetadataDesc
 
 MILVUS_UPSERT_BATCH_SIZE = 500
 MILVUS_PAGINATION_OFFSET = 1000
@@ -31,7 +30,6 @@ BUILTIN_KEYS = {
 
 
 class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
-
     def __init__(self, uri: str = "", db_name: str = 'lazyllm', index_kwargs: Optional[Union[Dict, List]] = None,
                  client_kwargs: Optional[Dict] = {}, embed_dims: Optional[Dict[str, int]] = {},
                  embed_datatypes: Optional[Dict[str, DataType]] = {},
@@ -65,38 +63,86 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
                     self._client.using_database(self._db_name)
             except Exception as e:
                 LOG.error(f'milvus-standalone database error {e}')
+        self._constant_fields = self._get_constant_fields()
         LOG.info("[Milvus Vector Store] init success!")
+
+    @override
+    def upsert(self, collection_name: str, data: List[dict]) -> bool:
+        """ upsert data to the store """
+        try:
+            if not data: return
+            data_embeddings = data[0].get("embedding", {})
+            if not data_embeddings: return
+
+            if not self._client.has_collection(collection_name):
+                embed_kwargs = {}
+                for embed_key, embedding in data_embeddings.items():
+                    assert self._embed_datatypes.get(embed_key), \
+                        f'cannot find embedding params for embed [{embed_key}]'
+                    if embed_key not in embed_kwargs:
+                        embed_kwargs[embed_key] = {"dtype": TYPE2MILVUS[self._embed_datatypes[embed_key]]}
+                    if self._embed_dims.get(embed_key): embed_kwargs[embed_key]["dim"] = self._embed_dims[embed_key]
+                self._create_collection(collection_name, embed_kwargs)
+
+            self._check_connection()
+            for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
+                self._client.upsert(collection_name=collection_name,
+                                    data=[self._serialize_data(d) for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
+            return True
+        except Exception as e:
+            LOG.error(f'[Milvus Store - upsert] error: {e}')
+            return False
+
+    @override
+    def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
+        """ delete data from the store """
+        try:
+            self._check_connection()
+            self._client.delete(collection_name=collection_name, **self._construct_criteria(criteria))
+            return True
+        except Exception as e:
+            LOG.error(f'[Milvus Store - delete] error: {e}')
+            return False
+
+    @override
+    def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:
+        """ get data from the store """
+        try:
+            self._check_connection()
+            col_desc = self._client.describe_collection(collection_name=collection_name)
+            field_names = [field.get("name") for field in col_desc.get('fields', [])
+                           if field.get("name").startswith(EMBED_PREFIX)]
+            if self._primary_key in criteria:
+                res = self._client.get(collection_name=collection_name, ids=criteria[self._primary_key])
+            else:
+                filters = self._construct_criteria(criteria)
+                if version.parse(pymilvus.__version__) >= version.parse('2.4.11'):
+                    iterator = self._client.query_iterator(collection_name=collection_name,
+                                                           batch_size=MILVUS_PAGINATION_OFFSET,
+                                                           output_fields=field_names, **filters)
+                    res = []
+                    while True:
+                        result = iterator.next()
+                        if not result:
+                            iterator.close()
+                            break
+                        res += result
+                else:
+                    res = self._client.query(collection_name=collection_name, output_fields=field_names, **filters)
+            return [self._deserialize_data(r) for r in res]
+        except Exception as e:
+            LOG.error(f'[Milvus Store - get] error: {e}')
+            return []
 
     def _check_connection(self):
         if not pymilvus.connections.has_connection(alias=self._client._using):
-            LOG.info("[Milvus Vector Store] try to reconnect...")
+            LOG.info("[Milvus Store] try to reconnect...")
             if self._type == 'local':
                 pymilvus.connections.connect(alias=self._client._using, uri=self._uri)
             else:
                 pymilvus.connections.connect(alias=self._client._using, db_name=self._db_name, uri=self._uri)
 
-    @override
-    def upsert(self, collection_name: str, data: List[dict]) -> bool:
-        """ upsert data to the store """
-        if not data: return
-        data_embeddings = data[0].get("embedding", {})
-        if not data_embeddings: return
-        if not self._client.has_collection(collection_name):
-            embed_kwargs = {}
-            for embed_key, embedding in data_embeddings.items():
-                k = embed_key[len(EMBED_PREFIX):]
-                assert self._embed_datatypes.get(k), \
-                    f'cannot find embedding params for embed [{k}]'
-                if k not in embed_kwargs: embed_kwargs[k] = {"dtype": TYPE2MILVUS[self._embed_datatypes[k]]}
-                if self._embed_dims.get(k): embed_kwargs[k]["dim"] = self._embed_dims[k]
-            self._create_collection(collection_name, embed_kwargs)
-
-        self._check_connection()
-
-        self._client.upsert(collection_name=collection_name, data=data)
-        return True
-
-    def _get_constant_field_schema(self) -> List[pymilvus.FieldSchema]:
+    def _get_constant_fields(self) -> List[pymilvus.FieldSchema]:
         """ get constant field schema for collection """
         field_list = []
         for k, kws in BUILTIN_KEYS.items():
@@ -116,105 +162,96 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
         return field_list
 
     def _create_collection(self, collection_name: str, embed_kwargs: Dict[str, Dict]):  # noqa: C901
-        field_list = self._get_constant_field_schema()
+        field_list = copy.deepcopy(self._constant_fields)
+        self._check_connection()
         index_params = self._client.prepare_index_params()
         for k, kws in embed_kwargs.items():
             field_list.append(pymilvus.FieldSchema(name=k, **kws))
             index_params.add_index(field_name=k, **kws)
-            if isinstance(self._index_kwargs, dict):
+            if isinstance(self._index_kwargs, list):
+                for item in self._index_kwargs:
+                    embed_key = item.get('embed_key', None)
+                    if not embed_key:
+                        raise ValueError(f'cannot find `embed_key` in `index_kwargs` of `{item}`')
+                    if embed_key == k:
+                        index_kwarg = item.copy()
+                        index_kwarg.pop('embed_key', None)
+                        index_params.add_index(field_name=k, **index_kwarg)
+                        break
+            elif isinstance(self._index_kwargs, dict):
                 index_params.add_index(field_name=k, **self._index_kwargs)
         schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_field=False)
         self._client.create_collection(collection_name=collection_name, schema=schema, index_params=index_params)
 
-    def _gen_field_key(self, k: str) -> str:
-        return self._global_metadata_key_prefix + k
-
-    def _gen_col_name(self, db_name, group_name, embed_key):
-        return self._col_name_format.format(db=db_name, group=group_name, embedding=embed_key)
-
-    @override
-    def update_nodes(self, nodes: List[DocNode]) -> None:
-        """ update nodes to the store """
-        # NOTE: 与之前不同的是，这里持久化存储的node，每次入库都要embedding
-        # 因为从存储中拿出node后再入库的理由只可能是：1. meta更新 2. 切片重解析 这些都会改变node的内容
-        # 导致原先embedding失效
-        self._check_connection()
-        parallel_do_embedding(embed=self._embed, embed_keys=[], nodes=nodes, group_embed_keys=self._group_embed_keys)
-        group_embed_data_dict = {}
-        group_cnt = {}
-        for node in nodes:
-            if not node.embedding:
-                continue
-            if node._group not in group_cnt:
-                group_cnt[node._group] = 1
-            node._metadata["number"] = group_cnt[node._group]
-            group_cnt[node._group] += 1
-            data = self._serialize_node(node)
-            for embed_key in data['vectors'].keys():
-                if node._group not in group_embed_data_dict:
-                    group_embed_data_dict[node._group] = {}
-                if embed_key not in group_embed_data_dict[node._group]:
-                    group_embed_data_dict[node._group][embed_key] = []
-                d = copy.deepcopy(data)
-                d.pop('vectors', None)
-                d['vector'] = data['vectors'][embed_key]
-                group_embed_data_dict[node._group][embed_key].append(d)
-
-        if not group_embed_data_dict:
-            LOG.warning("[Milvus Vector Store] No nodes need to update.")
-
-        for group_name, embed_data in group_embed_data_dict.items():
-            for embed_key, data in embed_data.keys():
-                col_name = self._gen_col_name(self._db_name, group_name, embed_key)
-                if not self._client.has_collection(col_name):
-                    self._create_col(col_name=col_name, embed_key=embed_key)
-                for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
-                    self._client.upsert(collection_name=col_name, data=data[i:i + MILVUS_UPSERT_BATCH_SIZE])
-
-    @override
-    def remove_nodes(self, group_name: str, doc_ids: Optional[List[str]] = None,
-                     uids: Optional[List[str]] = None) -> None:
-        """ remove nodes from the store by doc_ids or uids """
-        self._check_connection()
-        for embed_key in self._group_embed_keys[group_name]:
-            col_name = self._gen_col_name(self._db_name, group_name, embed_key)
-            if self._client.has_collection(col_name):
-                if uids:
-                    self._client.delete(collection_name=col_name, ids=uids)
-                elif doc_ids:
-                    self._client.delete(collection_name=col_name,
-                                        filter=f'{self._gen_field_key(RAG_DOC_ID)} in {doc_ids}')
-                else:
-                    self._client.drop_collection(collection_name=col_name)
-        return
-
-    @override
-    def register_index(self, type: str, index: IndexBase) -> None:
-        raise NotImplementedError("register_index is not supported for MilvusVecStore."
-                                  "Please use register_index for store that support hook")
-
-    @override
-    def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
-        raise NotImplementedError('get_index is not supported for MilvusVecStore.')
-
-    @override
-    def clear_cache(self, group_names: Optional[List[str]]) -> bool:
-        self._check_connection()
-        if not group_names:
-            group_names = [g_n for g_n, eks in self._group_embed_keys.items() if len(eks)]
-        for g_n in group_names:
-            for embed_key in self._group_embed_keys[g_n]:
-                col_name = self._gen_col_name(self._db_name, g_n, embed_key)
-                self._client.drop_collection(collection_name=col_name)
-
-    @override
-    def _serialize_node(self, node: DocNode):
-        """ serialize node to a dict that can be stored in vector store """
-        res = {'uid': node._uid, 'vectors': {k: v for k, v in node.embedding.items()}}
+    def _serialize_data(self, d: dict) -> dict:
+        """ prepare data for upsert """
+        # only keep primary_key, embedding and global_meta
+        res = {
+            self._primary_key: d.get(self._primary_key, '')
+        }
+        for embed_key, value in d.get('embedding', {}).items():
+            res[self._gen_embed_key(embed_key)] = value
+        global_meta = json.loads(d.get('global_meta'))
         for name, desc in self._global_metadata_desc.items():
-            val = node.global_metadata.get(name, desc.default_value)
-            if val is not None:
-                res[self._gen_field_key(name)] = val
+            value = global_meta.get(name, desc.default_value)
+            if value is not None:
+                res[self._gen_global_meta_key(name)] = value
+        return res
+
+    def _deserialize_data(self, d: dict) -> dict:
+        """ deserialize data from vector store """
+        res = {
+            self._primary_key: d.get(self._primary_key, '')
+        }
+        for k, v in d.items():
+            if k.startswith(EMBED_PREFIX):
+                res['embedding'][k[len(EMBED_PREFIX):]] = v
+        return res
+
+    def _gen_embed_key(self, k: str) -> str:
+        return EMBED_PREFIX + k
+
+    def _gen_global_meta_key(self, k: str) -> str:
+        return GLOBAL_META_KEY_PREFIX + k
+
+    def _construct_criteria(self, criteria: dict) -> dict:
+        """ construct criteria for delete """
+        res = {}
+        if self._primary_key in criteria:
+            res["ids"] = criteria[self._primary_key]
+        else:
+            filter_str = ""
+            for key, vaule in criteria.items():
+                if not len(filter_str):
+                    filter_str += ' AND '
+                if isinstance(vaule, list):
+                    filter_str += f'{key} in {vaule}'
+                elif isinstance(vaule, str):
+                    filter_str += f'{key} == {vaule}'
+                else:
+                    raise ValueError(f'invalid criteria type: {type(vaule)}')
+            res["filter"] = filter_str
+        return res
+
+    @override
+    def search(self, collection_name: str, query: Union[dict, List[float]], topk: int,
+               filters: Optional[Dict[str, Union[List, set]]] = None,
+               embed_key: Optional[str] = None, **kwargs) -> List[dict]:
+        self._check_connection()
+        if not embed_key or embed_key not in self._embed_datatypes:
+            raise ValueError(f'[Milvus Store - search] Not supported or None `embed_key`: {embed_key}')
+        res = []
+        results = self._client.search(collection_name=collection_name, data=[query], limit=topk,
+                                      anns_field=self._gen_embed_key(embed_key),
+                                      filter=self._construct_filter_expr(filters))
+        if len(results) != 1:
+            raise ValueError(f'number of results [{len(results)}] != expected [1]')
+        for result in results[0]:
+            score = result.get('distance', 0)
+            uid = result.get('id', result.get(self._primary_key, ''))
+            if not uid:
+                continue
+            res.append({'uid': uid, 'score': score})
         return res
 
     def _construct_filter_expr(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
@@ -223,49 +260,15 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
             desc = self._global_metadata_desc.get(name)
             if not desc:
                 raise ValueError(f'cannot find desc of field [{name}]')
-
-            key = self._gen_field_key(name)
-            if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
+            key = self._gen_global_meta_key(name)
+            if isinstance(candidates, str):
+                candidates = [candidates]
+            elif (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
                 candidates = list(candidates)
             if desc.data_type == DataType.ARRAY:
                 ret_str += f'array_contains_any({key}, {candidates}) and '
             else:
                 ret_str += f'{key} in {candidates} and '
-
         if len(ret_str) > 0:
             return ret_str[:-5]  # truncate the last ' and '
-
         return ret_str
-
-    @override
-    def query(self, query: str, group_name: str, similarity_name: Optional[str] = None,
-              similarity_cut_off: Optional[Union[float, Dict[str, float]]] = float('-inf'),
-              topk: int = 10, embed_keys: Optional[List[str]] = None,
-              filters: Optional[Dict[str, Union[List, set]]] = None, **kwargs) -> List[DocNode]:
-        if similarity_name is not None:
-            raise ValueError('`similarity` MUST be None when Milvus backend is used.')
-
-        if not embed_keys:
-            raise ValueError('empty or None `embed_keys` is not supported.')
-
-        filter_str = self._construct_filter_expr(filters) if filters else ""
-
-        uid_score = {}
-        self._check_connection()
-        for key in embed_keys:
-            col_name = self._gen_col_name(self._db_name, group_name, key)
-            embed_func = self._embed.get(key)
-            query_embedding = embed_func(query)
-            results = self._client.search(collection_name=col_name, data=[query_embedding], limit=topk,
-                                          anns_field=key, filter=filter_str)
-            # we have only one `data` for search() so there is only one result in `results`
-            if len(results) != 1:
-                raise ValueError(f'number of results [{len(results)}] != expected [1]')
-            sim_cut_off = similarity_cut_off if isinstance(similarity_cut_off, float) else similarity_cut_off[key]
-
-            for result in results[0]:
-                if result['distance'] < sim_cut_off:
-                    continue
-                uid_score[result['id']] = result['distance'] if result['id'] not in uid_score \
-                    else max(uid_score[result['id']], result['distance'])
-        return uid_score

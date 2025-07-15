@@ -20,6 +20,8 @@ LAZY_IMAGE_GROUP = "image"
 EMBED_DEFAULT_KEY = '__default__'
 EMBED_PREFIX = "embedding_"
 DEFAULT_KB_ID = "default"
+GLOBAL_META_KEY_PREFIX = "global_meta_"
+
 BUILDIN_GLOBAL_META_DESC = {
     RAG_DOC_ID: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=512),
     RAG_DOC_PATH: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=65535),
@@ -158,7 +160,8 @@ class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaClass):
         raise NotImplementedError
 
     @abstractmethod
-    def search(self, collection_name: str, query: str, topk: int,
-               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[dict]:
+    def search(self, collection_name: str, query: Union[str, dict, List[float]], topk: int,
+               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
+               embed_key: Optional[str] = None, **kwargs) -> List[dict]:
         """ search data from the store, search result: [{"uid": str, "score": float}] """
         raise NotImplementedError
