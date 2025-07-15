@@ -47,7 +47,11 @@ MIME_TYPE = {
 }
 
 # Create reverse mapping for efficient MIME type to extension lookup
-MIME_TO_EXT = {v: k for k, v in MIME_TYPE.items()}
+# if multiple extensions have the same MIME type, keep the first one
+MIME_TO_EXT = {}
+for k, v in MIME_TYPE.items():
+    if v not in MIME_TO_EXT:
+        MIME_TO_EXT[v] = k
 
 IMAGE_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if v.startswith('image/')}
 AUDIO_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if v.startswith('audio/')}
@@ -124,6 +128,9 @@ def image_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
 
 def audio_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
     return file_to_base64(file_path, AUDIO_MIME_TYPE)
+
+def ocr_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
+    return file_to_base64(file_path, MIME_TYPE)
 
 
 def base64_to_file(base64_str: Union[str, list[str]], target_dir: Optional[str] = None) -> Union[str, list[str]]:

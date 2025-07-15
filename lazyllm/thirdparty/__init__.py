@@ -9,7 +9,8 @@ package_name_map = {
     'rank_bm25': 'rank-bm25',
     'faiss': 'faiss-cpu',
     'flash_attn': 'flash-attn',
-    'sklearn': 'scikit-learn'
+    'sklearn': 'scikit-learn',
+    'volcenginesdkarkruntime': 'volcengine-python-sdk[ark]',
 }
 
 requirements = {}
@@ -81,6 +82,7 @@ modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', '
            'lightllm', 'vllm', 'ChatTTS', 'wandb', 'funasr', 'sklearn', 'torchvision', 'scipy', 'pymilvus',
            'sentence_transformers', 'gradio', 'chromadb', 'nltk', 'PIL', 'httpx', 'bm25s', 'kubernetes', 'pymongo',
            'rapidfuzz', 'FlagEmbedding', 'mcp', 'diffusers', 'pypdf', 'pptx', 'html2text', 'ebooklib', 'docx2txt',
-           'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr']
+           'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr', 'volcenginesdkarkruntime',
+           'zhipuai', 'openai', 'dashscope']
 for m in modules:
     vars()[m] = PackageWrapper(m)

@@ -1,8 +1,8 @@
 import lazyllm
-from zhipuai import ZhipuAI
 from typing import List
 import os
 from .onlineMultiModalBase import OnlineMultiModalBase
+from lazyllm.thirdparty import zhipuai
 
 class GLMModule(OnlineMultiModalBase):
     def __init__(self, model_series: str, model_name: str, api_key: str = None,
@@ -10,7 +10,7 @@ class GLMModule(OnlineMultiModalBase):
                  **kwargs):
         OnlineMultiModalBase.__init__(self, model_series=model_series, model_name=model_name,
                                       return_trace=return_trace, **kwargs)
-        self._client = ZhipuAI(api_key=api_key or lazyllm.config['glm_api_key'], base_url=base_url)
+        self._client = zhipuai.ZhipuAI(api_key=api_key or lazyllm.config['glm_api_key'], base_url=base_url)
 
 class GLMSTTModule(GLMModule):
     MODEL_NAME = "glm-asr"

@@ -67,7 +67,7 @@ class OnlineMultiModalBase(ModuleBase):
             output_files = self._format_output_files(output_files)
 
             # Return encoded result
-            return encode_query_with_filepaths(query=output, files=output_files)
+            return output or encode_query_with_filepaths(query=output, files=output_files)
 
         except Exception as e:
             lazyllm.LOG.error(f"Error in {self.__class__.__name__}.forward: {str(e)}")

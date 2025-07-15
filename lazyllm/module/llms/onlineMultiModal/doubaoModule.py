@@ -1,4 +1,4 @@
-from volcenginesdkarkruntime import Ark
+from lazyllm.thirdparty import volcenginesdkarkruntime
 import requests
 from typing import Union, Dict
 import lazyllm
@@ -10,7 +10,7 @@ class DoubaoModule(OnlineMultiModalBase):
                  return_trace: bool = False, **kwargs):
         OnlineMultiModalBase.__init__(self, model_series="DOUBAO", model_name=model_name,
                                       return_trace=return_trace, **kwargs)
-        self._client = Ark(
+        self._client = volcenginesdkarkruntime.Ark(
             base_url=base_url,
             api_key=api_key or lazyllm.config['doubao_api_key'],
         )

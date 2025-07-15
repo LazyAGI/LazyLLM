@@ -8,6 +8,7 @@ from gradio_client import Client
 import lazyllm
 from lazyllm.launcher import cleanup
 from lazyllm.components.formatter import encode_query_with_filepaths
+from lazyllm.components.prompter import ChatPrompter
 
 
 class TestExamples(object):
@@ -88,10 +89,14 @@ class TestExamples(object):
     def test_vl_chat(self):
         from examples.multimodal_chatbot_online import chat
         chat.start()
+        chat.prompt(ChatPrompter("回答问题{query}"))
         query = "图中的动物是猫吗？输出Y代表是，N代表不是。"
         file_path = os.path.join(lazyllm.config['data_path'], "ci_data/ji.jpg")
         inputs = encode_query_with_filepaths(query, [file_path])
         res = chat(inputs)
+        assert 'N' in res
+
+        res = chat(query, lazyllm_files=[file_path])
         assert 'N' in res
 
         # test vl chat warpped in web

@@ -13,7 +13,8 @@ from lazyllm import globals, LOG, launchers, Option, package
 from ...components.formatter import decode_query_with_filepaths, encode_query_with_filepaths
 from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ...components.utils import ModelManager
-from ...components.utils.file_operate import base64_to_file, is_base64_with_mime, image_to_base64, audio_to_base64
+from ...components.utils.file_operate import (base64_to_file, is_base64_with_mime, image_to_base64,
+                                              audio_to_base64, ocr_to_base64)
 from ...launcher import LazyLLMLaunchersBase as Launcher
 from ..utils import map_kw_for_framework, encode_files
 from ...flow import Pipeline
@@ -485,7 +486,8 @@ class TrainableModule(UrlModule):
             assert 'inputs' in self.keys_name_handle
             data[self.keys_name_handle['inputs']] = __input
             if files:
-                for key, encoder in [('image', image_to_base64), ('audio', audio_to_base64), ('ocr_files', None)]:
+                for key, encoder in [('image', image_to_base64), ('audio', audio_to_base64),
+                                     ('ocr_files', ocr_to_base64)]:
                     if key in self.keys_name_handle:
                         data[self.keys_name_handle[key]] = encode_files(files, encoder) if encoder else files
                         break

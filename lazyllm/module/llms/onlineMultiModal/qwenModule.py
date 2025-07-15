@@ -1,12 +1,7 @@
 import lazyllm
 from http import HTTPStatus
 import requests
-from dashscope.audio.asr import Transcription
-from dashscope.audio.tts_v2 import SpeechSynthesizer as SpeechSynthesizer_V2
-from dashscope.audio.tts import SpeechSynthesizer
-from dashscope.audio.qwen_tts import SpeechSynthesizer as SpeechSynthesizer_QwenTTS
-from dashscope import ImageSynthesis
-import dashscope
+from lazyllm.thirdparty import dashscope
 from typing import List
 from lazyllm.components.utils.file_operate import bytes_to_file
 
@@ -37,8 +32,8 @@ class QwenSTTModule(QwenModule):
             'model': self._model_name,
             'file_urls': files,
         }
-        task_response = Transcription.async_call(**call_params)
-        transcribe_response = Transcription.wait(task=task_response.output.task_id)
+        task_response = dashscope.audio.asr.Transcription.async_call(**call_params)
+        transcribe_response = dashscope.audio.asr.Transcription.wait(task=task_response.output.task_id)
         if transcribe_response.status_code == HTTPStatus.OK:
             output = transcribe_response.output
             return output, None
@@ -67,8 +62,8 @@ class QwenTextToImageModule(QwenModule):
         }
         if seed:
             call_params['seed'] = seed
-        task_response = ImageSynthesis.async_call(**call_params)
-        response = ImageSynthesis.wait(task=task_response.output.task_id)
+        task_response = dashscope.ImageSynthesis.async_call(**call_params)
+        response = dashscope.ImageSynthesis.wait(task=task_response.output.task_id)
         if response.status_code == HTTPStatus.OK:
             return None, [requests.get(result.url).content for result in response.output.results]
         else:
@@ -76,7 +71,7 @@ class QwenTextToImageModule(QwenModule):
             raise Exception(f"failed to generate image: {response.output.message}")
 
 def synthesize_qwentts(input: str, model_name: str = None, voice: str = None):
-    response = SpeechSynthesizer_QwenTTS.call(
+    response = dashscope.audio.qwen_tts.SpeechSynthesizer.call(
         model=model_name,
         text=input,
         voice=voice,
@@ -89,7 +84,7 @@ def synthesize_qwentts(input: str, model_name: str = None, voice: str = None):
 
 def synthesize(input: str, model_name: str = None, voice: str = None):
     model_name = model_name + '-' + voice
-    response = SpeechSynthesizer.call(model=model_name, text=input)
+    response = dashscope.audio.tts.SpeechSynthesizer.call(model=model_name, text=input)
     if response.get_response().status_code == HTTPStatus.OK:
         return response.get_audio_data()
     else:
@@ -97,7 +92,7 @@ def synthesize(input: str, model_name: str = None, voice: str = None):
         raise Exception(f"failed to synthesize: {response.get_response().message}")
 
 def synthesize_v2(input: str, model_name: str = None, voice: str = None):
-    synthesizer = SpeechSynthesizer_V2(model=model_name, voice=voice)
+    synthesizer = dashscope.audio.tts_v2.SpeechSynthesizer(model=model_name, voice=voice)
     audio = synthesizer.call(input)
     if synthesizer.last_response['header']['event'] == 'task-finished':
         return audio
