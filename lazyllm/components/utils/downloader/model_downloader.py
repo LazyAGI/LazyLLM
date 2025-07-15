@@ -35,6 +35,7 @@ class ModelManager():
     @functools.lru_cache
     def get_model_type(model) -> str:
         assert isinstance(model, str) and len(model) > 0, f'model name should be a non-empty string, get {model}'
+        __class__._try_add_mapping(model)
         for name, info in model_name_mapping.items():
             if 'type' not in info: continue
 
@@ -50,11 +51,11 @@ class ModelManager():
     @functools.lru_cache
     def get_model_name(model) -> str:
         search_string = os.path.basename(model)
+        __class__._try_add_mapping(search_string)
         for model_name, sources in model_name_mapping.items():
             if model_name.lower() == search_string.lower() or any(
-                os.path.basename(source_file).lower() == search_string.lower()
-                for source_file in sources["source"].values()
-            ):
+                    os.path.basename(source_file).lower() == search_string.lower()
+                    for source_file in sources["source"].values()):
                 return model_name
         return ""
 
