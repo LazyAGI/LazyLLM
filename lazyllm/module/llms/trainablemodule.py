@@ -15,9 +15,10 @@ from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm
 from ...components.utils import ModelManager
 from ...components.utils.file_operate import base64_to_file, is_base64_with_mime, image_to_base64, audio_to_base64
 from ...launcher import LazyLLMLaunchersBase as Launcher
-from ..utils import map_kw_for_framework, encode_files
+from .utils import map_kw_for_framework, encode_files
 from ...flow import Pipeline
-from ..module import ModuleBase, _UrlHelper, light_reduce, UrlModule
+from ..servermodule import ModuleBase, _UrlHelper, UrlModule
+from ..utils import light_reduce
 
 
 class _UrlTemplateStruct(object):
@@ -52,14 +53,18 @@ class _UrlTemplateStruct(object):
 class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
 
-    def __init__(self, base_model='', target_path='', stream=False, train=None, finetune=None, deploy=None,
-                 template: Optional[_UrlTemplateStruct] = None, url_wrapper: Optional[_UrlHelper._Wrapper] = None):
+    def __init__(self, base_model: str = '', target_path: str = '', stream: bool = False,
+                 train: Optional[type] = None, finetune: Optional[type] = None, deploy: Optional[type] = None,
+                 template: Optional[_UrlTemplateStruct] = None, url_wrapper: Optional[_UrlHelper._Wrapper] = None,
+                 trust_remote_code: bool = True):
         super().__init__()
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
-        self._base_model = ModelManager(lazyllm.config['model_source']).download(base_model) or ''
+        base_model = base_model.rstrip('/\\')
+        self._base_model = (ModelManager(lazyllm.config['model_source']).download(base_model) or ''
+                            if trust_remote_code else base_model)
         if not self._base_model:
-            LOG.warning(f"Cannot get a valid model from {base_model} by ModelManager.")
+            LOG.warning(f'Cannot get a valid model from {base_model} by ModelManager.')
         self._target_path = os.path.join(lazyllm.config['train_target_root'], target_path)
         self._stream = stream
         self._launchers: Dict[str, Dict[str, Launcher]] = dict(default=dict(), manual=dict())
@@ -213,12 +218,12 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
 class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
 
-    def __init__(self, base_model: Option = '', target_path='', *,
-                 stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False):
+    def __init__(self, base_model: Option = '', target_path='', *, stream: Union[bool, Dict[str, str]] = False,
+                 return_trace: bool = False, trust_remote_code: bool = True):
         super().__init__(url=None, stream=stream, return_trace=return_trace)
         self._template = _UrlTemplateStruct()
         self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
-                                          lazyllm.deploy.auto, self._template, self._url_wrapper)
+                                          lazyllm.deploy.auto, self._template, self._url_wrapper, trust_remote_code)
         self.prompt()
         self._stream = stream
 
