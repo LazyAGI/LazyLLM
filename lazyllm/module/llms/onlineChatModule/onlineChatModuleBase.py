@@ -33,7 +33,7 @@ class OnlineChatModuleBase(LLMBase):
     NO_PROXY = True
 
     def __init__(self, model_series: str, api_key: str, base_url: str, model_name: str,
-                 stream: Union[bool, Dict[str, str]], return_trace: bool = False, vlm_models: Optional[List[str]] = None,
+                 stream: Union[bool, Dict[str, str]], return_trace: bool = False,
                  skip_auth: bool = False, static_params: StaticParams = {}, **kwargs):
         super().__init__(stream=stream, return_trace=return_trace)
         self._model_series = model_series
@@ -43,7 +43,6 @@ class OnlineChatModuleBase(LLMBase):
         self._base_url = base_url
         self._model_name = model_name
         self.trainable_models = self.TRAINABLE_MODEL_LIST
-        self.vlm_models = self.VLM_MODEL_LIST
         self._set_headers()
         self._set_chat_url()
         self._is_trained = False
@@ -267,7 +266,7 @@ class OnlineChatModuleBase(LLMBase):
             data.update(self._model_optional_params)
 
         if isinstance(__input, str) and (__input.startswith(LAZYLLM_QUERY_PREFIX)
-           or (self._vlm_force_format_input_with_files and data["model"] in self.vlm_models)):
+           or (self._vlm_force_format_input_with_files and data["model"] in self.VLM_MODEL_LIST)):
             for idx, message in enumerate(data["messages"]):
                 content = message["content"]
                 if content.startswith(LAZYLLM_QUERY_PREFIX):
