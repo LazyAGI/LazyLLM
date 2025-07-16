@@ -23,7 +23,8 @@ class LLMBase(ModuleBase):
     def __init__(self, stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._stream = stream
-        self.formatter()
+        __class__.prompt(self)
+        __class__.formatter(self)
 
     def _get_files(self, input, lazyllm_files):
         if isinstance(input, package):
@@ -117,7 +118,6 @@ class UrlModule(LLMBase, _UrlHelper):
                  return_trace: bool = False):
         super().__init__(stream=stream, return_trace=return_trace)
         _UrlHelper.__init__(self, url)
-        __class__.formatter(self)
 
     def _estimate_token_usage(self, text):
         if not isinstance(text, str):

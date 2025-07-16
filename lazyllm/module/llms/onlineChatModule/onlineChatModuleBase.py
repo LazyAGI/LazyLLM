@@ -46,7 +46,6 @@ class OnlineChatModuleBase(LLMBase):
         self.vlm_models = self.VLM_MODEL_LIST
         self._set_headers()
         self._set_chat_url()
-        self.prompt()
         self._is_trained = False
         self._field_extractor()
         self._model_optional_params = {}

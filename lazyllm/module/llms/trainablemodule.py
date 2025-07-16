@@ -17,7 +17,7 @@ from ...components.utils.file_operate import base64_to_file, is_base64_with_mime
 from ...launcher import LazyLLMLaunchersBase as Launcher
 from .utils import map_kw_for_framework, encode_files
 from ...flow import Pipeline
-from ..servermodule import ModuleBase, _UrlHelper, UrlModule, LLMBase
+from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
 
 
@@ -215,7 +215,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         self._file_name = name
 
 
-class TrainableModule(UrlModule, LLMBase):
+class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
 
     def __init__(self, base_model: Option = '', target_path='', *, stream: Union[bool, Dict[str, str]] = False,
@@ -224,8 +224,8 @@ class TrainableModule(UrlModule, LLMBase):
         self._template = _UrlTemplateStruct()
         self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
                                           lazyllm.deploy.auto, self._template, self._url_wrapper, trust_remote_code)
-        self.prompt()
         self._stream = stream
+        self.prompt()
 
     template_message = property(lambda self: self._template.template_message)
     keys_name_handle = property(lambda self: self._template.keys_name_handle)
