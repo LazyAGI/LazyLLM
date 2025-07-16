@@ -300,8 +300,6 @@ class OnlineChatModuleBase(ModuleBase):
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):  # noqa C901
         """LLM inference interface"""
         stream_output = stream_output or self._stream
-        # if lazyllm_files:
-        #     __input = encode_query_with_filepaths(__input, lazyllm_files)
         if isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
             assert lazyllm_files is None, \
                 "lazyllm_files is not supported when query is a encoded with LAZYLLM_QUERY_PREFIX"
