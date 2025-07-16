@@ -1,19 +1,23 @@
-from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Union
 
-from .store_base import LazyLLMStoreBase, LAZY_ROOT_NAME
-
-from ..doc_node import DocNode
-from ..index_base import IndexBase
-from ..utils import sparse2normal
-from ..data_type import DataType, GlobalMetadataDesc
+from ..store_base import (LazyLLMStoreBase, StoreCapability, EMBED_PREFIX,
+                          GLOBAL_META_KEY_PREFIX, DataType, GlobalMetadataDesc, BUILDIN_GLOBAL_META_DESC)
 
 from lazyllm import LOG
-from lazyllm.common import override, obj2str, str2obj
+from lazyllm.common import override
 from lazyllm.thirdparty import chromadb
 
+INSERT_BATCH_SIZE = 1000
 
-class ChromadbStore(LazyLLMStoreBase):
+DEFAULT_INDEX_CONFIG = {
+    "hnsw": {
+        "space": "cosine",
+        "ef_construction": 200,
+    }
+}
+
+
+class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
     def __init__(self, dir: Optional[str] = None, host: Optional[str] = None, port: Optional[int] = None,
                  index_kwargs: Optional[Union[Dict, List]] = None, client_kwargs: Optional[Dict] = {},
                  embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
@@ -22,14 +26,24 @@ class ChromadbStore(LazyLLMStoreBase):
         for embed_key, datatype in embed_datatypes.items():
             if datatype == DataType.SPARSE_FLOAT_VECTOR:
                 raise ValueError("[Chromadb Store] Sparse float vector is not supported for chromadb")
-        self._index_kwargs = index_kwargs
+        if len(embed_dims) > 1:
+            LOG.warning("[Chromadb Store] Chromadb only support single embedding for each collection")
+        self._index_kwargs = index_kwargs or DEFAULT_INDEX_CONFIG
         self._client_kwargs = client_kwargs
         self._dir = dir
         self._host = host
         self._port = port
         self._embed_dims = embed_dims
         self._embed_datatypes = embed_datatypes
-        self._global_metadata_desc = global_metadata_desc
+        self._primary_key = 'uid'
+        if global_metadata_desc:
+            self._global_metadata_desc = global_metadata_desc | BUILDIN_GLOBAL_META_DESC
+        else:
+            self._global_metadata_desc = BUILDIN_GLOBAL_META_DESC
+        for k, v in self._global_metadata_desc.items():
+            if v.data_type not in [DataType.VARCHAR, DataType.INT32, DataType.FLOAT, DataType.BOOLEAN]:
+                raise ValueError(f"[Chromadb Store] Unsupported data type {v.data_type} for global metadata {k}"
+                                 " (only string, int, float, bool are supported)")
 
     @override
     def lazy_init(self):
@@ -41,184 +55,88 @@ class ChromadbStore(LazyLLMStoreBase):
             LOG.success(f"Initialzed chromadb in host: {self._host}, port: {self._port}")
 
     @override
-    def update_nodes(self, nodes: List[DocNode]) -> None:
-        self._map_store.update_nodes(nodes)
-        self._save_nodes(nodes)
+    def upsert(self, collection_name: str, data: List[dict]) -> bool:
+        try:
+            # NOTE chromadb only support single embedding for each collection
+            if not data: return
+            data_embeddings = data[0].get("embedding", {})
+            if not data_embeddings: return
+            embed_keys = list(data_embeddings.keys())
+            for embed_key in embed_keys:
+                if embed_key not in self._embed_datatypes:
+                    raise ValueError(f"Embed key {embed_key} not found in embed_datatypes")
+                collection = self._client.get_or_create_collection(
+                    name=self._gen_collection_name(collection_name, embed_key), configuration=self._index_kwargs)
+                for i in range(0, len(data), INSERT_BATCH_SIZE):
+                    collection.upsert(**self._serialize_data(data[i: i + INSERT_BATCH_SIZE], embed_key))
+            return True
+        except Exception as e:
+            LOG.error(f"[Chromadb Store - upsert] Failed to create collection {collection_name}: {e}")
+            return False
+
+    def _serialize_data(self, data: List[dict], embed_key: str) -> List[dict]:
+        res = {"ids": [], "embeddings": [], "metadatas": []}
+        for d in data:
+            res["ids"].append(d.get("uid"))
+            res["embeddings"].append(d.get("embedding", {}).get(embed_key))
+            res["metadatas"].append({})
+            global_meta = d.get("global_meta", {})
+            for k, v in global_meta.items():
+                if k in self._global_metadata_desc:
+                    res["metadatas"][-1][self._gen_global_meta_key(k)] = v
+        return res
 
     @override
-    def remove_nodes(self, doc_ids: List[str], group_name: Optional[str] = None,
-                     uids: Optional[List[str]] = None) -> None:
-        nodes = self._map_store.get_nodes(group_name=group_name, doc_ids=doc_ids, uids=uids)
-        group2uids = defaultdict(list)
-        for node in nodes:
-            group2uids[node._group].append(node._uid)
-        for group, uids in group2uids.items():
-            self._delete_group_nodes(group, uids)
-            self._map_store.remove_nodes(doc_ids=doc_ids, uids=uids)
+    def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
+        try:
+            filters = self._construct_criteria(criteria)
+            for embed_key in self._embed_datatypes.keys():
+                collection = self._client.get_collection(name=self._gen_collection_name(collection_name, embed_key))
+                collection.delete(**filters)
+            return True
+        except Exception as e:
+            LOG.error(f"[Chromadb Store - delete] Failed to delete collection {collection_name}: {e}")
+            return False
 
     @override
-    def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
-        self._map_store.update_doc_meta(doc_id=doc_id, metadata=metadata)
-        for group in self.activated_groups():
-            nodes = self.get_nodes(group_name=group, doc_ids=[doc_id])
-            self._save_nodes(nodes)
+    def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:
+        try:
+            filters = self._construct_criteria(criteria)
+            for embed_key in self._embed_datatypes.keys():
+                collection = self._client.get_collection(name=self._gen_collection_name(collection_name, embed_key))
+                res = collection.get(**filters)
+            return res
+        except Exception as e:
+            LOG.error(f"[Chromadb Store - get] Failed to get collection {collection_name}: {e}")
+            return []
 
     @override
-    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
-                  doc_ids: Optional[Set] = None, **kwargs) -> List[DocNode]:
-        return self._map_store.get_nodes(group_name, uids, doc_ids, **kwargs)
+    def search(self, collection_name: str, query: str, topk: int,
+               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
+               embed_key: Optional[str] = None, **kwargs) -> List[dict]:
+        pass
 
-    @override
-    def activate_group(self, group_names: Union[str, List[str]]) -> bool:
-        return self._map_store.activate_group(group_names)
-
-    @override
-    def activated_groups(self):
-        return self._map_store.activated_groups()
-
-    @override
-    def is_group_active(self, name: str) -> bool:
-        return self._map_store.is_group_active(name)
-
-    @override
-    def all_groups(self) -> List[str]:
-        return self._map_store.all_groups()
-
-    @override
-    def query(self, *args, **kwargs) -> List[DocNode]:
-        return self.get_index('default').query(*args, **kwargs)
-
-    @override
-    def register_index(self, type: str, index: IndexBase) -> None:
-        self._name2index[type] = index
-
-    @override
-    def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
-        if type is None:
-            type = 'default'
-        return self._name2index.get(type)
-
-    @override
-    def clear_cache(self, group_names: Optional[List[str]] = None):
-        if group_names is None:
-            for group_name in self.activated_groups():
-                self._db_client.delete_collection(name=group_name)
-            self._collections.clear()
-            self._map_store.clear_cache()
-        elif isinstance(group_names, str):
-            group_names = [group_names]
-        elif isinstance(group_names, (tuple, list, set)):
-            group_names = list(group_names)
+    def _construct_criteria(self, criteria: dict) -> dict:
+        """ construct criteria for delete """
+        res = {}
+        if self._primary_key in criteria:
+            res["ids"] = criteria[self._primary_key]
         else:
-            raise TypeError(f"Invalid type {type(group_names)} for group_names, expected list of str")
-        for group_name in group_names:
-            self._db_client.delete_collection(name=group_name)
-        self._map_store.clear_cache(group_names)
+            res["where"] = {}
+            for key, vaule in criteria.items():
+                if isinstance(vaule, list):
+                    res["where"][key] = {"$in": vaule}
+                elif isinstance(vaule, str):
+                    res["where"][key] = {"$eq": vaule}
+                else:
+                    raise ValueError(f'invalid criteria type: {type(vaule)}')
+        return res
 
-    def _load_store(self, embed_dims: Dict[str, int]) -> None:
-        if not self._collections[LAZY_ROOT_NAME].peek(1)["ids"]:
-            LOG.info("No persistent data found, skip the rebuilding phrase.")
-            return
+    def _gen_embed_key(self, k: str) -> str:
+        return EMBED_PREFIX + k
 
-        # Restore all nodes
-        uid2node = {}
-        for group in self._collections.keys():
-            results = self._peek_all_documents(group)
-            nodes = self._build_nodes_from_chroma(results, embed_dims)
-            for node in nodes:
-                uid2node[node._uid] = node
+    def _gen_global_meta_key(self, k: str) -> str:
+        return GLOBAL_META_KEY_PREFIX + k
 
-        # Rebuild relationships
-        for node in uid2node.values():
-            if node.parent:
-                parent_uid = node.parent
-                parent_node = uid2node.get(parent_uid)
-                node.parent = parent_node
-                parent_node.children[node._group].append(node)
-        LOG.debug(f"build {group} nodes from chromadb: {nodes}")
-
-        self._map_store.update_nodes(list(uid2node.values()))
-        LOG.success("Successfully Built nodes from chromadb.")
-
-    def _save_nodes(self, nodes: List[DocNode]) -> None:
-        if not nodes:
-            return
-        # Note: It's caller's duty to make sure this batch of nodes has the same group.
-        group = nodes[0]._group
-        ids, embeddings, metadatas, documents = [], [], [], []
-        collection = self._collections.get(group)
-        assert (
-            collection
-        ), f"Group {group} is not found in collections {self._collections}"
-        for node in nodes:
-            metadata = self._make_chroma_metadata(node)
-            ids.append(node._uid)
-            embeddings.append([0])  # we don't use chroma for retrieving
-            metadatas.append(metadata)
-            documents.append(obj2str(node._content))
-        if ids:
-            collection.upsert(
-                embeddings=embeddings,
-                ids=ids,
-                metadatas=metadatas,
-                documents=documents,
-            )
-            LOG.debug(f"Saved {group} nodes {ids} to chromadb.")
-
-    def _delete_group_nodes(self, group_name: str, uids: List[str]) -> None:
-        collection = self._collections.get(group_name)
-        if collection:
-            collection.delete(ids=uids)
-
-    def _build_nodes_from_chroma(self, results: Dict[str, List], embed_dims: Dict[str, int]) -> List[DocNode]:
-        nodes: List[DocNode] = []
-        for i, uid in enumerate(results['ids']):
-            chroma_metadata = results['metadatas'][i]
-
-            parent = chroma_metadata['parent']
-            local_metadata = str2obj(chroma_metadata['metadata'])
-            global_metadata = str2obj(chroma_metadata['global_metadata']) if not parent else None
-
-            node = DocNode(
-                uid=uid,
-                content=str2obj(results["documents"][i]),
-                group=chroma_metadata["group"],
-                embedding=str2obj(chroma_metadata['embedding']),
-                parent=parent,
-                metadata=local_metadata,
-                global_metadata=global_metadata,
-            )
-
-            if node.embedding:
-                # convert sparse embedding to List[float]
-                new_embedding_dict = {}
-                for key, embedding in node.embedding.items():
-                    if isinstance(embedding, dict):
-                        dim = embed_dims.get(key)
-                        if not dim:
-                            raise ValueError(f'dim of embed [{key}] is not determined.')
-                        new_embedding_dict[key] = sparse2normal(embedding, dim)
-                    else:
-                        new_embedding_dict[key] = embedding
-                node.embedding = new_embedding_dict
-
-            nodes.append(node)
-        return nodes
-
-    def _make_chroma_metadata(self, node: DocNode) -> Dict[str, Any]:
-        metadata = {
-            "group": node._group,
-            "parent": node.parent._uid if node.parent else "",
-            "embedding": obj2str(node.embedding),
-            "metadata": obj2str(node._metadata),
-        }
-
-        if node.is_root_node:
-            metadata["global_metadata"] = obj2str(node.global_metadata)
-
-        return metadata
-
-    def _peek_all_documents(self, group: str) -> Dict[str, List]:
-        assert group in self._collections, f"group {group} not found."
-        collection = self._collections[group]
-        return collection.peek(collection.count())
+    def _gen_collection_name(self, collection_name: str, embed_key: str) -> str:
+        return collection_name + '_' + embed_key

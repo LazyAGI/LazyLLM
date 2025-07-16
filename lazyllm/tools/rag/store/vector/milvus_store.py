@@ -166,8 +166,9 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
         self._check_connection()
         index_params = self._client.prepare_index_params()
         for k, kws in embed_kwargs.items():
-            field_list.append(pymilvus.FieldSchema(name=k, **kws))
-            index_params.add_index(field_name=k, **kws)
+            embed_field_name = self._gen_embed_key(k)
+            field_list.append(pymilvus.FieldSchema(name=embed_field_name, **kws))
+            index_params.add_index(field_name=embed_field_name, **kws)
             if isinstance(self._index_kwargs, list):
                 for item in self._index_kwargs:
                     embed_key = item.get('embed_key', None)
