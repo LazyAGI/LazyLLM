@@ -1,7 +1,8 @@
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Union, Any
+from collections import defaultdict
 
-from ..store_base import (LazyLLMStoreBase, StoreCapability, EMBED_PREFIX,
-                          GLOBAL_META_KEY_PREFIX, DataType, GlobalMetadataDesc, BUILDIN_GLOBAL_META_DESC)
+from ..store_base import (LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX,
+                          DataType, GlobalMetadataDesc, BUILDIN_GLOBAL_META_DESC)
 
 from lazyllm import LOG
 from lazyllm.common import override
@@ -100,21 +101,49 @@ class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
 
     @override
     def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:
-        try:
-            filters = self._construct_criteria(criteria)
-            for embed_key in self._embed_datatypes.keys():
-                collection = self._client.get_collection(name=self._gen_collection_name(collection_name, embed_key))
-                res = collection.get(**filters)
-            return res
-        except Exception as e:
-            LOG.error(f"[Chromadb Store - get] Failed to get collection {collection_name}: {e}")
-            return []
+        filters = self._construct_criteria(criteria)
+        all_data = []
+        for key in self._embed_datatypes:
+            try:
+                coll = self._client.get_collection(
+                    name=self._gen_collection_name(collection_name, key)
+                )
+                data = coll.get(include=["metadatas", "embeddings"], **filters)
+                all_data.append((key, data))
+            except Exception:
+                continue
+
+        res: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
+            "uid": None, "global_meta": {}, "embedding": {}})
+        for embed_key, data in all_data:
+            ids = data["ids"]
+            metas = data["metadatas"]
+            embs = data["embeddings"]
+
+            for uid, meta, emb in zip(ids, metas, embs):
+                entry = res[uid]
+                entry["uid"] = uid
+                if not entry["global_meta"]:
+                    entry["global_meta"] = {
+                        k[len(GLOBAL_META_KEY_PREFIX):]: v
+                        for k, v in meta.items()
+                    }
+                entry["embedding"][embed_key] = emb
+        return list(res.values())
 
     @override
-    def search(self, collection_name: str, query: str, topk: int,
+    def search(self, collection_name: str, query: List[float], topk: int,
                filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                embed_key: Optional[str] = None, **kwargs) -> List[dict]:
-        pass
+        filters = self._construct_filter_expr(filters)
+        collection = self._client.get_collection(name=self._gen_collection_name(collection_name, embed_key))
+        query_results = collection.query(query_embeddings=[query], n_results=topk, where=filters)
+        res = []
+        for i, r in enumerate(query_results['ids']):
+            if not r:
+                continue
+            res.append({"uid": r[0], "score": query_results['distances'][i]})
+        return res
 
     def _construct_criteria(self, criteria: dict) -> dict:
         """ construct criteria for delete """
@@ -132,8 +161,19 @@ class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
                     raise ValueError(f'invalid criteria type: {type(vaule)}')
         return res
 
-    def _gen_embed_key(self, k: str) -> str:
-        return EMBED_PREFIX + k
+    def _construct_filter_expr(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
+        ret = {}
+        for name, candidates in filters.items():
+            desc = self._global_metadata_desc.get(name)
+            if not desc:
+                raise ValueError(f'cannot find desc of field [{name}]')
+            key = self._gen_global_meta_key(name)
+            if isinstance(candidates, str):
+                candidates = [candidates]
+            elif (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
+                candidates = list(candidates)
+            ret[key] = {"$in": candidates}
+        return ret
 
     def _gen_global_meta_key(self, k: str) -> str:
         return GLOBAL_META_KEY_PREFIX + k
