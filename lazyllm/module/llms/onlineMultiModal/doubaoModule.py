@@ -1,8 +1,7 @@
-from lazyllm.thirdparty import volcenginesdkarkruntime
 import requests
-from typing import Union, Dict
 import lazyllm
 from lazyllm.components.utils.file_operate import bytes_to_file
+from lazyllm.thirdparty import volcenginesdkarkruntime
 from .onlineMultiModalBase import OnlineMultiModalBase
 
 class DoubaoModule(OnlineMultiModalBase):
@@ -18,17 +17,21 @@ class DoubaoModule(OnlineMultiModalBase):
 class DoubaoTextToImageModule(DoubaoModule):
     MODEL_NAME = "doubao-seedream-3-0-t2i-250415"
 
-    def __init__(self, api_key: str = None, model_name: str = None, stream: Union[bool, Dict[str, str]] = False,
-                 return_trace: bool = False, **kwargs):
+    def __init__(self, api_key: str = None, model_name: str = None, return_trace: bool = False, **kwargs):
         DoubaoModule.__init__(self, api_key=api_key, model_name=model_name
                               or DoubaoTextToImageModule.MODEL_NAME
                               or lazyllm.config['doubao_text2image_model_name'],
-                              stream=stream, return_trace=return_trace, **kwargs)
+                              return_trace=return_trace, **kwargs)
         self._format_output_files = bytes_to_file
 
-    def _forward(self, input: str = None, **kwargs):
+    def _forward(self, input: str = None, size: str = "1024x1024", seed: int = -1, guidance_scale: float = 2.5,
+                 watermark: bool = True, **kwargs):
         imagesResponse = self._client.images.generate(
             model=self._model_name,
-            prompt=input
+            prompt=input,
+            size=size,
+            seed=seed,
+            guidance_scale=guidance_scale,
+            watermark=watermark
         )
         return None, [requests.get(result.url).content for result in imagesResponse.data]

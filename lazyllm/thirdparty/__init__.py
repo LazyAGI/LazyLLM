@@ -77,6 +77,12 @@ class PackageWrapper(object):
                 err_msg = f'Cannot import module {self._Wrapper__key}'
             raise ImportError(err_msg)
 
+    def __setattr__(self, __name, __value):
+        if __name in ('_Wrapper__key', '_Wrapper__package'):
+            return super(__class__, self).__setattr__(__name, __value)
+        setattr(importlib.import_module(
+            self._Wrapper__key, package=self._Wrapper__package), __name, __value)
+
 modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', 'rank_bm25', 'redisvl', 'datasets',
            'deepspeed', 'fire', 'numpy', 'peft', 'torch', 'transformers', 'faiss', 'flash_attn', 'google',
            'lightllm', 'vllm', 'ChatTTS', 'wandb', 'funasr', 'sklearn', 'torchvision', 'scipy', 'pymilvus',
