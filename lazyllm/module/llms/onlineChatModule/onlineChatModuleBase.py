@@ -10,12 +10,13 @@ from urllib.parse import urljoin
 import time
 
 import lazyllm
-from lazyllm import globals, FileSystemQueue
-from lazyllm.components.prompter import PrompterBase, ChatPrompter, LazyLLMPrompterBase
-from lazyllm.components.formatter import (FormatterBase, EmptyFormatter, decode_query_with_filepaths)
+from lazyllm import globals
+from lazyllm.components.prompter import PrompterBase, LazyLLMPrompterBase
+from lazyllm.components.formatter import FormatterBase, decode_query_with_filepaths
 from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from lazyllm.components.utils.file_operate import delete_old_files, image_to_base64
-from ...module import ModuleBase, Pipeline
+from ...servermodule import LLMBase
+from ...module import Pipeline
 
 LAZYLLM_IMAGE_PLACEHOLDER = "<lazyllm_image>"
 
@@ -28,37 +29,25 @@ class StaticParams(TypedDict, total=False):
     frequency_penalty: float  # Note some online api use "repetition_penalty"
 
 
-class OnlineChatModuleBase(ModuleBase):
+class OnlineChatModuleBase(LLMBase):
     TRAINABLE_MODEL_LIST = []
     VLM_MODEL_LIST = []
     NO_PROXY = True
 
-    def __init__(self,
-                 model_series: str,
-                 api_key: str,
-                 base_url: str,
-                 model_name: str,
-                 stream: Union[bool, Dict[str, str]],
-                 return_trace: bool = False,
-                 vlm_models: List[str] = None,
-                 skip_auth: bool = False,
-                 static_params: StaticParams = {},
-                 **kwargs):
-        super().__init__(return_trace=return_trace)
+    def __init__(self, model_series: str, api_key: str, base_url: str, model_name: str,
+                 stream: Union[bool, Dict[str, str]], return_trace: bool = False,
+                 skip_auth: bool = False, static_params: StaticParams = {}, **kwargs):
+        super().__init__(stream=stream, return_trace=return_trace)
         self._model_series = model_series
         if skip_auth and not api_key:
             raise ValueError("api_key is required")
         self._api_key = api_key
         self._base_url = base_url
         self._model_name = model_name
-        self._stream = stream
         self.trainable_models = self.TRAINABLE_MODEL_LIST
-        self.vlm_models = self.VLM_MODEL_LIST
         self._set_headers()
         self._set_chat_url()
-        self.prompt()
         self._is_trained = False
-        self.formatter()
         self._field_extractor()
         self._model_optional_params = {}
         self._vlm_force_format_input_with_files = False
@@ -73,14 +62,6 @@ class OnlineChatModuleBase(ModuleBase):
         return "LLM"
 
     @property
-    def stream(self):
-        return self._stream
-
-    @stream.setter
-    def stream(self, v: Union[bool, Dict[str, str]]):
-        self._stream = v
-
-    @property
     def static_params(self) -> StaticParams:
         return self._static_params
 
@@ -90,29 +71,16 @@ class OnlineChatModuleBase(ModuleBase):
             raise TypeError("static_params must be a dict (TypedDict)")
         self._static_params = value
 
-    def prompt(self, prompt=None, history: List[List[str]] = None):
-        if prompt is None:
-            self._prompt = ChatPrompter(history=history)
-        elif isinstance(prompt, PrompterBase):
-            assert not history, 'history is not supported in user defined prompter'
-            self._prompt = prompt
-        elif isinstance(prompt, (str, dict)):
-            self._prompt = ChatPrompter(prompt, history=history)
-        else:
-            raise TypeError(f"{prompt} type is not supported.")
+    def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
+        super().prompt('' if prompt is None else prompt, history=history)
         self._prompt._set_model_configs(system=self._get_system_prompt())
         return self
 
-    def share(self, prompt: PrompterBase = None, format: FormatterBase = None, stream: Optional[bool] = None,
-              history: List[List[str]] = None, copy_static_params: bool = False):
-        new = copy.copy(self)
-        new._hooks = set()
-        new._set_mid()
-        if prompt is not None: new.prompt(prompt, history=history)
-        if format is not None: new.formatter(format)
-        if stream is not None: new.stream = stream
-        if copy_static_params:
-            new._static_params = copy.deepcopy(self._static_params)
+    def share(self, prompt: Optional[Union[str, dict, PrompterBase]] = None, format: Optional[FormatterBase] = None,
+              stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None,
+              copy_static_params: bool = False):
+        new = super().share(prompt, format, stream, history)
+        if copy_static_params: new._static_params = copy.deepcopy(self._static_params)
         return new
 
     def _get_system_prompt(self):
@@ -145,17 +113,7 @@ class OnlineChatModuleBase(ModuleBase):
         else:
             raise ValueError(f"The response {data} does not contain a 'choices' field.")
 
-    def formatter(self, format: FormatterBase = None):
-        if isinstance(format, FormatterBase) or callable(format):
-            self._formatter = format
-        elif format is None:
-            self._formatter = EmptyFormatter()
-        else:
-            raise TypeError("format must be a FormatterBase")
-
-        return self
-
-    def _field_extractor(self, key: Union[str, List[str]] = None):
+    def _field_extractor(self, key: Optional[Union[str, List[str]]] = None):
         if key is None:
             self._extractor_fields = ["{content}" + globals['tool_delimiter'] + "{tool_calls|index}"]
         elif isinstance(key, str):
@@ -164,7 +122,6 @@ class OnlineChatModuleBase(ModuleBase):
             self._extractor_fields = key
         else:
             raise TypeError(f"Unsupported type: {type(key)}")
-
         return self
 
     def _convert_msg_format(self, msg: Dict[str, Any]):
@@ -175,24 +132,15 @@ class OnlineChatModuleBase(ModuleBase):
             pattern = re.compile(r"^data:\s*")
             msg = re.sub(pattern, "", msg.decode('utf-8'))
         try:
-            chunk = json.loads(msg)
-            message = self._convert_msg_format(chunk)
-            if stream_output:
-                color = stream_output.get('color') if isinstance(stream_output, dict) else None
-                for item in message.get("choices", []):
-                    delta = {}
-                    if "message" in item:
-                        delta = item["message"]
-                    elif "delta" in item:
-                        delta = item["delta"]
-                    reasoning_content = delta.get("reasoning_content", '')
-                    if reasoning_content:
-                        content = reasoning_content
-                        FileSystemQueue().get_instance("think").enqueue(lazyllm.colored_text(content, color))
-                    else:
-                        content = delta.get("content", '')
-                        if content and ("tool_calls" not in delta or not delta['tool_calls']):
-                            FileSystemQueue().enqueue(lazyllm.colored_text(content, color))
+            message = self._convert_msg_format(json.loads(msg))
+            if not stream_output: return message
+            color = stream_output.get('color') if isinstance(stream_output, dict) else None
+            for item in message.get("choices", []):
+                delta = item.get('message', item.get('delta', {}))
+                if (reasoning_content := delta.get("reasoning_content", '')):
+                    self._stream_output(reasoning_content, color, cls='think')
+                elif (content := delta.get("content", '')) and not delta.get('tool_calls'):
+                    self._stream_output(content, color)
             lazyllm.LOG.debug(f"message: {message}")
             return message
         except Exception:
@@ -297,7 +245,8 @@ class OnlineChatModuleBase(ModuleBase):
         else:
             raise TypeError(f"The elements in list {src} are of inconsistent types.")
 
-    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):  # noqa C901
+    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
+                tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):
         """LLM inference interface"""
         stream_output = stream_output or self._stream
         if isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
@@ -337,14 +286,9 @@ class OnlineChatModuleBase(ModuleBase):
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
                     if stream_output else requests.RequestException(r.text)
 
-            if isinstance(stream_output, dict):
-                prefix, prefix_color = stream_output.get('prefix', ''), stream_output.get('prefix_color', '')
-                if prefix: FileSystemQueue().enqueue(lazyllm.colored_text(prefix, prefix_color))
-            msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()
-                            if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]),))
-            if isinstance(stream_output, dict):
-                suffix, suffix_color = stream_output.get('suffix', ''), stream_output.get('suffix_color', '')
-                if suffix: FileSystemQueue().enqueue(lazyllm.colored_text(suffix, suffix_color))
+            with self.stream_output(stream_output):
+                msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()
+                                if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]),))
 
             usage = {"prompt_tokens": -1, "completion_tokens": -1}
             if len(msg_json) > 0 and "usage" in msg_json[-1] and isinstance(msg_json[-1]["usage"], dict):

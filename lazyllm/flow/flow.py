@@ -99,6 +99,10 @@ class FlowBase(metaclass=_MetaBind):
         self.__post_init__()
         return False
 
+    def __iter__(self):
+        # used to support `with pipeline() as (a.b, b):`
+        return iter([self, self])
+
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
             assert name not in self._item_names, f'Duplicated name: {name}'

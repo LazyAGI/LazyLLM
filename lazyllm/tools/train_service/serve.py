@@ -12,7 +12,7 @@ from async_timeout import timeout
 
 import lazyllm
 from lazyllm.launcher import Status
-from lazyllm.module.utils import uniform_sft_dataset
+from lazyllm.module.llms.utils import uniform_sft_dataset
 from lazyllm import FastapiApp as app
 from ..services import ServerBase
 
