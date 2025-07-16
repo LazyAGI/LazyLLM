@@ -8,6 +8,7 @@ import random
 from typing import Tuple, List, Dict, Union, Any, Optional, TypedDict
 from urllib.parse import urljoin
 import time
+from operator import itemgetter as itemget
 
 import lazyllm
 from lazyllm import globals
@@ -216,32 +217,24 @@ class OnlineChatModuleBase(LLMBase):
             return json.dumps(self._parse_output_by_key(".", response), ensure_ascii=False)
 
     def _merge_stream_result(self, src: List[str | int | list | dict]):
-        types = set(type(ele) for ele in src if ele is not None)
-        assert len(src) > 0 and len(types) <= 1, f"The elements in the list: {src} are of inconsistent types"
-        if len(src) == 1:
-            return src[0]
-        if all(isinstance(ele, str) or ele is None for ele in src):
-            if all(ele == src[-1] or ele is None for ele in src) or (self._model_optional_params
-               and not self._model_optional_params.get("incremental_output", True)):
-                return src[-1]
-            else:
-                return "".join(ele for ele in src if ele is not None)
-        elif all(isinstance(ele, list) for ele in src):
-            assert all(len(src[-1]) == len(ele) for ele in src), f"The lists of elements: {src} have different lengths."
-            ret = [self._merge_stream_result([ele[idx] for ele in src]) for idx in range(len(src[-1]))]
+        src = [ele for ele in src if ele is not None]
+        assert len(set(map(type, src))) == 1, f"The elements in the list: {src} are of inconsistent types"
+        if len(src) == 1: return src[0]
+        if isinstance(src[0], str):
+            return src[-1] if self._model_optional_params.get("incremental_output") else ''.join(src)
+        elif isinstance(src[0], list):
+            assert len(set(map(len, src))) == 1, f"The lists of elements: {src} have different lengths."
+            ret = list(map(self._merge_stream_result, zip(*src)))
             return ret[0] if isinstance(ret[0], list) else ret
-        elif all(isinstance(ele, dict) for ele in src):
-            if "index" in src[-1]:  # If there are multiple index values that need to be appended.
-                data_sorted = sorted(src, key=lambda x: x['index'])
-                grouped_data = [list(g) for k, g in groupby(data_sorted, key=lambda x: x['index'])]
-                if len(grouped_data) > 1:
-                    return [self._merge_stream_result(src) for src in grouped_data]
+        elif isinstance(src[0], dict):
+            if 'index' in src[-1]:
+                grouped = [list(g) for _, g in groupby(sorted(src, key=itemget('index')), key=itemget("index"))]
+                if len(grouped) > 1: return [self._merge_stream_result(src) for src in grouped]
             return {k: "tool_calls" if k == "finish_reason" and "tool_calls" in [d[k] for d in src if k in d]
                     else self._merge_stream_result([d[k] for d in src if k in d]) for k in set().union(*src)}
         elif all(isinstance(ele, int) for ele in src):
             return src[-1] if all(ele == src[-1] for ele in src) else src[-1]
-        else:
-            raise TypeError(f"The elements in list {src} are of inconsistent types.")
+        raise TypeError(f"The elements in list {src} are of inconsistent types.")
 
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
                 tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):
