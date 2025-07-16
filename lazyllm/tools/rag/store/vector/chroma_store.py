@@ -21,33 +21,28 @@ DEFAULT_INDEX_CONFIG = {
 class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
     def __init__(self, dir: Optional[str] = None, host: Optional[str] = None, port: Optional[int] = None,
                  index_kwargs: Optional[Union[Dict, List]] = None, client_kwargs: Optional[Dict] = {},
-                 embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
-                 global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs) -> None:
+                 **kwargs) -> None:
         assert dir or (host and port), "dir or (host and port) must be provided"
-        for embed_key, datatype in embed_datatypes.items():
-            if datatype == DataType.SPARSE_FLOAT_VECTOR:
-                raise ValueError("[Chromadb Store] Sparse float vector is not supported for chromadb")
-        if len(embed_dims) > 1:
-            LOG.warning("[Chromadb Store] Chromadb only support single embedding for each collection")
         self._index_kwargs = index_kwargs or DEFAULT_INDEX_CONFIG
         self._client_kwargs = client_kwargs
         self._dir = dir
         self._host = host
         self._port = port
-        self._embed_dims = embed_dims
-        self._embed_datatypes = embed_datatypes
         self._primary_key = 'uid'
+
+    @override
+    def lazy_init(self, embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
+                  global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs):
         if global_metadata_desc:
             self._global_metadata_desc = global_metadata_desc | BUILDIN_GLOBAL_META_DESC
         else:
             self._global_metadata_desc = BUILDIN_GLOBAL_META_DESC
+        self._embed_dims = embed_dims
+        self._embed_datatypes = embed_datatypes
         for k, v in self._global_metadata_desc.items():
             if v.data_type not in [DataType.VARCHAR, DataType.INT32, DataType.FLOAT, DataType.BOOLEAN]:
                 raise ValueError(f"[Chromadb Store] Unsupported data type {v.data_type} for global metadata {k}"
                                  " (only string, int, float, bool are supported)")
-
-    @override
-    def lazy_init(self):
         if self._dir:
             self._client = chromadb.PersistentClient(path=self._dir, **self._client_kwargs)
             LOG.success(f"Initialzed chromadb in path: {self._dir}")
