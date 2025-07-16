@@ -2,7 +2,7 @@ import os
 import json
 from datetime import datetime
 from dataclasses import dataclass, asdict
-from typing import Callable, Dict, Union, Tuple, Any
+from typing import Callable, Dict, Union, Tuple, Any, Optional
 
 import lazyllm
 from lazyllm import LOG
@@ -178,7 +178,7 @@ def openai2alpaca(data) -> list:
         res.append(alpaca_item)
     return res
 
-def encode_files(files, encode_func: Callable):
+def encode_files(files, encode_func: Optional[Callable] = None):
     """
     Generic file encoding method
 
@@ -189,9 +189,10 @@ def encode_files(files, encode_func: Callable):
     Returns:
         encoded_files: List of encoded files
     """
+    if not encode_func: return files
+    if not isinstance(files, list): files = [files]
+
     encoded_files = []
-    if not isinstance(files, list):
-        files = [files]
     for file in files:
         try:
             file_path = check_path(file, exist=True, file=True)

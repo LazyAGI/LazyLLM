@@ -11,12 +11,12 @@ import time
 
 import lazyllm
 from lazyllm import globals
-from lazyllm.components.prompter import PrompterBase, ChatPrompter
-from lazyllm.components.formatter import (FormatterBase, EmptyFormatter,
-                                          encode_query_with_filepaths, decode_query_with_filepaths)
+from lazyllm.components.prompter import PrompterBase
+from lazyllm.components.formatter import FormatterBase, encode_query_with_filepaths, decode_query_with_filepaths
 from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from lazyllm.components.utils.file_operate import delete_old_files, image_to_base64
-from ...module import ModuleBase, Pipeline
+from ...servermodule import LLMBase
+from ...module import Pipeline
 
 
 class StaticParams(TypedDict, total=False):
@@ -27,37 +27,25 @@ class StaticParams(TypedDict, total=False):
     frequency_penalty: float  # Note some online api use "repetition_penalty"
 
 
-class OnlineChatModuleBase(ModuleBase):
+class OnlineChatModuleBase(LLMBase):
     TRAINABLE_MODEL_LIST = []
     VLM_MODEL_LIST = []
     NO_PROXY = True
 
-    def __init__(self,
-                 model_series: str,
-                 api_key: str,
-                 base_url: str,
-                 model_name: str,
-                 stream: Union[bool, Dict[str, str]],
-                 return_trace: bool = False,
-                 vlm_models: List[str] = None,
-                 skip_auth: bool = False,
-                 static_params: StaticParams = {},
-                 **kwargs):
-        super().__init__(return_trace=return_trace)
+    def __init__(self, model_series: str, api_key: str, base_url: str, model_name: str,
+                 stream: Union[bool, Dict[str, str]], return_trace: bool = False,
+                 skip_auth: bool = False, static_params: StaticParams = {}, **kwargs):
+        super().__init__(stream=stream, return_trace=return_trace)
         self._model_series = model_series
         if skip_auth and not api_key:
             raise ValueError("api_key is required")
         self._api_key = api_key
         self._base_url = base_url
         self._model_name = model_name
-        self._stream = stream
         self.trainable_models = self.TRAINABLE_MODEL_LIST
-        self.vlm_models = self.VLM_MODEL_LIST
         self._set_headers()
         self._set_chat_url()
-        self.prompt()
         self._is_trained = False
-        self.formatter()
         self._field_extractor()
         self._model_optional_params = {}
         self._vlm_force_format_input_with_files = False
@@ -72,14 +60,6 @@ class OnlineChatModuleBase(ModuleBase):
         return "LLM"
 
     @property
-    def stream(self):
-        return self._stream
-
-    @stream.setter
-    def stream(self, v: Union[bool, Dict[str, str]]):
-        self._stream = v
-
-    @property
     def static_params(self) -> StaticParams:
         return self._static_params
 
@@ -89,29 +69,16 @@ class OnlineChatModuleBase(ModuleBase):
             raise TypeError("static_params must be a dict (TypedDict)")
         self._static_params = value
 
-    def prompt(self, prompt=None, history: List[List[str]] = None):
-        if prompt is None:
-            self._prompt = ChatPrompter(history=history)
-        elif isinstance(prompt, PrompterBase):
-            assert not history, 'history is not supported in user defined prompter'
-            self._prompt = prompt
-        elif isinstance(prompt, (str, dict)):
-            self._prompt = ChatPrompter(prompt, history=history)
-        else:
-            raise TypeError(f"{prompt} type is not supported.")
+    def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
+        super().prompt('' if prompt is None else prompt, history=history)
         self._prompt._set_model_configs(system=self._get_system_prompt())
         return self
 
-    def share(self, prompt: PrompterBase = None, format: FormatterBase = None, stream: Optional[bool] = None,
-              history: List[List[str]] = None, copy_static_params: bool = False):
-        new = copy.copy(self)
-        new._hooks = set()
-        new._set_mid()
-        if prompt is not None: new.prompt(prompt, history=history)
-        if format is not None: new.formatter(format)
-        if stream is not None: new.stream = stream
-        if copy_static_params:
-            new._static_params = copy.deepcopy(self._static_params)
+    def share(self, prompt: Optional[Union[str, dict, PrompterBase]] = None, format: Optional[FormatterBase] = None,
+              stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None,
+              copy_static_params: bool = False):
+        new = super().share(prompt, format, stream, history)
+        if copy_static_params: new._static_params = copy.deepcopy(self._static_params)
         return new
 
     def _get_system_prompt(self):
@@ -143,16 +110,6 @@ class OnlineChatModuleBase(ModuleBase):
             return data if not key or key == "." else data.get(key, "")
         else:
             raise ValueError(f"The response {data} does not contain a 'choices' field.")
-
-    def formatter(self, format: FormatterBase = None):
-        if isinstance(format, FormatterBase) or callable(format):
-            self._formatter = format
-        elif format is None:
-            self._formatter = EmptyFormatter()
-        else:
-            raise TypeError("format must be a FormatterBase")
-
-        return self
 
     def _field_extractor(self, key: Optional[Union[str, List[str]]] = None):
         if key is None:
@@ -309,7 +266,7 @@ class OnlineChatModuleBase(ModuleBase):
             data.update(self._model_optional_params)
 
         if isinstance(__input, str) and (__input.startswith(LAZYLLM_QUERY_PREFIX)
-           or (self._vlm_force_format_input_with_files and data["model"] in self.vlm_models)):
+           or (self._vlm_force_format_input_with_files and data["model"] in self.VLM_MODEL_LIST)):
             for idx, message in enumerate(data["messages"]):
                 content = message["content"]
                 if content.startswith(LAZYLLM_QUERY_PREFIX):

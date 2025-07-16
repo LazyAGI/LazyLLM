@@ -4,17 +4,77 @@ import requests
 import pickle
 import codecs
 from typing import Callable, Dict, List, Union, Optional, Tuple
+import copy
 from dataclasses import dataclass
 
 import lazyllm
 from lazyllm import launchers, LOG, package, encode_request, globals, is_valid_url, LazyLLMLaunchersBase
+from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
+from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
-from ..components.formatter import FormatterBase, EmptyFormatter
 from ..flow import FlowBase, Pipeline
 from ..client import get_redis, redis_client
 from urllib.parse import urljoin
 from .utils import light_reduce
 from .module import ModuleBase, ActionModule
+
+
+class LLMBase(ModuleBase):
+    def __init__(self, stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False,
+                 init_prompt: bool = True):
+        super().__init__(return_trace=return_trace)
+        self._stream = stream
+        if init_prompt: self.prompt()
+        __class__.formatter(self)
+
+    def _get_files(self, input, lazyllm_files):
+        if isinstance(input, package):
+            assert not lazyllm_files, 'Duplicate `files` argument provided by args and kwargs'
+            input, lazyllm_files = input
+        if isinstance(input, str) and input.startswith(LAZYLLM_QUERY_PREFIX):
+            assert not lazyllm_files, 'Argument `files` is already provided by query'
+            deinput = decode_query_with_filepaths(input)
+            assert isinstance(deinput, dict), "decode_query_with_filepaths must return a dict."
+            input, files = deinput['query'], deinput['files']
+        else:
+            files = _lazyllm_get_file_list(lazyllm_files) if lazyllm_files else []
+        return input, files
+
+    def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
+        if prompt is None:
+            assert not history, 'history is not supported in EmptyPrompter'
+            self._prompt = EmptyPrompter()
+        elif isinstance(prompt, PrompterBase):
+            assert not history, 'history is not supported in user defined prompter'
+            self._prompt = prompt
+        elif isinstance(prompt, (str, dict)):
+            self._prompt = ChatPrompter(prompt, history=history)
+        else:
+            raise TypeError(f"{prompt} type is not supported.")
+        return self
+
+    def formatter(self, format: Optional[FormatterBase] = None):
+        assert format is None or isinstance(format, FormatterBase) or callable(format), 'format must be None or Callable'
+        self._formatter = format or EmptyFormatter()
+        return self
+
+    def share(self, prompt: Optional[Union[str, dict, PrompterBase]] = None, format: Optional[FormatterBase] = None,
+              stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None):
+        new = copy.copy(self)
+        new._hooks = set()
+        new._set_mid()
+        if prompt is not None: new.prompt(prompt, history=history)
+        if format is not None: new.formatter(format)
+        if stream is not None: new.stream = stream
+        return new
+
+    @property
+    def stream(self):
+        return self._stream
+
+    @stream.setter
+    def stream(self, v: Union[bool, Dict[str, str]]):
+        self._stream = v
 
 
 class _UrlHelper(object):
@@ -48,19 +108,17 @@ class _UrlHelper(object):
         self._url_wrapper.url = url
 
 
-class UrlModule(ModuleBase, _UrlHelper):
+class UrlModule(LLMBase, _UrlHelper):
 
     def __new__(cls, *args, **kw):
         if cls is not UrlModule:
             return super().__new__(cls)
         return ServerModule(*args, **kw)
 
-    def __init__(self, *, url='', stream=False, return_trace=False):
-        super().__init__(return_trace=return_trace)
+    def __init__(self, *, url: Optional[str] = '', stream: Union[bool, Dict[str, str]] = False,
+                 return_trace: bool = False, init_prompt: bool = True):
+        super().__init__(stream=stream, return_trace=return_trace, init_prompt=init_prompt)
         _UrlHelper.__init__(self, url)
-        self._stream = stream
-        __class__.prompt(self)
-        __class__.formatter(self)
 
     def _estimate_token_usage(self, text):
         if not isinstance(text, str):
@@ -74,17 +132,6 @@ class UrlModule(ModuleBase, _UrlHelper):
         non_ascii_char_count = len(non_ascii_chars)
         return int(ascii_ch_count / 3.0 + non_ascii_char_count + 1)
 
-    def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
-        if prompt is None:
-            assert not history, 'history is not supported in EmptyPrompter'
-            self._prompt = EmptyPrompter()
-        elif isinstance(prompt, PrompterBase):
-            assert not history, 'history is not supported in user defined prompter'
-            self._prompt = prompt
-        elif isinstance(prompt, (str, dict)):
-            self._prompt = ChatPrompter(prompt, history=history)
-        return self
-
     def _decode_line(self, line: bytes):
         try:
             return pickle.loads(codecs.decode(line, "base64"))
@@ -93,15 +140,6 @@ class UrlModule(ModuleBase, _UrlHelper):
 
     def _extract_and_format(self, output: str) -> str:
         return output
-
-    def formatter(self, format: FormatterBase = None):
-        if isinstance(format, FormatterBase) or callable(format):
-            self._formatter = format
-        elif format is None:
-            self._formatter = EmptyFormatter()
-        else:
-            raise TypeError("format must be a FormatterBase")
-        return self
 
     def forward(self, *args, **kw): raise NotImplementedError
 
