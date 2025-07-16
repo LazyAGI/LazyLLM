@@ -220,7 +220,7 @@ class TrainableModule(UrlModule):
 
     def __init__(self, base_model: Option = '', target_path='', *, stream: Union[bool, Dict[str, str]] = False,
                  return_trace: bool = False, trust_remote_code: bool = True):
-        super().__init__(url=None, stream=stream, return_trace=return_trace)
+        super().__init__(url=None, stream=stream, return_trace=return_trace, init_prompt=False)
         self._template = _UrlTemplateStruct()
         self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
                                           lazyllm.deploy.auto, self._template, self._url_wrapper, trust_remote_code)

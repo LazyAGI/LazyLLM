@@ -20,10 +20,11 @@ from .module import ModuleBase, ActionModule
 
 
 class LLMBase(ModuleBase):
-    def __init__(self, stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False):
+    def __init__(self, stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False,
+                 init_prompt: bool = True):
         super().__init__(return_trace=return_trace)
         self._stream = stream
-        __class__.prompt(self)
+        if init_prompt: self.prompt()
         __class__.formatter(self)
 
     def _get_files(self, input, lazyllm_files):
@@ -115,8 +116,8 @@ class UrlModule(LLMBase, _UrlHelper):
         return ServerModule(*args, **kw)
 
     def __init__(self, *, url: Optional[str] = '', stream: Union[bool, Dict[str, str]] = False,
-                 return_trace: bool = False):
-        super().__init__(stream=stream, return_trace=return_trace)
+                 return_trace: bool = False, init_prompt: bool = True):
+        super().__init__(stream=stream, return_trace=return_trace, init_prompt=init_prompt)
         _UrlHelper.__init__(self, url)
 
     def _estimate_token_usage(self, text):
