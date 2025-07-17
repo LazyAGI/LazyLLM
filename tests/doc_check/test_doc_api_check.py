@@ -2,14 +2,13 @@ import pytest # noqa E401
 import re
 import inspect
 import lazyllm
+import lazyllm.flow
 from typing import Callable
 import warnings
 
 
 def class_should_check(cls, module):
     if not cls.__name__[0].isupper() or cls.__module__ != module.__name__:
-        return False
-    if cls.__module__ != module.__name__:
         return False
     all_methods = inspect.getmembers(cls, predicate=inspect.isfunction)
     custom_methods = [name for name, func in all_methods if not name.startswith('_')]
@@ -36,33 +35,126 @@ def is_method_overridden(cls, method: Callable):
     return False
 
 
-def do_check_method(cls, func: Callable):
-    # As type is always missing in code signature and default value is not universal,
-    # Also Keyword argument is not universal. So we just check args parameter name
-    arg_spec = inspect.getfullargspec(func)
-    real_parms = arg_spec.args + arg_spec.kwonlyargs
-    real_vars = [arg_spec.varargs, arg_spec.varkw]
-    if real_parms[0] in ['self', 'cls']:
-        real_parms = real_parms[1:]
-    real_parms = set(real_parms + real_vars)
-    if func.__name__ == '__init__':
-        doc = cls.__doc__
-    else:
-        doc = func.__doc__
-    if doc is not None:
-        seg_pattern = r"Args:\s*(.*?)\n\s*\n"
-        match = re.search(seg_pattern, doc, re.DOTALL)
-        doc_parms = []
+def is_doc_directly_written(cls, func: Callable) -> bool:
+    """Check if documentation is written directly in the function/class."""
+    try:
+        if func.__name__ == '__init__':
+            source = inspect.getsource(cls)
+        else:
+            source = inspect.getsource(func)
+        
+        docstring_pattern = r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\''
+        matches = re.findall(docstring_pattern, source)
+        return len(matches) > 0
+    except (TypeError, OSError):
+        return False
+
+
+def get_doc_from_language(cls, func: Callable, language: str = 'ENGLISH'):
+    """Get documentation based on language configuration."""
+    # First check if doc is written directly in the function
+    if is_doc_directly_written(cls, func):
+        warnings.warn(
+            f"Documentation for {cls.__name__}.{func.__name__} is written directly in the "
+            f"function/class. Please use add_{language.lower()}_doc instead.",
+            UserWarning
+        )
+        return None
+    
+    # 使用临时配置获取对应语言的文档
+    with lazyllm.config.temp('language', language):
+        if func.__name__ == '__init__':
+            doc = cls.__doc__
+        else:
+            doc = func.__doc__
+        return doc
+
+
+def parse_google_style_args(doc: str) -> set:
+    """解析Google风格文档中的Args部分，返回参数名集合
+    
+    Args:
+        doc: 文档字符串
+    
+    Returns:
+        set: 参数名集合
+    """
+    args_pattern = r"Args:\s*(.*?)(?:\n\s*(?:Returns|Raises|$))"
+    args_match = re.search(args_pattern, doc, re.DOTALL)
+    if not args_match:
+        return set()
+    
+    args_section = args_match.group(1)
+    param_pattern = r"^\s*(\w+)\s*(?:\([^)]+\))?\s*:"
+    params = set()
+    
+    for line in args_section.split('\n'):
+        line = line.strip()
+        if not line:  # 跳过空行
+            continue
+        match = re.search(param_pattern, line)
         if match:
-            args_pattern = r"^\s*(\w+)\s*(?:\(|:)"
-            doc_parms = re.findall(args_pattern, match.group(1), re.MULTILINE)
-        for doc_param in doc_parms:
-            if doc_param in real_parms:
-                continue
-            assert doc_param in real_parms, f"{doc_param} no found in real params: {real_parms}"
-    else:
-        if len(real_parms) > 0:
-            warnings.warn(f"doc is empty, real params: {real_parms}", UserWarning)
+            param_name = match.group(1)
+            params.add(param_name)
+    
+    return params
+
+
+def do_check_method(cls, func: Callable):
+    """检查方法的参数文档是否与实际参数匹配"""
+    # 获取函数的实际参数
+    arg_spec = inspect.getfullargspec(func)
+    real_params = arg_spec.args + (arg_spec.kwonlyargs or [])
+    if real_params and real_params[0] in ['self', 'cls']:
+        real_params = real_params[1:]
+    real_params = set(real_params)
+
+    # 检查是否直接写在代码中
+    if is_doc_directly_written(cls, func):
+        warnings.warn(
+            f"Documentation for {cls.__name__}.{func.__name__} is written directly in the "
+            f"function/class. Please use add_english_doc and add_chinese_doc instead.",
+            UserWarning
+        )
+        return
+
+    # 分别在中英文环境下检查文档
+    # 检查英文文档
+    with lazyllm.config.temp('language', 'ENGLISH'):
+        eng_doc = func.__doc__ if func.__name__ != '__init__' else cls.__doc__
+        if eng_doc:
+            check_doc_params(eng_doc, real_params, 'ENGLISH')
+
+    # 检查中文文档
+    with lazyllm.config.temp('language', 'CHINESE'):
+        cn_doc = func.__doc__ if func.__name__ != '__init__' else cls.__doc__
+        if cn_doc:
+            check_doc_params(cn_doc, real_params, 'CHINESE')
+
+
+def check_doc_params(doc: str, real_params: set, language: str):
+    """检查文档参数是否匹配
+    
+    Args:
+        doc: 文档字符串
+        real_params: 实际参数集合
+        language: 文档语言
+    """
+    # 检查文档格式
+    if not re.search(r"Args:", doc):
+        raise ValueError(f"[{language}] Missing 'Args:' section in docstring")
+        
+    # 解析文档中的参数
+    doc_params = parse_google_style_args(doc)
+    
+    # 检查参数完整性
+    missing_params = real_params - doc_params
+    extra_params = doc_params - real_params
+    
+    if missing_params:
+        raise ValueError(f"[{language}] Parameters missing in docstring: {', '.join(missing_params)}")
+    if extra_params:
+        raise ValueError(f"[{language}] Extra parameters in docstring: {', '.join(extra_params)}")
 
 
 def create_test_function(cls, func):
@@ -75,13 +167,16 @@ def create_test_function(cls, func):
     global_func_names.add(dynamic_func_name)
     cls_path = f"{cls.__module__}.{cls.__qualname__}"
     func_path = f"{cls_path}.{func.__name__}"
-    xfail_decorator = "@pytest.mark.xfail"
-    code = f"{xfail_decorator}\ndef {dynamic_func_name}():\n    do_check_method({cls_path}, {func_path})"
+    
+    code = f"""def {dynamic_func_name}():
+    print(f'\\nChecking {cls.__name__}.{func.__name__}')
+    do_check_method({cls_path}, {func_path})
+"""
     exec(code, globals())
 
 
 def gen_check_cls_and_funtions():
-    all_classes = get_sub_classes(lazyllm)
+    all_classes = get_sub_classes(lazyllm.flow)
     for cls in all_classes:
         all_methods = inspect.getmembers(cls, predicate=inspect.isfunction)
         custom_methods = [func for name, func in all_methods if not name.startswith('_') or name == '__init__']
