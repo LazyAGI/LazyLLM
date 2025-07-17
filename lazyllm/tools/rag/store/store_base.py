@@ -2,7 +2,7 @@ import re
 
 from abc import ABC, abstractmethod
 from enum import IntFlag, auto
-from typing import Optional, List, Union, Set, Dict
+from typing import Optional, List, Union, Set, Dict, Any
 from lazyllm import LazyLLMRegisterMetaClass, once_wrapper
 from pydantic import BaseModel, Field
 
@@ -50,8 +50,8 @@ class Segment(BaseModel):
     doc_id: str
     group: str
     content: str
-    meta: str   # json string
-    global_meta: str   # json string
+    meta: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    global_meta: Optional[Dict[str, Any]] = Field(default_factory=dict)
     embedding: Optional[Dict[str, List[float]]] = Field(default_factory=dict)
     type: Optional[SegmentType] = SegmentType.TEXT
     number: Optional[int] = 0

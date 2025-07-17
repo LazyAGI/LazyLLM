@@ -1,4 +1,3 @@
-import json
 from collections import defaultdict
 from typing import Optional, List, Union, Set, Dict, Callable
 from lazyllm import LOG
@@ -196,9 +195,7 @@ class DocumentStore(object):
             return
         group_segments = defaultdict(list)
         for segment in segments:
-            global_meta = json.loads(segment["global_meta"])
-            global_meta.update(metadata)
-            segment["global_meta"] = json.dumps(global_meta, ensure_ascii=False)
+            segment["global_meta"].update(metadata)
             group_segments[segment.get("group")].append(segment)
         for group, segments in group_segments.items():
             self._impl.upsert(self._gen_collection_name(group), segments)
@@ -300,8 +297,8 @@ class DocumentStore(object):
             doc_id=node.global_metadata.get(RAG_DOC_ID),
             group=node._group,
             content=node.text,
-            meta=json.dumps(node.metadata, ensure_ascii=False),
-            global_meta=json.dumps(node.global_metadata, ensure_ascii=False),
+            meta=node.metadata,
+            global_meta=node.global_metadata,
             kb_id=node.global_metadata.get(RAG_KB_ID, DEFAULT_KB_ID),
             excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
             excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
@@ -323,17 +320,17 @@ class DocumentStore(object):
         if data["type"] == SegmentType.QA:
             node = QADocNode(query=data["content"], answer=data["answer"], uid=data["uid"],
                              group=data["group"], parent=data["parent"],
-                             metadata=json.loads(data["meta"]),
-                             global_metadata=json.loads(data["global_meta"]))
+                             metadata=data["meta"],
+                             global_metadata=data["global_meta"])
         elif data["type"] == SegmentType.IMAGE:
             node = ImageDocNode(image_path=data["image_path"][0] if data["image_path"] else "",
                                 uid=data["uid"], group=data["group"], parent=data["parent"],
-                                metadata=json.loads(data["meta"]),
-                                global_metadata=json.loads(data["global_meta"]))
+                                metadata=data["meta"],
+                                global_metadata=data["global_meta"])
         else:
             node = DocNode(uid=data["uid"], group=data["group"], content=data["content"],
-                           parent=data["parent"], metadata=json.loads(data["meta"]),
-                           global_metadata=json.loads(data["global_meta"]))
+                           parent=data["parent"], metadata=data["meta"],
+                           global_metadata=data["global_meta"])
         node.excluded_embed_metadata_keys = data["excluded_embed_metadata_keys"]
         node.excluded_llm_metadata_keys = data["excluded_llm_metadata_keys"]
         if "embedding" in data:

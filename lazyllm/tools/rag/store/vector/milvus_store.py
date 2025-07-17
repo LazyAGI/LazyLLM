@@ -1,6 +1,5 @@
 """ Milvus Vector Store (For Vector Store Only)"""
 import copy
-import json
 
 from packaging import version
 from urllib import parse
@@ -192,7 +191,7 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
         }
         for embed_key, value in d.get('embedding', {}).items():
             res[self._gen_embed_key(embed_key)] = value
-        global_meta = json.loads(d.get('global_meta'))
+        global_meta = d.get('global_meta', {})
         for name, desc in self._global_metadata_desc.items():
             value = global_meta.get(name, desc.default_value)
             if value is not None:
