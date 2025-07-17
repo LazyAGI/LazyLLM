@@ -11,15 +11,13 @@ import time
 
 import lazyllm
 from lazyllm import globals
-from lazyllm.components.prompter import PrompterBase, LazyLLMPrompterBase
-from lazyllm.components.formatter import FormatterBase, decode_query_with_filepaths
-from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
+from lazyllm.components.prompter import PrompterBase
+from lazyllm.components.formatter import FormatterBase
 from lazyllm.components.utils.file_operate import delete_old_files, image_to_base64
 from ...servermodule import LLMBase
 from ...module import Pipeline
 
-LAZYLLM_IMAGE_PLACEHOLDER = "<lazyllm_image>"
-
+LAZYLLM_FILES_PLACEHOLDER = "<|lazyllm_files_placeholder|>"
 
 class StaticParams(TypedDict, total=False):
     temperature: float
@@ -249,17 +247,12 @@ class OnlineChatModuleBase(LLMBase):
                 tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):
         """LLM inference interface"""
         stream_output = stream_output or self._stream
-        if isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
-            assert lazyllm_files is None, \
-                "lazyllm_files is not supported when query is a encoded with LAZYLLM_QUERY_PREFIX"
-            __input = decode_query_with_filepaths(__input)
-            __input, lazyllm_files = __input['query'], __input['files']
-        params = {"input": __input if not lazyllm_files else __input + LAZYLLM_IMAGE_PLACEHOLDER,
-                  "history": llm_chat_history}
-        params["input"] = LazyLLMPrompterBase.ISA + params["input"] + LazyLLMPrompterBase.ISE
+        __input, files = self._get_files(__input, lazyllm_files)
+        params = {"input": __input + LAZYLLM_FILES_PLACEHOLDER if files else __input,
+                  "history": llm_chat_history,
+                  'return_dict': True}
         if tools:
             params["tools"] = tools
-        params["return_dict"] = True
         data = self._prompt.generate_prompt(**params)
 
         data["model"] = self._model_name
@@ -272,12 +265,12 @@ class OnlineChatModuleBase(LLMBase):
         if len(self._model_optional_params) > 0:
             data.update(self._model_optional_params)
 
-        if lazyllm_files or (self._vlm_force_format_input_with_files and data["model"] in self.vlm_models):
+        if files or (self._vlm_force_format_input_with_files and data["model"] in self.vlm_models):
             for idx, message in enumerate(data["messages"]):
                 content = message["content"]
-                if LAZYLLM_IMAGE_PLACEHOLDER in content:
-                    content = self._format_input_with_files(content.replace(LAZYLLM_IMAGE_PLACEHOLDER, ''),
-                                                            lazyllm_files)
+                if LAZYLLM_FILES_PLACEHOLDER in content:
+                    content = self._format_input_with_files(content.replace(LAZYLLM_FILES_PLACEHOLDER, ''),
+                                                            files)
                     data["messages"][idx]["content"] = content
 
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
