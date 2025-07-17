@@ -17,7 +17,6 @@ from lazyllm.components.utils.file_operate import delete_old_files, image_to_bas
 from ...servermodule import LLMBase
 from ...module import Pipeline
 
-LAZYLLM_FILES_PLACEHOLDER = "<|lazyllm_files_placeholder|>"
 
 class StaticParams(TypedDict, total=False):
     temperature: float
@@ -248,7 +247,7 @@ class OnlineChatModuleBase(LLMBase):
         """LLM inference interface"""
         stream_output = stream_output or self._stream
         __input, files = self._get_files(__input, lazyllm_files)
-        params = {"input": __input + LAZYLLM_FILES_PLACEHOLDER if files else __input,
+        params = {"input": __input,
                   "history": llm_chat_history,
                   'return_dict': True}
         if tools:
@@ -266,12 +265,7 @@ class OnlineChatModuleBase(LLMBase):
             data.update(self._model_optional_params)
 
         if files or (self._vlm_force_format_input_with_files and data["model"] in self.vlm_models):
-            for idx, message in enumerate(data["messages"]):
-                content = message["content"]
-                if LAZYLLM_FILES_PLACEHOLDER in content:
-                    content = self._format_input_with_files(content.replace(LAZYLLM_FILES_PLACEHOLDER, ''),
-                                                            files)
-                    data["messages"][idx]["content"] = content
+            data["messages"][-1]["content"] = self._format_input_with_files(data["messages"][-1]["content"], files)
 
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         with requests.post(self._url, json=data, headers=self._headers, stream=stream_output, proxies=proxies) as r:
