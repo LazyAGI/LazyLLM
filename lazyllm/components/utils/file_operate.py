@@ -55,6 +55,7 @@ for k, v in MIME_TYPE.items():
 
 IMAGE_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if v.startswith('image/')}
 AUDIO_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if v.startswith('audio/')}
+OCR_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if k in ['pdf', 'jpg', 'jpeg', 'png']}
 
 def delete_old_files(directory):
     now = datetime.datetime.now()
@@ -130,7 +131,7 @@ def audio_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
     return file_to_base64(file_path, AUDIO_MIME_TYPE)
 
 def ocr_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
-    return file_to_base64(file_path, MIME_TYPE)
+    return file_to_base64(file_path, OCR_MIME_TYPE)
 
 
 def base64_to_file(base64_str: Union[str, list[str]], target_dir: Optional[str] = None) -> Union[str, list[str]]:

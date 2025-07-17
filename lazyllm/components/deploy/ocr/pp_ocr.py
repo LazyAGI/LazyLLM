@@ -32,7 +32,6 @@ class OCR(object):
     def load_paddleocr(self):
         from lazyllm.thirdparty import paddleocr
 
-        # 构建PaddleOCR参数
         paddleocr_kwargs = {
             'use_doc_orientation_classify': self.use_doc_orientation_classify,
             'use_doc_unwarping': self.use_doc_unwarping,
