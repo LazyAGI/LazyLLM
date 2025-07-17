@@ -90,8 +90,8 @@ class TestExamples(object):
         from examples.multimodal_chatbot_online import chat
         chat.start()
         chat.prompt(ChatPrompter({
-            "system":"你是一个图片识别专家，请根据图片回答问题",
-            "user":"回答问题{query}"
+            "system": "你是一个图片识别专家，请根据图片回答问题",
+            "user": "回答问题{query}"
         }))
         query = "图中的动物是猫吗？输出Y代表是，N代表不是。"
         file_path = os.path.join(lazyllm.config['data_path'], "ci_data/ji.jpg")
