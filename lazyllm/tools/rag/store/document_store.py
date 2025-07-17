@@ -5,10 +5,8 @@ from lazyllm import LOG
 from .store_base import (LazyLLMStoreBase, StoreCapability, SegmentType, Segment, INSERT_BATCH_SIZE,
                          BUILDIN_GLOBAL_META_DESC, DEFAULT_KB_ID, EMBED_PREFIX)
 from .hybrid_store import HybridStore
-from .chroma_store import ChromadbStore
-from .milvus_store import MilvusStore
-from .sensecore_store import SenseCoreStore
-from .map_store import MapStore
+from .vector import ChromadbStore, MilvusStore
+from .hybrid import MapStore, SenseCoreStore
 from ..default_index import DefaultIndex
 from ..utils import parallel_do_embedding
 
