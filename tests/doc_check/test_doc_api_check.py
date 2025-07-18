@@ -2,20 +2,28 @@ import pytest # noqa E401
 import re
 import inspect
 import lazyllm
-import lazyllm.flow
 from typing import Callable
 import warnings
+import dataclasses
+import enum
 
 
 def class_should_check(cls, module):
+    """Check if a class should be included in documentation verification."""
+    # Skip dataclass and enum classes
+    if dataclasses.is_dataclass(cls) or issubclass(cls, enum.Enum):
+        return False
+        
     if not cls.__name__[0].isupper() or cls.__module__ != module.__name__:
         return False
+        
     all_methods = inspect.getmembers(cls, predicate=inspect.isfunction)
     custom_methods = [name for name, func in all_methods if not name.startswith('_')]
     return len(custom_methods) > 0
 
 
 def get_sub_classes(module):
+    """Get all valid subclasses from a module recursively."""
     clsmembers = inspect.getmembers(module, inspect.isclass)
     classes = set([ele[1] for ele in clsmembers if class_should_check(ele[1], module)])
     for name, sub_module in inspect.getmembers(module, inspect.ismodule):
@@ -25,6 +33,7 @@ def get_sub_classes(module):
 
 
 def is_method_overridden(cls, method: Callable):
+    """Check if a method is overridden from its parent class."""
     method_name = method.__name__
     for base in cls.__bases__:
         if hasattr(base, method_name):
@@ -61,7 +70,7 @@ def get_doc_from_language(cls, func: Callable, language: str = 'ENGLISH'):
         )
         return None
     
-    # 使用临时配置获取对应语言的文档
+    # Get documentation using temporary language configuration
     with lazyllm.config.temp('language', language):
         if func.__name__ == '__init__':
             doc = cls.__doc__
@@ -71,14 +80,7 @@ def get_doc_from_language(cls, func: Callable, language: str = 'ENGLISH'):
 
 
 def parse_google_style_args(doc: str) -> set:
-    """解析Google风格文档中的Args部分，返回参数名集合
-    
-    Args:
-        doc: 文档字符串
-    
-    Returns:
-        set: 参数名集合
-    """
+    """Parse Args section from Google style docstring and return parameter names."""
     args_pattern = r"Args:\s*(.*?)(?:\n\s*(?:Returns|Raises|$))"
     args_match = re.search(args_pattern, doc, re.DOTALL)
     if not args_match:
@@ -90,7 +92,7 @@ def parse_google_style_args(doc: str) -> set:
     
     for line in args_section.split('\n'):
         line = line.strip()
-        if not line:  # 跳过空行
+        if not line:  # Skip empty lines
             continue
         match = re.search(param_pattern, line)
         if match:
@@ -101,15 +103,15 @@ def parse_google_style_args(doc: str) -> set:
 
 
 def do_check_method(cls, func: Callable):
-    """检查方法的参数文档是否与实际参数匹配"""
-    # 获取函数的实际参数
+    """Check if method's parameter documentation matches actual parameters."""
+    # Get actual function parameters
     arg_spec = inspect.getfullargspec(func)
     real_params = arg_spec.args + (arg_spec.kwonlyargs or [])
     if real_params and real_params[0] in ['self', 'cls']:
         real_params = real_params[1:]
     real_params = set(real_params)
 
-    # 检查是否直接写在代码中
+    # Check if documentation is written directly in code
     if is_doc_directly_written(cls, func):
         warnings.warn(
             f"Documentation for {cls.__name__}.{func.__name__} is written directly in the "
@@ -118,14 +120,12 @@ def do_check_method(cls, func: Callable):
         )
         return
 
-    # 分别在中英文环境下检查文档
-    # 检查英文文档
+    # Check documentation in both English and Chinese environments
     with lazyllm.config.temp('language', 'ENGLISH'):
         eng_doc = func.__doc__ if func.__name__ != '__init__' else cls.__doc__
         if eng_doc:
             check_doc_params(eng_doc, real_params, 'ENGLISH')
 
-    # 检查中文文档
     with lazyllm.config.temp('language', 'CHINESE'):
         cn_doc = func.__doc__ if func.__name__ != '__init__' else cls.__doc__
         if cn_doc:
@@ -133,21 +133,15 @@ def do_check_method(cls, func: Callable):
 
 
 def check_doc_params(doc: str, real_params: set, language: str):
-    """检查文档参数是否匹配
-    
-    Args:
-        doc: 文档字符串
-        real_params: 实际参数集合
-        language: 文档语言
-    """
-    # 检查文档格式
+    """Check if documentation parameters match actual parameters"""
+    # Check documentation format
     if not re.search(r"Args:", doc):
         raise ValueError(f"[{language}] Missing 'Args:' section in docstring")
         
-    # 解析文档中的参数
+    # Parse parameters from documentation
     doc_params = parse_google_style_args(doc)
     
-    # 检查参数完整性
+    # Check parameter completeness
     missing_params = real_params - doc_params
     extra_params = doc_params - real_params
     
@@ -176,7 +170,7 @@ def create_test_function(cls, func):
 
 
 def gen_check_cls_and_funtions():
-    all_classes = get_sub_classes(lazyllm.flow)
+    all_classes = get_sub_classes(lazyllm)
     for cls in all_classes:
         all_methods = inspect.getmembers(cls, predicate=inspect.isfunction)
         custom_methods = [func for name, func in all_methods if not name.startswith('_') or name == '__init__']
