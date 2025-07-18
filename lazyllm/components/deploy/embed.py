@@ -1,12 +1,12 @@
 import os
 import json
 import lazyllm
-from lazyllm.components.utils.file_operate import base64_to_file, is_base64_with_mime
 from lazyllm import LOG, LazyLLMLaunchersBase
 from lazyllm.thirdparty import transformers as tf, torch, sentence_transformers, numpy as np, FlagEmbedding as fe
 from .base import LazyLLMDeployBase
 from typing import Union, List, Dict, Optional
 from abc import ABC, abstractmethod
+
 
 
 class AbstractEmbedding(ABC):
@@ -35,7 +35,7 @@ class AbstractEmbedding(ABC):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self._init)
         return self.__class__, (self._base_embed, self._source, init)
 
-class LazyHuggingFaceDefaultEmbedding(AbstractEmbedding):
+class _LazyHuggingFaceDefaultEmbedding(AbstractEmbedding):
 
     def load_embed(self):
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -56,13 +56,13 @@ class LazyHuggingFaceDefaultEmbedding(AbstractEmbedding):
         else:
             return json.dumps(res)
 
-class HuggingFaceEmbedding:
+class _HuggingFaceEmbedding:
     _model_id_mapping = {}
 
     @classmethod
     def get_emb_cls(cls, model_name: str):
         model_id = model_name.split('/')[-1].lower()
-        return cls._model_id_mapping.get(model_id, LazyHuggingFaceDefaultEmbedding)
+        return cls._model_id_mapping.get(model_id, _LazyHuggingFaceDefaultEmbedding)
 
     @classmethod
     def register(cls, model_ids: List[str]):
@@ -79,14 +79,9 @@ class HuggingFaceEmbedding:
         self._embed.load_embed()
 
     def __call__(self, *args, **kwargs):
-        try:
-            args[0]['images'] = [base64_to_file(image) if is_base64_with_mime(image) else image
-                                 for image in args[0]['images']]
-        except Exception as e:
-            LOG.error(f"Error converting base64 to image: {e}")
         return self._embed(*args, **kwargs)
 
-class LazyFlagEmbedding(object):
+class _LazyFlagEmbedding(object):
     def __init__(self, base_embed, sparse=False, source=None, init=False):
         from ..utils.downloader import ModelManager
         source = lazyllm.config['model_source'] if not source else source
@@ -127,9 +122,9 @@ class LazyFlagEmbedding(object):
 
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return LazyFlagEmbedding.rebuild, (self.base_embed, self.sparse, init)
+        return _LazyFlagEmbedding.rebuild, (self.base_embed, self.sparse, init)
 
-class LazyHuggingFaceRerank(object):
+class _LazyHuggingFaceRerank(object):
     def __init__(self, base_rerank, source=None, init=False):
         from ..utils.downloader import ModelManager
         source = lazyllm.config['model_source'] if not source else source
@@ -158,7 +153,7 @@ class LazyHuggingFaceRerank(object):
 
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return LazyHuggingFaceRerank.rebuild, (self.base_rerank, init)
+        return _LazyHuggingFaceRerank.rebuild, (self.base_rerank, init)
 
 class EmbeddingDeploy(LazyLLMDeployBase):
     message_format = {
@@ -175,7 +170,6 @@ class EmbeddingDeploy(LazyLLMDeployBase):
                  embed_type: Optional[str] = 'dense', trust_remote_code: bool = True, port: Optional[int] = None):
         super().__init__(launcher=launcher)
         self._launcher = launcher
-        self._port = port
         self._model_type = model_type
         self._log_path = log_path
         self._sparse_embed = True if embed_type == 'sparse' else False
@@ -195,15 +189,15 @@ class EmbeddingDeploy(LazyLLMDeployBase):
     def __call__(self, finetuned_model=None, base_model=None):
         finetuned_model = self._get_model_path(finetuned_model, base_model)
         if self._sparse_embed or lazyllm.config['default_embedding_engine'] == 'flagEmbedding':
-            return lazyllm.deploy.RelayServer(port=self._port, func=LazyFlagEmbedding(
+            return lazyllm.deploy.RelayServer(port=self._port, func=_LazyFlagEmbedding(
                 finetuned_model, sparse=self._sparse_embed),
                 launcher=self._launcher, log_path=self._log_path, cls='embedding')()
         else:
-            return lazyllm.deploy.RelayServer(port=self._port, func=HuggingFaceEmbedding(finetuned_model),
+            return lazyllm.deploy.RelayServer(port=self._port, func=_HuggingFaceEmbedding(finetuned_model),
                                               launcher=self._launcher, log_path=self._log_path, cls='embedding')()
 
 
-@HuggingFaceEmbedding.register(model_ids=["BGE-VL-v1.5-mmeb"])
+@_HuggingFaceEmbedding.register(model_ids=["BGE-VL-v1.5-mmeb"])
 class BGEVLEmbedding(AbstractEmbedding):
 
     def __init__(self, base_embed, source=None, init=False):
@@ -243,5 +237,5 @@ class RerankDeploy(EmbeddingDeploy):
 
     def __call__(self, finetuned_model=None, base_model=None):
         finetuned_model = self._get_model_path(finetuned_model, base_model)
-        return lazyllm.deploy.RelayServer(port=self._port, func=LazyHuggingFaceRerank(
+        return lazyllm.deploy.RelayServer(port=self._port, func=_LazyHuggingFaceRerank(
             finetuned_model), launcher=self._launcher, log_path=self._log_path, cls='embedding')()
