@@ -1,9 +1,5 @@
 import copy
 from typing import List, Dict, Union
-
-from lazyllm.components.formatter.formatterbase import (encode_query_with_filepaths,
-                                                        decode_query_with_filepaths,
-                                                        LAZYLLM_QUERY_PREFIX)
 import lazyllm
 from ...servermodule import LLMBase
 
