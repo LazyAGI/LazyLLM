@@ -184,7 +184,7 @@ def encode_files(files, encode_func: Optional[Callable] = None):
 
     Args:
         files: List of files
-        encode_func: File type ('image' or 'audio')
+        encode_func: file encode function
 
     Returns:
         encoded_files: List of encoded files
