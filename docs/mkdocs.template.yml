@@ -27,6 +27,8 @@ nav:
   - Contribution: Advanced Topics/contribution.md
   - Changelog: Advanced Topics/changelog.md
 - Api Reference:
+  - Cli: API Reference/cli.md
+  - Common: API Reference/common.md
   - Components: API Reference/components.md
   - Configs: API Reference/configs.md
   - Flow: API Reference/flow.md
