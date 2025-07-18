@@ -153,7 +153,11 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
 ::: lazyllm.components.TTSInfer
     options:
       heading_level: 4
+<<<<<<< HEAD
       
+=======
+
+>>>>>>> 9b2119e (add baseclass for llms (#568))
 ### Speech to Text
 
 ::: lazyllm.components.SenseVoiceDeploy
