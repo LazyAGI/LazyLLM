@@ -264,7 +264,7 @@ class OnlineChatModuleBase(LLMBase):
         if len(self._model_optional_params) > 0:
             data.update(self._model_optional_params)
 
-        if files or (self._vlm_force_format_input_with_files and data["model"] in self.vlm_models):
+        if files or (self._vlm_force_format_input_with_files and data["model"] in self.VLM_MODEL_LIST):
             data["messages"][-1]["content"] = self._format_input_with_files(data["messages"][-1]["content"], files)
 
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None

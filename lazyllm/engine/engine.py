@@ -693,8 +693,8 @@ class VQA(lazyllm.Module):
     def status(self, task_name: Optional[str] = None):
         return self._vqa.status(task_name)
 
-    def share(self, prompt: str, history: Optional[List[List[str]]] = None):
-        shared_vqa = self._vqa.share(prompt=prompt, history=history)
+    def share(self, prompt: str, format: callable = None, stream: bool = False, history: Optional[List[List[str]]] = None):
+        shared_vqa = self._vqa.share(prompt=prompt, format=format, stream=stream, history=history)
         return VQA(shared_vqa, self._file_resource_id)
 
     def forward(self, *args, **kw):
@@ -769,6 +769,7 @@ def make_shared_model(llm: str, local: bool = True, prompt: Optional[str] = None
     if cls == "vqa": return VQA(model, file_resource_id).share(prompt=prompt, history=history)
     elif cls == "tts": return TTS(model)
     elif cls == "stt": return STT(model)
+    elif cls == "sd": return SD(model)
     else: return model.share(prompt=prompt, history=history)
 
 
@@ -800,8 +801,8 @@ class LLM(lazyllm.ModuleBase):
             assert len(args) == 1
         return self._m(*args, **kw)
 
-    def share(self, prompt: str, format: callable = None, history: Optional[List[List[str]]] = None):
-        return LLM(self._m.share(prompt=prompt, format=format, history=history), self._keys)
+    def share(self, prompt: str, format: callable = None, stream: bool = False, history: Optional[List[List[str]]] = None):
+        return LLM(self._m.share(prompt=prompt, format=format, stream=stream, history=history), self._keys)
 
     @property
     def func(self):
@@ -884,6 +885,9 @@ class TTS(lazyllm.Module):
                 sound_list = move_files_to_target_dir(sound_list, self._target_dir)
             result = encode_query_with_filepaths(query=decoded_result["query"], files=sound_list)
         return result
+    
+    def share(self):
+        return TTS(self._m)
 
     @property
     def func(self):
@@ -970,6 +974,9 @@ class SD(lazyllm.Module):
                 image_list = move_files_to_target_dir(image_list, self._target_dir)
             result = encode_query_with_filepaths(query=decoded_result["query"], files=image_list)
         return result
+    
+    def share(self):
+        return SD(self._m)
 
 @NodeConstructor.register('SD')
 def make_sd(kw: dict):
