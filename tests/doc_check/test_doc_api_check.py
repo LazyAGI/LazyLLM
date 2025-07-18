@@ -13,10 +13,10 @@ def class_should_check(cls, module):
     # Skip dataclass and enum classes
     if dataclasses.is_dataclass(cls) or issubclass(cls, enum.Enum):
         return False
-        
+
     if not cls.__name__[0].isupper() or cls.__module__ != module.__name__:
         return False
-        
+
     all_methods = inspect.getmembers(cls, predicate=inspect.isfunction)
     custom_methods = [name for name, func in all_methods if not name.startswith('_')]
     return len(custom_methods) > 0
@@ -51,7 +51,7 @@ def is_doc_directly_written(cls, func: Callable) -> bool:
             source = inspect.getsource(cls)
         else:
             source = inspect.getsource(func)
-        
+
         docstring_pattern = r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\''
         matches = re.findall(docstring_pattern, source)
         return len(matches) > 0
@@ -69,7 +69,7 @@ def get_doc_from_language(cls, func: Callable, language: str = 'ENGLISH'):
             UserWarning
         )
         return None
-    
+
     # Get documentation using temporary language configuration
     with lazyllm.config.temp('language', language):
         if func.__name__ == '__init__':
@@ -85,11 +85,11 @@ def parse_google_style_args(doc: str) -> set:
     args_match = re.search(args_pattern, doc, re.DOTALL)
     if not args_match:
         return set()
-    
+
     args_section = args_match.group(1)
     param_pattern = r"^\s*(\w+)\s*(?:\([^)]+\))?\s*:"
     params = set()
-    
+
     for line in args_section.split('\n'):
         line = line.strip()
         if not line:  # Skip empty lines
@@ -98,7 +98,7 @@ def parse_google_style_args(doc: str) -> set:
         if match:
             param_name = match.group(1)
             params.add(param_name)
-    
+
     return params
 
 
@@ -137,14 +137,14 @@ def check_doc_params(doc: str, real_params: set, language: str):
     # Check documentation format
     if not re.search(r"Args:", doc):
         raise ValueError(f"[{language}] Missing 'Args:' section in docstring")
-        
+
     # Parse parameters from documentation
     doc_params = parse_google_style_args(doc)
-    
+
     # Check parameter completeness
     missing_params = real_params - doc_params
     extra_params = doc_params - real_params
-    
+
     if missing_params:
         raise ValueError(f"[{language}] Parameters missing in docstring: {', '.join(missing_params)}")
     if extra_params:
@@ -161,7 +161,7 @@ def create_test_function(cls, func):
     global_func_names.add(dynamic_func_name)
     cls_path = f"{cls.__module__}.{cls.__qualname__}"
     func_path = f"{cls_path}.{func.__name__}"
-    
+
     code = f"""def {dynamic_func_name}():
     print(f'\\nChecking {cls.__name__}.{func.__name__}')
     do_check_method({cls_path}, {func_path})
