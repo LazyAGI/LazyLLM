@@ -520,6 +520,10 @@ Keyword Args:
     nccl_port (int): NCCL 端口，默认为 ``None``。此情况下LazyLLM会自动生成随机端口号。
     tokenizer_mode (str): tokenizer的加载模式，默认为 ``auto``。
     running_max_req_size (int): 推理引擎最大的并行请求数， 默认为 ``256``。
+    data_type (str): 模型权重的数据类型，默认为 ``float16``。
+    max_req_total_len (int): 请求的最大总长度，默认为 ``64000``。
+    max_req_input_len (int): 输入的最大长度，默认为 ``4096``。
+    long_truncation_mode (str): 长文本的截断模式，默认为 ``head``。
 
 ''')
 
@@ -543,6 +547,10 @@ Keyword Args:
     nccl_port (int): NCCL port, default is ``None``, in which case LazyLLM will automatically generate a random port number.
     tokenizer_mode (str): Tokenizer loading mode, default is ``auto``.
     running_max_req_size (int): Maximum number of parallel requests for the inference engine, default is ``256``.
+    data_type (str): Data type for model weights, default is ``float16``.
+    max_req_total_len (int): Maximum total length for requests, default is ``64000``.
+    max_req_input_len (int): Maximum input length, default is ``4096``.
+    long_truncation_mode (str): Truncation mode for long texts, default is ``head``.
 
 ''')
 
@@ -607,6 +615,56 @@ add_example('deploy.Vllm', '''\
 >>> infer = deploy.vllm()
 ''')
 
+# Deploy-EmbeddingDeploy
+add_chinese_doc('deploy.EmbeddingDeploy', '''\
+此类是 ``LazyLLMDeployBase`` 的子类，用于部署文本嵌入（Embedding）服务。支持稠密向量（dense）和稀疏向量（sparse）两种嵌入方式，可以使用HuggingFace模型或FlagEmbedding模型。
+
+Args:
+    launcher (lazyllm.launcher): 启动器，默认为 ``None``。
+    model_type (str): 模型类型，默认为 ``'embed'``。
+    log_path (str): 日志文件路径，默认为 ``None``。
+    embed_type (str): 嵌入类型，可选 ``'dense'`` 或 ``'sparse'``，默认为 ``'dense'``。
+    trust_remote_code (bool): 是否信任远程代码，默认为 ``True``。
+    port (int): 服务端口号，默认为 ``None``，此情况下LazyLLM会自动生成随机端口号。
+
+调用参数:
+    finetuned_model: 微调后的模型路径或模型名称。
+    base_model: 基础模型路径或模型名称，当finetuned_model无效时会使用此模型。
+
+消息格式:
+    输入格式为包含text（文本）和images（图像列表）的字典。
+    - text: 需要编码的文本内容
+    - images: 需要编码的图像列表（可选）
+''')
+
+add_english_doc('deploy.EmbeddingDeploy', '''\
+This class is a subclass of ``LazyLLMDeployBase``, designed for deploying text embedding services. It supports both dense and sparse embedding methods, compatible with HuggingFace models and FlagEmbedding models.
+
+Args:
+    launcher (lazyllm.launcher): The launcher instance, defaults to ``None``.
+    model_type (str): Model type, defaults to ``'embed'``.
+    log_path (str): Path for log file, defaults to ``None``.
+    embed_type (str): Embedding type, either ``'dense'`` or ``'sparse'``, defaults to ``'dense'``.
+    trust_remote_code (bool): Whether to trust remote code, defaults to ``True``.
+    port (int): Service port number, defaults to ``None``, in which case LazyLLM will generate a random port.
+
+Call Arguments:
+    finetuned_model: Path or name of the fine-tuned model.
+    base_model: Path or name of the base model, used when finetuned_model is invalid.
+
+Message Format:
+    Input format is a dictionary containing text and images list.
+    - text: Text content to be encoded
+    - images: List of images to be encoded (optional)
+''')
+
+add_example('deploy.EmbeddingDeploy', '''\
+>>> from lazyllm import deploy
+>>> embed_service = deploy.EmbeddingDeploy(embed_type='dense')
+>>> embed_service('path/to/model')
+''')
+
+
 # Deploy-LMDeploy
 add_chinese_doc('deploy.LMDeploy', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 [LMDeploy](https://github.com/InternLM/lmdeploy) 框架提供的推理能力，用于对大语言模型进行推理。
@@ -614,6 +672,8 @@ add_chinese_doc('deploy.LMDeploy', '''\
 Args:
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
     stream (bool): 是否为流式响应，默认为 ``False``。
+    trust_remote_code (bool): 是否信任远程代码，默认为 ``True``。
+    log_path (str): 日志文件路径，默认为 ``None``。
     kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
 
 此类的关键字参数及其默认值如下：
@@ -622,23 +682,29 @@ Keyword Args:
     tp (int): 张量并行参数，默认为 ``1``。
     server-name (str): 服务的IP地址，默认为 ``0.0.0.0``。
     server-port (int): 服务的端口号，默认为 ``None``,此情况下LazyLLM会自动生成随机端口号。
-    max-batch-size (int): 最大batch数， 默认为 ``128``。
+    max-batch-size (int): 最大batch数，默认为 ``128``。
+    chat-template (str): 对话模板文件路径，默认为 ``None``。如果模型不是视觉语言模型且未指定模板，将使用默认模板。
+    eager-mode (bool): 是否启用eager模式，默认由环境变量 ``LMDEPLOY_EAGER_MODE`` 控制，默认为 ``False``。
 
 ''')
 
 add_english_doc('deploy.LMDeploy', '''\
-    This class is a subclass of ``LazyLLMDeployBase``, leveraging the inference capabilities provided by the [LMDeploy](https://github.com/InternLM/lmdeploy) framework for inference on large language models.
+This class is a subclass of ``LazyLLMDeployBase``, leveraging the inference capabilities provided by the [LMDeploy](https://github.com/InternLM/lmdeploy) framework for inference on large language models.
 
 Args:
     launcher (lazyllm.launcher): The launcher for fine-tuning, defaults to ``launchers.remote(ngpus=1)``.
     stream (bool): Whether to enable streaming response, defaults to ``False``.
+    trust_remote_code (bool): Whether to trust remote code, defaults to ``True``.
+    log_path (str): Path for log file, defaults to ``None``.
     kw: Keyword arguments for updating default training parameters. Note that no additional keyword arguments beyond those listed below can be passed.
 
 Keyword Args: 
     tp (int): Tensor parallelism parameter, defaults to ``1``.
-    server_name (str): The IP address of the service, defaults to ``0.0.0.0``.
-    server_port (int): The port number of the service, defaults to ``None``. In this case, LazyLLM will automatically generate a random port number.
-    max_batch_size (int): Maximum batch size, defaults to ``128``.
+    server-name (str): The IP address of the service, defaults to ``0.0.0.0``.
+    server-port (int): The port number of the service, defaults to ``None``. In this case, LazyLLM will automatically generate a random port number.
+    max-batch-size (int): Maximum batch size, defaults to ``128``.
+    chat-template (str): Path to chat template file, defaults to ``None``. If the model is not a vision-language model and no template is specified, a default template will be used.
+    eager-mode (bool): Whether to enable eager mode, controlled by environment variable ``LMDEPLOY_EAGER_MODE``, defaults to ``False``.
 
 ''')
 
@@ -1404,7 +1470,7 @@ The constructor dynamically creates and returns the corresponding deployment ins
 Args:
     name: A string specifying the type of deployment instance to be created.
     **kwarg: Keyword arguments to be passed to the constructor of the corresponding deployment instance.
-                
+
 Returns:
     If the name argument is 'bark', an instance of [BarkDeploy][lazyllm.components.BarkDeploy] is returned.
     If the name argument is 'ChatTTS', an instance of [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] is returned.
@@ -1421,7 +1487,7 @@ TTSDeploy 是一个用于根据指定的名称创建不同类型文本到语音(
 Args:
     name：字符串，用于指定要创建的部署实例的类型。
     **kwarg：关键字参数，用于传递给对应部署实例的构造函数。
-                
+
 Returns:
     如果 name 参数为 ‘bark’，则返回一个 [BarkDeploy][lazyllm.components.BarkDeploy] 实例。
     如果 name 参数为 ‘ChatTTS’，则返回一个 [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] 实例。

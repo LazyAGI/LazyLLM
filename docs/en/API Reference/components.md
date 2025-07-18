@@ -39,7 +39,9 @@
 ::: lazyllm.components.auto.AutoDeploy
     options:
       heading_level: 3
-
+::: lazyllm.components.deploy.EmbeddingDeploy
+    options:
+      heading_level: 3
 ---
 
 ## Launcher
