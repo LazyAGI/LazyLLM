@@ -209,6 +209,7 @@ add_chinese_doc('ActionModule', '''\
 
 Args:
     action (Callable|list[Callable]): 被包装的对象，是一个或一组可执行的对象。
+    return_trace (bool): 是否开启 trace 模式，用于记录调用栈，默认为 ``False``。
 ''')
 
 add_english_doc('ActionModule', '''\
@@ -216,6 +217,7 @@ Used to wrap a Module around functions, modules, flows, Module, and other callab
 
 Args:
     action (Callable|list[Callable]): The object to be wrapped, which is one or a set of callable objects.
+    return_trace (bool): Whether to enable trace mode to record the execution stack. Defaults to ``False``.
 
 **Examples:**\n
 ```python
@@ -279,6 +281,42 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 ```
 
 
+''')
+
+add_chinese_doc('ActionModule.forward', '''\
+执行被包装的 action，对输入参数进行前向计算。等效于调用该模块本身。
+
+Args:
+    args (list of callables or single callable): 传递给被包装 action 的位置参数。
+    kwargs (dict of callables): 传递给被包装 action 的关键字参数。
+
+**Returns:**\n
+- 任意类型：被包装 action 的执行结果。
+''')
+
+add_english_doc('ActionModule.forward', '''\
+Executes the wrapped action with the provided input arguments. Equivalent to directly calling the module.
+
+Args:
+    args (list of callables or single callable): Positional arguments to be passed to the wrapped action.
+    kwargs (dict of callables): Keyword arguments to be passed to the wrapped action.
+
+**Returns:**\n
+- Any: The result of executing the wrapped action.
+''')
+
+add_chinese_doc('ActionModule.submodules', '''\
+返回被包装 action 中所有属于 ModuleBase 类型的子模块。该属性会自动展开 Pipeline 中嵌套的模块。
+
+**Returns:**\n
+- list[ModuleBase]: 子模块列表
+''')
+
+add_english_doc('ActionModule.submodules', '''\
+Returns all submodules of type ModuleBase contained in the wrapped action. This automatically traverses any nested modules inside a Pipeline.
+
+**Returns:**\n
+- list[ModuleBase]: List of submodules
 ''')
 
 # add_example('ActionModule', '''\

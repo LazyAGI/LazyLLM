@@ -15,6 +15,8 @@
     options:
       members:
       - evalset
+      - forward
+      - submodules
 
 ::: lazyllm.module.TrainableModule
     options:
