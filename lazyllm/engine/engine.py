@@ -693,7 +693,8 @@ class VQA(lazyllm.Module):
     def status(self, task_name: Optional[str] = None):
         return self._vqa.status(task_name)
 
-    def share(self, prompt: str, format: callable = None, stream: bool = False, history: Optional[List[List[str]]] = None):
+    def share(self, prompt: str, format: callable = None, stream: bool = False,
+              history: Optional[List[List[str]]] = None):
         shared_vqa = self._vqa.share(prompt=prompt, format=format, stream=stream, history=history)
         return VQA(shared_vqa, self._file_resource_id)
 
@@ -801,7 +802,8 @@ class LLM(lazyllm.ModuleBase):
             assert len(args) == 1
         return self._m(*args, **kw)
 
-    def share(self, prompt: str, format: callable = None, stream: bool = False, history: Optional[List[List[str]]] = None):
+    def share(self, prompt: str, format: callable = None, stream: bool = False,
+              history: Optional[List[List[str]]] = None):
         return LLM(self._m.share(prompt=prompt, format=format, stream=stream, history=history), self._keys)
 
     @property
@@ -885,7 +887,7 @@ class TTS(lazyllm.Module):
                 sound_list = move_files_to_target_dir(sound_list, self._target_dir)
             result = encode_query_with_filepaths(query=decoded_result["query"], files=sound_list)
         return result
-    
+
     def share(self):
         return TTS(self._m)
 
@@ -974,7 +976,7 @@ class SD(lazyllm.Module):
                 image_list = move_files_to_target_dir(image_list, self._target_dir)
             result = encode_query_with_filepaths(query=decoded_result["query"], files=image_list)
         return result
-    
+
     def share(self):
         return SD(self._m)
 
