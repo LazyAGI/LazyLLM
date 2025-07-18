@@ -3,6 +3,7 @@ import lazyllm
 from lazyllm.components.utils.file_operate import bytes_to_file
 from lazyllm.thirdparty import volcenginesdkarkruntime
 from .onlineMultiModalBase import OnlineMultiModalBase
+from lazyllm.components.formatter import encode_query_with_filepaths
 
 class DoubaoModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None, base_url='https://ark.cn-beijing.volces.com/api/v3',
@@ -22,7 +23,6 @@ class DoubaoTextToImageModule(DoubaoModule):
                               or DoubaoTextToImageModule.MODEL_NAME
                               or lazyllm.config['doubao_text2image_model_name'],
                               return_trace=return_trace, **kwargs)
-        self._format_output_files = bytes_to_file
 
     def _forward(self, input: str = None, size: str = "1024x1024", seed: int = -1, guidance_scale: float = 2.5,
                  watermark: bool = True, **kwargs):
@@ -32,6 +32,8 @@ class DoubaoTextToImageModule(DoubaoModule):
             size=size,
             seed=seed,
             guidance_scale=guidance_scale,
-            watermark=watermark
+            watermark=watermark,
+            **kwargs
         )
-        return None, [requests.get(result.url).content for result in imagesResponse.data]
+        return encode_query_with_filepaths(None, bytes_to_file([requests.get(result.url).content
+                                                                for result in imagesResponse.data]))
