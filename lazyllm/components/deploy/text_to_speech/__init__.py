@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+from .base import TTSInfer
 from .bark import BarkDeploy
 from .chattts import ChatTTSDeploy
 from .musicgen import MusicGenDeploy
@@ -26,4 +26,5 @@ __all__ = [
     'BarkDeploy',
     'ChatTTSDeploy',
     'MusicGenDeploy',
+    'TTSInfer',
 ]
