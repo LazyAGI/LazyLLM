@@ -1,38 +1,45 @@
 import json
+import urllib3
 
 from typing import Dict, List, Union, Optional
 
-from lazyllm import LOG
+from lazyllm import LOG, once_wrapper
 from lazyllm.common import override
 from lazyllm.thirdparty import opensearchpy
 
 from ..store_base import LazyLLMStoreBase, StoreCapability, INSERT_BATCH_SIZE
 
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 DEFAULT_INDEX_BODY = {
     'settings': {
         'index': {
             'number_of_shards': 4,
+            "number_of_replicas": 1,
+            "refresh_interval": "1s",
         }
     },
     'mappings': {
-        'properties': {
-            'uid': {'type': 'keyword', 'index': True},
-            'doc_id': {'type': 'keyword', 'index': True},
-            'group': {'type': 'keyword', 'index': False},
-            'content': {'type': 'text', 'analyzer': 'ik_max_word', 'index': False},
-            'meta': {'type': 'text', 'analyzer': 'ik_max_word', 'index': False},
-            'global_meta': {'type': 'text', 'analyzer': 'ik_max_word', 'index': False},
-            'type': {'type': 'keyword', 'index': False},
-            'number': {'type': 'integer', 'index': False},
-            'kb_id': {'type': 'keyword', 'index': True},
-            'excluded_embed_metadata_keys': {'type': 'keyword', 'index': False},
-            'excluded_llm_metadata_keys': {'type': 'keyword', 'index': False},
-            'parent': {'type': 'keyword', 'index': False},
-            'answer': {'type': 'text', 'analyzer': 'ik_max_word', 'index': False},
-            'image_keys': {'type': 'keyword', 'index': False},
+        'dynamic': 'strict',
+        "properties": {
+            "uid": {"type": "keyword"},
+            "doc_id": {"type": "keyword"},
+            "group": {"type": "keyword"},
+            "kb_id": {"type": "keyword"},
+            "content": {"type": "text", "index": False, "store": True},
+            "answer": {"type": "text", "index": False, "store": True},
+            "meta": {"type": "text", "index": False, "store": True},
+            "global_meta": {"type": "text", "index": False, "store": True},
+            "type": {"type": "keyword", "store": True},
+            "number": {"type": "integer", "store": True},
+            "excluded_embed_metadata_keys": {"type": "keyword", "store": True},
+            "excluded_llm_metadata_keys": {"type": "keyword", "store": True},
+            "parent": {"type": "keyword", "store": True},
+            "image_keys": {"type": "keyword", "store": True},
         }
     }
 }
+
 
 class OpenSearchStore(LazyLLMStoreBase, capability=StoreCapability.SEGMENT):
     def __init__(self, uris: List[str], client_kwargs: Optional[Dict] = {},
@@ -45,7 +52,8 @@ class OpenSearchStore(LazyLLMStoreBase, capability=StoreCapability.SEGMENT):
         self._primary_key = "uid"
 
     @override
-    def lazy_init(self) -> None:
+    @once_wrapper(reset_on_pickle=True)
+    def lazy_init(self, *args, **kwargs) -> None:
         """ load the store """
         if self._client_kwargs.get('user') and self._client_kwargs.get('password'):
             self._client_kwargs['http_auth'] = (self._client_kwargs.pop('user'), self._client_kwargs.pop('password'))
@@ -65,9 +73,9 @@ class OpenSearchStore(LazyLLMStoreBase, capability=StoreCapability.SEGMENT):
                     segment = self._serialize_node(segment)
                     bulk_data.append({"index": {"_index": collection_name, "_id": segment.get(self._primary_key)}})
                     bulk_data.append(segment)
-                response = self._client.bulk(bulk_data)
+                response = self._client.bulk(index=collection_name, body=bulk_data)
                 if response["errors"]:
-                    raise ValueError(f"Error upserting data to OpenSearch: {response['errors']}")
+                    raise ValueError(f"Error upserting data to OpenSearch: {response['items']}")
             self._client.indices.refresh(index=collection_name)
             return True
         except Exception as e:
@@ -79,12 +87,17 @@ class OpenSearchStore(LazyLLMStoreBase, capability=StoreCapability.SEGMENT):
         """ delete data from the store """
         try:
             if not self._client.indices.exists(index=collection_name):
-                raise ValueError(f"Index {collection_name} does not exist")
-            resp = self._client.delete_by_query(index=collection_name,
-                                                body=self._construct_criteria(criteria), refresh=True)
-            if resp.get("failures"):
-                raise ValueError(f"Error deleting data from OpenSearch: {resp['failures']}")
-            return True
+                LOG.warning(f"[OpenSearchStore - delete] Index {collection_name} does not exist")
+                return True
+            if len(criteria) == 0:
+                self._client.indices.delete(index=collection_name)
+                return True
+            else:
+                resp = self._client.delete_by_query(index=collection_name,
+                                                    body=self._construct_criteria(criteria), refresh=True)
+                if resp.get("failures"):
+                    raise ValueError(f"Error deleting data from OpenSearch: {resp['failures']}")
+                return True
         except Exception as e:
             LOG.error(f"[OpenSearchStore - delete] Error deleting data from OpenSearch: {e}")
             return False
@@ -94,8 +107,10 @@ class OpenSearchStore(LazyLLMStoreBase, capability=StoreCapability.SEGMENT):
         """ get data from the store """
         try:
             if not self._client.indices.exists(index=collection_name):
-                raise ValueError(f"Index {collection_name} does not exist")
+                LOG.warning(f"[OpenSearchStore - get] Index {collection_name} does not exist")
+                return []
             results: List[dict] = []
+            criteria = dict(criteria)
             if self._primary_key in criteria:
                 vals = criteria.pop(self._primary_key)
                 if not isinstance(vals, list):
@@ -126,11 +141,12 @@ class OpenSearchStore(LazyLLMStoreBase, capability=StoreCapability.SEGMENT):
 
     def _serialize_node(self, segment: dict):
         """ serialize node to a dict that can be stored in OpenSearch """
-        segment.pop("embedding", None)
-        segment["global_meta"] = json.dumps(segment.get("global_meta", {}), ensure_ascii=False)
-        segment["meta"] = json.dumps(segment.get("meta", {}), ensure_ascii=False)
-        segment["image_keys"] = json.dumps(segment.get("image_keys", []), ensure_ascii=False)
-        return segment
+        seg = dict(segment)
+        seg.pop("embedding", None)
+        seg["global_meta"] = json.dumps(seg.get("global_meta", {}), ensure_ascii=False)
+        seg["meta"] = json.dumps(seg.get("meta", {}), ensure_ascii=False)
+        seg["image_keys"] = json.dumps(seg.get("image_keys", []), ensure_ascii=False)
+        return seg
 
     def _deserialize_node(self, segment: dict) -> dict:
         """ deserialize node from dict """
@@ -141,6 +157,7 @@ class OpenSearchStore(LazyLLMStoreBase, capability=StoreCapability.SEGMENT):
 
     def _construct_criteria(self, criteria: dict) -> dict:
         """ construct criteria for OpenSearch """
+        criteria = dict(criteria)
         if self._primary_key in criteria:
             vals = criteria.pop(self._primary_key)
             if not isinstance(vals, list):

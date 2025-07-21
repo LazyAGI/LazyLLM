@@ -1,0 +1,52 @@
+from typing import Dict, List, Optional, Union, Set
+
+from lazyllm.common import override
+
+from ..store_base import LazyLLMStoreBase, StoreCapability
+
+
+class HybridStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
+    def __init__(self, segment_store: LazyLLMStoreBase, vector_store: LazyLLMStoreBase):
+        self.segment_store: LazyLLMStoreBase = segment_store
+        self.vector_store: LazyLLMStoreBase = vector_store
+
+    @override
+    def lazy_init(self, *args, **kwargs):
+        self.segment_store.lazy_init(*args, **kwargs)
+        self.vector_store.lazy_init(*args, **kwargs)
+
+    @override
+    def upsert(self, collection_name: str, data: List[dict]) -> bool:
+        return self.segment_store.upsert(collection_name=collection_name, data=data) and \
+            self.vector_store.upsert(collection_name=collection_name, data=data)
+
+    @override
+    def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
+        return self.segment_store.delete(collection_name=collection_name, criteria=criteria, **kwargs) and \
+            self.vector_store.delete(collection_name=collection_name, criteria=criteria, **kwargs)
+
+    @override
+    def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:
+        res_segments = self.segment_store.get(collection_name=collection_name, criteria=criteria, **kwargs)
+        res_vectors = self.vector_store.get(collection_name=collection_name, criteria=criteria, **kwargs)
+        data = {}
+        for item in res_segments:
+            data[item.get('uid')] = item
+        for item in res_vectors:
+            if item.get('uid') in data:
+                data[item.get('uid')]['embedding'] = item.get('embedding')
+            else:
+                raise ValueError(f"[HybridStore - get] uid {item['uid']} in vector store"
+                                 " but not found in segment store")
+        return list(data.values())
+
+    @override
+    def search(self, collection_name: str, query: Union[str, dict, List[float]], topk: int,
+               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
+               embed_key: Optional[str] = None, **kwargs) -> List[dict]:
+        if embed_key:
+            return self.vector_store.search(collection_name=collection_name, query=query, topk=topk,
+                                            filters=filters, embed_key=embed_key, **kwargs)
+        else:
+            return self.segment_store.search(collection_name=collection_name, query=query, topk=topk,
+                                             filters=filters, **kwargs)

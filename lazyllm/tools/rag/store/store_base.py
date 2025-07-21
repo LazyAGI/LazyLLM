@@ -3,7 +3,7 @@ import re
 from abc import ABC, abstractmethod
 from enum import IntFlag, auto
 from typing import Optional, List, Union, Set, Dict, Any
-from lazyllm import LazyLLMRegisterMetaClass, once_wrapper
+from lazyllm import once_wrapper
 from pydantic import BaseModel, Field
 
 from ..doc_node import DocNode
@@ -53,21 +53,20 @@ class Segment(BaseModel):
     meta: Optional[Dict[str, Any]] = Field(default_factory=dict)
     global_meta: Optional[Dict[str, Any]] = Field(default_factory=dict)
     embedding: Optional[Dict[str, List[float]]] = Field(default_factory=dict)
-    type: Optional[SegmentType] = SegmentType.TEXT
+    type: Optional[int] = SegmentType.TEXT.value
     number: Optional[int] = 0
     kb_id: Optional[str] = "__default__"
     excluded_embed_metadata_keys: Optional[List[str]] = Field(default_factory=list)
     excluded_llm_metadata_keys: Optional[List[str]] = Field(default_factory=list)
     parent: Optional[str] = None    # uid of parent node
-    answer: Optional[str] = None
+    answer: Optional[str] = ""
     image_keys: Optional[List[str]] = Field(default_factory=list)
 
 
 class StoreCapability(IntFlag):
     SEGMENT = auto()
     VECTOR = auto()
-    BOTH = SEGMENT | VECTOR
-    ALL = SEGMENT | VECTOR | auto()
+    ALL = SEGMENT | VECTOR
 
 
 class StoreBase(ABC):
@@ -131,7 +130,7 @@ class StoreBase(ABC):
         raise NotImplementedError
 
 
-class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaClass):
+class LazyLLMStoreBase(ABC):
     capability: StoreCapability
 
     def __init_subclass__(cls, *, capability: StoreCapability, **kwargs):

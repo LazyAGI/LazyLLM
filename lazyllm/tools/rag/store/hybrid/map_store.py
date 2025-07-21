@@ -151,16 +151,22 @@ class MapStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
         if not criteria:
             return list(self._collection2uids.get(collection_name, set()))
         else:
-            uids = criteria.get('uids', [])
+            uids = criteria.get('uid', [])
             kb_id = criteria.get('kb_id')
             doc_ids = criteria.get('doc_ids', [])
             if uids:
                 return uids
-            elif kb_id:
+            elif kb_id and doc_ids:
                 return [uid for doc_id in doc_ids
                         for uid in self._col_kb_doc_uids.get(collection_name, {}).get(kb_id, {}).get(doc_id, ())]
-            else:
+            elif kb_id:
+                doc_ids = self._col_kb_doc_uids.get(collection_name, {}).get(kb_id, {}).keys()
+                return [uid for doc_id in doc_ids
+                        for uid in self._col_kb_doc_uids.get(collection_name, {}).get(kb_id, {}).get(doc_id, ())]
+            elif doc_ids:
                 return [uid for doc_id in doc_ids for uid in self._docid2uids.get(doc_id, ())]
+            else:
+                raise ValueError(f"[MapStore - get] Invalid criteria: {criteria}")
 
     @override
     def search(self, collection_name: str, query: str, topk: int,

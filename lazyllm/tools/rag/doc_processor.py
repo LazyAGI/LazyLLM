@@ -6,7 +6,8 @@ from sqlalchemy.engine import Engine
 import lazyllm
 from lazyllm import LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app, ThreadPoolExecutor, config
 
-from .store import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+from .store import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+from .store.document_store import DocumentStore
 from .store.utils import fibonacci_backoff, create_file_path
 from .transform import (AdaptiveTransform, make_transform,)
 from .readers import ReaderBase
@@ -25,7 +26,7 @@ ENABLE_DB = os.getenv("RAG_ENABLE_DB", "false").lower() == "true"
 
 
 class _Processor:
-    def __init__(self, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict],
+    def __init__(self, store: DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
                  server: bool = False, description: str = "default algorithm"):
         self._store = store
         self._reader = reader
@@ -219,7 +220,7 @@ class DocumentProcessor(ModuleBase):
             self._inited = True
             LOG.info(f"[DocStore] init done. feedback {self._feedback_url}, prefix {self._path_prefix}")
 
-        def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase,
+        def register_algorithm(self, name: str, store: DocumentStore, reader: ReaderBase,
                                node_groups: Dict[str, Dict], force_refresh: bool = False,
                                description: str = "default algorithm"):
             self._init_components(server=self._server)
@@ -589,7 +590,7 @@ class DocumentProcessor(ModuleBase):
         else:
             getattr(impl, method)(*args, **kwargs)
 
-    def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict],
+    def register_algorithm(self, name: str, store: DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
                            force_refresh: bool = False, **kwargs):
         self._dispatch("register_algorithm", name, store, reader, node_groups, force_refresh, **kwargs)
 

@@ -11,12 +11,12 @@ from typing import Optional, List, Dict, Any, Union, Set
 
 from ..store_base import (LazyLLMStoreBase, StoreCapability, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC,
                           IMAGE_PATTERN, INSERT_BATCH_SIZE)
-from .utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, create_file_path
+from ..utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, create_file_path
 
-from ..index_base import IndexBase
-from ..data_type import DataType
-from ..doc_node import ImageDocNode, QADocNode, DocNode
-from ..global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
+from ...index_base import IndexBase
+from ...data_type import DataType
+from ...doc_node import ImageDocNode, QADocNode, DocNode
+from ...global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
 
 from lazyllm import warp, pipeline, LOG, config
 from lazyllm.common import override

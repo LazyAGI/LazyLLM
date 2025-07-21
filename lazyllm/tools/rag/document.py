@@ -57,7 +57,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 dataset_path, name, enable_path_monitoring=False if manager else True)
             self._kbs = CallableDict({DocListManager.DEFAULT_GROUP_NAME: DocImpl(
                 embed=self._embed, dlm=self._dlm, doc_files=doc_files, global_metadata_desc=doc_fields,
-                store_conf=store_conf, processor=processor, algo_name=name)})
+                store=store_conf, processor=processor, algo_name=name)})
 
             if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
@@ -312,7 +312,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def forward(self, *args, **kw) -> List[DocNode]:
         return self._forward('retrieve', *args, **kw)
 
-    def clear_cache(self, group_names: Optional[List[str]]) -> None:
+    def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
         return self._forward('clear_cache', group_names)
 
     def _get_post_process_tasks(self):

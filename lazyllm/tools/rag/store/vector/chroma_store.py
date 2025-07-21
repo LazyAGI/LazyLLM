@@ -1,10 +1,11 @@
 from typing import Dict, List, Optional, Set, Union, Any
 from collections import defaultdict
 
-from ..store_base import (LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX,
-                          DataType, GlobalMetadataDesc, BUILDIN_GLOBAL_META_DESC)
+from ..store_base import (LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX)
+from ...data_type import DataType
+from ...global_metadata import GlobalMetadataDesc
 
-from lazyllm import LOG
+from lazyllm import LOG, once_wrapper
 from lazyllm.common import override
 from lazyllm.thirdparty import chromadb
 
@@ -31,12 +32,10 @@ class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
         self._primary_key = 'uid'
 
     @override
+    @once_wrapper(reset_on_pickle=True)
     def lazy_init(self, embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
                   global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs):
-        if global_metadata_desc:
-            self._global_metadata_desc = global_metadata_desc | BUILDIN_GLOBAL_META_DESC
-        else:
-            self._global_metadata_desc = BUILDIN_GLOBAL_META_DESC
+        self._global_metadata_desc = global_metadata_desc
         self._embed_dims = embed_dims
         self._embed_datatypes = embed_datatypes
         for k, v in self._global_metadata_desc.items():
@@ -85,11 +84,19 @@ class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
     @override
     def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
         try:
-            filters = self._construct_criteria(criteria)
-            for embed_key in self._embed_datatypes.keys():
-                collection = self._client.get_collection(name=self._gen_collection_name(collection_name, embed_key))
-                collection.delete(**filters)
-            return True
+            if len(criteria) == 0:
+                for embed_key in self._embed_datatypes.keys():
+                    try:
+                        self._client.delete_collection(name=self._gen_collection_name(collection_name, embed_key))
+                    except Exception:
+                        continue
+                return True
+            else:
+                filters = self._construct_criteria(criteria)
+                for embed_key in self._embed_datatypes.keys():
+                    collection = self._client.get_collection(name=self._gen_collection_name(collection_name, embed_key))
+                    collection.delete(**filters)
+                return True
         except Exception as e:
             LOG.error(f"[Chromadb Store - delete] Failed to delete collection {collection_name}: {e}")
             return False
@@ -123,7 +130,7 @@ class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
                         k[len(GLOBAL_META_KEY_PREFIX):]: v
                         for k, v in meta.items()
                     }
-                entry["embedding"][embed_key] = emb
+                entry["embedding"][embed_key] = list(emb)
         return list(res.values())
 
     @override
