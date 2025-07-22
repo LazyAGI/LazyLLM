@@ -124,66 +124,22 @@ class OnlineChatModuleBase(LLMBase):
         except Exception:
             return ""
 
-    def _extract_and_format(self, data, template):  # noqa: C901
-        # finding placeholders in template and removing rules
-        placeholders = re.findall(r"{(.*?)(?:\|(.*?))?}", template)
-        delimiters = re.findall(r"<\|.*?\|>", template)
-        # extract and format the fields corresponding to the placeholders
-        extracted_data = {}
-        pkeys = []
-        for placeholder, remove_fields in placeholders:
-            placeholder_key = placeholder + "|" + remove_fields if remove_fields else placeholder
-            pkeys.append(placeholder_key)
-            if 'tool_calls' in placeholder:
-                # handling remove_fields
-                remove_fields = remove_fields.split(',') if remove_fields else []
-
-                # extract the tool_calls field
-                keys = placeholder.split('.')
-                value = data
-                try:
-                    for key in (int(key) if key.isdigit() else key for key in keys):
-                        value = value[key]
-
-                    if isinstance(value, list):
-                        for item in value:
-                            [item.pop(field) for field in remove_fields if field in item]
-                    # value = json.dumps(value).replace('\n', '').replace(' ', '')
-                    value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-                    extracted_data[placeholder_key] = value
-                except (KeyError, IndexError, TypeError):
-                    extracted_data[placeholder_key] = ""
-            else:
-                # extracting additional fields
-                keys = placeholder.split('.')
-                value = data
-                try:
-                    for key in (int(key) if key.isdigit() else key for key in keys):
-                        value = value[key]
-                    # convert the extracted value into a JSON string
-                    value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-                    extracted_data[placeholder_key] = value
-                except (KeyError, IndexError, TypeError):
-                    extracted_data[placeholder_key] = ""
-
-        # populate the template with the extracted data
-        assert len(extracted_data) == len(delimiters) + 1, \
-               "The delimiters and the number of extracted fields are inconsistent."
-        result = extracted_data.get(pkeys[0])
-        result += ''.join(delimiters[idx] + extracted_data[key]
-                          for idx, key in enumerate(pkeys[1:]) if extracted_data.get(key))
-        lazyllm.LOG.debug(f"result: {result}")
-        return result
-
     def _extract_specified_key_fields(self, response: Dict[str, Any]):
-        key = "{content}" + globals['tool_delimiter'] + "{tool_calls|index}"
-
         if not ("choices" in response and isinstance(response["choices"], list)):
             raise ValueError(f"The response {response} does not contain a 'choices' field.")
         outputs = response['choices'][0].get("message") or response['choices'][0].get("delta", {})
         if 'reasoning_content' in outputs and outputs["reasoning_content"] and 'content' in outputs:
             outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
-        return self._extract_and_format(outputs, key)
+
+        result, tool_calls = outputs.get('content', ''), outputs.get('tool_calls')
+        if tool_calls:
+            try:
+                if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
+                tool_calls = tool_calls if isinstance(tool_calls, str) else json.dumps(tool_calls, ensure_ascii=False)
+                if tool_calls: result += '<|tool_calls|>' + tool_calls
+            except (KeyError, IndexError, TypeError):
+                pass
+        return result
 
     def _merge_stream_result(self, src: List[Union[str, int, list, dict]], force_join: bool = False):
         src = [ele for ele in src if ele is not None]
