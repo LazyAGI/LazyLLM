@@ -352,7 +352,7 @@ class TestMilvusStore(unittest.TestCase):
             }
         ]
         _, self.store_dir = tempfile.mkstemp(suffix=".db")
-        self.uri_standalone = "http://10.119.26.205:19530"
+        self.uri_standalone = ""
         self.store = MilvusStore(uri=self.store_dir, index_kwargs=self.index_kwargs)
         self.store.lazy_init(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
                              global_metadata_desc=self.global_metadata_desc)
@@ -514,13 +514,8 @@ class TestMilvusStore(unittest.TestCase):
 class TestOpenSearchStore(unittest.TestCase):
     def setUp(self):
         self.collections = ["col_g1", "col_g2"]
-        self.uri = "https://10.119.26.205:9200"
-        self.client_kwargs = {
-            "http_compress": True,
-            "use_ssl": True,
-            "verify_certs": False,
-            "http_auth": ("admin", "Sensetime@123"),
-        }
+        self.uri = ""
+        self.client_kwargs = {}
         self.store = OpenSearchStore(uris=self.uri, client_kwargs=self.client_kwargs)
         self.store.lazy_init()
 
