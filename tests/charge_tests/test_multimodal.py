@@ -1,5 +1,6 @@
 import os
 import lazyllm
+import pytest
 from lazyllm.components.formatter import decode_query_with_filepaths
 
 
@@ -70,3 +71,17 @@ class TestMultiModal(object):
         shared_text2image = original_text2image.share()
         result = shared_text2image(self.test_image_prompt)
         self._check_file_result(result, format='image')
+        
+    def test_dashscope_api_key(self):
+        api_key = lazyllm.config['qwen_api_key']
+        tts = lazyllm.OnlineMultiModal(source='qwen', function='tts', model='qwen-tts', api_key=api_key)
+        result = tts(self.test_text)
+        self._check_file_result(result, format='audio')
+        
+        tts = lazyllm.OnlineMultiModal(source='qwen', function='tts', model='cosyvoice-v1')
+        result = tts(self.test_text)
+        self._check_file_result(result, format='audio')
+
+        with pytest.raises(RuntimeError, match='cosyvoice-v1 does not support multi user, don\'t set api_key'):
+            tts = lazyllm.OnlineMultiModal(source='qwen', function='tts', model='cosyvoice-v1', api_key=api_key)
+            result = tts(self.test_text)

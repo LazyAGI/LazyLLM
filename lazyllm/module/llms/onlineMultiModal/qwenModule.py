@@ -17,9 +17,10 @@ class QwenModule(OnlineMultiModalBase):
                  return_trace: bool = False, **kwargs):
         OnlineMultiModalBase.__init__(self, model_series="QWEN",
                                       model_name=model_name, return_trace=return_trace, **kwargs)
-        dashscope.api_key = api_key or lazyllm.config['qwen_api_key']
+        dashscope.api_key = lazyllm.config['qwen_api_key']
         dashscope.base_http_api_url = base_url
         dashscope.base_websocket_api_url = base_websocket_url
+        self._api_key = api_key
 
 
 class QwenSTTModule(QwenModule):
@@ -33,6 +34,7 @@ class QwenSTTModule(QwenModule):
     def _forward(self, files: List[str] = [], **kwargs):
         assert any(file.startswith('http') for file in files), "QwenSTTModule only supports http file urls"
         call_params = {'model': self._model_name, 'file_urls': files, **kwargs}
+        if self._api_key: call_params['api_key'] = self._api_key
         task_response = dashscope.audio.asr.Transcription.async_call(**call_params)
         transcribe_response = dashscope.audio.asr.Transcription.wait(task=task_response.output.task_id)
         if transcribe_response.status_code == HTTPStatus.OK:
@@ -67,8 +69,8 @@ class QwenTextToImageModule(QwenModule):
             'size': size,
             **kwargs
         }
-        if seed:
-            call_params['seed'] = seed
+        if self._api_key: call_params['api_key'] = self._api_key
+        if seed: call_params['seed'] = seed
         task_response = dashscope.ImageSynthesis.async_call(**call_params)
         response = dashscope.ImageSynthesis.wait(task=task_response.output.task_id)
         if response.status_code == HTTPStatus.OK:
@@ -79,20 +81,25 @@ class QwenTextToImageModule(QwenModule):
             raise Exception(f"failed to generate image: {response.output.message}")
 
 
-def synthesize_qwentts(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float, **kwargs):
-    response = dashscope.audio.qwen_tts.SpeechSynthesizer.call(
-        model=model_name,
-        text=input,
-        voice=voice,
+def synthesize_qwentts(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
+                       api_key: str = None, **kwargs):
+    call_params = {
+        'model': model_name,
+        'text': input,
+        'voice': voice,
         **kwargs
-    )
+    }
+    if api_key: call_params['api_key'] = api_key
+    response = dashscope.audio.qwen_tts.SpeechSynthesizer.call(**call_params)
     if response.status_code == HTTPStatus.OK:
         return requests.get(response.output['audio']['url']).content
     else:
         lazyllm.LOG.error(f"failed to synthesize: {response}")
         raise Exception(f"failed to synthesize: {response.message}")
 
-def synthesize(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float, **kwargs):
+def synthesize(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
+               api_key: str = None, **kwargs):
+    assert api_key is None, f"{model_name} does not support multi user, don't set api_key"
     model_name = model_name + '-' + voice
     response = dashscope.audio.tts.SpeechSynthesizer.call(model=model_name, text=input, volume=volume,
                                                           pitch=pitch, rate=speech_rate, **kwargs)
@@ -102,7 +109,9 @@ def synthesize(input: str, model_name: str, voice: str, speech_rate: float, volu
         lazyllm.LOG.error(f"failed to synthesize: {response.get_response()}")
         raise Exception(f"failed to synthesize: {response.get_response().message}")
 
-def synthesize_v2(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float, **kwargs):
+def synthesize_v2(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
+                  api_key: str = None, **kwargs):
+    assert api_key is None, f"{model_name} does not support multi user, don't set api_key"
     synthesizer = dashscope.audio.tts_v2.SpeechSynthesizer(model=model_name, voice=voice, volume=volume,
                                                            pitch_rate=pitch, speech_rate=speech_rate, **kwargs)
     audio = synthesizer.call(input)
@@ -114,7 +123,7 @@ def synthesize_v2(input: str, model_name: str, voice: str, speech_rate: float, v
 
 
 class QwenTTSModule(QwenModule):
-    MODEL_NAME = "cosyvoice-v2"
+    MODEL_NAME = "qwen-tts"
     SYNTHESIZERS = {
         "cosyvoice-v2": (synthesize_v2, 'longxiaochun_v2'),
         "cosyvoice-v1": (synthesize_v2, 'longxiaochun'),
@@ -141,6 +150,7 @@ class QwenTTSModule(QwenModule):
             "speech_rate": speech_rate,
             "volume": volume,
             "pitch": pitch,
+            "api_key": self._api_key,
             **kwargs
         }
         return encode_query_with_filepaths(None, bytes_to_file(self._synthesizer_func(**call_params)))
