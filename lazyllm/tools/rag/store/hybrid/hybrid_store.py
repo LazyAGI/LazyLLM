@@ -49,11 +49,12 @@ class HybridStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
             res = self.vector_store.search(collection_name=collection_name, query=query, query_embedding=query_embedding,
                                            topk=topk, filters=filters, embed_key=embed_key, **kwargs)
             if not res: return []
-            uids = [item['uid'] for item in res]
+            uid2score = {item['uid']: item['score'] for item in res}
+            uids = list(uid2score.keys())
             segments = self.segment_store.get(collection_name=collection_name, criteria={"uid": uids}, **kwargs)
             for segment in segments:
-                segment['score'] = res[segment['uid']]['score']
-            return res
+                segment['score'] = uid2score.get(segment['uid'], 0)
+            return segments
         else:
             res = self.segment_store.search(collection_name=collection_name, query=query,
                                             topk=topk, filters=filters, **kwargs)
