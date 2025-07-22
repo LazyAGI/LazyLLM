@@ -132,7 +132,7 @@ class OnlineChatModuleBase(LLMBase):
         if 'reasoning_content' in outputs and outputs["reasoning_content"] and 'content' in outputs:
             outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
 
-        result, tool_calls = outputs['content'], outputs.get('tool_calls')
+        result, tool_calls = outputs.get('content', ''), outputs.get('tool_calls')
         if tool_calls:
             try:
                 if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
