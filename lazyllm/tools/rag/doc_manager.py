@@ -160,6 +160,14 @@ class DocManager(lazyllm.ModuleBase):
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
+    @app.get("/reparse_files")
+    def reparse_files(self, file_ids: List[str], group_name: Optional[str] = None):
+        try:
+            self._manager.update_need_reparsing(file_ids, group_name)
+            return BaseResponse()
+        except Exception as e:
+            return BaseResponse(code=500, msg=str(e), data=None)
+
     @app.get("/list_files_in_group")
     def list_files_in_group(self, group_name: Optional[str] = None,
                             limit: Optional[int] = None, alive: Optional[bool] = None):

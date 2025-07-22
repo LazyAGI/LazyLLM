@@ -352,6 +352,11 @@ class DocImpl:
             self._dlm.update_kb_group(cond_file_ids=failed_ids, cond_group=self._kb_group_name,
                                       cond_status_list=cond_status_list, new_status=DocListManager.Status.failed)
 
+    def _batch_call(self, func: Callable, *args, batch_size: int = 10, **kwargs):
+        batch_count = next((len(arg) for arg in args if isinstance(arg, (tuple, list))), 0)
+        for i in range(0, batch_count, batch_size):
+            func(*[arg[i:i + batch_size] if isinstance(arg, (list, tuple)) else arg for arg in args], **kwargs)
+
     def worker(self):
         is_first_run = True
         while True:
@@ -371,7 +376,7 @@ class DocImpl:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working, new_need_reparse=False)
                 self._delete_doc_from_store(doc_ids=ids)
-                self._add_doc_to_store_with_status(filepaths, ids, metadatas)
+                self._batch_call(self._add_doc_to_store_with_status, filepaths, ids, metadatas, batch_size=10)
 
             # Step 2: After doc is deleted from related kb_group, delete doc from db
             if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
@@ -389,8 +394,8 @@ class DocImpl:
             if files:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working)
-                self._add_doc_to_store_with_status(files, ids, metadatas,
-                                                   cond_status_list=[DocListManager.Status.working])
+                self._batch_call(self._add_doc_to_store_with_status,
+                                 files, ids, metadatas, cond_status_list=[DocListManager.Status.working])
 
             if is_first_run:
                 self._init_monitor_event.set()
