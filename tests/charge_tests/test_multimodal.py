@@ -71,13 +71,13 @@ class TestMultiModal(object):
         shared_text2image = original_text2image.share()
         result = shared_text2image(self.test_image_prompt)
         self._check_file_result(result, format='image')
-        
+
     def test_dashscope_api_key(self):
         api_key = lazyllm.config['qwen_api_key']
         tts = lazyllm.OnlineMultiModal(source='qwen', function='tts', model='qwen-tts', api_key=api_key)
         result = tts(self.test_text)
         self._check_file_result(result, format='audio')
-        
+
         tts = lazyllm.OnlineMultiModal(source='qwen', function='tts', model='cosyvoice-v1')
         result = tts(self.test_text)
         self._check_file_result(result, format='audio')
