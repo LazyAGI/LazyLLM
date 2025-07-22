@@ -3,7 +3,7 @@ from typing import Any, Dict
 from .qwenModule import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
 from .onlineMultiModalBase import OnlineMultiModalBase
 from .doubaoModule import DoubaoTextToImageModule
-from .glmModule import GLMSTTModule, GLMTexToImageModule
+from .glmModule import GLMSTTModule, GLMTextToImageModule
 
 
 class _OnlineMultiModalMeta(type):
@@ -43,7 +43,7 @@ class OnlineMultiModal(metaclass=_OnlineMultiModalMeta):
     TEXT2IMAGE_MODELS = {
         'qwen': QwenTextToImageModule,
         'doubao': DoubaoTextToImageModule,
-        'glm': GLMTexToImageModule
+        'glm': GLMTextToImageModule
     }
 
     @staticmethod

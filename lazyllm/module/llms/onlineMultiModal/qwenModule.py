@@ -6,6 +6,9 @@ from typing import List
 from lazyllm.components.utils.file_operate import bytes_to_file
 from lazyllm.components.formatter import encode_query_with_filepaths
 from .onlineMultiModalBase import OnlineMultiModalBase
+import json
+import re
+
 
 class QwenModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None,
@@ -18,6 +21,7 @@ class QwenModule(OnlineMultiModalBase):
         dashscope.base_http_api_url = base_url
         dashscope.base_websocket_api_url = base_websocket_url
 
+
 class QwenSTTModule(QwenModule):
     MODEL_NAME = "paraformer-v2"
 
@@ -28,18 +32,21 @@ class QwenSTTModule(QwenModule):
 
     def _forward(self, files: List[str] = [], **kwargs):
         assert any(file.startswith('http') for file in files), "QwenSTTModule only supports http file urls"
-        call_params = {
-            'model': self._model_name,
-            'file_urls': files,
-            **kwargs
-        }
+        call_params = {'model': self._model_name, 'file_urls': files, **kwargs}
         task_response = dashscope.audio.asr.Transcription.async_call(**call_params)
         transcribe_response = dashscope.audio.asr.Transcription.wait(task=task_response.output.task_id)
         if transcribe_response.status_code == HTTPStatus.OK:
-            return transcribe_response.output
+            result_text = ""
+            for task in transcribe_response.output.results:
+                assert task['subtask_status'] == "SUCCEEDED", "subtask_status is not SUCCEEDED"
+                response = json.loads(requests.get(task['transcription_url']).text)
+                for transcript in response['transcripts']:
+                    result_text = re.sub(r"<[^>]+>", "", transcript['text'])
+            return result_text
         else:
             lazyllm.LOG.error(f"failed to transcribe: {transcribe_response.output}")
             raise Exception(f"failed to transcribe: {transcribe_response.output.message}")
+
 
 class QwenTextToImageModule(QwenModule):
     MODEL_NAME = "wanx2.1-t2i-turbo"
@@ -70,6 +77,7 @@ class QwenTextToImageModule(QwenModule):
         else:
             lazyllm.LOG.error(f"failed to generate image: {response.output}")
             raise Exception(f"failed to generate image: {response.output.message}")
+
 
 def synthesize_qwentts(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float, **kwargs):
     response = dashscope.audio.qwen_tts.SpeechSynthesizer.call(
@@ -103,6 +111,7 @@ def synthesize_v2(input: str, model_name: str, voice: str, speech_rate: float, v
     else:
         lazyllm.LOG.error(f"failed to synthesize: {synthesizer.last_response}")
         raise Exception(f"failed to synthesize: {synthesizer.last_response['header']['error_message']}")
+
 
 class QwenTTSModule(QwenModule):
     MODEL_NAME = "cosyvoice-v2"

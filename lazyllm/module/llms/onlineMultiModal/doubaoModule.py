@@ -5,6 +5,7 @@ from lazyllm.thirdparty import volcenginesdkarkruntime
 from .onlineMultiModalBase import OnlineMultiModalBase
 from lazyllm.components.formatter import encode_query_with_filepaths
 
+
 class DoubaoModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None, base_url='https://ark.cn-beijing.volces.com/api/v3',
                  return_trace: bool = False, **kwargs):
@@ -14,6 +15,7 @@ class DoubaoModule(OnlineMultiModalBase):
             base_url=base_url,
             api_key=api_key or lazyllm.config['doubao_api_key'],
         )
+
 
 class DoubaoTextToImageModule(DoubaoModule):
     MODEL_NAME = "doubao-seedream-3-0-t2i-250415"

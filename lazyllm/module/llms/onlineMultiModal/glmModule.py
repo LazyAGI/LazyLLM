@@ -6,6 +6,8 @@ from .onlineMultiModalBase import OnlineMultiModalBase
 from lazyllm.thirdparty import zhipuai
 from lazyllm.components.utils.file_operate import bytes_to_file
 from lazyllm.components.formatter import encode_query_with_filepaths
+
+
 class GLMModule(OnlineMultiModalBase):
     def __init__(self, model_name: str, api_key: str = None,
                  base_url: str = 'https://open.bigmodel.cn/api/paas/v4', return_trace: bool = False,
@@ -13,6 +15,7 @@ class GLMModule(OnlineMultiModalBase):
         OnlineMultiModalBase.__init__(self, model_series='GLM', model_name=model_name,
                                       return_trace=return_trace, **kwargs)
         self._client = zhipuai.ZhipuAI(api_key=api_key or lazyllm.config['glm_api_key'], base_url=base_url)
+
 
 class GLMSTTModule(GLMModule):
     MODEL_NAME = "glm-asr"
@@ -31,11 +34,12 @@ class GLMSTTModule(GLMModule):
         )
         return transcriptResponse.text
 
-class GLMTexToImageModule(GLMModule):
+
+class GLMTextToImageModule(GLMModule):
     MODEL_NAME = "cogview-4-250304"
 
     def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
-        GLMModule.__init__(self, model_name=model_name or GLMTexToImageModule.MODEL_NAME
+        GLMModule.__init__(self, model_name=model_name or GLMTextToImageModule.MODEL_NAME
                            or lazyllm.config['glm_text_to_image_model_name'], api_key=api_key,
                            return_trace=return_trace, **kwargs)
 

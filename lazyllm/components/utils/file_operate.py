@@ -48,10 +48,7 @@ MIME_TYPE = {
 
 # Create reverse mapping for efficient MIME type to extension lookup
 # if multiple extensions have the same MIME type, keep the first one
-MIME_TO_EXT = {}
-for k, v in MIME_TYPE.items():
-    if v not in MIME_TO_EXT:
-        MIME_TO_EXT[v] = k
+MIME_TO_EXT = {v: k for k, v in reversed(MIME_TYPE.items())}
 
 IMAGE_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if v.startswith('image/')}
 AUDIO_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if v.startswith('audio/')}

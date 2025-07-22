@@ -431,6 +431,7 @@ def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
             arguments['model'] = model
     return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
 
+
 class JoinFormatter(lazyllm.components.FormatterBase):
     def __init__(self, type, *, names=None, symbol=None):
         self.type = type
@@ -716,9 +717,9 @@ class VQA(lazyllm.Module):
 @NodeConstructor.register('VQA')
 def make_vqa(kw: dict):
     type: str = kw.pop('type')
-    assert type in ('local', 'online'), f'Invalid type {type} given'
     if type == 'local': return make_local_vqa(**kw)
     elif type == 'online': return make_online_vqa(**kw)
+    else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalVQA')
 def make_local_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None,
@@ -815,9 +816,10 @@ class LLM(lazyllm.ModuleBase):
 def make_llm(kw: dict):
     type: str = kw.pop('type')
     keys: Optional[List[str]] = kw.pop('keys', None)
-    assert type in ('local', 'online'), f'Invalid type {type} given'
     if type == 'local': return LLM(make_local_llm(**kw), keys)
     elif type == 'online': return LLM(make_online_llm(**kw), keys)
+    else: raise ValueError(f'Invalid type {type} given')
+
 
 class STT(lazyllm.Module):
     def __init__(self, model: Union[lazyllm.TrainableModule, lazyllm.OnlineMultiModal]):
@@ -853,9 +855,9 @@ class STT(lazyllm.Module):
 @NodeConstructor.register('STT')
 def make_stt(kw: dict):
     type: str = kw.pop('type')
-    assert type in ('local', 'online'), f'Invalid type {type} given'
     if type == 'local': return make_local_stt(**kw)
     elif type == 'online': return make_online_stt(**kw)
+    else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalSTT')
 def make_local_stt(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
@@ -870,6 +872,7 @@ def make_online_stt(source: str = None, base_model: Optional[str] = None, base_u
     model = lazyllm.OnlineMultiModal(source=source, function='stt', model=base_model,
                                      base_url=base_url, api_key=api_key)
     return STT(model)
+
 
 class TTS(lazyllm.Module):
     def __init__(self, model: Union[lazyllm.TrainableModule, lazyllm.OnlineMultiModal],
@@ -899,9 +902,9 @@ class TTS(lazyllm.Module):
 def make_tts(kw: dict):
     type: str = kw.pop('type')
     target_dir: str = kw.pop('target_dir', None)
-    assert type in ('local', 'online'), f'Invalid type {type} given'
     if type == 'local': return TTS(make_local_tts(**kw), target_dir)
     elif type == 'online': return TTS(make_online_tts(**kw), target_dir)
+    else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalTTS')
 def make_local_tts(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
@@ -921,9 +924,9 @@ def make_online_tts(source: str = None, base_model: Optional[str] = None, base_u
 @NodeConstructor.register('Embedding')
 def make_embedding(kw: dict):
     type: str = kw.pop('type')
-    assert type in ('local', 'online'), f'Invalid type {type} given'
     if type == 'local': return make_local_embedding(**kw)
     elif type == 'online': return make_online_embedding(**kw)
+    else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalEmbedding')
 def make_local_embedding(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
@@ -960,6 +963,7 @@ def make_sql_manager(db_type: str = None, user: str = None, password: str = None
 def make_http(method: str, url: str, api_key: str = '', headers: dict = {}, params: dict = {}, body: str = ''):
     return HttpRequest(method=method, url=url, api_key=api_key, headers=headers, params=params, body=body)
 
+
 class SD(lazyllm.Module):
     def __init__(self, model: Union[lazyllm.TrainableModule, lazyllm.OnlineMultiModal],
                  target_dir: Optional[str] = None):
@@ -984,9 +988,9 @@ class SD(lazyllm.Module):
 def make_sd(kw: dict):
     type: str = kw.pop('type')
     target_dir: str = kw.pop('target_dir', None)
-    assert type in ('local', 'online'), f'Invalid type {type} given'
     if type == 'local': return SD(make_local_sd(**kw), target_dir)
     elif type == 'online': return SD(make_online_sd(**kw), target_dir)
+    else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalSD')
 def make_local_sd(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
@@ -1001,6 +1005,7 @@ def make_online_sd(source: str = None, base_model: Optional[str] = None, base_ur
     model = lazyllm.OnlineMultiModal(source=source, function='text2image', model=base_model,
                                      base_url=base_url, api_key=api_key)
     return model
+
 
 class FileResource(object):
     def __init__(self, id) -> None:

@@ -39,12 +39,8 @@ class OnlineMultiModalBase(LLMBase):
         """Main forward method with file handling"""
         try:
             input, files = self._get_files(input, lazyllm_files)
-            call_params = {
-                "input": input,
-                **kwargs
-            }
-            if files:
-                call_params["files"] = files
+            call_params = {"input": input, **kwargs}
+            if files: call_params["files"] = files
             return self._forward(**call_params)
 
         except Exception as e:
