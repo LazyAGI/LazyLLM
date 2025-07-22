@@ -8,7 +8,7 @@ class TestMultiModal(object):
     def setup_method(self):
         self.test_text = "你好，这是一个测试。"
         self.test_image_prompt = "画一只动漫风格的懒懒猫"
-        self.test_audio_file = 'asr_test.wav'
+        self.test_audio_file = os.path.join(lazyllm.config['data_path'], 'ci_data/asr_test.wav')
         self.test_audio_file_url = (
             'https://dashscope.oss-cn-beijing.aliyuncs.com/'
             'samples/audio/paraformer/hello_world_male2.wav'
