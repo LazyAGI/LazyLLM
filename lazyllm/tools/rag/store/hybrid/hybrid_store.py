@@ -41,12 +41,20 @@ class HybridStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
         return list(data.values())
 
     @override
-    def search(self, collection_name: str, query: Union[str, dict, List[float]], topk: int,
-               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
+    def search(self, collection_name: str, query: str, query_embedding: Optional[Union[dict, List[float]]] = None,
+               topk: int = 10, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                embed_key: Optional[str] = None, **kwargs) -> List[dict]:
         if embed_key:
-            return self.vector_store.search(collection_name=collection_name, query=query, topk=topk,
-                                            filters=filters, embed_key=embed_key, **kwargs)
+            # vector store only give uid and score
+            res = self.vector_store.search(collection_name=collection_name, query=query, query_embedding=query_embedding,
+                                           topk=topk, filters=filters, embed_key=embed_key, **kwargs)
+            if not res: return []
+            uids = [item['uid'] for item in res]
+            segments = self.segment_store.get(collection_name=collection_name, criteria={"uid": uids}, **kwargs)
+            for segment in segments:
+                segment['score'] = res[segment['uid']]['score']
+            return res
         else:
-            return self.segment_store.search(collection_name=collection_name, query=query, topk=topk,
-                                             filters=filters, **kwargs)
+            res = self.segment_store.search(collection_name=collection_name, query=query,
+                                            topk=topk, filters=filters, **kwargs)
+            return res

@@ -77,7 +77,7 @@ class _Processor:
         return nodes
 
     def _get_or_create_nodes(self, group_name, ids: Optional[List[str]] = None):
-        nodes = self._store.get_nodes(group_name, ids) if self._store.is_group_active(group_name) else []
+        nodes = self._store.get_nodes(uids=ids, group=group_name) if self._store.is_group_active(group_name) else []
         if not nodes and group_name not in (LAZY_IMAGE_GROUP, LAZY_ROOT_NAME):
             p_nodes = self._get_or_create_nodes(self._node_groups[group_name]['parent'], ids)
             nodes = self._create_nodes_impl(p_nodes, group_name)
@@ -90,12 +90,12 @@ class _Processor:
             self._get_or_create_nodes(group_name, ids)
 
     def _reparse_docs(self, group_name: str, doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict]):
-        dataset_id = metadatas[0].get(RAG_KB_ID, None)
+        kb_id = metadatas[0].get(RAG_KB_ID, None)
         if group_name == "all":
-            self._store.remove_nodes(dataset_id=dataset_id, doc_ids=doc_ids)
+            self._store.remove_nodes(doc_ids=doc_ids, kb_id=kb_id)
             removed_flag = False
             for wait_time in fibonacci_backoff():
-                nodes = self._store.get_nodes(group_name=LAZY_ROOT_NAME, dataset_id=dataset_id, doc_ids=doc_ids)
+                nodes = self._store.get_nodes(group=LAZY_ROOT_NAME, kb_id=kb_id, doc_ids=doc_ids)
                 if not nodes:
                     removed_flag = True
                     break
@@ -105,17 +105,17 @@ class _Processor:
             self.add_doc(input_files=doc_paths, ids=doc_ids, metadatas=metadatas)
         else:
             p_nodes = self._store.get_nodes(
-                group_name=self._node_groups[group_name]['parent'], dataset_id=dataset_id, doc_ids=doc_ids
+                group=self._node_groups[group_name]['parent'], kb_id=kb_id, doc_ids=doc_ids
             )
             self._reparse_group_recursive(p_nodes=p_nodes, cur_name=group_name, doc_ids=doc_ids)
 
     def _reparse_group_recursive(self, p_nodes: List[DocNode], cur_name: str, doc_ids: List[str]):
-        dataset_id = p_nodes[0].global_metadata.get(RAG_KB_ID, None)
-        self._store.remove_nodes(group_name=cur_name, dataset_id=dataset_id, doc_ids=doc_ids)
+        kb_id = p_nodes[0].global_metadata.get(RAG_KB_ID, None)
+        self._store.remove_nodes(group=cur_name, kb_id=kb_id, doc_ids=doc_ids)
 
         removed_flag = False
         for wait_time in fibonacci_backoff():
-            nodes = self._store.get_nodes(group_name=cur_name, dataset_id=dataset_id, doc_ids=doc_ids)
+            nodes = self._store.get_nodes(group=cur_name, kb_id=kb_id, doc_ids=doc_ids)
             if not nodes:
                 removed_flag = True
                 break
@@ -143,7 +143,7 @@ class _Processor:
     def delete_doc(self, doc_ids: List[str] = None, dataset_id: str = None) -> None:
         LOG.info(f"delete_doc_ids: {doc_ids}")
         if dataset_id:
-            self._store.remove_nodes(dataset_id=dataset_id, doc_ids=doc_ids)
+            self._store.remove_nodes(kb_id=dataset_id, doc_ids=doc_ids)
         else:
             self._store.remove_nodes(doc_ids=doc_ids)
 

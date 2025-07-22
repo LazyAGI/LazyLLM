@@ -20,7 +20,7 @@ class MapStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
         CREATE TABLE IF NOT EXISTS {table} (
             uid TEXT PRIMARY KEY,
             doc_id TEXT,
-            group TEXT,
+            "group" TEXT,
             content TEXT,
             meta TEXT,
             global_meta TEXT,
@@ -41,7 +41,7 @@ class MapStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
         self._ensure_table(cursor, collection_name)
         res = []
         for row in cursor.execute(
-            f"SELECT uid, doc_id, group, content, meta, global_meta,"
+            f"SELECT uid, doc_id, \"group\", content, meta, global_meta,"
             f" type, number, kb_id, excluded_embed_metadata_keys, excluded_llm_metadata_keys,"
             f" parent, answer, image_keys FROM {collection_name}"
         ):
@@ -60,15 +60,15 @@ class MapStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
         for item in res:
             self._uid2data[item['uid']] = item
             self._collection2uids[collection_name].add(item['uid'])
+            self._col_doc_uids[collection_name][item['doc_id']].add(item['uid'])
             self._col_kb_doc_uids[collection_name][item['kb_id']][item['doc_id']].add(item['uid'])
-            self._docid2uids[item['doc_id']].add(item['uid'])
 
     def _save_to_uri(self, collection_name: str, uri: str, data: List[dict]):
         conn = sqlite3.connect(uri)
         cursor = conn.cursor()
         self._ensure_table(cursor, collection_name)
         sql = f"INSERT OR REPLACE INTO {collection_name} (\
-                uid, doc_id, group, content,\
+                uid, doc_id, \"group\", content,\
                 meta, global_meta, type, number, kb_id,\
                 excluded_embed_metadata_keys, excluded_llm_metadata_keys,\
                 parent, answer, image_keys)\
@@ -90,7 +90,7 @@ class MapStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
     def lazy_init(self, collections: Optional[List[str]] = None, **kwargs):
         self._uid2data: Dict[str, dict] = {}
         self._collection2uids: Dict[str, Set[str]] = defaultdict(set)
-        self._docid2uids: Dict[str, Set[str]] = defaultdict(set)
+        self._col_doc_uids: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
         self._col_kb_doc_uids: Dict[str, Dict[str, Dict[str, Set[str]]]] = defaultdict(
             lambda: defaultdict(lambda: defaultdict(set)))
 
@@ -109,7 +109,7 @@ class MapStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
                 self._uid2data[uid] = item
                 self._collection2uids[collection_name].add(uid)
                 self._col_kb_doc_uids[collection_name][item.get('kb_id', DEFAULT_KB_ID)][doc_id].add(uid)
-                self._docid2uids[doc_id].add(uid)
+                self._col_doc_uids[collection_name][doc_id].add(uid)
             if self._uri:
                 self._save_to_uri(collection_name, self._uri, data)
         except Exception as e:
@@ -129,7 +129,7 @@ class MapStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
                     continue
                 self._collection2uids[collection_name].remove(uid)
                 self._col_kb_doc_uids[collection_name][data.get('kb_id', DEFAULT_KB_ID)][data.get('doc_id')].remove(uid)
-                self._docid2uids[data.get('doc_id')].remove(uid)
+                self._col_doc_uids[collection_name][data.get('doc_id')].remove(uid)
             if self._uri:
                 conn = sqlite3.connect(self._uri)
                 cursor = conn.cursor()
@@ -153,9 +153,9 @@ class MapStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
         else:
             uids = criteria.get('uid', [])
             kb_id = criteria.get('kb_id')
-            doc_ids = criteria.get('doc_ids', [])
+            doc_ids = criteria.get('doc_id', [])
             if uids:
-                return uids
+                return [uid for uid in uids if uid in self._collection2uids.get(collection_name, set())]
             elif kb_id and doc_ids:
                 return [uid for doc_id in doc_ids
                         for uid in self._col_kb_doc_uids.get(collection_name, {}).get(kb_id, {}).get(doc_id, ())]
@@ -164,7 +164,7 @@ class MapStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
                 return [uid for doc_id in doc_ids
                         for uid in self._col_kb_doc_uids.get(collection_name, {}).get(kb_id, {}).get(doc_id, ())]
             elif doc_ids:
-                return [uid for doc_id in doc_ids for uid in self._docid2uids.get(doc_id, ())]
+                return [uid for doc_id in doc_ids for uid in self._col_doc_uids.get(collection_name, {}).get(doc_id, ())]
             else:
                 raise ValueError(f"[MapStore - get] Invalid criteria: {criteria}")
 

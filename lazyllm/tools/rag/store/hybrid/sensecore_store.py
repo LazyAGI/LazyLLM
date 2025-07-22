@@ -1,6 +1,5 @@
 import os
 import json
-import copy
 import uuid
 import time
 import requests
@@ -9,16 +8,13 @@ from pydantic import BaseModel, Field
 from urllib.parse import urljoin
 from typing import Optional, List, Dict, Any, Union, Set
 
-from ..store_base import (LazyLLMStoreBase, StoreCapability, LAZY_ROOT_NAME, BUILDIN_GLOBAL_META_DESC,
-                          IMAGE_PATTERN, INSERT_BATCH_SIZE)
+from ..store_base import LazyLLMStoreBase, StoreCapability, LAZY_ROOT_NAME, IMAGE_PATTERN, INSERT_BATCH_SIZE, SegmentType
 from ..utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, create_file_path
 
-from ...index_base import IndexBase
 from ...data_type import DataType
-from ...doc_node import ImageDocNode, QADocNode, DocNode
 from ...global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
 
-from lazyllm import warp, pipeline, LOG, config
+from lazyllm import warp, pipeline, LOG, config, once_wrapper
 from lazyllm.common import override
 from lazyllm.thirdparty import boto3
 
@@ -34,7 +30,7 @@ class Segment(BaseModel):
     excluded_embed_metadata_keys: Optional[List[str]] = Field(default_factory=list)
     excluded_llm_metadata_keys: Optional[List[str]] = Field(default_factory=list)
     parent: Optional[str] = ""
-    children: Dict[str, Any] = Field(default_factory=dict)
+    children: Optional[Dict[str, Any]] = Field(default_factory=dict)
     embedding_state: Optional[List[str]] = Field(default_factory=list)
     answer: Optional[str] = ""
     image_keys: Optional[List[str]] = Field(default_factory=list)
@@ -42,19 +38,10 @@ class Segment(BaseModel):
 
 
 class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
-    def __init__(self, group_embed_keys: Dict[str, Set[str]],
-                 global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
-                 kb_id: str = "__default__", uri: str = "", **kwargs):
+    def __init__(self, uri: str = "", **kwargs):
         self._uri = uri
-        self._kb_id = kb_id
-        self._group_embed_keys = group_embed_keys
         self._s3_config = kwargs.get("s3_config")
         self._image_url_config = kwargs.get("image_url_config")
-        self._activated_groups = set()
-        if global_metadata_desc:
-            self._global_metadata_desc = global_metadata_desc | BUILDIN_GLOBAL_META_DESC
-        else:
-            self._global_metadata_desc = BUILDIN_GLOBAL_META_DESC
 
         if self._connect_store(uri):
             LOG.info(f"Connected to doc store {self._uri}")
@@ -62,10 +49,11 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
             raise ConnectionError(f"Failed to connect to doc store {self._uri}")
 
     @override
-    def _connect_store(self, uri: str) -> bool:
-        # TODO get the url for testing connection
+    @once_wrapper(reset_on_pickle=True)
+    def lazy_init(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs) -> None:
+        """ load the store """
         self._check_s3()
-        return True
+        self._global_metadata_desc = global_metadata_desc
 
     def _check_s3(self):
         obj_key = "lazyllm/warmup.txt"
@@ -75,84 +63,74 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
                           use_minio=self._s3_config["use_minio"], endpoint_url=self._s3_config["endpoint_url"])
         return
 
-    def _serialize_node(self, node: DocNode) -> Dict:  # noqa: C901
+    def _serialize_data(self, data: dict) -> Dict:  # noqa: C901
         """ serialize node to dict """
-        segment = Segment(segment_id=node._uid, dataset_id=node.global_metadata.get(RAG_KB_ID, None) or self._kb_id,
-                          document_id=node.global_metadata.get(RAG_DOC_ID), group=node._group,
-                          meta=json.dumps(node._metadata, ensure_ascii=False),
-                          excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
-                          excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
-                          global_meta=json.dumps(node.global_metadata, ensure_ascii=False),
-                          children={group: {"ids": [n._uid for n in c_l]} for group, c_l in node.children.items()},
-                          embedding_state=node._embedding_state, number=node._metadata.get("store_num", 0))
-        if node.parent:
-            if isinstance(node.parent, DocNode):
-                segment.parent = node.parent._uid
-            elif isinstance(node.parent, str):
-                segment.parent = node.parent
+        data = dict(data)
+        content = json.dumps(data.get('content', ''), ensure_ascii=False)
+        matches = IMAGE_PATTERN.findall(content)
+        for title, image_path in matches:
+            if image_path.startswith("lazyllm"):
+                continue
+            image_file_name = os.path.basename(image_path)
+            obj_key = f"lazyllm/images/{image_file_name}"
+            try:
+                prefix = config['image_path_prefix']
+            except Exception:
+                prefix = os.getenv("RAG_IMAGE_PATH_PREFIX", "")
+            file_path = create_file_path(path=image_path, prefix=prefix)
+            try:
+                with open(file_path, "rb") as f:
+                    upload_data_to_s3(f.read(), bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
+                                      aws_access_key_id=self._s3_config["access_key"],
+                                      aws_secret_access_key=self._s3_config["secret_access_key"],
+                                      use_minio=self._s3_config["use_minio"],
+                                      endpoint_url=self._s3_config["endpoint_url"])
+                    content = content.replace(image_path, obj_key)
+            except FileNotFoundError:
+                LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
+            except Exception as e:
+                LOG.error(f"Error when uploading `{image_path}` {e!r}")
+        data['content'] = json.loads(content)
 
-        if node._group == LAZY_ROOT_NAME:
-            # content is root, process image key
-            content = json.dumps(node._content, ensure_ascii=False)
-            # image extract
-            matches = IMAGE_PATTERN.findall(content)
-            for title, image_path in matches:
-                if image_path.startswith("lazyllm"):
-                    continue
-                image_file_name = os.path.basename(image_path)
-                obj_key = f"lazyllm/images/{image_file_name}"
-                try:
-                    prefix = config['image_path_prefix']
-                except Exception:
-                    prefix = os.getenv("RAG_IMAGE_PATH_PREFIX", "")
-                file_path = create_file_path(path=image_path, prefix=prefix)
-                try:
-                    with open(file_path, "rb") as f:
-                        upload_data_to_s3(f.read(), bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
-                                          aws_access_key_id=self._s3_config["access_key"],
-                                          aws_secret_access_key=self._s3_config["secret_access_key"],
-                                          use_minio=self._s3_config["use_minio"],
-                                          endpoint_url=self._s3_config["endpoint_url"])
-                        content = content.replace(image_path, obj_key)
-                except FileNotFoundError:
-                    LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
-                except Exception as e:
-                    LOG.error(f"Error when uploading `{image_path}` {e!r}")
-            node._content = json.loads(content)
-            # image extract
-            matches = IMAGE_PATTERN.findall(content)
-            for title, image_path in matches:
-                segment.image_keys.append(image_path)
-
-            # upload content
-            obj_key = f"lazyllm/lazyllm_root/{node._uid}.json"
+        if data.get('group') == LAZY_ROOT_NAME:
+            obj_key = f"lazyllm/lazyllm_root/{data.get('uid')}.json"
             upload_data_to_s3(content.encode('utf-8'), bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
                               aws_access_key_id=self._s3_config["access_key"],
                               aws_secret_access_key=self._s3_config["secret_access_key"],
                               use_minio=self._s3_config["use_minio"], endpoint_url=self._s3_config["endpoint_url"])
-            segment.content = obj_key
-        else:
-            segment.content = node._content
+            data['content'] = obj_key
 
-            content = json.dumps(node._content, ensure_ascii=False)
-            # image extract
-            matches = IMAGE_PATTERN.findall(content)
-            for title, image_path in matches:
-                segment.image_keys.append(image_path)
+        segment = Segment(segment_id=data.get('uid', ''), dataset_id=data.get(RAG_KB_ID, ''),
+                          document_id=data.get(RAG_DOC_ID, ''), group=data.get('group', ''),
+                          content=data.get('content', ''), meta=json.dumps(data.get('meta', {}), ensure_ascii=False),
+                          excluded_embed_metadata_keys=data.get('excluded_embed_metadata_keys', []),
+                          excluded_llm_metadata_keys=data.get('excluded_llm_metadata_keys', []),
+                          parent=data.get('parent', ''),
+                          global_meta=json.dumps(data.get('global_meta', {}), ensure_ascii=False),
+                          answer=data.get('answer', ''), number=data.get('number', 0))
+        # image extract
+        matches = IMAGE_PATTERN.findall(segment.content)
+        for title, image_path in matches:
+            segment.image_keys.append(image_path)
 
-        if isinstance(node, ImageDocNode):
-            image_path = node._image_path
+        if data.get('type') == SegmentType.IMAGE.value and data.get('image_keys'):
+            image_path = data.get('image_keys', [])[0]
             image_file_name = os.path.basename(image_path)
             obj_key = f"lazyllm/images/{image_file_name}"
-            with open(image_path, "rb") as f:
-                upload_data_to_s3(f.read(), bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
-                                  aws_access_key_id=self._s3_config["access_key"],
-                                  aws_secret_access_key=self._s3_config["secret_access_key"],
-                                  use_minio=self._s3_config["use_minio"], endpoint_url=self._s3_config["endpoint_url"])
+            try:
+                with open(image_path, "rb") as f:
+                    upload_data_to_s3(f.read(), bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
+                                      aws_access_key_id=self._s3_config["access_key"],
+                                      aws_secret_access_key=self._s3_config["secret_access_key"],
+                                      use_minio=self._s3_config["use_minio"],
+                                      endpoint_url=self._s3_config["endpoint_url"])
                 segment.image_keys = [obj_key]
-        elif isinstance(node, QADocNode):
-            answer = node._answer
-            # image extract
+            except FileNotFoundError:
+                LOG.error(f"Cannot find image path: {image_path} (local path {image_path}), skip...")
+            except Exception as e:
+                LOG.error(f"Error when uploading `{image_path}` {e!r}")
+        elif data.get('type') == SegmentType.QA.value and data.get('answer'):
+            answer = data.get('answer')
             matches = IMAGE_PATTERN.findall(answer)
             for title, image_path in matches:
                 if image_path.startswith("lazyllm"):
@@ -176,43 +154,43 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
                     LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
                 except Exception as e:
                     LOG.error(f"Error when uploading `{image_path}` {e!r}")
-            node._answer = answer
-
-            matches = IMAGE_PATTERN.findall(node._answer)
+            data['answer'] = answer
+            matches = IMAGE_PATTERN.findall(data['answer'])
             for title, image_path in matches:
                 segment.image_keys.append(image_path)
-
-            segment.answer = node._answer
+            segment.answer = data['answer']
         return segment.model_dump()
 
-    def _deserialize_node(self, segment: Dict) -> DocNode:
+    def _deserialize_data(self, segment: Dict) -> Dict:
         """ deserialize node from dict """
-        if len(segment.get("answer", "")):
-            node = QADocNode(query=segment["content"], answer=segment["answer"], uid=segment["segment_id"],
-                             group=segment["group"], metadata=json.loads(segment["meta"]),
-                             global_metadata=json.loads(segment["global_meta"]), parent=segment["parent"])
+        data = {
+            "uid": segment.get("segment_id", ""),
+            "doc_id": segment.get("document_id", ""),
+            "group": segment.get("group", ""),
+            "content": segment.get("content", ""),
+            "meta": json.loads(segment.get("meta", "{}")),
+            "global_meta": json.loads(segment.get("global_meta", "{}")),
+            "number": segment.get("number", 0),
+            "kb_id": segment.get("dataset_id", ""),
+            "excluded_embed_metadata_keys": segment.get("excluded_embed_metadata_keys", []),
+            "excluded_llm_metadata_keys": segment.get("excluded_llm_metadata_keys", []),
+            "parent": segment.get("parent", ""),
+            "answer": segment.get("answer", ""),
+            "image_keys": segment.get("image_keys", []),
+        }
+        if len(data.get("answer", "")):
+            data["type"] = SegmentType.QA.value
         else:
-            node = DocNode(uid=segment["segment_id"], content=segment["content"], group=segment["group"],
-                           metadata=json.loads(segment["meta"]), global_metadata=json.loads(segment["global_meta"]),
-                           parent=segment["parent"])
-        node.excluded_llm_metadata_keys = segment["excluded_embed_metadata_keys"]
-        node.excluded_embed_metadata_keys = segment["excluded_llm_metadata_keys"]
-        if segment["children"]:
-            children = {group: item["ids"] for group, item in segment["children"].items()}
-        else:
-            children = {}
-        node.children = children
-        if node._group == LAZY_ROOT_NAME and node._content.startswith("lazyllm/lazyllm_root/"):
-            obj_key = node._content
+            data["type"] = SegmentType.TEXT.value
+        if data.get("group") == LAZY_ROOT_NAME and data.get("content").startswith("lazyllm/lazyllm_root/"):
+            obj_key = data.get("content")
             content = download_data_from_s3(bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
                                             aws_access_key_id=self._s3_config["access_key"],
                                             aws_secret_access_key=self._s3_config["secret_access_key"],
                                             use_minio=self._s3_config["use_minio"],
                                             endpoint_url=self._s3_config["endpoint_url"], encoding="utf-8")
-            node._content = json.loads(content)
-        if segment.get("metadata", {}) is not None:
-            node = node.with_sim_score(score=segment.get("metadata", {}).get("score", 0))
-        return node
+            data["content"] = json.loads(content)
+        return data
 
     def _create_filters_str(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
         ret_str = ""
@@ -234,56 +212,24 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
             return ret_str[:-5]  # truncate the last ' and '
         return ret_str
 
-    @override
-    def update_nodes(self, nodes: List[DocNode]):
-        """ update nodes to the store """
-        filtered_nodes = []
-        for node in nodes:
-            if isinstance(node, QADocNode):
-                kb_id = node.global_metadata.get(RAG_KB_ID)
-                source_file = node.metadata["source_file_name"]
-                source_chunk = node.metadata["source_chunk"]
-                target_nodes = self.query(query=source_chunk, group_name="block", topk=1, embed_keys=["bge_m3_dense"],
-                                          filters={"kb_id": [kb_id], "file_name": [source_file]})
-                if not len(target_nodes):
-                    LOG.warning(f"cannot find file for qa node: source_file {source_file}, chunk {source_chunk}")
-                    continue
-            filtered_nodes.append(node)
-        if not filtered_nodes:
-            LOG.warning("no nodes to update")
-            return
-        group_cnt = {}
-        for node in filtered_nodes:
-            if node._group not in group_cnt:
-                group_cnt[node._group] = 1
-            node._metadata["store_num"] = group_cnt[node._group]
-            group_cnt[node._group] += 1
-
-        with pipeline() as insert_ppl:
-            insert_ppl.get_ids = warp(self._upload_nodes_and_insert).aslist
-            insert_ppl.check_status = warp(self._check_insert_job_status)
-
-        batched_nodes = [
-            filtered_nodes[i:i + INSERT_BATCH_SIZE] for i in range(0, len(filtered_nodes), INSERT_BATCH_SIZE)]
-        insert_ppl(batched_nodes)
-        return
-
-    def _upload_nodes_and_insert(self, segments: List[DocNode]) -> str:
+    def _upload_data_and_insert(self, data: List[dict]) -> str:
         try:
             job_id = str(uuid.uuid4())
             groups = set()
-            for node in segments:
-                groups.add(node._group)
+            for item in data:
+                groups.add(item.get("group"))
             groups = list(groups)
-
-            segments = [self._serialize_node(node) for node in segments]
+            data = [self._serialize_data(item) for item in data]
             dataset_id = None
-            for segment in segments:
-                dataset_id = segment.get("dataset_id", None)
+            for item in data:
+                dataset_id = item.get("dataset_id", None)
                 break
+            if not dataset_id:
+                raise ValueError("dataset_id is required in SenseCoreStore")
+
             obj_key = f"lazyllm/segments/{job_id}.jsonl"
 
-            upload_data_to_s3(data=segments, bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
+            upload_data_to_s3(data=data, bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
                               aws_access_key_id=self._s3_config["access_key"],
                               aws_secret_access_key=self._s3_config["secret_access_key"],
                               use_minio=self._s3_config["use_minio"], endpoint_url=self._s3_config["endpoint_url"])
@@ -317,19 +263,34 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
                 time.sleep(wait_time)
         raise Exception(f"Insert task {job_id} failed after seconds")
 
+    def _get_group_name(self, collection_name: str) -> str:
+        return collection_name.split("_")[-1]
+
     @override
-    def remove_nodes(self, group_name: Optional[str] = None, dataset_id: Optional[str] = None,
-                     doc_ids: Optional[List[str]] = None, uids: Optional[List[str]] = None) -> None:
-        """ remove nodes from the store by doc_ids or uids """
+    def upsert(self, collection_name: str, data: List[dict]) -> bool:
+        """ upsert data to the store """
+        if not data: return
+        with pipeline() as insert_ppl:
+            insert_ppl.get_ids = warp(self._upload_data_and_insert).aslist
+            insert_ppl.check_status = warp(self._check_insert_job_status)
+
+        batched_data = [data[i:i + INSERT_BATCH_SIZE] for i in range(0, len(data), INSERT_BATCH_SIZE)]
+        insert_ppl(batched_data)
+        return
+
+    @override
+    def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
+        """ delete data from the store """
         try:
             url = urljoin(self._uri, "v1/segments:bulkDelete")
             headers = {"Accept": "*/*", "Content-Type": "application/json"}
-            if doc_ids:
-                payload = {"dataset_id": dataset_id or self._kb_id, "document_ids": doc_ids}
+
+            if criteria.get(RAG_DOC_ID):
+                payload = {"dataset_id": criteria.get(RAG_KB_ID), "document_ids": criteria.get(RAG_DOC_ID)}
             else:
-                payload = {"dataset_id": dataset_id or self._kb_id, "segment_ids": uids}
-            if group_name:
-                payload["group"] = group_name
+                payload = {"dataset_id": criteria.get(RAG_KB_ID), "segment_ids": criteria.get("uid")}
+            if collection_name:
+                payload["group"] = self._get_group_name(collection_name)
             response = requests.post(url, headers=headers, json=payload)
             response.raise_for_status()
         except Exception as e:
@@ -338,32 +299,28 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
         return
 
     @override
-    def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,  # noqa: C901
-                  doc_ids: Optional[Set] = None, dataset_id: Optional[str] = None,
-                  display: bool = False) -> List[DocNode]:
-        """ get nodes from the store """
-        if not (uids or group_name):
-            raise ValueError("group_name or uids must be provided")
+    def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:  # noqa: C901
+        """ get data from the store """
+        uids = criteria.get("uid")
+        doc_ids = criteria.get(RAG_DOC_ID)
+        kb_id = criteria.get(RAG_KB_ID)
+        if not (uids or doc_ids):
+            raise ValueError("uid or doc_id must be provided")
         if doc_ids and len(doc_ids) > 1:
-            raise ValueError("[Sensecore Store] - get_nodes: doc_ids must be a single value")
+            raise ValueError("[Sensecore Store] - get: doc_ids must be a single value")
         doc_id = doc_ids[0] if doc_ids else None
-        dataset_id = dataset_id or self._kb_id
-
         if doc_id and not uids:
-            url = urljoin(self._uri, f"v1/datasets/{dataset_id}/documents/{doc_id}/segments:search")
+            url = urljoin(self._uri, f"v1/datasets/{kb_id}/documents/{doc_id}/segments:search")
         else:
             url = urljoin(self._uri, "v1/segments:scroll")
-
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        payload = {"dataset_id": dataset_id}
-        if group_name:
-            payload["group"] = group_name
+        payload = {"dataset_id": kb_id}
+        if collection_name:
+            payload["group"] = self._get_group_name(collection_name)
         if doc_id:
             payload["document_id"] = doc_id
         if uids:
             payload["segment_ids"] = uids
-        else:
-            payload["page_size"] = 100
         segments = []
         while True:
             response = requests.post(url, headers=headers, json=payload)
@@ -381,9 +338,9 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
             payload['page_token'] = next_page_token
         if doc_ids:
             segments = [segment for segment in segments if segment['document_id'] in doc_ids]
-        if display:
+        if kwargs.get("display"):
             segments = self._apply_display(segments)
-        return [self._deserialize_node(s) for s in segments]
+        return [self._deserialize_data(s) for s in segments]
 
     def _apply_display(self, segments: List[dict]) -> List[dict]:
         out = []
@@ -409,20 +366,16 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
         return query, urls
 
     @override
-    def query(self, query: str, group_name: str, topk: int = 10, embed_keys: Optional[List[str]] = None,  # noqa: C901
-              filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
-        """ search nodes from the store """
+    def search(self, collection_name: str, query: Union[str, dict, List[float]], topk: int,  # noqa: C901
+               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
+               embed_key: Optional[str] = None, **kwargs) -> List[dict]:
         try:
-            if not embed_keys:
-                raise ValueError("[Sensecore Store] Query: embed_keys must be provided")
+            if not embed_key:
+                raise ValueError("[Sensecore Store] Query: embed_key must be provided")
             url = urljoin(self._uri, "v1/segments:hybrid")
             headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
-            original_filters = copy.deepcopy(filters)
-            if group_name == 'qa':
-                filters = {"kb_id": filters.get("kb_id", [])}
             filter_str = self._create_filters_str(filters) if filters else None
-
             dataset_ids = []
             if filters:
                 for name, candidates in filters.items():
@@ -430,13 +383,13 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
                     if not desc:
                         raise ValueError(f'cannot find desc of field [{name}]')
                     key = name
-                    if key == "kb_id":
+                    if key == RAG_KB_ID:
                         if isinstance(candidates, str):
                             candidates = [candidates]
                         if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
                             candidates = list(candidates)
                         dataset_ids = candidates
-
+                        break
             if dataset_ids:
                 hybrid_search_datasets = [{"dataset_id": dataset_id} for dataset_id in dataset_ids]
             else:
@@ -446,105 +399,18 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
             images = kwargs.get("images", [])
             if images:
                 query, images = self._multi_modal_process(query, images)
-
-            nodes = []
-            for embed_key in embed_keys:
-                payload = {"query": query, "hybrid_search_datasets": hybrid_search_datasets, "hybrid_search_type": 2,
-                           "top_k": topk, "filters": filter_str, "group": group_name, "embedding_model": embed_key,
-                           "images": images}
-                LOG.info(f"[Sensecore Store]: query request body: {payload}.")
-                response = requests.post(url, headers=headers, json=payload)
-                response.raise_for_status()
-                segments = response.json()['segments']
-                segments = [s for s in segments if s['is_active']]
-                for s in segments:
-                    if len(s.get('display_content', '')):
-                        s['content'] = s['display_content']
-                if group_name == 'qa':
-                    for segment in segments:
-                        node = self._deserialize_node(segment)
-                        source_file = node.metadata.get("source_file_name", "")
-                        if not source_file:
-                            continue
-                        source_chunk = node.metadata.get("source_chunk", "")
-                        original_filters["file_name"] = [source_file]
-                        target_nodes = self.query(query=source_chunk, group_name="block", topk=1,
-                                                  embed_keys=["bge_m3_dense"], filters=original_filters)
-                        if len(target_nodes):
-                            node.global_metadata.update(target_nodes[0].global_metadata)
-                            node.metadata.update(target_nodes[0].metadata)
-                            nodes.append(node)
-                else:
-                    nodes.extend([self._deserialize_node(node) for node in segments])
-            return nodes
+            payload = {"query": query, "hybrid_search_datasets": hybrid_search_datasets, "hybrid_search_type": 2,
+                       "top_k": topk, "filters": filter_str, "group": self._get_group_name(collection_name),
+                       "embedding_model": embed_key, "images": images}
+            LOG.info(f"[Sensecore Store]: query request body: {payload}.")
+            response = requests.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            segments = response.json()['segments']
+            segments = [s for s in segments if s['is_active']]
+            for s in segments:
+                if len(s.get('display_content', '')):
+                    s['content'] = s['display_content']
+            return segments
         except Exception as e:
             LOG.error(f"SenseCore Store: query task failed: {e}")
             raise e
-
-    @override
-    def register_index(self, type: str, index: IndexBase) -> None:
-        """ register index to the store (for store that support hook only)"""
-        raise NotImplementedError("register_index is not supported for SenseCoreStore."
-                                  "Please use register_index for store that support hook")
-
-    @override
-    def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
-        """ get registered index from the store """
-        raise NotImplementedError('get_index is not supported for SenseCoreStore.')
-
-    @override
-    def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
-        """ update doc meta """
-        # TODO 性能优化
-        dataset_id = metadata.get(RAG_KB_ID, None)
-        nodes: List[DocNode] = []
-        for group in self.activated_groups():
-            group_nodes = self.get_nodes(group_name=group, dataset_id=dataset_id, doc_ids=[doc_id])
-            nodes.extend(group_nodes)
-
-        for node in nodes:
-            node.global_metadata.update(metadata)
-        self.update_nodes(nodes)
-        return
-
-    @override
-    def all_groups(self) -> List[str]:
-        """ get all node groups for Document """
-        return list(self._activated_groups)
-
-    @override
-    def activate_group(self, group_names: Union[str, List[str]]):
-        if isinstance(group_names, str): group_names = [group_names]
-        active_groups = []
-        for group_name in group_names:
-            if group_name.isupper():
-                LOG.error(f"Group name {group_name} should be lowercase (`_` is allowed)")
-                continue
-            active_groups.append(group_name)
-        self._activated_groups.update(active_groups)
-
-    @override
-    def activated_groups(self):
-        return list(self._activated_groups)
-
-    @override
-    def is_group_active(self, name: str) -> bool:
-        """ check if a group has nodes (active) """
-        try:
-            url = urljoin(self._uri, "/v1/segments:scroll")
-            headers = {"Accept": "application/json", "Content-Type": "application/json"}
-            payload = {"dataset_id": self._kb_id, "group": name}
-
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            if len(data.get("segments", [])):
-                return True
-        except Exception as e:
-            LOG.error(f"is_group_active error for group {name}: {str(e)}")
-        return False
-
-    @override
-    def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
-        """ clear cache for a group """
-        raise NotImplementedError("clear_cache is not supported for SenseCoreStore.")

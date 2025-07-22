@@ -135,14 +135,24 @@ class DocumentStore(object):
     def is_group_empty(self, group: str) -> bool:
         return not self._impl.get(self._gen_collection_name(group), {})
 
-    def update_nodes(self, nodes: List[DocNode]):
+    def update_nodes(self, nodes: List[DocNode]):   # noqa: C901
         if not nodes:
             return
         try:
-            parallel_do_embedding(self._embed, [], nodes, self._group_embed_keys)
+            # NOTE: sensecore store do embedding by itself, skip
+            if not isinstance(self._impl, SenseCoreStore):
+                parallel_do_embedding(self._embed, [], nodes, self._group_embed_keys)
             group_segments = defaultdict(list)
             for node in nodes:
                 group_segments[node._group].append(self._serialize_node(node))
+
+            group_cnt = {}
+            for group, segments in group_segments.items():
+                if group not in group_cnt:
+                    group_cnt[group] = 1
+                for segment in segments:
+                    segment["number"] = group_cnt[group]
+                group_cnt[group] += 1
             # upsert batch segments
             for group, segments in group_segments.items():
                 if not self.is_group_active(group):
@@ -164,10 +174,13 @@ class DocumentStore(object):
         # remove the nodes of a certain group for one file -- doc ids and group (kb_id is optional)
         # forbid to remove the nodes from multiple kb
         try:
+            criteria = {}
             if uids:
                 criteria = {"uid": uids}
-            else:
-                criteria = {RAG_DOC_ID: doc_ids, RAG_KB_ID: kb_id or DEFAULT_KB_ID}
+            if doc_ids:
+                criteria[RAG_DOC_ID] = doc_ids
+            if kb_id:
+                criteria[RAG_KB_ID] = kb_id
             if not group:
                 groups = self._activated_groups
             else:
@@ -214,7 +227,7 @@ class DocumentStore(object):
                 if not self.is_group_active(group):
                     LOG.warning(f"[DocumentStore - {self._algo_name}] Group {group} is not active, skip")
                     continue
-                segments.extend(self._impl.get(self._gen_collection_name(group), criteria))
+                segments.extend(self._impl.get(self._gen_collection_name(group), criteria, **kwargs))
             return segments
         except Exception as e:
             LOG.error(f"[DocumentStore - {self._algo_name}] Failed to get segments: {e}")
@@ -243,8 +256,7 @@ class DocumentStore(object):
         if isinstance(self._impl, MapStore):
             return self.get_index("default").query(query, group_name, similarity_name, similarity_cut_off,
                                                    topk, embed_keys, filters, **kwargs)
-        nodes = []
-        uid_score = {}
+        segments = []
         if embed_keys:
             if self._impl.capability == StoreCapability.SEGMENT:
                 raise ValueError(f"[DocumentStore - {self._algo_name}] Embed keys {embed_keys}"
@@ -252,28 +264,27 @@ class DocumentStore(object):
             # vector search
             for embed_key in embed_keys:
                 query_embedding = self._embed.get(embed_key)(query)
-                search_res = self._impl.search(self._gen_collection_name(group_name), query_embedding,
-                                               topk, filters, embed_key=embed_key)
+                search_res = self._impl.search(collection_name=self._gen_collection_name(group_name),
+                                               query=query, query_embedding=query_embedding,
+                                               topk=topk, filters=filters, embed_key=embed_key, **kwargs)
                 if search_res:
                     sim_cut_off = similarity_cut_off if isinstance(similarity_cut_off, float)\
                         else similarity_cut_off[embed_key]
                     for res in search_res:
-                        if res["score"] < sim_cut_off:
+                        if res.get("score", 0) < sim_cut_off:
                             continue
-                        uid_score[res['uid']] = res['score'] if res['uid'] not in uid_score \
-                            else max(uid_score[res['uid']], res['score'])
+                        segments.append(res)
         else:
             # text search
             if self._impl.capability == StoreCapability.VECTOR:
                 raise ValueError(f"[DocumentStore - {self._algo_name}] Text search is not"
                                  " supported when no segment store is provided")
-            search_res = self._impl.search(self._gen_collection_name(group_name), query, topk, filters)
+            search_res = self._impl.search(collection_name=self._gen_collection_name(group_name),
+                                           query=query, topk=topk, filters=filters, **kwargs)
             if search_res:
-                uid_score = {res['uid']: res['score'] for res in search_res}
-        uids = list(uid_score.keys())
-        if not uids: return []
-        nodes = self.get_nodes(uids=uids, group=group_name)
-        return [node.with_sim_score(uid_score[node._uid]) for node in nodes]
+                segments.extend(search_res)
+        if not segments: return []
+        return [self._deserialize_node(segment, segment.get('score', 0)) for segment in segments]
 
     def _validate_query_params(self, group_name: str, similarity: str,
                                embed_keys: Optional[List[str]] = None, **kwargs) -> bool:
@@ -306,7 +317,7 @@ class DocumentStore(object):
         else:
             raise TypeError(f"Invalid type {type(groups)} for groups, expected list of str")
         for group in groups:
-            self._impl.delete(self._gen_collection_name(group), {})
+            self._impl.delete(self._gen_collection_name(group))
 
     def register_index(self, type: str, index: IndexBase) -> None:
         # TODO: By now, only map store support index registration
@@ -348,7 +359,7 @@ class DocumentStore(object):
             res["embedding"] = {k: v for k, v in node.embedding.items()}
         return res
 
-    def _deserialize_node(self, data: dict) -> DocNode:
+    def _deserialize_node(self, data: dict, score: Optional[float] = None) -> DocNode:
         if data["type"] == SegmentType.QA.value:
             node = QADocNode(query=data["content"], answer=data["answer"], uid=data["uid"],
                              group=data["group"], parent=data["parent"],
@@ -367,7 +378,7 @@ class DocumentStore(object):
         node.excluded_llm_metadata_keys = data["excluded_llm_metadata_keys"]
         if "embedding" in data:
             node.embedding = {k[len(EMBED_PREFIX):]: v for k, v in data.get("embedding", {}).items()}
-        return node
+        return node.with_sim_score(score) if score else node
 
     def _gen_collection_name(self, group: str) -> str:
         return f"col_{self._algo_name}_{group}".lower()

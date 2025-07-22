@@ -1,5 +1,7 @@
 import json
 import ast
+import threading
+import time
 from enum import Enum
 from functools import wraps
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
@@ -12,12 +14,10 @@ from .store.document_store import DocumentStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
 from .utils import DocListManager, is_sparse
-from .global_metadata import GlobalMetadataDesc
+from .global_metadata import GlobalMetadataDesc, RAG_KB_ID
 from .data_type import DataType
 from .doc_processor import _Processor, DocumentProcessor
 from dataclasses import dataclass
-import threading
-import time
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
@@ -455,7 +455,7 @@ class DocImpl:
                 parent_uids = set()
                 for node in cur_nodes:
                     parent_uids.add(node.parent)
-                dataset_id = cur_nodes[0].global_metadata.get("kb_id", None)
+                dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
                 LOG.info(f"Store get_nodes: {name} {dataset_id}, {parent_uids}")
                 parents = self.store.get_nodes(group_name=name, dataset_id=dataset_id,
                                                uids=list(parent_uids), display=True)
@@ -517,14 +517,14 @@ class DocImpl:
 
                 if next_group == group:
                     parent_uids = [n._uid for n in cur_nodes]
-                    dataset_id = cur_nodes[0].global_metadata.get("kb_id", None)
+                    dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
                     children = self.store.get_nodes(group_name=group, dataset_id=dataset_id,
                                                     uids=parent_uids, display=True)
                     result.update(children)
                     break
                 else:
                     parent_uids = [n._uid for n in cur_nodes]
-                    dataset_id = cur_nodes[0].global_metadata.get("kb_id", None)
+                    dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
                     cur_nodes = self.store.get_nodes(group_name=next_group, dataset_id=dataset_id,
                                                      uids=parent_uids, display=True)
                     cur_group = next_group

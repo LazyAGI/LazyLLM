@@ -89,14 +89,14 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
             return False
 
     @override
-    def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
+    def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
         """ delete data from the store """
         try:
             self._check_connection()
             if not self._client.has_collection(collection_name):
                 return True
             self._client.load_collection(collection_name)
-            if len(criteria) == 0:
+            if not criteria:
                 self._client.drop_collection(collection_name=collection_name)
             else:
                 self._client.delete(collection_name=collection_name, **self._construct_criteria(criteria))
@@ -106,7 +106,7 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
             return False
 
     @override
-    def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:
+    def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
         """ get data from the store """
         try:
             self._check_connection()
@@ -116,10 +116,10 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
             col_desc = self._client.describe_collection(collection_name=collection_name)
             field_names = [field.get("name") for field in col_desc.get('fields', [])
                            if field.get("name").startswith(EMBED_PREFIX)]
-            if self._primary_key in criteria:
+            if criteria and self._primary_key in criteria:
                 res = self._client.get(collection_name=collection_name, ids=criteria[self._primary_key])
             else:
-                filters = self._construct_criteria(criteria)
+                filters = self._construct_criteria(criteria) if criteria else {}
                 if version.parse(pymilvus.__version__) >= version.parse('2.4.11'):
                     iterator = self._client.query_iterator(collection_name=collection_name,
                                                            batch_size=MILVUS_PAGINATION_OFFSET,
@@ -231,26 +231,29 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
         else:
             filter_str = ""
             for key, vaule in criteria.items():
+                if key not in self._global_metadata_desc:
+                    continue
+                field_name = self._gen_global_meta_key(key)
                 if len(filter_str) > 0:
                     filter_str += ' AND '
                 if isinstance(vaule, list):
-                    filter_str += f'{key} in {vaule}'
+                    filter_str += f'{field_name} in {vaule}'
                 elif isinstance(vaule, str):
-                    filter_str += f'{key} == {vaule}'
+                    filter_str += f'{field_name} == "{vaule}"'
                 else:
                     raise ValueError(f'invalid criteria type: {type(vaule)}')
             res["filter"] = filter_str
         return res
 
     @override
-    def search(self, collection_name: str, query: Union[dict, List[float]], topk: int,
+    def search(self, collection_name: str, query_embedding: Union[dict, List[float]], topk: int,
                filters: Optional[Dict[str, Union[List, set]]] = None,
                embed_key: Optional[str] = None, **kwargs) -> List[dict]:
         self._check_connection()
         if not embed_key or embed_key not in self._embed_datatypes:
             raise ValueError(f'[Milvus Store - search] Not supported or None `embed_key`: {embed_key}')
         res = []
-        results = self._client.search(collection_name=collection_name, data=[query], limit=topk,
+        results = self._client.search(collection_name=collection_name, data=[query_embedding], limit=topk,
                                       anns_field=self._gen_embed_key(embed_key),
                                       filter=self._construct_filter_expr(filters))
         if len(results) != 1:

@@ -83,13 +83,13 @@ class OpenSearchStore(LazyLLMStoreBase, capability=StoreCapability.SEGMENT):
             return False
 
     @override
-    def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
+    def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
         """ delete data from the store """
         try:
             if not self._client.indices.exists(index=collection_name):
                 LOG.warning(f"[OpenSearchStore - delete] Index {collection_name} does not exist")
                 return True
-            if len(criteria) == 0:
+            if not criteria:
                 self._client.indices.delete(index=collection_name)
                 return True
             else:
@@ -103,15 +103,15 @@ class OpenSearchStore(LazyLLMStoreBase, capability=StoreCapability.SEGMENT):
             return False
 
     @override
-    def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:
+    def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
         """ get data from the store """
         try:
             if not self._client.indices.exists(index=collection_name):
                 LOG.warning(f"[OpenSearchStore - get] Index {collection_name} does not exist")
                 return []
             results: List[dict] = []
-            criteria = dict(criteria)
-            if self._primary_key in criteria:
+            criteria = dict(criteria) if criteria else {}
+            if criteria and self._primary_key in criteria:
                 vals = criteria.pop(self._primary_key)
                 if not isinstance(vals, list):
                     vals = [vals]
@@ -155,9 +155,11 @@ class OpenSearchStore(LazyLLMStoreBase, capability=StoreCapability.SEGMENT):
         segment["image_keys"] = json.loads(segment.get("image_keys", "[]"))
         return segment
 
-    def _construct_criteria(self, criteria: dict) -> dict:
+    def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:
         """ construct criteria for OpenSearch """
-        criteria = dict(criteria)
+        criteria = dict(criteria) if criteria else {}
+        if not criteria:
+            return {}
         if self._primary_key in criteria:
             vals = criteria.pop(self._primary_key)
             if not isinstance(vals, list):

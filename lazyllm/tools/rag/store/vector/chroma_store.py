@@ -82,9 +82,9 @@ class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
         return res
 
     @override
-    def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
+    def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
         try:
-            if len(criteria) == 0:
+            if not criteria:
                 for embed_key in self._embed_datatypes.keys():
                     try:
                         self._client.delete_collection(name=self._gen_collection_name(collection_name, embed_key))
@@ -102,8 +102,8 @@ class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
             return False
 
     @override
-    def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:
-        filters = self._construct_criteria(criteria)
+    def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
+        filters = self._construct_criteria(criteria) if criteria else {}
         all_data = []
         for key in self._embed_datatypes:
             try:
@@ -134,17 +134,18 @@ class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
         return list(res.values())
 
     @override
-    def search(self, collection_name: str, query: List[float], topk: int,
+    def search(self, collection_name: str, query_embedding: List[float], embed_key: str, topk: Optional[int] = 10,
                filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
-               embed_key: Optional[str] = None, **kwargs) -> List[dict]:
-        filters = self._construct_filter_expr(filters)
+               **kwargs) -> List[dict]:
         collection = self._client.get_collection(name=self._gen_collection_name(collection_name, embed_key))
-        query_results = collection.query(query_embeddings=[query], n_results=topk, where=filters)
+
+        filters = self._construct_filter_expr(filters) if filters else {}
+        query_results = collection.query(query_embeddings=[query_embedding], n_results=topk, **filters)
         res = []
-        for i, r in enumerate(query_results['ids']):
-            if not r:
-                continue
-            res.append({"uid": r[0], "score": query_results['distances'][i]})
+        for i, r_list in enumerate(query_results['ids']):
+            for j, uid in enumerate(r_list):
+                dis = query_results['distances'][i][j]
+                res.append({"uid": uid, "score": 1 - dis})
         return res
 
     def _construct_criteria(self, criteria: dict) -> dict:
@@ -155,10 +156,13 @@ class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
         else:
             res["where"] = {}
             for key, vaule in criteria.items():
+                if key not in self._global_metadata_desc:
+                    continue
+                field_key = self._gen_global_meta_key(key)
                 if isinstance(vaule, list):
-                    res["where"][key] = {"$in": vaule}
+                    res["where"][field_key] = {"$in": vaule}
                 elif isinstance(vaule, str):
-                    res["where"][key] = {"$eq": vaule}
+                    res["where"][field_key] = {"$eq": vaule}
                 else:
                     raise ValueError(f'invalid criteria type: {type(vaule)}')
         return res
@@ -175,7 +179,7 @@ class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
             elif (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
                 candidates = list(candidates)
             ret[key] = {"$in": candidates}
-        return ret
+        return {'where': ret}
 
     def _gen_global_meta_key(self, k: str) -> str:
         return GLOBAL_META_KEY_PREFIX + k
