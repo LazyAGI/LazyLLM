@@ -34,7 +34,7 @@ class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
     @override
     @once_wrapper(reset_on_pickle=True)
     def lazy_init(self, embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
-                  global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs):
+                  global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs):
         self._global_metadata_desc = global_metadata_desc
         self._embed_dims = embed_dims
         self._embed_datatypes = embed_datatypes

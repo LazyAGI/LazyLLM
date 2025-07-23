@@ -43,14 +43,9 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
         self._s3_config = kwargs.get("s3_config")
         self._image_url_config = kwargs.get("image_url_config")
 
-        if self._connect_store(uri):
-            LOG.info(f"Connected to doc store {self._uri}")
-        else:
-            raise ConnectionError(f"Failed to connect to doc store {self._uri}")
-
     @override
     @once_wrapper(reset_on_pickle=True)
-    def lazy_init(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs) -> None:
+    def lazy_init(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs) -> None:
         """ load the store """
         self._check_s3()
         self._global_metadata_desc = global_metadata_desc
@@ -109,7 +104,11 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
                           global_meta=json.dumps(data.get('global_meta', {}), ensure_ascii=False),
                           answer=data.get('answer', ''), number=data.get('number', 0))
         # image extract
-        matches = IMAGE_PATTERN.findall(segment.content)
+        if isinstance(segment.content, str):
+            target = segment.content
+        else:
+            target = json.dumps(segment.content)
+        matches = IMAGE_PATTERN.findall(target)
         for title, image_path in matches:
             segment.image_keys.append(image_path)
 
@@ -201,7 +200,7 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
             key = name
             if isinstance(candidates, str):
                 candidates = [candidates]
-            if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
+            if (not isinstance(candidates, list)) and (not isinstance(candidates, set)):
                 candidates = list(candidates)
             if desc.data_type == DataType.ARRAY:
                 ret_str += f'array_contains_any({key}, {candidates}) and '
@@ -269,14 +268,18 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
         """ upsert data to the store """
-        if not data: return
-        with pipeline() as insert_ppl:
-            insert_ppl.get_ids = warp(self._upload_data_and_insert).aslist
-            insert_ppl.check_status = warp(self._check_insert_job_status)
+        if not data: return True
+        try:
+            with pipeline() as insert_ppl:
+                insert_ppl.get_ids = warp(self._upload_data_and_insert).aslist
+                insert_ppl.check_status = warp(self._check_insert_job_status)
 
-        batched_data = [data[i:i + INSERT_BATCH_SIZE] for i in range(0, len(data), INSERT_BATCH_SIZE)]
-        insert_ppl(batched_data)
-        return
+            batched_data = [data[i:i + INSERT_BATCH_SIZE] for i in range(0, len(data), INSERT_BATCH_SIZE)]
+            insert_ppl(batched_data)
+            return True
+        except Exception as e:
+            LOG.error(f"[SenseCore Store - upsert] insert task failed: {e}")
+            return False
 
     @override
     def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
@@ -294,9 +297,9 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
             response = requests.post(url, headers=headers, json=payload)
             response.raise_for_status()
         except Exception as e:
-            LOG.error(f"SenseCore Store: remove task failed: {e}")
+            LOG.error(f"[SenseCore Store - delete] remove task failed: {e}")
             raise e
-        return
+        return True
 
     @override
     def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:  # noqa: C901
@@ -386,7 +389,7 @@ class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
                     if key == RAG_KB_ID:
                         if isinstance(candidates, str):
                             candidates = [candidates]
-                        if (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
+                        if (not isinstance(candidates, list)) and (not isinstance(candidates, set)):
                             candidates = list(candidates)
                         dataset_ids = candidates
                         break
