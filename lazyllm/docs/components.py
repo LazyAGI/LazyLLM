@@ -983,14 +983,15 @@ Suitable for handling nested YAML content with formatter-based field selection.
 add_example('formatter.YamlFormatter', '''\
 >>> from lazyllm.components.formatter import YamlFormatter
 >>> formatter = YamlFormatter("{name,age}")
->>> msg = """
-name: Alice
-age: 30
-city: London
-"""
+>>> msg = """\
+... name: Alice
+... age: 30
+... city: London
+... """
 >>> formatter(msg)
 {'name': 'Alice', 'age': 30}
 ''')
+
 
 # JsonFormatter
 add_chinese_doc('JsonFormatter', '''\
@@ -1245,39 +1246,34 @@ Args:
 add_example('Prompter', '''\
 >>> from lazyllm import Prompter
 
-# Basic prompt with a single input field
 >>> p = Prompter(prompt="Answer the following: {question}")
 >>> p.generate_prompt("What is AI?")
 'Answer the following: What is AI?'
 
-# Prompt with dict-style input
 >>> p.generate_prompt({"question": "Define machine learning"})
 'Answer the following: Define machine learning'
 
-# Prompt with multi-turn history enabled
 >>> p = Prompter(
-prompt="Instruction: {instruction}",
-chat_prompt="Instruction: {instruction}\\nHistory:\\n{llm_chat_history}",
-history_symbol="llm_chat_history",
-eoa="</s>",
-eoh="|"
-)
+...     prompt="Instruction: {instruction}",
+...     chat_prompt="Instruction: {instruction}\\nHistory:\\n{llm_chat_history}",
+...     history_symbol="llm_chat_history",
+...     eoa="</s>",
+...     eoh="|"
+... )
 >>> p.generate_prompt(
-input={"instruction": "Translate this."},
-history=[["hello", "你好"], ["how are you", "你好吗"]]
-)
+...     input={"instruction": "Translate this."},
+...     history=[["hello", "你好"], ["how are you", "你好吗"]]
+... )
 'Instruction: Translate this.\\nHistory:\\nhello|你好</s>how are you|你好吗'
 
-# Using from_dict shortcut
 >>> prompt_conf = {
-"prompt": "Task: {task}",
-"response_split": "---"
-}
+...     "prompt": "Task: {task}",
+...     "response_split": "---"
+... }
 >>> p = Prompter.from_dict(prompt_conf)
 >>> p.generate_prompt("Summarize this article.")
 'Task: Summarize this article.'
 
-# Using get_response to extract final model reply
 >>> full_output = "Task: Summarize this article.---This is the summary."
 >>> p.get_response(full_output)
 'This is the summary.'
@@ -1946,7 +1942,7 @@ The constructor dynamically creates and returns the corresponding deployment ins
 Args:
     name: A string specifying the type of deployment instance to be created.
     **kwarg: Keyword arguments to be passed to the constructor of the corresponding deployment instance.
-                
+
 Returns:
     If the name argument is 'bark', an instance of [BarkDeploy][lazyllm.components.BarkDeploy] is returned.
     If the name argument is 'ChatTTS', an instance of [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] is returned.
@@ -1963,7 +1959,7 @@ TTSDeploy 是一个用于根据指定的名称创建不同类型文本到语音(
 Args:
     name：字符串，用于指定要创建的部署实例的类型。
     **kwarg：关键字参数，用于传递给对应部署实例的构造函数。
-                
+
 Returns:
     如果 name 参数为 ‘bark’，则返回一个 [BarkDeploy][lazyllm.components.BarkDeploy] 实例。
     如果 name 参数为 ‘ChatTTS’，则返回一个 [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] 实例。
