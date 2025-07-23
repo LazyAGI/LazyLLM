@@ -125,7 +125,7 @@ class DocListManager(ABC):
         self._init_sql()
         self._delete_nonexistent_docs_on_startup()
 
-        self._monitor_thread = threading.Thread(target=self.monitor_directory_worker)
+        self._monitor_thread = threading.Thread(target=self._monitor_directory_worker)
         self._monitor_thread.daemon = True
         self._monitor_continue = True
         self._enable_path_monitoring = enable_path_monitoring
@@ -165,10 +165,12 @@ class DocListManager(ABC):
         return document_list
 
     @abstractmethod
-    def table_inited(self): pass
+    def table_inited(self):
+        pass
 
     @abstractmethod
-    def _init_tables(self): pass
+    def _init_tables(self):
+        pass
 
     @abstractmethod
     def validate_paths(self, paths: List[str]) -> Tuple[bool, str, List[bool]]: pass
@@ -179,7 +181,8 @@ class DocListManager(ABC):
     @abstractmethod
     def list_files(self, limit: Optional[int] = None, details: bool = False,
                    status: Union[str, List[str]] = Status.all,
-                   exclude_status: Optional[Union[str, List[str]]] = None): pass
+                   exclude_status: Optional[Union[str, List[str]]] = None):
+        pass
 
     @abstractmethod
     def get_docs(self, doc_ids: List[str]) -> List[KBDocument]: pass
@@ -191,10 +194,12 @@ class DocListManager(ABC):
     def fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]: pass
 
     @abstractmethod
-    def list_all_kb_group(self): pass
+    def list_all_kb_group(self):
+        pass
 
     @abstractmethod
-    def add_kb_group(self, name): pass
+    def add_kb_group(self, name):
+        pass
 
     @abstractmethod
     def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
@@ -202,7 +207,8 @@ class DocListManager(ABC):
                             exclude_status: Optional[Union[str, List[str]]] = None,
                             upload_status: Union[str, List[str]] = Status.all,
                             exclude_upload_status: Optional[Union[str, List[str]]] = None,
-                            need_reparse: Optional[bool] = False): pass
+                            need_reparse: Optional[bool] = False):
+        pass
 
     def add_files(
         self,
@@ -236,28 +242,34 @@ class DocListManager(ABC):
     def get_existing_paths_by_pattern(self, file_path: str) -> List[str]: pass
 
     @abstractmethod
-    def update_file_message(self, fileid: str, **kw): pass
+    def update_file_message(self, fileid: str, **kw):
+        pass
 
     @abstractmethod
     def update_file_status(self, file_ids: List[str], status: str,
                            cond_status_list: Union[None, List[str]] = None) -> List[DocPartRow]: pass
 
     @abstractmethod
-    def add_files_to_kb_group(self, file_ids: List[str], group: str): pass
+    def add_files_to_kb_group(self, file_ids: List[str], group: str):
+        pass
 
     @abstractmethod
-    def delete_files_from_kb_group(self, file_ids: List[str], group: str): pass
+    def delete_files_from_kb_group(self, file_ids: List[str], group: str):
+        pass
 
     @abstractmethod
-    def get_file_status(self, fileid: str): pass
+    def get_file_status(self, fileid: str):
+        pass
 
     @abstractmethod
     def update_kb_group(self, cond_file_ids: List[str], cond_group: Optional[str] = None,
                         cond_status_list: Optional[List[str]] = None, new_status: Optional[str] = None,
-                        new_need_reparse: Optional[bool] = None) -> List[GroupDocPartRow]: pass
+                        new_need_reparse: Optional[bool] = None) -> List[GroupDocPartRow]:
+        pass
 
     @abstractmethod
-    def release(self): pass
+    def release(self):
+        pass
 
     @property
     def enable_path_monitoring(self):
@@ -274,7 +286,7 @@ class DocListManager(ABC):
             if self._monitor_thread.is_alive():
                 self._monitor_thread.join()
 
-    def monitor_directory_worker(self):
+    def _monitor_directory_worker(self):
         failed_files_count = defaultdict(int)
         docs_all = self._get_all_docs()
 

@@ -15,7 +15,7 @@ from ...utils.file_operate import delete_old_files
 from typing import Optional
 
 
-class StableDiffusion3(object):
+class _StableDiffusion3(object):
 
     _load_registry = {}
     _call_registry = {}
@@ -123,16 +123,16 @@ class StableDiffusion3(object):
 
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return StableDiffusion3.rebuild, (self.base_sd, self.embed_batch_size, init, self.save_path)
+        return _StableDiffusion3.rebuild, (self.base_sd, self.embed_batch_size, init, self.save_path)
 
-@StableDiffusion3.register_loader('flux')
+@_StableDiffusion3.register_loader('flux')
 def load_flux(model):
     import torch
     from diffusers import FluxPipeline
     model.paintor = FluxPipeline.from_pretrained(
         model.base_sd, torch_dtype=torch.bfloat16).to("cuda")
 
-@StableDiffusion3.register_caller('flux')
+@_StableDiffusion3.register_caller('flux')
 def call_flux(model, prompt):
     imgs = model.paintor(
         prompt,
@@ -145,14 +145,14 @@ def call_flux(model, prompt):
     img_path_list = model.images_to_files(imgs, model.save_path)
     return encode_query_with_filepaths(files=img_path_list)
 
-@StableDiffusion3.register_loader('cogview')
+@_StableDiffusion3.register_loader('cogview')
 def load_cogview(model):
     import torch
     from diffusers import CogView4Pipeline
     model.paintor = CogView4Pipeline.from_pretrained(
         model.base_sd, torch_dtype=torch.bfloat16).to("cuda")
 
-@StableDiffusion3.register_caller('cogview')
+@_StableDiffusion3.register_caller('cogview')
 def call_cogview(model, prompt):
     imgs = model.paintor(
         prompt,
@@ -165,7 +165,7 @@ def call_cogview(model, prompt):
     img_path_list = model.images_to_files(imgs, model.save_path)
     return encode_query_with_filepaths(files=img_path_list)
 
-@StableDiffusion3.register_loader('wan')
+@_StableDiffusion3.register_loader('wan')
 def load_wan(model):
     import torch
     from diffusers import AutoencoderKLWan, WanPipeline
@@ -183,7 +183,7 @@ def load_wan(model):
     model.paintor.scheduler = scheduler
     model.paintor.to("cuda")
 
-@StableDiffusion3.register_caller('wan')
+@_StableDiffusion3.register_caller('wan')
 def call_wan(model, prompt):
     from diffusers.utils import export_to_video
     videos = model.paintor(

@@ -11,7 +11,7 @@ def is_all_punctuation(s: str) -> bool:
     return all(c in punctuation for c in s)
 
 
-class OCR(object):
+class _OCR(object):
     def __init__(
         self,
         model: Optional[str] = "PP-OCRv5_mobile",
