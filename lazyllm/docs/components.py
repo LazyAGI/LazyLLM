@@ -983,11 +983,11 @@ Suitable for handling nested YAML content with formatter-based field selection.
 add_example('formatter.YamlFormatter', '''\
 >>> from lazyllm.components.formatter import YamlFormatter
 >>> formatter = YamlFormatter("{name,age}")
->>> msg = \"\"\" 
+>>> msg = \\\"\\\"\\\" 
 ... name: Alice
 ... age: 30
 ... city: London
-... \"\"\"
+... \\\"\\\"\\\"
 >>> formatter(msg)
 {'name': 'Alice', 'age': 30}
 ''')
