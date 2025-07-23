@@ -49,7 +49,7 @@ class DocumentStore(object):
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self):
         self._impl.lazy_init(embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,
-                             global_metadata_desc=self._global_metadata_desc)
+                             global_metadata_desc=self._global_metadata_desc, collections=self._collections)
 
     def _make_store(self, cfg: Dict[str, Any], deprecated_msg: str = None) -> LazyLLMStoreBase:
         if not cfg:

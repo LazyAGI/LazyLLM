@@ -21,12 +21,12 @@ class HybridStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
             self.vector_store.upsert(collection_name=collection_name, data=data)
 
     @override
-    def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
+    def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
         return self.segment_store.delete(collection_name=collection_name, criteria=criteria, **kwargs) and \
             self.vector_store.delete(collection_name=collection_name, criteria=criteria, **kwargs)
 
     @override
-    def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:
+    def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
         res_segments = self.segment_store.get(collection_name=collection_name, criteria=criteria, **kwargs)
         res_vectors = self.vector_store.get(collection_name=collection_name, criteria=criteria, **kwargs)
         data = {}

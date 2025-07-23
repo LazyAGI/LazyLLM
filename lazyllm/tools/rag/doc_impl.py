@@ -176,6 +176,7 @@ class DocImpl:
                                                self._algo_desc)
         else:
             self._processor = _Processor(self.store, self._reader, self.node_groups, self._algo_desc)
+        # NOTE: Do lazy init after algo registered (when cloudpickle, some client may meet error)
         self.store._lazy_init()
         # init files when `cloud` is False
         if not cloud and self.store.is_group_empty(LAZY_ROOT_NAME):
@@ -184,7 +185,6 @@ class DocImpl:
             if pathes and self._dlm:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.success)
-
         if self._dlm:
             self._init_monitor_event = threading.Event()
             self._daemon = threading.Thread(target=self.worker)
