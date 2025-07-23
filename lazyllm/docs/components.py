@@ -882,7 +882,7 @@ add_example('formatter.FormatterBase', '''\
 ''')
 
 # JsonLikeFormatter
-add_chinese_doc('formatter.JsonLikeFormatter', '''\
+add_chinese_doc('formatter.formatterbase.JsonLikeFormatter', '''\
 该类用于以类 JSON 的格式提取嵌套结构（如 dict、list、tuple）中的子字段内容。
 
 其功能通过格式化字符串 `formatter` 来控制，格式类似于数组/字典的索引切片表达式。例如：
@@ -897,7 +897,7 @@ Args:
     formatter (str, optional): 控制提取规则的格式字符串。若为 None，则返回原始数据。
 ''')
 
-add_english_doc('formatter.JsonLikeFormatter', '''\
+add_english_doc('formatter.formatterbase.JsonLikeFormatter', '''\
 This class is used to extract subfields from nested structures (like dicts, lists, tuples) using a JSON-like indexing syntax.
 
 The behavior is driven by a formatter string similar to Python-style slicing and dictionary access:
@@ -912,19 +912,19 @@ Args:
     formatter (str, optional): A format string that controls how to slice and extract the structure. If None, the input will be returned directly.
 ''')
 
-add_example('formatter.JsonLikeFormatter', '''\
+add_example('formatter.formatterbase.JsonLikeFormatter', '''\
 >>> from lazyllm.components.formatter.formatterbase import JsonLikeFormatter
 >>> formatter = JsonLikeFormatter("[{a,b}]")
 ''')
 
 # PythonFormatter
-add_chinese_doc('formatter.PythonFormatter', '''\
+add_chinese_doc('formatter.formatterbase.PythonFormatter', '''\
 预留格式化器类，用于支持 Python 风格的数据提取语法，待开发。
 
 当前继承自 JsonLikeFormatter，无额外功能。
 ''')
 
-add_english_doc('formatter.PythonFormatter', '''\
+add_english_doc('formatter.formatterbase.PythonFormatter', '''\
 Reserved formatter class for supporting Python-style data extraction syntax. To be developed.
 
 Currently inherits from JsonLikeFormatter with no additional behavior.

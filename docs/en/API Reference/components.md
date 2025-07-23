@@ -120,11 +120,11 @@
     options:
       heading_level: 3
 
-::: lazyllm.components.formatter.JsonLikeFormatter
+::: lazyllm.components.formatter.formatterbase.JsonLikeFormatter
     options:
       heading_level: 3
 
-::: lazyllm.components.formatter.PythonFormatter
+::: lazyllm.components.formatter.formatterbase.PythonFormatter
     options:
       heading_level: 3
 
