@@ -13,6 +13,35 @@ from .utils import get_log_path, make_log_dir
 config.add('lmdeploy_eager_mode', bool, False, 'LMDEPLOY_EAGER_MODE')
 
 class LMDeploy(LazyLLMDeployBase):
+    """    This class is a subclass of ``LazyLLMDeployBase``, leveraging the inference capabilities provided by the [LMDeploy](https://github.com/InternLM/lmdeploy) framework for inference on large language models.
+
+Args:
+    launcher (lazyllm.launcher): The launcher for fine-tuning, defaults to ``launchers.remote(ngpus=1)``.
+    stream (bool): Whether to enable streaming response, defaults to ``False``.
+    kw: Keyword arguments for updating default training parameters. Note that no additional keyword arguments beyond those listed below can be passed.
+
+Keyword Args: 
+    tp (int): Tensor parallelism parameter, defaults to ``1``.
+    server_name (str): The IP address of the service, defaults to ``0.0.0.0``.
+    server_port (int): The port number of the service, defaults to ``None``. In this case, LazyLLM will automatically generate a random port number.
+    max_batch_size (int): Maximum batch size, defaults to ``128``.
+
+
+
+Examples:
+    >>> # Basic use:
+    >>> from lazyllm import deploy
+    >>> infer = deploy.LMDeploy()
+    >>>
+    >>> # MultiModal:
+    >>> import lazyllm
+    >>> from lazyllm import deploy, globals
+    >>> from lazyllm.components.formatter import encode_query_with_filepaths
+    >>> chat = lazyllm.TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)
+    >>> chat.update_server()
+    >>> inputs = encode_query_with_filepaths('What is it?', ['path/to/image'])
+    >>> res = chat(inputs)
+    """
     keys_name_handle = {
         'inputs': 'prompt',
         'stop': 'stop',

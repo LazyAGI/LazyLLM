@@ -12,7 +12,7 @@ class TTSDeploy:
     @classmethod
     def get_deploy_cls(cls, name):
         name = name.lower()
-        if name == 'bark':
+        if name == '_bark':
             return BarkDeploy
         elif name in ('chattts', 'chattts-new'):
             return ChatTTSDeploy

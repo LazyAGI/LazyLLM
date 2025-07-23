@@ -15,7 +15,7 @@ from ...utils.file_operate import delete_old_files
 from typing import Optional
 
 
-class StableDiffusion3(object):
+class _StableDiffusion3(object):
 
     _load_registry = {}
     _call_registry = {}
@@ -123,16 +123,16 @@ class StableDiffusion3(object):
 
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return StableDiffusion3.rebuild, (self.base_sd, self.embed_batch_size, init, self.save_path)
+        return _StableDiffusion3.rebuild, (self.base_sd, self.embed_batch_size, init, self.save_path)
 
-@StableDiffusion3.register_loader('flux')
+@_StableDiffusion3.register_loader('flux')
 def load_flux(model):
     import torch
     from diffusers import FluxPipeline
     model.paintor = FluxPipeline.from_pretrained(
         model.base_sd, torch_dtype=torch.bfloat16).to("cuda")
 
-@StableDiffusion3.register_caller('flux')
+@_StableDiffusion3.register_caller('flux')
 def call_flux(model, prompt):
     imgs = model.paintor(
         prompt,
@@ -145,14 +145,14 @@ def call_flux(model, prompt):
     img_path_list = model.images_to_files(imgs, model.save_path)
     return encode_query_with_filepaths(files=img_path_list)
 
-@StableDiffusion3.register_loader('cogview')
+@_StableDiffusion3.register_loader('cogview')
 def load_cogview(model):
     import torch
     from diffusers import CogView4Pipeline
     model.paintor = CogView4Pipeline.from_pretrained(
         model.base_sd, torch_dtype=torch.bfloat16).to("cuda")
 
-@StableDiffusion3.register_caller('cogview')
+@_StableDiffusion3.register_caller('cogview')
 def call_cogview(model, prompt):
     imgs = model.paintor(
         prompt,
@@ -165,7 +165,7 @@ def call_cogview(model, prompt):
     img_path_list = model.images_to_files(imgs, model.save_path)
     return encode_query_with_filepaths(files=img_path_list)
 
-@StableDiffusion3.register_loader('wan')
+@_StableDiffusion3.register_loader('wan')
 def load_wan(model):
     import torch
     from diffusers import AutoencoderKLWan, WanPipeline
@@ -183,7 +183,7 @@ def load_wan(model):
     model.paintor.scheduler = scheduler
     model.paintor.to("cuda")
 
-@StableDiffusion3.register_caller('wan')
+@_StableDiffusion3.register_caller('wan')
 def call_wan(model, prompt):
     from diffusers.utils import export_to_video
     videos = model.paintor(
@@ -211,6 +211,38 @@ def call_wan(model, prompt):
 
 
 class StableDiffusionDeploy(LazyLLMDeployBase):
+    """Stable Diffusion Model Deployment Class. This class is used to deploy the stable diffusion model to a specified server for network invocation.
+
+`__init__(self, launcher=None)`
+Constructor, initializes the deployment class.
+
+Args:
+    launcher (lazyllm.launcher): An instance of the launcher used to start the remote service.
+
+`__call__(self, finetuned_model=None, base_model=None)`
+Deploys the model and returns the remote service address.
+
+Args:
+    finetuned_model (str): If provided, this model will be used for deployment; if not provided or the path is invalid, `base_model` will be used.
+    base_model (str): The default model, which will be used for deployment if `finetuned_model` is invalid.
+    Return (str): The URL address of the remote service.
+
+Notes: 
+    - Input for infer: `str`. A description of the image to be generated.
+    - Return of infer: The string encoded from the generated file paths, starting with the encoding flag "<lazyllm-query>", followed by the serialized dictionary. The key `files` in the dictionary stores a list, with elements being the paths of the generated image files.
+    - Supported models: [stable-diffusion-3-medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
+
+
+Examples:
+    >>> from lazyllm import launchers, UrlModule
+    >>> from lazyllm.components import StableDiffusionDeploy
+    >>> deployer = StableDiffusionDeploy(launchers.remote())
+    >>> url = deployer(base_model='stable-diffusion-3-medium')
+    >>> model = UrlModule(url=url)
+    >>> res = model('a tiny cat.')
+    >>> print(res)
+    ... <lazyllm-query>{"query": "", "files": ["path/to/sd3/image_xxx.png"]}
+    """
     message_format = None
     keys_name_handle = None
     default_headers = {'Content-Type': 'application/json'}

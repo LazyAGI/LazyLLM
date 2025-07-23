@@ -49,6 +49,15 @@ def _is_function(f):
                           types.BuiltinMethodType, types.MethodType, types.LambdaType))
 
 class FlowBase(metaclass=_MetaBind):
+    """A base class for creating flow-like structures that can contain various items.
+
+This class provides a way to organize items, which can be instances of ``FlowBase`` or other types, into a hierarchical structure. Each item can have a name and the structure can be traversed or modified dynamically.
+
+Args:
+    items (iterable): An iterable of items to be included in the flow. These can be instances of ``FlowBase`` or other objects.
+    item_names (list of str, optional): A list of names corresponding to the items. This allows items to be accessed by name. If not provided, items can only be accessed by index.
+
+"""
     def __init__(self, *items, item_names=[], auto_capture=False) -> None:
         self._father = None
         self._items, self._item_names, self._item_ids = [], [], []
@@ -123,14 +132,75 @@ class FlowBase(metaclass=_MetaBind):
 
     @property
     def is_root(self):
+        """A property that indicates whether the current flow item is the root of the flow structure.
+
+**Returns:**
+
+- bool: True if the current item has no parent (`` _father`` is None), otherwise False.
+
+
+Examples:
+    >>> import lazyllm
+    >>> p = lazyllm.pipeline()
+    >>> p.is_root
+    True
+    >>> p2 = lazyllm.pipeline(p)
+    >>> p.is_root
+    False
+    >>> p2.is_root
+    True
+    """
         return self._father is None
 
     @property
     def ancestor(self):
+        """A property that returns the topmost ancestor of the current flow item.
+
+If the current item is the root, it returns itself.
+
+**Returns:**
+
+- FlowBase: The topmost ancestor flow item.
+
+
+Examples:
+    >>> import lazyllm
+    >>> p = lazyllm.pipeline()
+    >>> p2 = lazyllm.pipeline(p)
+    >>> p.ancestor is p2
+    True
+    """
         if self.is_root: return self
         return self._father.ancestor
 
     def for_each(self, filter, action):
+        """Performs an action on each item in the flow that matches a given filter.
+
+The method recursively traverses the flow structure, applying the action to each item that passes the filter.
+
+Args:
+    filter (callable): A function that takes an item as input and returns True if the item should have the action applied.
+    action (callable): A function that takes an item as input and performs some operation on it.
+
+**Returns:**
+
+- None
+
+
+Examples:
+    >>> import lazyllm
+    >>> def test1(): print('1')
+    ... 
+    >>> def test2(): print('2')
+    ... 
+    >>> def test3(): print('3')
+    ... 
+    >>> flow = lazyllm.pipeline(test1, lazyllm.pipeline(test2, test3))
+    >>> flow.for_each(lambda x: callable(x), lambda x: print(x))
+    <Function type=test1>
+    <Function type=test2>
+    <Function type=test3>
+    """
         for item in self._items:
             if isinstance(item, FlowBase):
                 item.for_each(filter, action)
@@ -250,6 +320,31 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
 #                                               \> post-action
 # TODO(wangzhihong): support mult-input and output
 class Pipeline(LazyLLMFlowsBase):
+    """A sequential execution model that forms a pipeline of processing stages.
+
+The ``Pipeline`` class is a linear sequence of processing stages, where the output of one stage becomes the input to the next. It supports the addition of post-actions that can be performed after the last stage. It is a subclass of ``LazyLLMFlowsBase`` which provides a lazy execution model and allows for functions to be wrapped and registered in a lazy manner.
+
+Args:
+    args (list of callables or single callable): The processing stages of the pipeline. Each element can be a callable function or an instance of ``LazyLLMFlowsBase.FuncWrap``. If a single list or tuple is provided, it is unpacked as the stages of the pipeline.
+    post_action (callable, optional): An optional action to perform after the last stage of the pipeline. Defaults to None.
+    kwargs (dict of callables): Named processing stages of the pipeline. Each key-value pair represents a named stage, where the key is the name and the value is the callable stage.
+
+**Returns:**
+
+- The output of the last stage of the pipeline.
+
+
+Examples:
+    >>> import lazyllm
+    >>> ppl = lazyllm.pipeline(
+    ...     stage1=lambda x: x+1,
+    ...     stage2=lambda x: f'get {x}'
+    ... )
+    >>> ppl(1)
+    'get 2'
+    >>> ppl.stage2
+    <Function type=lambda>
+    """
     g_save_flow_result = None
 
     def __init__(self, *args, post_action=None, auto_capture=False, **kw):
@@ -348,6 +443,76 @@ config.add('parallel_multiprocessing', bool, False, 'PARALLEL_MULTIPROCESSING')
 #  input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #        \> module31 -> ... -> module3N -> out3 /
 class Parallel(LazyLLMFlowsBase):
+    """A class for managing parallel flows in LazyLLMFlows.
+
+This class inherits from LazyLLMFlowsBase and provides an interface for running operations in parallel or sequentially. It supports concurrent execution using threads and allows for the return of results as a dictionary.
+
+
+The ``Parallel`` class can be visualized as follows:
+
+```text
+#       /> module11 -> ... -> module1N -> out1 \\
+# input -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
+#       \> module31 -> ... -> module3N -> out3 /
+```       
+
+The ``Parallel.sequential`` method can be visualized as follows:
+
+```text
+# input -> module21 -> ... -> module2N -> out2 -> 
+```
+
+Args:
+    _scatter (bool, optional): If ``True``, the input is split across the items. If ``False``, the same input is passed to all items. Defaults to ``False``.
+    _concurrent (bool, optional): If ``True``, operations will be executed concurrently using threading. If ``False``, operations will be executed sequentially. Defaults to ``True``.
+    args: Variable length argument list for the base class.
+    kwargs: Arbitrary keyword arguments for the base class.
+
+`asdict property`
+
+Tag ``Parallel`` so that the return value of each call to ``Parallel`` is changed from a tuple to a dict. When using ``asdict``, make sure that the elements of ``parallel`` are named, for example: ``parallel(name=value)``.
+
+`tuple property`
+
+Mark Parallel so that the return value of Parallel changes from package to tuple each time it is called.
+
+`list property`
+
+Mark Parallel so that the return value of Parallel changes from package to list each time it is called.
+
+`sum property`
+
+Mark Parallel so that the return value of Parallel is accumulated each time it is called.
+
+`join(self, string)`
+
+Mark Parallel so that the return value of Parallel is joined by ``string`` each time it is called.
+
+
+Examples:
+    >>> import lazyllm
+    >>> test1 = lambda a: a + 1
+    >>> test2 = lambda a: a * 4
+    >>> test3 = lambda a: a / 2
+    >>> ppl = lazyllm.parallel(test1, test2, test3)
+    >>> ppl(1)
+    (2, 4, 0.5)
+    >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3)
+    >>> ppl(1)
+    {2, 4, 0.5}
+    >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).asdict
+    >>> ppl(2)
+    {'a': 3, 'b': 8, 'c': 1.0}
+    >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).astuple
+    >>> ppl(-1)
+    (0, -4, -0.5)
+    >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).aslist
+    >>> ppl(0)
+    [1, 0, 0.0]
+    >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).join('\\n')
+    >>> ppl(1)
+    '2\\n4\\n0.5'
+    """
 
     @staticmethod
     def _worker(func, barrier, global_data, *args, **kw):
@@ -456,6 +621,36 @@ class Parallel(LazyLLMFlowsBase):
 #  (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
 #                  \> in3 -> module31 -> ... -> module3N -> out3 /
 class Diverter(Parallel):
+    """A flow diverter that routes inputs through different modules in parallel.
+
+The Diverter class is a specialized form of parallel processing where multiple inputs are each processed by a separate sequence of modules in parallel. The outputs are then aggregated and returned as a tuple.
+
+This class is useful when you have distinct data processing pipelines that can be executed concurrently, and you want to manage them within a single flow construct.
+
+```text
+#                 /> in1 -> module11 -> ... -> module1N -> out1 \\
+# (in1, in2, in3) -> in2 -> module21 -> ... -> module2N -> out2 -> (out1, out2, out3)
+#                 \> in3 -> module31 -> ... -> module3N -> out3 /
+```                    
+
+Args:
+    args : Variable length argument list representing the modules to be executed in parallel.
+    _concurrent (bool, optional): A flag to control whether the modules should be run concurrently. Defaults to ``True``. You can use ``Diverter.sequential`` instead of ``Diverter`` to set this variable.
+    kwargs : Arbitrary keyword arguments representing additional modules, where the key is the name of the module.
+
+
+
+Examples:
+    >>> import lazyllm
+    >>> div = lazyllm.diverter(lambda x: x+1, lambda x: x*2, lambda x: -x)
+    >>> div(1, 2, 3)
+    (2, 4, -3)
+    >>> div = lazyllm.diverter(a=lambda x: x+1, b=lambda x: x*2, c=lambda x: -x).asdict
+    >>> div(1, 2, 3)
+    {'a': 2, 'b': 4, 'c': -3}
+    >>> div(dict(c=3, b=2, a=1))
+    {'a': 2, 'b': 4, 'c': -3}
+    """
     def __init__(self, *args, _concurrent: Union[bool, int] = True, auto_capture: bool = False, **kw):
         super().__init__(*args, _scatter=True, _concurrent=_concurrent, auto_capture=auto_capture, **kw)
 
@@ -466,6 +661,34 @@ class Diverter(Parallel):
 # Attention: Cannot be used in async tasks, ie: training and deploy
 # TODO: add check for async tasks
 class Warp(Parallel):
+    """A flow warp that applies a single module to multiple inputs in parallel.
+
+The Warp class is designed to apply the same processing module to a set of inputs. It effectively 'warps' the single module around the inputs so that each input is processed in parallel. The outputs are collected and returned as a tuple. It is important to note that this class cannot be used for asynchronous tasks, such as training and deployment.
+
+```text
+#                 /> in1 \                            /> out1 \\
+# (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
+#                 \> in3 /                            \> out3 /
+``` 
+
+Args:
+    args: Variable length argument list representing the single module to be applied to all inputs.
+    kwargs: Arbitrary keyword arguments for future extensions.
+
+Note:
+    - Only one function is allowed in warp.
+    - The Warp flow should not be used for asynchronous tasks such as training and deployment.
+
+
+Examples:
+    >>> import lazyllm
+    >>> warp = lazyllm.warp(lambda x: x * 2)
+    >>> warp(1, 2, 3, 4)
+    (2, 4, 6, 8)
+    >>> warp = lazyllm.warp(lazyllm.pipeline(lambda x: x * 2, lambda x: f'get {x}'))
+    >>> warp(1, 2, 3, 4)
+    ('get 2', 'get 4', 'get 6', 'get 8')
+    """
     def __init__(self, *args, _scatter: bool = False, _concurrent: Union[bool, int] = True,
                  auto_capture: bool = False, **kw):
         super().__init__(*args, _scatter=_scatter, _concurrent=_concurrent, auto_capture=auto_capture, **kw)
@@ -488,6 +711,66 @@ class Warp(Parallel):
 #     case cond2: input -> module21 -> ... -> module2N -> out; break
 #     case cond3: input -> module31 -> ... -> module3N -> out; break
 class Switch(LazyLLMFlowsBase):
+    """A control flow mechanism that selects and executes a flow based on a condition.
+
+The ``Switch`` class provides a way to choose between different flows depending on the value of an expression or the truthiness of conditions. It is similar to a switch-case statement found in other programming languages.
+
+```text
+# switch(exp):
+#     case cond1: input -> module11 -> ... -> module1N -> out; break
+#     case cond2: input -> module21 -> ... -> module2N -> out; break
+#     case cond3: input -> module31 -> ... -> module3N -> out; break
+``` 
+
+Args:
+    args: A variable length argument list, alternating between conditions and corresponding flows or functions. Conditions are either callables returning a boolean or values to be compared with the input expression.
+    post_action (callable, optional): A function to be called on the output after the selected flow is executed. Defaults to ``None``.
+    judge_on_full_input(bool): If set to ``True``, the conditional judgment will be performed through the input of ``switch``, otherwise the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
+    kwargs: Arbitrary keyword arguments representing named conditions and corresponding flows or functions.
+
+Raises:
+    TypeError: If an odd number of arguments are provided, or if the first argument is not a dictionary and the conditions are not provided in pairs.
+
+
+Examples:
+    >>> import lazyllm
+    >>> def is_positive(x): return x > 0
+    ...
+    >>> def is_negative(x): return x < 0
+    ...
+    >>> switch = lazyllm.switch(is_positive, lambda x: 2 * x, is_negative, lambda x : -x, 'default', lambda x : '000', judge_on_full_input=True)
+    >>>
+    >>> switch(1)
+    2
+    >>> switch(0)
+    '000'
+    >>> switch(-4)
+    4
+    >>>
+    >>> def is_1(x): return True if x == 1 else False
+    ...
+    >>> def is_2(x): return True if x == 2 else False
+    ...
+    >>> def is_3(x): return True if x == 3 else False
+    ...
+    >>> def t1(x): return 2 * x
+    ...
+    >>> def t2(x): return 3 * x
+    ...
+    >>> def t3(x): return x
+    ...
+    >>> with lazyllm.switch(judge_on_full_input=True) as sw:
+    ...     sw.case[is_1::t1]
+    ...     sw.case(is_2, t2)
+    ...     sw.case[is_3, t3]
+    ...
+    >>> sw(1)
+    2
+    >>> sw(2)
+    6
+    >>> sw(3)
+    3
+    """
     # Switch({cond1: M1, cond2: M2, ..., condN: MN})
     # Switch(cond1, M1, cond2, M2, ..., condN, MN)
     def __init__(self, *args, conversion=None, post_action=None, judge_on_full_input=True):
@@ -540,6 +823,38 @@ class Switch(LazyLLMFlowsBase):
 
 # result = cond(input) ? tpath(input) : fpath(input)
 class IFS(LazyLLMFlowsBase):
+    """Implements an If-Else functionality within the LazyLLMFlows framework.
+
+The IFS (If-Else Flow Structure) class is designed to conditionally execute one of two provided
+paths (true path or false path) based on the evaluation of a given condition. After the execution
+of the selected path, an optional post-action can be applied, and the input can be returned alongside
+the output if specified.
+
+Args:
+    cond (callable): A callable that takes the input and returns a boolean. It determines which path
+                        to execute. If ``cond(input)`` evaluates to True, ``tpath`` is executed; otherwise,
+                        ``fpath`` is executed.
+    tpath (callable): The path to be executed if the condition is True.
+    fpath (callable): The path to be executed if the condition is False.
+    post_action (callable, optional): An optional callable that is executed after the selected path.
+                                        It can be used to perform cleanup or further processing. Defaults to None.
+
+**Returns:**
+
+- The output of the executed path.
+
+
+Examples:
+    >>> import lazyllm
+    >>> cond = lambda x: x > 0
+    >>> tpath = lambda x: x * 2
+    >>> fpath = lambda x: -x
+    >>> ifs_flow = lazyllm.ifs(cond, tpath, fpath)
+    >>> ifs_flow(10)
+    20
+    >>> ifs_flow(-5)
+    5
+    """
     def __init__(self, cond, tpath, fpath, post_action=None):
         super().__init__(cond, tpath, fpath, post_action=post_action)
 
@@ -555,6 +870,36 @@ class IFS(LazyLLMFlowsBase):
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
 #      ⬆----------------------------------------|
 class Loop(Pipeline):
+    """Initializes a Loop flow structure which repeatedly applies a sequence of functions to an input until a stop condition is met or a specified count of iterations is reached.
+
+The Loop structure allows for the definition of a simple control flow where a series of steps are applied in a loop, with an optional stop condition that can be used to exit the loop based on the output of the steps.
+
+Args:
+    *item (callable or list of callables): The function(s) or callable object(s) that will be applied in the loop.
+    stop_condition (callable, optional): A function that takes the output of the last item in the loop as input and returns a boolean. If it returns ``True``, the loop will stop. If ``None``, the loop will continue until ``count`` is reached. Defaults to ``None``.
+    count (int, optional): The maximum number of iterations to run the loop for. If ``None``, the loop will continue indefinitely or until ``stop_condition`` returns ``True``. Defaults to ``None``.
+    post_action (callable, optional): A function to be called with the final output after the loop ends. Defaults to ``None``.
+    judge_on_full_input(bool): If set to ``True``, the conditional judgment will be performed through the input of ``stop_condition``, otherwise the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
+
+Raises:
+    AssertionError: If both ``stop_condition`` and ``count`` are provided or if ``count`` is not an integer when provided.
+
+
+Examples:
+    >>> import lazyllm
+    >>> loop = lazyllm.loop(lambda x: x * 2, stop_condition=lambda x: x > 10, judge_on_full_input=True)
+    >>> loop(1)
+    16
+    >>> loop(3)
+    12
+    >>>
+    >>> with lazyllm.loop(stop_condition=lambda x: x > 10, judge_on_full_input=True) as lp:
+    ...    lp.f1 = lambda x: x + 1
+    ...    lp.f2 = lambda x: x * 2
+    ...
+    >>> lp(0)
+    14
+    """
     def __init__(self, *item, stop_condition=None, count=sys.maxsize, post_action=None,
                  auto_capture=False, judge_on_full_input=True, **kw):
         super().__init__(*item, post_action=post_action, auto_capture=auto_capture, **kw)

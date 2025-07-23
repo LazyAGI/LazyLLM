@@ -29,6 +29,41 @@ css = """
 """
 
 class WebModule(ModuleBase):
+    """WebModule is a web-based interactive interface provided by LazyLLM for developers. After initializing and starting
+a WebModule, developers can see structure of the module they provides behind the WebModule, and transmit the input
+of the Chatbot component to their modules. The results and logs returned by the module will be displayed on the
+“Processing Logs” and Chatbot component on the web page. In addition, Checkbox or Text components can be added
+programmatically to the web page for additional parameters to the background module. Meanwhile, The WebModule page
+provides Checkboxes of “Use Context,” “Stream Output,” and “Append Output,” which can be used to adjust the
+interaction between the page and the module behind.
+
+<span style="font-size: 20px;">&ensp;**`WebModule.init_web(component_descs) -> gradio.Blocks`**</span>
+
+Generate a demonstration web page based on gradio. The function initializes session-related data to save chat history
+and logs for different pages, then dynamically add Checkbox and Text components to the page according to component_descs
+parameter, and set the corresponding functions for the buttons and text boxes on the page at last.
+WebModule’s __init__ function calls this method to generate the page.
+
+Args:
+    component_descs (list): A list used to add components to the page. Each element in the list is also a list containing
+    5 elements, which are the module ID, the module name, the component name, the component type (currently only
+    supports Checkbox and Text), and the default value of the component.
+
+
+
+Examples:
+    >>> import lazyllm
+    >>> def func2(in_str, do_sample=True, temperature=0.0, *args, **kwargs):
+    ...     return f"func2:{in_str}|do_sample:{str(do_sample)}|temp:{temperature}"
+    ...
+    >>> m1=lazyllm.ActionModule(func2)
+    >>> m1.name="Module1"
+    >>> w = lazyllm.WebModule(m1, port=[20570, 20571, 20572], components={
+    ...         m1:[('do_sample', 'Checkbox', True), ('temperature', 'Text', 0.1)]},
+    ...                       text_mode=lazyllm.tools.WebModule.Mode.Refresh)
+    >>> w.start()
+    193703: 2024-06-07 10:26:00 lazyllm SUCCESS: ...
+    """
     class Mode:
         Dynamic = 0
         Refresh = 1

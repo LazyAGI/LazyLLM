@@ -7,6 +7,26 @@ import copy
 import re
 
 class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
+    """The base class of Prompter. A custom Prompter needs to inherit from this base class and set the Prompt template and the Instruction template using the `_init_prompt` function provided by the base class, as well as the string used to capture results. Refer to  [prompt](/Best%20Practice/prompt) for further understanding of the design philosophy and usage of Prompts.
+
+Both the Prompt template and the Instruction template use ``{}`` to indicate the fields to be filled in. The fields that can be included in the Prompt are `system`, `history`, `tools`, `user` etc., while the fields that can be included in the instruction_template are `instruction` and `extra_keys`. If the ``instruction`` field is a string, it is considered as a system instruction; if it is a dictionary, it can only contain the keys ``user`` and ``system``. ``user`` represents the user input instruction, which is placed before the user input in the prompt, and ``system`` represents the system instruction, which is placed after the system prompt in the prompt.
+``instruction`` is passed in by the application developer, and the ``instruction`` can also contain ``{}`` to define fillable fields, making it convenient for users to input additional information.
+
+
+Examples:
+    >>> from lazyllm.components.prompter import PrompterBase
+    >>> class MyPrompter(PrompterBase):
+    ...     def __init__(self, instruction = None, extra_keys = None, show = False):
+    ...         super(__class__, self).__init__(show)
+    ...         instruction_template = f'{instruction}\\n{{extra_keys}}\\n'.replace('{extra_keys}', PrompterBase._get_extro_key_template(extra_keys))
+    ...         self._init_prompt("<system>{system}</system>\\n</instruction>{instruction}</instruction>{history}\\n{input}\\n, ## Response::", instruction_template, '## Response::')
+    ... 
+    >>> p = MyPrompter('ins {instruction}')
+    >>> p.generate_prompt('hello')
+    '<system>You are an AI-Agent developed by LazyLLM.</system>\\n</instruction>ins hello\\n\\n</instruction>\\n\\n, ## Response::'
+    >>> p.generate_prompt('hello world', return_dict=True)
+    {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nins hello world\\n\\n'}, {'role': 'user', 'content': ''}]}
+    """
     ISA = "<!lazyllm-spliter!>"
     ISE = "</!lazyllm-spliter!>"
 
@@ -190,6 +210,17 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                         tools: Union[List[Dict[str, Any]], None] = None,
                         label: Union[str, None] = None,
                         *, show: bool = False, return_dict: bool = False) -> Union[str, Dict]:
+        """
+Generate a corresponding Prompt based on user input.
+
+Args:
+    input (Option[str | Dict]): The input from the prompter, if it's a dict, it will be filled into the slots of the instruction; if it's a str, it will be used as input.
+    history (Option[List[List | Dict]]): Historical conversation, can be ``[[u, s], [u, s]]`` or in openai's history format, defaults to None.
+    tools (Option[List[Dict]]): A collection of tools that can be used, used when the large model performs FunctionCall, defaults to None.
+    label (Option[str]): Label, used during fine-tuning or training, defaults to None.
+    show (bool): Flag indicating whether to print the generated Prompt, defaults to False.
+    return_dict (bool): Flag indicating whether to return a dict, generally set to True when using ``OnlineChatModule``. If returning a dict, only the ``instruction`` will be filled. Defaults to False.
+"""
         input = copy.deepcopy(input)
         if self._pre_hook:
             input, history, tools, label = self._pre_hook(input, history, tools, label)
@@ -204,6 +235,12 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         return result
 
     def get_response(self, output: str, input: Union[str, None] = None) -> str:
+        """Used to truncate the Prompt, keeping only valuable output.
+
+Args:
+        output (str): The output of the large model.
+        input (Option[str]): The input of the large model. If this parameter is specified, any part of the output that includes the input will be completely truncated. Defaults to None.
+"""
         if input and output.startswith(input):
             return output[len(input):]
         return output if getattr(self, "_split", None) is None else output.split(self._split)[-1]

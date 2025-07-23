@@ -17,6 +17,21 @@ class __EmbedModuleMeta(type):
 
 
 class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
+    """Used to manage and create online Embedding service modules currently on the market, currently supporting openai, sensenova, glm, qwen, doubao.
+
+Args:
+    source (str): Specify the type of module to create. Options are  ``openai`` /  ``sensenova`` /  ``glm`` /  ``qwen`` / ``doubao``.
+    embed_url (str): Specify the base link of the platform to be accessed. The default is the official link.
+    embed_mode_name (str): Specify the model to access (Note that you need to use Model ID or Endpoint ID when using Doubao. For details on how to obtain it, see [Getting the Inference Access Point](https://www.volcengine.com/docs/82379/1099522). Before using the model, you must first activate the corresponding service on the Doubao platform.), default is ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` / ``doubao-embedding-text-240715(doubao)``
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.OnlineEmbeddingModule(source="sensenova")
+    >>> emb = m("hello world")
+    >>> print(f"emb: {emb}")
+    emb: [0.0010528564, 0.0063285828, 0.0049476624, -0.012008667, ..., -0.009124756, 0.0032043457, -0.051696777]
+    """
     EMBED_MODELS = {'openai': OpenAIEmbedding,
                     'sensenova': SenseNovaEmbedding,
                     'glm': GLMEmbedding,

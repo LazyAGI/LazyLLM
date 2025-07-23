@@ -127,6 +127,48 @@ def bind_to_instance(func):
     return wrapper
 
 class Register(object):
+    """LazyLLM provides a registration mechanism for Components, allowing any function to be registered as a Component of LazyLLM. The registered functions can be indexed at any location through the grouping mechanism provided by the registrar, without the need for explicit import.
+
+<span style="font-size: 18px;">&ensp;**`lazyllm.components.register(cls, *, rewrite_func)→ Decorator`**</span>
+
+After the function is called, it returns a decorator which wraps the decorated function into a Component and registers it in a group named cls.
+
+Args:
+    cls (str) :The name of the group to which the function will be registered. The group must exist. Default groups include ``finetune`` and ``deploy``. Users can create new groups by calling the ``new_group`` function.
+    rewrite_func (str) :The name of the function to be rewritten after registration. Default is ``apply``. When registering a bash command, you need to pass ``cmd`` as the argument.
+
+**Examples:**
+
+```python
+>>> import lazyllm
+>>> @lazyllm.component_register('mygroup')
+... def myfunc(input):
+...    return input
+...
+>>> lazyllm.mygroup.myfunc()(1)
+1
+```
+
+<span style="font-size: 20px;">&ensp;**`register.cmd(cls)→ Decorator `**</span>
+
+After the function is called, it returns a decorator that wraps the decorated function into a Component and registers it in a group named cls. The wrapped function needs to return an executable bash command.
+
+Args:
+    cls (str) :The name of the group to which the function will be registered. The group must exist. Default groups include ``finetune`` and ``deploy``. Users can create new groups by calling the ``new_group`` function.
+
+**Examples:**
+
+```python
+>>> import lazyllm
+>>> @lazyllm.component_register.cmd('mygroup')
+... def mycmdfunc(input):
+...     return f'echo {input}'
+...
+>>> lazyllm.mygroup.mycmdfunc()(1)
+PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) Command: echo 1
+PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1
+```
+"""
     def __init__(self, base, fnames, template: str = reg_template, default_group: Optional[str] = None):
         self.basecls = base
         self.fnames = [fnames] if isinstance(fnames, str) else fnames
@@ -180,4 +222,10 @@ class Register(object):
         return impl
 
     def new_group(self, group_name):
+        """
+Creates a new ComponentGroup. The newly created group will be automatically added to __builtin__ and can be accessed at any location without the need for import.
+
+Args:
+    group_name (str): The name of the group to be created.
+"""
         exec('class LazyLLM{name}Base(self.basecls):\n    pass\n'.format(name=group_name))

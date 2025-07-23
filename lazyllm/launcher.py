@@ -25,6 +25,7 @@ import yaml
 from typing import Literal
 
 class Status(Enum):
+    """An enumeration."""
     TBSubmitted = 0,
     InQueue = 1
     Running = 2,
@@ -1050,6 +1051,18 @@ class K8sLauncher(LazyLLMLaunchersBase):
 
 @final
 class EmptyLauncher(LazyLLMLaunchersBase):
+    """This class is a subclass of ``LazyLLMLaunchersBase`` and serves as a local launcher.
+
+Args:
+    subprocess (bool): Whether to use a subprocess to launch. Default is ``False``.
+    sync (bool): Whether to execute jobs synchronously. Default is ``True``, otherwise it executes asynchronously.
+
+
+
+Examples:
+    >>> import lazyllm
+    >>> launcher = lazyllm.launchers.empty()
+    """
     all_processes = defaultdict(list)
 
     @final
@@ -1158,6 +1171,24 @@ class EmptyLauncher(LazyLLMLaunchersBase):
 
 @final
 class SlurmLauncher(LazyLLMLaunchersBase):
+    """This class is a subclass of ``LazyLLMLaunchersBase`` and acts as a Slurm launcher.
+
+Specifically, it provides methods to start and configure Slurm jobs, including specifying parameters such as the partition, number of nodes, number of processes, number of GPUs, and timeout settings.
+
+Args:
+    partition (str): The Slurm partition to use. Defaults to ``None``, in which case the default partition in ``lazyllm.config['partition']`` will be used. This configuration can be enabled by setting environment variables, such as ``export LAZYLLM_SLURM_PART=a100``.
+    nnode  (int): The number of nodes to use. Defaults to ``1``.
+    nproc (int): The number of processes per node. Defaults to ``1``.
+    ngpus (int): The number of GPUs per node. Defaults to ``None``, meaning no GPUs will be used.
+    timeout (int): The timeout for the job in seconds. Defaults to ``None``, in which case no timeout will be set.
+    sync (bool): Whether to execute the job synchronously. Defaults to ``True``, otherwise it will be executed asynchronously.
+
+
+
+Examples:
+    >>> import lazyllm
+    >>> launcher = lazyllm.launchers.slurm(partition='partition_name', nnode=1, nproc=1, ngpus=1, sync=False)
+    """
     # In order to obtain the jobid to monitor and terminate the job more
     # conveniently, only one srun command is allowed in one Job
     all_processes = defaultdict(list)
@@ -1266,10 +1297,10 @@ class SlurmLauncher(LazyLLMLaunchersBase):
         return result
 
     def get_idle_nodes(self, partion=None):
-        '''
+        """
         Obtain the current number of available nodes based on the available number of GPUs.
         Return a dictionary with node IP as the key and the number of available GPUs as the value.
-        '''
+        """
         if not partion:
             partion = self.partition
         num_can_use_nodes = self.num_can_use_nodes
@@ -1329,6 +1360,26 @@ class SlurmLauncher(LazyLLMLaunchersBase):
 
 @final
 class ScoLauncher(LazyLLMLaunchersBase):
+    """This class is a subclass of ``LazyLLMLaunchersBase`` and acts as a SCO launcher.
+
+Specifically, it provides methods to start and configure SCO jobs, including specifying parameters such as the partition, workspace name, framework type, number of nodes, number of processes, number of GPUs, and whether to use torchrun or not.
+
+Args:
+    partition (str): The Slurm partition to use. Defaults to ``None``, in which case the default partition in ``lazyllm.config['partition']`` will be used. This configuration can be enabled by setting environment variables, such as ``export LAZYLLM_SLURM_PART=a100``.
+    workspace_name (str): The workspace name on SCO. Defaults to the configuration in ``lazyllm.config['sco.workspace']``. This configuration can be enabled by setting environment variables, such as ``export LAZYLLM_SCO_WORKSPACE=myspace``.
+    framework (str): The framework type to use, for example, ``pt`` for PyTorch. Defaults to ``pt``.
+    nnode  (int): The number of nodes to use. Defaults to ``1``.
+    nproc (int): The number of processes per node. Defaults to ``1``.
+    ngpus (int): The number of GPUs per node. Defaults to ``1``, using 1 GPU.
+    torchrun (bool): Whether to start the job with ``torchrun``. Defaults to ``False``.
+    sync (bool): Whether to execute the job synchronously. Defaults to ``True``, otherwise it will be executed asynchronously.
+
+
+
+Examples:
+    >>> import lazyllm
+    >>> launcher = lazyllm.launchers.sco(partition='partition_name', nnode=1, nproc=1, ngpus=1, sync=False)
+    """
     all_processes = defaultdict(list)
 
     @final
@@ -1516,6 +1567,23 @@ class ScoLauncher(LazyLLMLaunchersBase):
 
 
 class RemoteLauncher(LazyLLMLaunchersBase):
+    """This class is a subclass of ``LazyLLMLaunchersBase`` and acts as a proxy for a remote launcher. It dynamically creates and returns an instance of the corresponding launcher based on the ``lazyllm.config['launcher']`` entry in the configuration file (for example: ``SlurmLauncher`` or ``ScoLauncher``).
+
+Args:
+    *args: Positional arguments that will be passed to the constructor of the dynamically created launcher.
+    sync (bool): Whether to execute the job synchronously. Defaults to ``False``.
+    **kwargs: Keyword arguments that will be passed to the constructor of the dynamically created launcher.
+
+Notes: 
+    - ``RemoteLauncher`` is not a direct launcher but dynamically creates a launcher based on the configuration. 
+    - The ``lazyllm.config['launcher']`` in the configuration file specifies a launcher class name present in the ``lazyllm.launchers`` module. This configuration can be set by setting the environment variable ``LAZYLLM_DEAULT_LAUNCHER``. For example: ``export LAZYLLM_DEAULT_LAUNCHER=sco``, ``export LAZYLLM_DEAULT_LAUNCHER=slurm``.
+
+
+
+Examples:
+    >>> import lazyllm
+    >>> launcher = lazyllm.launchers.remote(ngpus=1)
+    """
     def __new__(cls, *args, sync=False, ngpus=1, **kwargs):
         return getattr(lazyllm.launchers, lazyllm.config['launcher'])(*args, sync=sync, ngpus=ngpus, **kwargs)
 

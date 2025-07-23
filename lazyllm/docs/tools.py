@@ -341,7 +341,7 @@ Args:
     similarity_kw: Additional parameters to pass to the similarity calculation function.
     output_format: Represents the output format, with a default value of None. Optional values include 'content' and 'dict', where 'content' corresponds to a string output format and 'dict' corresponds to a dictionary.
     join:  Determines whether to concatenate the output of k nodes - when output format is 'content', setting True returns a single concatenated string while False returns a list of strings (each corresponding to a node's text content); when output format is 'dict', joining is unsupported (join defaults to False) and the output will be a dictionary containing 'content', 'embedding' and 'metadata' keys.
-                
+
 The `group_name` has three built-in splitting strategies, all of which use `SentenceSplitter` for splitting, with the difference being in the chunk size:
 
 - CoarseChunk: Chunk size is 1024, with an overlap length of 100
@@ -2056,7 +2056,7 @@ add_chinese_doc('MCPClient', '''\
 MCP客户端，用于连接MCP服务器。同时支持本地服务器（通过stdio client）和sse服务器（通过sse client）。
 
 如果传入的 'command_or_url' 是一个 URL 字符串（以 'http' 或 'https' 开头），则将连接到远程服务器；否则，将启动并连接到本地服务器。
-                
+
 Args:
     command_or_url (str): 用于启动本地服务器或连接远程服务器的命令或 URL 字符串。
     args (list[str], optional): 用于启动本地服务器的参数列表；如果要连接远程服务器，则无需此参数。（默认值为[]）

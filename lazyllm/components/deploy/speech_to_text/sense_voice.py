@@ -72,6 +72,39 @@ class SenseVoice(object):
         return SenseVoice.rebuild, (self.base_path, init)
 
 class SenseVoiceDeploy(LazyLLMDeployBase):
+    """SenseVoice Model Deployment Class. This class is used to deploy the SenseVoice model to a specified server for network invocation.
+
+`__init__(self, launcher=None)`
+Constructor, initializes the deployment class.
+
+Args:
+    launcher (lazyllm.launcher): An instance of the launcher used to start the remote service.
+
+`__call__(self, finetuned_model=None, base_model=None)`
+Deploys the model and returns the remote service address.
+
+Args:
+    finetuned_model (str): If provided, this model will be used for deployment; if not provided or the path is invalid, `base_model` will be used.
+    base_model (str): The default model, which will be used for deployment if `finetuned_model` is invalid.
+    Return (str): The URL address of the remote service.
+
+Notes:
+    - Input for infer: `str`. The audio path or link.
+    - Return of infer: `str`. The recognized content.
+    - Supported models: [SenseVoiceSmall](https://huggingface.co/FunAudioLLM/SenseVoiceSmall)
+
+
+Examples:
+    >>> import os
+    >>> import lazyllm
+    >>> from lazyllm import launchers, UrlModule
+    >>> from lazyllm.components import SenseVoiceDeploy
+    >>> deployer = SenseVoiceDeploy(launchers.remote())
+    >>> url = deployer(base_model='SenseVoiceSmall')
+    >>> model = UrlModule(url=url)
+    >>> model('path/to/audio') # support format: .mp3, .wav
+    ... xxxxxxxxxxxxxxxx
+    """
     keys_name_handle = {
         'inputs': 'inputs',
         'audio': 'audio',

@@ -25,6 +25,34 @@ class _VllmStreamParseParametersMeta(LazyLLMRegisterMetaClass):
 
 
 class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
+    """This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the [VLLM](https://github.com/vllm-project/vllm) framework, used for inference with large language models.
+
+Args:
+    trust_remote_code (bool): Whether to allow loading of model code from remote servers, default is ``True``.
+    launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1)``.
+    stream (bool): Whether the response is streaming, default is ``False``.
+    kw: Keyword arguments used to update default training parameters. Note that not any additional keyword arguments can be specified here.
+
+The keyword arguments and their default values for this class are as follows:
+
+Keyword Args: 
+    tensor-parallel-size (int): Tensor parallelism parameter, default is ``1``.
+    dtype (str): Data type for model weights and activations, default is ``auto``. Other options include: ``half``, ``float16``, ``bfloat16``, ``float``, ``float32``.
+    kv-cache-dtype (str): Data type for the key-value cache storage, default is ``auto``. Other options include: ``fp8``, ``fp8_e5m2``, ``fp8_e4m3``.
+    device (str): Backend hardware type supported by VLLM, default is ``auto``. Other options include: ``cuda``, ``neuron``, ``cpu``.
+    block-size (int): Sets the size of the token block, default is ``16``.
+    port (int): Service port number, default is ``auto``.
+    host (str): Service IP address, default is ``0.0.0.0``.
+    seed (int): Random number seed, default is ``0``.
+    tokenizer_mode (str): Tokenizer loading mode, default is ``auto``.
+    max-num-seqs (int): Maximum number of parallel requests for the inference engine, default is ``256``.
+
+
+
+Examples:
+    >>> from lazyllm import deploy
+    >>> infer = deploy.vllm()
+    """
     # keys_name_handle/default_headers/message_format will lose efficacy when openai_api is True
     keys_name_handle = {'inputs': 'prompt', 'stop': 'stop'}
     default_headers = {'Content-Type': 'application/json'}

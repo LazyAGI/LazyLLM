@@ -19,7 +19,7 @@ class LazyLLMFinetuneBase(ComponentBase):
             return self.target_path
 
 
-class DummyFinetune(LazyLLMFinetuneBase):
+class _DummyFinetune(LazyLLMFinetuneBase):
     def __init__(self, base_model='base', target_path='target', *, launcher=launchers.remote(), **kw):
         super().__init__(base_model, target_path, launcher=launchers.empty)
         self.kw = kw

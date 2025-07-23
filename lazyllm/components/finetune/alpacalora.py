@@ -8,6 +8,45 @@ from .base import LazyLLMFinetuneBase
 
 
 class AlpacaloraFinetune(LazyLLMFinetuneBase):
+    """This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the [alpaca-lora](https://github.com/tloen/alpaca-lora) project, used for LoRA fine-tuning of large language models.
+
+Args:
+    base_model (str): The base model used for fine-tuning. It is required to be the path of the base model.
+    target_path (str): The path where the LoRA weights of the fine-tuned model are saved.
+    merge_path (str): The path where the model merges the LoRA weights, default to `None`. If not specified, "lazyllm_lora" and "lazyllm_merge" directories will be created under ``target_path`` as ``target_path`` and ``merge_path`` respectively.
+    model_name (str): The name of the model, used as the prefix for setting the log name, default to "LLM".
+    cp_files (str): Specify configuration files to be copied from the base model path, which will be copied to ``merge_path``, default to ``tokeniz*``
+    launcher (lazyllm.launcher): The launcher for fine-tuning, default to ``launchers.remote(ngpus=1)``.
+    kw: Keyword arguments, used to update the default training parameters. Note that additional keyword arguments cannot be arbitrarily specified.
+
+The keyword arguments and their default values for this class are as follows:
+
+Keyword Args: 
+    data_path (str): Data path, default to ``None``; generally passed as the only positional argument when this object is called.
+    batch_size (int): Batch size, default to ``64``.
+    micro_batch_size (int): Micro-batch size, default to ``4``.
+    num_epochs (int): Number of training epochs, default to ``2``.
+    learning_rate (float): Learning rate, default to ``5.e-4``.
+    cutoff_len (int): Cutoff length, default to ``1030``; input data tokens will be truncated if they exceed this length.
+    filter_nums (int): Number of filters, default to ``1024``; only input with token length below this value is preserved.
+    val_set_size (int): Validation set size, default to ``200``.
+    lora_r (int): LoRA rank, default to ``8``; this value determines the amount of parameters added, the smaller the value, the fewer the parameters.
+    lora_alpha (int): LoRA fusion factor, default to ``32``; this value determines the impact of LoRA parameters on the base model parameters, the larger the value, the greater the impact.
+    lora_dropout (float): LoRA dropout rate, default to ``0.05``, generally used to prevent overfitting.
+    lora_target_modules (str): LoRA target modules, default to ``[wo,wqkv]``, which is the default for InternLM2 model; this configuration item varies for different models.
+    modules_to_save (str): Modules for full fine-tuning, default to ``[tok_embeddings,output]``, which is the default for InternLM2 model; this configuration item varies for different models.
+    deepspeed (str): The path of the DeepSpeed configuration file, default to use the pre-made configuration file in the LazyLLM code repository: ``ds.json``.
+    prompt_template_name (str): The name of the prompt template, default to "alpaca", i.e., use the prompt template provided by LazyLLM by default.
+    train_on_inputs (bool): Whether to train on inputs, default to ``True``.
+    show_prompt (bool): Whether to show the prompt, default to ``False``.
+    nccl_port (int): NCCL port, default to ``19081``.
+
+
+
+Examples:
+    >>> from lazyllm import finetune
+    >>> trainer = finetune.alpacalora('path/to/base/model', 'path/to/target')
+    """
     defatult_kw = ArgsDict({
         'data_path': None,
         'batch_size': 64,

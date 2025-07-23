@@ -10,6 +10,26 @@ from .utils import get_log_path, make_log_dir
 lazyllm.config.add("default_embedding_engine", str, "", "DEFAULT_EMBEDDING_ENGINE")
 
 class Infinity(LazyLLMDeployBase):
+    """This class is a subclass of ``LazyLLMDeployBase``, providing high-performance text-embeddings, reranking, and CLIP capabilities based on the [Infinity](https://github.com/michaelfeil/infinity) framework.
+
+Args:
+    launcher (lazyllm.launcher): The launcher for Infinity, defaulting to ``launchers.remote(ngpus=1)``.
+    kw: Keyword arguments for updating default training parameters. Note that no additional keyword arguments can be passed here except those listed below.
+
+The keyword arguments and their default values for this class are as follows:
+
+Keyword Args: 
+    host (str): The IP address of the service, defaulting to ``0.0.0.0``.
+    port (int): The port number of the service, defaulting to ``None``, in which case LazyLLM will automatically generate a random port number.
+    batch-size (int): The maximum batch size, defaulting to ``256``.
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm import deploy
+    >>> deploy.Infinity()
+    <lazyllm.llm.deploy type=Infinity>
+    """
     keys_name_handle = {
         'inputs': 'input',
     }

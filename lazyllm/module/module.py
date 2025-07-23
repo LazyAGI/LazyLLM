@@ -19,6 +19,37 @@ from typing import Optional, Union, Dict
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
 # example: ActionModule.submodules:: isinstance(x, ModuleBase) will add submodule.
 class ModuleBase(metaclass=_MetaBind):
+    """Module is the top-level component in LazyLLM, possessing four key capabilities: training, deployment, inference, and evaluation. Each module can choose to implement some or all of these capabilities, and each capability can be composed of one or more components.
+ModuleBase itself cannot be instantiated directly; subclasses that inherit and implement the forward function can be used as a functor.
+Similar to PyTorch's Module, when a Module A holds an instance of another Module B as a member variable, B will be automatically added to A's submodules.
+If you need the following capabilities, please have your custom class inherit from ModuleBase:
+
+1. Combine some or all of the training, deployment, inference, and evaluation capabilities. For example, an Embedding model requires training and inference.
+
+2. If you want the member variables to possess some or all of the capabilities for training, deployment, and evaluation, and you want to train, deploy, and evaluate these members through the start, update, eval, and other methods of the Module's root node.
+
+3. Pass user-set parameters directly to your custom module from the outermost layer (refer to WebModule).
+
+4. The desire for it to be usable by the parameter grid search module (refer to TrialModule).
+
+
+Examples:
+    >>> import lazyllm
+    >>> class Module(lazyllm.module.ModuleBase):
+    ...     pass
+    ... 
+    >>> class Module2(lazyllm.module.ModuleBase):
+    ...     def __init__(self):
+    ...         super(__class__, self).__init__()
+    ...         self.m = Module()
+    ... 
+    >>> m = Module2()
+    >>> m.submodules
+    [<Module type=Module>]
+    >>> m.m3 = Module()
+    >>> m.submodules
+    [<Module type=Module>, <Module type=Module>]
+    """
     builder_keys = []  # keys in builder support Option by default
 
     def __new__(cls, *args, **kw):
@@ -128,7 +159,20 @@ class ModuleBase(metaclass=_MetaBind):
         globals["usage"].pop(self._module_id, None)
 
     # interfaces
-    def forward(self, *args, **kw): raise NotImplementedError
+    def forward(self, *args, **kw):
+        """Define computation steps executed each time, all subclasses of ModuleBase need to override.
+
+
+Examples:
+    >>> import lazyllm
+    >>> class MyModule(lazyllm.module.ModuleBase):
+    ...     def forward(self, input):
+    ...         return input + 1
+    ... 
+    >>> MyModule()(1)
+    2   
+    """
+        raise NotImplementedError
 
     def register_hook(self, hook_type: LazyLLMHook):
         self._hooks.add(hook_type)
@@ -140,8 +184,34 @@ class ModuleBase(metaclass=_MetaBind):
     def clear_hooks(self):
         self._hooks = set()
 
-    def _get_train_tasks(self): return None
-    def _get_deploy_tasks(self): return None
+    def _get_train_tasks(self):
+        """Define a training task. This function returns a training pipeline. Subclasses that override this function can be trained or fine-tuned during the update phase.
+
+
+Examples:
+    >>> import lazyllm
+    >>> class MyModule(lazyllm.module.ModuleBase):
+    ...     def _get_train_tasks(self):
+    ...         return lazyllm.pipeline(lambda : 1, lambda x: print(x))
+    ... 
+    >>> MyModule().update()
+    1
+    """
+        return None
+    def _get_deploy_tasks(self):
+        """Define a deployment task. This function returns a deployment pipeline. Subclasses that override this function can be deployed during the update/start phase.
+
+
+Examples:
+    >>> import lazyllm
+    >>> class MyModule(lazyllm.module.ModuleBase):
+    ...     def _get_deploy_tasks(self):
+    ...         return lazyllm.pipeline(lambda : 1, lambda x: print(x))
+    ... 
+    >>> MyModule().start()
+    1
+    """
+        return None
     def _get_post_process_tasks(self): return None
 
     def _set_mid(self, mid=None):
@@ -161,6 +231,18 @@ class ModuleBase(metaclass=_MetaBind):
         return self._submodules
 
     def evalset(self, evalset, load_f=None, collect_f=lambda x: x):
+        """during update or eval, and the results will be stored in the eval_result variable.
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.module.TrainableModule().deploy_method(lazyllm.deploy.dummy).finetune_method(lazyllm.finetune.dummy).trainset("").mode("finetune").prompt(None)
+    >>> m.evalset([1, 2, 3])
+    >>> m.update()
+    INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+    >>> print(m.eval_result)
+    ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+    """
         if isinstance(evalset, str) and os.path.exists(evalset):
             with open(evalset) as f:
                 assert callable(load_f)
@@ -218,11 +300,69 @@ class ModuleBase(metaclass=_MetaBind):
         Parallel.sequential(*post_process_tasks)()
         return self
 
-    def update(self, *, recursive=True): return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
+    def update(self, *, recursive=True):
+        """Update the module (and all its submodules). The module will be updated when the ``_get_train_tasks`` method is overridden.
+
+Args:
+    recursive (bool): Whether to recursively update all submodules, default is True.
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.module.TrainableModule().finetune_method(lazyllm.finetune.dummy).trainset("").deploy_method(lazyllm.deploy.dummy).mode('finetune').prompt(None)
+    >>> m.evalset([1, 2, 3])
+    >>> m.update()
+    INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+    >>> print(m.eval_result)
+    ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+    """
+        return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
     def update_server(self, *, recursive=True): return self._update(mode=['server'], recursive=recursive)
-    def eval(self, *, recursive=True): return self._update(mode=['eval'], recursive=recursive)
-    def start(self): return self._update(mode=['server'], recursive=True)
-    def restart(self): return self.start()
+    def eval(self, *, recursive=True):
+        """Evaluate the module (and all its submodules). This function takes effect after the module has been set with an evaluation set using 'evalset'.
+
+Args:
+    recursive (bool): Whether to recursively evaluate all submodules. Defaults to True.
+
+
+Examples:
+    >>> import lazyllm
+    >>> class MyModule(lazyllm.module.ModuleBase):
+    ...     def forward(self, input):
+    ...         return f'reply for input'
+    ... 
+    >>> m = MyModule()
+    >>> m.evalset([1, 2, 3])
+    >>> m.eval().eval_result
+    ['reply for input', 'reply for input', 'reply for input']
+    """
+        return self._update(mode=['eval'], recursive=recursive)
+    def start(self):
+        """Deploy the module and all its submodules.
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.TrainableModule().deploy_method(lazyllm.deploy.dummy).prompt(None)
+    >>> m.start()
+    <Module type=Trainable mode=None basemodel= target= stream=False return_trace=False>
+    >>> m(1)
+    "reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+    """
+        return self._update(mode=['server'], recursive=True)
+    def restart(self):
+        """Re-deploy the module and all its submodules.
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.TrainableModule().deploy_method(lazyllm.deploy.dummy).prompt(None)
+    >>> m.restart()
+    <Module type=Trainable mode=None basemodel= target= stream=False return_trace=False>
+    >>> m(1)
+    "reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+    """
+        return self.start()
     def wait(self): pass
 
     def stop(self):
@@ -250,6 +390,77 @@ class ModuleBase(metaclass=_MetaBind):
 
 
 class ActionModule(ModuleBase):
+    """Used to wrap a Module around functions, modules, flows, Module, and other callable objects. The wrapped Module (including the Module within the flow) will become a submodule of this Module.
+
+Args:
+    action (Callable|list[Callable]): The object to be wrapped, which is one or a set of callable objects.
+
+**Examples:**
+
+```python
+>>> import lazyllm
+>>> def myfunc(input): return input + 1
+... 
+>>> class MyModule1(lazyllm.module.ModuleBase):
+...     def forward(self, input): return input * 2
+... 
+>>> class MyModule2(lazyllm.module.ModuleBase):
+...     def _get_deploy_tasks(self): return lazyllm.pipeline(lambda : print('MyModule2 deployed!'))
+...     def forward(self, input): return input * 4
+... 
+>>> class MyModule3(lazyllm.module.ModuleBase):
+...     def _get_deploy_tasks(self): return lazyllm.pipeline(lambda : print('MyModule3 deployed!'))
+...     def forward(self, input): return f'get {input}'
+... 
+>>> m = lazyllm.ActionModule(myfunc, lazyllm.pipeline(MyModule1(), MyModule2), MyModule3())
+>>> print(m(1))
+get 16
+>>> 
+>>> m.evalset([1, 2, 3])
+>>> m.update()
+MyModule2 deployed!
+MyModule3 deployed!
+>>> print(m.eval_result)
+['get 16', 'get 24', 'get 32']
+```
+
+
+<span style="font-size: 20px;">**`evalset(evalset, load_f=None, collect_f=<function ModuleBase.<lambda>>)`**</span>
+
+Set the evaluation set for the Module. Modules that have been set with an evaluation set will be evaluated during ``update`` or ``eval``, and the evaluation results will be stored in the eval_result variable. 
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, collect_f=lambda x: ...)→ None `**</span>
+
+
+Args:
+    evalset (list) :Evaluation set
+    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.
+
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, load_f=None, collect_f=lambda x: ...)→ None`**</span>
+
+
+Args:
+    evalset (str) :Path to the evaluation set
+    load_f (Callable) :Method for loading the evaluation set, including parsing file formats and converting to a list
+    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.
+
+**Examples:**
+
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.evalset([1, 2, 3])
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+>>> m.eval_result
+["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+```
+
+
+"""
     def __init__(self, *action, return_trace=False):
         super().__init__(return_trace=return_trace)
         if len(action) == 1 and isinstance(action, FlowBase): action = action[0]

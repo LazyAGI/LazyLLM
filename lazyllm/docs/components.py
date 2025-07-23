@@ -1404,7 +1404,7 @@ The constructor dynamically creates and returns the corresponding deployment ins
 Args:
     name: A string specifying the type of deployment instance to be created.
     **kwarg: Keyword arguments to be passed to the constructor of the corresponding deployment instance.
-                
+
 Returns:
     If the name argument is 'bark', an instance of [BarkDeploy][lazyllm.components.BarkDeploy] is returned.
     If the name argument is 'ChatTTS', an instance of [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] is returned.
@@ -1421,7 +1421,7 @@ TTSDeploy 是一个用于根据指定的名称创建不同类型文本到语音(
 Args:
     name：字符串，用于指定要创建的部署实例的类型。
     **kwarg：关键字参数，用于传递给对应部署实例的构造函数。
-                
+
 Returns:
     如果 name 参数为 ‘bark’，则返回一个 [BarkDeploy][lazyllm.components.BarkDeploy] 实例。
     如果 name 参数为 ‘ChatTTS’，则返回一个 [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] 实例。
@@ -1440,6 +1440,38 @@ add_example('TTSDeploy', ['''\
 >>> print(res)
 ... <lazyllm-query>{"query": "", "files": ["path/to/chattts/sound_xxx.wav"]}
 '''])
+
+
+#OCRDeploy
+add_chinese_doc('OCRDeploy', '''\
+OCRDeploy 类是一个部署 OCR（光学字符识别）服务的工具类。它继承自 LazyLLMDeployBase，主要用于将 OCR 模型部署到远程服务器，并提供网络调用接口。
+
+.. class:: OCRDeploy(launcher=None, log_path=None, trust_remote_code=True, port=None)
+
+构造函数用于初始化 OCR 部署配置。
+
+Args:
+    launcher (lazyllm.launcher): 用于启动远程服务的 launcher 实例。
+    log_path (str): 日志文件路径，用于记录服务日志（可选）。
+    trust_remote_code (bool): 是否信任远程代码，默认为 True。
+    port (int): 部署服务的端口号（可选）。
+
+''')
+
+add_english_doc('OCRDeploy', '''\
+The OCRDeploy class is a tool for deploying OCR (Optical Character Recognition) services. It inherits from LazyLLMDeployBase and is designed to deploy OCR models to a remote server, providing a network interface for invocation.
+
+.. class:: OCRDeploy(launcher=None, log_path=None, trust_remote_code=True, port=None)
+
+The constructor initializes the OCR deployment configuration.
+
+Args:
+    launcher (lazyllm.launcher): A launcher instance used to start the remote service.
+    log_path (str): Path to the log file for recording service logs (optional).
+    trust_remote_code (bool): Whether to trust remote code, default is True.
+    port (int): The port number for the deployment service (optional).
+
+''')
 
 # ============= Launcher
 

@@ -9,7 +9,7 @@ class InferClient(ClientBase):
         super().__init__(urljoin(url, 'v1/deploy/'))
 
     def deploy(self, base_model: str, token: str, num_gpus: int = 1):
-        '''
+        """
         Start a new deploy job on the LazyLLM infer service.
 
         This method sends a request to the LazyLLM API to launch a deploy job with the specified configuration.
@@ -25,7 +25,7 @@ class InferClient(ClientBase):
 
         Raises:
         - Exception: If an error occurs during the request, it will be logged.
-        '''
+        """
         url = urljoin(self.url, 'jobs')
         headers = {
             'Content-Type': 'application/json',
@@ -43,7 +43,7 @@ class InferClient(ClientBase):
             return (None, str(e))
 
     def cancel(self, token, job_id):
-        '''
+        """
         Cancel a deploy job on the LazyLLM infer service.
 
         This method sends a request to the LazyLLM API to cancel a specific deploy job.
@@ -57,7 +57,7 @@ class InferClient(ClientBase):
 
         Raises:
         - Exception: If an error occurs during the request, it will be logged and an error message will be returned.
-        '''
+        """
         url = urljoin(self.url, f'jobs/{job_id}/cancel')
         try:
             response = requests.post(url, headers={'token': token})
@@ -73,7 +73,7 @@ class InferClient(ClientBase):
             return f'Failed to cancel task. Because: {str(e)}'
 
     def list_all_tasks(self, token):
-        '''
+        """
         List all models with their job-id, model-name and statuse for the LazyLLM infer service.
 
         Parameters:
@@ -85,7 +85,7 @@ class InferClient(ClientBase):
 
         Raises:
         - Exception: If an error occurs during the request, it will be logged.
-        '''
+        """
         url = urljoin(self.url, 'jobs')
         headers = {'token': token}
         try:
@@ -101,7 +101,7 @@ class InferClient(ClientBase):
             return None
 
     def get_infra_handle(self, token, job_id):
-        '''
+        """
         This method retrieves and processes infrastructure details for a specific job based on the provided job ID.
         It validates the job status and prepares a deployable module handle.
 
@@ -115,7 +115,7 @@ class InferClient(ClientBase):
         Raises:
         - requests.exceptions.HTTPError: If the HTTP request to fetch job details fails.
         - RuntimeError: If the job's status is not 'Running'.
-        '''
+        """
         response = requests.get(urljoin(self.url, f'jobs/{job_id}'), headers={'token': token})
         response.raise_for_status()
         response = response.json()
@@ -127,7 +127,7 @@ class InferClient(ClientBase):
         return lazyllm.TrainableModule(base_model).deploy_method(deployer, url=url)
 
     def wait_ready(self, token, job_id, timeout=1800):
-        '''
+        """
         This method to wait for a specific job based on the provided job ID.
 
         Parameters:
@@ -136,7 +136,7 @@ class InferClient(ClientBase):
 
         Returns:
         - infer service status.
-        '''
+        """
         def get_status():
             response = requests.get(urljoin(self.url, f'jobs/{job_id}'), headers={'token': token})
             response.raise_for_status()

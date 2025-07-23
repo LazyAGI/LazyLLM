@@ -11,7 +11,7 @@ def is_all_punctuation(s: str) -> bool:
     return all(c in punctuation for c in s)
 
 
-class OCR(object):
+class _OCR(object):
     def __init__(
         self,
         model: Optional[str] = "PP-OCRv5_mobile",
@@ -67,7 +67,7 @@ class OCR(object):
         return cls(*args, **kw)
 
     def __reduce__(self):
-        return OCR.rebuild, (
+        return _OCR.rebuild, (
             self.model,
             self.use_doc_orientation_classify,
             self.use_doc_unwarping,
@@ -76,6 +76,19 @@ class OCR(object):
 
 
 class OCRDeploy(LazyLLMDeployBase):
+    """The OCRDeploy class is a tool for deploying OCR (Optical Character Recognition) services. It inherits from LazyLLMDeployBase and is designed to deploy OCR models to a remote server, providing a network interface for invocation.
+
+.. class:: OCRDeploy(launcher=None, log_path=None, trust_remote_code=True, port=None)
+
+The constructor initializes the OCR deployment configuration.
+
+Args:
+    launcher (lazyllm.launcher): A launcher instance used to start the remote service.
+    log_path (str): Path to the log file for recording service logs (optional).
+    trust_remote_code (bool): Whether to trust remote code, default is True.
+    port (int): The port number for the deployment service (optional).
+
+"""
     keys_name_handle = {
         "inputs": "inputs",
         "ocr_files": "inputs",

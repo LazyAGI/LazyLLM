@@ -178,6 +178,64 @@ if "tool" not in LazyLLMRegisterMetaClass.all_clses:
 
 
 class ToolManager(ModuleBase):
+    """ToolManager is a tool management class used to provide tool information and tool calls to function call.
+
+When constructing this management class, you need to pass in a list of tool name strings. The tool name here can be provided by LazyLLM or user-defined. If it is user-defined, it must first be registered in LazyLLM before it can be used. When registering, directly use the `fc_register` registrar, which has established the `tool` group, so when using the tool management class, all functions can be uniformly registered in the `tool` group. The function to be registered needs to annotate the function parameters, and add a functional description to the function, as well as the parameter type and function description. This is to facilitate the tool management class to parse the function and pass it to LLM for use.
+
+Args:
+    tools (List[str]): A list of tool name strings.
+
+
+Examples:
+    >>> from lazyllm.tools import ToolManager, fc_register
+    >>> import json
+    >>> from typing import Literal
+    >>> @fc_register("tool")
+    >>> def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]="fahrenheit"):
+    ...     '''
+    ...     Get the current weather in a given location
+    ...
+    ...     Args:
+    ...         location (str): The city and state, e.g. San Francisco, CA.
+    ...         unit (str): The temperature unit to use. Infer this from the users location.
+    ...     '''
+    ...     if 'tokyo' in location.lower():
+    ...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
+    ...     elif 'san francisco' in location.lower():
+    ...         return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit'})
+    ...     elif 'paris' in location.lower():
+    ...         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
+    ...     elif 'beijing' in location.lower():
+    ...         return json.dumps({'location': 'Beijing', 'temperature': '90', 'unit': 'fahrenheit'})
+    ...     else:
+    ...         return json.dumps({'location': location, 'temperature': 'unknown'})
+    ...
+    >>> @fc_register("tool")
+    >>> def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"]='fahrenheit'):
+    ...     '''
+    ...     Get an N-day weather forecast
+    ...
+    ...     Args:
+    ...         location (str): The city and state, e.g. San Francisco, CA.
+    ...         num_days (int): The number of days to forecast.
+    ...         unit (Literal['celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+    ...     '''
+    ...     if 'tokyo' in location.lower():
+    ...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
+    ...     elif 'san francisco' in location.lower():
+    ...         return json.dumps({'location': 'San Francisco', 'temperature': '75', 'unit': 'fahrenheit', "num_days": num_days})
+    ...     elif 'paris' in location.lower():
+    ...         return json.dumps({'location': 'Paris', 'temperature': '25', 'unit': 'celsius', "num_days": num_days})
+    ...     elif 'beijing' in location.lower():
+    ...         return json.dumps({'location': 'Beijing', 'temperature': '85', 'unit': 'fahrenheit', "num_days": num_days})
+    ...     else:
+    ...         return json.dumps({'location': location, 'temperature': 'unknown'})
+    ...
+    >>> tools = ["get_current_weather", "get_n_day_weather_forecast"]
+    >>> tm = ToolManager(tools)
+    >>> print(tm([{'name': 'get_n_day_weather_forecast', 'arguments': {'location': 'Beijing', 'num_days': 3}}])[0])
+    '{"location": "Beijing", "temperature": "85", "unit": "fahrenheit", "num_days": 3}'
+    """
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._tools = self._load_tools(tools)

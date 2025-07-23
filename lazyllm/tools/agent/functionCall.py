@@ -50,6 +50,70 @@ class StreamResponse():
 
 
 class FunctionCall(ModuleBase):
+    """FunctionCall is a single-round tool call class. If the information in LLM is not enough to answer the uesr's question, it is necessary to combine external knowledge to answer the user's question. If the LLM output required a tool call, the tool call is performed and the tool call result is output. The output result is of List type, including the input, model output, and tool output of the current round. If a tool call is not required, the LLM result is directly output, and the output result is of string type.
+
+Note: The tools used in `tools` must have a `__doc__` field, clearly describing the purpose and parameters of the tool according to the [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) requirements.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
+    tools (List[Union[str, Callable]]): A list of tool names for LLM to use.
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.tools import fc_register, FunctionCall
+    >>> import json
+    >>> from typing import Literal
+    >>> @fc_register("tool")
+    >>> def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = 'fahrenheit'):
+    ...     '''
+    ...     Get the current weather in a given location
+    ...
+    ...     Args:
+    ...         location (str): The city and state, e.g. San Francisco, CA.
+    ...         unit (str): The temperature unit to use. Infer this from the users location.
+    ...     '''
+    ...     if 'tokyo' in location.lower():
+    ...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
+    ...     elif 'san francisco' in location.lower():
+    ...         return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit'})
+    ...     elif 'paris' in location.lower():
+    ...         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
+    ...     else:
+    ...         return json.dumps({'location': location, 'temperature': 'unknown'})
+    ...
+    >>> @fc_register("tool")
+    >>> def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"] = 'fahrenheit'):
+    ...     '''
+    ...     Get an N-day weather forecast
+    ...
+    ...     Args:
+    ...         location (str): The city and state, e.g. San Francisco, CA.
+    ...         num_days (int): The number of days to forecast.
+    ...         unit (Literal['celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+    ...     '''
+    ...     if 'tokyo' in location.lower():
+    ...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
+    ...     elif 'san francisco' in location.lower():
+    ...         return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit', "num_days": num_days})
+    ...     elif 'paris' in location.lower():
+    ...         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius', "num_days": num_days})
+    ...     else:
+    ...         return json.dumps({'location': location, 'temperature': 'unknown'})
+    ...
+    >>> tools=["get_current_weather", "get_n_day_weather_forecast"]
+    >>> llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule("openai", stream=False)
+    >>> query = "What's the weather like today in celsius in Tokyo."
+    >>> fc = FunctionCall(llm, tools)
+    >>> ret = fc(query)
+    >>> print(ret)
+    ["What's the weather like today in celsius in Tokyo.", {'role': 'assistant', 'content': '
+    ', 'tool_calls': [{'id': 'da19cddac0584869879deb1315356d2a', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': {'location': 'Tokyo', 'unit': 'celsius'}}}]}, [{'role': 'tool', 'content': '{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', 'tool_call_id': 'da19cddac0584869879deb1315356d2a', 'name': 'get_current_weather'}]]
+    >>> query = "Hello"
+    >>> ret = fc(query)
+    >>> print(ret)
+    'Hello! How can I assist you today?'
+    """
 
     def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False,
                  stream: bool = False, _prompt: str = None):
@@ -126,6 +190,72 @@ class FunctionCall(ModuleBase):
         return self._impl(input)
 
 class FunctionCallAgent(ModuleBase):
+    """FunctionCallAgent is an agent that uses the tool calling method to perform complete tool calls. That is, when answering uesr questions, if LLM needs to obtain external knowledge through the tool, it will call the tool and feed back the return results of the tool to LLM, which will finally summarize and output them.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
+    tools (List[str]): A list of tool names for LLM to use.
+    max_retries (int): The maximum number of tool call iterations. The default value is 5.
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.tools import fc_register, FunctionCallAgent
+    >>> import json
+    >>> from typing import Literal
+    >>> @fc_register("tool")
+    >>> def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]='fahrenheit'):
+    ...     '''
+    ...     Get the current weather in a given location
+    ...
+    ...     Args:
+    ...         location (str): The city and state, e.g. San Francisco, CA.
+    ...         unit (str): The temperature unit to use. Infer this from the users location.
+    ...     '''
+    ...     if 'tokyo' in location.lower():
+    ...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
+    ...     elif 'san francisco' in location.lower():
+    ...         return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit'})
+    ...     elif 'paris' in location.lower():
+    ...         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
+    ...     elif 'beijing' in location.lower():
+    ...         return json.dumps({'location': 'Beijing', 'temperature': '90', 'unit': 'Fahrenheit'})
+    ...     else:
+    ...         return json.dumps({'location': location, 'temperature': 'unknown'})
+    ...
+    >>> @fc_register("tool")
+    >>> def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"]='fahrenheit'):
+    ...     '''
+    ...     Get an N-day weather forecast
+    ...
+    ...     Args:
+    ...         location (str): The city and state, e.g. San Francisco, CA.
+    ...         num_days (int): The number of days to forecast.
+    ...         unit (Literal['celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+    ...     '''
+    ...     if 'tokyo' in location.lower():
+    ...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
+    ...     elif 'san francisco' in location.lower():
+    ...         return json.dumps({'location': 'San Francisco', 'temperature': '75', 'unit': 'fahrenheit', "num_days": num_days})
+    ...     elif 'paris' in location.lower():
+    ...         return json.dumps({'location': 'Paris', 'temperature': '25', 'unit': 'celsius', "num_days": num_days})
+    ...     elif 'beijing' in location.lower():
+    ...         return json.dumps({'location': 'Beijing', 'temperature': '85', 'unit': 'fahrenheit', "num_days": num_days})
+    ...     else:
+    ...         return json.dumps({'location': location, 'temperature': 'unknown'})
+    ...
+    >>> tools = ['get_current_weather', 'get_n_day_weather_forecast']
+    >>> llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
+    >>> agent = FunctionCallAgent(llm, tools)
+    >>> query = "What's the weather like today in celsius in Tokyo and Paris."
+    >>> res = agent(query)
+    >>> print(res)
+    'The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.'
+    >>> query = "Hello"
+    >>> res = agent(query)
+    >>> print(res)
+    'Hello! How can I assist you today?'
+    """
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries

@@ -9,6 +9,32 @@ from .utils import make_log_dir, get_log_path
 
 
 class Lightllm(LazyLLMDeployBase):
+    """This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the [LightLLM](https://github.com/ModelTC/lightllm) framework, used for inference with large language models.
+
+Args:
+    trust_remote_code (bool): Whether to allow loading of model code from remote servers, default is ``True``.
+    launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1)``.
+    stream (bool): Whether the response is streaming, default is ``False``.
+    kw: Keyword arguments used to update default training parameters. Note that not any additional keyword arguments can be specified here.
+
+The keyword arguments and their default values for this class are as follows:
+
+Keyword Args: 
+    tp (int): Tensor parallelism parameter, default is ``1``.
+    max_total_token_num (int): Maximum total token number, default is ``64000``.
+    eos_id (int): End-of-sentence ID, default is ``2``.
+    port (int): Service port number, default is ``None``, in which case LazyLLM will automatically generate a random port number.
+    host (str): Service IP address, default is ``0.0.0.0``.
+    nccl_port (int): NCCL port, default is ``None``, in which case LazyLLM will automatically generate a random port number.
+    tokenizer_mode (str): Tokenizer loading mode, default is ``auto``.
+    running_max_req_size (int): Maximum number of parallel requests for the inference engine, default is ``256``.
+
+
+
+Examples:
+    >>> from lazyllm import deploy
+    >>> infer = deploy.lightllm()
+    """
     keys_name_handle = {
         'inputs': 'inputs',
         'stop': 'stop_sequences'

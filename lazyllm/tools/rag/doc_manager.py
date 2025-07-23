@@ -15,6 +15,13 @@ import uuid
 
 
 class DocManager(lazyllm.ModuleBase):
+    """
+The `DocManager` class manages document lists and related operations, providing APIs for uploading, deleting, and grouping documents.
+
+Args:
+    dlm (DocListManager): Document list manager responsible for handling document-related operations.
+
+"""
     def __init__(self, dlm: DocListManager) -> None:
         super().__init__()
         # disable path monitoring in case of competition adding/deleting files
@@ -27,10 +34,24 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.get("/", response_model=BaseResponse, summary="docs")
     def document(self):
+        """
+An endpoint to redirect to the default documentation page.
+
+**Returns:**
+
+- RedirectResponse: Redirects to the `/docs` page.
+"""
         return RedirectResponse(url="/docs")
 
     @app.get("/list_kb_groups")
     def list_kb_groups(self):
+        """
+An endpoint to list all document groups.
+
+**Returns:**
+
+- BaseResponse: Contains the data of all document groups.
+"""
         try:
             return BaseResponse(data=self._manager.list_all_kb_group())
         except Exception as e:
@@ -62,6 +83,19 @@ class DocManager(lazyllm.ModuleBase):
     @app.post("/upload_files")
     def upload_files(self, files: List[UploadFile], override: bool = False,  # noqa C901
                      metadatas: Optional[str] = None, user_path: Optional[str] = None):
+        """
+An endpoint to upload files and update their status. Multiple files can be uploaded at once.
+
+Args:
+    files (List[UploadFile]): List of files to upload.
+    override (bool): Whether to overwrite existing files. Default is False.
+    metadatas (Optional[str]): Metadata for the files in JSON format.
+    user_path (Optional[str]): User-defined path for file uploads.
+
+**Returns:**
+
+- BaseResponse: Upload results and file IDs.
+"""
         try:
             if user_path: user_path = user_path.lstrip('/')
             if metadatas:
@@ -153,6 +187,18 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.get("/list_files")
     def list_files(self, limit: Optional[int] = None, details: bool = True, alive: Optional[bool] = None):
+        """
+An endpoint to list uploaded files.
+
+Args:
+    limit (Optional[int]): Limit on the number of files returned. Default is None.
+    details (bool): Whether to return detailed information. Default is True.
+    alive (Optional[bool]): If True, only returns non-deleted files. Default is None.
+
+**Returns:**
+
+- BaseResponse: File list data.
+"""
         try:
             status = [DocListManager.Status.success, DocListManager.Status.waiting, DocListManager.Status.working,
                       DocListManager.Status.failed] if alive else DocListManager.Status.all
@@ -163,6 +209,18 @@ class DocManager(lazyllm.ModuleBase):
     @app.get("/list_files_in_group")
     def list_files_in_group(self, group_name: Optional[str] = None,
                             limit: Optional[int] = None, alive: Optional[bool] = None):
+        """
+An endpoint to list files in a specific group.
+
+Args:
+    group_name (Optional[str]): The name of the file group.
+    limit (Optional[int]): Limit on the number of files returned. Default is None.
+    alive (Optional[bool]): Whether to return only non-deleted files.
+
+**Returns:**
+
+- BaseResponse: List of files in the group.
+"""
         try:
             status = [DocListManager.Status.success, DocListManager.Status.waiting, DocListManager.Status.working,
                       DocListManager.Status.failed] if alive else DocListManager.Status.all
@@ -176,6 +234,16 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post("/add_files_to_group_by_id")
     def add_files_to_group_by_id(self, request: FileGroupRequest):
+        """
+An endpoint to add files to a specific group by file IDs.
+
+Args:
+    request (FileGroupRequest): Request containing file IDs and group name.
+
+**Returns:**
+
+- BaseResponse: Operation result.
+"""
         try:
             self._manager.add_files_to_kb_group(request.file_ids, request.group_name)
             return BaseResponse()
@@ -185,6 +253,20 @@ class DocManager(lazyllm.ModuleBase):
     @app.post("/add_files_to_group")
     def add_files_to_group(self, files: List[UploadFile], group_name: str, override: bool = False,
                            metadatas: Optional[str] = None, user_path: Optional[str] = None):
+        """
+An endpoint to upload files and directly add them to a specified group.
+
+Args:
+    files (List[UploadFile]): List of files to upload.
+    group_name (str): Name of the group to add the files to.
+    override (bool): Whether to overwrite existing files. Default is False.
+    metadatas (Optional[str]): Metadata for the files in JSON format.
+    user_path (Optional[str]): User-defined path for file uploads.
+
+**Returns:**
+
+- BaseResponse: Operation result and file IDs.
+"""
         try:
             response = self.upload_files(files, override=override, metadatas=metadatas, user_path=user_path)
             if response.code != 200: return response
@@ -196,6 +278,16 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post("/delete_files")
     def delete_files(self, request: FileGroupRequest):
+        """
+An endpoint to delete specified files.
+
+Args:
+    request (FileGroupRequest): Request containing file IDs and group name.
+
+**Returns:**
+
+- BaseResponse: Deletion operation result.
+"""
         try:
             if request.group_name:
                 return self.delete_files_from_group(request)

@@ -16,6 +16,7 @@ def extract_all_ids(data) -> list[str]:
 
 @dataclass
 class Node():
+    """Node(id: str, kind: str, name: str, args: Optional[Dict] = None, func: Optional[Callable] = None, arg_names: Optional[List[str]] = None, enable_data_reflow: bool = False, subitem_name: Union[List[str], str, NoneType] = None, hyperparameter: Optional[Dict] = None)"""
     id: str
     kind: str
     name: str

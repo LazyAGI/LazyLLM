@@ -7,6 +7,7 @@ from lazyllm.module import ModuleBase
 
 @unique
 class DBStatus(Enum):
+    """An enumeration."""
     SUCCESS = 0
     FAIL = 1
 
