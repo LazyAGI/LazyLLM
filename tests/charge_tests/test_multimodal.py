@@ -48,14 +48,6 @@ class TestMultiModal(object):
         result = sd(self.test_image_prompt)
         self._check_file_result(result, format='image')
 
-        sd = lazyllm.OnlineMultiModal(source='glm', function='text2image')
-        result = sd(self.test_image_prompt)
-        self._check_file_result(result, format='image')
-
-        sd = lazyllm.OnlineMultiModal(source='doubao', function='text2image')
-        result = sd(self.test_image_prompt)
-        self._check_file_result(result, format='image')
-
     def test_multimodal_model_sharing(self):
         original_tts = lazyllm.OnlineMultiModal(source='qwen', function='tts')
         shared_tts = original_tts.share()

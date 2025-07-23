@@ -414,6 +414,7 @@ class LightEngine(Engine):
         lazyllm.globals['chat_history'] = {}
         if isinstance(result, str) and result.startswith(LAZYLLM_QUERY_PREFIX):
             decoded_result = lazyllm.formatter.file(formatter='decode')(result)
+            if decoded_result["query"] and decoded_result["files"]: return result
             return decoded_result["query"] or decoded_result["files"][0]
         else:
             return result

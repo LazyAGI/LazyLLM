@@ -89,6 +89,6 @@ modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', '
            'sentence_transformers', 'gradio', 'chromadb', 'nltk', 'PIL', 'httpx', 'bm25s', 'kubernetes', 'pymongo',
            'rapidfuzz', 'FlagEmbedding', 'mcp', 'diffusers', 'pypdf', 'pptx', 'html2text', 'ebooklib', 'docx2txt',
            'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr', 'volcenginesdkarkruntime',
-           'zhipuai', 'openai', 'dashscope']
+           'zhipuai', 'dashscope']
 for m in modules:
     vars()[m] = PackageWrapper(m)
