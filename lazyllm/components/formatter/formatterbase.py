@@ -3,7 +3,7 @@ from typing import Optional, List, Union, Any
 
 from ...common import LazyLLMRegisterMetaClass, package
 
-def is_number(s: str):
+def _is_number(s: str):
     try:
         int(s)
         return True
@@ -60,9 +60,9 @@ class JsonLikeFormatter(LazyLLMFormatterBase):
             elif ":" in dim:
                 assert ',' not in dim, '[a, b:c] is not supported'
                 parts = dim.split(":")
-                start = int(parts[0]) if is_number(parts[0]) else None
-                end = int(parts[1]) if len(parts) > 1 and is_number(parts[1]) else None
-                step = int(parts[2]) if len(parts) > 2 and is_number(parts[2]) else None
+                start = int(parts[0]) if _is_number(parts[0]) else None
+                end = int(parts[1]) if len(parts) > 1 and _is_number(parts[1]) else None
+                step = int(parts[2]) if len(parts) > 2 and _is_number(parts[2]) else None
                 slices.append(slice(start, end, step))
             elif ',' in dim:
                 slices.append(__class__._ListIdxes(d.strip() for d in dim.split(',') if d.strip()))
