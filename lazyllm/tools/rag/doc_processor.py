@@ -566,7 +566,7 @@ class DocumentProcessor(ModuleBase):
 
     def _dispatch(self, method: str, *args, **kwargs):
         impl = self._impl
-        if isinstance(impl, (ServerModule, UrlModule)):
+        if isinstance(impl, ServerModule):
             impl._call(method, *args, **kwargs)
         else:
             getattr(impl, method)(*args, **kwargs)
