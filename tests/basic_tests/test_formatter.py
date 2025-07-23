@@ -162,8 +162,9 @@ class TestModuleFormatter(object):
     def test_module_formatter(self):
         jsf = formatter.JsonFormatter('[0,2]{:}[1:3]')
         m = lazyllm.ServerModule(lambda x, y, z: [x, y, z]) | jsf | formatter.JsonFormatter('[:]{a}')
+        m | formatter.JsonFormatter('[:]{a}[1]')
         m.start()
         assert isinstance(m, lazyllm.ServerModule)
-        assert isinstance(m._formatter, lazyllm.pipeline)
+        assert isinstance(m._formatter, lazyllm.formatter.pipeline)
         assert m(dict(a=[1, 2, 3, 4, 5], b=[2, 3, 4, 5, 6]), dict(a=[3, 4, 5, 6, 7], b=[4, 5, 6, 7, 8]),
-                 dict(a=[5, 6, 7, 8, 9], b=[6, 7, 8, 9, 10])) == [dict(a=[2, 3]), dict(a=[6, 7])]
+                 dict(a=[5, 6, 7, 8, 9], b=[6, 7, 8, 9, 10])) == [dict(a=3), dict(a=7)]

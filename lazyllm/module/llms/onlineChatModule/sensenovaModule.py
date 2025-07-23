@@ -22,6 +22,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
         if not api_key and not secret_key:
             api_key, secret_key = lazyllm.config['sensenova_api_key'], lazyllm.config['sensenova_secret_key']
         if secret_key.startswith('sk-'): api_key, secret_key = secret_key, None
+        if not api_key: raise ValueError('api_key is required for sensecore')
         if not api_key.startswith('sk-'):
             if ':' in api_key: api_key, secret_key = api_key.split(':', 1)
             assert secret_key, 'secret_key should be provided with sensecore api_key'
