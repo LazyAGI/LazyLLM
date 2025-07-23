@@ -42,7 +42,7 @@ Args:
     similarity_kw: Additional parameters to pass to the similarity calculation function.
     output_format: Represents the output format, with a default value of None. Optional values include 'content' and 'dict', where 'content' corresponds to a string output format and 'dict' corresponds to a dictionary.
     join:  Determines whether to concatenate the output of k nodes - when output format is 'content', setting True returns a single concatenated string while False returns a list of strings (each corresponding to a node's text content); when output format is 'dict', joining is unsupported (join defaults to False) and the output will be a dictionary containing 'content', 'embedding' and 'metadata' keys.
-                
+
 The `group_name` has three built-in splitting strategies, all of which use `SentenceSplitter` for splitting, with the difference being in the chunk size:
 
 - CoarseChunk: Chunk size is 1024, with an overlap length of 100
@@ -53,7 +53,7 @@ Also, `Image` is available for `group_name` since LazyLLM supports image embeddi
 
 
 Examples:
-    
+
     >>> import lazyllm
     >>> from lazyllm.tools import Retriever, Document, SentenceSplitter
     >>> m = lazyllm.OnlineEmbeddingModule()

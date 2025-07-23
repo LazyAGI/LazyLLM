@@ -7,7 +7,7 @@ This is a calculator application that can calculate the value of expressions ent
 
 
 Examples:
-    
+
     from lazyllm.tools.tools import Calculator
     calc = Calculator()
     """
@@ -23,7 +23,7 @@ Args:
 
 
 Examples:
-    
+
     from lazyllm.tools.tools import Calculator
     calc = Calculator()
     """

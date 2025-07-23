@@ -262,7 +262,7 @@ Args:
     kw (**dict): Parameters required by the fine-tuning method, corresponding to v.
 
 **Examples:**
-            
+
 ```python
 >>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')

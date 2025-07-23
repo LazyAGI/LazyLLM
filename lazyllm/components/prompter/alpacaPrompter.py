@@ -31,7 +31,7 @@ Examples:
     'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello word\\n\\n\\n\\nthis is user instruction my input### Response:\\n'
     >>> p.generate_prompt(dict(input="my input"), return_dict=True)
     {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input'}]}
-    
+
     """
     def __init__(self, instruction: Union[None, str, Dict[str, str]] = None, extra_keys: Union[None, List[str]] = None,
                  show: bool = False, tools: Optional[List] = None):

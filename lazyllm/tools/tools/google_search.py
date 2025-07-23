@@ -13,12 +13,12 @@ Args:
 
 
 Examples:
-    
+
     from lazyllm.tools.tools import GoogleSearch
-    
+
     key = '<your_google_search_api_key>'
     cx = '<your_search_engine_id>'
-    
+
     google = GoogleSearch(custom_search_api_key=key, search_engine_id=cx)
     """
     # @param proxies refer to https://www.python-httpx.org/advanced/proxies
@@ -49,12 +49,12 @@ Args:
 
 
 Examples:
-    
+
     from lazyllm.tools.tools import GoogleSearch
-    
+
     key = '<your_google_search_api_key>'
     cx = '<your_search_engine_id>'
-    
+
     google = GoogleSearch(key, cx)
     res = google(query='商汤科技', date_restrict='m1')
     """

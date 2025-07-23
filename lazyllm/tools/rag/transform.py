@@ -154,7 +154,7 @@ Args:
 
 
 Examples:
-    
+
     >>> import lazyllm
     >>> from lazyllm.tools import Document, SentenceSplitter
     >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
@@ -538,7 +538,7 @@ Args:
 
 
 Examples:
-    
+
     >>> from lazyllm import TrainableModule
     >>> from lazyllm.tools.rag import LLMParser
     >>> llm = TrainableModule("internlm2-chat-7b")
@@ -565,7 +565,7 @@ Args:
 
 
 Examples:
-    
+
     >>> import lazyllm
     >>> from lazyllm.tools import LLMParser
     >>> llm = lazyllm.TrainableModule("internlm2-chat-7b").start()

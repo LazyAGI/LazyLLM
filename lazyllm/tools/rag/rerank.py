@@ -26,7 +26,7 @@ Args:
 
 
 Examples:
-    
+
     >>> import lazyllm
     >>> from lazyllm.tools import Document, Reranker, Retriever
     >>> m = lazyllm.OnlineEmbeddingModule()

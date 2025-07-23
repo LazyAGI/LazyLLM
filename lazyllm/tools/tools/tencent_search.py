@@ -9,7 +9,7 @@ This is a search enhancement tool.
 
 
 Examples:
-    
+
     from lazyllm.tools.tools import TencentSearch
     secret_id = '<your_secret_id>'
     secret_key = '<your_secret_key>'
@@ -40,7 +40,7 @@ Args:
 
 
 Examples:
-    
+
     from lazyllm.tools.tools import TencentSearch
     secret_id = '<your_secret_id>'
     secret_key = '<your_secret_key>'

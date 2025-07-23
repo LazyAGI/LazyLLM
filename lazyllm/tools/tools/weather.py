@@ -27,9 +27,9 @@ Create a tool for querying weather.
 
 
 Examples:
-    
+
     from lazyllm.tools.tools import Weather
-    
+
     weather = Weather()
     """
     def __init__(self):
@@ -46,9 +46,9 @@ Args:
 
 
 Examples:
-    
+
     from lazyllm.tools.tools import Weather
-    
+
     weather = Weather()
     res = weather('海淀')
     """

@@ -99,7 +99,7 @@ Args:
 
 
 Examples:
-    
+
     from lazyllm.common import compile_func
     code_str = 'def Identity(v): return v'
     identity = compile_func(code_str)

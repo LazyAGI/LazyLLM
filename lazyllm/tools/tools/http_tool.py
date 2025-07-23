@@ -21,9 +21,9 @@ Args:
 
 
 Examples:
-    
+
     from lazyllm.tools import HttpTool
-    
+
     code_str = "def identity(content): return content"
     tool = HttpTool(method='GET', url='http://www.sensetime.com/', code_str=code_str)
     ret = tool()
@@ -66,9 +66,9 @@ Used to perform operations specified during initialization: request the specifie
 
 
 Examples:
-    
+
     from lazyllm.tools import HttpTool
-    
+
     code_str = "def exp(v, n): return v ** n"
     tool = HttpTool(code_str=code_str)
     assert tool(v=10, n=2) == 100

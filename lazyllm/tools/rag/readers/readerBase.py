@@ -19,7 +19,7 @@ Args:
 
 
 Examples:
-    
+
     >>> from lazyllm.tools.rag.readers import ReaderBase
     >>> from lazyllm.tools.rag import DocNode, Document
     >>> from typing import Dict, Optional, List

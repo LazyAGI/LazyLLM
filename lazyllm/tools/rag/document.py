@@ -52,7 +52,7 @@ Examples:
     >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)  # or documents = Document(dataset_path='your_doc_path', embed={"key": m}, manager=False)
     >>> m1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
     >>> document1 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, manager=False)
-    
+
     >>> store_conf = {
     >>>     'type': 'chroma',
     >>>     'indices': {
@@ -323,7 +323,7 @@ Args:
 
 
 Examples:
-    
+
     >>> import lazyllm
     >>> from lazyllm.tools import Document, SentenceSplitter
     >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
@@ -350,7 +350,7 @@ Args:
 
 
 Examples:
-    
+
     >>> from lazyllm.tools.rag import Document, DocNode
     >>> from lazyllm.tools.rag.readers import ReaderBase
     >>> class YmlReader(ReaderBase):
@@ -400,7 +400,7 @@ Args:
 
 
 Examples:
-    
+
     >>> from lazyllm.tools.rag import Document, DocNode
     >>> @Document.register_global_reader("**/*.yml")
     >>> def processYml(file):
@@ -439,7 +439,7 @@ Args:
 
 
 Examples:
-    
+
     >>> import lazyllm
     >>> from lazyllm.tools import Document, SentenceSplitter
     >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
@@ -459,7 +459,7 @@ Args:
 
 
 Examples:
-    
+
     >>> import lazyllm
     >>> from lazyllm.tools import Document, SentenceSplitter
     >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
