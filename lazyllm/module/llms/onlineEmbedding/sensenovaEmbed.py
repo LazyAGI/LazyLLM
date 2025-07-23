@@ -13,24 +13,14 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase):
                  embed_model_name: str = "nova-embedding-stable",
                  api_key: str = None,
                  secret_key: str = None):
-        jwt_api_key = None
-        if (api_key and secret_key) or (lazyllm.config['sensenova_api_key'] and lazyllm.config['sensenova_secret_key']):
-            jwt_api_key = SenseNovaEmbedding.encode_jwt_token(api_key, secret_key) if secret_key else \
-                SenseNovaEmbedding.encode_jwt_token(lazyllm.config['sensenova_api_key'],
-                                                    lazyllm.config['sensenova_secret_key'])
-        elif ((api_key and (secret_key is None or secret_key == ""))
-                or (lazyllm.config['sensenova_api_key'] and lazyllm.config['sensenova_secret_key'] == "")):
-            jwt_api_key = api_key if api_key else lazyllm.config['sensenova_api_key']
-            if ":" in jwt_api_key:
-                api_key, secret_key = jwt_api_key.split(':')
-                jwt_api_key = SenseNovaEmbedding.encode_jwt_token(api_key, secret_key)
-        else:
-            raise ValueError("Either configure both api_key and secret_key, or only configure api_key. "
-                             "Other configurations are not supported.")
-        super().__init__("SENSENOVA",
-                         embed_url,
-                         jwt_api_key,
-                         embed_model_name)
+        if not api_key and not secret_key:
+            api_key, secret_key = lazyllm.config['sensenova_api_key'], lazyllm.config['sensenova_secret_key']
+        if secret_key.startswith('sk-'): api_key, secret_key = secret_key, None
+        if not api_key.startswith('sk-'):
+            if ':' in api_key: api_key, secret_key = api_key.split(':', 1)
+            assert secret_key, 'secret_key should be provided with sensecore api_key'
+            api_key = SenseNovaEmbedding.encode_jwt_token(api_key, secret_key)
+        super().__init__("SENSENOVA", embed_url, api_key, embed_model_name)
 
     @staticmethod
     def encode_jwt_token(ak: str, sk: str) -> str:
