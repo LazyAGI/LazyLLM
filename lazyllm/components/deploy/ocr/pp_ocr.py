@@ -48,7 +48,7 @@ class OCR(object):
         if isinstance(file_list, str):
             file_list = [file_list]
         if hasattr(file_list, '__repr__'):
-            print(f"paddleocr read files:{file_list}")
+            lazyllm.LOG.info(f"paddleocr read files: {file_list}")
         txt = []
         for file in file_list:
             if hasattr(self.ocr, 'predict'):

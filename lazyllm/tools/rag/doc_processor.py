@@ -3,7 +3,6 @@ from typing import Dict, List, Optional, Any
 from sqlalchemy import create_engine, Column, JSON, String, TIMESTAMP, Table, MetaData, inspect, delete, text
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.engine import Engine
-import lazyllm
 from lazyllm import LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app, ThreadPoolExecutor, config
 
 from .store import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
@@ -71,7 +70,7 @@ class _Processor:
         # NOTE transform.batch_forward will set children for p_nodes, but when calling
         # transform.batch_forward, p_nodes has been upsert in the store.
         t = self._node_groups[group_name]['transform']
-        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
+        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, group_name)
         nodes = transform.batch_forward(p_nodes, group_name)
         self._store.update_nodes(nodes)
         return nodes
@@ -124,7 +123,7 @@ class _Processor:
             raise Exception(f"Failed to remove nodes for docs {doc_ids} group {cur_name} from store")
 
         t = self._node_groups[cur_name]['transform']
-        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t)
+        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, cur_name)
         nodes = transform.batch_forward(p_nodes, cur_name)
         # reparse need set global_metadata
         self._store.update_nodes(nodes)
@@ -583,10 +582,6 @@ class DocumentProcessor(ModuleBase):
         impl = self._impl
         if isinstance(impl, ServerModule):
             impl._call(method, *args, **kwargs)
-        elif isinstance(impl, UrlModule):
-            dumped_args = lazyllm.dump_obj((method, *args))
-            dumped_kwargs = lazyllm.dump_obj(kwargs)
-            return impl("__call__", dumped_args, dumped_kwargs)
         else:
             getattr(impl, method)(*args, **kwargs)
 

@@ -67,7 +67,7 @@ async def lazyllm_call(request: Request):
     except requests.RequestException as e:
         return Response(content=f'{str(e)}', status_code=500)
     except Exception as e:
-        return Response(content=f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
+        return Response(content=f'{e}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
 
 @app.post("/generate")
 async def generate(request: Request): # noqa C901

@@ -8,15 +8,16 @@ import random
 from typing import Tuple, List, Dict, Union, Any, Optional, TypedDict
 from urllib.parse import urljoin
 import time
+from operator import itemgetter as itemget
 
 import lazyllm
-from lazyllm import globals, FileSystemQueue
-from lazyllm.components.prompter import PrompterBase, ChatPrompter
-from lazyllm.components.formatter import (FormatterBase, EmptyFormatter,
-                                          encode_query_with_filepaths, decode_query_with_filepaths)
+from lazyllm import globals
+from lazyllm.components.prompter import PrompterBase
+from lazyllm.components.formatter import FormatterBase, encode_query_with_filepaths, decode_query_with_filepaths
 from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from lazyllm.components.utils.file_operate import delete_old_files, image_to_base64
-from ..module import ModuleBase, Pipeline
+from ...servermodule import LLMBase
+from ...module import Pipeline
 
 
 class StaticParams(TypedDict, total=False):
@@ -27,38 +28,25 @@ class StaticParams(TypedDict, total=False):
     frequency_penalty: float  # Note some online api use "repetition_penalty"
 
 
-class OnlineChatModuleBase(ModuleBase):
+class OnlineChatModuleBase(LLMBase):
     TRAINABLE_MODEL_LIST = []
     VLM_MODEL_LIST = []
     NO_PROXY = True
 
-    def __init__(self,
-                 model_series: str,
-                 api_key: str,
-                 base_url: str,
-                 model_name: str,
-                 stream: Union[bool, Dict[str, str]],
-                 return_trace: bool = False,
-                 vlm_models: List[str] = None,
-                 skip_auth: bool = False,
-                 static_params: StaticParams = {},
-                 **kwargs):
-        super().__init__(return_trace=return_trace)
+    def __init__(self, model_series: str, api_key: str, base_url: str, model_name: str,
+                 stream: Union[bool, Dict[str, str]], return_trace: bool = False,
+                 skip_auth: bool = False, static_params: StaticParams = {}, **kwargs):
+        super().__init__(stream=stream, return_trace=return_trace)
         self._model_series = model_series
         if skip_auth and not api_key:
             raise ValueError("api_key is required")
         self._api_key = api_key
         self._base_url = base_url
         self._model_name = model_name
-        self._stream = stream
         self.trainable_models = self.TRAINABLE_MODEL_LIST
-        self.vlm_models = self.VLM_MODEL_LIST
         self._set_headers()
         self._set_chat_url()
-        self.prompt()
         self._is_trained = False
-        self.formatter()
-        self._field_extractor()
         self._model_optional_params = {}
         self._vlm_force_format_input_with_files = False
         self._static_params = static_params
@@ -72,14 +60,6 @@ class OnlineChatModuleBase(ModuleBase):
         return "LLM"
 
     @property
-    def stream(self):
-        return self._stream
-
-    @stream.setter
-    def stream(self, v: Union[bool, Dict[str, str]]):
-        self._stream = v
-
-    @property
     def static_params(self) -> StaticParams:
         return self._static_params
 
@@ -89,29 +69,16 @@ class OnlineChatModuleBase(ModuleBase):
             raise TypeError("static_params must be a dict (TypedDict)")
         self._static_params = value
 
-    def prompt(self, prompt=None, history: List[List[str]] = None):
-        if prompt is None:
-            self._prompt = ChatPrompter(history=history)
-        elif isinstance(prompt, PrompterBase):
-            assert not history, 'history is not supported in user defined prompter'
-            self._prompt = prompt
-        elif isinstance(prompt, (str, dict)):
-            self._prompt = ChatPrompter(prompt, history=history)
-        else:
-            raise TypeError(f"{prompt} type is not supported.")
+    def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
+        super().prompt('' if prompt is None else prompt, history=history)
         self._prompt._set_model_configs(system=self._get_system_prompt())
         return self
 
-    def share(self, prompt: PrompterBase = None, format: FormatterBase = None, stream: Optional[bool] = None,
-              history: List[List[str]] = None, copy_static_params: bool = False):
-        new = copy.copy(self)
-        new._hooks = set()
-        new._set_mid()
-        if prompt is not None: new.prompt(prompt, history=history)
-        if format is not None: new.formatter(format)
-        if stream is not None: new.stream = stream
-        if copy_static_params:
-            new._static_params = copy.deepcopy(self._static_params)
+    def share(self, prompt: Optional[Union[str, dict, PrompterBase]] = None, format: Optional[FormatterBase] = None,
+              stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None,
+              copy_static_params: bool = False):
+        new = super().share(prompt, format, stream, history)
+        if copy_static_params: new._static_params = copy.deepcopy(self._static_params)
         return new
 
     def _get_system_prompt(self):
@@ -136,36 +103,6 @@ class OnlineChatModuleBase(ModuleBase):
             res_json = r.json()
             return res_json
 
-    def _parse_output_by_key(self, key: str, data: Dict[str, Any]):
-        if "choices" in data and isinstance(data["choices"], list):
-            item = data['choices'][0]
-            data = item.get("delta", {}) if "delta" in item else item.get("message", {})
-            return data if not key or key == "." else data.get(key, "")
-        else:
-            raise ValueError(f"The response {data} does not contain a 'choices' field.")
-
-    def formatter(self, format: FormatterBase = None):
-        if isinstance(format, FormatterBase) or callable(format):
-            self._formatter = format
-        elif format is None:
-            self._formatter = EmptyFormatter()
-        else:
-            raise TypeError("format must be a FormatterBase")
-
-        return self
-
-    def _field_extractor(self, key: Union[str, List[str]] = None):
-        if key is None:
-            self._extractor_fields = ["{content}" + globals['tool_delimiter'] + "{tool_calls|index}"]
-        elif isinstance(key, str):
-            self._extractor_fields = [key]
-        elif isinstance(key, list):
-            self._extractor_fields = key
-        else:
-            raise TypeError(f"Unsupported type: {type(key)}")
-
-        return self
-
     def _convert_msg_format(self, msg: Dict[str, Any]):
         return msg
 
@@ -174,151 +111,74 @@ class OnlineChatModuleBase(ModuleBase):
             pattern = re.compile(r"^data:\s*")
             msg = re.sub(pattern, "", msg.decode('utf-8'))
         try:
-            chunk = json.loads(msg)
-            message = self._convert_msg_format(chunk)
-            if stream_output:
-                color = stream_output.get('color') if isinstance(stream_output, dict) else None
-                for item in message.get("choices", []):
-                    delta = {}
-                    if "message" in item:
-                        delta = item["message"]
-                    elif "delta" in item:
-                        delta = item["delta"]
-                    reasoning_content = delta.get("reasoning_content", '')
-                    if reasoning_content:
-                        content = reasoning_content
-                        FileSystemQueue().get_instance("think").enqueue(lazyllm.colored_text(content, color))
-                    else:
-                        content = delta.get("content", '')
-                        if content and ("tool_calls" not in delta or not delta['tool_calls']):
-                            FileSystemQueue().enqueue(lazyllm.colored_text(content, color))
+            message = self._convert_msg_format(json.loads(msg))
+            if not stream_output: return message
+            color = stream_output.get('color') if isinstance(stream_output, dict) else None
+            for item in message.get("choices", []):
+                delta = item.get('message', item.get('delta', {}))
+                if (reasoning_content := delta.get("reasoning_content", '')):
+                    self._stream_output(reasoning_content, color, cls='think')
+                elif (content := delta.get("content", '')) and not delta.get('tool_calls'):
+                    self._stream_output(content, color)
             lazyllm.LOG.debug(f"message: {message}")
             return message
         except Exception:
             return ""
 
-    def _get_benchmark_data(self, data: Dict[str, Any]):
-        if "choices" in data and isinstance(data["choices"], list):
-            item = data['choices'][0]
-            outputs = item.get("message", item.get("delta", {}))
-            if 'reasoning_content' in outputs and outputs["reasoning_content"] and 'content' in outputs:
-                outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
-            return outputs
-        else:
-            raise ValueError(f"The response {data} does not contain a 'choices' field.")
+    def _extract_specified_key_fields(self, response: Dict[str, Any]):
+        if not ("choices" in response and isinstance(response["choices"], list)):
+            raise ValueError(f"The response {response} does not contain a 'choices' field.")
+        outputs = response['choices'][0].get("message") or response['choices'][0].get("delta", {})
+        if 'reasoning_content' in outputs and outputs["reasoning_content"] and 'content' in outputs:
+            outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
 
-    def _extract_and_format(self, data, template):  # noqa: C901
-        # finding placeholders in template and removing rules
-        placeholders = re.findall(r"{(.*?)(?:\|(.*?))?}", template)
-        delimiters = re.findall(r"<\|.*?\|>", template)
-        # extract and format the fields corresponding to the placeholders
-        extracted_data = {}
-        pkeys = []
-        for placeholder, remove_fields in placeholders:
-            placeholder_key = placeholder + "|" + remove_fields if remove_fields else placeholder
-            pkeys.append(placeholder_key)
-            if 'tool_calls' in placeholder:
-                # handling remove_fields
-                remove_fields = remove_fields.split(',') if remove_fields else []
-
-                # extract the tool_calls field
-                keys = placeholder.split('.')
-                value = data
-                try:
-                    for key in (int(key) if key.isdigit() else key for key in keys):
-                        value = value[key]
-
-                    if isinstance(value, list):
-                        for item in value:
-                            [item.pop(field) for field in remove_fields if field in item]
-                    # value = json.dumps(value).replace('\n', '').replace(' ', '')
-                    value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-                    extracted_data[placeholder_key] = value
-                except (KeyError, IndexError, TypeError):
-                    extracted_data[placeholder_key] = ""
-            else:
-                # extracting additional fields
-                keys = placeholder.split('.')
-                value = data
-                try:
-                    for key in (int(key) if key.isdigit() else key for key in keys):
-                        value = value[key]
-                    # convert the extracted value into a JSON string
-                    value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-                    extracted_data[placeholder_key] = value
-                except (KeyError, IndexError, TypeError):
-                    extracted_data[placeholder_key] = ""
-
-        # populate the template with the extracted data
-        assert len(extracted_data) == len(delimiters) + 1, \
-               "The delimiters and the number of extracted fields are inconsistent."
-        result = extracted_data.get(pkeys[0])
-        result += ''.join(delimiters[idx] + extracted_data[key]
-                          for idx, key in enumerate(pkeys[1:]) if extracted_data.get(key))
-        lazyllm.LOG.debug(f"result: {result}")
+        result, tool_calls = outputs.get('content', ''), outputs.get('tool_calls')
+        if tool_calls:
+            try:
+                if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
+                tool_calls = tool_calls if isinstance(tool_calls, str) else json.dumps(tool_calls, ensure_ascii=False)
+                if tool_calls: result += '<|tool_calls|>' + tool_calls
+            except (KeyError, IndexError, TypeError):
+                pass
         return result
 
-    def _extract_specified_key_fields(self, response: Dict[str, Any]):
-        if len(self._extractor_fields) > 0:
-            res = {}
-            for key in self._extractor_fields:
-                res[key] = (self._parse_output_by_key(key, response) if "{" not in key else self._extract_and_format(
-                    self._get_benchmark_data(response), key) if key else "")
-            return list(res.values())[0] if len(res) == 1 else json.dumps(res, ensure_ascii=False)
-        else:
-            return json.dumps(self._parse_output_by_key(".", response), ensure_ascii=False)
+    def _merge_stream_result(self, src: List[Union[str, int, list, dict]], force_join: bool = False):
+        src = [ele for ele in src if ele is not None]
+        if not src: return None
+        elif len(src) == 1: return src[0]
+        assert len(set(map(type, src))) == 1, f"The elements in the list: {src} are of inconsistent types"
 
-    def _merge_stream_result(self, src: List[str | int | list | dict]):
-        types = set(type(ele) for ele in src if ele is not None)
-        assert len(src) > 0 and len(types) <= 1, f"The elements in the list: {src} are of inconsistent types"
-        if len(src) == 1:
-            return src[0]
-        if all(isinstance(ele, str) or ele is None for ele in src):
-            if all(ele == src[-1] or ele is None for ele in src) or (self._model_optional_params
-               and not self._model_optional_params.get("incremental_output", True)):
-                return src[-1]
-            else:
-                return "".join(ele for ele in src if ele is not None)
-        elif all(isinstance(ele, list) for ele in src):
-            assert all(len(src[-1]) == len(ele) for ele in src), f"The lists of elements: {src} have different lengths."
-            ret = [self._merge_stream_result([ele[idx] for ele in src]) for idx in range(len(src[-1]))]
+        if isinstance(src[0], str):
+            src = [ele for ele in src if ele]
+            if not src: return ''
+            if force_join or not all(src[0] == ele for ele in src): return ''.join(src)
+        elif isinstance(src[0], list):
+            assert len(set(map(len, src))) == 1, f"The lists of elements: {src} have different lengths."
+            ret = list(map(self._merge_stream_result, zip(*src)))
             return ret[0] if isinstance(ret[0], list) else ret
-        elif all(isinstance(ele, dict) for ele in src):
-            if "index" in src[-1]:  # If there are multiple index values that need to be appended.
-                data_sorted = sorted(src, key=lambda x: x['index'])
-                grouped_data = [list(g) for k, g in groupby(data_sorted, key=lambda x: x['index'])]
-                if len(grouped_data) > 1:
-                    return [self._merge_stream_result(src) for src in grouped_data]
-            return {k: "tool_calls" if k == "finish_reason" and "tool_calls" in [d[k] for d in src if k in d]
-                    else self._merge_stream_result([d[k] for d in src if k in d]) for k in set().union(*src)}
-        elif all(isinstance(ele, int) for ele in src):
-            return src[-1] if all(ele == src[-1] for ele in src) else src[-1]
-        else:
-            raise TypeError(f"The elements in list {src} are of inconsistent types.")
+        elif isinstance(src[0], dict):  # list of dicts
+            if 'index' in src[-1]:
+                grouped = [list(g) for _, g in groupby(sorted(src, key=itemget('index')), key=itemget("index"))]
+                if len(grouped) > 1: return [self._merge_stream_result(src) for src in grouped]
+            return {k: self._merge_stream_result([d.get(k) for d in src], k == 'content') for k in set().union(*src)}
+        return src[-1]
 
-    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):  # noqa C901
+    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
+                tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):
         """LLM inference interface"""
         stream_output = stream_output or self._stream
         if lazyllm_files:
             __input = encode_query_with_filepaths(__input, lazyllm_files)
-        params = {"input": __input, "history": llm_chat_history}
-        if tools:
-            params["tools"] = tools
-        params["return_dict"] = True
+        params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
+        if tools: params["tools"] = tools
         data = self._prompt.generate_prompt(**params)
+        data.update(self._static_params, **dict(model=self._model_name, stream=bool(stream_output)))
 
-        data["model"] = self._model_name
-        data["stream"] = bool(stream_output)
-        data.update(self._static_params)
-
-        if len(kw) > 0:
-            data.update(kw)
-
-        if len(self._model_optional_params) > 0:
-            data.update(self._model_optional_params)
+        if len(kw) > 0: data.update(kw)
+        if len(self._model_optional_params) > 0: data.update(self._model_optional_params)
 
         if isinstance(__input, str) and (__input.startswith(LAZYLLM_QUERY_PREFIX)
-           or (self._vlm_force_format_input_with_files and data["model"] in self.vlm_models)):
+           or (self._vlm_force_format_input_with_files and data["model"] in self.VLM_MODEL_LIST)):
             for idx, message in enumerate(data["messages"]):
                 content = message["content"]
                 if content.startswith(LAZYLLM_QUERY_PREFIX):
@@ -332,23 +192,16 @@ class OnlineChatModuleBase(ModuleBase):
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
                     if stream_output else requests.RequestException(r.text)
 
-            if isinstance(stream_output, dict):
-                prefix, prefix_color = stream_output.get('prefix', ''), stream_output.get('prefix_color', '')
-                if prefix: FileSystemQueue().enqueue(lazyllm.colored_text(prefix, prefix_color))
-            msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()
-                            if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]),))
-            if isinstance(stream_output, dict):
-                suffix, suffix_color = stream_output.get('suffix', ''), stream_output.get('suffix_color', '')
-                if suffix: FileSystemQueue().enqueue(lazyllm.colored_text(suffix, suffix_color))
+            with self.stream_output(stream_output):
+                msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()
+                                if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]),))
 
             usage = {"prompt_tokens": -1, "completion_tokens": -1}
             if len(msg_json) > 0 and "usage" in msg_json[-1] and isinstance(msg_json[-1]["usage"], dict):
                 for k in usage:
                     usage[k] = msg_json[-1]["usage"].get(k, usage[k])
             self._record_usage(usage)
-            extractor = self._extract_specified_key_fields(
-                self._merge_stream_result(msg_json)
-            )
+            extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
             return self._formatter(extractor) if extractor else ""
 
     def _record_usage(self, usage: dict):

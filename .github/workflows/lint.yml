@@ -36,7 +36,7 @@ jobs:
       - name: Run flake8
         run: |
           source venv/bin/activate
-          flake8 .
+          make lint
 
   build:
     runs-on: ubuntu-latest
@@ -46,8 +46,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
           fetch-depth: 0
+
+      - name: Init specific submodule
+        run: |
+          git submodule init LazyLLM-Env
+          git submodule update LazyLLM-Env
 
       - name: Set up python
         uses: actions/setup-python@v5
@@ -89,8 +94,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
           fetch-depth: 0
+
+      - name: Init specific submodule
+        run: |
+          git submodule init LazyLLM-Env
+          git submodule update LazyLLM-Env
 
       - name: Set up python
         uses: actions/setup-python@v5

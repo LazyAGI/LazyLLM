@@ -331,8 +331,7 @@ class UrlDocument(ModuleBase):
 
     def _forward(self, func_name: str, *args, **kwargs):
         args = (self._curr_group, func_name, *args)
-        args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
-        return self._manager("__call__", args, kwargs)
+        return self._manager._call("__call__", *args, **kwargs)
 
     def find(self, target) -> Callable:
         return functools.partial(self._forward, 'find', group=target)

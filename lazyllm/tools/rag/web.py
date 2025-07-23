@@ -224,7 +224,7 @@ class DocWebModule(ModuleBase):
 
         self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True)
         LOG.success('LazyLLM docwebmodule launched successfully: Running on: '
-                    f'{self.broadcast_url}, local URL: {self.url}', flush=True)
+                    f'{self.broadcast_url}, local URL: {self.url}')
 
     def _get_deploy_tasks(self):
         return Pipeline(self._work)
@@ -251,10 +251,7 @@ class DocWebModule(ModuleBase):
         )
 
     def _print_url(self):
-        lazyllm.LOG.success(
-            f"LazyLLM DocWebModule launched successfully: Running on local URL: {self.url}",
-            flush=True,
-        )
+        lazyllm.LOG.success(f"LazyLLM DocWebModule launched successfully: Running on local URL: {self.url}")
 
     def _verify_port_access(self, port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

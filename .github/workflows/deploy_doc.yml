@@ -18,8 +18,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
           fetch-depth: 0
+
+      - name: Init specific submodule
+        run: |
+          git submodule init LazyLLM-Env
+          git submodule update LazyLLM-Env
+          git submodule init Tutorial
+          git submodule update Tutorial
 
       - name: Set up python
         uses: actions/setup-python@v5
@@ -34,6 +41,8 @@ jobs:
           cp -r docs/assets docs/zh
           cp -r docs/assets docs/en
           python docs/add_docstrings.py
+          python docs/link_assets.py
+          python docs/ipynb2md.py
           python docs/gen_mkdocs_yaml.py
 
       - name: Start MkDocs server

@@ -35,6 +35,7 @@ class ModelManager():
     @functools.lru_cache
     def get_model_type(model) -> str:
         assert isinstance(model, str) and len(model) > 0, f'model name should be a non-empty string, get {model}'
+        __class__._try_add_mapping(model)
         for name, info in model_name_mapping.items():
             if 'type' not in info: continue
 
@@ -50,11 +51,11 @@ class ModelManager():
     @functools.lru_cache
     def get_model_name(model) -> str:
         search_string = os.path.basename(model)
+        __class__._try_add_mapping(search_string)
         for model_name, sources in model_name_mapping.items():
             if model_name.lower() == search_string.lower() or any(
-                os.path.basename(source_file).lower() == search_string.lower()
-                for source_file in sources["source"].values()
-            ):
+                    os.path.basename(source_file).lower() == search_string.lower()
+                    for source_file in sources["source"].values()):
                 return model_name
         return ""
 
@@ -95,19 +96,14 @@ class ModelManager():
 
     def download(self, model='', call_back=None):
         assert isinstance(model, str), "model name should be a string."
-        if model.lower() in model_name_mapping.keys() and 'download_by_other' in model_name_mapping[model.lower()]:
-            if model_name_mapping[model.lower()]['download_by_other'] is True:
-                return model
-        self._try_add_mapping(model)
-        # Dummy or local model.
         if len(model) == 0 or model[0] in (os.sep, '.', '~') or os.path.isabs(model): return model
-
-        model_at_path = self._model_exists_at_path(model)
-        if model_at_path: return model_at_path
-
+        if (model_at_path := self._model_exists_at_path(model)): return model_at_path
         if self.model_source == '' or self.model_source not in ('huggingface', 'modelscope'):
             lazyllm.LOG.error("model automatic downloads only support Huggingface and Modelscope currently.")
             return model
+
+        self._try_add_mapping(model)
+        if model_name_mapping.get(model.lower(), {}).get('download_by_other'): return model
 
         if model.lower() in model_name_mapping.keys() and \
                 self.model_source in model_name_mapping[model.lower()]['source'].keys():
@@ -157,7 +153,7 @@ class ModelManager():
         for model_path in self.model_paths:
             if len(model_path) == 0: continue
             if model_path[0] != os.sep:
-                print(f"[WARNING] skipping path {model_path} as only absolute paths is accepted.")
+                lazyllm.LOG.warning(f"skipping path {model_path} as only absolute paths is accepted.")
                 continue
             for model_dir in model_dirs:
                 full_model_dir = os.path.join(model_path, model_dir)
@@ -222,7 +218,7 @@ class HubDownloader(ABC):
                 try:
                     call_back(n, total)
                 except Exception as e:
-                    print(f"Error in callback: {e}")
+                    lazyllm.LOG.error(f"Error in callback: {e}")
             time.sleep(1)
 
     def _get_current_files_size(self, model_dir):
