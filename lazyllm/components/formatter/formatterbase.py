@@ -1,7 +1,10 @@
 import json
-from typing import Optional, List, Union, Any
+import uuid
+from typing import Callable, Optional, List, Union, Any
 
-from ...common import LazyLLMRegisterMetaClass, package
+from lazyllm.flow.flow import Pipeline
+
+from ...common import LazyLLMRegisterMetaClass, package, Finalizer
 
 def is_number(s: str):
     try:
@@ -26,6 +29,27 @@ class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
 
     def __call__(self, *msg):
         return self.format(msg[0] if len(msg) == 1 else package(msg))
+
+    def __or__(self, other):
+        if not isinstance(other, LazyLLMFormatterBase):
+            return super().__or__(other)
+        return PipelineFormatter(other.__ror__(self))
+
+    def __ror__(self, f: Callable) -> Pipeline:
+        if isinstance(f, Pipeline):
+            if not f._capture:
+                _ = Finalizer(lambda: setattr(f, '_capture', True), lambda: setattr(f, '_capture', False))
+            f._add(str(uuid.uuid4().hex) if len(f._item_names) else None, self)
+            return f
+        return Pipeline(f, self)
+
+
+class PipelineFormatter(LazyLLMFormatterBase):
+    def __init__(self, formatter: Pipeline):
+        self._formatter = formatter
+
+    def _parse_py_data_by_formatter(self, py_data):
+        return self._formatter(py_data)
 
 
 class JsonLikeFormatter(LazyLLMFormatterBase):
