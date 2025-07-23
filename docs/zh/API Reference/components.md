@@ -67,12 +67,12 @@
 ## Prompter
 
 ::: lazyllm.components.prompter.LazyLLMPrompterBase
-    options:
-      heading_level: 3
-	  inherited_members:
-	    - generate_prompt
-	    - get_response
-      members: false
+  options:
+    heading_level: 3
+    inherited_members:
+      - generate_prompt
+      - get_response
+    members: false
 
 ::: lazyllm.components.prompter.EmptyPrompter
     options:
@@ -82,7 +82,7 @@
 ::: lazyllm.components.Prompter
     options:
       heading_level: 3
-      members: True
+      members: true
       filters:
       - "!^_.*"
 
@@ -92,7 +92,7 @@
 	  inherited_members:
 	    - generate_prompt
 	    - get_response
-      members: false
+    members: false
 
 ::: lazyllm.components.ChatPrompter
     options:
@@ -100,7 +100,7 @@
 	  inherited_members:
 	    - generate_prompt
 	    - get_response
-      members: false
+    members: false
 
 ---
 
