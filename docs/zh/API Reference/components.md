@@ -69,6 +69,10 @@
 ::: lazyllm.components.prompter.LazyLLMPrompterBase
     options:
       heading_level: 3
+	  inherited_members:
+	    - generate_prompt
+	    - get_response
+      members: false
 
 ::: lazyllm.components.prompter.EmptyPrompter
     options:
@@ -78,7 +82,9 @@
 ::: lazyllm.components.Prompter
     options:
       heading_level: 3
-      members: false
+      members: True
+      filters:
+      - "!^_.*"
 
 ::: lazyllm.components.AlpacaPrompter
     options:
