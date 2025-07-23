@@ -70,6 +70,16 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.prompter.EmptyPrompter
+    options:
+      heading_level: 3
+      members: true
+
+::: lazyllm.components.Prompter
+    options:
+      heading_level: 3
+      members: false
+
 ::: lazyllm.components.AlpacaPrompter
     options:
       heading_level: 3
@@ -107,6 +117,34 @@
 ## Formatter
 
 ::: lazyllm.components.formatter.LazyLLMFormatterBase
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.JsonLikeFormatter
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.PythonFormatter
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.FileFormatter
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.YamlFormatter
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.encode_query_with_filepaths
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.decode_query_with_filepaths
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.lazyllm_merge_query
     options:
       heading_level: 3
 
