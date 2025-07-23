@@ -153,7 +153,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 processor._impl.start()
                 manager = False
                 assert name, '`Name` of Document is necessary when using cloud service'
-                assert store_conf['type'] != 'map', 'Cloud manager is not supported when using map store'
+                assert store_conf.get('type') != 'map', 'Cloud manager is not supported when using map store'
                 assert not dataset_path, 'Cloud manager is not supported with local dataset path'
             else:
                 cloud, processor = False, None

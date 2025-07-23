@@ -139,7 +139,7 @@ class DocImpl:
                 if not parent_group or parent_group in self._activated_groups: break
                 self._activated_groups.add(group := parent_group)
 
-    def _init_store(self):
+    def _create_store(self):
         if self.store is None: self.store = {'type': 'map'}
         embed_dims, embed_datatypes = {}, {}
         for k, e in self.embed.items():
@@ -166,7 +166,7 @@ class DocImpl:
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
         self._init_node_groups()
-        self._init_store()
+        self._create_store()
         cloud = not (self._dlm or self._doc_files is not None)
 
         self._resolve_index_pending_registrations()
@@ -176,7 +176,7 @@ class DocImpl:
                                                self._algo_desc)
         else:
             self._processor = _Processor(self.store, self._reader, self.node_groups, self._algo_desc)
-
+        self.store._lazy_init()
         # init files when `cloud` is False
         if not cloud and self.store.is_group_empty(LAZY_ROOT_NAME):
             ids, pathes, metadatas = self._list_files(upload_status=DocListManager.Status.success)

@@ -1,6 +1,6 @@
 from collections import defaultdict
 from typing import Optional, List, Union, Set, Dict, Callable, Any
-from lazyllm import LOG
+from lazyllm import LOG, once_wrapper
 
 from .store_base import (LazyLLMStoreBase, StoreCapability, SegmentType, Segment, INSERT_BATCH_SIZE,
                          BUILDIN_GLOBAL_META_DESC, DEFAULT_KB_ID, EMBED_PREFIX)
@@ -44,9 +44,12 @@ class DocumentStore(object):
         self._activated_groups = set()
         self._indices = {}
         self._impl = self._create_store_from_config(store_config) if store_config else self._create_store(store)
+        if isinstance(self._impl, MapStore): self._indices["default"] = DefaultIndex(embed, self)
+
+    @once_wrapper(reset_on_pickle=True)
+    def _lazy_init(self):
         self._impl.lazy_init(embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,
                              global_metadata_desc=self._global_metadata_desc)
-        if isinstance(self._impl, MapStore): self._indices["default"] = DefaultIndex(embed, self)
 
     def _make_store(self, cfg: Dict[str, Any], deprecated_msg: str = None) -> LazyLLMStoreBase:
         if not cfg:
