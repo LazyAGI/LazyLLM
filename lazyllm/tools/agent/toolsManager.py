@@ -14,9 +14,6 @@ import time
 # ---------------------------------------------------------------------------- #
 
 def _gen_empty_func_str_from_parsed_docstring(parsed_docstring):
-    """
-    returns a function prototype string
-    """
 
     func_name = "f" + str(int(time.time()))
     s = "def " + func_name + "("
@@ -226,24 +223,6 @@ class ToolManager(ModuleBase):
 
     @staticmethod
     def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
-        """
-        returns a dict of param names containing at least
-          1. `type`
-          2. `description` of params
-
-        for example:
-            args = {
-                "foo": {
-                    "enum": ["baz", "bar"],
-                    "type": "string",
-                    "description": "a string",
-                },
-                "bar": {
-                    "type": "integer",
-                    "description": "an integer",
-                }
-            }
-        """
         tool_args = tool.args
         assert len(tool_args) == len(parsed_docstring.params), ("The parameter description and the actual "
                                                                 "number of input parameters are inconsistent.")

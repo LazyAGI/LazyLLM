@@ -113,7 +113,6 @@ class SQLiteQueue(FileSystemQueue):
                 conn.commit()
 
     def _dequeue(self, id, limit=None):
-        """Retrieve and remove all messages from the queue."""
         with self._lock:
             with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
                 cursor = conn.cursor()

@@ -14,7 +14,8 @@ try:
     from typing import final
 except ImportError:
     _F = typing.TypeVar("_F", bound=Callable[..., Any])
-    def final(f: _F) -> _F: return f
+    def final(f: _F) -> _F:
+        return f
 
 try:
     from typing import override

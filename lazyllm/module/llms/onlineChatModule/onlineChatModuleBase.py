@@ -165,7 +165,6 @@ class OnlineChatModuleBase(LLMBase):
 
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
                 tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):
-        """LLM inference interface"""
         stream_output = stream_output or self._stream
         if lazyllm_files:
             __input = encode_query_with_filepaths(__input, lazyllm_files)
@@ -272,9 +271,6 @@ class OnlineChatModuleBase(LLMBase):
                                   you can ignore this warning.")
 
         def _create_for_finetuning_job():
-            """
-            create for finetuning job to finish
-            """
             file_id = self._upload_train_file(train_file=self._train_file)
             lazyllm.LOG.info(f"{os.path.basename(self._train_file)} upload success! file id is {file_id}")
             (fine_tuning_job_id, status) = self._create_finetuning_job(self._model_name,

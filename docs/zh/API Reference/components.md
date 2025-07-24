@@ -20,7 +20,7 @@
     options:
       heading_level: 3
 
-::: lazyllm.components.finetune.DummyFinetune
+::: lazyllm.components.finetune.base.DummyFinetune
     options:
       heading_level: 3
 ---

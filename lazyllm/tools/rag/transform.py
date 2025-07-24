@@ -65,7 +65,6 @@ class _Split:
 
 
 def split_text_keep_separator(text: str, separator: str) -> List[str]:
-    """Split text and keep the separator."""
     parts = text.split(separator)
     result = [separator + s if i > 0 else s for i, s in enumerate(parts)]
     return result[1:] if len(result) > 0 and not result[0] else result
@@ -225,15 +224,6 @@ class SentenceSplitter(NodeTransform):
         return chunks
 
     def _split(self, text: str, chunk_size: int) -> List[_Split]:
-        """Break text into splits that are smaller than chunk size.
-
-        The order of splitting is:
-        1. split by paragraph separator
-        2. split by chunking tokenizer
-        3. split by second chunking regex
-        4. split by default separator (' ')
-        5. split by character
-        """
         token_size = self._token_size(text)
         if token_size <= chunk_size:
             return [_Split(text, is_sentence=True, token_size=token_size)]
@@ -328,18 +318,6 @@ class SentenceSplitter(NodeTransform):
 
 
 class FuncNodeTransform(NodeTransform):
-    """Used for user defined function.
-
-    Wrapped the transform to: List[Docnode] -> List[Docnode]
-
-    This wrapper supports when trans_node is False:
-        1. str -> list: transform=lambda t: t.split('\n')
-        2. str -> str: transform=lambda t: t[:3]
-
-    This wrapper supports when trans_node is True:
-        1. DocNode -> list: pipeline(lambda x:x, SentenceSplitter)
-        2. DocNode -> DocNode: pipeline(LLMParser)
-    """
 
     def __init__(self, func: Union[Callable[[str], List[str]], Callable[[DocNode], List[DocNode]]],
                  trans_node: bool = None, num_workers: int = 0):

@@ -1404,7 +1404,7 @@ The constructor dynamically creates and returns the corresponding deployment ins
 Args:
     name: A string specifying the type of deployment instance to be created.
     **kwarg: Keyword arguments to be passed to the constructor of the corresponding deployment instance.
-                
+
 Returns:
     If the name argument is 'bark', an instance of [BarkDeploy][lazyllm.components.BarkDeploy] is returned.
     If the name argument is 'ChatTTS', an instance of [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] is returned.
@@ -1421,7 +1421,7 @@ TTSDeploy 是一个用于根据指定的名称创建不同类型文本到语音(
 Args:
     name：字符串，用于指定要创建的部署实例的类型。
     **kwarg：关键字参数，用于传递给对应部署实例的构造函数。
-                
+
 Returns:
     如果 name 参数为 ‘bark’，则返回一个 [BarkDeploy][lazyllm.components.BarkDeploy] 实例。
     如果 name 参数为 ‘ChatTTS’，则返回一个 [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] 实例。
@@ -1442,7 +1442,7 @@ add_example('TTSDeploy', ['''\
 '''])
 
 #DummyFinetune
-add_english_doc('DummyFinetune', '''\
+add_english_doc('finetune.base.DummyFinetune', '''\
 DummyFinetune is a subclass of [LazyLLMFinetuneBase][lazyllm.components.LazyLLMFinetuneBase] that serves as a placeholder implementation for fine-tuning.
 
 The class is primarily used for demonstration or testing purposes, as it does not perform any actual fine-tuning logic.
@@ -1464,7 +1464,7 @@ Returns:
     A string representing a dummy command. The string includes the initial arguments passed during initialization.
 ''')
 
-add_chinese_doc('DummyFinetune', '''\
+add_chinese_doc('finetune.base.DummyFinetune', '''\
 DummyFinetune 是 [LazyLLMFinetuneBase][lazyllm.components.LazyLLMFinetuneBase] 的子类，用于占位实现微调逻辑。
 
 此类主要用于演示或测试目的，因为它不执行任何实际的微调操作。
@@ -1487,7 +1487,7 @@ Returns:
     一个字符串，表示一个占位命令。该字符串包括初始化时传递的参数。
 ''')
 
-add_example('DummyFinetune', ['''\
+add_example('finetune.base.DummyFinetune', ['''\
 >>> from lazyllm.components import DummyFinetune
 >>> from lazyllm import launchers
 
@@ -1502,7 +1502,7 @@ add_example('DummyFinetune', ['''\
 '''])
 
 #cmd
-add_english_doc('cmd', '''\
+add_english_doc('finetune.base.DummyFinetune.cmd', '''\
 The `cmd` method generates a dummy command string for fine-tuning. This method is primarily for testing or demonstration purposes.
 
 Args:
@@ -1517,7 +1517,7 @@ Example:
     `"echo 'dummy finetune!, and init-args is {'custom_arg': 'value'}'"`
 ''')
 
-add_chinese_doc('cmd', '''\
+add_chinese_doc('finetune.base.DummyFinetune.cmd', '''\
 `cmd` 方法生成一个用于微调的占位命令字符串。此方法主要用于测试或演示目的。
 
 Args:
@@ -1532,7 +1532,7 @@ Example:
     `"echo 'dummy finetune!, and init-args is {'custom_arg': 'value'}'"`
 ''')
 
-add_example('cmd', ['''\
+add_example('finetune.base.DummyFinetune.cmd', ['''\
 >>> from lazyllm.components import DummyFinetune
 >>> from lazyllm import launchers
 
