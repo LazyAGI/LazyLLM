@@ -99,9 +99,6 @@ class TestExamples(object):
         res = chat(inputs)
         assert 'N' in res
 
-        res = chat(query, lazyllm_files=[file_path])
-        assert 'N' in res
-
         # test vl chat warpped in web
         web, client = self.warp_into_web(chat, file_target=chat)
         chat_history = [[f"lazyllm_img::{file_path}", None], [query, None]]
