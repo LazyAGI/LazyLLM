@@ -1612,7 +1612,7 @@ Args:
 add_example('ChatPrompter', '''\
 >>> from lazyllm import ChatPrompter
 
-# Simple instruction string
+- Simple instruction string
 >>> p = ChatPrompter('hello world')
 >>> p.generate_prompt('this is my input')
 'You are an AI-Agent developed by LazyLLM.hello world\\n\\n\\n\\n\\n\\nthis is my input\\n\\n'
@@ -1620,24 +1620,23 @@ add_example('ChatPrompter', '''\
 >>> p.generate_prompt('this is my input', return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nhello world\\n\\n'}, {'role': 'user', 'content': 'this is my input'}]}
 
-# Using extra_keys
 >>> p = ChatPrompter('hello world {instruction}', extra_keys=['knowledge'])
 >>> p.generate_prompt({
-'instruction': 'this is my ins',
-'input': 'this is my inp',
-'knowledge': 'LazyLLM-Knowledge'
-})
+...     'instruction': 'this is my ins',
+...     'input': 'this is my inp',
+...     'knowledge': 'LazyLLM-Knowledge'
+... })
 'You are an AI-Agent developed by LazyLLM.hello world this is my ins\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nLazyLLM-Knowledge\\n\\n\\n\\n\\n\\n\\nthis is my inp\\n\\n'
 
-# With conversation history
+- With conversation history
 >>> p.generate_prompt({
-'instruction': 'this is my ins',
-'input': 'this is my inp',
-'knowledge': 'LazyLLM-Knowledge'
-}, history=[['s1', 'e1'], ['s2', 'e2']])
+...     'instruction': 'this is my ins',
+...     'input': 'this is my inp',
+...     'knowledge': 'LazyLLM-Knowledge'
+... }, history=[['s1', 'e1'], ['s2', 'e2']])
 'You are an AI-Agent developed by LazyLLM.hello world this is my ins\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nLazyLLM-Knowledge\\n\\n\\n\\n\\ns1e1s2e2\\n\\nthis is my inp\\n\\n'
 
-# Using dict format for system/user instructions
+- Using dict format for system/user instructions
 >>> p = ChatPrompter(dict(system="hello world", user="this is user instruction {input}"))
 >>> p.generate_prompt({'input': "my input", 'query': "this is user query"})
 'You are an AI-Agent developed by LazyLLM.hello world\\n\\n\\n\\nthis is user instruction my input this is user query\\n\\n'
