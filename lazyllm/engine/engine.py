@@ -780,13 +780,13 @@ def make_shared_model(llm: str, local: bool = True, prompt: Optional[str] = None
 def make_online_llm(source: str = None, base_model: Optional[str] = None, prompt: Optional[str] = None,
                     api_key: Optional[str] = None, secret_key: Optional[str] = None,
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
-                    history: Optional[List[List[str]]] = None):
+                    history: Optional[List[List[str]]] = None, static_params: Optional[Dict[str, Any]] = None):
     if source: source = source.lower()
     if source == 'lazyllm':
         return make_shared_llm(base_model, False, prompt, token, stream, history=history)
     else:
-        return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
-                                        api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
+        return lazyllm.OnlineChatModule(base_model, source, base_url, stream, api_key=api_key, secret_key=secret_key,
+                                        static_params=static_params).prompt(prompt, history=history)
 
 
 class LLM(lazyllm.ModuleBase):
@@ -1043,11 +1043,13 @@ def make_simple_reader(file_resource_id: Optional[str] = None):
 
 
 @NodeConstructor.register("OCR")
-def make_ocr(model: Optional[str] = "PP-OCRv5_mobile"):
-    if model is None:
-        model = "PP-OCRv5_mobile"
-    assert model in ["PP-OCRv5_server", "PP-OCRv5_mobile", "PP-OCRv4_server", "PP-OCRv4_mobile"]
-    return lazyllm.TrainableModule(base_model=model).start()
+def make_ocr(base_model: Optional[str] = "PP-OCRv5_mobile", deploy_method: str = "auto", url: Optional[str] = None):
+    if base_model is None:
+        base_model = "PP-OCRv5_mobile"
+    assert base_model in ["PP-OCRv5_server", "PP-OCRv5_mobile", "PP-OCRv4_server", "PP-OCRv4_mobile"]
+    model = lazyllm.TrainableModule(base_model)
+    setup_deploy_method(model, deploy_method, url)
+    return model
 
 
 @NodeConstructor.register("ParameterExtractor")
