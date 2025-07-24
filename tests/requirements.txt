@@ -13,3 +13,7 @@ git+https://github.com/openai/whisper.git
 pydub
 pytest-cov
 rapidfuzz
+volcengine-python-sdk[ark]>=4.0.6
+dashscope>=1.23.6
+zhipuai>=2.1.5.20250708
+
