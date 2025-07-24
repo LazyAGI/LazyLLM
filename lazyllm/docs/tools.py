@@ -591,7 +591,7 @@ add_chinese_doc('rag.DocManager.delete_files', """
 删除指定文件的接口。
 
 Args:
-    request (FileGroupRequest): 包含文件ID和分组名称的请求。
+    file_ids (List[str]): 要标记为删除状态的文件 ID 列表。
 
 **Returns:**\n
 - BaseResponse: 删除操作结果。
@@ -684,7 +684,7 @@ add_english_doc('rag.DocManager.delete_files', """
 An endpoint to delete specified files.
 
 Args:
-    request (FileGroupRequest): Request containing file IDs and group name.
+    file_ids (List[str]): A list of file IDs to be marked for deletion.
 
 **Returns:**\n
 - BaseResponse: Deletion operation result.
