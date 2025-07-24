@@ -57,3 +57,7 @@
 ::: lazyllm.tools.IntentClassifier
     members: 
     exclude-members:
+
+::: lazyllm.tools.rag.DocListManager
+    members: 
+	exclude-members: 

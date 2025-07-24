@@ -546,7 +546,7 @@ Args:
     limit (Optional[int]): 返回的文件数量限制。默认为None。
     details (bool): 是否返回详细信息。默认为True。
     alive (Optional[bool]): 如果为True，只返回未删除的文件。默认为None。
-
+    exclude_status (str or list of str, optional): 要排除的文件状态。
 **Returns:**\n
 - BaseResponse: 文件列表数据。
 """)
@@ -639,6 +639,7 @@ Args:
     limit (Optional[int]): Limit on the number of files returned. Default is None.
     details (bool): Whether to return detailed information. Default is True.
     alive (Optional[bool]): If True, only returns non-deleted files. Default is None.
+    exclude_status (Optional[Union[str, List[str]]]): The status or list of statuses to exclude from the results. Defaults to `None`.
 
 **Returns:**\n
 - BaseResponse: File list data.
@@ -712,7 +713,6 @@ Args:
     limit (int, optional): 要返回的文件数限制。
     details (bool): 如果为True，则返回文件的详细信息。
     status (str or list of str, optional): 要筛选的文件状态。
-    exclude_status (str or list of str, optional): 要排除的文件状态。
 
 **Returns:**
 - list: 文件列表。
@@ -2155,3 +2155,156 @@ Args:
     client (mcp.ClientSession): 连接到MCP服务器的MCP客户端。
     mcp_tool (mcp.types.Tool): 由MCP服务器提供的工具。
 ''')
+
+#table_inited
+add_english_doc('rag.utils.SqliteDocListManager.table_inited', '''\
+Checks if the database table `documents` is initialized. This method ensures thread-safety when accessing the database.
+
+`table_inited(self)`
+Determines whether the `documents` table exists in the database.
+
+Returns:
+    bool: `True` if the `documents` table exists, `False` otherwise.
+
+Notes:
+    - Uses a thread-safe lock (`self._db_lock`) to ensure safe access to the database.
+    - Establishes a connection to the SQLite database at `self._db_path` with the `check_same_thread` option.
+    - Executes the SQL query: `SELECT name FROM sqlite_master WHERE type='table' AND name='documents'` to check for the table.
+
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.table_inited', '''\
+检查数据库中的 `documents` 表是否已初始化。此方法在访问数据库时确保线程安全。
+
+`table_inited(self)`
+判断数据库中是否存在 `documents` 表。
+
+返回值:
+    bool: 如果 `documents` 表存在，返回 `True`；否则返回 `False`。
+
+说明:
+    - 使用线程安全锁 (`self._db_lock`) 确保对数据库的安全访问。
+    - 通过 `self._db_path` 连接 SQLite 数据库，并使用 `check_same_thread` 配置选项。
+    - 执行 SQL 查询：`SELECT name FROM sqlite_master WHERE type='table' AND name='documents'` 来检查表是否存在。
+
+''')
+
+add_example('rag.utils.SqliteDocListManager.table_inited', ['''\
+>>> from lazyllm.components import SqliteDocListManager  # Import the class
+>>> manager = SqliteDocListManager(db_path='example.db')  # Initialize with a database path
+>>> is_initialized = manager.table_inited()  # Check if the 'documents' table is initialized
+>>> print(is_initialized)
+False  # If the 'documents' table does not exist
+'''])
+
+#validate_paths
+add_english_doc('rag.utils.SqliteDocListManager.validate_paths', '''\
+Validates a list of file paths to ensure they are ready for processing.
+
+`validate_paths(self, paths: List[str]) -> Tuple[bool, str, List[bool]]`
+This method checks whether the provided paths are new, already processed, or currently being processed. It ensures there are no conflicts in processing the documents.
+
+Args:
+    paths (List[str]): A list of file paths to validate.
+
+Returns:
+    Tuple[bool, str, List[bool]]: A tuple containing:
+        - `bool`: `True` if all paths are valid, `False` otherwise.
+        - `str`: A message indicating success or the reason for failure.
+        - `List[bool]`: A list where each element corresponds to whether a path is new (`True`) or already exists (`False`).
+
+Notes:
+    - If any document is still being processed or needs reparsing, the method returns `False` with an appropriate error message.
+    - The method uses a database session and thread-safe lock (`self._db_lock`) to retrieve document status information.
+    - Unsafe statuses include `working` and `waiting`.
+
+
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.validate_paths', '''\
+验证一组文件路径，以确保它们可以被正常处理。
+
+`validate_paths(self, paths: List[str]) -> Tuple[bool, str, List[bool]]`
+此方法检查提供的路径是否是新的、已处理的或当前正在处理的，并确保处理文档时不会发生冲突。
+
+参数:
+    paths (List[str]): 要验证的文件路径列表。
+
+返回值:
+    Tuple[bool, str, List[bool]]: 返回一个元组，包括：
+        - `bool`: 如果所有路径有效，则返回 `True`；否则返回 `False`。
+        - `str`: 表示成功或失败原因的消息。
+        - `List[bool]`: 一个布尔值列表，每个元素对应一个路径是否为新路径（`True` 表示新路径，`False` 表示已存在）。
+
+说明:
+    - 如果任何文档仍在处理中或需要重新解析，该方法会返回 `False`，并附带相应的错误消息。
+    - 方法通过数据库会话和线程安全锁 (`self._db_lock`) 检索文档状态信息。
+    - 不安全状态包括 `working` 和 `waiting`。
+
+
+''')
+
+add_example('rag.utils.SqliteDocListManager.validate_paths', ['''\
+>>> from lazyllm.components import SqliteDocListManager
+>>> manager = SqliteDocListManager(db_path='example.db')
+
+>>> # Sample paths to validate
+>>> paths = ['/path/to/doc1.txt', '/path/to/doc2.txt']
+
+>>> # Validate paths
+>>> is_valid, message, paths_is_new = manager.validate_paths(paths)
+
+>>> # Output the results
+>>> print(is_valid)  # True if all paths are valid
+>>> print(message)   # Success message or the reason for failure
+>>> print(paths_is_new)  # [True, False] indicating new or existing paths
+'''])
+
+#update_need_reparsing
+add_english_doc('rag.utils.SqliteDocListManager.update_need_reparsing', '''\
+Updates the `need_reparse` status of a document in the `KBGroupDocuments` table.
+
+`update_need_reparsing(self, doc_id: str, need_reparse: bool, group_name: Optional[str] = None)`
+This method sets the `need_reparse` flag for a specific document, optionally scoped to a given group.
+
+Args:
+    doc_id (str): The ID of the document to update.
+    need_reparse (bool): The new value for the `need_reparse` flag.
+    group_name (Optional[str]): If provided, the update will be applied only to the specified group.
+
+Notes:
+    - Uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
+    - The `group_name` parameter allows scoping the update to a specific group; if not provided, the update applies to all groups containing the document.
+    - The method commits the change to the database immediately.
+
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.update_need_reparsing', '''\
+更新 `KBGroupDocuments` 表中某个文档的 `need_reparse` 状态。
+
+`update_need_reparsing(self, doc_id: str, need_reparse: bool, group_name: Optional[str] = None)`
+此方法设置指定文档的 `need_reparse` 标志，并可选限定到特定分组。
+
+参数:
+    doc_id (str): 要更新的文档ID。
+    need_reparse (bool): `need_reparse` 标志的新值。
+    group_name (Optional[str]): 如果提供，仅对指定分组应用更新；如果未提供，则对包含该文档的所有分组应用更新。
+
+说明:
+    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问安全。
+    - `group_name` 参数允许将更新限定到特定分组；如果未提供，则更新应用于包含该文档的所有分组。
+    - 方法会立刻将更改提交到数据库。
+
+''')
+
+add_example('rag.utils.SqliteDocListManager.update_need_reparsing', ['''\
+>>> from lazyllm.components import SqliteDocListManager
+>>> manager = SqliteDocListManager(db_path='example.db')
+
+>>> # Update need_reparse for a document across all groups
+>>> manager.update_need_reparsing(doc_id='doc123', need_reparse=True)
+
+>>> # Update need_reparse for a document in a specific group
+>>> manager.update_need_reparsing(doc_id='doc123', need_reparse=False, group_name='groupA')
+'''])
+
