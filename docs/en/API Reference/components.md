@@ -82,9 +82,7 @@
 ::: lazyllm.components.Prompter
     options:
       heading_level: 3
-      members: true
-      filters:
-      - "!^_.*"
+      members: [from_dict, from_template, from_file, empty, generate_prompt, get_response]
 
 ::: lazyllm.components.AlpacaPrompter
     options:
