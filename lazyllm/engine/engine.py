@@ -823,7 +823,7 @@ def make_llm(kw: dict):
 
 
 class STT(lazyllm.Module):
-    def __init__(self, model: Union[lazyllm.TrainableModule, lazyllm.OnlineMultiModal]):
+    def __init__(self, model: Union[lazyllm.TrainableModule, lazyllm.OnlineMultiModalModule]):
         super().__init__()
         self._m = model if not isinstance(model, STT) else model._m
 
@@ -870,13 +870,13 @@ NodeConstructor.register('OnlineSTT')
 def make_online_stt(source: str = None, base_model: Optional[str] = None, base_url: Optional[str] = None,
                     api_key: Optional[str] = None):
     if source: source = source.lower()
-    model = lazyllm.OnlineMultiModal(source=source, function='stt', model=base_model,
-                                     base_url=base_url, api_key=api_key)
+    model = lazyllm.OnlineMultiModalModule(source=source, function='stt', model=base_model,
+                                           base_url=base_url, api_key=api_key)
     return STT(model)
 
 
 class TTS(lazyllm.Module):
-    def __init__(self, model: Union[lazyllm.TrainableModule, lazyllm.OnlineMultiModal],
+    def __init__(self, model: Union[lazyllm.TrainableModule, lazyllm.OnlineMultiModalModule],
                  target_dir: Optional[str] = None):
         super().__init__()
         self._m = model if not isinstance(model, TTS) else model._m
@@ -918,8 +918,8 @@ def make_local_tts(base_model: str, deploy_method: str = "auto", url: Optional[s
 def make_online_tts(source: str = None, base_model: Optional[str] = None, base_url: Optional[str] = None,
                     api_key: Optional[str] = None):
     if source: source = source.lower()
-    model = lazyllm.OnlineMultiModal(source=source, function='tts', model=base_model,
-                                     base_url=base_url, api_key=api_key)
+    model = lazyllm.OnlineMultiModalModule(source=source, function='tts', model=base_model,
+                                           base_url=base_url, api_key=api_key)
     return model
 
 @NodeConstructor.register('Embedding')
@@ -966,7 +966,7 @@ def make_http(method: str, url: str, api_key: str = '', headers: dict = {}, para
 
 
 class SD(lazyllm.Module):
-    def __init__(self, model: Union[lazyllm.TrainableModule, lazyllm.OnlineMultiModal],
+    def __init__(self, model: Union[lazyllm.TrainableModule, lazyllm.OnlineMultiModalModule],
                  target_dir: Optional[str] = None):
         super().__init__()
         self._m = model if not isinstance(model, SD) else model._m
@@ -1003,8 +1003,8 @@ def make_local_sd(base_model: str, deploy_method: str = "auto", url: Optional[st
 def make_online_sd(source: str = None, base_model: Optional[str] = None, base_url: Optional[str] = None,
                    api_key: Optional[str] = None):
     if source: source = source.lower()
-    model = lazyllm.OnlineMultiModal(source=source, function='text2image', model=base_model,
-                                     base_url=base_url, api_key=api_key)
+    model = lazyllm.OnlineMultiModalModule(source=source, function='text2image', model=base_model,
+                                           base_url=base_url, api_key=api_key)
     return model
 
 

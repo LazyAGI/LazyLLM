@@ -17,16 +17,16 @@ class TestMultiModal(object):
 
     def test_online_tts(self):
         api_key = lazyllm.config['qwen_api_key']
-        tts = lazyllm.OnlineMultiModal(source='qwen', function='tts', model='qwen-tts', api_key=api_key)
+        tts = lazyllm.OnlineMultiModalModule(source='qwen', function='tts', model='qwen-tts', api_key=api_key)
         result = tts(self.test_text)
         self._check_file_result(result, format='audio')
 
         with pytest.raises(RuntimeError, match='cosyvoice-v1 does not support multi user, don\'t set api_key'):
-            tts = lazyllm.OnlineMultiModal(source='qwen', function='tts', model='cosyvoice-v1', api_key=api_key)
+            tts = lazyllm.OnlineMultiModalModule(source='qwen', function='tts', model='cosyvoice-v1', api_key=api_key)
             result = tts(self.test_text)
 
     def test_online_stt(self):
-        stt = lazyllm.OnlineMultiModal(source='glm', function='stt')
+        stt = lazyllm.OnlineMultiModalModule(source='glm', function='stt')
         result = stt(lazyllm_files=self.test_audio_file)
         assert "地铁站" in result
 
@@ -45,6 +45,6 @@ class TestMultiModal(object):
         assert file.endswith(suffix)
 
     def test_online_text2image(self):
-        sd = lazyllm.OnlineMultiModal(source='qwen', function='text2image')
+        sd = lazyllm.OnlineMultiModalModule(source='qwen', function='text2image')
         result = sd(self.test_image_prompt)
         self._check_file_result(result, format='image')

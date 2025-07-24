@@ -1,7 +1,7 @@
 import copy
 from typing import List, Dict, Union
 import lazyllm
-from ...servermodule import LLMBase
+from ....servermodule import LLMBase
 
 
 class OnlineMultiModalBase(LLMBase):
@@ -48,7 +48,7 @@ class OnlineMultiModalBase(LLMBase):
             raise
 
     def __repr__(self):
-        return lazyllm.make_repr('Module', 'OnlineMultiModal',
+        return lazyllm.make_repr('Module', 'OnlineMultiModalModule',
                                  series=self._model_series,
                                  name=self._model_name,
                                  return_trace=self._return_trace)

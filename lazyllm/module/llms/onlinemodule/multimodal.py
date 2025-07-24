@@ -1,20 +1,20 @@
 import lazyllm
 from typing import Any, Dict
-from .qwenModule import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
-from .onlineMultiModalBase import OnlineMultiModalBase
-from .doubaoModule import DoubaoTextToImageModule
-from .glmModule import GLMSTTModule, GLMTextToImageModule
+from .base import OnlineMultiModalBase
+from .supplier.qwen import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
+from .supplier.doubao import DoubaoTextToImageModule
+from .supplier.glm import GLMSTTModule, GLMTextToImageModule
 
 
 class _OnlineMultiModalMeta(type):
-    """Metaclass for OnlineMultiModal to support isinstance checks"""
+    """Metaclass for OnlineMultiModalModule to support isinstance checks"""
     def __instancecheck__(self, __instance: Any) -> bool:
         if isinstance(__instance, OnlineMultiModalBase):
             return True
         return super().__instancecheck__(__instance)
 
 
-class OnlineMultiModal(metaclass=_OnlineMultiModalMeta):
+class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
     """
     Factory class for creating online multimodal models.
 
@@ -25,13 +25,13 @@ class OnlineMultiModal(metaclass=_OnlineMultiModalMeta):
 
     Example:
         # Create an online STT
-        stt = OnlineMultiModal(source='qwen', function='stt')
+        stt = OnlineMultiModalModule(source='qwen', function='stt')
 
         # Create an online TTS
-        tts = OnlineMultiModal(source='qwen', function='tts')
+        tts = OnlineMultiModalModule(source='qwen', function='tts')
 
         # Create an online text-to-image
-        img_gen = OnlineMultiModal(source='qwen', function='text2image')
+        img_gen = OnlineMultiModalModule(source='qwen', function='text2image')
     """
     STT_MODELS = {
         'qwen': QwenSTTModule,
@@ -68,7 +68,7 @@ class OnlineMultiModal(metaclass=_OnlineMultiModalMeta):
                 function: str = "stt",
                 **kwargs):
         """
-        Create a new OnlineMultiModal instance.
+        Create a new OnlineMultiModalModule instance.
 
         Args:
             model: Model name to use
@@ -87,9 +87,9 @@ class OnlineMultiModal(metaclass=_OnlineMultiModalMeta):
         """
         # Define function to model mapping
         FUNCTION_MODEL_MAP = {
-            "stt": OnlineMultiModal.STT_MODELS,
-            "tts": OnlineMultiModal.TTS_MODELS,
-            "text2image": OnlineMultiModal.TEXT2IMAGE_MODELS,
+            "stt": OnlineMultiModalModule.STT_MODELS,
+            "tts": OnlineMultiModalModule.TTS_MODELS,
+            "text2image": OnlineMultiModalModule.TEXT2IMAGE_MODELS,
         }
 
         if function not in FUNCTION_MODEL_MAP:
@@ -100,7 +100,7 @@ class OnlineMultiModal(metaclass=_OnlineMultiModalMeta):
         if model in available_model and source is None:
             source, model = model, source
 
-        params = OnlineMultiModal._encapsulate_parameters(base_url, model, return_trace, **kwargs)
+        params = OnlineMultiModalModule._encapsulate_parameters(base_url, model, return_trace, **kwargs)
 
         if kwargs.get("skip_auth", False):
             source = source or "openai"
