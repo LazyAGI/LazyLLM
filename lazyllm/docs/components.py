@@ -1254,7 +1254,7 @@ add_example('Prompter', '''\
 
 >>> p = Prompter(
 ...     prompt="Instruction: {instruction}",
-...     chat_prompt="Instruction: {instruction}\\nHistory:\\n{llm_chat_history}",
+...     chat_prompt="Instruction: {instruction}\\\\nHistory:\\\\n{llm_chat_history}",
 ...     history_symbol="llm_chat_history",
 ...     eoa="</s>",
 ...     eoh="|"
@@ -1263,7 +1263,7 @@ add_example('Prompter', '''\
 ...     input={"instruction": "Translate this."},
 ...     history=[["hello", "你好"], ["how are you", "你好吗"]]
 ... )
-'Instruction: Translate this.\\nHistory:\\nhello|你好</s>how are you|你好吗'
+'Instruction: Translate this.\\\\nHistory:\\\\nhello|你好</s>how are you|你好吗'
 
 >>> prompt_conf = {
 ...     "prompt": "Task: {task}",
@@ -1615,18 +1615,19 @@ add_example('ChatPrompter', '''\
 - Simple instruction string
 >>> p = ChatPrompter('hello world')
 >>> p.generate_prompt('this is my input')
-'You are an AI-Agent developed by LazyLLM.hello world\\n\\n\\n\\n\\n\\nthis is my input\\n\\n'
+'You are an AI-Agent developed by LazyLLM.hello world\\\\nthis is my input\\\\n'
 
 >>> p.generate_prompt('this is my input', return_dict=True)
-{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nhello world\\n\\n'}, {'role': 'user', 'content': 'this is my input'}]}
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world'}, {'role': 'user', 'content': 'this is my input'}]}
 
+- Using extra_keys
 >>> p = ChatPrompter('hello world {instruction}', extra_keys=['knowledge'])
 >>> p.generate_prompt({
 ...     'instruction': 'this is my ins',
 ...     'input': 'this is my inp',
 ...     'knowledge': 'LazyLLM-Knowledge'
 ... })
-'You are an AI-Agent developed by LazyLLM.hello world this is my ins\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nLazyLLM-Knowledge\\n\\n\\n\\n\\n\\n\\nthis is my inp\\n\\n'
+'You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\nthis is my inp\\\\n'
 
 - With conversation history
 >>> p.generate_prompt({
@@ -1634,15 +1635,15 @@ add_example('ChatPrompter', '''\
 ...     'input': 'this is my inp',
 ...     'knowledge': 'LazyLLM-Knowledge'
 ... }, history=[['s1', 'e1'], ['s2', 'e2']])
-'You are an AI-Agent developed by LazyLLM.hello world this is my ins\\nHere are some extra messages you can referred to:\\n\\n### knowledge:\\nLazyLLM-Knowledge\\n\\n\\n\\n\\ns1e1s2e2\\n\\nthis is my inp\\n\\n'
+'You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\ns1|e1\\\\ns2|e2\\\\nthis is my inp\\\\n'
 
 - Using dict format for system/user instructions
 >>> p = ChatPrompter(dict(system="hello world", user="this is user instruction {input}"))
 >>> p.generate_prompt({'input': "my input", 'query': "this is user query"})
-'You are an AI-Agent developed by LazyLLM.hello world\\n\\n\\n\\nthis is user instruction my input this is user query\\n\\n'
+'You are an AI-Agent developed by LazyLLM.hello world\\\\nthis is user instruction my input this is user query\\\\n'
 
 >>> p.generate_prompt({'input': "my input", 'query': "this is user query"}, return_dict=True)
-{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
 ''')
 
 # ============= MultiModal
