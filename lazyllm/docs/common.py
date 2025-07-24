@@ -93,3 +93,55 @@ code_str = 'def Identity(v): return v'
 identity = compile_func(code_str)
 assert identity('hello') == 'hello'
 ''')
+
+# ============= Bind/bind
+add_chinese_doc('bind', '''\
+Bind 类用于函数绑定与延迟调用，支持动态参数传入和上下文参数解析，实现灵活的函数组合与流水线式调用。
+
+Args:
+    __bind_func (Callable 或 type): 要绑定的函数或函数类型，传入类型时自动实例化
+    *args: 绑定时固定的位置参数
+    **kw: 绑定时固定的关键字参数
+''')
+
+add_english_doc('bind', '''\
+The Bind class provides function binding and deferred invocation capabilities, supporting dynamic argument passing and context-based argument resolution for flexible function composition and pipeline-style calls.
+
+Args:             
+    __bind_func (Callable or type): The function or function type to bind. If a type is given, it will be instantiated automatically.
+    *args: Fixed positional arguments to bind.
+    **kw: Fixed keyword arguments to bind.
+''')
+
+add_example('bind', '''\
+>>> from lazyllm.common import bind
+>>> def add(x, y): return x + y
+>>> b = bind(add, 1, 2)
+>>> print(b())
+3
+''')
+
+# ============= package
+add_chinese_doc('package', '''\
+package类用于封装流水线或并行模块的返回值，保证传递给下游模块时自动拆包，从而支持多个值的灵活传递。
+''')
+
+add_english_doc('package', '''\
+The package class is used to encapsulate the return values of pipeline or parallel modules,
+ensuring automatic unpacking when passing to the next module, thereby supporting flexible multi-value passing.
+''')
+
+add_example('package', '''\
+>>> from lazyllm.common import package
+>>> p = package(1, 2, 3)
+>>> p
+(1, 2, 3)
+>>> p[1]
+2
+>>> p_slice = p[1:]
+>>> isinstance(p_slice, package)
+True
+>>> p2 = package([4, 5])
+>>> p + p2
+(1, 2, 3, 4, 5)
+''')
