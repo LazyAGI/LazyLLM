@@ -15,8 +15,8 @@ from lazyllm import globals
 from lazyllm.components.prompter import PrompterBase
 from lazyllm.components.formatter import FormatterBase
 from lazyllm.components.utils.file_operate import delete_old_files, image_to_base64
-from ...servermodule import LLMBase
-from ...module import Pipeline
+from ....servermodule import LLMBase
+from ....module import Pipeline
 
 
 class StaticParams(TypedDict, total=False):
