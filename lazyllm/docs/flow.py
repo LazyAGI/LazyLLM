@@ -14,6 +14,7 @@ add_chinese_doc('FlowBase', """\
 Args:
     items (iterable): 要包含在流中的项目的可迭代对象。这些可以是 ``FlowBase`` 的实例或其他对象。
     item_names (list of str, optional): 对应于项目的名称列表。这允许通过名称访问项目。如果未提供，则只能通过索引访问项目。
+    auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
 
 """)
 
@@ -25,6 +26,7 @@ This class provides a way to organize items, which can be instances of ``FlowBas
 Args:
     items (iterable): An iterable of items to be included in the flow. These can be instances of ``FlowBase`` or other objects.
     item_names (list of str, optional): A list of names corresponding to the items. This allows items to be accessed by name. If not provided, items can only be accessed by index.
+    auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
 
 """)
 
@@ -118,6 +120,44 @@ add_example('FlowBase.for_each', """\
 <Function type=test1>
 <Function type=test2>
 <Function type=test3>
+""")
+
+add_chinese_doc('LazyLLMFlowsBase', """\
+一个支持流程封装、钩子注册与调用逻辑的基础类。
+
+`LazyLLMFlowsBase` 是 LazyLLM 中所有流程（Flow）的基类，用于组织一系列可调用模块的执行流程，并支持钩子（hook）机制、同步控制、后处理逻辑等功能。它的设计旨在统一封装执行调用、异常处理、后处理、流程表示等功能，适用于各种同步数据处理场景。
+
+该类通常不直接使用，而是被诸如 `Pipeline`、`Parallel` 等具体流程类继承和使用。
+
+```text
+输入 --> [Flow模块1 -> Flow模块2 -> ... -> Flow模块N] --> 输出
+                   ↑             ↓
+               pre_hook       post_hook
+```
+                
+Args:
+    args: 可变长度参数列表。
+    post_action: 在主流程结束后对输出进行进一步处理的可调用对象。默认为 ``None``。
+    auto_capture: 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 False。
+
+""")
+
+add_english_doc('LazyLLMFlowsBase', """\
+A base class for flow structures with hook support and unified execution logic.
+
+`LazyLLMFlowsBase` is the base class for all LazyLLM flow types. It organizes a sequence of callable modules into a flow and provides support for pre/post hooks, synchronization control, post-processing, and error-safe invocation. It is not intended for direct use but instead serves as a foundational class for concrete flow types like `Pipeline`, `Parallel`, etc.
+
+```text
+input --> [Flow module1 -> Flow module2 -> ... -> Flow moduleN] --> output
+                   ↑             ↓
+               pre_hook       post_hook
+```
+                
+Args:
+    args: A sequence of callables representing the flow modules.
+    post_action: An optional callable applied to the output after main flow execution. Defaults to ``None``。
+    auto_capture: If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
+
 """)
 
 add_chinese_doc('Parallel', """\
@@ -280,6 +320,39 @@ add_example('Pipeline', """\
 >>> ppl.stage2
 <Function type=lambda>
 """)
+
+add_chinese_doc('save_pipeline_result', """\
+一个上下文管理器，用于临时设置是否保存流水线中的中间执行结果。
+
+在进入上下文时，会将 `Pipeline.g_save_flow_result` 设置为指定值；退出上下文后会恢复为原来的状态。适用于调试或需要记录中间输出的场景。
+
+Args:
+    flag (bool): 是否启用结果保存功能，默认为 True。
+
+**Returns:**\n
+- ContextManager: 上下文管理器。
+""")
+
+add_english_doc('save_pipeline_result', """\
+A context manager that temporarily sets whether to save intermediate results during pipeline execution.
+
+When entering the context, `Pipeline.g_save_flow_result` is set to the given value. After exiting, it restores the previous value. Useful for debugging or recording intermediate outputs.
+
+Args:
+    flag (bool): Whether to enable result saving. Defaults to True.
+
+**Returns:**\n
+- ContextManager: A context manager.
+""")
+
+add_example('save_pipeline_result', '''\
+>>> import lazyllm
+>>> pipe = lazyllm.pipeline(lambda x: x + 1, lambda x: x * 2)
+>>> with lazyllm.save_pipeline_result(True):
+...     result = pipe(1)
+>>> result
+4
+''')
 
 add_chinese_doc('Loop', '''\
 初始化一个循环流结构，该结构将一系列函数重复应用于输入，直到满足停止条件或达到指定的迭代次数。
@@ -530,6 +603,9 @@ Warp类设计用于将同一个处理模块应用于一组输入。它有效地�
 ```
 Args:
     args: 可变长度参数列表，代表要应用于所有输入的单个模块。
+    _scatter (bool): 是否以分片方式拆分输入，默认 False。
+    _concurrent (bool | int): 是否启用并发执行，可设定最大并发数。默认启用并发。
+    auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
     kwargs: 未来扩展的任意关键字参数。
 
 注意:
@@ -550,6 +626,9 @@ The Warp class is designed to apply the same processing module to a set of input
 
 Args:
     args: Variable length argument list representing the single module to be applied to all inputs.
+    _scatter (bool): Whether to scatter inputs into parts before processing. Defaults to False.
+    _concurrent (bool | int): Whether to execute in parallel. Can be a boolean or a max concurrency limit. Defaults to True.
+    auto_capture (bool): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
     kwargs: Arbitrary keyword arguments for future extensions.
 
 Note:
