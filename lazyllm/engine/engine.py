@@ -780,7 +780,7 @@ def make_shared_model(llm: str, local: bool = True, prompt: Optional[str] = None
 def make_online_llm(source: str = None, base_model: Optional[str] = None, prompt: Optional[str] = None,
                     api_key: Optional[str] = None, secret_key: Optional[str] = None,
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
-                    history: Optional[List[List[str]]] = None, static_params: Optional[Dict[str, Any]] = None):
+                    history: Optional[List[List[str]]] = None, static_params: Optional[Dict[str, Any]] = {}):
     if source: source = source.lower()
     if source == 'lazyllm':
         return make_shared_llm(base_model, False, prompt, token, stream, history=history)
