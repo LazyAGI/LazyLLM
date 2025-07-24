@@ -22,11 +22,11 @@ class OCR(object):
         **kw
     ):
         self.model = model
+        self.text_detection_model_name = model + "_det"
+        self.text_recognition_model_name = model + "_rec"
         self.use_doc_orientation_classify = use_doc_orientation_classify
         self.use_doc_unwarping = use_doc_unwarping
         self.use_textline_orientation = use_textline_orientation
-        self.det_model_name = model + "_det"
-        self.rec_model_name = model + "_rec"
         self.init_flag = lazyllm.once_flag()
 
     def load_paddleocr(self):
@@ -36,16 +36,16 @@ class OCR(object):
             'use_doc_orientation_classify': self.use_doc_orientation_classify,
             'use_doc_unwarping': self.use_doc_unwarping,
             'use_textline_orientation': self.use_textline_orientation,
+            'text_detection_model_name': self.text_detection_model_name,
+            'text_recognition_model_name': self.text_recognition_model_name,
         }
-        det_model_dir = os.path.join(lazyllm.config['model_path'], self.det_model_name)
+        det_model_dir = os.path.join(lazyllm.config['model_path'], self.text_detection_model_name)
         if os.path.exists(det_model_dir):
             paddleocr_kwargs['det_model_dir'] = det_model_dir
-        paddleocr_kwargs['text_detection_model_name'] = self.det_model_name
-
-        rec_model_dir = os.path.join(lazyllm.config['model_path'], self.rec_model_name)
+        rec_model_dir = os.path.join(lazyllm.config['model_path'], self.text_recognition_model_name)
         if os.path.exists(rec_model_dir):
             paddleocr_kwargs['rec_model_dir'] = rec_model_dir
-        paddleocr_kwargs['text_recognition_model_name'] = self.rec_model_name
+
         self.ocr = paddleocr.PaddleOCR(**paddleocr_kwargs)
 
     def __call__(self, input):
