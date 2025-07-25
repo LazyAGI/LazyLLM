@@ -25,7 +25,6 @@ import yaml
 from typing import Literal
 
 class Status(Enum):
-    """An enumeration."""
     TBSubmitted = 0,
     InQueue = 1
     Running = 2,
@@ -1051,18 +1050,6 @@ class K8sLauncher(LazyLLMLaunchersBase):
 
 @final
 class EmptyLauncher(LazyLLMLaunchersBase):
-    """此类是 ``LazyLLMLaunchersBase`` 的子类，作为一个本地的启动器。
-
-Args:
-    subprocess (bool): 是否使用子进程来启动。默认为 `False`。
-    sync (bool): 是否同步执行作业。默认为 `True`，否则为异步执行。
-
-
-
-Examples:
-    >>> import lazyllm
-    >>> launcher = lazyllm.launchers.empty()
-    """
     all_processes = defaultdict(list)
 
     @final
@@ -1171,24 +1158,6 @@ Examples:
 
 @final
 class SlurmLauncher(LazyLLMLaunchersBase):
-    """此类是 ``LazyLLMLaunchersBase`` 的子类，作为slurm启动器。
-
-具体而言，它提供了启动和配置 Slurm 作业的方法，包括指定分区、节点数量、进程数量、GPU 数量以及超时时间等参数。
-
-Args:
-    partition (str): 要使用的 Slurm 分区。默认为 ``None``，此时将使用 ``lazyllm.config['partition']`` 中的默认分区。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SLURM_PART=a100`` 。
-    nnode  (int): 要使用的节点数量。默认为 ``1``。
-    nproc (int): 每个节点要使用的进程数量。默认为 ``1``。
-    ngpus: (int): 每个节点要使用的 GPU 数量。默认为 ``None``, 即不使用 GPU。
-    timeout (int): 作业的超时时间（以秒为单位）。默认为 ``None``，此时将不设置超时时间。
-    sync (bool): 是否同步执行作业。默认为 ``True``，否则为异步执行。
-
-
-
-Examples:
-    >>> import lazyllm
-    >>> launcher = lazyllm.launchers.slurm(partition='partition_name', nnode=1, nproc=1, ngpus=1, sync=False)
-    """
     # In order to obtain the jobid to monitor and terminate the job more
     # conveniently, only one srun command is allowed in one Job
     all_processes = defaultdict(list)
@@ -1356,26 +1325,6 @@ Examples:
 
 @final
 class ScoLauncher(LazyLLMLaunchersBase):
-    """此类是 ``LazyLLMLaunchersBase`` 的子类，作为SCO (Sensecore)启动器。
-
-具体而言，它提供了启动和配置 SCO 作业的方法，包括指定分区、工作空间名称、框架类型、节点数量、进程数量、GPU 数量以及是否使用 torchrun 等参数。
-
-Args:
-    partition (str): 要使用的分区。默认为 ``None``，此时将使用 ``lazyllm.config['partition']`` 中的默认分区。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SLURM_PART=a100`` 。
-    workspace_name (str): SCO 上的工作空间名称。默认为 ``lazyllm.config['sco.workspace']`` 中的配置。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SCO_WORKSPACE=myspace`` 。
-    framework (str): 要使用的框架类型，例如 ``pt`` 代表 PyTorch。默认为 ``pt``。
-    nnode  (int): 要使用的节点数量。默认为 ``1``。
-    nproc (int): 每个节点要使用的进程数量。默认为 ``1``。
-    ngpus: (int): 每个节点要使用的 GPU 数量。默认为 ``1``, 使用1块 GPU。
-    torchrun (bool): 是否使用 ``torchrun`` 启动作业。默认为 ``False``。
-    sync (bool): 是否同步执行作业。默认为 ``True``，否则为异步执行。
-
-
-
-Examples:
-    >>> import lazyllm
-    >>> launcher = lazyllm.launchers.sco(partition='partition_name', nnode=1, nproc=1, ngpus=1, sync=False)
-    """
     all_processes = defaultdict(list)
 
     @final
@@ -1563,22 +1512,6 @@ Examples:
 
 
 class RemoteLauncher(LazyLLMLaunchersBase):
-    """此类是 ``LazyLLMLaunchersBase`` 的一个子类，它充当了一个远程启动器的代理。它根据配置文件中的 ``lazyllm.config['launcher']`` 条目动态地创建并返回一个对应的启动器实例(例如：``SlurmLauncher`` 或 ``ScoLauncher``)。
-
-Args:
-    *args: 位置参数，将传递给动态创建的启动器构造函数。
-    sync (bool): 是否同步执行作业。默认为 ``False``。
-    **kwargs: 关键字参数，将传递给动态创建的启动器构造函数。
-
-注意事项: 
-    - ``RemoteLauncher`` 不是一个直接的启动器，而是根据配置动态创建一个启动器。 
-    - 配置文件中的 ``lazyllm.config['launcher']`` 指定一个存在于 ``lazyllm.launchers`` 模块中的启动器类名。该配置可通过设置环境变量 ``LAZYLLM_DEFAULT_LAUNCHER`` 来设置。如：``export LAZYLLM_DEFAULT_LAUNCHER=sco`` , ``export LAZYLLM_DEFAULT_LAUNCHER=slurm`` 。
-
-
-Examples:
-    >>> import lazyllm
-    >>> launcher = lazyllm.launchers.remote(ngpus=1)
-    """
     def __new__(cls, *args, sync=False, ngpus=1, **kwargs):
         return getattr(lazyllm.launchers, lazyllm.config['launcher'])(*args, sync=sync, ngpus=ngpus, **kwargs)
 

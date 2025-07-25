@@ -54,32 +54,6 @@ class _DefaultFileMetadataFunc:
         return {meta_key: meta_value for meta_key, meta_value in default_meta.items() if meta_value is not None}
 
 class SimpleDirectoryReader(ModuleBase):
-    """
-模块化的文档目录读取器，继承自 ModuleBase，支持从文件系统读取多种格式的文档并转换为标准化的 DocNode 。
-
-Args:
-    input_dir (Optional[str]): 输入目录路径。与input_files二选一，不可同时指定。
-    input_files (Optional[List]):直接指定的文件列表。与input_dir二选一。
-    exclude (Optional[List]):需要排除的文件模式列表。
-    exclude_hidden (bool): 是否排除隐藏文件。
-    recursive (bool):是否递归读取子目录。
-    encoding (str):文本文件的编码格式。
-    required_exts (Optional[List[str]]):需要处理的文件扩展名白名单。
-    file_extractor (Optional[Dict[str, Callable]]):自定义文件阅读器字典。
-    fs (Optional[AbstractFileSystem]):自定义文件系统。
-    metadata_genf (Optional[Callable[[str], Dict]]):元数据生成函数，接收文件路径返回元数据字典。
-    num_files_limit (Optional[int]):最大读取文件数量限制。
-    return_trace (bool):是否返回处理过程追踪信息。
-    metadatas (Optional[Dict]):预定义的全局元数据字典。
-
-
-Examples:
-
-    >>> import lazyllm
-    >>> from lazyllm.tools.dataReader import SimpleDirectoryReader
-    >>> reader = SimpleDirectoryReader(input_dir="yourpath/",recursive=True,exclude=["*.tmp"],required_exts=[".pdf", ".docx"])
-    >>> documents = reader.load_data()
-    """
     default_file_readers: Dict[str, Type[ReaderBase]] = {
         "*.pdf": PDFReader,
         "*.docx": DocxReader,
@@ -307,20 +281,6 @@ config.add('use_fallback_reader', bool, True, 'USE_FALLBACK_READER')
 
 
 class FileReader(object):
-    """
-文件内容读取器，主要功能是将多种格式的输入文件转换为拼接后的纯文本内容。
-
-Args:
-    input_files (Optional[List]):直接指定的文件列表。
-
-
-Examples:
-
-    >>> import lazyllm
-    >>> from lazyllm.tools.dataReader import FileReader
-    >>> reader = FileReader()
-    >>> content = reader("yourpath/") 
-    """
 
     def __call__(self, input_files):
         file_list = _lazyllm_get_file_list(input_files)

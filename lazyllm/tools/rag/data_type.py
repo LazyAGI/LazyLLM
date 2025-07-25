@@ -1,7 +1,6 @@
 from enum import IntEnum
 
 class DataType(IntEnum):
-    """An enumeration."""
     VARCHAR = 0
     ARRAY = 1
     INT32 = 2

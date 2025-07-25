@@ -14,7 +14,6 @@ from starlette.routing import Mount, Route
 
 @dataclass
 class SseServerSettings:
-    """SseServerSettings(bind_host: str, port: int, allow_origins: Optional[List[str]] = None, log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO')"""
     bind_host: str
     port: int
     allow_origins: Optional[List[str]] = None

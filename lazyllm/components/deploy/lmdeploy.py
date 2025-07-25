@@ -13,37 +13,6 @@ from .utils import get_log_path, make_log_dir
 config.add('lmdeploy_eager_mode', bool, False, 'LMDEPLOY_EAGER_MODE')
 
 class LMDeploy(LazyLLMDeployBase):
-    """此类是 ``LazyLLMDeployBase`` 的子类，基于 [LMDeploy](https://github.com/InternLM/lmdeploy) 框架提供的推理能力，用于对大语言模型进行推理。
-
-Args:
-    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
-    stream (bool): 是否为流式响应，默认为 ``False``。
-    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
-
-此类的关键字参数及其默认值如下：
-
-Keyword Args: 
-    tp (int): 张量并行参数，默认为 ``1``。
-    server-name (str): 服务的IP地址，默认为 ``0.0.0.0``。
-    server-port (int): 服务的端口号，默认为 ``None``,此情况下LazyLLM会自动生成随机端口号。
-    max-batch-size (int): 最大batch数， 默认为 ``128``。
-
-
-
-Examples:
-    >>> # Basic use:
-    >>> from lazyllm import deploy
-    >>> infer = deploy.LMDeploy()
-    >>>
-    >>> # MultiModal:
-    >>> import lazyllm
-    >>> from lazyllm import deploy, globals
-    >>> from lazyllm.components.formatter import encode_query_with_filepaths
-    >>> chat = lazyllm.TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)
-    >>> chat.update_server()
-    >>> inputs = encode_query_with_filepaths('What is it?', ['path/to/image'])
-    >>> res = chat(inputs)
-    """
     keys_name_handle = {
         'inputs': 'prompt',
         'stop': 'stop',

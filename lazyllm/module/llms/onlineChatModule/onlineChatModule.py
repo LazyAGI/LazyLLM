@@ -18,40 +18,6 @@ class _ChatModuleMeta(type):
 
 
 class OnlineChatModule(metaclass=_ChatModuleMeta):
-    """用来管理创建目前市面上公开的大模型平台访问模块，目前支持openai、sensenova、glm、kimi、qwen、doubao、deekseek(由于该平台暂时不让充值了，暂时不支持访问)。平台的api key获取方法参见 [开始入门](/#platform)
-
-Args:
-    model (str): 指定要访问的模型 (注意使用豆包时需用 Model ID 或 Endpoint ID，获取方式详见 [获取推理接入点](https://www.volcengine.com/docs/82379/1099522)。使用模型前，要先在豆包平台开通对应服务。)，默认为 ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` 
-    source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``deepseek(暂时不支持访问)``
-    base_url (str): 指定要访问的平台的基础链接，默认是官方链接
-    system_prompt (str): 指定请求的system prompt，默认是官方给的system prompt
-    stream (bool): 是否流式请求和输出，默认为流式
-    return_trace (bool): 是否将结果记录在trace中，默认为False
-
-
-Examples:
-    >>> import lazyllm
-    >>> from functools import partial
-    >>> m = lazyllm.OnlineChatModule(source="sensenova", stream=True)
-    >>> query = "Hello!"
-    >>> with lazyllm.ThreadPoolExecutor(1) as executor:
-    ...     future = executor.submit(partial(m, llm_chat_history=[]), query)
-    ...     while True:
-    ...         if value := lazyllm.FileSystemQueue().dequeue():
-    ...             print(f"output: {''.join(value)}")
-    ...         elif future.done():
-    ...             break
-    ...     print(f"ret: {future.result()}")
-    ...
-    output: Hello
-    output: ! How can I assist you today?
-    ret: Hello! How can I assist you today?
-    >>> from lazyllm.components.formatter import encode_query_with_filepaths
-    >>> vlm = lazyllm.OnlineChatModule(source="sensenova", model="SenseChat-Vision")
-    >>> query = "what is it?"
-    >>> inputs = encode_query_with_filepaths(query, ["/path/to/your/image"])
-    >>> print(vlm(inputs))
-    """
     MODELS = {'openai': OpenAIModule,
               'sensenova': SenseNovaModule,
               'glm': GLMModule,

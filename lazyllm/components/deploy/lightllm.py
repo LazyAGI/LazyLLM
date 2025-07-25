@@ -9,32 +9,6 @@ from .utils import make_log_dir, get_log_path
 
 
 class Lightllm(LazyLLMDeployBase):
-    """此类是 ``LazyLLMDeployBase`` 的子类，基于 [LightLLM](https://github.com/ModelTC/lightllm) 框架提供的推理能力，用于对大语言模型进行推理。
-
-Args:
-    trust_remote_code (bool): 是否允许加载来自远程服务器的模型代码，默认为 ``True``。
-    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
-    stream (bool): 是否为流式响应，默认为 ``False``。
-    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
-
-此类的关键字参数及其默认值如下：
-
-Keyword Args: 
-    tp (int): 张量并行参数，默认为 ``1``。
-    max_total_token_num (int): 最大总token数，默认为 ``64000``。
-    eos_id (int): 结束符ID，默认为 ``2``。
-    port (int): 服务的端口号，默认为 ``None``。此情况下LazyLLM会自动生成随机端口号。
-    host (str): 服务的IP地址，默认为 ``0.0.0.0``。
-    nccl_port (int): NCCL 端口，默认为 ``None``。此情况下LazyLLM会自动生成随机端口号。
-    tokenizer_mode (str): tokenizer的加载模式，默认为 ``auto``。
-    running_max_req_size (int): 推理引擎最大的并行请求数， 默认为 ``256``。
-
-
-
-Examples:
-    >>> from lazyllm import deploy
-    >>> infer = deploy.lightllm()
-    """
     keys_name_handle = {
         'inputs': 'inputs',
         'stop': 'stop_sequences'

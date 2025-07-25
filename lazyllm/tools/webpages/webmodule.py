@@ -29,31 +29,6 @@ css = """
 """
 
 class WebModule(ModuleBase):
-    """WebModule是LazyLLM为开发者提供的基于Web的交互界面。在初始化并启动一个WebModule之后，开发者可以从页面上看到WebModule背后的模块结构，并将Chatbot组件的输入传输给自己开发的模块进行处理。
-模块返回的结果和日志会直接显示在网页的“处理日志”和Chatbot组件上。除此之外，WebModule支持在网页上动态加入Checkbox或Text组件用于向模块发送额外的参数。
-WebModule页面还提供“使用上下文”，“流式输出”和“追加输出”的Checkbox，可以用来改变页面和后台模块的交互方式。
-
-<span style="font-size: 20px;">&ensp;**`WebModule.init_web(component_descs) -> gradio.Blocks`**</span>
-使用gradio库生成演示web页面，初始化session相关数据以便在不同的页面保存各自的对话和日志，然后使用传入的component_descs参数为页面动态添加Checkbox和Text组件，最后设置页面上的按钮和文本框的相应函数
-之后返回整个页面。WebModule的__init__函数调用此方法生成页面。
-
-Args:
-    component_descs (list): 用于动态向页面添加组件的列表。列表中的每个元素也是一个列表，其中包含5个元素，分别是组件对应的模块ID，模块名，组件名，组件类型（目前仅支持Checkbox和Text），组件默认值。
-
-
-Examples:
-    >>> import lazyllm
-    >>> def func2(in_str, do_sample=True, temperature=0.0, *args, **kwargs):
-    ...     return f"func2:{in_str}|do_sample:{str(do_sample)}|temp:{temperature}"
-    ...
-    >>> m1=lazyllm.ActionModule(func2)
-    >>> m1.name="Module1"
-    >>> w = lazyllm.WebModule(m1, port=[20570, 20571, 20572], components={
-    ...         m1:[('do_sample', 'Checkbox', True), ('temperature', 'Text', 0.1)]},
-    ...                       text_mode=lazyllm.tools.WebModule.Mode.Refresh)
-    >>> w.start()
-    193703: 2024-06-07 10:26:00 lazyllm SUCCESS: ...
-    """
     class Mode:
         Dynamic = 0
         Refresh = 1

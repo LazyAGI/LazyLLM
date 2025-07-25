@@ -19,26 +19,6 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 
 @dataclass
 class TransformArgs():
-    """
-文档转换参数容器，用于统一管理文档处理中的各类配置参数。
-
-Args:
-    f(Union[str, Callable]):转换函数或注册的函数名。
-    trans_node(bool):是否转换节点类型。
-    num_workers(int)：控制是否启用多线程（>0 时启用）。
-    kwargs(Dict):传递给转换函数的额外参数。
-    pattern(Union[str, Callable[[str], bool]]):文件名/内容匹配模式。
-
-
-Examples:
-
-    >>> from lazyllm.tools import TransformArgs
-    >>> args = TransformArgs(f=lambda text: text.lower(),num_workers=4,pattern=r'.*\.md$')
-    >>>config = {'f': 'parse_pdf','kwargs': {'engine': 'pdfminer'},'trans_node': True}
-    >>>args = TransformArgs.from_dict(config)
-    print(args['f'])
-    print(args.get('unknown'))
-    """
     f: Union[str, Callable]
     trans_node: Optional[bool] = None
     num_workers: int = 0
@@ -79,7 +59,6 @@ def build_nodes_from_splits(
 
 @dataclass
 class _Split:
-    """_Split(text: str, is_sentence: bool, token_size: int)"""
     text: str
     is_sentence: bool
     token_size: int
@@ -92,21 +71,6 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
 
 
 class NodeTransform(ABC):
-    """
-批量处理文档节点，支持单线程/多线程模式。
-
-Args:
-    num_workers(int)：控制是否启用多线程（>0 时启用）。
-
-
-Examples:
-
-    >>> import lazyllm
-    >>> from lazyllm.tools import NodeTransform
-    >>> node_tran = NodeTransform(num_workers=num_workers)
-    >>> doc = lazyllm.Document(dataset_path="/path/to/your/data", embed=m, manager=False)
-    >>> nodes = node_tran.batch_forward(doc, "word_split")
-    """
     def __init__(self, num_workers: int = 0):
         self._number_workers = num_workers
         self._name = None
@@ -114,14 +78,6 @@ Examples:
     def batch_forward(
         self, documents: Union[DocNode, List[DocNode]], node_group: str, **kwargs
     ) -> List[DocNode]:
-        """
-批量处理文档节点并生成指定组的子节点。
-
-Args:
-    documents (Union[DocNode, List[DocNode]]): 待处理的输入节点（单个或列表）。
-    node_group (str): 目标转换组名称。
-    **kwargs: 额外转换参数。
-"""
         documents: List[DocNode] = documents if isinstance(documents, (tuple, list)) else [documents]
 
         def impl(node: DocNode):
@@ -143,23 +99,9 @@ Args:
 
     @abstractmethod
     def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
-        """
-[抽象方法] 需要子类实现的核心转换逻辑。
-
-Args:
-    document (DocNode): 输入文档节点。
-    **kwargs: 实现相关的参数。
-"""
         raise NotImplementedError('Not implemented')
 
     def with_name(self, name: Optional[str], *, copy: bool = True) -> 'NodeTransform':
-        """
-设置转换器名称）。
-
-Args:
-    name (Optional[str]): 转换器的新名称。
-    copy (bool): 是否返回副本，默认为True。
-"""
         if name is not None:
             if copy: return lite_copy(self).with_name(name, copy=False)
             self._name = name
@@ -200,23 +142,6 @@ class AdaptiveTransform(NodeTransform):
 
 
 class SentenceSplitter(NodeTransform):
-    """
-将句子拆分成指定大小的块。可以指定相邻块之间重合部分的大小。
-
-Args:
-    chunk_size (int): 拆分之后的块大小
-    chunk_overlap (int): 相邻两个块之间重合的内容长度
-    num_workers(int):控制并行处理的线程/进程数量
-
-
-Examples:
-
-    >>> import lazyllm
-    >>> from lazyllm.tools import Document, SentenceSplitter
-    >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
-    >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
-    >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
-    """
     def __init__(self, chunk_size: int = 1024, chunk_overlap: int = 200, num_workers: int = 0):
         super(__class__, self).__init__(num_workers=num_workers)
         if chunk_overlap > chunk_size:
@@ -562,23 +487,6 @@ A: 小猪在草坪上奔跑。
 """))
 
 class LLMParser(NodeTransform):
-    """
-一个文本摘要和关键词提取器，负责分析用户输入的文本，并根据请求任务提供简洁的摘要或提取相关关键词。
-
-Args:
-    llm (TrainableModule): 可训练的模块
-    language (str): 语言种类，目前只支持中文（zh）和英文（en）
-    task_type (str): 目前支持两种任务：摘要（summary）和关键词抽取（keywords）。
-    num_workers(int):控制并行处理的线程/进程数量。
-
-
-Examples:
-
-    >>> from lazyllm import TrainableModule
-    >>> from lazyllm.tools.rag import LLMParser
-    >>> llm = TrainableModule("internlm2-chat-7b")
-    >>> summary_parser = LLMParser(llm, language="en", task_type="summary")
-    """
     def __init__(self, llm: TrainableModule, language: str, task_type: str, num_workers: int = 30):
         super(__class__, self).__init__(num_workers=num_workers)
         assert language in ['en', 'zh'], f'Not supported language {language}'
@@ -592,27 +500,6 @@ Examples:
         self._task_type = task_type
 
     def transform(self, node: DocNode, **kwargs) -> List[str]:
-        """
-在指定的文档上执行设定的任务。
-
-Args:
-    node (DocNode): 需要执行抽取任务的文档。
-
-
-Examples:
-
-    >>> import lazyllm
-    >>> from lazyllm.tools import LLMParser
-    >>> llm = lazyllm.TrainableModule("internlm2-chat-7b").start()
-    >>> m = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
-    >>> summary_parser = LLMParser(llm, language="en", task_type="summary")
-    >>> keywords_parser = LLMParser(llm, language="en", task_type="keywords")
-    >>> documents = lazyllm.Document(dataset_path="/path/to/your/data", embed=m, manager=False)
-    >>> rm = lazyllm.Retriever(documents, group_name='CoarseChunk', similarity='bm25', topk=6)
-    >>> doc_nodes = rm("test")
-    >>> summary_result = summary_parser.transform(doc_nodes[0])
-    >>> keywords_result = keywords_parser.transform(doc_nodes[0])
-    """
         if self._task_type == 'qa_img':
             inputs = encode_query_with_filepaths('Extract QA pairs from images.', [node.image_path])
         else:

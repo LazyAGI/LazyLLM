@@ -51,26 +51,6 @@ the result is
 
 
 class SqlCall(ModuleBase):
-    """SqlCall 是一个扩展自 ModuleBase 的类,提供了使用语言模型(LLM)生成和执行 SQL 查询的接口。
-它设计用于与 SQL 数据库交互,从语言模型的响应中提取 SQL 查询,执行这些查询,并返回结果或解释。
-
-Arguments:
-    llm: 用于生成和解释 SQL 查询及解释的大语言模型。
-    sql_manager (SqlManager): 一个 SqlManager 实例，用于处理与 SQL 数据库的交互。
-    sql_examples (str, 可选): JSON字符串表示的自然语言转到SQL语句的示例，格式为[{"Question": "查询表中与smith同部门的人员名字", "Answer": "SELECT...;"}]
-    use_llm_for_sql_result (bool, 可选): 默认值为True。如果设置为False, 则只输出JSON格式表示的sql执行结果；True则会使用LLM对sql执行结果进行解读并返回自然语言结果。
-    return_trace (bool, 可选): 如果设置为 True,则将结果记录在trace中。默认为 False。
-
-
-Examples:
-        >>> # First, run SqlManager example
-        >>> import lazyllm
-        >>> from lazyllm.tools import SQLiteManger, SqlCall
-        >>> sql_tool = SQLiteManger("personal.db")
-        >>> sql_llm = lazyllm.OnlineChatModule(model="gpt-4o", source="openai", base_url="***")
-        >>> sql_call = SqlCall(sql_llm, sql_tool, use_llm_for_sql_result=True)
-        >>> print(sql_call("去年一整年销售额最多的员工是谁?"))
-    """
     EXAMPLE_TITLE = "Here are some example: "
 
     def __init__(

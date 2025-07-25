@@ -63,7 +63,6 @@ class EmbedPlaceholder:
 
 
 class NodeGroupType(str, Enum):
-    """An enumeration."""
     ORIGINAL = "Original Source"
     CHUNK = "Chunk"
     SUMMARY = "Summary"

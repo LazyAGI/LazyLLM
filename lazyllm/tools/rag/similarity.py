@@ -12,16 +12,6 @@ def register_similarity(
     descend: bool = True,
     batch: bool = False,
 ) -> Callable:
-    """
-相似度计算注册装饰器，用于统一注册和管理不同类型的相似度计算方法。
-
-Args:
-    func(Callable):相似度计算函数名。
-    mode(Literal['text', 'embedding']):text为文本直接匹配,embedding为向量相似度计算。
-    descend(bool)：控制是否启用多线程（>0 时启用）。
-    kwargs(Dict):结果是否按相似度降序排列。
-    batch(bool):是否批量处理节点。
-"""
     def decorator(f):
         @functools.wraps(f)
         def wrapper(query, nodes, **kwargs):

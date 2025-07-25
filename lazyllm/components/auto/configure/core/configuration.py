@@ -8,7 +8,6 @@ from .protocol import FINETUNE_RULE_SET, DEPLOY_RULE_SET
 
 @dataclass(frozen=True)
 class TrainingConfiguration:
-    """TrainingConfiguration(framework: str, tp: int, zero: bool, gradient_step: int, sp: int, ddp: int, micro_batch_size: int, tgs: int)"""
     framework: str
     tp: int
     zero: bool
@@ -41,7 +40,6 @@ class TrainingConfiguration:
 
 @dataclass(frozen=True)
 class DeployConfiguration:
-    """DeployConfiguration(framework: str, tp: int, tgs: int)"""
     framework: str
     tp: int
     tgs: int

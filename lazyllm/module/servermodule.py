@@ -49,25 +49,6 @@ class _UrlHelper(object):
 
 
 class UrlModule(ModuleBase, _UrlHelper):
-    """可以将ServerModule部署得到的Url包装成一个Module，调用 ``__call__`` 时会访问该服务。
-
-Args:
-    url (str): 要包装的服务的Url
-    stream (bool): 是否流式请求和输出，默认为非流式
-    return_trace (bool): 是否将结果记录在trace中，默认为False
-
-
-Examples:
-    >>> import lazyllm
-    >>> def demo(input): return input * 2
-    ... 
-    >>> s = lazyllm.ServerModule(demo, launcher=lazyllm.launchers.empty(sync=False))
-    >>> s.start()
-    INFO:     Uvicorn running on http://0.0.0.0:35485
-    >>> u = lazyllm.UrlModule(url=s._url)
-    >>> print(u(1))
-    2
-    """
 
     def __new__(cls, *args, **kw):
         if cls is not UrlModule:
@@ -123,18 +104,6 @@ Examples:
         return self
 
     def forward(self, *args, **kw):
-        """定义了每次执行的计算步骤，ModuleBase的所有的子类都需要重写这个函数。
-
-
-Examples:
-    >>> import lazyllm
-    >>> class MyModule(lazyllm.module.ModuleBase):
-    ...    def forward(self, input):
-    ...        return input + 1
-    ...
-    >>> MyModule()(1)
-    2
-    """
         raise NotImplementedError
 
     def __call__(self, *args, **kw):
@@ -176,19 +145,6 @@ class _ServerModuleImpl(ModuleBase, _UrlHelper):
 
 
 class ServerModule(UrlModule):
-    """借助 fasta将任意可调用对象包装成 api 服务，可同时启动一个主服务和多个卫星服务。
-
-Args:
-    m (Callable): 被包装成服务的函数，可以是一个函数，也可以是一个仿函数。当启动卫星服务时，需要是一个实现了 ``__call__`` 的对象（仿函数）。
-    pre (Callable): 前处理函数，在服务进程执行，可以是一个函数，也可以是一个仿函数，默认为 ``None``。
-    post (Callable): 后处理函数，在服务进程执行，可以是一个函数，也可以是一个仿函数，默认为 ``None``。
-    stream (bool): 是否流式请求和输出，默认为非流式。
-    return_trace (bool): 是否将结果记录在 trace 中，默认为``False``。
-    port (int): 指定服务部署后的端口，默认为 ``None`` 会随机生成端口。
-    pythonpath(str):传递给子进程的 PYTHONPATH 环境变量，默认为 ``None``。
-    launcher (LazyLLMLaunchersBase): 用于选择服务执行的计算节点，默认为是异步远程部署"launchers.remote(sync=False)"。
-    url(str):模块服务的地址，默认为"None",使用Redis获取。
-"""
     def __init__(self, m: Optional[Union[str, ModuleBase]] = None, pre: Optional[Callable] = None,
                  post: Optional[Callable] = None, stream: Union[bool, Dict] = False,
                  return_trace: bool = False, port: Optional[int] = None, pythonpath: Optional[str] = None,
