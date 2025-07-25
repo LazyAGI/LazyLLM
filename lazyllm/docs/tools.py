@@ -418,18 +418,6 @@ Note:
     - Use `reset_doc_info_schema` to reset the schema if necessary.
 ''')
 
-# add_example('DocToDbProcessor', '''\
-# >>> import lazyllm
-# >>> from lazyllm.components.document_to_db import DocToDbProcessor
-# >>> sql_manager = lazyllm.SqlManager(engine_str="sqlite:///test.db")
-# >>> processor = DocToDbProcessor(sql_manager=sql_manager)
-# >>> llm = lazyllm.OnlineChatModule(source="sensenova")
-# >>> doc_paths = ["/path/to/file1.pdf", "/path/to/file2.pdf"]
-# >>> schema = processor.analyze_info_schema_by_llm(llm, doc_paths)
-# >>> info_dicts = processor.extract_info_from_docs(llm, doc_paths)
-# >>> processor.export_info_to_db(info_dicts)
-# ''')
-
 add_chinese_doc('rag.doc_to_db.DocToDbProcessor.extract_info_from_docs', '''\
 从文档中提取结构化数据库信息。
 
@@ -597,19 +585,6 @@ Args:
     pytesseract_model_kwargs (Optional[Dict]): Optional arguments passed to pytesseract OCR. Defaults to empty dict.
     return_trace (bool): Whether to record the processing trace. Default is True.
 ''')
-
-# add_example('ImageReader', '''\
-# >>> from pathlib import Path
-# >>> reader = ImageReader(parse_text=True, text_type="plain_text", keep_image=True)
-# >>> nodes = reader._load_data(Path("example.jpg"))
-# >>> for node in nodes:
-# ...     print(f"Text: {node.text}")
-# ...     print(f"Image path: {node.image_path}")
-# >>> # Use with pretrained donut-based model
-# >>> reader2 = ImageReader(parse_text=True, text_type="text")
-# >>> nodes2 = reader2._load_data(Path("example2.png"))
-# >>> print(nodes2[0].text)
-# ''')
 
 add_chinese_doc('rag.readers.IPYNBReader', '''\
 用于读取和解析 Jupyter Notebook (.ipynb) 文件的模块。将 notebook 转换成脚本文本后，按代码单元划分为多个文档节点，或合并为单一文本节点。
