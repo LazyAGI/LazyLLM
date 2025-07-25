@@ -58,7 +58,7 @@
     members: 
     exclude-members:
 
-::: lazyllm.tools.rag.DocListManager
+::: lazyllm.tools.rag.utils.DocListManager
     members: 
 	exclude-members: 
 
@@ -66,6 +66,6 @@
     members: 
 	exclude-members: 
 
-::: lazyllm.tools.rag.IndexBase
+::: lazyllm.tools.rag.index_base.IndexBase
     members: 
 	exclude-members: 
