@@ -204,7 +204,7 @@ class EmbeddingDeploy(LazyLLMDeployBase):
 
 
 @HuggingFaceEmbedding.register(model_ids=["BGE-VL-v1.5-mmeb"])
-class BGEVLEmbedding(AbstractEmbedding):
+class _BGEVLEmbedding(AbstractEmbedding):
 
     def __init__(self, base_embed, source=None, init=False):
         super().__init__(base_embed, source, init)
@@ -236,7 +236,7 @@ class BGEVLEmbedding(AbstractEmbedding):
             return json.dumps(res[0])
 
 
-class RerankDeploy(EmbeddingDeploy):
+class _RerankDeploy(EmbeddingDeploy):
     message_format = {'query': 'query', 'documents': ['string'], 'top_n': 1}
     keys_name_handle = {'inputs': 'query', 'documents': 'documents', 'top_n': 'top_n'}
     default_headers = {'Content-Type': 'application/json'}
