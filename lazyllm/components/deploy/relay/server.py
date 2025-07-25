@@ -59,10 +59,15 @@ async def async_wrapper(func, *args, **kwargs):
 
 @app.post("/_call")
 async def lazyllm_call(request: Request):
-    fname, args, kwargs = await request.json()
-    args, kwargs = load_obj(args), load_obj(kwargs)
-    r = getattr(func, fname)(*args, **kwargs)
-    return Response(content=codecs.encode(pickle.dumps(r), 'base64'))
+    try:
+        fname, args, kwargs = await request.json()
+        args, kwargs = load_obj(args), load_obj(kwargs)
+        r = getattr(func, fname)(*args, **kwargs)
+        return Response(content=codecs.encode(pickle.dumps(r), 'base64'))
+    except requests.RequestException as e:
+        return Response(content=f'{str(e)}', status_code=500)
+    except Exception as e:
+        return Response(content=f'{e}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
 
 @app.post("/generate")
 async def generate(request: Request): # noqa C901

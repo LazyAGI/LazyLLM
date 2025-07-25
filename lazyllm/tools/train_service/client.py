@@ -4,7 +4,7 @@ import requests
 from urllib.parse import urljoin
 
 import lazyllm
-from lazyllm.module.utils import update_config, TrainConfig, uniform_sft_dataset
+from lazyllm.module.llms.utils import update_config, TrainConfig, uniform_sft_dataset
 from ..services import ClientBase
 
 
