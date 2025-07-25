@@ -49,7 +49,7 @@ class DocumentStore(object):
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self):
         self._impl.lazy_init(embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,
-                             global_metadata_desc=self._global_metadata_desc, collections=self._collections)
+                             global_metadata_desc=self._global_metadata_desc, collections=self.activated_groups())
 
     def _make_store(self, cfg: Dict[str, Any], deprecated_msg: str = None) -> LazyLLMStoreBase:
         if not cfg:
@@ -217,10 +217,13 @@ class DocumentStore(object):
         # forbid to get the segments from multiple kb (only one kb_id is allowed)
         # TODO: pagination
         try:
+            criteria = {}
             if uids:
                 criteria = {"uid": uids}
-            else:
-                criteria = {RAG_DOC_ID: doc_ids, RAG_KB_ID: kb_id or DEFAULT_KB_ID}
+            if doc_ids:
+                criteria = {RAG_DOC_ID: doc_ids}
+            if kb_id:
+                criteria[RAG_KB_ID] = kb_id
             if not group:
                 groups = self._activated_groups
             else:
@@ -237,7 +240,7 @@ class DocumentStore(object):
             raise
 
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
-        kb_id = metadata.get(RAG_KB_ID, DEFAULT_KB_ID)
+        kb_id = metadata.get(RAG_KB_ID, None)
         segments = self.get_segments(doc_ids=[doc_id], kb_id=kb_id)
         if not segments:
             LOG.warning(f"[DocumentStore] No segments found for doc_id: {doc_id} in dataset: {kb_id}")
@@ -250,8 +253,8 @@ class DocumentStore(object):
             self._impl.upsert(self._gen_collection_name(group), segments)
         return
 
-    def query(self, query: str, group_name: str, similarity_name: str,
-              similarity_cut_off: Union[float, Dict[str, float]],
+    def query(self, query: str, group_name: str, similarity_name: Optional[str] = None,
+              similarity_cut_off: Union[float, Dict[str, float]] = float("-inf"),
               topk: Optional[int] = 10, embed_keys: Optional[List[str]] = None,
               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
         self._validate_query_params(group_name, similarity_name, embed_keys)
@@ -363,22 +366,25 @@ class DocumentStore(object):
         return res
 
     def _deserialize_node(self, data: dict, score: Optional[float] = None) -> DocNode:
-        if data["type"] == SegmentType.QA.value:
-            node = QADocNode(query=data["content"], answer=data["answer"], uid=data["uid"],
-                             group=data["group"], parent=data["parent"],
-                             metadata=data["meta"],
-                             global_metadata=data["global_meta"])
-        elif data["type"] == SegmentType.IMAGE.value:
-            node = ImageDocNode(image_path=data["image_path"][0] if data["image_path"] else "",
-                                uid=data["uid"], group=data["group"], parent=data["parent"],
-                                metadata=data["meta"],
-                                global_metadata=data["global_meta"])
+        segment_type = data.get("type", SegmentType.TEXT.value)
+        if segment_type == SegmentType.QA.value:
+            node = QADocNode(query=data.get("content", ""), answer=data.get("answer", ""), uid=data["uid"],
+                             group=data["group"], parent=data.get("parent", ""),
+                             metadata=data.get("meta", {}),
+                             global_metadata=data.get("global_meta", {}))
+        elif segment_type == SegmentType.IMAGE.value:
+            if not data.get("image_keys", []):
+                raise ValueError("ImageDocNode does have any image_keys")
+            node = ImageDocNode(image_path=data.get("image_keys")[0],
+                                uid=data["uid"], group=data["group"], parent=data.get("parent", ""),
+                                metadata=data.get("meta", {}),
+                                global_metadata=data.get("global_meta", {}))
         else:
-            node = DocNode(uid=data["uid"], group=data["group"], content=data["content"],
-                           parent=data["parent"], metadata=data["meta"],
-                           global_metadata=data["global_meta"])
-        node.excluded_embed_metadata_keys = data["excluded_embed_metadata_keys"]
-        node.excluded_llm_metadata_keys = data["excluded_llm_metadata_keys"]
+            node = DocNode(uid=data["uid"], group=data["group"], content=data.get("content", ""),
+                           parent=data.get("parent", ""), metadata=data.get("meta", {}),
+                           global_metadata=data.get("global_meta", {}))
+        node.excluded_embed_metadata_keys = data.get("excluded_embed_metadata_keys", [])
+        node.excluded_llm_metadata_keys = data.get("excluded_llm_metadata_keys", [])
         if "embedding" in data:
             node.embedding = {k[len(EMBED_PREFIX):]: v for k, v in data.get("embedding", {}).items()}
         return node.with_sim_score(score) if score else node

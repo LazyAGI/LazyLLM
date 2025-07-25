@@ -54,6 +54,10 @@ class DocNode:
         self.similarity_score = None
 
     @property
+    def uid(self) -> str:
+        return self._uid
+
+    @property
     def text(self) -> str:
         if isinstance(self._content, str):
             return self._content
