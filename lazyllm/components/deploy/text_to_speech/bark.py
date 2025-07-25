@@ -4,7 +4,7 @@ import importlib.util
 from lazyllm.components.deploy.text_to_speech.utils import TTSBase
 from lazyllm.components.deploy.text_to_speech.base import TTSInfer
 
-class Bark(TTSInfer):
+class _Bark(TTSInfer):
 
     def __init__(self, base_path, source=None, trust_remote_code=True, save_path=None, init=False):
         super().__init__(base_path, source, save_path, init, trust_remote_code, 'bark')
@@ -41,4 +41,4 @@ class BarkDeploy(TTSBase):
     }
     default_headers = {'Content-Type': 'application/json'}
 
-    func = Bark
+    func = _Bark
