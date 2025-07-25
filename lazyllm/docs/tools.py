@@ -2189,14 +2189,6 @@ add_chinese_doc('rag.utils.SqliteDocListManager.table_inited', '''\
 
 ''')
 
-add_example('rag.utils.SqliteDocListManager.table_inited', ['''\
->>> from lazyllm.components import SqliteDocListManager  # Import the class
->>> manager = SqliteDocListManager(db_path='example.db')  # Initialize with a database path
->>> is_initialized = manager.table_inited()  # Check if the 'documents' table is initialized
->>> print(is_initialized)
-False  # If the 'documents' table does not exist
-'''])
-
 #validate_paths
 add_english_doc('rag.utils.SqliteDocListManager.validate_paths', '''\
 Validates a list of file paths to ensure they are ready for processing.
@@ -2244,21 +2236,7 @@ add_chinese_doc('rag.utils.SqliteDocListManager.validate_paths', '''\
 
 ''')
 
-add_example('rag.utils.SqliteDocListManager.validate_paths', ['''\
->>> from lazyllm.components import SqliteDocListManager
->>> manager = SqliteDocListManager(db_path='example.db')
 
->>> # Sample paths to validate
->>> paths = ['/path/to/doc1.txt', '/path/to/doc2.txt']
-
->>> # Validate paths
->>> is_valid, message, paths_is_new = manager.validate_paths(paths)
-
->>> # Output the results
->>> print(is_valid)  # True if all paths are valid
->>> print(message)   # Success message or the reason for failure
->>> print(paths_is_new)  # [True, False] indicating new or existing paths
-'''])
 
 #update_need_reparsing
 add_english_doc('rag.utils.SqliteDocListManager.update_need_reparsing', '''\
@@ -2297,14 +2275,50 @@ add_chinese_doc('rag.utils.SqliteDocListManager.update_need_reparsing', '''\
 
 ''')
 
-add_example('rag.utils.SqliteDocListManager.update_need_reparsing', ['''\
->>> from lazyllm.components import SqliteDocListManager
->>> manager = SqliteDocListManager(db_path='example.db')
 
->>> # Update need_reparse for a document across all groups
->>> manager.update_need_reparsing(doc_id='doc123', need_reparse=True)
 
->>> # Update need_reparse for a document in a specific group
->>> manager.update_need_reparsing(doc_id='doc123', need_reparse=False, group_name='groupA')
-'''])
+#list_files
+add_english_doc('rag.utils.SqliteDocListManager.list_files', '''\
+Lists files from the `documents` table with optional filtering, limiting, and returning details.
+
+`list_files(self, limit: Optional[int] = None, details: bool = False, status: Union[str, List[str]] = DocListManager.Status.all, exclude_status: Optional[Union[str, List[str]]] = None)`
+
+This method retrieves file IDs or detailed file information from the database, based on the specified filtering conditions.
+
+Args:
+    limit (Optional[int]): Maximum number of files to return. If `None`, all matching files will be returned.
+    details (bool): Whether to return detailed file information (`True`) or just file IDs (`False`).
+    status (Union[str, List[str]]): The status or list of statuses to include in the results. Defaults to all statuses.
+    exclude_status (Optional[Union[str, List[str]]]): The status or list of statuses to exclude from the results. Defaults to `None`.
+
+Returns:
+    List: A list of file IDs if `details=False`, or a list of detailed file rows if `details=True`.
+
+Notes:
+    - The method constructs a query dynamically based on the provided `status` and `exclude_status` conditions.
+    - A thread-safe lock (`self._db_lock`) ensures safe database access.
+    - The `LIMIT` clause is applied if `limit` is specified.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.list_files', '''\
+从 `documents` 表中列出文件，并支持过滤、限制返回结果以及返回详细信息。
+
+`list_files(self, limit: Optional[int] = None, details: bool = False, status: Union[str, List[str]] = DocListManager.Status.all, exclude_status: Optional[Union[str, List[str]]] = None)`
+
+此方法根据指定的条件，从数据库中检索文件ID或详细文件信息。
+
+参数:
+    limit (Optional[int]): 返回的最大文件数量。如果为 `None`，则返回所有匹配的文件。
+    details (bool): 是否返回详细的文件信息（`True`）或仅返回文件ID（`False`）。
+    status (Union[str, List[str]]): 要包含的状态或状态列表，默认为所有状态。
+    exclude_status (Optional[Union[str, List[str]]]): 要排除的状态或状态列表，默认为 `None`。
+
+返回值:
+    List: 如果 `details=False`，则返回文件ID列表；如果 `details=True`，则返回详细文件行的列表。
+
+说明:
+    - 该方法根据 `status` 和 `exclude_status` 条件动态构造查询。
+    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问安全。
+    - 如果指定了 `limit`，查询会附加 `LIMIT` 子句。
+''')
 
