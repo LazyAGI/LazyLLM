@@ -11,33 +11,6 @@ from .retriever import _PostProcess
 
 
 class Reranker(ModuleBase, _PostProcess):
-    """用于创建节点（文档）后处理和重排序的模块。
-
-Args:
-    name: 用于后处理和重排序过程的排序器类型。默认为 'ModuleReranker'。
-    target(str):已废弃参数，仅用于提示用户。
-    output_format: 代表输出格式，默认为None，可选值有 'content' 和 'dict'，其中 content 对应输出格式为字符串，dict 对应字典。
-    join: 是否联合输出的 k 个节点，当输出格式为 content 时，如果设置该值为 True，则输出一个长字符串，如果设置为 False 则输出一个字符串列表，其中每个字符串对应每个节点的文本内容。当输出格式是 dict 时，不能联合输出，此时join默认为False,，将输出一个字典，包括'content、'embedding'、'metadata'三个key。
-    kwargs: 传递给重新排序器实例化的其他关键字参数。
-
-详细解释排序器类型
-
-  - Reranker: 实例化一个具有待排序的文档节点node列表和 query的 SentenceTransformerRerank 重排序器。
-  - KeywordFilter: 实例化一个具有指定必需和排除关键字的 KeywordNodePostprocessor。它根据这些关键字的存在或缺失来过滤节点。
-
-
-Examples:
-
-    >>> import lazyllm
-    >>> from lazyllm.tools import Document, Reranker, Retriever, DocNode
-    >>> m = lazyllm.OnlineEmbeddingModule()
-    >>> documents = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
-    >>> retriever = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
-    >>> reranker = Reranker(DocNode(text=user_data),query="user query")
-    >>> ppl = lazyllm.ActionModule(retriever, reranker)
-    >>> ppl.start()
-    >>> print(ppl("user query"))
-    """
     registered_reranker = dict()
 
     def __new__(cls, name: str = "ModuleReranker", *args, **kwargs):
@@ -65,19 +38,6 @@ Examples:
     def register_reranker(
         cls: "Reranker", func: Optional[Callable] = None, batch: bool = False
     ):
-        """是一个类装饰器工厂方法，它的核心作用是为 Reranker 类提供灵活的排序算法注册机制
-
-Args:
-    func (Optional[Callable]):  要注册的排序函数或排序器类。当使用装饰器语法(@)时可省略。
-    batch (bool):是否批量处理节点。默认为False，表示逐节点处理。
-
-
-Examples:
-
-    @Reranker.register_reranker
-    def my_reranker(node: DocNode, **kwargs):
-        return node.score * 0.8  # 自定义分数计算
-    """
         def decorator(f):
             if isinstance(f, type):
                 cls.registered_reranker[f.__name__] = f

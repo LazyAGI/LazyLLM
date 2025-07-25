@@ -25,47 +25,6 @@ MILVUS_PAGINATION_OFFSET = 1000
 
 
 class MilvusStore(StoreBase):
-    """
-继承自 StoreBase 抽象基类。基于 Milvus 向量数据库实现。其功能和 ChromadbStore 类似, 用于存储、管理、索引和查询嵌入向量化后的文档节点(DocNode)。
-
-Args:
-    group_embed_keys (Dict[str, Set[str]]): 指定每个group所对应的嵌入字段。
-    embed (Dict[str, Callable]): 每种字段对应的 embedding 函数.
-    embed_dims (Dict[str, int]): 每个嵌入字段的向量维度。
-    embed_datatypes(Dict[str, DataType]): 每个嵌入字段的向量类型（需符合 Milvus 类型）。
-    global_metadata_descDict([str, GlobalMetadataDesc])：全局元数据字段的说明，用于配置 Milvus 中的其他非向量字段。
-    url(str):Milvus 的连接地址，支持本地或远程。
-    index_kwargs:([Union[Dict, List]]):可选的索引参数，用于创建 Milvus 的向量索引，例如 IVF、HNSW 参数。
-    db_name(str):可选，默认 "lazyllm"。表示 Milvus 中的数据库名。
-
-
-Examples:
-
-    >>> from lazyllm.tools.rag.milvus_store import MilvusStore
-    >>> from typing import Dict, List
-    >>> import numpy as np
-    >>> store = MilvusStore(
-    ...     group_embed_keys={
-    ...         "articles": {"text"},
-    ...         "faqs": {"question"}
-    ...     },
-    ...     embed={
-    ...         "text": lambda x: np.random.rand(128).tolist(),
-    ...         "question": lambda x: np.random.rand(128).tolist()
-    ...     },
-    ...     embed_dims={"text": 128, "question": 128},
-    ...     embed_datatypes={"text": DataType.FLOAT_VECTOR, "question": DataType.FLOAT_VECTOR},
-    ...     global_metadata_desc=None,
-    ...     uri="http://localhost:19530",
-    ...     index_kwargs={"metric_type": "L2", "index_type": "IVF_FLAT", "params": {"nlist": 128}},
-    ...     db_name="test_db"
-    ... )
-    >>> store.update_nodes([node1, node2])
-    >>> results = store.query(query_text="文档内容", group_name="articles", top_k=2)
-    >>> for node in results:
-    ...     print(f"找到文档: {node._content[:20]}...")
-    >>> store.remove_nodes(doc_ids=["doc1"])
-    """
     # we define these variables as members so that pymilvus is not imported until MilvusStore is instantiated.
     def _def_constants(self) -> None:
         self._primary_key = 'uid'
@@ -242,12 +201,6 @@ Examples:
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
-        """
-更新或插入节点到 Milvus 集合和内存存储中。
-
-Args:
-    nodes (List[DocNode]): 需要更新的文档节点列表。
-"""
         parallel_do_embedding(self._embed, [], nodes, self._group_embed_keys)
         group_embed_dict = defaultdict(list)
         for node in nodes:
@@ -261,13 +214,6 @@ Args:
 
     @override
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
-        """
-更新文档元数据并同步到所有关联节点。
-
-Args:
-    doc_id (str): 目标文档ID。
-    metadata (dict): 新的元数据键值对。
-"""
         self._map_store.update_doc_meta(doc_id=doc_id, metadata=metadata)
         for group in self.activated_groups():
             nodes = self.get_nodes(group_name=group, doc_ids=[doc_id])
@@ -276,14 +222,6 @@ Args:
     @override
     def remove_nodes(self, doc_ids: List[str] = None, group_name: Optional[str] = None,
                      uids: Optional[List[str]] = None) -> None:
-        """
-通过文档ID、组名或节点UID删除节点。
-
-Args:
-    doc_ids (Optional[List[str]]): 文档ID过滤条件。
-    group_name (Optional[str]): 组名过滤条件。
-    uids (Optional[List[str]]): 节点UID过滤条件。
-"""
         self._check_connection()
         nodes = self._map_store.get_nodes(group_name=group_name, doc_ids=doc_ids, uids=uids)
         group2uids = defaultdict(list)
@@ -299,48 +237,18 @@ Args:
     @override
     def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
                   doc_ids: Optional[Set] = None, **kwargs) -> List[DocNode]:
-        """
-通过多条件查询节点。
-
-Args:
-    group_name (Optional[str]): 组名过滤条件。
-    uids (Optional[List[str]]): 节点UID过滤条件。
-    doc_ids (Optional[Set[str]]): 文档ID过滤条件。
-    **kwargs: 其他查询参数。
-
-Returns:
-    List[DocNode]: 匹配的文档节点列表。
-"""
         return self._map_store.get_nodes(group_name, uids, doc_ids, **kwargs)
 
     @override
     def activate_group(self, group_names: Union[str, List[str]]) -> bool:
-        """
-激活一个或多个组用于后续操作。
-
-Args:
-    group_names (Union[str, List[str]]): 要激活的组名（单个或列表）。
-"""
         return self._map_store.activate_group(group_names)
 
     @override
     def activated_groups(self):
-        """
-获取所有已激活的组名。
-
-Returns:
-    List[str]: 活跃组名列表。
-"""
         return self._map_store.activated_groups()
 
     @override
     def is_group_active(self, name: str) -> bool:
-        """
-检查指定组是否激活。
-
-Args:
-    name (str): 要检查的组名。
-"""
         return self._map_store.is_group_active(name)
 
     @override
@@ -349,23 +257,10 @@ Args:
 
     @override
     def register_index(self, type: str, index: IndexBase) -> None:
-        """
-注册自定义索引类型。
-
-Args:
-    type (str): 索引类型名称。
-    index (IndexBase): 自定义索引实例。
-"""
         self._map_store.register_index(type, index)
 
     @override
     def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
-        """
-获取指定类型的索引实例。
-
-Args:
-    type (Optional[str]): 索引类型名称，默认为"default"。
-"""
         if type is None:
             type = 'default'
         return self._map_store.get_index(type)
@@ -393,20 +288,6 @@ Args:
               similarity_cut_off: Optional[Union[float, Dict[str, float]]] = float('-inf'),
               topk: int = 10, embed_keys: Optional[List[str]] = None,
               filters: Optional[Dict[str, Union[List, set]]] = None, **kwargs) -> List[DocNode]:
-        """
-基于向量相似度的语义搜索。
-
-Args:
-    query (str): 查询文本。
-    group_name (str): 目标组名。
-    similarity_cut_off (Optional[Union[float, Dict[str, float]]): 相似度阈值。
-    topk (int): 返回结果数量。
-    embed_keys (List[str]): 用于搜索的嵌入键。
-    filters (Optional[Dict]): 元数据过滤条件。
-
-Returns:
-    List[DocNode]: 带相似度分数的节点列表。
-"""
         if similarity_name is not None:
             raise ValueError('`similarity` MUST be None when Milvus backend is used.')
 

@@ -71,29 +71,24 @@ class Engine(ABC):
 
     @overload
     def start(self, nodes: str) -> None:
-        """Helper for @overload to raise when called."""
         ...
 
     @overload
     def start(self, nodes: Dict[str, Any]) -> None:
-        """Helper for @overload to raise when called."""
         ...
 
     @overload
     def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
               gid: Optional[str] = None, name: Optional[str] = None, _history_ids: Optional[List[str]] = None) -> str:
-        """Helper for @overload to raise when called."""
         ...
 
     @overload
     def update(self, nodes: List[Dict]) -> None:
-        """Helper for @overload to raise when called."""
         ...
 
     @overload
     def update(self, gid: str, nodes: List[Dict], edges: List[Dict] = [],
                resources: List[Dict] = []) -> str:
-        """Helper for @overload to raise when called."""
         ...
 
     def release_node(self, nodeid: str): pass
@@ -510,7 +505,6 @@ class TokenRefreshError(Exception):
     pass
 
 class AuthType(Enum):
-    """An enumeration."""
     SERVICE_API = "service_api"
     OAUTH = "oauth"
     OIDC = "oidc"

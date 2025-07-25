@@ -26,49 +26,6 @@ SOLVER_PROMPT = (
 )
 
 class PlanAndSolveAgent(ModuleBase):
-    """PlanAndSolveAgent由两个组件组成，首先，由planner将整个任务分解为更小的子任务，然后由solver根据计划执行这些子任务，其中可能会涉及到工具调用，最后将答案返回给用户。
-
-Args:
-    llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。和plan_llm、solve_llm互斥，要么设置llm(planner和solver公用一个LLM)，要么设置plan_llm和solve_llm，或者只指定llm(用来设置planner)和solve_llm，其它情况均认为是无效的。
-    tools (List[str]): LLM使用的工具名称列表。
-    plan_llm (ModuleBase): planner要使用的LLM，可以是TrainableModule或OnlineChatModule。
-    solve_llm (ModuleBase): solver要使用的LLM，可以是TrainableModule或OnlineChatModule。
-    max_retries (int): 工具调用迭代的最大次数。默认值为5。
-
-
-Examples:
-    >>> import lazyllm
-    >>> from lazyllm.tools import fc_register, PlanAndSolveAgent
-    >>> @fc_register("tool")
-    >>> def multiply(a: int, b: int) -> int:
-    ...     '''
-    ...     Multiply two integers and return the result integer
-    ...
-    ...     Args:
-    ...         a (int): multiplier
-    ...         b (int): multiplier
-    ...     '''
-    ...     return a * b
-    ...
-    >>> @fc_register("tool")
-    >>> def add(a: int, b: int):
-    ...     '''
-    ...     Add two integers and returns the result integer
-    ...
-    ...     Args:
-    ...         a (int): addend
-    ...         b (int): addend
-    ...     '''
-    ...     return a + b
-    ...
-    >>> tools = ["multiply", "add"]
-    >>> llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
-    >>> agent = PlanAndSolveAgent(llm, tools)
-    >>> query = "What is 20+(2*4)? Calculate step by step."
-    >>> res = agent(query)
-    >>> print(res)
-    'The final answer is 28.'
-    """
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[str] = [], *,
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  max_retries: int = 5, return_trace: bool = False, stream: bool = False):

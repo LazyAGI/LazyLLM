@@ -12,7 +12,6 @@ from lazyllm.common.utils import check_path
 
 @dataclass
 class TrainConfig:
-    """TrainConfig(finetune_model_name: str = 'llm', base_model: str = 'llm', training_type: str = 'SFT', finetuning_type: str = 'LoRA', data_path: str = 'path/to/dataset', num_gpus: int = 1, val_size: float = 0.1, num_epochs: int = 1, learning_rate: float = 0.0001, lr_scheduler_type: str = 'cosine', batch_size: int = 32, cutoff_len: int = 1024, lora_r: int = 8, lora_alpha: int = 32, lora_rate: float = 0.1)"""
     finetune_model_name: str = 'llm'
     base_model: str = 'llm'
     training_type: str = 'SFT'

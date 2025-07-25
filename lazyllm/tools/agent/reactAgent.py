@@ -40,47 +40,6 @@ WITHOUT_TOKEN_PROMPT = """Answering questions should include Thought regardless 
 call a tool.(Thought is required, tool_calls is optional.)"""
 
 class ReactAgent(ModuleBase):
-    """ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
-
-Args:
-    llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。
-    tools (List[str]): LLM 使用的工具名称列表。
-    max_retries (int): 工具调用迭代的最大次数。默认值为5。
-
-
-Examples:
-    >>> import lazyllm
-    >>> from lazyllm.tools import fc_register, ReactAgent
-    >>> @fc_register("tool")
-    >>> def multiply_tool(a: int, b: int) -> int:
-    ...     '''
-    ...     Multiply two integers and return the result integer
-    ...
-    ...     Args:
-    ...         a (int): multiplier
-    ...         b (int): multiplier
-    ...     '''
-    ...     return a * b
-    ...
-    >>> @fc_register("tool")
-    >>> def add_tool(a: int, b: int):
-    ...     '''
-    ...     Add two integers and returns the result integer
-    ...
-    ...     Args:
-    ...         a (int): addend
-    ...         b (int): addend
-    ...     '''
-    ...     return a + b
-    ...
-    >>> tools = ["multiply_tool", "add_tool"]
-    >>> llm = lazyllm.TrainableModule("internlm2-chat-20b").start()   # or llm = lazyllm.OnlineChatModule(source="sensenova")
-    >>> agent = ReactAgent(llm, tools)
-    >>> query = "What is 20+(2*4)? Calculate step by step."
-    >>> res = agent(query)
-    >>> print(res)
-    'Answer: The result of 20+(2*4) is 28.'
-    """
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False,
                  prompt: str = None, stream: bool = False):
         super().__init__(return_trace=return_trace)

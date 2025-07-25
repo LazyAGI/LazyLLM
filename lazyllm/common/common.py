@@ -2,7 +2,7 @@ import re
 import os
 import builtins
 import typing
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 from contextlib import contextmanager
 import copy
 import threading
@@ -14,30 +14,7 @@ try:
     from typing import final
 except ImportError:
     _F = typing.TypeVar("_F", bound=Callable[..., Any])
-    def final(f: _F) -> _F:
-        """A decorator to indicate final methods and final classes.
-
-    Use this decorator to indicate to type checkers that the decorated
-    method cannot be overridden, and decorated class cannot be subclassed.
-    For example:
-
-      class Base:
-          @final
-          def done(self) -> None:
-              ...
-      class Sub(Base):
-          def done(self) -> None:  # Error reported by type checker
-                ...
-
-      @final
-      class Leaf:
-          ...
-      class Other(Leaf):  # Error reported by type checker
-          ...
-
-    There is no runtime checking of these properties.
-    """
-        return f
+    def final(f: _F) -> _F: return f
 
 try:
     from typing import override
@@ -471,3 +448,22 @@ def is_valid_url(url):
 
 def is_valid_path(path):
     return os.path.isfile(path)
+
+class Finalizer(object):
+    def __init__(self, func1: Callable, func2: Optional[Callable] = None, *, condition: Callable = lambda: True):
+        if func2:
+            func1()
+            func1 = func2
+        self._func = func1
+        self._condition = condition
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.__del__()
+
+    def __del__(self):
+        if self._func:
+            if self._condition(): self._func()
+            self._func = None

@@ -76,21 +76,6 @@ class SecurityVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 def compile_func(func_code: str, global_env: Optional[Dict[str, Any]] = None) -> Callable:
-    """
-将一段 python 函数字符串编译成一个可执行函数并返回。
-
-Args:
-    func_code (str): 包含 python 函数代码的字符串
-    global_env (str): 在 python 函数中用到的包和全局变量
-
-
-Examples:
-
-    from lazyllm.common import compile_func
-    code_str = 'def Identity(v): return v'
-    identity = compile_func(code_str)
-    assert identity('hello') == 'hello'
-    """
     fname = re.search(r'def\s+(\w+)\s*\(', func_code).group(1)
     module = ast.parse(func_code)
     SecurityVisitor().visit(module)

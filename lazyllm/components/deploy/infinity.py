@@ -10,26 +10,6 @@ from .utils import get_log_path, make_log_dir
 lazyllm.config.add("default_embedding_engine", str, "", "DEFAULT_EMBEDDING_ENGINE")
 
 class Infinity(LazyLLMDeployBase):
-    """此类是 ``LazyLLMDeployBase`` 的子类，基于 [Infinity](https://github.com/michaelfeil/infinity) 框架提供的高性能文本嵌入、重排序和CLIP等能力。
-
-Args:
-    launcher (lazyllm.launcher): Infinity 的启动器，默认为 ``launchers.remote(ngpus=1)``。
-    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
-
-此类的关键字参数及其默认值如下：
-
-Keyword Args: 
-    host (str): 服务的IP地址，默认为 ``0.0.0.0``。
-    port (int): 服务的端口号，默认为 ``None``,此情况下LazyLLM会自动生成随机端口号。
-    batch-size (int): 最大batch数， 默认为 ``256``。
-
-
-Examples:
-    >>> import lazyllm
-    >>> from lazyllm import deploy
-    >>> deploy.Infinity()
-    <lazyllm.llm.deploy type=Infinity>
-    """
     keys_name_handle = {
         'inputs': 'input',
     }

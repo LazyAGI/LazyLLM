@@ -127,9 +127,6 @@ def bind_to_instance(func):
     return wrapper
 
 class Register(object):
-    """LazyLLM提供的Component的注册机制，可以将任意函数注册成LazyLLM的Component。被注册的函数无需显式的import，即可通过注册器提供的分组机制，在任一位置被索引到。
-
-"""
     def __init__(self, base, fnames, template: str = reg_template, default_group: Optional[str] = None):
         self.basecls = base
         self.fnames = [fnames] if isinstance(fnames, str) else fnames
