@@ -13,4 +13,4 @@ content = content.format(doc_dir=doc_dir, en_default=en_default, zh_default=zh_d
 
 with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'mkdocs.yml'), 'w+') as f:
     f.write(content)
-output_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'mkdocs.yml')
+
