@@ -13,7 +13,7 @@ from ..hook import LazyLLMHook
 from lazyllm import FileSystemQueue
 from contextlib import contextmanager
 from typing import Optional, Union, Dict
-
+import copy
 
 # use _MetaBind:
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
@@ -84,7 +84,7 @@ class ModuleBase(metaclass=_MetaBind):
         hook_objs = []
         for hook_type in self._hooks:
             if isinstance(hook_type, LazyLLMHook):
-                hook_objs.append(hook_type)
+                hook_objs.append(copy.deepcopy(hook_type))
             else:
                 hook_objs.append(hook_type(self))
             hook_objs[-1].pre_hook(*args, **kw)

@@ -1,8 +1,9 @@
 import lazyllm
 import builtins
-from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root, config
-from lazyllm import ReadOnlyWrapper, LOG, globals
-from ..common.bind import _MetaBind
+from lazyllm import config
+from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root
+from lazyllm.common import ReadOnlyWrapper, LOG, globals
+from lazyllm.common.bind import _MetaBind
 from functools import partial
 from contextlib import contextmanager
 from enum import Enum
