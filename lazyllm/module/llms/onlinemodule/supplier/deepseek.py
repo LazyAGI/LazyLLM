@@ -1,6 +1,6 @@
 from urllib.parse import urljoin
 import lazyllm
-from .onlineChatModuleBase import OnlineChatModuleBase
+from ..base import OnlineChatModuleBase
 
 
 class DeepSeekModule(OnlineChatModuleBase):

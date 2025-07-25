@@ -1266,6 +1266,10 @@ class SlurmLauncher(LazyLLMLaunchersBase):
         return result
 
     def get_idle_nodes(self, partion=None):
+        '''
+        Obtain the current number of available nodes based on the available number of GPUs.
+        Return a dictionary with node IP as the key and the number of available GPUs as the value.
+        '''
         if not partion:
             partion = self.partition
         num_can_use_nodes = self.num_can_use_nodes

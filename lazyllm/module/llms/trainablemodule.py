@@ -9,11 +9,11 @@ import re
 import requests
 
 import lazyllm
-from lazyllm import globals, LOG, launchers, Option, package
+from lazyllm import globals, LOG, launchers, Option, package, LazyLLMDeployBase, LazyLLMFinetuneBase
 from ...components.formatter import decode_query_with_filepaths, encode_query_with_filepaths
-from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
+from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from ...components.utils import ModelManager
-from ...components.utils.file_operate import base64_to_file, is_base64_with_mime, image_to_base64, audio_to_base64
+from ...components.utils.file_operate import base64_to_file, is_base64_with_mime
 from ...launcher import LazyLLMLaunchersBase as Launcher
 from .utils import map_kw_for_framework, encode_files
 from ...flow import Pipeline
@@ -29,7 +29,7 @@ class _UrlTemplateStruct(object):
 
     def update(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
                extract_result=None, stream_parse_parameters=None, stream_url_suffix=None):
-        self.template_message, self.keys_name_handle = copy.deepcopy(template_message), keys_name_handle
+        self.template_message, self.keys_name_handle = copy.deepcopy(template_message), keys_name_handle or {}
         self.template_headers = template_headers or copy.deepcopy(lazyllm.deploy.RelayServer.default_headers)
 
         if self.keys_name_handle and 'stop' in self.keys_name_handle and stop_words and self.template_message:
@@ -53,8 +53,8 @@ class _UrlTemplateStruct(object):
 class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
 
-    def __init__(self, base_model: str = '', target_path: str = '', stream: bool = False,
-                 train: Optional[type] = None, finetune: Optional[type] = None, deploy: Optional[type] = None,
+    def __init__(self, base_model: str = '', target_path: str = '', stream: bool = False, train: Optional[type] = None,
+                 finetune: Optional[LazyLLMFinetuneBase] = None, deploy: Optional[LazyLLMDeployBase] = None,
                  template: Optional[_UrlTemplateStruct] = None, url_wrapper: Optional[_UrlHelper._Wrapper] = None,
                  trust_remote_code: bool = True):
         super().__init__()
@@ -220,12 +220,12 @@ class TrainableModule(UrlModule):
 
     def __init__(self, base_model: Option = '', target_path='', *, stream: Union[bool, Dict[str, str]] = False,
                  return_trace: bool = False, trust_remote_code: bool = True):
-        super().__init__(url=None, stream=stream, return_trace=return_trace)
+        super().__init__(url=None, stream=stream, return_trace=return_trace, init_prompt=False)
         self._template = _UrlTemplateStruct()
         self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
                                           lazyllm.deploy.auto, self._template, self._url_wrapper, trust_remote_code)
-        self.prompt()
         self._stream = stream
+        self.prompt()
 
     template_message = property(lambda self: self._template.template_message)
     keys_name_handle = property(lambda self: self._template.keys_name_handle)
@@ -246,14 +246,6 @@ class TrainableModule(UrlModule):
     @property
     def type(self):
         return ModelManager.get_model_type(self.base_model).upper()
-
-    @property
-    def stream(self):
-        return self._stream
-
-    @stream.setter
-    def stream(self, v: Union[bool, Dict[str, str]]):
-        self._stream = v
 
     def get_all_models(self):
         return self._impl._get_all_finetuned_models()
@@ -287,16 +279,16 @@ class TrainableModule(UrlModule):
         return launcher.status
 
     # modify default value to ''
-    def prompt(self, prompt: str = '', history: Optional[List[List[str]]] = None):
+    def prompt(self, prompt: Union[str, dict] = '', history: Optional[List[List[str]]] = None):
         if self.base_model != '' and prompt == '' and ModelManager.get_model_type(self.base_model) != 'llm':
             prompt = None
         clear_system = isinstance(prompt, dict) and prompt.get('drop_builtin_system')
-        prompt = super(__class__, self).prompt(prompt, history)._prompt
-        self._tools = getattr(prompt, "_tools", None)
+        prompter = super(__class__, self).prompt(prompt, history)._prompt
+        self._tools = getattr(prompter, "_tools", None)
         keys = ModelManager.get_model_prompt_keys(self.base_model).copy()
         if keys:
             if clear_system: keys['system'] = ''
-            prompt._set_model_configs(**keys)
+            prompter._set_model_configs(**keys)
             for key in ["tool_start_token", "tool_args_token", "tool_end_token"]:
                 if key in keys: setattr(self, f"_{key}", keys[key])
         return self
@@ -418,6 +410,14 @@ class TrainableModule(UrlModule):
             return content
 
     def _extract_and_format(self, output: str) -> str:
+        """
+        1.extract tool calls information;
+            a. If 'tool_start_token' exists, the boundary of tool_calls can be found according to 'tool_start_token',
+               and then the function name and arguments of tool_calls can be extracted according to 'tool_args_token'
+               and 'tool_end_token'.
+            b. If 'tool_start_token' does not exist, the text is segmented using '\n' according to the incoming tools
+               information, and then processed according to the rules.
+        """
         content, tool_calls = self._extract_tool_calls(output)
         if isinstance(content, str) and content.startswith(LAZYLLM_QUERY_PREFIX):
             content = self._decode_base64_to_file(content)
@@ -432,15 +432,6 @@ class TrainableModule(UrlModule):
         if key in self.__class__.builder_keys:
             return functools.partial(getattr(self._impl, key), _return_value=self)
         raise AttributeError(f'{__class__} object has no attribute {key}')
-
-    def share(self, prompt=None, format=None, stream=None, history=None):
-        new = copy.copy(self)
-        new._hooks = set()
-        new._set_mid()
-        if prompt is not None: new.prompt(prompt, history=history)
-        if format is not None: new.formatter(format)
-        if stream is not None: new.stream = stream
-        return new
 
     def _record_usage(self, text_input_for_token_usage: str, temp_output: str):
         usage = {"prompt_tokens": self._estimate_token_usage(text_input_for_token_usage)}
@@ -464,39 +455,25 @@ class TrainableModule(UrlModule):
 
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),
                 *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
-        if self.template_message:
-            if isinstance(__input, package):
-                assert not lazyllm_files, 'Duplicate `files` argument provided by args and kwargs'
-                __input, lazyllm_files = __input
-            if isinstance(__input, str) and __input.startswith(LAZYLLM_QUERY_PREFIX):
-                assert not lazyllm_files, 'Argument `files` is already provided by query'
-                deinput = decode_query_with_filepaths(__input)
-                __input, files = deinput['query'], deinput['files']
-            else:
-                files = _lazyllm_get_file_list(lazyllm_files) if lazyllm_files else []
-
+        __input, files = self._get_files(__input, lazyllm_files)
         text_input_for_token_usage = __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
+        url = self._url
 
         if self.template_message:
-            data = self._modify_parameters(copy.deepcopy(self.template_message), kw)
-            assert 'inputs' in self.keys_name_handle
-            data[self.keys_name_handle['inputs']] = __input
-            if files:
-                for key, encoder in [('image', image_to_base64), ('audio', audio_to_base64), ('ocr_files', None)]:
-                    if key in self.keys_name_handle:
-                        data[self.keys_name_handle[key]] = encode_files(files, encoder) if encoder else files
-                        break
+            data = self._modify_parameters(copy.deepcopy(self.template_message), kw, optional_keys='modality')
+            data[self.keys_name_handle.get('inputs', 'inputs')] = __input
+            if files and (keys := list(set(self.keys_name_handle).intersection(LazyLLMDeployBase.encoder_map.keys()))):
+                assert len(keys) == 1, 'Only one key is supported for encoder_mapping'
+                data[self.keys_name_handle[keys[0]]] = encode_files(files, LazyLLMDeployBase.encoder_map[keys[0]])
+
+            if stream_output:
+                if self.stream_url_suffix and not url.endswith(self.stream_url_suffix):
+                    url += self.stream_url_suffix
+                if "stream" in data: data['stream'] = stream_output
         else:
             data = __input
-
-        url = self._url
-        if stream_output:
-            if self.stream_url_suffix and not url.endswith(self.stream_url_suffix):
-                url += self.stream_url_suffix
-            if "stream" in data: data['stream'] = stream_output
-
-        if kw.get("modality"):
-            data["modality"] = kw["modality"]
+            if stream_output: LOG.warning('stream_output is not supported when template_message is not set, ignore it')
+            assert not kw, 'kw is not supported when template_message is not set'
 
         with self.stream_output((stream_output := (stream_output or self._stream))):
             return self._forward_impl(data, stream_output=stream_output, url=url, text_input=text_input_for_token_usage)
@@ -539,19 +516,20 @@ class TrainableModule(UrlModule):
             if text_input: self._record_usage(text_input, temp_output)
             return self._formatter(temp_output)
 
-    def _modify_parameters(self, paras, kw):
+    def _modify_parameters(self, paras: dict, kw: dict, *, optional_keys: Union[List[str], str] = []):
         for key, value in paras.items():
-            if key == self.keys_name_handle['inputs']:
-                continue
+            if key == self.keys_name_handle['inputs']: continue
             elif isinstance(value, dict):
                 if key in kw:
                     assert set(kw[key].keys()).issubset(set(value.keys()))
                     value.update(kw.pop(key))
-                for k in value.keys():
-                    if k in kw: value[k] = kw.pop(k)
-            else:
-                if key in kw: paras[key] = kw.pop(key)
+                else: [setattr(value, k, kw.pop(k)) for k in value.keys() if k in kw]
+            elif key in kw: paras[key] = kw.pop(key)
+
+        if isinstance(optional_keys, str): optional_keys = [optional_keys]
+        assert set(kw.keys()).issubset(set(optional_keys)), f'{kw.keys()} is not in {optional_keys}'
+        paras.update(kw)
         return paras
 
-    def set_default_parameters(self, **kw):
-        self._modify_parameters(self.template_message, kw)
+    def set_default_parameters(self, *, optional_keys: List[str] = [], **kw):
+        self._modify_parameters(self.template_message, kw, optional_keys=optional_keys)

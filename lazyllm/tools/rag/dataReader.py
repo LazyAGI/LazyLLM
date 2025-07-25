@@ -1,3 +1,8 @@
+
+"""
+The overall process of SimpleDirectoryReader is borrowed from LLAMA_INDEX, but we have added a customized part
+based on it, that is, allowing users to register custom rules instead of processing only based on file suffixes.
+"""
 import os
 import mimetypes
 import multiprocessing

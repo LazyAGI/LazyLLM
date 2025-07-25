@@ -6,6 +6,7 @@ from .stopwords import STOPWORDS_CHINESE
 
 
 class BM25:
+    """A BM25 retriever that uses the BM25 algorithm to retrieve nodes."""
 
     def __init__(
         self,

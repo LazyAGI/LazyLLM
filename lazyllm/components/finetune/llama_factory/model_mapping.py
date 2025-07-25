@@ -1,4 +1,14 @@
 def match_longest_prefix(model_name):
+    """
+    Find the longest key in the dictionary that is a prefix of the model_name string.
+    The keys in the dictionary are case-insensitive.
+
+    Args:
+        model_name (str): The input string of model name to be matched.
+
+    Returns:
+        str: The value corresponding to the longest matched key, or '' if no match found.
+    """
     keys_sorted = sorted(llamafactory_mapping_dict.keys(), key=lambda k: (-len(k), k))
     model_name_lower = model_name.lower()
     for key in keys_sorted:

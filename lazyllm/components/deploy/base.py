@@ -2,6 +2,7 @@ import time
 from ..core import ComponentBase
 import lazyllm
 from lazyllm import launchers, flows, LOG
+from ...components.utils.file_operate import image_to_base64, audio_to_base64, ocr_to_base64
 import random
 
 
@@ -11,6 +12,8 @@ class LazyLLMDeployBase(ComponentBase):
     default_headers = {'Content-Type': 'application/json'}
     stream_url_suffix = ''
     stream_parse_parameters = {}
+
+    encoder_map = dict(image=image_to_base64, audio=audio_to_base64, ocr_files=ocr_to_base64)
 
     @staticmethod
     def extract_result(output, inputs):

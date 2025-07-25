@@ -31,19 +31,23 @@ IMAGE_PATTERN = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
 class StoreBaseMixin:
     @abstractmethod
     def update_nodes(self, nodes: List[DocNode]) -> None:
+        """ update nodes to the store """
         raise NotImplementedError
 
     @abstractmethod
     def remove_nodes(self, doc_ids: List[str], group_name: Optional[str] = None,
                      uids: Optional[List[str]] = None) -> None:
+        """ remove nodes from the store by doc_ids or uids """
         raise NotImplementedError
 
     @abstractmethod
     def register_index(self, type: str, index: IndexBase) -> None:
+        """ register index to the store (for store that support hook only)"""
         raise NotImplementedError
 
     @abstractmethod
     def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
+        """ get registered index from the store """
         raise NotImplementedError
 
     @abstractmethod
@@ -55,18 +59,22 @@ class StoreBase(StoreBaseMixin, ABC):
     @abstractmethod
     def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
                   doc_ids: Optional[Set] = None, **kwargs) -> List[DocNode]:
+        """ get nodes from the store """
         raise NotImplementedError
 
     @abstractmethod
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
+        """ update doc meta """
         raise NotImplementedError
 
     @abstractmethod
     def query(self, *args, **kwargs) -> List[DocNode]:
+        """ search nodes from the store """
         raise NotImplementedError
 
     @abstractmethod
     def all_groups(self) -> List[str]:
+        """ get all node groups for Document """
         raise NotImplementedError
 
     @abstractmethod
@@ -79,4 +87,5 @@ class StoreBase(StoreBaseMixin, ABC):
 
     @abstractmethod
     def is_group_active(self, name: str) -> bool:
+        """ check if a group has nodes (active) """
         raise NotImplementedError
