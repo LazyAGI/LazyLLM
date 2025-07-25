@@ -32,7 +32,7 @@ class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
 
     def __or__(self, other):
         if not isinstance(other, LazyLLMFormatterBase):
-            return super().__or__(other)
+            return NotImplemented
         return PipelineFormatter(other.__ror__(self))
 
     def __ror__(self, f: Callable) -> Pipeline:
@@ -50,6 +50,12 @@ class PipelineFormatter(LazyLLMFormatterBase):
 
     def _parse_py_data_by_formatter(self, py_data):
         return self._formatter(py_data)
+
+    def __or__(self, other):
+        if isinstance(other, LazyLLMFormatterBase):
+            if isinstance(other, PipelineFormatter): other = other._formatter
+            return PipelineFormatter(self._formatter | other)
+        return NotImplemented
 
 
 class JsonLikeFormatter(LazyLLMFormatterBase):
