@@ -341,7 +341,7 @@ Args:
     similarity_kw: Additional parameters to pass to the similarity calculation function.
     output_format: Represents the output format, with a default value of None. Optional values include 'content' and 'dict', where 'content' corresponds to a string output format and 'dict' corresponds to a dictionary.
     join:  Determines whether to concatenate the output of k nodes - when output format is 'content', setting True returns a single concatenated string while False returns a list of strings (each corresponding to a node's text content); when output format is 'dict', joining is unsupported (join defaults to False) and the output will be a dictionary containing 'content', 'embedding' and 'metadata' keys.
-                
+
 The `group_name` has three built-in splitting strategies, all of which use `SentenceSplitter` for splitting, with the difference being in the chunk size:
 
 - CoarseChunk: Chunk size is 1024, with an overlap length of 100
@@ -1005,6 +1005,130 @@ add_example('WebModule', '''\
 193703: 2024-06-07 10:26:00 lazyllm SUCCESS: ...
 ''')
 
+#actors/codegenerator
+add_chinese_doc('CodeGenerator', '''\
+代码生成模块。
+
+该模块基于用户提供的提示词生成代码，会根据提示内容自动选择中文或英文的系统提示词，并从输出中提取 Python 代码片段。
+
+`__init__(self, base_model, prompt="")`
+初始化代码生成器。
+
+Args:
+    base_model (Union[str, TrainableModule, OnlineChatModuleBase]): 模型路径字符串，或已初始化的模型实例。
+    prompt (str): 用户自定义的代码生成提示词，可为中文或英文。
+''')
+
+
+add_english_doc('CodeGenerator', '''\
+Code Generation Module.
+
+This module generates code based on a user-defined prompt. It automatically selects a Chinese or English system prompt based on the input, and extracts Python code snippets from the output.
+
+`__init__(self, base_model, prompt="")`
+Initializes the code generator with a base model and prompt.
+
+Args:
+    base_model (Union[str, TrainableModule, OnlineChatModuleBase]): A path string to load the model, or an initialized model instance.
+    prompt (str): A user-defined prompt to guide the code generation. May contain Chinese or English.
+''')
+
+add_example('CodeGenerator', ['''\
+>>> from lazyllm.components import CodeGenerator
+>>> generator = CodeGenerator(base_model="deepseek-coder", prompt="写一个Python函数，计算斐波那契数列。")
+>>> result = generator("请给出实现代码")
+>>> print(result)
+... def fibonacci(n):
+...     if n <= 1:
+...         return n
+...     return fibonacci(n-1) + fibonacci(n-2)
+'''])
+
+#actors/parameter_extractor
+add_chinese_doc('ParameterExtractor', '''\
+参数提取模块。
+
+该模块根据参数名称、类型、描述和是否必填，从文本中提取结构化参数，底层依赖语言模型实现。
+
+`__init__(self, base_model, param, type, description, require)`
+使用参数定义和模型初始化参数提取器。
+
+Args:
+    base_model (Union[str, TrainableModule, OnlineChatModuleBase]): 用于参数提取的模型路径或模型实例。
+    param (list[str]): 需要提取的参数名称列表。
+    type (list[str]): 参数类型列表，如 "int"、"str"、"bool" 等。
+    description (list[str]): 每个参数的描述信息。
+    require (list[bool]): 每个参数是否为必填项的布尔列表。
+''')
+
+add_english_doc('ParameterExtractor', '''\
+Parameter Extraction Module.
+
+This module extracts structured parameters from a given text using a language model, based on the parameter names, types, descriptions, and whether they are required.
+
+`__init__(self, base_model, param, type, description, require)`
+Initializes the parameter extractor with the parameter specification and base model.
+
+Args:
+    base_model (Union[str, TrainableModule, OnlineChatModuleBase]): A model path or model instance used for extraction.
+    param (list[str]): List of parameter names to extract.
+    type (list[str]): List of parameter types (e.g., "int", "str", "bool").
+    description (list[str]): List of descriptions for each parameter.
+    require (list[bool]): List indicating whether each parameter is required.
+''')
+
+add_example('ParameterExtractor', ['''\
+>>> from lazyllm.components import ParameterExtractor
+>>> extractor = ParameterExtractor(
+...     base_model="deepseek-chat",
+...     param=["name", "age"],
+...     type=["str", "int"],
+...     description=["The user's name", "The user's age"],
+...     require=[True, True]
+... )
+>>> result = extractor("My name is Alice and I am 25 years old.")
+>>> print(result)
+... ['Alice', 25]
+'''])
+
+# actors/question_rewrite.py
+add_chinese_doc('QustionRewrite', '''\
+问题改写模块。
+
+该模块使用语言模型对用户输入的问题进行改写，可根据输出格式选择返回字符串或列表。
+
+`__init__(self, base_model, rewrite_prompt="", formatter="str")`
+使用提示词和模型初始化问题改写模块。
+
+Args:
+    base_model (Union[str, TrainableModule, OnlineChatModuleBase]): 问题改写所使用的模型路径或已初始化模型。
+    rewrite_prompt (str): 用户自定义的改写提示词。
+    formatter (str): 输出格式，可选 "str"（字符串）或 "list"（按行分割的列表）。
+''')
+
+add_english_doc('QustionRewrite', '''\
+Question Rewrite Module.
+
+This module rewrites or reformulates a user query using a language model. It supports both string and list output formats based on the formatter.
+
+`__init__(self, base_model, rewrite_prompt="", formatter="str")`
+Initializes the question rewrite module with a prompt and model.
+
+Args:
+    base_model (Union[str, TrainableModule, OnlineChatModuleBase]): A path string or initialized model for question rewriting.
+    rewrite_prompt (str): Custom prompt to guide the rewrite behavior.
+    formatter (str): Output format type; either "str" or "list".
+''')
+
+add_example('QustionRewrite', ['''\
+>>> from lazyllm.components import QustionRewrite
+>>> rewriter = QustionRewrite(base_model="chatglm", rewrite_prompt="请将问题改写为更适合检索的形式", formatter="list")
+>>> result = rewriter("中国的最高山峰是什么？")
+>>> print(result)
+... ['中国的最高山峰是哪一座？', '中国海拔最高的山是什么？']
+'''])
+
+
 add_chinese_doc('ToolManager', '''\
 ToolManager是一个工具管理类，用于提供工具信息和工具调用给function call。
 
@@ -1012,6 +1136,8 @@ ToolManager是一个工具管理类，用于提供工具信息和工具调用给
 
 Args:
     tools (List[str]): 工具名称字符串列表。
+    return_trace (bool): 是否返回中间步骤和工具调用信息。
+    stream (bool): 是否以流式方式输出规划和解决过程。
 ''')
 
 add_english_doc('ToolManager', '''\
@@ -1021,6 +1147,8 @@ When constructing this management class, you need to pass in a list of tool name
 
 Args:
     tools (List[str]): A list of tool name strings.
+    return_trace (bool): If True, return intermediate steps and tool calls.
+    stream (bool): Whether to stream the planning and solving process.
 ''')
 
 add_example('ToolManager', """\
@@ -1073,6 +1201,53 @@ add_example('ToolManager', """\
 >>> print(tm([{'name': 'get_n_day_weather_forecast', 'arguments': {'location': 'Beijing', 'num_days': 3}}])[0])
 '{"location": "Beijing", "temperature": "85", "unit": "fahrenheit", "num_days": 3}'
 """)
+
+add_chinese_doc('ModuleTool', '''\
+用于构建工具模块的基类。
+
+该类封装了函数签名和文档字符串的自动解析逻辑，可生成标准化的参数模式（基于 pydantic），并对输入进行校验和工具调用的标准封装。
+
+`__init__(self, verbose=False, return_trace=True)`
+初始化工具模块。
+
+Args:
+    verbose (bool): 是否在执行过程中输出详细日志。
+    return_trace (bool): 是否在结果中保留中间执行痕迹。
+''')
+
+add_english_doc('ModuleTool', '''\
+Base class for defining tools using callable Python functions.
+
+This class automatically parses function signatures and docstrings to build a parameter schema using `pydantic`. It also performs input validation and handles standardized tool execution.
+
+`__init__(self, verbose=False, return_trace=True)`
+Initializes a tool wrapper module.
+
+Args:
+    verbose (bool): Whether to print verbose logs during execution.
+    return_trace (bool): Whether to keep intermediate execution trace in the result.
+''')
+
+add_example('ModuleTool', """
+>>> from lazyllm.components import ModuleTool
+>>> class AddTool(ModuleTool):
+...     def apply(self, a: int, b: int) -> int:
+...         '''Add two integers.
+...         
+...         Args:
+...             a (int): First number.
+...             b (int): Second number.
+...         
+...         Returns:
+...             int: The sum of a and b.
+...         '''
+...         return a + b
+>>> tool = AddTool()
+>>> result = tool({'a': 3, 'b': 5})
+>>> print(result)
+8
+""")
+
 
 add_chinese_doc('FunctionCall', '''\
 FunctionCall是单轮工具调用类，如果LLM中的信息不足以回答用户的问题，必需结合外部知识来回答用户问题，则调用该类。如果LLM输出需要工具调用，则进行工具调用，并输出工具调用结果，输出结果为List类型，包含当前轮的输入、模型输出、工具输出。如果不需要工具调用，则直接输出LLM结果，输出结果为string类型。
@@ -1227,6 +1402,36 @@ add_example('FunctionCallAgent', """\
 'Hello! How can I assist you today?'
 """)
 
+# actors/function_call_formatter.py
+add_chinese_doc('FunctionCallFormatter', '''\
+用于解析函数调用结构消息的格式化器。
+
+该类继承自 `JsonFormatter`，用于从包含工具调用信息的消息字符串中提取 JSON 结构，并在需要时通过全局分隔符拆分内容。
+
+私有方法:
+    _load(msg)
+        解析输入的消息字符串，提取其中的 JSON 格式的工具调用结构（如果存在）。
+''')
+
+add_english_doc('FunctionCallFormatter', '''\
+Formatter for parsing structured function call messages.
+
+This class extends `JsonFormatter` and is responsible for extracting JSON-based tool call structures from a mixed message string, optionally separating them using a global delimiter.
+
+Private Method:
+    _load(msg)
+        Parses the input message string and extracts JSON-formatted tool calls, if present.
+''')
+
+add_example('FunctionCallFormatter', ['''\
+>>> from lazyllm.components import FunctionCallFormatter
+>>> formatter = FunctionCallFormatter()
+>>> msg = "Please call this tool. <TOOL> [{\\"name\\": \\"search\\", \\"args\\": {\\"query\\": \\"weather\\"}}]"
+>>> result = formatter._load(msg)
+>>> print(result)
+... [{'name': 'search', 'args': {'query': 'weather'}}, 'Please call this tool. ']
+'''])
+
 add_chinese_doc('ReactAgent', '''\
 ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
 
@@ -1234,6 +1439,8 @@ Args:
     llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。
     tools (List[str]): LLM 使用的工具名称列表。
     max_retries (int): 工具调用迭代的最大次数。默认值为5。
+    return_trace (bool): 是否返回中间步骤和工具调用信息。
+    stream (bool): 是否以流式方式输出规划和解决过程。
 ''')
 
 add_english_doc('ReactAgent', '''\
@@ -1243,6 +1450,8 @@ Args:
     llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
     tools (List[str]): A list of tool names for LLM to use.
     max_retries (int): The maximum number of tool call iterations. The default value is 5.
+    return_trace (bool): If True, return intermediate steps and tool calls.
+    stream (bool): Whether to stream the planning and solving process.
 ''')
 
 add_example('ReactAgent', """\
@@ -1288,6 +1497,8 @@ Args:
     plan_llm (ModuleBase): planner要使用的LLM，可以是TrainableModule或OnlineChatModule。
     solve_llm (ModuleBase): solver要使用的LLM，可以是TrainableModule或OnlineChatModule。
     max_retries (int): 工具调用迭代的最大次数。默认值为5。
+    return_trace (bool): 是否返回中间步骤和工具调用信息。
+    stream (bool): 是否以流式方式输出规划和解决过程。
 ''')
 
 add_english_doc('PlanAndSolveAgent', '''\
@@ -1299,6 +1510,8 @@ Args:
     plan_llm (ModuleBase): The LLM to be used by the planner, which can be either TrainableModule or OnlineChatModule.
     solve_llm (ModuleBase): The LLM to be used by the solver, which can be either TrainableModule or OnlineChatModule.
     max_retries (int): The maximum number of tool call iterations. The default value is 5.
+    return_trace (bool): If True, return intermediate steps and tool calls.
+    stream (bool): Whether to stream the planning and solving process.
 ''')
 
 add_example('PlanAndSolveAgent', """\
@@ -1344,6 +1557,9 @@ Args:
     plan_llm (ModuleBase): planner要使用的LLM，可以是TrainableModule或OnlineChatModule。
     solve_llm (ModuleBase): solver要使用的LLM，可以是TrainableModule或OnlineChatModule。
     max_retries (int): 工具调用迭代的最大次数。默认值为5。
+    return_trace (bool): 是否返回中间步骤和工具调用信息。
+    stream (bool): 是否以流式方式输出规划和解决过程。
+
 ''')
 
 add_english_doc('ReWOOAgent', '''\
@@ -1355,6 +1571,8 @@ Args:
     plan_llm (ModuleBase): The LLM to be used by the planner, which can be either TrainableModule or OnlineChatModule.
     solve_llm (ModuleBase): The LLM to be used by the solver, which can be either TrainableModule or OnlineChatModule.
     max_retries (int): The maximum number of tool call iterations. The default value is 5.
+    return_trace (bool): If True, return intermediate steps and tool calls.
+    stream (bool): Whether to stream the planning and solving process.
 ''')
 
 add_example(
@@ -1457,6 +1675,374 @@ add_example(
     38.5°C
 """,
 )
+
+#eval/eval_base.py
+add_chinese_doc('BaseEvaluator', '''\
+评估模块的抽象基类。
+
+该类定义了模型评估的标准接口，支持并发处理、输入校验和评估结果的自动保存，同时内置了重试机制。
+
+Args:
+    concurrency (int): 评估过程中使用的并发线程数。
+    retry (int): 每个样本的最大重试次数。
+    log_base_name (Optional[str]): 用于保存结果文件的日志文件名前缀（可选）。
+''')
+
+add_english_doc('BaseEvaluator', '''\
+Abstract base class for evaluation modules.
+
+This class defines the standard interface and retry logic for evaluating model outputs. It supports concurrent processing, input validation, and automatic result saving.
+
+Args:
+    concurrency (int): Number of concurrent threads used during evaluation.
+    retry (int): Number of retry attempts for each evaluation item.
+    log_base_name (Optional[str]): Optional log file name prefix for saving results.
+''')
+
+add_example('BaseEvaluator', ['''\
+>>> from lazyllm.components import BaseEvaluator
+>>> class SimpleAccuracyEvaluator(BaseEvaluator):
+...     def _process_one_data_impl(self, data):
+...         return {
+...             "final_score": float(data["pred"] == data["label"])
+...         }
+>>> evaluator = SimpleAccuracyEvaluator()
+>>> score = evaluator([
+...     {"pred": "yes", "label": "yes"},
+...     {"pred": "no", "label": "yes"}
+... ])
+>>> print(score)
+... 0.5
+'''])
+
+add_chinese_doc('ResponseRelevancy', '''\
+用于评估用户问题与模型生成问题之间语义相关性的指标类。
+
+该评估器使用语言模型根据回答生成问题，并通过 Embedding 与余弦相似度度量其与原始问题之间的相关性。
+
+
+Args:
+    llm (ModuleBase): 用于根据回答生成问题的语言模型模块。
+    embedding (ModuleBase): 用于编码问题向量的嵌入模块。
+    prompt (str, 可选): 自定义的生成提示词，若不提供将使用默认提示。
+    prompt_lang (str): 默认提示词的语言，可选 `'en'`（默认）或 `'zh'`。
+    num_infer_questions (int): 每条数据生成和评估的问题数量。
+    retry (int): 失败时的重试次数。
+    concurrency (int): 并发评估的数量。
+''')
+
+add_english_doc('ResponseRelevancy', '''\
+Evaluator for measuring the semantic relevancy between a user-generated question and a model-generated one.
+
+This evaluator uses a language model to generate possible questions from an answer, and measures their semantic similarity to the original question using embeddings and cosine similarity.
+
+
+Args:
+    llm (ModuleBase): A language model used to generate inferred questions from the given answer.
+    embedding (ModuleBase): An embedding module to encode questions for similarity comparison.
+    prompt (str, optional): Custom prompt to guide the question generation. If not provided, a default will be used.
+    prompt_lang (str): Language for the default prompt. Options: `'en'` (default) or `'zh'`.
+    num_infer_questions (int): Number of questions to generate and evaluate for each answer.
+    retry (int): Number of retry attempts if generation fails.
+    concurrency (int): Number of concurrent evaluations.
+''')
+
+add_example('ResponseRelevancy', ['''\
+>>> from lazyllm.components import ResponseRelevancy
+>>> relevancy = ResponseRelevancy(
+...     llm=YourLLM(),
+...     embedding=YourEmbedding(),
+...     prompt_lang="en",
+...     num_infer_questions=3
+... )
+>>> result = relevancy([
+...     {"question": "What is the capital of France?", "answer": "Paris is the capital city of France."}
+... ])
+>>> print(result)
+... 0.95  # (a float score between 0 and 1)
+'''])
+
+add_chinese_doc('Faithfulness', '''\
+评估回答与上下文之间事实一致性的指标类。
+
+该评估器首先使用语言模型将答案拆分为独立事实句，然后基于上下文对每条句子进行支持性判断（0或1分），最终取平均值作为总体一致性分数。
+
+
+Args:
+    llm (ModuleBase): 同时用于生成句子与进行评估的语言模型模块。
+    generate_prompt (str, 可选): 用于将答案转换为事实句的自定义提示词。
+    eval_prompt (str, 可选): 用于评估句子与上下文匹配度的提示词。
+    prompt_lang (str): 默认提示词的语言，可选 'en' 或 'zh'。
+    retry (int): 生成或评估失败时的最大重试次数。
+    concurrency (int): 并发评估的数据条数。
+''')
+
+add_english_doc('Faithfulness', '''\
+Evaluator that measures the factual consistency of an answer with the given context.
+
+This evaluator splits the answer into atomic factual statements using a generation model, then verifies each against the context using binary (1/0) scoring. It computes a final score as the average of the individual statement scores.
+
+
+Args:
+    llm (ModuleBase): A language model capable of both generating statements and evaluating them.
+    generate_prompt (str, optional): Custom prompt to generate factual statements from the answer.
+    eval_prompt (str, optional): Custom prompt to evaluate statement support within the context.
+    prompt_lang (str): Language of the default prompt, either 'en' or 'zh'.
+    retry (int): Number of retry attempts when generation or evaluation fails.
+    concurrency (int): Number of concurrent evaluations to run in parallel.
+''')
+
+add_example('Faithfulness', ['''\
+>>> from lazyllm.components import Faithfulness
+>>> evaluator = Faithfulness(llm=YourLLM(), prompt_lang="en")
+>>> data = {
+...     "question": "What is the role of ATP in cells?",
+...     "answer": "ATP stores energy and transfers it within cells.",
+...     "context": "ATP is the energy currency of the cell. It provides energy for many biochemical reactions."
+... }
+>>> result = evaluator([data])
+>>> print(result)
+... 1.0  # Average binary score of all factual statements
+'''])
+
+add_chinese_doc('LLMContextRecall', '''\
+用于评估回答中的每一句话是否可以归因于检索到的上下文的指标类。
+
+该模块使用语言模型判断回答中的每个句子是否得到上下文的支持，通过二元值进行评分（1 表示支持，0 表示不支持或矛盾），最终计算平均回忆得分。
+
+Args:
+    llm (ModuleBase): 用于执行上下文一致性判断的语言模型。
+    eval_prompt (str, 可选): 指导模型评估的自定义提示词。
+    prompt_lang (str): 默认提示词语言，'en' 表示英文，'zh' 表示中文。
+    retry (int): 评估失败时的最大重试次数。
+    concurrency (int): 并发评估的任务数量。
+''')
+
+add_english_doc('LLMContextRecall', '''\
+Evaluator that measures whether each sentence in the answer can be attributed to the retrieved context.
+
+This module uses a language model to analyze the factual alignment between each statement in the answer and the provided context. It scores each sentence with binary values (1 = supported, 0 = unsupported/contradictory) and computes an average recall score.
+
+
+Args:
+    llm (ModuleBase): A language model capable of evaluating answer-context consistency.
+    eval_prompt (str, optional): Custom prompt used to instruct the evaluator model.
+    prompt_lang (str): Language of the default prompt. Choose 'en' for English or 'zh' for Chinese.
+    retry (int): Number of retry attempts if the evaluation fails.
+    concurrency (int): Number of parallel evaluations to perform concurrently.
+''')
+
+add_example('LLMContextRecall', ['''\
+>>> from lazyllm.components import LLMContextRecall
+>>> evaluator = LLMContextRecall(llm=YourLLM(), prompt_lang="en")
+>>> data = {
+...     "question": "What is Photosynthesis?",
+...     "answer": "Photosynthesis was discovered in the 1780s. It occurs in chloroplasts.",
+...     "context_retrieved": [
+...         "Photosynthesis occurs in chloroplasts.",
+...         "Light reactions produce ATP using sunlight."
+...     ]
+... }
+>>> result = evaluator([data])
+>>> print(result)
+... 0.5  # Final recall score averaged over statement evaluations
+'''])
+
+add_chinese_doc('NonLLMContextRecall', '''\
+基于字符串模糊匹配的非LLM上下文回忆指标类。
+
+该模块通过 Levenshtein 距离计算检索到的上下文与参考上下文的相似度，并给出回忆得分。可选择输出二值得分（是否存在足够相似的匹配）或平均匹配度得分。
+
+Args:
+    th (float): 相似度阈值（范围为0到1），值越高表示匹配越严格。
+    binary (bool): 若为True，则只判断是否有任一匹配超过阈值；若为False，则输出所有匹配的平均得分。
+    retry (int): 失败时最大重试次数。
+    concurrency (int): 并发执行的任务数量。
+''')
+
+add_english_doc('NonLLMContextRecall', '''\
+A non-LLM evaluator that measures whether retrieved contexts match the reference context using fuzzy string matching.
+
+This module compares each retrieved context against a reference using Levenshtein distance and computes a recall score. It can return binary scores (whether any retrieved context is similar enough) or an averaged similarity score.
+
+
+Args:
+    th (float): Similarity threshold (between 0 and 1). A higher value means stricter matching.
+    binary (bool): If True, output is binary (1 if any match exceeds threshold), otherwise returns average match score.
+    retry (int): Number of retries for evaluation in case of failure.
+    concurrency (int): Number of parallel evaluations to run.
+''')
+
+add_example('NonLLMContextRecall', ['''\
+>>> from lazyllm.components import NonLLMContextRecall
+>>> evaluator = NonLLMContextRecall(th=0.8, binary=True)
+>>> data = {
+...     "context_retrieved": [
+...         "Photosynthesis uses sunlight to produce sugar.",
+...         "It takes place in chloroplasts."
+...     ],
+...     "context_reference": [
+...         "Photosynthesis occurs in chloroplasts."
+...     ]
+... }
+>>> result = evaluator([data])
+>>> print(result)
+... 1.0  # At least one retrieved context is similar enough
+'''])
+
+add_chinese_doc('ContextRelevance', '''\
+基于句子级匹配的非LLM上下文相关性评估器。
+
+该模块将检索到的上下文与参考上下文分别按句子划分，并统计检索内容中与参考完全一致的句子数量，从而计算相关性得分。
+
+
+Args:
+    splitter (str): 句子分隔符，默认为中文句号 "。"，英文可设置为 "."。
+    retry (int): 失败时最大重试次数。
+    concurrency (int): 并发执行的任务数量。
+''')
+
+add_english_doc('ContextRelevance', '''\
+A non-LLM evaluator that measures the overlap between retrieved and reference contexts at the sentence level.
+
+This evaluator splits both retrieved and reference contexts into sentences, then counts how many retrieved sentences exactly match those in the reference. It outputs a relevance score as the fraction of overlapping sentences.
+
+
+Args:
+    splitter (str): Sentence splitter. Default is '。' for Chinese. Use '.' for English contexts.
+    retry (int): Number of retries for evaluation in case of failure.
+    concurrency (int): Number of parallel evaluations to run.
+''')
+
+add_example('ContextRelevance', ['''\
+>>> from lazyllm.components import ContextRelevance
+>>> evaluator = ContextRelevance(splitter='.')
+>>> data = {
+...     "context_retrieved": [
+...         "Photosynthesis occurs in chloroplasts. It produces glucose."
+...     ],
+...     "context_reference": [
+...         "Photosynthesis occurs in chloroplasts. It requires sunlight. It produces glucose."
+...     ]
+... }
+>>> result = evaluator([data])
+>>> print(result)
+... 0.6667  # 2 of 3 retrieved sentences match
+'''])
+
+
+
+#http_request/http_request.py
+add_chinese_doc('HttpRequest', '''\
+通用 HTTP 请求执行器。
+
+该类用于构建并发送 HTTP 请求，支持变量替换、API Key 注入、JSON 或表单编码、文件类型响应识别等功能。
+
+Args:
+    method (str): HTTP 方法，如 'GET'、'POST' 等。
+    url (str): 请求目标的 URL。
+    api_key (str): 可选的 API Key，会被加入请求参数。
+    headers (dict): HTTP 请求头。
+    params (dict): URL 查询参数。
+    body (Union[str, dict]): 请求体，支持字符串或 JSON 字典格式。
+    timeout (int): 请求超时时间（秒）。
+    proxies (dict, optional): 可选的代理设置。
+''')
+
+add_english_doc('HttpRequest', '''\
+General HTTP request executor.
+
+This class builds and sends HTTP requests with support for dynamic variable substitution, API key injection, JSON or form data encoding, and file-aware response parsing.
+
+Args:
+    method (str): HTTP method, such as 'GET', 'POST', etc.
+    url (str): The target URL for the HTTP request.
+    api_key (str): Optional API key, inserted into query parameters.
+    headers (dict): HTTP request headers.
+    params (dict): URL query parameters.
+    body (Union[str, dict]): HTTP request body (raw string or JSON-formatted dict).
+    timeout (int): Timeout duration for the request (in seconds).
+    proxies (dict, optional): Proxy settings for the request, if needed.
+''')
+
+add_example('HttpRequest', ['''\
+>>> from lazyllm.components import HttpRequest
+>>> request = HttpRequest(
+...     method="GET",
+...     url="https://api.github.com/repos/openai/openai-python",
+...     api_key="",
+...     headers={"Accept": "application/json"},
+...     params={},
+...     body=None
+... )
+>>> result = request()
+>>> print(result["status_code"])
+... 200
+>>> print(result["content"][:100])
+... '{"id":123456,"name":"openai-python", ...}'
+'''])
+
+#infer_service/serve.py/JobDescription
+add_chinese_doc('JobDescription', '''\
+模型部署任务描述的数据结构。
+
+用于创建模型推理任务时指定部署配置，包括模型名称与所需 GPU 数量。
+
+Args:
+    deploy_model (str): 要部署的模型名称，默认为 "qwen1.5-0.5b-chat"。
+    num_gpus (int): 所需的 GPU 数量，默认为 1。
+''')
+
+add_english_doc('JobDescription', '''\
+Model deployment job description schema.
+
+Used to specify the configuration for creating a model inference job, including model name and GPU requirements.
+
+Args:
+    deploy_model (str): The model to be deployed. Default is "qwen1.5-0.5b-chat".
+    num_gpus (int): Number of GPUs required for deployment. Default is 1.
+''')
+
+add_example('JobDescription', ['''\
+>>> from lazyllm.components import JobDescription
+>>> job = JobDescription(deploy_model="deepseek-coder", num_gpus=2)
+>>> print(job.dict())
+... {'deploy_model': 'deepseek-coder', 'num_gpus': 2}
+'''])
+
+
+add_chinese_doc('DBManager', '''\
+数据库管理器的抽象基类。
+
+该类定义了构建数据库连接器的通用接口，包括 `execute_query` 抽象方法和 `desc` 描述属性。
+
+Args:
+    db_type (str): 数据库类型标识符，例如 'mysql'、'mongodb'。
+''')
+
+add_english_doc('DBManager', '''\
+Abstract base class for database managers.
+
+This class defines the standard interface and helpers for building database connectors, including a required `execute_query` method and description property.
+
+Args:
+    db_type (str): Type identifier of the database (e.g., 'mysql', 'mongodb').
+''')
+
+add_example('DBManager', ['''\
+>>> from lazyllm.components import DBManager
+>>> class DummyDB(DBManager):
+...     def __init__(self):
+...         super().__init__(db_type="dummy")
+...     def execute_query(self, statement):
+...         return f"Executed: {statement}"
+...     @property
+...     def desc(self):
+...         return "Dummy database for testing."
+>>> db = DummyDB()
+>>> print(db("SELECT * FROM test"))
+... Executed: SELECT * FROM test
+'''])
 
 add_chinese_doc(
     "SqlManager",
@@ -1706,6 +2292,22 @@ Arguments:
 """,
 )
 
+add_example('MongoDBManager', ['''\
+>>> from lazyllm.components import MongoDBManager
+>>> mgr = MongoDBManager(
+...     user="admin",
+...     password="123456",
+...     host="localhost",
+...     port=27017,
+...     db_name="mydb",
+...     collection_name="books"
+... )
+>>> result = mgr.execute_query('[{"$match": {"author": "Tolstoy"}}]')
+>>> print(result)
+... '[{"title": "War and Peace", "author": "Tolstoy"}]'
+'''])
+
+
 add_chinese_doc(
     "MongoDBManager.get_client",
     """\
@@ -1807,8 +2409,8 @@ add_example(
     """\
     >>> # First, run SqlManager example
     >>> import lazyllm
-    >>> from lazyllm.tools import SQLiteManger, SqlCall
-    >>> sql_tool = SQLiteManger("personal.db")
+    >>> from lazyllm.tools import SQLManger, SqlCall
+    >>> sql_tool = SQLManger("personal.db")
     >>> sql_llm = lazyllm.OnlineChatModule(model="gpt-4o", source="openai", base_url="***")
     >>> sql_call = SqlCall(sql_llm, sql_tool, use_llm_for_sql_result=True)
     >>> print(sql_call("去年一整年销售额最多的员工是谁?"))
@@ -1830,7 +2432,8 @@ Args:
     proxies (Dict[str, str], optional): 指定请求 url 时所使用的代理。代理格式参考 `https://www.python-httpx.org/advanced/proxies`。
     code_str (str, optional): 一个字符串，包含用户定义的函数。如果参数 `url` 为空，则直接执行该函数，执行时所有的参数都会转发给该函数；如果 `url` 不为空，该函数的参数为请求 url 返回的结果，此时该函数作为 url 返回后的后处理函数。
     vars_for_code (Dict[str, Any]): 一个字典，传入运行 code 所需的依赖及变量。
-
+    outputs (Optional[List[str]]): 期望提取的输出字段名。
+    extract_from_result (Optional[bool]): 是否从响应字典中直接提取指定字段。
 """)
 
 add_english_doc("HttpTool", """
@@ -1846,7 +2449,8 @@ Args:
     proxies (Dict[str, str], optional): Specifies the proxies to be used when requesting the URL. Proxy format refer to `https://www.python-httpx.org/advanced/proxies`.
     code_str (str, optional): A string containing a user-defined function. If the parameter url is empty, execute this function directly, forwarding all arguments to it; if url is not empty, the parameters of this function are the results returned from the URL request, and in this case, the function serves as a post-processing function for the URL response.
     vars_for_code (Dict[str, Any]): A dictionary that includes dependencies and variables required for running the code.
-
+    outputs (Optional[List[str]]): Names of expected output fields.
+    extract_from_result (Optional[bool]): Whether to extract fields directly from response dict using `outputs`.
 """)
 
 add_example("HttpTool", """
@@ -2056,7 +2660,7 @@ add_chinese_doc('MCPClient', '''\
 MCP客户端，用于连接MCP服务器。同时支持本地服务器（通过stdio client）和sse服务器（通过sse client）。
 
 如果传入的 'command_or_url' 是一个 URL 字符串（以 'http' 或 'https' 开头），则将连接到远程服务器；否则，将启动并连接到本地服务器。
-                
+
 Args:
     command_or_url (str): 用于启动本地服务器或连接远程服务器的命令或 URL 字符串。
     args (list[str], optional): 用于启动本地服务器的参数列表；如果要连接远程服务器，则无需此参数。（默认值为[]）
