@@ -383,14 +383,15 @@ class QwenSTTModule(QwenMultiModal):
         call_params = {'model': self._model_name, 'file_urls': files, **kwargs}
         if self._api_key: call_params['api_key'] = self._api_key
         task_response = dashscope.audio.asr.Transcription.async_call(**call_params)
-        transcribe_response = dashscope.audio.asr.Transcription.wait(task=task_response.output.task_id)
+        transcribe_response = dashscope.audio.asr.Transcription.wait(task=task_response.output.task_id,
+                                                                     api_key=self._api_key)
         if transcribe_response.status_code == HTTPStatus.OK:
             result_text = ""
             for task in transcribe_response.output.results:
                 assert task['subtask_status'] == "SUCCEEDED", "subtask_status is not SUCCEEDED"
                 response = json.loads(requests.get(task['transcription_url']).text)
                 for transcript in response['transcripts']:
-                    result_text = re.sub(r"<[^>]+>", "", transcript['text'])
+                    result_text += re.sub(r"<[^>]+>", "", transcript['text'])
             return result_text
         else:
             lazyllm.LOG.error(f"failed to transcribe: {transcribe_response.output}")
@@ -419,7 +420,7 @@ class QwenTextToImageModule(QwenMultiModal):
         if self._api_key: call_params['api_key'] = self._api_key
         if seed: call_params['seed'] = seed
         task_response = dashscope.ImageSynthesis.async_call(**call_params)
-        response = dashscope.ImageSynthesis.wait(task=task_response.output.task_id)
+        response = dashscope.ImageSynthesis.wait(task=task_response.output.task_id, api_key=self._api_key)
         if response.status_code == HTTPStatus.OK:
             return encode_query_with_filepaths(None, bytes_to_file([requests.get(result.url).content
                                                                     for result in response.output.results]))
