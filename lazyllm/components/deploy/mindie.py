@@ -13,6 +13,26 @@ lazyllm.config.add('mindie_home', str, '', 'MINDIE_HOME')
 verify_fastapi_func = verify_func_factory(error_message='Service Startup Failed',
                                           running_message='Daemon start success')
 class Mindie(LazyLLMDeployBase):
+    """此类是 ``LazyLLMDeployBase`` 的一个子类, 用于部署和管理MindIE大模型推理服务。它封装了MindIE服务的配置生成、进程启动和API交互的全流程。
+Args:
+    trust_remote_code (bool): 是否信任远程代码(如HuggingFace模型)。默认为 ``True``。
+    launcher: 任务启动器实例，默认为 ``launchers.remote()``。
+    log_path (str): 日志保存路径，若为 ``None`` 则不保存日志。
+    **kw: 其他配置参数，支持以下关键参数：
+        - npuDeviceIds: NPU设备ID列表(如 ``[[0,1]]`` 表示使用2张卡)
+        - worldSize: 模型并行数量
+        - port: 服务端口（设为 ``'auto'`` 时自动分配30000-40000的随机端口)
+        - maxSeqLen: 最大序列长度
+        - maxInputTokenLen: 单次输入最大token数
+        - maxPrefillTokens: 预填充token上限
+        - config: 自定义配置文件
+
+注意事项: 
+   必须预先设置环境变量 ``LAZYLLM_MINDIE_HOME`` 指向MindIE安装目录, 若未指定 ``finetuned_model`` 或路径无效，会自动回退到 ``base_model``
+
+
+Examples:
+    """
     keys_name_handle = {
         'inputs': 'prompt',
     }

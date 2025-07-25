@@ -216,6 +216,164 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
 
 
 class TrainableModule(UrlModule):
+    """可训练模块，所有模型（包括LLM、Embedding等）都通过TrainableModule提供服务
+
+<span style="font-size: 20px;">**`TrainableModule(base_model='', target_path='', *, stream=False, return_trace=False)`**</span>
+
+
+Args:
+    base_model (str): 基础模型的名称或路径。如果本地没有该模型，将会自动从模型源下载。
+    target_path (str): 保存微调任务的路径。如果仅进行推理，可以留空。
+    source (str): 模型来源，可选值为huggingface或...。如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
+    stream (bool): 是否输出流式结果。如果使用的推理引擎不支持流式输出，该参数将被忽略。       
+    return_trace (bool): 是否在trace中记录结果。
+
+<span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
+
+设置 TrainableModule 的训练集
+
+Args:
+    v (str): 训练/微调数据集的路径
+
+**示例:**
+
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).trainset('/file/to/path').deploy_method(None).mode('finetune')
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+
+
+
+
+<span style="font-size: 20px;">**`TrainableModule.train_method(v, **kw):`**</span>
+
+设置 TrainableModule 的训练方法（暂不支持继续预训练，预计下一版本支持）
+
+Args:
+    v (LazyLLMTrainBase): 训练方法，可选值包括 ``train.auto`` 等
+    kw (**dict): 训练方法所需的参数，对应 v 的参数
+
+<span style="font-size: 20px;">**`TrainableModule.finetune_method(v, **kw):`**</span>
+
+设置 TrainableModule 的微调方法及其参数
+
+Args:
+    v (LazyLLMFinetuneBase): 微调方法，可选值包括 ``finetune.auto`` / ``finetune.alpacalora`` / ``finetune.collie`` 等
+    kw (**dict): 微调方法所需的参数，对应 v 的参数
+
+**示例:**
+
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}    
+```
+
+<span style="font-size: 20px;">**`TrainableModule.deploy_method(v, **kw):`**</span>
+
+设置 TrainableModule 的部署方法及其参数
+
+Args:
+    v (LazyLLMDeployBase): 部署方法，可选值包括 ``deploy.auto`` / ``deploy.lightllm`` / ``deploy.vllm`` 等
+    kw (**dict): 部署方法所需的参数，对应 v 的参数
+
+**示例:**
+
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy).mode('finetune')
+>>> m.evalset([1, 2, 3])
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+>>> m.eval_result
+["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]                                   
+```
+
+<span style="font-size: 20px;">**`TrainableModule.mode(v):`**</span>
+
+设置 TrainableModule 在 update 时执行训练还是微调
+
+Args:
+    v (str): 设置在 update 时执行训练还是微调，可选值为 'finetune' 和 'train'，默认为 'finetune'
+
+**示例:**
+
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).deploy_method(None).mode('finetune')
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}            
+```
+<span style="font-size: 20px;">**`eval(*, recursive=True)`**</span>
+评估该模块（及其所有子模块）。此功能需在模块通过evalset设置评估集后生效。
+
+Args:
+    recursive (bool) :是否递归评估所有子模块，默认为True。
+
+<span style="font-size: 20px;">**`evalset(evalset, load_f=None, collect_f=<function ModuleBase.<lambda>>)`**</span>
+
+为模块设置评估集。已设置评估集的模块将在执行``update``或``eval``时进行评估，评估结果将存储在eval_result变量中。
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, collect_f=lambda x: ...)→ None `**</span>
+
+
+Args:
+    evalset (list) :评估数据集
+    collect_f (Callable) :评估结果的后处理方法，默认不进行后处理。
+
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, load_f=None, collect_f=lambda x: ...)→ None`**</span>
+
+
+Args:
+    evalset (str) :评估集路径
+    load_f (Callable) :评估集加载方法，包括文件格式解析和列表转换
+    collect_f (Callable) :评估结果后处理方法，默认不进行后处理
+
+**示例:**
+
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.evalset([1, 2, 3])
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+>>> m.eval_result
+["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]                
+```     
+
+<span style="font-size: 20px;">**`restart() `**</span>
+
+重启模块及其所有子模块
+
+**示例:**
+
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.restart()
+>>> m(1)
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+```
+
+<span style="font-size: 20px;">start() </span>
+
+部署模块及其所有子模块
+
+**示例:**
+
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.start()
+>>> m(1)
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"     
+```                
+
+"""
     builder_keys = _TrainableModuleImpl.builder_keys
 
     def __init__(self, base_model: Option = '', target_path='', *, stream: Union[bool, Dict[str, str]] = False,
@@ -271,10 +429,30 @@ class TrainableModule(UrlModule):
             return lazyllm.deploy.AutoDeploy
 
     def wait(self):
+        """等待模型部署任务完成，该方法会阻塞当前线程直到部署完成。
+
+
+Examples:
+    >>> import lazyllm
+    >>> class Mywait(lazyllm.module.llms.TrainableModule):
+    ...    def forward(self):
+    ...        self.wait()
+    """
         if launcher := self._impl._launchers['default'].get('deploy'):
             launcher.wait()
 
     def stop(self, task_name: Optional[str] = None):
+        """暂停模型特定任务。
+Args:
+    task_name(str): 需要暂停的任务名, 默认为None(默认暂停deploy任务)
+
+
+Examples:
+    >>> import lazyllm
+    >>> class Mystop(lazyllm.module.llms.TrainableModule):
+    ...    def forward(self, task):
+    ...        self.stop(task)
+    """
         try:
             launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
         except KeyError:
@@ -288,6 +466,18 @@ class TrainableModule(UrlModule):
 
     # modify default value to ''
     def prompt(self, prompt: str = '', history: Optional[List[List[str]]] = None):
+        """处理输入的prompt生成符合模型需求的格式。
+Args:
+    prompt(str): 输入的prompt, 默认为空。
+    history(**List): 对话历史记忆。
+
+
+Examples:
+    >>> import lazyllm
+    >>> class Myprompt(lazyllm.module.llms.TrainableModule):
+    ...    def forward(self, prompt, history):
+    ...        self.prompt(prompt,history)
+    """
         if self.base_model != '' and prompt == '' and ModelManager.get_model_type(self.base_model) != 'llm':
             prompt = None
         clear_system = isinstance(prompt, dict) and prompt.get('drop_builtin_system')
@@ -418,14 +608,6 @@ class TrainableModule(UrlModule):
             return content
 
     def _extract_and_format(self, output: str) -> str:
-        """
-        1.extract tool calls information;
-            a. If 'tool_start_token' exists, the boundary of tool_calls can be found according to 'tool_start_token',
-               and then the function name and arguments of tool_calls can be extracted according to 'tool_args_token'
-               and 'tool_end_token'.
-            b. If 'tool_start_token' does not exist, the text is segmented using '\n' according to the incoming tools
-               information, and then processed according to the rules.
-        """
         content, tool_calls = self._extract_tool_calls(output)
         if isinstance(content, str) and content.startswith(LAZYLLM_QUERY_PREFIX):
             content = self._decode_base64_to_file(content)
@@ -472,6 +654,19 @@ class TrainableModule(UrlModule):
 
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),
                 *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
+        """自动构建符合模型要求的输入数据结构，适配多模态场景。
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.module import TrainableModule
+    >>> class MyModule(TrainableModule):
+    ...     def forward(self, __input, **kw):
+    ...         return f"processed: {__input}"
+    ...
+    >>> MyModule()("Hello")
+    'processed: Hello'
+    """
         if self.template_message:
             if isinstance(__input, package):
                 assert not lazyllm_files, 'Duplicate `files` argument provided by args and kwargs'

@@ -16,6 +16,11 @@
       members:
       - evalset
 
+::: lazyllm.module.AutoModel
+    options:
+      members:
+      - _new
+
 ::: lazyllm.module.TrainableModule
     options:
       members:
@@ -24,7 +29,11 @@
       - update
       - evalset
       - eval
-
+      - wait
+      - stop
+      - prompt
+      - forward
+      
 ::: lazyllm.module.UrlModule
     options:
       members:

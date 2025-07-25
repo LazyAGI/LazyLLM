@@ -25,6 +25,35 @@ class _VllmStreamParseParametersMeta(LazyLLMRegisterMetaClass):
 
 
 class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
+    """此类是 ``LazyLLMDeployBase`` 的子类，基于 [VLLM](https://github.com/vllm-project/vllm) 框架提供的推理能力，用于对大语言模型进行推理。
+
+Args:
+    trust_remote_code (bool): 是否允许加载来自远程服务器的模型代码，默认为 ``True``。
+    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
+    log_path (str): 日志保存路径，若为 ``None`` 则不保存日志。
+    openai_api(bool):是否调用openai接口,默认为``None``。
+    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
+
+此类的关键字参数及其默认值如下：
+
+Keyword Args: 
+    tensor-parallel-size (int): 张量并行参数，默认为 ``1``。
+    dtype (str): 模型权重和激活值的数据类型，默认为 ``auto``。另外可选项还有： ``half``, ``float16``, ``bfloat16``, ``float``, ``float32``。
+    kv-cache-dtype (str): 看kv缓存的存储类型，默认为 ``auto``。另外可选的还有：``fp8``, ``fp8_e5m2``, ``fp8_e4m3``。
+    device (str): VLLM所支持的后端硬件类型，默认为 ``auto``。另外可选的还有：``cuda``, ``neuron``, ``cpu``。
+    block-size (int): 设置 token块的大小，默认为 ``16``。
+    port (int): 服务的端口号，默认为 ``auto``。
+    host (str): 服务的IP地址，默认为 ``0.0.0.0``。
+    seed (int): 随机数种子，默认为 ``0``。
+    tokenizer_mode (str): tokenizer的加载模式，默认为 ``auto``。
+    max-num-seqs (int): 推理引擎最大的并行请求数， 默认为 ``256``。
+
+
+
+Examples:
+    >>> from lazyllm import deploy
+    >>> infer = deploy.vllm()
+    """
     # keys_name_handle/default_headers/message_format will lose efficacy when openai_api is True
     keys_name_handle = {'inputs': 'prompt', 'stop': 'stop'}
     default_headers = {'Content-Type': 'application/json'}

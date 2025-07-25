@@ -71,24 +71,29 @@ class Engine(ABC):
 
     @overload
     def start(self, nodes: str) -> None:
+        """Helper for @overload to raise when called."""
         ...
 
     @overload
     def start(self, nodes: Dict[str, Any]) -> None:
+        """Helper for @overload to raise when called."""
         ...
 
     @overload
     def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
               gid: Optional[str] = None, name: Optional[str] = None, _history_ids: Optional[List[str]] = None) -> str:
+        """Helper for @overload to raise when called."""
         ...
 
     @overload
     def update(self, nodes: List[Dict]) -> None:
+        """Helper for @overload to raise when called."""
         ...
 
     @overload
     def update(self, gid: str, nodes: List[Dict], edges: List[Dict] = [],
                resources: List[Dict] = []) -> str:
+        """Helper for @overload to raise when called."""
         ...
 
     def release_node(self, nodeid: str): pass
@@ -499,14 +504,13 @@ class AuthenticationFailedError(Exception):
         super().__init__(self._message)
 
 class TokenExpiredError(Exception):
-    """Access token expired"""
     pass
 
 class TokenRefreshError(Exception):
-    """Access key request failed"""
     pass
 
 class AuthType(Enum):
+    """An enumeration."""
     SERVICE_API = "service_api"
     OAUTH = "oauth"
     OIDC = "oidc"
@@ -997,13 +1001,6 @@ def make_code_generator(base_model: str, prompt: str = ""):
     return lazyllm.tools.CodeGenerator(base_model, prompt)
 
 def setup_deploy_method(model: lazyllm.TrainableModule, deploy_method: str, url: Optional[str] = None):
-    """Set the deployment method for the module
-
-    Args:
-        module: The module to set deployment method for
-        deploy_method: Name of the deployment method
-        url: Optional deployment URL
-    """
     deploy_method = getattr(lazyllm.deploy, deploy_method)
     if deploy_method is lazyllm.deploy.AutoDeploy:
         model.deploy_method(deploy_method)

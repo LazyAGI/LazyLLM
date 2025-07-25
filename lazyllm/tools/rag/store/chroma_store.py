@@ -15,6 +15,38 @@ from lazyllm.thirdparty import chromadb
 
 
 class ChromadbStore(StoreBase):
+    """
+继承自 StoreBase 抽象基类。它主要用于存储和管理文档节点(DocNode)，支持节点增删改查、索引管理和持久化存储。
+
+Args:
+     group_embed_keys (Dict[str, Set[str]]): 指定每个文档分组所对应的嵌入字段。
+    embed (Dict[str, Callable]): 嵌入生成函数或其映射，支持多嵌入源。
+    embed_dims (Dict[str, int]): 每种嵌入类型对应的维度。
+    dir (str): chromadb 数据库存储路径。
+    kwargs (Dict): 其他可选参数，传递给父类或内部组件。
+
+
+Examples:
+
+    >>> from lazyllm.tools.rag.chroma_store import ChromadbStore
+    >>> from typing import Dict, List
+    >>> import numpy as np
+    >>> store = ChromadbStore(
+    ...     group_embed_keys={"articles": {"title_embed", "content_embed"}},
+    ...     embed={
+    ...         "title_embed": lambda x: np.random.rand(128).tolist(),
+    ...         "content_embed": lambda x: np.random.rand(256).tolist()
+    ...     },
+    ...     embed_dims={"title_embed": 128, "content_embed": 256},
+    ...     dir="./chroma_data"
+    ... )
+    >>> store.update_nodes([node1, node2])
+    >>> results = store.query(query_text="文档内容", group_name="articles", top_k=2)
+    >>> for node in results:
+    ...     print(f"找到文档: {node._content[:20]}...")
+    >>> store.remove_nodes(doc_ids=["doc1"])
+
+    """
     def __init__(self, group_embed_keys: Dict[str, Set[str]], embed: Dict[str, Callable],
                  embed_dims: Dict[str, int], dir: str, **kwargs) -> None:
         self._db_client = chromadb.PersistentClient(path=dir)
@@ -34,12 +66,24 @@ class ChromadbStore(StoreBase):
 
     @override
     def update_nodes(self, nodes: List[DocNode]) -> None:
+        """
+更新一组 DocNode 节点。
+Args:
+    nodes(DocNode): 需要更新的 DocNode 列表。
+"""
         self._map_store.update_nodes(nodes)
         self._save_nodes(nodes)
 
     @override
     def remove_nodes(self, doc_ids: List[str], group_name: Optional[str] = None,
                      uids: Optional[List[str]] = None) -> None:
+        """
+删除指定条件的节点。
+Args:
+    doc_ids(str): 按文档 ID 删除。
+    group_name(str): 限定删除的组名。
+    uids(str): 按节点唯一 ID 删除。
+"""
         nodes = self._map_store.get_nodes(group_name=group_name, doc_ids=doc_ids, uids=uids)
         group2uids = defaultdict(list)
         for node in nodes:
@@ -50,6 +94,12 @@ class ChromadbStore(StoreBase):
 
     @override
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
+        """
+更新文档的元数据。。
+Args:
+    doc_id(str):需要更新的文档 ID。
+    metadata(dict):新的元数据（键值对）。
+"""
         self._map_store.update_doc_meta(doc_id=doc_id, metadata=metadata)
         for group in self.activated_groups():
             nodes = self.get_nodes(group_name=group, doc_ids=[doc_id])
@@ -58,40 +108,90 @@ class ChromadbStore(StoreBase):
     @override
     def get_nodes(self, group_name: Optional[str] = None, uids: Optional[List[str]] = None,
                   doc_ids: Optional[Set] = None, **kwargs) -> List[DocNode]:
+        """
+根据条件查询节点。
+Args:
+    group_name(str]):节点所属的组名。
+    uids(List[str]):节点唯一 ID 列表。
+    doc_ids	(Set[str])：文档 ID 集合。
+    **kwargs:其他扩展参数。
+"""
         return self._map_store.get_nodes(group_name, uids, doc_ids, **kwargs)
 
     @override
     def activate_group(self, group_names: Union[str, List[str]]) -> bool:
+        """
+激活指定的组。
+Args:
+    group_names([str, List[str]])：按组名激活。
+
+"""
         return self._map_store.activate_group(group_names)
 
     @override
     def activated_groups(self):
+        """
+激活组，返回当前激活的组名列表。
+
+"""
         return self._map_store.activated_groups()
 
     @override
     def is_group_active(self, name: str) -> bool:
+        """
+检查指定组是否激活。
+Args:
+    name(str)：组名。
+"""
         return self._map_store.is_group_active(name)
 
     @override
     def all_groups(self) -> List[str]:
+        """
+返回所有组名列表。
+
+"""
         return self._map_store.all_groups()
 
     @override
     def query(self, *args, **kwargs) -> List[DocNode]:
+        """
+通过默认索引执行查询。
+Args:
+    args：查询参数。
+    kwargs：其他扩展参数。
+"""
         return self.get_index('default').query(*args, **kwargs)
 
     @override
     def register_index(self, type: str, index: IndexBase) -> None:
+        """
+注册自定义索引。
+Args:
+    type(str):索引类型名称。
+    index(IndexBase):实现 IndexBase 的对象。
+"""
         self._name2index[type] = index
 
     @override
     def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
+        """
+获取指定类型的索引。
+Args:
+    type(str):索引类型
+"""
         if type is None:
             type = 'default'
         return self._name2index.get(type)
 
     @override
     def clear_cache(self, group_names: Optional[List[str]] = None):
+        """
+清除指定组或所有组的 ChromaDB 集合和内存缓存。
+Args:
+    group_names(List[str])：组名列表，为 None 时清除所有组。
+
+"""
         if group_names is None:
             for group_name in self.activated_groups():
                 self._db_client.delete_collection(name=group_name)

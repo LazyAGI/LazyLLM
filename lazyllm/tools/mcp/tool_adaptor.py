@@ -65,6 +65,12 @@ def _handle_tool_result(result, tool_name: str) -> str:
 
 
 def generate_lazyllm_tool(client, mcp_tool) -> Callable:
+    """将 MCP 服务器提供的工具转换为 LazyLLM 代理使用的函数。
+
+Args:
+    client (mcp.ClientSession): 连接到MCP服务器的MCP客户端。
+    mcp_tool (mcp.types.Tool): 由MCP服务器提供的工具。
+"""
     tool_name = mcp_tool.name
     tool_desc = mcp_tool.description
     input_schema = mcp_tool.inputSchema

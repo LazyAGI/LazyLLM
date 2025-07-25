@@ -10,6 +10,70 @@ from ..utils.downloader import ModelManager
 
 
 class FlagembeddingFinetune(LazyLLMFinetuneBase):
+    """该类是 ``LazyLLMFinetuneBase`` 的子类，基于 [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding) 框架提供的训练能力，用于训练嵌入和重排模型。
+
+Args:
+    base_model (str): 用于训练的基础模型。必须是基础模型的路径。
+    target_path (str): 训练后模型权重保存的路径。
+    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1, sync=True)``。
+    kw: 用于更新默认训练参数的关键字参数。
+
+该类嵌入模型的关键字参数及其默认值如下：
+
+Keyword Args:
+    train_group_size (int): 默认为：``8``。训练组的大小。用于控制每个训练集中的负样本数量。
+    query_max_len (int): 默认为：``512``。经过分词后，段落的最大总输入序列长度。超过此长度的序列将被截断，较短的序列将被填充。
+    passage_max_len (int): 默认为：``512``。经过分词后，段落的最大总输入序列长度。超过此长度的序列将被截断，较短的序列将被填充。
+    pad_to_multiple_of (int): 默认为：``8``。如果设置，将序列填充为提供值的倍数。
+    query_instruction_for_retrieval (str): 默认为：``Represent this sentence for searching relevant passages: ``。查询query的指令。
+    query_instruction_format (str): 默认为：``{}{}``。查询指令格式。
+    learning_rate (float): 默认为：``1e-5``。学习率。
+    num_train_epochs (int): 默认为：``1``。要执行的总训练周期数。
+    per_device_train_batch_size (int): 默认为：``2``。训练批量大小。
+    gradient_accumulation_steps (int): 默认为：``1``。在执行反向/更新传递之前要累积的更新步骤数。
+    dataloader_drop_last (bool): 默认为：``True``。如果数据集大小不能被批量大小整除，则丢弃最后一个不完整的批量，即 DataLoader 只返回完整的批量。
+    warmup_ratio (float): 默认为：``0.1``。线性调度器的预热比率。
+    weight_decay (float): 默认为：``0.01``。AdamW 中的权重衰减。
+    deepspeed (str): 默认为：````。DeepSpeed 配置文件的路径，默认使用 LazyLLM 代码仓库中的预置文件：``ds_stage0.json``。
+    logging_steps (int): 默认为：``1``。更新日志的频率。
+    save_steps (int): 默认为：``1000``。保存频率。
+    temperature (float): 默认为：``0.02``。用于相似度评分的温度。
+    sentence_pooling_method (str): 默认为：``cls``。池化方法。可用选项：'cls', 'mean', 'last_token'。
+    normalize_embeddings (bool): 默认为：``True``。是否归一化嵌入。
+    kd_loss_type (str): 默认为：``kl_div``。知识蒸馏的损失类型。可用选项：'kl_div', 'm3_kd_loss'。
+    overwrite_output_dir (bool): 默认为：``True``。用于允许程序覆盖现有的输出目录。
+    fp16 (bool): 默认为：``True``。是否使用 fp16（混合）精度而不是 32 位。
+    gradient_checkpointing (bool): 默认为：``True``。是否启用梯度检查点。
+    negatives_cross_device (bool): 默认为：``True``。是否在设备间共享负样本。
+
+该类重排模型的关键字参数及其默认值如下：
+
+Keyword Args:
+    train_group_size (int): 默认为：``8``。训练组的大小。用于控制每个训练集中的负样本数量。
+    query_max_len (int): 默认为：``256``。经过分词后，段落的最大总输入序列长度。超过此长度的序列将被截断，较短的序列将被填充。
+    passage_max_len (int): 默认为：``256``。经过分词后，段落的最大总输入序列长度。超过此长度的序列将被截断，较短的序列将被填充。
+    pad_to_multiple_of (int): 默认为：``8``。如果设置，将序列填充为提供值的倍数。
+    learning_rate (float): 默认为：``6e-5``。学习率。
+    num_train_epochs (int): 默认为：``1``。要执行的总训练周期数。
+    per_device_train_batch_size (int): 默认为：``2``。训练批量大小。
+    gradient_accumulation_steps (int): 默认为：``1``。在执行反向/更新传递之前要累积的更新步骤数。
+    dataloader_drop_last (bool): 默认为：``True``。如果数据集大小不能被批量大小整除，则丢弃最后一个不完整的批量，即 DataLoader 只返回完整的批量。
+    warmup_ratio (float): 默认为：``0.1``。线性调度器的预热比率。
+    weight_decay (float): 默认为：``0.01``。AdamW 中的权重衰减。
+    deepspeed (str): 默认为：````。DeepSpeed 配置文件的路径，默认使用 LazyLLM 代码仓库中的预置文件：``ds_stage0.json``。
+    logging_steps (int): 默认为：``1``。更新日志的频率。
+    save_steps (int): 默认为：``1000``。保存频率。
+    overwrite_output_dir (bool): 默认为：``True``。用于允许程序覆盖现有的输出目录。
+    fp16 (bool): 默认为：``True``。是否使用 fp16（混合）精度而不是 32 位。
+    gradient_checkpointing (bool): 默认为：``True``。是否启用梯度检查点。
+
+
+
+Examples:
+    >>> from lazyllm import finetune
+    >>> finetune.FlagembeddingFinetune('bge-m3', 'path/to/target')
+    <lazyllm.llm.finetune type=FlagembeddingFinetune>
+    """
     defatult_embed_kw = ArgsDict({
         'train_group_size': 8,
         'query_max_len': 512,

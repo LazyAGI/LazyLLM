@@ -2,27 +2,63 @@
     members:
     exclude-members:
 
+::: lazyllm.tools.rag.store.ChromadbStore
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.store.MilvusStore
+    members:
+    exclude-members:
+
 ::: lazyllm.tools.rag.readers.ReaderBase
     members:
 	exclude-members:
 
-::: lazyllm.tools.Reranker
+::: lazyllm.tools.rag.rerank.Reranker
+    members: register_reranker
+    exclude-members: forward
+
+::: lazyllm.tools.rag.retriever.Retriever
     members:
     exclude-members: forward
 
-::: lazyllm.tools.Retriever
+::: lazyllm.tools.rag.retriever.TempDocRetriever
     members:
-    exclude-members: forward
+    exclude-members: 
 
-::: lazyllm.tools.rag.DocManager
+::: lazyllm.tools.rag.doc_manager.DocManager
     members:
 	exclude-members:
 
-::: lazyllm.tools.SentenceSplitter
+::: lazyllm.tools.rag.transform.SentenceSplitter
     members:
     exclude-members:
 
-::: lazyllm.tools.LLMParser
+::: lazyllm.tools.rag.transform.LLMParser
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.NodeTransform
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.TransformArgs
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.similarity.register_similarity
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.doc_node.DocNode
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.dataReader.SimpleDirectoryReader
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.dataReader.FileReader
     members:
     exclude-members:
 

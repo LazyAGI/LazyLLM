@@ -10,9 +10,6 @@ class HttpExecutorResponse:
 
     @property
     def is_file(self) -> bool:
-        """
-        check if response is file
-        """
         content_type = self.get_content_type()
         file_content_types = ['image', 'audio', 'video']
 
@@ -22,9 +19,6 @@ class HttpExecutorResponse:
         return self.headers.get('content-type', '')
 
     def extract_file(self) -> tuple[str, bytes]:
-        """
-        extract file from response if content type is file related
-        """
         if self.is_file:
             return self.get_content_type(), self.body
 

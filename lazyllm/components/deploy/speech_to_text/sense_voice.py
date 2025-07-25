@@ -72,6 +72,38 @@ class SenseVoice(object):
         return SenseVoice.rebuild, (self.base_path, init)
 
 class SenseVoiceDeploy(LazyLLMDeployBase):
+    """SenseVoice 模型部署类。该类用于将SenseVoice模型部署到指定服务器上，以便可以通过网络进行调用。
+
+`__init__(self, launcher=None)`
+构造函数，初始化部署类。
+
+Args:
+    launcher(lazyllm.launcher): 用于启动远程服务的启动器实例。
+
+`__call__(self, finetuned_model=None, base_model=None)`
+部署模型，并返回远程服务地址。
+
+Args: 
+    finetuned_model (str): 如果提供，则使用该模型进行部署；如果未提供或路径无效，则使用 `base_model`。
+    base_model (str): 默认模型，如果 `finetuned_model` 无效，则使用该模型进行部署。
+    返回值 (str): 远程服务的URL地址。
+Notes:
+    - 推理的输入：字符串。音频路径或者链接。
+    - 推理的返回值：字符串。识别出的内容。
+    - 支持的模型为：[SenseVoiceSmall](https://huggingface.co/FunAudioLLM/SenseVoiceSmall)
+
+
+Examples:
+    >>> import os
+    >>> import lazyllm
+    >>> from lazyllm import launchers, UrlModule
+    >>> from lazyllm.components import SenseVoiceDeploy
+    >>> deployer = SenseVoiceDeploy(launchers.remote())
+    >>> url = deployer(base_model='SenseVoiceSmall')
+    >>> model = UrlModule(url=url)
+    >>> model('path/to/audio') # support format: .mp3, .wav
+    ... xxxxxxxxxxxxxxxx
+    """
     keys_name_handle = {
         'inputs': 'inputs',
         'audio': 'audio',

@@ -160,15 +160,29 @@ class DocListManager(ABC):
 
     # Actually it shoule be "set_docs_status_deleting"
     def delete_files(self, file_ids: List[str]) -> List[DocPartRow]:
+        """将与文件关联的知识库条目设为删除中，并由各知识库进行异步删除解析结果及关联记录。
+
+Args:
+    file_ids (list of str): 要删除的文件ID列表
+"""
         document_list = self.update_file_status(file_ids, DocListManager.Status.deleting)
         self.update_kb_group(cond_file_ids=file_ids, new_status=DocListManager.Status.deleting)
         return document_list
 
     @abstractmethod
-    def table_inited(self): pass
+    def table_inited(self):
+        """检查数据库表是否已初始化。
+
+**Returns:**
+- bool: 如果表已初始化，则返回True；否则返回False。
+"""
+        pass
 
     @abstractmethod
-    def _init_tables(self): pass
+    def _init_tables(self):
+        """初始化数据库表。此方法应在未初始化表时调用，用于创建必要的表结构。
+"""
+        pass
 
     @abstractmethod
     def validate_paths(self, paths: List[str]) -> Tuple[bool, str, List[bool]]: pass
@@ -179,7 +193,19 @@ class DocListManager(ABC):
     @abstractmethod
     def list_files(self, limit: Optional[int] = None, details: bool = False,
                    status: Union[str, List[str]] = Status.all,
-                   exclude_status: Optional[Union[str, List[str]]] = None): pass
+                   exclude_status: Optional[Union[str, List[str]]] = None):
+        """列出符合条件的文件。
+
+Args:
+    limit (int, optional): 要返回的文件数限制。
+    details (bool): 如果为True，则返回文件的详细信息。
+    status (str or list of str, optional): 要筛选的文件状态。
+    exclude_status (str or list of str, optional): 要排除的文件状态。
+
+**Returns:**
+- list: 文件列表。
+"""
+        pass
 
     @abstractmethod
     def get_docs(self, doc_ids: List[str]) -> List[KBDocument]: pass
@@ -191,10 +217,22 @@ class DocListManager(ABC):
     def fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]: pass
 
     @abstractmethod
-    def list_all_kb_group(self): pass
+    def list_all_kb_group(self):
+        """列出所有知识库分组的名称。
+
+**Returns:**
+- list: 知识库分组名称列表。
+"""
+        pass
 
     @abstractmethod
-    def add_kb_group(self, name): pass
+    def add_kb_group(self, name):
+        """添加一个新的知识库分组。
+
+Args:
+    name (str): 要添加的分组名称。
+"""
+        pass
 
     @abstractmethod
     def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
@@ -202,7 +240,22 @@ class DocListManager(ABC):
                             exclude_status: Optional[Union[str, List[str]]] = None,
                             upload_status: Union[str, List[str]] = Status.all,
                             exclude_upload_status: Optional[Union[str, List[str]]] = None,
-                            need_reparse: Optional[bool] = False): pass
+                            need_reparse: Optional[bool] = False):
+        """列出指定知识库分组中的文件。
+
+Args:
+    group (str, optional): 分组名称。默认为None，表示所有分组。
+    limit (int, optional): 要返回的文件数限制。
+    details (bool): 如果为True，则返回文件的详细信息。
+    status (str or list of str, optional): 要筛选的文件状态。
+    exclude_status (str or list of str, optional): 要排除的文件状态。
+    upload_status (str, optional): 要筛选的上传状态。
+    exclude_upload_status (str or list of str, optional): 要排除的上传状态。
+
+**Returns:**
+- list: 文件列表。
+"""
+        pass
 
     def add_files(
         self,
@@ -211,6 +264,16 @@ class DocListManager(ABC):
         status: Optional[str] = Status.waiting,
         batch_size: int = 64,
     ) -> List[DocPartRow]:
+        """将文件添加到数据库中。
+
+Args:
+    files (list of str): 要添加的文件路径列表。
+    metadatas (list, optional): 与文件相关的元数据。
+    status (str, optional): 文件状态。
+
+**Returns:**
+- list: 文件的ID列表。
+"""
         documents = self._add_doc_records(files, metadatas, status, batch_size)
         if documents:
             self.add_files_to_kb_group([doc.doc_id for doc in documents], group=DocListManager.DEFAULT_GROUP_NAME)
@@ -236,28 +299,82 @@ class DocListManager(ABC):
     def get_existing_paths_by_pattern(self, file_path: str) -> List[str]: pass
 
     @abstractmethod
-    def update_file_message(self, fileid: str, **kw): pass
+    def update_file_message(self, fileid: str, **kw):
+        """更新指定文件的消息。
+
+Args:
+    fileid (str): 文件ID。
+    **kw: 需要更新的其他键值对。
+"""
+        pass
 
     @abstractmethod
     def update_file_status(self, file_ids: List[str], status: str,
-                           cond_status_list: Union[None, List[str]] = None) -> List[DocPartRow]: pass
+                           cond_status_list: Union[None, List[str]] = None) -> List[DocPartRow]:
+        """更新指定文件的状态。
+
+Args:
+    file_ids (list of str): 要更新状态的文件ID列表。
+    status (str): 新的文件状态。
+"""
+        pass
 
     @abstractmethod
-    def add_files_to_kb_group(self, file_ids: List[str], group: str): pass
+    def add_files_to_kb_group(self, file_ids: List[str], group: str):
+        """将文件添加到指定的知识库分组中。
+
+Args:
+    file_ids (list of str): 要添加的文件ID列表。
+    group (str): 要添加的分组名称。
+"""
+        pass
 
     @abstractmethod
-    def delete_files_from_kb_group(self, file_ids: List[str], group: str): pass
+    def delete_files_from_kb_group(self, file_ids: List[str], group: str):
+        """从指定的知识库分组中删除文件。
+
+Args:
+    file_ids (list of str): 要删除的文件ID列表。
+    group (str): 分组名称。
+"""
+        pass
 
     @abstractmethod
-    def get_file_status(self, fileid: str): pass
+    def get_file_status(self, fileid: str):
+        """获取指定文件的状态。
+
+Args:
+    fileid (str): 文件ID。
+
+**Returns:**
+- str: 文件的当前状态。
+"""
+        pass
 
     @abstractmethod
     def update_kb_group(self, cond_file_ids: List[str], cond_group: Optional[str] = None,
                         cond_status_list: Optional[List[str]] = None, new_status: Optional[str] = None,
-                        new_need_reparse: Optional[bool] = None) -> List[GroupDocPartRow]: pass
+                        new_need_reparse: Optional[bool] = None) -> List[GroupDocPartRow]:
+        """更新指定知识库分组中的内容。
+
+Args:
+    cond_file_ids (list of str, optional): 过滤使用的文件ID列表，默认为None。
+    cond_group (str, optional): 过滤使用的知识库分组名称，默认为None。
+    cond_status_list (list of str, optional): 过滤使用的状态列表，默认为None。
+    new_status (str, optional): 新状态, 默认为None。
+    new_need_reparse (bool, optinoal): 新的是否需重解析标志。
+
+**Returns:**
+- list: 得到更新的列表list of (doc_id, group_name)
+"""
+        pass
 
     @abstractmethod
-    def release(self): pass
+    def release(self):
+        """释放当前管理器的资源。
+
+"""
+        pass
 
     @property
     def enable_path_monitoring(self):

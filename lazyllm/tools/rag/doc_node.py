@@ -14,6 +14,7 @@ _pickle_blacklist = {'_store', '_node_groups'}
 
 
 class MetadataMode(str, Enum):
+    """An enumeration."""
     ALL = auto()
     EMBED = auto()
     LLM = auto()
@@ -22,6 +23,21 @@ class MetadataMode(str, Enum):
 
 @reset_on_pickle(('_lock', threading.Lock))
 class DocNode:
+    """
+在指定的文档上执行设定的任务。
+
+Args:
+    uid(str): 唯一标识符。
+    content(Union[str, List[Any]]):节点内容
+    group(str):文档组名
+    embedding(Dict[str, List[float]]):嵌入向量字典
+    parent(Union[str, "DocNode"]):父节点引用
+    store:存储表示
+    node_groups(Dict[str, Dict]):节点存储组
+    metadata(Dict[str, Any]):节点级元数据
+    global_metadata(Dict[str, Any]):文档级元数据
+    text(str):节点内容与content互斥
+"""
     def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = None,
                  group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
                  parent: Optional[Union[str, "DocNode"]] = None, store=None,
@@ -202,18 +218,36 @@ class DocNode:
         return st
 
     def has_missing_embedding(self, embed_keys: Union[str, List[str]]) -> List[str]:
+        """
+检查缺失的嵌入向量
+
+Args:
+    embed_keys(Union[str, List[str]]): 目标键列表
+"""
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
         assert len(embed_keys) > 0, "The ebmed_keys to be checked must be passed in."
         if self.embedding is None: return embed_keys
         return [k for k in embed_keys if k not in self.embedding]
 
     def do_embedding(self, embed: Dict[str, Callable]) -> None:
+        """
+执行嵌入计算
+
+Args:
+    embed(Dict[str, Callable]): 目标嵌入对象
+"""
         generate_embed = {k: e(self.get_text(MetadataMode.EMBED)) for k, e in embed.items()}
         with self._lock:
             self.embedding = self.embedding or {}
             self.embedding = {**self.embedding, **generate_embed}
 
     def check_embedding_state(self, embed_key: str) -> None:
+        """
+阻塞检查嵌入状态,确保异步嵌入计算完成
+
+Args:
+    embed_key(str): 目标键列表
+"""
         while True:
             with self._lock:
                 if not self.has_missing_embedding(embed_key):
@@ -225,7 +259,15 @@ class DocNode:
         return self.get_text(MetadataMode.LLM)
 
     def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
-        """Metadata info string."""
+        """
+获取格式化元数据字符串
+
+Args:
+    mode: MetadataMode.NONE返回空字符串；
+          MetadataMode.LLM过滤排除LLM不需要的元数据；
+          MetadataMode.EMBED过滤排除嵌入模型不需要的元数据；
+          MetadataMode.ALL返回全部元数据。
+"""
         if mode == MetadataMode.NONE:
             return ""
 
@@ -242,20 +284,42 @@ class DocNode:
         return "\n".join([f"{key}: {self.metadata[key]}" for key in metadata_keys])
 
     def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
+        """
+组合元数据和内容
+
+Args:
+    metadata_mode: 与get_metadata_str中参数一致
+"""
         metadata_str = self.get_metadata_str(metadata_mode).strip()
         if not metadata_str:
             return self.text if self.text else ""
         return f"{metadata_str}\n\n{self.text}".strip()
 
     def to_dict(self) -> Dict:
+        """
+转换为字典格式
+
+"""
         return dict(content=self._content, embedding=self.embedding, metadata=self.metadata)
 
     def with_score(self, score):
+        """
+浅拷贝原节点并添加语义相关分数。
+
+Args:
+    score: 相关性得分
+"""
         node = copy.copy(self)
         node.relevance_score = score
         return node
 
     def with_sim_score(self, score):
+        """
+浅拷贝原节点并添加相似度分数。
+
+Args:
+    score: 相似度得分
+"""
         node = copy.copy(self)
         node.similarity_score = score
         return node

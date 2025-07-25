@@ -4,6 +4,17 @@ from lazyllm.common import package
 
 
 class TencentSearch(ModuleBase):
+    """
+这是一个搜索增强工具。
+
+
+Examples:
+
+    from lazyllm.tools.tools import TencentSearch
+    secret_id = '<your_secret_id>'
+    secret_key = '<your_secret_key>'
+    searcher = TencentSearch(secret_id, secret_key)
+    """
     def __init__(self, secret_id, secret_key):
         super().__init__()
         from tencentcloud.common.common_client import CommonClient
@@ -21,6 +32,21 @@ class TencentSearch(ModuleBase):
             "tms", '2020-12-29', self.cred, "", profile=clientProfile)
 
     def forward(self, query: str):
+        """
+搜索用户输入的查询。
+
+Args:
+    query (str): 用户待查询的内容。
+
+
+Examples:
+
+    from lazyllm.tools.tools import TencentSearch
+    secret_id = '<your_secret_id>'
+    secret_key = '<your_secret_key>'
+    searcher = TencentSearch(secret_id, secret_key)
+    res = searcher('calculus')
+    """
         try:
             res_dict = self.common_client.call_json("SearchPro", {'Query': query, 'Mode': 2}, headers=self.headers)
             res = package(res_dict["Response"]["Pages"])

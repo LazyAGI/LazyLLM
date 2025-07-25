@@ -17,6 +17,21 @@ class __EmbedModuleMeta(type):
 
 
 class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
+    """用来管理创建目前市面上的在线Embedding服务模块，目前支持openai、sensenova、glm、qwen、doubao
+
+Args:
+    source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``qwen`` / ``doubao``
+    embed_url (str): 指定要访问的平台的基础链接，默认是官方链接
+    embed_mode_name (str): 指定要访问的模型 (注意使用豆包时需用 Model ID 或 Endpoint ID，获取方式详见 [获取推理接入点](https://www.volcengine.com/docs/82379/1099522)。使用模型前，要先在豆包平台开通对应服务。)，默认为 ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` / ``doubao-embedding-text-240715(doubao)`` 
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.OnlineEmbeddingModule(source="sensenova")
+    >>> emb = m("hello world")
+    >>> print(f"emb: {emb}")
+    emb: [0.0010528564, 0.0063285828, 0.0049476624, -0.012008667, ..., -0.009124756, 0.0032043457, -0.051696777]
+    """
     EMBED_MODELS = {'openai': OpenAIEmbedding,
                     'sensenova': SenseNovaEmbedding,
                     'glm': GLMEmbedding,

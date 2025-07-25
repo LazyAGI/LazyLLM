@@ -19,6 +19,38 @@ from typing import Optional, Union, Dict
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
 # example: ActionModule.submodules:: isinstance(x, ModuleBase) will add submodule.
 class ModuleBase(metaclass=_MetaBind):
+    """Module是LazyLLM中的顶层组件，具备训练、部署、推理和评测四项关键能力，每个模块可以选择实现其中的部分或者全部的能力，每项能力都可以由一到多个Component组成。
+ModuleBase本身不可以直接实例化，继承并实现 ``forward`` 函数的子类可以作为一个仿函数来使用。
+类似pytorch的Moudule，当一个Module A持有了另一个Module B的实例作为成员变量时，会自动加入到submodule中。
+
+如果你需要以下的能力，请让你自定义的类继承自ModuleBase:
+
+1. 组合训练、部署、推理和评测的部分或全部能力，例如Embedding模型需要训练和推理
+
+2. 持有的成员变量具备训练、部署和评测的部分或全部能力，并且想通过Module的根节点的 ``start``,  ``update``, ``eval`` 等方法对其持有的成员进行训练、部署和评测时。
+
+3. 将用户设置的参数从最外层直接传到你自定义的模块中（参考Tools.webpages.WebModule）
+
+4. 希望能被参数网格搜索模块使用（参考TrialModule）
+
+
+Examples:
+    >>> import lazyllm
+    >>> class Module(lazyllm.module.ModuleBase):
+    ...     pass
+    ... 
+    >>> class Module2(lazyllm.module.ModuleBase):
+    ...     def __init__(self):
+    ...         super(__class__, self).__init__()
+    ...         self.m = Module()
+    ... 
+    >>> m = Module2()
+    >>> m.submodules
+    [<Module type=Module>]
+    >>> m.m3 = Module()
+    >>> m.submodules
+    [<Module type=Module>, <Module type=Module>]
+    """
     builder_keys = []  # keys in builder support Option by default
 
     def __new__(cls, *args, **kw):
@@ -128,7 +160,20 @@ class ModuleBase(metaclass=_MetaBind):
         globals["usage"].pop(self._module_id, None)
 
     # interfaces
-    def forward(self, *args, **kw): raise NotImplementedError
+    def forward(self, *args, **kw):
+        """定义了每次执行的计算步骤，ModuleBase的所有的子类都需要重写这个函数。
+
+
+Examples:
+    >>> import lazyllm
+    >>> class MyModule(lazyllm.module.ModuleBase):
+    ...     def forward(self, input):
+    ...         return input + 1
+    ... 
+    >>> MyModule()(1)
+    2   
+    """
+        raise NotImplementedError
 
     def register_hook(self, hook_type: LazyLLMHook):
         self._hooks.add(hook_type)
@@ -140,8 +185,34 @@ class ModuleBase(metaclass=_MetaBind):
     def clear_hooks(self):
         self._hooks = set()
 
-    def _get_train_tasks(self): return None
-    def _get_deploy_tasks(self): return None
+    def _get_train_tasks(self):
+        """定义训练任务，该函数返回训练的pipeline，重写了此函数的子类可以在update阶段被训练/微调。
+
+
+Examples:
+    >>> import lazyllm
+    >>> class MyModule(lazyllm.module.ModuleBase):
+    ...     def _get_train_tasks(self):
+    ...         return lazyllm.pipeline(lambda : 1, lambda x: print(x))
+    ... 
+    >>> MyModule().update()
+    1
+    """
+        return None
+    def _get_deploy_tasks(self):
+        """定义部署任务，该函数返回训练的pipeline，重写了此函数的子类可以在update/start阶段被部署。
+
+
+Examples:
+    >>> import lazyllm
+    >>> class MyModule(lazyllm.module.ModuleBase):
+    ...     def _get_deploy_tasks(self):
+    ...         return lazyllm.pipeline(lambda : 1, lambda x: print(x))
+    ... 
+    >>> MyModule().start()
+    1
+    """
+        return None
     def _get_post_process_tasks(self): return None
 
     def _set_mid(self, mid=None):
@@ -161,6 +232,18 @@ class ModuleBase(metaclass=_MetaBind):
         return self._submodules
 
     def evalset(self, evalset, load_f=None, collect_f=lambda x: x):
+        """为Module设置评测集，设置过评测集的Module在 ``update`` 或 ``eval`` 的时候会进行评测，评测结果会存在eval_result变量中。
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.module.TrainableModule().deploy_method(lazyllm.deploy.dummy).finetune_method(lazyllm.finetune.dummy).trainset("").mode("finetune").prompt(None)
+    >>> m.evalset([1, 2, 3])
+    >>> m.update()
+    INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+    >>> print(m.eval_result)
+    ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+    """
         if isinstance(evalset, str) and os.path.exists(evalset):
             with open(evalset) as f:
                 assert callable(load_f)
@@ -218,11 +301,69 @@ class ModuleBase(metaclass=_MetaBind):
         Parallel.sequential(*post_process_tasks)()
         return self
 
-    def update(self, *, recursive=True): return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
+    def update(self, *, recursive=True):
+        """更新模块（及所有的子模块）。当模块重写了 ``_get_train_tasks`` 方法后，模块会被更新。更新完后会自动进入部署和推理的流程。
+
+Args:
+    recursive (bool): 是否递归更新所有的子模块，默认为True
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.module.TrainableModule().finetune_method(lazyllm.finetune.dummy).trainset("").deploy_method(lazyllm.deploy.dummy).mode('finetune').prompt(None)
+    >>> m.evalset([1, 2, 3])
+    >>> m.update()
+    INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+    >>> print(m.eval_result)
+    ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+    """
+        return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
     def update_server(self, *, recursive=True): return self._update(mode=['server'], recursive=recursive)
-    def eval(self, *, recursive=True): return self._update(mode=['eval'], recursive=recursive)
-    def start(self): return self._update(mode=['server'], recursive=True)
-    def restart(self): return self.start()
+    def eval(self, *, recursive=True):
+        """对模块（及所有的子模块）进行评测。当模块通过 ``evalset`` 设置了评测集之后，本函数生效。
+
+Args:
+    recursive (bool): 是否递归评测所有的子模块，默认为True
+
+
+Examples:
+    >>> import lazyllm
+    >>> class MyModule(lazyllm.module.ModuleBase):
+    ...     def forward(self, input):
+    ...         return f'reply for input'
+    ... 
+    >>> m = MyModule()
+    >>> m.evalset([1, 2, 3])
+    >>> m.eval().eval_result
+    ['reply for input', 'reply for input', 'reply for input']
+    """
+        return self._update(mode=['eval'], recursive=recursive)
+    def start(self):
+        """部署模块及所有的子模块
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.TrainableModule().deploy_method(lazyllm.deploy.dummy).prompt(None)
+    >>> m.start()
+    <Module type=Trainable mode=None basemodel= target= stream=False return_trace=False>
+    >>> m(1)
+    "reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+    """
+        return self._update(mode=['server'], recursive=True)
+    def restart(self):
+        """重新重启模块及所有的子模块
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.TrainableModule().deploy_method(lazyllm.deploy.dummy).prompt(None)
+    >>> m.restart()
+    <Module type=Trainable mode=None basemodel= target= stream=False return_trace=False>
+    >>> m(1)
+    "reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+    """
+        return self.start()
     def wait(self): pass
 
     def stop(self):
@@ -250,6 +391,11 @@ class ModuleBase(metaclass=_MetaBind):
 
 
 class ActionModule(ModuleBase):
+    """用于将函数、模块、flow、Module等可调用的对象包装一个Module。被包装的Module（包括flow中的Module）都会变成该Module的submodule。
+
+Args:
+    action (Callable|list[Callable]): 被包装的对象，是一个或一组可执行的对象。
+"""
     def __init__(self, *action, return_trace=False):
         super().__init__(return_trace=return_trace)
         if len(action) == 1 and isinstance(action, FlowBase): action = action[0]

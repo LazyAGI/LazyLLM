@@ -31,6 +31,59 @@ S_PROMPT_SUFFIX = ("\nNow begin to solve the task or problem. Respond with "
                    "the answer directly with no extra words.\n\n")
 
 class ReWOOAgent(ModuleBase):
+    """ReWOOAgent包含三个部分：Planner、Worker和Solver。其中，Planner使用可预见推理能力为复杂任务创建解决方案蓝图；Worker通过工具调用来与环境交互，并将实际证据或观察结果填充到指令中；Solver处理所有计划和证据以制定原始任务或问题的解决方案。
+
+Args:
+    llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。和plan_llm、solve_llm互斥，要么设置llm(planner和solver公用一个LLM)，要么设置plan_llm和solve_llm，或者只指定llm(用来设置planner)和solve_llm，其它情况均认为是无效的。
+    tools (List[str]): LLM使用的工具名称列表。
+    plan_llm (ModuleBase): planner要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    solve_llm (ModuleBase): solver要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    max_retries (int): 工具调用迭代的最大次数。默认值为5。
+
+
+Examples:
+    >>> import lazyllm
+    >>> import wikipedia
+    >>> from lazyllm.tools import fc_register, ReWOOAgent
+    >>> @fc_register("tool")
+    >>> def WikipediaWorker(input: str):
+    ...     '''
+    ...     Worker that search for similar page contents from Wikipedia. Useful when you need to get holistic knowledge about people, places, companies, historical events, or other subjects. The response are long and might contain some irrelevant information. Input should be a search query.
+    ...
+    ...     Args:
+    ...         input (str): search query.
+    ...     '''
+    ...     try:
+    ...         evidence = wikipedia.page(input).content
+    ...         evidence = evidence.split("\\n\\n")[0]
+    ...     except wikipedia.PageError:
+    ...         evidence = f"Could not find [{input}]. Similar: {wikipedia.search(input)}"
+    ...     except wikipedia.DisambiguationError:
+    ...         evidence = f"Could not find [{input}]. Similar: {wikipedia.search(input)}"
+    ...     return evidence
+    ...
+    >>> @fc_register("tool")
+    >>> def LLMWorker(input: str):
+    ...     '''
+    ...     A pretrained LLM like yourself. Useful when you need to act with general world knowledge and common sense. Prioritize it when you are confident in solving the problem yourself. Input can be any instruction.
+    ...
+    ...     Args:
+    ...         input (str): instruction
+    ...     '''
+    ...     llm = lazyllm.OnlineChatModule(source="glm")
+    ...     query = f"Respond in short directly with no extra words.\\n\\n{input}"
+    ...     response = llm(query, llm_chat_history=[])
+    ...     return response
+    ...
+    >>> tools = ["WikipediaWorker", "LLMWorker"]
+    >>> llm = lazyllm.TrainableModule("GLM-4-9B-Chat").deploy_method(lazyllm.deploy.vllm).start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
+    >>> agent = ReWOOAgent(llm, tools)
+    >>> query = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
+    >>> res = agent(query)
+    >>> print(res)
+    '
+    Hennessy '
+    """
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[Union[str, Callable]] = [], *,
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  return_trace: bool = False, stream: bool = False):

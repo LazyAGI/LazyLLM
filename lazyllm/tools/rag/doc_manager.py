@@ -15,6 +15,13 @@ import uuid
 
 
 class DocManager(lazyllm.ModuleBase):
+    """
+DocManager类管理文档列表及相关操作，并通过API提供文档上传、删除、分组等功能。
+
+Args:
+    dlm (DocListManager): 文档列表管理器，用于处理具体的文档操作。
+
+"""
     def __init__(self, dlm: DocListManager) -> None:
         super().__init__()
         # disable path monitoring in case of competition adding/deleting files
@@ -27,10 +34,24 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.get("/", response_model=BaseResponse, summary="docs")
     def document(self):
+        """
+提供默认文档页面的重定向接口。
+
+**Returns:**
+
+- RedirectResponse: 重定向到 `/docs` 页面。
+"""
         return RedirectResponse(url="/docs")
 
     @app.get("/list_kb_groups")
     def list_kb_groups(self):
+        """
+列出所有文档分组的接口。
+
+**Returns:**
+
+- BaseResponse: 包含所有文档分组的数据。
+"""
         try:
             return BaseResponse(data=self._manager.list_all_kb_group())
         except Exception as e:
@@ -62,6 +83,19 @@ class DocManager(lazyllm.ModuleBase):
     @app.post("/upload_files")
     def upload_files(self, files: List[UploadFile], override: bool = False,  # noqa C901
                      metadatas: Optional[str] = None, user_path: Optional[str] = None):
+        """
+上传文件并更新其状态的接口。可以同时上传多个文件。
+
+Args:
+    files (List[UploadFile]): 上传的文件列表。
+    override (bool): 是否覆盖已存在的文件。默认为False。
+    metadatas (Optional[str]): 文件的元数据，JSON格式。
+    user_path (Optional[str]): 用户自定义的文件上传路径。
+
+**Returns:**
+
+- BaseResponse: 上传结果和文件ID。
+"""
         try:
             if user_path: user_path = user_path.lstrip('/')
             if metadatas:
@@ -110,6 +144,18 @@ class DocManager(lazyllm.ModuleBase):
     def add_files(self, files: List[str] = Body(...),
                   group_name: str = Body(None),
                   metadatas: Optional[str] = Body(None)):
+        """
+批量添加文件。
+
+Args:
+    files (List[UploadFile]): 上传的文件列表。
+    group_name (str): 目标知识库分组名称，为空时不添加到分组。
+    metadatas (Optional[str]): 文件的元数据，JSON格式。
+
+**Returns:**
+
+- BaseResponse:返回所有输入文件对应的唯一文件ID列表，包括新增和已存在的文件。若出现异常，则返回错误码和异常信息。
+"""
         try:
             if metadatas:
                 metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)
@@ -153,6 +199,18 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.get("/list_files")
     def list_files(self, limit: Optional[int] = None, details: bool = True, alive: Optional[bool] = None):
+        """
+列出已上传文件的接口。
+
+Args:
+    limit (Optional[int]): 返回的文件数量限制。默认为None。
+    details (bool): 是否返回详细信息。默认为True。
+    alive (Optional[bool]): 如果为True，只返回未删除的文件。默认为None。
+
+**Returns:**
+
+- BaseResponse: 文件列表数据。
+"""
         try:
             status = [DocListManager.Status.success, DocListManager.Status.waiting, DocListManager.Status.working,
                       DocListManager.Status.failed] if alive else DocListManager.Status.all
@@ -163,6 +221,18 @@ class DocManager(lazyllm.ModuleBase):
     @app.get("/list_files_in_group")
     def list_files_in_group(self, group_name: Optional[str] = None,
                             limit: Optional[int] = None, alive: Optional[bool] = None):
+        """
+列出指定分组中文件的接口。
+
+Args:
+    group_name (Optional[str]): 文件分组名称。
+    limit (Optional[int]): 返回的文件数量限制。默认为None。
+    alive (Optional[bool]): 是否只返回未删除的文件。
+
+**Returns:**
+
+- BaseResponse: 分组文件列表。
+"""
         try:
             status = [DocListManager.Status.success, DocListManager.Status.waiting, DocListManager.Status.working,
                       DocListManager.Status.failed] if alive else DocListManager.Status.all
@@ -176,6 +246,16 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post("/add_files_to_group_by_id")
     def add_files_to_group_by_id(self, request: FileGroupRequest):
+        """
+通过文件ID将文件添加到指定分组的接口。
+
+Args:
+    request (FileGroupRequest): 包含文件ID和分组名称的请求。
+
+**Returns:**
+
+- BaseResponse: 操作结果。
+"""
         try:
             self._manager.add_files_to_kb_group(request.file_ids, request.group_name)
             return BaseResponse()
@@ -185,6 +265,20 @@ class DocManager(lazyllm.ModuleBase):
     @app.post("/add_files_to_group")
     def add_files_to_group(self, files: List[UploadFile], group_name: str, override: bool = False,
                            metadatas: Optional[str] = None, user_path: Optional[str] = None):
+        """
+将文件上传后直接添加到指定分组的接口。
+
+Args:
+    files (List[UploadFile]): 上传的文件列表。
+    group_name (str): 要添加到的分组名称。
+    override (bool): 是否覆盖已存在的文件。默认为False。
+    metadatas (Optional[str]): 文件元数据，JSON格式。
+    user_path (Optional[str]): 用户自定义的文件上传路径。
+
+**Returns:**
+
+- BaseResponse: 操作结果和文件ID。
+"""
         try:
             response = self.upload_files(files, override=override, metadatas=metadatas, user_path=user_path)
             if response.code != 200: return response
@@ -196,6 +290,16 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post("/delete_files")
     def delete_files(self, request: FileGroupRequest):
+        """
+删除指定文件的接口。
+
+Args:
+    request (FileGroupRequest): 包含文件ID和分组名称的请求。
+
+**Returns:**
+
+- BaseResponse: 删除操作结果。
+"""
         try:
             if request.group_name:
                 return self.delete_files_from_group(request)

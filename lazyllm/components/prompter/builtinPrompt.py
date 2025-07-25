@@ -7,6 +7,26 @@ import copy
 import re
 
 class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
+    """Prompter的基类，自定义的Prompter需要继承此基类，并通过基类提供的 ``_init_prompt`` 函数来设置Prompt模板和Instruction的模板，以及截取结果所使用的字符串。可以查看 :[prompt](/Best%20Practice/prompt) 进一步了解Prompt的设计思想和使用方式。
+
+Prompt模板和Instruction模板都用 ``{}`` 表示要填充的字段，其中Prompt可包含的字段有 ``system``, ``history``, ``tools``, ``user`` 等，而instruction_template可包含的字段为 ``instruction`` 和 ``extra_keys`` 。
+``instruction`` 由应用的开发者传入， ``instruction`` 中也可以带有 ``{}`` 用于让定义可填充的字段，方便用户填入额外的信息。如果 ``instruction`` 字段为字符串，则认为是系统instruction；如果是字典，则它包含的key只能是 ``user`` 和 ``system`` 两种选择。 ``user`` 表示用户输入的instruction，在prompt中放在用户输入前面， ``system`` 表示系统instruction，在prompt中凡在system prompt后面。
+
+
+Examples:
+    >>> from lazyllm.components.prompter import PrompterBase
+    >>> class MyPrompter(PrompterBase):
+    ...     def __init__(self, instruction = None, extra_keys = None, show = False):
+    ...         super(__class__, self).__init__(show)
+    ...         instruction_template = f'{instruction}\\n{{extra_keys}}\\n'.replace('{extra_keys}', PrompterBase._get_extro_key_template(extra_keys))
+    ...         self._init_prompt("<system>{system}</system>\\n</instruction>{instruction}</instruction>{history}\\n{input}\\n, ## Response::", instruction_template, '## Response::')
+    ... 
+    >>> p = MyPrompter('ins {instruction}')
+    >>> p.generate_prompt('hello')
+    '<system>You are an AI-Agent developed by LazyLLM.</system>\\n</instruction>ins hello\\n\\n</instruction>\\n\\n, ## Response::'
+    >>> p.generate_prompt('hello world', return_dict=True)
+    {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nins hello world\\n\\n'}, {'role': 'user', 'content': ''}]}
+    """
     ISA = "<!lazyllm-spliter!>"
     ISE = "</!lazyllm-spliter!>"
 
@@ -190,6 +210,16 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                         tools: Union[List[Dict[str, Any]], None] = None,
                         label: Union[str, None] = None,
                         *, show: bool = False, return_dict: bool = False) -> Union[str, Dict]:
+        """根据用户输入，生成对应的Prompt.
+
+Args:
+    input (Option[str | Dict]):  Prompter的输入，如果是dict，会填充到instruction的槽位中；如果是str，则会作为输入。
+    history (Option[List[List | Dict]]): 历史对话，可以为 ``[[u, s], [u, s]]`` 或 openai的history格式，默认为None。
+    tools (Option[List[Dict]]: 可以使用的工具合集，大模型用作FunctionCall时使用，默认为None
+    label (Option[str]): 标签，训练或微调时使用，默认为None
+    show (bool): 标志是否打印生成的Prompt，默认为False
+    return_dict (bool): 标志是否返回dict，一般情况下使用 ``OnlineChatModule`` 时会设置为True。如果返回dict，则仅填充 ``instruction``。默认为False
+"""
         input = copy.deepcopy(input)
         if self._pre_hook:
             input, history, tools, label = self._pre_hook(input, history, tools, label)
@@ -204,6 +234,12 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         return result
 
     def get_response(self, output: str, input: Union[str, None] = None) -> str:
+        """用作对Prompt的截断，只保留有价值的输出
+
+Args:
+     output (str): 大模型的输出
+     input (Option[[str]): 大模型的输入，若指定此参数，会将输出中包含输入的部分全部截断，默认为None
+"""
         if input and output.startswith(input):
             return output[len(input):]
         return output if getattr(self, "_split", None) is None else output.split(self._split)[-1]

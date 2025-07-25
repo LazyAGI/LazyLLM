@@ -55,6 +55,7 @@ def binary_search_equal_or_greater(values: List[Any], value: Any) -> Union[int, 
 
 
 class SearchMode(Enum):
+    """An enumeration."""
     LINEAR_EXACTLY = 0
     BINARY_EXACTLY = auto()
     BINARY_FLOOR = auto()
@@ -71,6 +72,7 @@ class SearchMode(Enum):
 
 @dataclass
 class Options(Generic[T]):
+    """Options(options: List[~T], mapping: bool = False, indexed: bool = False, matches: collections.abc.Callable[[typing.List[typing.Any], typing.Any], typing.Optional[int]] = <SearchMode.LINEAR_EXACTLY: 0>)"""
     options: List[T]
     mapping: bool = False
     indexed: bool = False

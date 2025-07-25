@@ -42,6 +42,7 @@ def get_all_examples():   # Examples are not always exported, so process them in
 lazyllm.config.add('language', str, 'ENGLISH', 'LANGUAGE')
 
 def add_doc(obj_name, docstr, module, append=''):
+    """Add document for lazyllm functions"""
     obj = module
     for n in obj_name.split('.'):
         if isinstance(obj, type): obj = obj.__dict__[n]
