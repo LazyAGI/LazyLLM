@@ -198,8 +198,13 @@ class DocumentProcessor(ModuleBase):
             self._processors: Dict[str, _Processor] = dict()
             self._server = server
             self._inited = False
-            self._feedback_url = config['process_feedback_service']
-            self._path_prefix = config['process_path_prefix']
+            try:
+                self._feedback_url = config['process_feedback_service']
+                self._path_prefix = config['process_path_prefix']
+            except Exception as e:
+                LOG.warning(f"Failed to get config: {e}, use env variables instead")
+                self._feedback_url = os.getenv("PROCESS_FEEDBACK_SERVICE", None)
+                self._path_prefix = os.getenv("PROCESS_PATH_PREFIX", None)
 
         def _init_components(self, server: bool):
             if server and not self._inited:

@@ -8,3 +8,5 @@ class DataType(IntEnum):
     SPARSE_FLOAT_VECTOR = 4
     BOOLEAN = 5
     FLOAT = 6
+    INT64 = 7
+    STRING = 8

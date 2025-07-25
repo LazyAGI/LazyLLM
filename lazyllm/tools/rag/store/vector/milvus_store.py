@@ -20,7 +20,9 @@ TYPE2MILVUS = {
     DataType.ARRAY: pymilvus.DataType.ARRAY,
     DataType.FLOAT_VECTOR: pymilvus.DataType.FLOAT_VECTOR,
     DataType.INT32: pymilvus.DataType.INT32,
+    DataType.INT64: pymilvus.DataType.INT64,
     DataType.SPARSE_FLOAT_VECTOR: pymilvus.DataType.SPARSE_FLOAT_VECTOR,
+    DataType.STRING: pymilvus.DataType.STRING,
 }
 BUILTIN_KEYS = {
     'uid': {'dtype': pymilvus.DataType.VARCHAR, 'max_length': 256, 'is_primary': True}
@@ -37,6 +39,7 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
         self._index_kwargs = index_kwargs
         self._client_kwargs = client_kwargs
         self._primary_key = 'uid'
+        self._client = None
 
     @override
     @once_wrapper(reset_on_pickle=True)
@@ -45,21 +48,33 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
         self._embed_dims = embed_dims
         self._embed_datatypes = embed_datatypes
         self._global_metadata_desc = global_metadata_desc
-        self._client = pymilvus.MilvusClient(uri=self._uri, **self._client_kwargs)
         if self._uri and parse.urlparse(self._uri).scheme.lower() not in ["unix", "http", "https", "tcp", "grpc"]:
             self._type = 'local'
         else:
             self._type = 'remote'
-            try:
-                if self._db_name:
-                    existing_dbs = self._client.list_databases()
-                    if self._db_name not in existing_dbs:
-                        self._client.create_database(self._db_name)
-                    self._client.using_database(self._db_name)
-            except Exception as e:
-                LOG.error(f'milvus-standalone database error {e}')
         self._constant_fields = self._get_constant_fields()
+        self._connect()
         LOG.info("[Milvus Vector Store] init success!")
+        self._disconnect()
+
+    def _connect(self):
+        try:
+            self._client = pymilvus.MilvusClient(uri=self._uri, **self._client_kwargs)
+            if self._type == "remote" and self._db_name:
+                existing_dbs = self._client.list_databases()
+                if self._db_name not in existing_dbs:
+                    self._client.create_database(self._db_name)
+                self._client.using_database(self._db_name)
+        except Exception as e:
+            LOG.error(f'[Milvus Store - connect] error: {e}')
+
+    def _disconnect(self):
+        try:
+            if self._client:
+                self._client.close()
+                self._client = None
+        except Exception as e:
+            LOG.error(f'[Milvus Store - disconnect] error: {e}')
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
@@ -68,7 +83,7 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
             if not data: return
             data_embeddings = data[0].get("embedding", {})
             if not data_embeddings: return
-
+            self._connect()
             if not self._client.has_collection(collection_name):
                 embed_kwargs = {}
                 for embed_key, embedding in data_embeddings.items():
@@ -79,20 +94,21 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
                     if self._embed_dims.get(embed_key): embed_kwargs[embed_key]["dim"] = self._embed_dims[embed_key]
                 self._create_collection(collection_name, embed_kwargs)
 
-            self._check_connection()
             for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
                 self._client.upsert(collection_name=collection_name,
                                     data=[self._serialize_data(d) for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
+            self._disconnect()
             return True
         except Exception as e:
             LOG.error(f'[Milvus Store - upsert] error: {e}')
+            self._disconnect()
             return False
 
     @override
     def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
         """ delete data from the store """
         try:
-            self._check_connection()
+            self._connect()
             if not self._client.has_collection(collection_name):
                 return True
             self._client.load_collection(collection_name)
@@ -100,16 +116,18 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
                 self._client.drop_collection(collection_name=collection_name)
             else:
                 self._client.delete(collection_name=collection_name, **self._construct_criteria(criteria))
+            self._disconnect()
             return True
         except Exception as e:
             LOG.error(f'[Milvus Store - delete] error: {e}')
+            self._disconnect()
             return False
 
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
         """ get data from the store """
         try:
-            self._check_connection()
+            self._connect()
             if not self._client.has_collection(collection_name):
                 return []
             self._client.load_collection(collection_name)
@@ -133,18 +151,12 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
                         res += result
                 else:
                     res = self._client.query(collection_name=collection_name, output_fields=field_names, **filters)
+            self._disconnect()
             return [self._deserialize_data(r) for r in res]
         except Exception as e:
             LOG.error(f'[Milvus Store - get] error: {e}')
+            self._disconnect()
             return []
-
-    def _check_connection(self):
-        if not pymilvus.connections.has_connection(alias=self._client._using):
-            LOG.info("[Milvus Store] try to reconnect...")
-            if self._type == 'local':
-                pymilvus.connections.connect(alias=self._client._using, uri=self._uri)
-            else:
-                pymilvus.connections.connect(alias=self._client._using, db_name=self._db_name, uri=self._uri)
 
     def _get_constant_fields(self) -> List[pymilvus.FieldSchema]:
         """ get constant field schema for collection """
@@ -169,7 +181,6 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
 
     def _create_collection(self, collection_name: str, embed_kwargs: Dict[str, Dict]):  # noqa: C901
         field_list = copy.deepcopy(self._constant_fields)
-        self._check_connection()
         index_params = self._client.prepare_index_params()
         for k, kws in embed_kwargs.items():
             embed_field_name = self._gen_embed_key(k)
@@ -249,7 +260,7 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
     def search(self, collection_name: str, query_embedding: Union[dict, List[float]], topk: int,
                filters: Optional[Dict[str, Union[List, set]]] = None,
                embed_key: Optional[str] = None, **kwargs) -> List[dict]:
-        self._check_connection()
+        self._connect()
         if not embed_key or embed_key not in self._embed_datatypes:
             raise ValueError(f'[Milvus Store - search] Not supported or None `embed_key`: {embed_key}')
         res = []
@@ -264,6 +275,7 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
             if not uid:
                 continue
             res.append({'uid': uid, 'score': score})
+        self._disconnect()
         return res
 
     def _construct_filter_expr(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:

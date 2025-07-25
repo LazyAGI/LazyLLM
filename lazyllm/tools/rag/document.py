@@ -35,7 +35,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     class _Manager(ModuleBase):
         def __init__(self, dataset_path: Optional[str], embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: Union[bool, str] = False, server: Union[bool, int] = False, name: Optional[str] = None,
-                     launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
+                     launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = {"type": "map"},
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
                      doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None):
             super().__init__()
