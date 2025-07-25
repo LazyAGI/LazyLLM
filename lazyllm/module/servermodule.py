@@ -103,8 +103,7 @@ class UrlModule(ModuleBase, _UrlHelper):
             raise TypeError("format must be a FormatterBase")
         return self
 
-    def forward(self, *args, **kw):
-        raise NotImplementedError
+    def forward(self, *args, **kw):raise NotImplementedError
 
     def __call__(self, *args, **kw):
         assert self._url is not None, f'Please start {self.__class__} first'
