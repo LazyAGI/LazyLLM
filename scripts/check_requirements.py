@@ -86,3 +86,4 @@ if __name__ == "__main__":
     check_requirements(full, '../requirements.full.txt')
     print('=' * 30, 'light', '=' * 30)
     check_requirements(light, '../requirements.txt')
+    
