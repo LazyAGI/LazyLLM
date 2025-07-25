@@ -85,5 +85,4 @@ if __name__ == "__main__":
     print('=' * 30, 'full', '=' * 30)
     check_requirements(full, '../requirements.full.txt')
     print('=' * 30, 'light', '=' * 30)
-    check_requirements(light, '../requirements.txt')
-    
+    check_requirements(light, '../requirements.txt') 
