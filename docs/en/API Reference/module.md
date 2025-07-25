@@ -10,7 +10,12 @@
       - start
       - restart
       - update
-        
+
+::: lazyllm.module.AutoModel
+    options:
+      members:
+      - _new
+      
 ::: lazyllm.module.ActionModule
     options:
       members:
@@ -24,6 +29,10 @@
       - update
       - evalset
       - eval
+      - wait
+      - stop
+      - prompt
+      - forward
 
 ::: lazyllm.module.UrlModule
     options:

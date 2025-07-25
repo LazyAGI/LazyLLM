@@ -35,6 +35,10 @@
 ::: lazyllm.components.deploy.LMDeploy
     options:
       heading_level: 3
+      
+::: lazyllm.components.deploy.Mindie
+    options:
+      heading_level: 3
 
 ::: lazyllm.components.auto.AutoDeploy
     options:

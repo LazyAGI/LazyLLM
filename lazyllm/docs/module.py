@@ -318,7 +318,7 @@ Args:
     base_model (str): 基础模型的名称或路径。如果本地没有该模型，将会自动从模型源下载。
     target_path (str): 保存微调任务的路径。如果仅进行推理，可以留空。
     source (str): 模型来源，可选值为huggingface或...。如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
-    stream (bool): 是否输出流式结果。如果使用的推理引擎不支持流式输出，该参数将被忽略。
+    stream (bool): 是否输出流式结果。如果使用的推理引擎不支持流式输出，该参数将被忽略。       
     return_trace (bool): 是否在trace中记录结果。
 
 <span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
@@ -334,7 +334,9 @@ Args:
 >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).trainset('/file/to/path').deploy_method(None).mode('finetune')
 >>> m.update()
 INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
-```
+
+
+
 
 <span style="font-size: 20px;">**`TrainableModule.train_method(v, **kw):`**</span>
 
@@ -632,6 +634,84 @@ m(1)
 # >>> m.update()
 # INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 # ''')
+add_chinese_doc('TrainableModule.wait', '''\
+等待模型部署任务完成，该方法会阻塞当前线程直到部署完成。
+''')
+
+add_english_doc('TrainableModule.wait', '''\
+Wait for the model deployment task to complete. This method blocks the current thread until the deployment is finished.
+
+''')
+
+add_example('TrainableModule.wait', '''\
+>>> import lazyllm
+>>> class Mywait(lazyllm.module.llms.TrainableModule):
+...    def forward(self):
+...        self.wait()
+''')
+
+add_chinese_doc('TrainableModule.stop', '''\
+暂停模型特定任务。
+Args:
+    task_name(str): 需要暂停的任务名, 默认为None(默认暂停deploy任务)
+''')
+
+add_english_doc('TrainableModule.stop', '''\
+Pause a specific task of the model.
+
+Args:
+    task_name (str): The name of the task to pause. Defaults to None (pauses the 'deploy' task by default).
+''')
+
+add_example('TrainableModule.stop', '''\
+>>> import lazyllm
+>>> class Mystop(lazyllm.module.llms.TrainableModule):
+...    def forward(self, task):
+...        self.stop(task)
+''')
+
+add_chinese_doc('TrainableModule.prompt', '''\
+处理输入的prompt生成符合模型需求的格式。
+Args:
+    prompt(str): 输入的prompt, 默认为空。
+    history(**List): 对话历史记忆。
+''')
+
+add_english_doc('TrainableModule.prompt', '''\
+Processes the input prompt and generates a format compatible with the model.
+
+Args:
+    prompt (str): The input prompt. Defaults to an empty string.
+    history (List): Conversation history.
+
+''')
+
+add_example('TrainableModule.prompt', '''\
+>>> import lazyllm
+>>> class Myprompt(lazyllm.module.llms.TrainableModule):
+...    def forward(self, prompt, history):
+...        self.prompt(prompt,history)
+''')
+
+add_chinese_doc('TrainableModule.forward', '''\
+自动构建符合模型要求的输入数据结构，适配多模态场景。
+''')
+
+add_english_doc('TrainableModule.forward', '''\
+Supports handling various input formats, automatically builds the input structure required by the model, and adapts to multimodal scenarios.
+
+''')
+
+add_example('TrainableModule.forward', '''\
+>>> import lazyllm
+>>> from lazyllm.module import TrainableModule
+>>> class MyModule(TrainableModule):
+...     def forward(self, __input, **kw):
+...         return f"processed: {__input}"
+...
+>>> MyModule()("Hello")
+'processed: Hello'
+''')
 
 add_chinese_doc('UrlModule', '''\
 可以将ServerModule部署得到的Url包装成一个Module，调用 ``__call__`` 时会访问该服务。
@@ -683,7 +763,7 @@ add_example('UrlModule.forward', '''\
 ''')
 
 add_chinese_doc('ServerModule', '''\
-借助 fastapi，将任意可调用对象包装成 api 服务，可同时启动一个主服务和多个卫星服务。
+借助 fasta将任意可调用对象包装成 api 服务，可同时启动一个主服务和多个卫星服务。
 
 Args:
     m (Callable): 被包装成服务的函数，可以是一个函数，也可以是一个仿函数。当启动卫星服务时，需要是一个实现了 ``__call__`` 的对象（仿函数）。
@@ -692,7 +772,9 @@ Args:
     stream (bool): 是否流式请求和输出，默认为非流式。
     return_trace (bool): 是否将结果记录在 trace 中，默认为``False``。
     port (int): 指定服务部署后的端口，默认为 ``None`` 会随机生成端口。
-    launcher (LazyLLMLaunchersBase): 用于选择服务执行的计算节点，默认为`` launchers.remote``。
+    pythonpath(str):传递给子进程的 PYTHONPATH 环境变量，默认为 ``None``。
+    launcher (LazyLLMLaunchersBase): 用于选择服务执行的计算节点，默认为是异步远程部署"launchers.remote(sync=False)"。
+    url(str):模块服务的地址，默认为"None",使用Redis获取。
 ''')
 
 add_english_doc('ServerModule', '''\
@@ -705,7 +787,10 @@ Args:
     stream (bool): Whether to request and output in streaming mode, default is non-streaming.
     return_trace (bool): Whether to record the results in trace, default is ``False``.
     port (int): Specifies the port after the service is deployed. The default is ``None``, which will generate a random port.
-    launcher (LazyLLMLaunchersBase): Used to select the compute node for service execution, default is ``launchers.remote`` .
+    pythonpath (str): PYTHONPATH environment variable passed to the subprocess. Defaults to None.
+    launcher (LazyLLMLaunchersBase): Specifies the compute node for running the service. Defaults to asynchronous remote deployment via launchers.remote(sync=False).
+    url (str): The service URL of the module. Defaults to None, in which case the URL is retrieved from Redis.
+
 
 **Examples:**\n
 ```python
@@ -1055,3 +1140,46 @@ add_example('OnlineEmbeddingModuleBase', '''\
 ...         pass
 ...         return embedding
 ''')
+add_chinese_doc('AutoModel', '''\
+用于部署在线 API 模型或本地模型的模块，支持加载在线推理模块或本地可微调模块。
+
+Args:
+    model (str): 指定要加载的模型名称，例如 ``internlm2-chat-7b``，可为空。为空时默认加载 ``internlm2-chat-7b``。
+    source (str): 指定要使用的在线模型服务，如需使用在线模型，必须传入此参数。支持 ``qwen`` / ``glm`` / ``openai`` / ``moonshot`` 等。
+    framework (str): 指定本地部署所使用的推理框架，支持 ``lightllm`` / ``vllm`` / ``lmdeploy``。将通过 ``TrainableModule`` 与指定框架组合进行部署。
+''')
+
+add_english_doc('AutoModel', '''\
+A module for deploying either online API-based models or local models, supporting both online inference and locally trainable modules.
+
+Args:
+    model (str): The name of the model to load, e.g., ``internlm2-chat-7b``. If None, ``internlm2-chat-7b`` will be loaded by default.
+    source (str): Specifies the online model service to use. Required when using online models. Supported values include ``qwen``, ``glm``, ``openai``, ``moonshot``, etc.
+    framework (str): The local inference framework to use for deployment. Supported values are ``lightllm``, ``vllm``, and ``lmdeploy``. The model will be deployed via ``TrainableModule`` using the specified framework.
+''')
+
+
+
+# add_example('AutoModel', '''\
+# >>> import lazyllm
+# >>> from lazyllm.module import AutoModel
+# >>> class ModuleChoose(AutoModel):
+# ...     def __init__(self,
+# ...                 embed_url: str = '<new platform embedding url>',
+# ...                 embed_model_name: str = '<new platform embedding model name>'):
+# ...         super().__init__(embed_url, lazyllm.config['new_platform_api_key'], embed_model_name)
+# ...
+# >>> class NewPlatformEmbeddingModule1(OnlineEmbeddingModuleBase):
+# ...     def __init__(self,
+# ...                 embed_url: str = '<new platform embedding url>',
+# ...                 embed_model_name: str = '<new platform embedding model name>'):
+# ...         super().__init__(embed_url, lazyllm.config['new_platform_api_key'], embed_model_name)
+# ...
+# ...     def _encapsulated_data(self, text:str, **kwargs):
+# ...         pass
+# ...         return json_data
+# ...
+# ...     def _parse_response(self, response: dict[str, any]):
+# ...         pass
+# ...         return embedding
+# ''')
