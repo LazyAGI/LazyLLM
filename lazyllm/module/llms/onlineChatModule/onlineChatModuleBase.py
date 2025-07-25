@@ -14,7 +14,7 @@ from lazyllm import globals
 from lazyllm.components.prompter import PrompterBase
 from lazyllm.components.formatter import FormatterBase, encode_query_with_filepaths, decode_query_with_filepaths
 from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
-from lazyllm.components.utils.file_operate import delete_old_files, image_to_base64
+from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from ...servermodule import LLMBase
 from ...module import Pipeline
 
@@ -342,7 +342,7 @@ class OnlineChatModuleBase(LLMBase):
         if not os.path.exists(save_dir):
             os.system(f'mkdir -p {save_dir}')
         else:
-            delete_old_files(save_dir)
+            _delete_old_files(save_dir)
         return save_dir
 
     def _validate_api_key(self):
@@ -434,7 +434,7 @@ class OnlineChatModuleBase(LLMBase):
         for file in files:
             mime = None
             if not file.startswith("http"):
-                file, mime = image_to_base64(file)
+                file, mime = _image_to_base64(file)
             output.extend(self._format_vl_chat_image_url(file, mime))
         return output
 

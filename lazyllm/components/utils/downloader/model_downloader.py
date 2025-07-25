@@ -24,16 +24,16 @@ class ModelManager():
         self.cache_dir = cache_dir
         self.model_paths = model_path.split(":") if len(model_path) > 0 else []
         if self.model_source == 'huggingface':
-            self.hub_downloader = HuggingfaceDownloader(token=self.token)
+            self.hub_downloader = _HuggingfaceDownloader(token=self.token)
         else:
-            self.hub_downloader = ModelscopeDownloader(token=self.token)
+            self.hub_downloader = _ModelscopeDownloader(token=self.token)
             if self.model_source != 'modelscope':
                 lazyllm.LOG.error("Only support Huggingface and Modelscope currently. "
                                   f"Unsupported model source: {self.model_source}. Forcing use of Modelscope.")
 
     @staticmethod
     @functools.lru_cache
-    def get_model_type(model) -> str:
+    def _get_model_type(model) -> str:
         assert isinstance(model, str) and len(model) > 0, f'model name should be a non-empty string, get {model}'
         __class__._try_add_mapping(model)
         for name, info in model_name_mapping.items():
@@ -49,7 +49,7 @@ class ModelManager():
 
     @staticmethod
     @functools.lru_cache
-    def get_model_name(model) -> str:
+    def _get_model_name(model) -> str:
         search_string = os.path.basename(model)
         __class__._try_add_mapping(search_string)
         for model_name, sources in model_name_mapping.items():
@@ -61,8 +61,8 @@ class ModelManager():
 
     @staticmethod
     @functools.lru_cache
-    def get_model_prompt_keys(model) -> dict:
-        model_name = __class__.get_model_name(model)
+    def _get_model_prompt_keys(model) -> dict:
+        model_name = __class__._get_model_name(model)
         __class__._try_add_mapping(model_name)
         if model_name and "prompt_keys" in model_name_mapping[model_name.lower()]:
             return model_name_mapping[model_name.lower()]["prompt_keys"]
@@ -70,7 +70,7 @@ class ModelManager():
             return dict()
 
     @staticmethod
-    def validate_model_path(model_path):
+    def _validate_model_path(model_path):
         extensions = {'.pt', '.bin', '.safetensors'}
         for _, _, files in os.walk(model_path):
             for file in files:
@@ -132,10 +132,10 @@ class ModelManager():
             model_save_dir = self._do_download(model_name_for_download, call_back)
             return model_save_dir
 
-    def validate_token(self):
+    def _validate_token(self):
         return self.hub_downloader.verify_hub_token()
 
-    def validate_model_id(self, model_id):
+    def _validate_model_id(self, model_id):
         return self.hub_downloader.verify_model_id(model_id)
 
     def _model_exists_at_path(self, model_name):
@@ -171,7 +171,7 @@ class ModelManager():
         full_model_dir = os.path.join(self.cache_dir, self.model_source, model_dir)
 
         try:
-            return self.hub_downloader.download(model, full_model_dir, call_back)
+            return self.hub_downloader._download(model, full_model_dir, call_back)
         # Use `BaseException` to capture `KeyboardInterrupt` and normal `Exceptioin`.
         except BaseException as e:
             lazyllm.LOG.warning(f"Download encountered an error: {e}")
@@ -184,7 +184,7 @@ class ModelManager():
                 lazyllm.LOG.warning(f"{full_model_dir} removed due to exceptions.")
         return False
 
-class HubDownloader(ABC):
+class _HubDownloader(ABC):
 
     def __init__(self, token=None):
         self._token = token if self._verify_hub_token(token) else None
@@ -199,7 +199,7 @@ class HubDownloader(ABC):
         pass
 
     @abstractmethod
-    def verify_model_id(self, model_id):
+    def _verify_model_id(self, model_id):
         pass
 
     @abstractmethod
@@ -236,7 +236,7 @@ class HubDownloader(ABC):
             size += item['Size']
         return size
 
-    def download(self, model_id, model_dir, call_back=None):
+    def _download(self, model_id, model_dir, call_back=None):
         total = self._get_files_total_size(self._get_repo_files(model_id))
         if call_back:
             polling_event = threading.Event()
@@ -250,10 +250,11 @@ class HubDownloader(ABC):
             polling_thread.join()
         return downloaded_path
 
+    # 判断是否设置huggingface token
     def verify_hub_token(self):
         return True if self._token else False
 
-class HuggingfaceDownloader(HubDownloader):
+class _HuggingfaceDownloader(_HubDownloader):
 
     def _build_hub_api(self, token):
         from huggingface_hub import HfApi
@@ -300,7 +301,7 @@ class HuggingfaceDownloader(HubDownloader):
                 })
         return hub_model_info
 
-class ModelscopeDownloader(HubDownloader):
+class _ModelscopeDownloader(_HubDownloader):
 
     def _build_hub_api(self, token):
         from modelscope.hub.api import HubApi

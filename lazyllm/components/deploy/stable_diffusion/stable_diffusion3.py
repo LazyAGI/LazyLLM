@@ -11,7 +11,7 @@ from lazyllm import LOG, LazyLLMLaunchersBase
 from ..base import LazyLLMDeployBase
 from lazyllm.components.formatter import encode_query_with_filepaths
 from ...utils.downloader import ModelManager
-from ...utils.file_operate import delete_old_files
+from ...utils.file_operate import _delete_old_files
 from typing import Optional
 
 
@@ -91,7 +91,7 @@ class StableDiffusion3(object):
     def images_to_files(images, directory):
         if not os.path.exists(directory):
             os.makedirs(directory)
-        delete_old_files(directory)
+        _delete_old_files(directory)
         unique_id = uuid.uuid4()
         path_list = []
         for i, img in enumerate(images):

@@ -2,7 +2,7 @@ import time
 from ..core import ComponentBase
 import lazyllm
 from lazyllm import launchers, flows, LOG
-from ...components.utils.file_operate import image_to_base64, audio_to_base64
+from ...components.utils.file_operate import _image_to_base64, _audio_to_base64
 import random
 
 
@@ -13,7 +13,7 @@ class LazyLLMDeployBase(ComponentBase):
     stream_url_suffix = ''
     stream_parse_parameters = {}
 
-    encoder_map = dict(image=image_to_base64, audio=audio_to_base64, ocr_files=None)
+    encoder_map = dict(image=_image_to_base64, audio=_audio_to_base64, ocr_files=None)
 
     @staticmethod
     def extract_result(output, inputs):

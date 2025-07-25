@@ -65,7 +65,7 @@ class FlagembeddingFinetune(LazyLLMFinetuneBase):
         launcher=launchers.remote(ngpus=1, sync=True),
         **kw
     ):
-        model_type = ModelManager.get_model_type(base_model.split('/')[-1])
+        model_type = ModelManager._get_model_type(base_model.split('/')[-1])
         if model_type not in ('embed', 'reranker'):
             raise RuntimeError(f'Not supported {model_type} type to finetune.')
         if not os.path.exists(base_model):

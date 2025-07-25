@@ -12,7 +12,7 @@ class AutoFinetune(LazyLLMFinetuneBase):
                 batch_size=32, lora_r=8, launcher=launchers.remote(ngpus=1), **kw):
         base_model = ModelManager(source).download(base_model) or ''
         model_name = get_model_name(base_model)
-        model_type = ModelManager.get_model_type(model_name)
+        model_type = ModelManager._get_model_type(model_name)
         if model_type in ['embed', 'tts', 'vlm', 'stt', 'sd']:
             raise RuntimeError(f'Fine-tuning of the {model_type} model is not currently supported.')
         map_name, _ = model_map(model_name)
