@@ -2662,7 +2662,7 @@ add_chinese_doc('rag.utils.DocListManager.enable_path_monitoring', '''\
 
 
 #GlobalMetadataDesc
-add_english_doc('rag.GlobalMetadataDesc', '''\
+add_english_doc('rag.global_metadata.GlobalMetadataDesc', '''\
 A descriptor for global metadata, defining its type, optional element type, default value, and size constraints.
 
 `class GlobalMetadataDesc`
@@ -2678,7 +2678,7 @@ Args:
 
 ''')
 
-add_chinese_doc('rag.GlobalMetadataDesc', '''\
+add_chinese_doc('rag.global_metadata.GlobalMetadataDesc', '''\
 用于描述全局元数据的说明符，包括其类型、可选的元素类型、默认值和大小限制。
 
 `class GlobalMetadataDesc`
@@ -2695,7 +2695,7 @@ Args:
 ''')
 
 #IndexBase
-add_english_doc('rag.IndexBase', '''\
+add_english_doc('rag.index_base.IndexBase', '''\
 An abstract base class for implementing indexing systems that support updating, removing, and querying document nodes.
 
 `class IndexBase(ABC)`
@@ -2704,7 +2704,7 @@ This abstract base class defines the interface for an indexing system. It requir
 
 ''')
 
-add_chinese_doc('rag.IndexBase', '''\
+add_chinese_doc('rag.index_base.IndexBase', '''\
 用于实现索引系统的抽象基类，支持更新、删除和查询文档节点。
 
 `class IndexBase(ABC)`

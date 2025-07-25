@@ -61,3 +61,11 @@
 ::: lazyllm.tools.rag.DocListManager
     members: 
 	exclude-members: 
+
+::: lazyllm.tools.rag.global_metadata.GlobalMetadataDesc
+    members: 
+	exclude-members: 
+
+::: lazyllm.tools.rag.IndexBase
+    members: 
+	exclude-members: 
