@@ -1,6 +1,6 @@
 import httpx
 
-class HttpExecutorResponse:
+class _HttpExecutorResponse:
     headers: dict[str, str]
     response: httpx.Response
 
