@@ -2,14 +2,14 @@ from lazyllm.thirdparty import torch
 from lazyllm.thirdparty import transformers as tf
 import importlib.util
 from lazyllm.components.deploy.text_to_speech.utils import TTSBase
-from lazyllm.components.deploy.text_to_speech.base import TTSInfer
+from lazyllm.components.deploy.text_to_speech.base import _TTSInfer
 
-class Bark(TTSInfer):
+class _Bark(_TTSInfer):
 
     def __init__(self, base_path, source=None, trust_remote_code=True, save_path=None, init=False):
         super().__init__(base_path, source, save_path, init, trust_remote_code, 'bark')
 
-    def load_model(self):
+    def _load_model(self):
         if importlib.util.find_spec("torch_npu") is not None:
             import torch_npu  # noqa F401
             from torch_npu.contrib import transfer_to_npu  # noqa F401
@@ -41,4 +41,4 @@ class BarkDeploy(TTSBase):
     }
     default_headers = {'Content-Type': 'application/json'}
 
-    func = Bark
+    func = _Bark
