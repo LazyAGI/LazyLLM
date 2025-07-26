@@ -1,5 +1,7 @@
 import json
 import ast
+import threading
+import time
 from enum import Enum
 from functools import wraps
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
@@ -7,18 +9,15 @@ from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
-from .store import (MapStore, MilvusStore, ChromadbStore, SenseCoreStore, StoreBase,
-                    LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)
-from .smart_embedding_index import SmartEmbeddingIndex
+from .store import (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP, LazyLLMStoreBase)
+from .store.document_store import DocumentStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
 from .utils import DocListManager, is_sparse
-from .global_metadata import GlobalMetadataDesc
+from .global_metadata import GlobalMetadataDesc, RAG_KB_ID
 from .data_type import DataType
 from .doc_processor import _Processor, DocumentProcessor
 from dataclasses import dataclass
-import threading
-import time
 from itertools import repeat
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
@@ -100,8 +99,10 @@ class DocImpl:
 
     def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
                  doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
-                 global_metadata_desc: Dict[str, GlobalMetadataDesc] = None, store_conf: Optional[Dict] = None,
-                 processor: Optional[DocumentProcessor] = None, algo_name: Optional[str] = None):
+                 global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
+                 store: Optional[Union[Dict, LazyLLMStoreBase]] = None,
+                 processor: Optional[DocumentProcessor] = None, algo_name: Optional[str] = None,
+                 algo_desc: str = "default algorithm"):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
@@ -113,13 +114,14 @@ class DocImpl:
         }
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self._global_metadata_desc = global_metadata_desc
-        self.store = store_conf  # NOTE: will be initialized in _lazy_init()
+        self.store = store  # NOTE: will be initialized in _lazy_init()
         self._activated_groups = set([LAZY_ROOT_NAME, LAZY_IMAGE_GROUP])
         # activated_embeddings maintains all node_groups and active embeddings
         self._activated_embeddings = {LAZY_ROOT_NAME: set(), LAZY_IMAGE_GROUP: set()}  # {group_name: {em1, em2, ...}}
         self._index_pending_registrations = []
         self._processor = processor
-        self._algo_name = algo_name
+        self._algo_name = algo_name or "__default__"
+        self._algo_desc = algo_desc
 
     def _init_node_groups(self):
         node_groups = DocImpl._builtin_node_groups.copy()
@@ -137,7 +139,7 @@ class DocImpl:
                 if not parent_group or parent_group in self._activated_groups: break
                 self._activated_groups.add(group := parent_group)
 
-    def _init_store(self):
+    def _create_store(self):
         if self.store is None: self.store = {'type': 'map'}
         embed_dims, embed_datatypes = {}, {}
         for k, e in self.embed.items():
@@ -149,32 +151,40 @@ class DocImpl:
                 embed_datatypes[k] = DataType.FLOAT_VECTOR
 
         if isinstance(self.store, Dict):
-            self.store = self._create_store(store_conf=self.store, embed_dims=embed_dims,
-                                            embed_datatypes=embed_datatypes)
-        elif not isinstance(self.store, StoreBase):
-            raise ValueError(f'store type [{type(self.store)}] is not a dict.')
+            self.store = DocumentStore(algo_name=self._algo_name, store_config=self.store,
+                                       group_embed_keys=self._activated_embeddings, embed=self.embed,
+                                       embed_dims=embed_dims, embed_datatypes=embed_datatypes,
+                                       global_metadata_desc=self._global_metadata_desc)
+        elif isinstance(self.store, LazyLLMStoreBase):
+            self.store.lazy_init(group_embed_keys=self._activated_embeddings, embed=self.embed,
+                                 embed_dims=embed_dims, embed_datatypes=embed_datatypes,
+                                 global_metadata_desc=self._global_metadata_desc)
+        else:
+            raise ValueError(f'store type [{type(self.store)}] is not a dict or LazyLLMStoreBase.')
+        self.store.activate_group(self._activated_groups)
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
         self._init_node_groups()
-        self._init_store()
+        self._create_store()
         cloud = not (self._dlm or self._doc_files is not None)
 
         self._resolve_index_pending_registrations()
         if self._processor:
             assert cloud and isinstance(self._processor, DocumentProcessor)
-            self._processor.register_algorithm(self._algo_name, self.store, self._reader, self.node_groups)
+            self._processor.register_algorithm(self._algo_name, self.store, self._reader, self.node_groups,
+                                               self._algo_desc)
         else:
-            self._processor = _Processor(self.store, self._reader, self.node_groups)
-
+            self._processor = _Processor(self.store, self._reader, self.node_groups, self._algo_desc)
+        # NOTE: Do lazy init after algo registered (when cloudpickle, some client may meet error)
+        self.store._lazy_init()
         # init files when `cloud` is False
-        if not cloud and not self.store.is_group_active(LAZY_ROOT_NAME):
+        if not cloud and self.store.is_group_empty(LAZY_ROOT_NAME):
             ids, pathes, metadatas = self._list_files(upload_status=DocListManager.Status.success)
             self._processor.add_doc(pathes, ids, metadatas)
             if pathes and self._dlm:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.success)
-
         if self._dlm:
             self._init_monitor_event = threading.Event()
             self._daemon = threading.Thread(target=self.worker)
@@ -188,58 +198,6 @@ class DocImpl:
             kwargs = {k: self._resolve_index_placeholder(v) for k, v in index_kwargs.items()}
             self.store.register_index(index_type, index_cls(*args, **kwargs))
         self._index_pending_registrations.clear()
-
-    def _create_store(self, store_conf: Optional[Dict], embed_dims: Optional[Dict[str, int]] = None,
-                      embed_datatypes: Optional[Dict[str, DataType]] = None) -> StoreBase:
-        store_type = store_conf.get('type')
-        if not store_type:
-            raise ValueError('store type is not specified.')
-
-        kwargs = store_conf.get('kwargs', {})
-        if not isinstance(kwargs, Dict):
-            raise ValueError('`kwargs` in store conf is not a dict.')
-
-        if store_type == "map":
-            store = MapStore(node_groups=list(self._activated_embeddings.keys()), embed=self.embed, **kwargs)
-        elif store_type == "chroma":
-            store = ChromadbStore(group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                  embed_dims=embed_dims, **kwargs)
-        elif store_type == "milvus":
-            store = MilvusStore(group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                embed_dims=embed_dims, embed_datatypes=embed_datatypes,
-                                global_metadata_desc=self._global_metadata_desc, **kwargs)
-        elif store_type == "sensecore":
-            store = SenseCoreStore(group_embed_keys=self._activated_embeddings,
-                                   global_metadata_desc=self._global_metadata_desc, **kwargs)
-        else:
-            raise NotImplementedError(
-                f"Not implemented store type for {store_type}"
-            )
-        store.activate_group(self._activated_groups)
-
-        indices_conf = store_conf.get('indices', {})
-        if not isinstance(indices_conf, Dict):
-            raise ValueError(f"`indices`'s type [{type(indices_conf)}] is not a dict")
-
-        for index_type, conf in indices_conf.items():
-            if index_type == 'smart_embedding_index':
-                backend_type = conf.get('backend')
-                if not backend_type:
-                    raise ValueError('`backend` is not specified in `smart_embedding_index`.')
-                kwargs = conf.get('kwargs', {})
-                index = SmartEmbeddingIndex(backend_type=backend_type,
-                                            group_embed_keys=self._activated_embeddings,
-                                            embed=self.embed,
-                                            embed_dims=embed_dims,
-                                            embed_datatypes=embed_datatypes,
-                                            global_metadata_desc=self._global_metadata_desc,
-                                            **kwargs)
-            else:
-                raise ValueError(f'unsupported index type [{index_type}]')
-
-            store.register_index(type=index_type, index=index)
-
-        return store
 
     @staticmethod
     def _create_node_group_impl(cls, group_name, name, transform: Union[str, Callable],
@@ -441,9 +399,7 @@ class DocImpl:
                 if parent in self._activated_groups: break
                 self.store.activate_group(parent)
                 self._activated_groups.add(parent)
-            # BUG: when using reparse here, nodes created from recurse method will not be set children correctly
-            # (For parent nodes has been upserted before creating child nodes)
-            if not self.store.is_group_active(group_name): self._processor.reparse(group_name)
+            if self.store.is_group_empty(group_name): self._processor.reparse(group_name)
 
     def active_node_groups(self):
         return {k: v for k, v in self._activated_embeddings.items() if k in self._activated_groups}
@@ -484,10 +440,6 @@ class DocImpl:
                 name = self.node_groups[name]['parent']
             return cnt
 
-        for n in nodes:
-            n._store = self.store
-            n._node_groups = self.node_groups
-
         # 1. find lowest common ancestor
         left, right = nodes[0]._group, group
         curr_depth, target_depth = get_depth(left), get_depth(right)
@@ -508,16 +460,34 @@ class DocImpl:
         return nodes
 
     def find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
-        def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
-            if node.parent:
-                if node.parent._group == group:
-                    visited.add(node.parent)
-                else:
-                    recurse_parents(node.parent, visited)
-
         result = set()
-        for node in nodes:
-            recurse_parents(node, result)
+        if isinstance(nodes[0].parent, DocNode):
+            def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
+                if node.parent:
+                    if node.parent._group == group:
+                        visited.add(node.parent)
+                    else:
+                        recurse_parents(node.parent, visited)
+            for node in nodes:
+                recurse_parents(node, result)
+        else:
+            cur_group = nodes[0]._group
+            cur_nodes = nodes
+            while cur_group != group and cur_nodes[0].parent:
+                name = self.node_groups[cur_group]['parent']
+                parent_uids = set()
+                for node in cur_nodes:
+                    parent_uids.add(node.parent)
+                dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
+                LOG.info(f"Store get_nodes: {name} {dataset_id}, {parent_uids}")
+                parents = self.store.get_nodes(group_name=name, dataset_id=dataset_id,
+                                               uids=list(parent_uids), display=True)
+                if not parents:
+                    break
+                cur_group = parents[0]._group
+                cur_nodes = parents
+            if cur_group == group:
+                result = cur_nodes
         if not result:
             LOG.warning(
                 f"We can not find any nodes for group `{group}`, please check your input"
@@ -526,39 +496,64 @@ class DocImpl:
         return list(result)
 
     def find_children(self, nodes: List[DocNode], group: str) -> List[DocNode]:  # noqa:C901
-        def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
-            if group in node.children:
-                visited.update(node.children[group])
-                return True
-
-            found_in_any_child = False
-
-            for children_list in node.children.values():
-                for child in children_list:
-                    if recurse_children(child, visited):
-                        found_in_any_child = True
-                    else:
-                        break
-
-            return found_in_any_child
-
         result = set()
 
-        for node in nodes:
-            if group in node.children:
-                result.update(node.children[group])
+        for _, children in nodes[0].children.items():
+            if isinstance(children[0], DocNode):
+                is_memory_tree = True
             else:
-                if not recurse_children(node, result):
-                    LOG.warning(
-                        f"Node {node} and its children do not contain any nodes with the group `{group}`. "
-                        "Skipping further search in this branch."
-                    )
+                is_memory_tree = False
+            break
+
+        if is_memory_tree:
+            def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
+                if group in node.children:
+                    visited.update(node.children[group])
+                    return True
+
+                found = False
+                for children_list in node.children.values():
+                    for child in children_list:
+                        if recurse_children(child, visited):
+                            found = True
+                return found
+            for node in nodes:
+                if group in node.children:
+                    result.update(node.children[group])
+                else:
+                    recurse_children(node, result)
+
+        else:
+            cur_group = nodes[0]._group
+            cur_nodes = nodes
+
+            while cur_group != group:
+                next_group = None
+                for g, v in self.node_groups.items():
+                    if v.get("parent") == cur_group:
+                        next_group = g
+                        break
+
+                if not next_group:
+                    LOG.warning(f"No child group found under group {cur_group}")
                     break
 
+                if next_group == group:
+                    parent_uids = [n._uid for n in cur_nodes]
+                    dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
+                    children = self.store.get_nodes(group_name=group, dataset_id=dataset_id,
+                                                    uids=parent_uids, display=True)
+                    result.update(children)
+                    break
+                else:
+                    parent_uids = [n._uid for n in cur_nodes]
+                    dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
+                    cur_nodes = self.store.get_nodes(group_name=next_group, dataset_id=dataset_id,
+                                                     uids=parent_uids, display=True)
+                    cur_group = next_group
+
         if not result:
-            LOG.warning(
-                f"We cannot find any nodes for group `{group}`, please check your input."
-            )
+            LOG.warning(f"We cannot find any nodes for group `{group}`, please check your input.")
 
         LOG.debug(f"Found children nodes for {group}: {result}")
         return list(result)

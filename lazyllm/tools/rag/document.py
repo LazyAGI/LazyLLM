@@ -35,7 +35,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     class _Manager(ModuleBase):
         def __init__(self, dataset_path: Optional[str], embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: Union[bool, str] = False, server: Union[bool, int] = False, name: Optional[str] = None,
-                     launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
+                     launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = {"type": "map"},
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
                      doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None):
             super().__init__()
@@ -57,7 +57,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 dataset_path, name, enable_path_monitoring=False if manager else True)
             self._kbs = CallableDict({DocListManager.DEFAULT_GROUP_NAME: DocImpl(
                 embed=self._embed, dlm=self._dlm, doc_files=doc_files, global_metadata_desc=doc_fields,
-                store_conf=store_conf, processor=processor, algo_name=name)})
+                store=store_conf, processor=processor, algo_name=name)})
 
             if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
@@ -122,7 +122,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                  create_ui: bool = False, manager: Union[bool, str, "Document._Manager", DocumentProcessor] = False,
                  server: Union[bool, int] = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
-                 store_conf: Optional[Dict] = None):
+                 store_conf: Optional[Dict] = None, description: str = "default algorithm"):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
@@ -153,7 +153,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 processor._impl.start()
                 manager = False
                 assert name, '`Name` of Document is necessary when using cloud service'
-                assert store_conf['type'] != 'map', 'Cloud manager is not supported when using map store'
+                assert store_conf.get('type') != 'map', 'Cloud manager is not supported when using map store'
                 assert not dataset_path, 'Cloud manager is not supported with local dataset path'
             else:
                 cloud, processor = False, None
@@ -312,7 +312,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def forward(self, *args, **kw) -> List[DocNode]:
         return self._forward('retrieve', *args, **kw)
 
-    def clear_cache(self, group_names: Optional[List[str]]) -> None:
+    def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
         return self._forward('clear_cache', group_names)
 
     def _get_post_process_tasks(self):

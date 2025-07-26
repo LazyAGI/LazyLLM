@@ -1,21 +1,24 @@
 from .store_base import (
-    StoreBase,
+    LazyLLMStoreBase,
     LAZY_IMAGE_GROUP,
     LAZY_ROOT_NAME,
-    EMBED_DEFAULT_KEY
+    EMBED_DEFAULT_KEY,
+    BUILDIN_GLOBAL_META_DESC
 )
-from .sensecore_store import SenseCoreStore
-from .map_store import MapStore
-from .chroma_store import ChromadbStore
-from .milvus_store import MilvusStore
+from .hybrid import HybridStore, MapStore, SenseCoreStore
+from .segment import OpenSearchStore
+from .vector import ChromadbStore, MilvusStore
 
 __all__ = [
-    'StoreBase',
-    'SenseCoreStore',
+    'LazyLLMStoreBase',
+    'HybridStore',
     'MapStore',
+    'OpenSearchStore',
     'ChromadbStore',
     'MilvusStore',
+    'SenseCoreStore',
     'LAZY_IMAGE_GROUP',
     'LAZY_ROOT_NAME',
     'EMBED_DEFAULT_KEY',
+    'BUILDIN_GLOBAL_META_DESC'
 ]

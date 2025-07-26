@@ -5,7 +5,7 @@ from lazyllm.tools.rag.store import MapStore
 from lazyllm.tools.rag import DocNode, IndexBase, Document
 from lazyllm.tools.rag.default_index import DefaultIndex
 from lazyllm.tools.rag.similarity import register_similarity, registered_similarities
-from lazyllm.tools.rag.store import StoreBase
+from lazyllm.tools.rag.store.store_base import LazyLLMStoreBase
 from lazyllm.tools.rag.utils import parallel_do_embedding, generic_process_filters
 from typing import List, Optional, Dict
 from lazyllm.common import override
@@ -105,7 +105,7 @@ class TestDefaultIndex(unittest.TestCase):
         self.assertIn(self.doc_node_2, results)
 
 class KeywordIndex(IndexBase):
-    def __init__(self, cstore: StoreBase):
+    def __init__(self, cstore: LazyLLMStoreBase):
         self.store = cstore
 
     @override

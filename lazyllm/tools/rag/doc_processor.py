@@ -5,13 +5,14 @@ from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.engine import Engine
 from lazyllm import LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app, ThreadPoolExecutor, config
 
-from .store import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+from .store import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+from .store.document_store import DocumentStore
 from .store.utils import fibonacci_backoff, create_file_path
 from .transform import (AdaptiveTransform, make_transform,)
 from .readers import ReaderBase
 from .doc_node import DocNode
 from .utils import gen_docid, BaseResponse
-from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_KB_ID
+from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 import queue
 import threading
 import time
@@ -24,8 +25,14 @@ ENABLE_DB = os.getenv("RAG_ENABLE_DB", "false").lower() == "true"
 
 
 class _Processor:
-    def __init__(self, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict], server: bool = False):
-        self._store, self._reader, self._node_groups = store, reader, node_groups
+    def __init__(self, store: DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
+                 server: bool = False, description: str = "default algorithm"):
+        self._store = store
+        self._reader = reader
+        self._node_groups = node_groups
+        self._server = server
+        self._description = description
+        self._store._lazy_init()
 
     def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,
                 metadatas: Optional[List[Dict[str, Any]]] = None):
@@ -70,7 +77,7 @@ class _Processor:
         return nodes
 
     def _get_or_create_nodes(self, group_name, ids: Optional[List[str]] = None):
-        nodes = self._store.get_nodes(group_name, ids) if self._store.is_group_active(group_name) else []
+        nodes = self._store.get_nodes(uids=ids, group=group_name) if self._store.is_group_active(group_name) else []
         if not nodes and group_name not in (LAZY_IMAGE_GROUP, LAZY_ROOT_NAME):
             p_nodes = self._get_or_create_nodes(self._node_groups[group_name]['parent'], ids)
             nodes = self._create_nodes_impl(p_nodes, group_name)
@@ -83,12 +90,12 @@ class _Processor:
             self._get_or_create_nodes(group_name, ids)
 
     def _reparse_docs(self, group_name: str, doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict]):
-        dataset_id = metadatas[0].get(RAG_DOC_KB_ID, None)
+        kb_id = metadatas[0].get(RAG_KB_ID, None)
         if group_name == "all":
-            self._store.remove_nodes(dataset_id=dataset_id, doc_ids=doc_ids)
+            self._store.remove_nodes(doc_ids=doc_ids, kb_id=kb_id)
             removed_flag = False
             for wait_time in fibonacci_backoff():
-                nodes = self._store.get_nodes(group_name=LAZY_ROOT_NAME, dataset_id=dataset_id, doc_ids=doc_ids)
+                nodes = self._store.get_nodes(group=LAZY_ROOT_NAME, kb_id=kb_id, doc_ids=doc_ids)
                 if not nodes:
                     removed_flag = True
                     break
@@ -98,17 +105,17 @@ class _Processor:
             self.add_doc(input_files=doc_paths, ids=doc_ids, metadatas=metadatas)
         else:
             p_nodes = self._store.get_nodes(
-                group_name=self._node_groups[group_name]['parent'], dataset_id=dataset_id, doc_ids=doc_ids
+                group=self._node_groups[group_name]['parent'], kb_id=kb_id, doc_ids=doc_ids
             )
             self._reparse_group_recursive(p_nodes=p_nodes, cur_name=group_name, doc_ids=doc_ids)
 
     def _reparse_group_recursive(self, p_nodes: List[DocNode], cur_name: str, doc_ids: List[str]):
-        dataset_id = p_nodes[0].global_metadata.get(RAG_DOC_KB_ID, None)
-        self._store.remove_nodes(group_name=cur_name, dataset_id=dataset_id, doc_ids=doc_ids)
+        kb_id = p_nodes[0].global_metadata.get(RAG_KB_ID, None)
+        self._store.remove_nodes(group=cur_name, kb_id=kb_id, doc_ids=doc_ids)
 
         removed_flag = False
         for wait_time in fibonacci_backoff():
-            nodes = self._store.get_nodes(group_name=cur_name, dataset_id=dataset_id, doc_ids=doc_ids)
+            nodes = self._store.get_nodes(group=cur_name, kb_id=kb_id, doc_ids=doc_ids)
             if not nodes:
                 removed_flag = True
                 break
@@ -136,7 +143,7 @@ class _Processor:
     def delete_doc(self, doc_ids: List[str] = None, dataset_id: str = None) -> None:
         LOG.info(f"delete_doc_ids: {doc_ids}")
         if dataset_id:
-            self._store.remove_nodes(dataset_id=dataset_id, doc_ids=doc_ids)
+            self._store.remove_nodes(kb_id=dataset_id, doc_ids=doc_ids)
         else:
             self._store.remove_nodes(doc_ids=doc_ids)
 
@@ -191,8 +198,13 @@ class DocumentProcessor(ModuleBase):
             self._processors: Dict[str, _Processor] = dict()
             self._server = server
             self._inited = False
-            self._feedback_url = config['process_feedback_service']
-            self._path_prefix = config['process_path_prefix']
+            try:
+                self._feedback_url = config['process_feedback_service']
+                self._path_prefix = config['process_path_prefix']
+            except Exception as e:
+                LOG.warning(f"Failed to get config: {e}, use env variables instead")
+                self._feedback_url = os.getenv("PROCESS_FEEDBACK_SERVICE", None)
+                self._path_prefix = os.getenv("PROCESS_PATH_PREFIX", None)
 
         def _init_components(self, server: bool):
             if server and not self._inited:
@@ -211,15 +223,16 @@ class DocumentProcessor(ModuleBase):
                 self._worker_thread = threading.Thread(target=self._worker, daemon=True)
                 self._worker_thread.start()
             self._inited = True
-            LOG.info(f"[DocStore] init done. feedback {self._feedback_url}, prefix {self._path_prefix}")
+            LOG.info(f"[DocumentProcessor] init done. feedback {self._feedback_url}, prefix {self._path_prefix}")
 
-        def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase,
-                               node_groups: Dict[str, Dict], force_refresh: bool = False):
+        def register_algorithm(self, name: str, store: DocumentStore, reader: ReaderBase,
+                               node_groups: Dict[str, Dict], force_refresh: bool = False,
+                               description: str = "default algorithm"):
             self._init_components(server=self._server)
             if name in self._processors and not force_refresh:
                 LOG.warning(f'Duplicated algo key {name} for processor!')
                 return
-            self._processors[name] = _Processor(store, reader, node_groups)
+            self._processors[name] = _Processor(store, reader, node_groups, description=description)
             LOG.info(f'Processor {name} registered!')
 
         def drop_algorithm(self, name: str, clean_db: bool = False) -> None:
@@ -300,7 +313,7 @@ class DocumentProcessor(ModuleBase):
                     raw_infos = {"document_id": document_id, "file_name": os.path.basename(file_path),
                                  "file_path": file_path, "description": file_info["metadata"].get("description", None),
                                  "creater": file_info["metadata"].get("creater", None),
-                                 "dataset_id": file_info["metadata"].get(RAG_DOC_KB_ID, None),
+                                 "dataset_id": file_info["metadata"].get(RAG_KB_ID, None),
                                  "tags": file_info["metadata"].get("tags", []) or []}
                     infos = {}
                     for k, v in raw_infos.items():
@@ -330,6 +343,13 @@ class DocumentProcessor(ModuleBase):
                 for document_id in doc_ids:
                     stmt = delete(table).where(table.c.document_id == document_id)
                     conn.execute(stmt)
+
+        @app.get('/algo/list')
+        async def get_algo_list(self) -> None:
+            res = []
+            for algo_id, processor in self._processors.items():
+                res.append({"algo_id": algo_id, "description": processor._description})
+            return BaseResponse(code=200, msg='success', data=res)
 
         @app.get('/group/info')
         async def get_group_info(self, algo_id: str) -> None:
@@ -571,7 +591,7 @@ class DocumentProcessor(ModuleBase):
         else:
             getattr(impl, method)(*args, **kwargs)
 
-    def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict],
+    def register_algorithm(self, name: str, store: DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
                            force_refresh: bool = False, **kwargs):
         self._dispatch("register_algorithm", name, store, reader, node_groups, force_refresh, **kwargs)
 
