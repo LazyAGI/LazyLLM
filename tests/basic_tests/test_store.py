@@ -428,6 +428,13 @@ class TestMilvusStore(unittest.TestCase):
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[1].get('uid'))
 
+    def test_get_segments_by_kb_and_doc(self):
+        self.store.upsert(self.collections[0], [data[0], data[2]])
+        self.store.upsert(self.collections[1], [data[1]])
+        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb1', 'doc_id': ['doc1']})
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[0].get('uid'))
+
     def test_get_segments_by_uid(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
         self.store.upsert(self.collections[1], [data[1]])

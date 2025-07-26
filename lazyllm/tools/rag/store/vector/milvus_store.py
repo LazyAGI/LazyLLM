@@ -246,7 +246,7 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
                     continue
                 field_name = self._gen_global_meta_key(key)
                 if len(filter_str) > 0:
-                    filter_str += ' AND '
+                    filter_str += ' and '
                 if isinstance(vaule, list):
                     filter_str += f'{field_name} in {vaule}'
                 elif isinstance(vaule, str):
@@ -289,7 +289,7 @@ class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
             key = self._gen_global_meta_key(name)
             if isinstance(candidates, str):
                 candidates = [candidates]
-            elif (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
+            elif (not isinstance(candidates, list)) and (not isinstance(candidates, set)):
                 candidates = list(candidates)
             if desc.data_type == DataType.ARRAY:
                 ret_str += f'array_contains_any({key}, {candidates}) and '

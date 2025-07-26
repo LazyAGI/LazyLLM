@@ -223,7 +223,7 @@ class DocumentProcessor(ModuleBase):
                 self._worker_thread = threading.Thread(target=self._worker, daemon=True)
                 self._worker_thread.start()
             self._inited = True
-            LOG.info(f"[DocStore] init done. feedback {self._feedback_url}, prefix {self._path_prefix}")
+            LOG.info(f"[DocumentProcessor] init done. feedback {self._feedback_url}, prefix {self._path_prefix}")
 
         def register_algorithm(self, name: str, store: DocumentStore, reader: ReaderBase,
                                node_groups: Dict[str, Dict], force_refresh: bool = False,

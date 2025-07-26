@@ -251,6 +251,7 @@ class DocumentStore(object):
             group_segments[segment.get("group")].append(segment)
         for group, segments in group_segments.items():
             self._impl.upsert(self._gen_collection_name(group), segments)
+        LOG.info(f"[DocumentStore] Updated metadata for doc_id: {doc_id} in dataset: {kb_id}")
         return
 
     def query(self, query: str, group_name: str, similarity_name: Optional[str] = None,
