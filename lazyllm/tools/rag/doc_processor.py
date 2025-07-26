@@ -24,8 +24,9 @@ ENABLE_DB = os.getenv("RAG_ENABLE_DB", "false").lower() == "true"
 
 
 class _Processor:
-    def __init__(self, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict], server: bool = False):
-        self._store, self._reader, self._node_groups = store, reader, node_groups
+    def __init__(self, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict],
+                 algo_desc: Optional[str] = None, server: bool = False):
+        self._store, self._reader, self._node_groups, self._algo_desc = store, reader, node_groups, algo_desc
 
     def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,
                 metadatas: Optional[List[Dict[str, Any]]] = None):
@@ -331,6 +332,13 @@ class DocumentProcessor(ModuleBase):
                     stmt = delete(table).where(table.c.document_id == document_id)
                     conn.execute(stmt)
 
+        @app.get('/algo/list')
+        async def get_algo_list(self) -> None:
+            res = []
+            for algo_id, processor in self._processors.items():
+                res.append({"algo_id": algo_id, "description": processor._algo_desc})
+            return BaseResponse(code=200, msg='success', data=res)
+
         @app.get('/group/info')
         async def get_group_info(self, algo_id: str) -> None:
             if algo_id not in self._processors:
@@ -572,8 +580,8 @@ class DocumentProcessor(ModuleBase):
             getattr(impl, method)(*args, **kwargs)
 
     def register_algorithm(self, name: str, store: StoreBase, reader: ReaderBase, node_groups: Dict[str, Dict],
-                           force_refresh: bool = False, **kwargs):
-        self._dispatch("register_algorithm", name, store, reader, node_groups, force_refresh, **kwargs)
+                           algo_desc: Optional[str] = None, force_refresh: bool = False, **kwargs):
+        self._dispatch("register_algorithm", name, store, reader, node_groups, algo_desc, force_refresh, **kwargs)
 
     def drop_algorithm(self, name: str, clean_db: bool = False) -> None:
         return self._dispatch("drop_algorithm", name, clean_db)
