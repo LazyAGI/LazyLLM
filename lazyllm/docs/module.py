@@ -1066,29 +1066,3 @@ Args:
     source (str): Specifies the online model service to use. Required when using online models. Supported values include ``qwen``, ``glm``, ``openai``, ``moonshot``, etc.
     framework (str): The local inference framework to use for deployment. Supported values are ``lightllm``, ``vllm``, and ``lmdeploy``. The model will be deployed via ``TrainableModule`` using the specified framework.
 ''')
-
-
-
-# add_example('AutoModel', '''\
-# >>> import lazyllm
-# >>> from lazyllm.module import AutoModel
-# >>> class ModuleChoose(AutoModel):
-# ...     def __init__(self,
-# ...                 embed_url: str = '<new platform embedding url>',
-# ...                 embed_model_name: str = '<new platform embedding model name>'):
-# ...         super().__init__(embed_url, lazyllm.config['new_platform_api_key'], embed_model_name)
-# ...
-# >>> class NewPlatformEmbeddingModule1(OnlineEmbeddingModuleBase):
-# ...     def __init__(self,
-# ...                 embed_url: str = '<new platform embedding url>',
-# ...                 embed_model_name: str = '<new platform embedding model name>'):
-# ...         super().__init__(embed_url, lazyllm.config['new_platform_api_key'], embed_model_name)
-# ...
-# ...     def _encapsulated_data(self, text:str, **kwargs):
-# ...         pass
-# ...         return json_data
-# ...
-# ...     def _parse_response(self, response: dict[str, any]):
-# ...         pass
-# ...         return embedding
-# ''')
