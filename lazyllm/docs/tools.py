@@ -247,6 +247,48 @@ Call the class YmlReader.
 Call the function processYml.
 ''')
 
+add_english_doc('rag.readers.ReaderBase', '''
+The base class of file readers, which inherits from the ModuleBase base class and has Callable capabilities. Subclasses that inherit from this class only need to implement the _load_data function, and its return parameter type is List[DocNode]. Generally, the input parameters of the _load_data function are file (Path) and fs (AbstractFileSystem).
+
+Args:
+    args (Any): Pass the corresponding position parameters as needed.
+    return_trace (bool): Set whether to record trace logs.
+    kwargs (Dict): Pass the corresponding keyword arguments as needed.
+''')
+
+add_chinese_doc('rag.readers.ReaderBase', '''
+文件读取器的基类，它继承自 ModuleBase 基类，具有 Callable 的能力，继承自该类的子类只需要实现 _load_data 函数即可，它的返回参数类型为 List[DocNode]. 一般 _load_data 函数的入参为 file (Path), fs(AbstractFileSystem) 三个参数。
+
+Args:
+    args (Any): 根据需要传输相应的位置参数
+    return_trace (bool): 设置是否记录trace日志
+    kwargs (Dict): 根据需要传输相应的关键字参数
+''')
+
+add_example('rag.readers.ReaderBase', '''
+>>> from lazyllm.tools.rag.readers import ReaderBase
+>>> from lazyllm.tools.rag import DocNode, Document
+>>> from typing import Dict, Optional, List
+>>> from pathlib import Path
+>>> from fsspec import AbstractFileSystem
+>>> @Document.register_global_reader("**/*.yml")
+>>> class YmlReader(ReaderBase):
+...     def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+...         try:
+...             import yaml
+...         except ImportError:
+...             raise ImportError("yaml is required to read YAML file: `pip install pyyaml`")
+...         with open(file, 'r') as f:
+...             data = yaml.safe_load(f)
+...         print("Call the class YmlReader.")
+...         return [DocNode(text=data)]
+...
+>>> files = ["your_yml_files"]
+>>> doc = Document(dataset_path="your_files_path", create_ui=False)
+>>> reader = doc._impl._reader.load_data(input_files=files)
+# Call the class YmlReader.
+''')
+
 add_english_doc('rag.store.ChromadbStore', '''
 Inherits from the abstract base class StoreBase. This class is mainly used to store and manage document nodes (DocNode), supporting operations such as node addition, deletion, modification, query, index management, and persistent storage.
 
@@ -842,6 +884,11 @@ Args:
 add_example('Retriever', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Retriever, Document, SentenceSplitter
+>>> m = lazyllm.OnlineEmbeddingModule()
+>>> documents = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
+>>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
+>>> rm.start()
+>>> print(rm("user query"))
 >>> m1 = lazyllm.TrainableModule('bge-large-zh-v1.5').start()
 >>> document1 = Document(dataset_path='/path/to/user/data', embed={'online':m , 'local': m1}, manager=False)
 >>> document1.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
@@ -864,6 +911,18 @@ add_example('Retriever', '''
 >>> retriever4 = Retriever(document4, group_name='Image', similarity='cosine')
 >>> nodes = retriever4("user query")
 >>> print([node.get_content() for node in nodes])
+>>> document5 = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
+>>> rm = Retriever(document5, group_name='CoarseChunk', similarity='bm25_chinese', similarity_cut_off=0.01, topk=3, output_format='content')
+>>> rm.start()
+>>> print(rm("user query"))
+>>> document6 = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
+>>> rm = Retriever(document6, group_name='CoarseChunk', similarity='bm25_chinese', similarity_cut_off=0.01, topk=3, output_format='content', join=True)
+>>> rm.start()
+>>> print(rm("user query"))
+>>> document7 = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
+>>> rm = Retriever(document7, group_name='CoarseChunk', similarity='bm25_chinese', similarity_cut_off=0.01, topk=3, output_format='dict')
+>>> rm.start()
+>>> print(rm("user query"))
 ''')
 
 add_english_doc('rag.retriever.TempDocRetriever', '''
@@ -1128,33 +1187,6 @@ add_example('rag.dataReader.SimpleDirectoryReader', '''
 >>> documents = reader.load_data()
 ''')
 
-# add_english_doc('rag.dataReader.SimpleDirectoryReader.load_file', '''
-# Core file loading implementation with format detection and metadata handling.
-
-# Args:
-#     input_file (Path): Target file path
-#     metadata_genf (Callable): Metadata generation function
-#     file_extractor (Dict): File extractor mappings {pattern: reader}
-#     encoding (str): Fallback text encoding (default "utf-8")
-#     pathm (PurePath): Path implementation for pattern matching
-#     fs (Optional[AbstractFileSystem]): Custom filesystem interface
-#     metadata (Optional[Dict]): Predefined metadata
-
-# ''')
-
-# add_chinese_doc('rag.dataReader.SimpleDirectoryReader.load_file', '''
-# 核心文件加载实现，包含格式检测和元数据处理。
-
-# Args:
-#     input_file (Path): 目标文件路径
-#     metadata_genf (Callable): 元数据生成函数
-#     file_extractor (Dict): 文件解析器映射 {模式: 解析器}
-#     encoding (str): 备用文本编码（默认"utf-8"）
-#     pathm (PurePath): 用于模式匹配的路径实现
-#     fs (Optional[AbstractFileSystem]): 自定义文件系统接口
-#     metadata (Optional[Dict]): 预定义元数据
-
-# ''')
 
 add_english_doc('rag.dataReader.FileReader', '''
 File content reader whose main function is to convert various input file formats into concatenated plain text content.
@@ -1368,30 +1400,6 @@ print(args['f'])
 print(args.get('unknown'))
 ''')
 
-# add_english_doc('rag.transform.TransformArgs.from_dict', '''
-# Alternative constructor from configuration dictionary.
-
-# Args:
-#     d (Dict): Configuration dictionary with keys:
-#         - f: Required function specifier
-#         - trans_node: Optional bool
-#         - num_workers: Optional int (default 0)
-#         - kwargs: Optional dict
-#         - pattern: Optional pattern spec
-
-# ''')
-
-# add_chinese_doc('rag.transform.TransformArgs.from_dict', '''
-# 从配置字典构造实例的替代方法。
-
-# Args:
-#     d (Dict): 包含以下键的配置字典:
-#         - f: 必需的函数标识
-#         - trans_node: 可选的bool值
-#         - num_workers: 可选的int（默认0）
-#         - kwargs: 可选的参数字典
-#         - pattern: 可选的模式标识
-# ''')
 
 add_english_doc('rag.similarity.register_similarity', '''
 Similarity computation registration decorator, used for unified registration and management of different types of similarity computation methods.
@@ -2990,9 +2998,7 @@ Args:
 ''')
 
 add_chinese_doc('MCPClient', '''\
-MCP客户端，用于连接MCP服务器。同时支持本地服务器（通过stdio client）和sse服务器（通过sse client）。
-
-如果传入的 'command_or_url' 是一个 URL 字符串（以 'http' 或 'https' 开头），则将连接到远程服务器；否则，将启动并连接到本地服务器。
+MCP客户端，用于连接MCP服务器。同时支持本地服务器和sse服务器。
 
 Args:
     command_or_url (str): 用于启动本地服务器或连接远程服务器的命令或 URL 字符串。

@@ -19,7 +19,6 @@
 ::: lazyllm.module.AutoModel
     options:
       members:
-      - _new
 
 ::: lazyllm.module.TrainableModule
     options:

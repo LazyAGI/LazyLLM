@@ -315,11 +315,11 @@ add_chinese_doc('TrainableModule', '''\
 
 
 Args:
-    base_model (str): 基础模型的名称或路径。如果本地没有该模型，将会自动从模型源下载。
-    target_path (str): 保存微调任务的路径。如果仅进行推理，可以留空。
-    source (str): 模型来源，可选值为huggingface或...。如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
-    stream (bool): 是否输出流式结果。如果使用的推理引擎不支持流式输出，该参数将被忽略。       
-    return_trace (bool): 是否在trace中记录结果。
+    base_model (str): 基础模型的名称或路径。
+    target_path (str): 保存微调任务的路径。
+    source (str): 模型来源，如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
+    stream (bool): 输出流式结果。     
+    return_trace (bool): 在trace中记录结果。
 
 <span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
 
@@ -467,11 +467,11 @@ Trainable module, all models (including LLM, Embedding, etc.) are served through
 
 
 Args:
-    base_model (str): Name or path of the base model. If the model is not available locally, it will be automatically downloaded from the model source.
-    target_path (str): Path to save the fine-tuning task. Can be left empty if only performing inference.
-    source (str): Model source, optional values are huggingface or. If not set, it will read the value from the environment variable LAZYLLM_MODEL_SOURCE.
-    stream (bool): Whether to output stream. If the inference engine used does not support streaming, this parameter will be ignored.
-    return_trace (bool): Whether to record the results in trace.
+    base_model (str): Name or path of the base model. 
+    target_path (str): Path to save the fine-tuning task. 
+    source (str): Model source. If not set, it will read the value from the environment variable LAZYLLM_MODEL_SOURCE.
+    stream (bool): Whether to output stream. 
+    return_trace (bool): Record the results in trace.
 
 <span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
 
@@ -486,7 +486,6 @@ Args:
 >>> import lazyllm
 >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).trainset('/file/to/path').deploy_method(None).mode('finetune')
 >>> m.update()
-INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 ```
 
 <span style="font-size: 20px;">**`TrainableModule.train_method(v, **kw):`**</span>
@@ -763,7 +762,7 @@ add_example('UrlModule.forward', '''\
 ''')
 
 add_chinese_doc('ServerModule', '''\
-借助 fasta将任意可调用对象包装成 api 服务，可同时启动一个主服务和多个卫星服务。
+借助 fastapi将任意可调用对象包装成 api 服务，可同时启动一个主服务和多个卫星服务。
 
 Args:
     m (Callable): 被包装成服务的函数，可以是一个函数，也可以是一个仿函数。当启动卫星服务时，需要是一个实现了 ``__call__`` 的对象（仿函数）。
@@ -790,97 +789,7 @@ Args:
     pythonpath (str): PYTHONPATH environment variable passed to the subprocess. Defaults to None.
     launcher (LazyLLMLaunchersBase): Specifies the compute node for running the service. Defaults to asynchronous remote deployment via launchers.remote(sync=False).
     url (str): The service URL of the module. Defaults to None, in which case the URL is retrieved from Redis.
-
-
-**Examples:**\n
-```python
->>> def demo(input): return input * 2
-... 
->>> s = lazyllm.ServerModule(demo, launcher=launchers.empty(sync=False))
->>> s.start()
-INFO:     Uvicorn running on http://0.0.0.0:35485
->>> print(s(1))
-2
-```
-
-```python
->>> class MyServe(object):
-...     def __call__(self, input):
-...         return 2 * input
-...     
-...     @lazyllm.FastapiApp.post
-...     def server1(self, input):
-...         return f'reply for {input}'
-...
-...     @lazyllm.FastapiApp.get
-...     def server2(self):
-...        return f'get method'
-...
->>> m = lazyllm.ServerModule(MyServe(), launcher=launchers.empty(sync=False))
->>> m.start()
->>> print(m(1))
-INFO:     Uvicorn running on http://0.0.0.0:32028
->>> print(m(1))
-2  
-```
-
-<span style="font-size: 20px;">**`evalset(evalset, load_f=None, collect_f=<function ModuleBase.<lambda>>)`**</span>
-
-Set the evaluation set for the Module. Modules that have been set with an evaluation set will be evaluated during ``update`` or ``eval``, and the evaluation results will be stored in the eval_result variable. 
-
-
-<span style="font-size: 18px;">&ensp;**`evalset(evalset, collect_f=lambda x: ...)→ None `**</span>
-
-
-Args:
-    evalset (list) :Evaluation set
-    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.\n
-
-
-<span style="font-size: 18px;">&ensp;**`evalset(evalset, load_f=None, collect_f=lambda x: ...)→ None`**</span>
-
-
-Args:
-    evalset (str) :Path to the evaluation set
-    load_f (Callable) :Method for loading the evaluation set, including parsing file formats and converting to a list
-    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.
-
-**Examples:**\n
-```python
->>> import lazyllm
->>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
->>> m.evalset([1, 2, 3])
->>> m.update()
-INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
->>> m.eval_result
-["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
-```
-
-<span style="font-size: 20px;">**`restart() `**</span>
-
-Restart the module and all its submodules.
-
-**Examples:**\n
-```python
->>> import lazyllm
->>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
->>> m.restart()
->>> m(1)
-"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
-```
-
-<span style="font-size: 20px;">**`start() `**</span> 
-
-Deploy the module and all its submodules.
-
-**Examples:**\n
-```python
-import lazyllm
-m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
-m.start()
-m(1)
-"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
-```                                                                    
+                                                               
 ''')
 
 # add_example('ServerModule', '''\
