@@ -3,7 +3,7 @@ from typing import Optional, List, Union, Set, Dict, Callable, Any
 from lazyllm import LOG, once_wrapper
 
 from .store_base import (LazyLLMStoreBase, StoreCapability, SegmentType, Segment, INSERT_BATCH_SIZE,
-                         BUILDIN_GLOBAL_META_DESC, DEFAULT_KB_ID, EMBED_PREFIX)
+                         BUILDIN_GLOBAL_META_DESC, DEFAULT_KB_ID)
 from .hybrid import HybridStore, MapStore, SenseCoreStore
 from .segment import OpenSearchStore
 from .vector import ChromadbStore, MilvusStore
@@ -308,10 +308,11 @@ class DocumentStore(object):
             else:
                 raise ValueError(f"[DocumentStore - {self._algo_name}] Similarity {similarity} is not supported")
 
-        assert not embed_keys or all(key in self._embed for key in embed_keys), \
-            f"[DocumentStore - {self._algo_name}] Embed {embed_keys} are not supported"
-        assert embed_keys and self._impl.capability != StoreCapability.SEGMENT, \
-            f"[DocumentStore - {self._algo_name}] Embed {embed_keys} are not supported when no vector store is provided"
+        if embed_keys:
+            assert self._impl.capability != StoreCapability.SEGMENT, \
+                f"[DocumentStore - {self._algo_name}] Embed {embed_keys} not supported when no vector store provided"
+            assert all(key in self._embed for key in embed_keys), \
+                f"[DocumentStore - {self._algo_name}] Embed {embed_keys} not supported"
         return True
 
     def clear_cache(self, groups: Optional[List[str]] = None) -> None:
@@ -387,7 +388,7 @@ class DocumentStore(object):
         node.excluded_embed_metadata_keys = data.get("excluded_embed_metadata_keys", [])
         node.excluded_llm_metadata_keys = data.get("excluded_llm_metadata_keys", [])
         if "embedding" in data:
-            node.embedding = {k[len(EMBED_PREFIX):]: v for k, v in data.get("embedding", {}).items()}
+            node.embedding = {k: v for k, v in data.get("embedding", {}).items()}
         return node.with_sim_score(score) if score else node
 
     def _gen_collection_name(self, group: str) -> str:
