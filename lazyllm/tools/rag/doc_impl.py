@@ -102,7 +102,7 @@ class DocImpl:
                  doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None, store_conf: Optional[Dict] = None,
                  processor: Optional[DocumentProcessor] = None, algo_name: Optional[str] = None,
-                 algo_desc: Optional[str] = None):
+                 display_name: Optional[str] = None, description: Optional[str] = None):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
@@ -121,7 +121,8 @@ class DocImpl:
         self._index_pending_registrations = []
         self._processor = processor
         self._algo_name = algo_name
-        self._algo_desc = algo_desc
+        self._display_name = display_name
+        self._description = description
 
     def _init_node_groups(self):
         node_groups = DocImpl._builtin_node_groups.copy()
@@ -166,9 +167,10 @@ class DocImpl:
         if self._processor:
             assert cloud and isinstance(self._processor, DocumentProcessor)
             self._processor.register_algorithm(self._algo_name, self.store, self._reader, self.node_groups,
-                                               self._algo_desc)
+                                               self._display_name, self._description)
         else:
-            self._processor = _Processor(self.store, self._reader, self.node_groups, self._algo_desc)
+            self._processor = _Processor(self.store, self._reader, self.node_groups, self._display_name,
+                                         self._description)
 
         # init files when `cloud` is False
         if not cloud and not self.store.is_group_active(LAZY_ROOT_NAME):
