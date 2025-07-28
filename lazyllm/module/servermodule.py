@@ -78,7 +78,7 @@ class LLMBase(ModuleBase):
 
     def __or__(self, other):
         if not isinstance(other, FormatterBase):
-            return super().__or__(other)
+            return NotImplemented
         return self.share(format=(other if isinstance(self._formatter, EmptyFormatter) else (self._formatter | other)))
 
 

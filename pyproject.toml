@@ -102,6 +102,9 @@ botocore = {version = "^1.39.3", optional = true}
 ftfy = {version = "==6.3.1", optional = true}
 imageio = {version = "==2.37.0", optional = true}
 imageio-ffmpeg = {version = "==0.6.0", optional = true}
+volcengine-python-sdk = {version = ">=4.0.6", extras = ["ark"], optional = true}
+dashscope = {version = ">=1.23.6", optional = true}
+zhipuai = {version = ">=2.1.5.20250708", optional = true}
 
 [tool.poetry.extras]
 standard = [
@@ -199,7 +202,10 @@ full = [
     "botocore",
     "ftfy",
     "imageio",
-    "imageio-ffmpeg"
+    "imageio-ffmpeg",
+    "volcengine-python-sdk",
+    "dashscope",
+    "zhipuai"
 ]
 alpaca-lora = [
     "appdirs",
@@ -331,6 +337,11 @@ dev = [
     "flake8",
     "pytest"
 ]
+online-advanced = [
+    "volcengine-python-sdk",
+    "dashscope",
+    "zhipuai"
+]
 [tool.lazyllm.extras_descriptions]
 standard = "Install minimal dependencies for all LazyLLM features. Supports online model fine-tuning and inference, as well as offline model fine-tuning (requires LLaMA-Factory) and inference (requires vLLM)"
 full = "Install all dependencies for LazyLLM, enabling every feature and advanced tools: automatic framework selection (AutoFinetune, AutoDeploy), additional offline inference engines (LightLLM), and extra training tools (AlpacaloraFinetune, CollieFinetune)"
@@ -347,6 +358,7 @@ multimodal = "Install dependencies for multimodal features (speech generation, t
 rag-advanced = "Install advanced RAG features, including vector database support and embedding fine-tuning"
 agent-advanced = "Install advanced agent-related features with MCP support"
 dev = "Install developer dependencies for code style checks and testing scripts"
+online-advanced = "Install dependencies for online multimodal"
 
 [build-system]
 requires = ["poetry-core"]

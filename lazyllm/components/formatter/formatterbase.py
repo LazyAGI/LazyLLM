@@ -32,7 +32,7 @@ class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
 
     def __or__(self, other):
         if not isinstance(other, LazyLLMFormatterBase):
-            return super().__or__(other)
+            return NotImplemented
         return PipelineFormatter(other.__ror__(self))
 
     def __ror__(self, f: Callable) -> Pipeline:
@@ -50,6 +50,12 @@ class PipelineFormatter(LazyLLMFormatterBase):
 
     def _parse_py_data_by_formatter(self, py_data):
         return self._formatter(py_data)
+
+    def __or__(self, other):
+        if isinstance(other, LazyLLMFormatterBase):
+            if isinstance(other, PipelineFormatter): other = other._formatter
+            return PipelineFormatter(self._formatter | other)
+        return NotImplemented
 
 
 class JsonLikeFormatter(LazyLLMFormatterBase):
@@ -139,12 +145,11 @@ LAZYLLM_QUERY_PREFIX = '<lazyllm-query>'
 
 def encode_query_with_filepaths(query: str = None, files: Union[str, List[str]] = None) -> str:
     query = query if query else ''
-    query_with_docs = {'query': query, 'files': files}
     if files:
         if isinstance(files, str): files = [files]
         assert isinstance(files, list), "files must be a list."
         assert all(isinstance(item, str) for item in files), "All items in files must be strings"
-        return LAZYLLM_QUERY_PREFIX + json.dumps(query_with_docs)
+        return LAZYLLM_QUERY_PREFIX + json.dumps({'query': query, 'files': files})
     else:
         return query
 

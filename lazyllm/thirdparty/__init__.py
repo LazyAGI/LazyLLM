@@ -9,7 +9,8 @@ package_name_map = {
     'rank_bm25': 'rank-bm25',
     'faiss': 'faiss-cpu',
     'flash_attn': 'flash-attn',
-    'sklearn': 'scikit-learn'
+    'sklearn': 'scikit-learn',
+    'volcenginesdkarkruntime': 'volcengine-python-sdk[ark]',
 }
 
 requirements = {}
@@ -76,11 +77,18 @@ class PackageWrapper(object):
                 err_msg = f'Cannot import module {self._Wrapper__key}'
             raise ImportError(err_msg)
 
+    def __setattr__(self, __name, __value):
+        if __name in ('_Wrapper__key', '_Wrapper__package'):
+            return super(__class__, self).__setattr__(__name, __value)
+        setattr(importlib.import_module(
+            self._Wrapper__key, package=self._Wrapper__package), __name, __value)
+
 modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', 'rank_bm25', 'redisvl', 'datasets',
            'deepspeed', 'fire', 'numpy', 'peft', 'torch', 'transformers', 'faiss', 'flash_attn', 'google',
            'lightllm', 'vllm', 'ChatTTS', 'wandb', 'funasr', 'sklearn', 'torchvision', 'scipy', 'pymilvus',
            'sentence_transformers', 'gradio', 'chromadb', 'nltk', 'PIL', 'httpx', 'bm25s', 'kubernetes', 'pymongo',
            'rapidfuzz', 'FlagEmbedding', 'mcp', 'diffusers', 'pypdf', 'pptx', 'html2text', 'ebooklib', 'docx2txt',
-           'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr']
+           'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr', 'volcenginesdkarkruntime',
+           'zhipuai', 'dashscope']
 for m in modules:
     vars()[m] = PackageWrapper(m)
